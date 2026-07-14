@@ -54,7 +54,7 @@ Generate the child's self-contained context capsule from canonical plan/workflow
 
 Do not copy the full plan, chat transcript, unrelated completed history, or all future nodes. A generated capsule records included and omitted refs; when it exceeds budget, omit optional history before authority, invariants, objective, scope, or proof.
 
-Use the live `delegate_task` schema exactly as exposed. Do not invent parameters copied from another Hermes version. Inspect the returned payload to determine whether the result completed immediately, fell back synchronously, or remains background-pending.
+Use the active host's live delegation interface exactly as exposed. Do not invent operation names or parameters copied from another host or version. Inspect the returned payload to determine whether the result completed immediately, fell back synchronously, or remains background-pending.
 
 The implementer reports touched files, commands and original statuses, evidence paths, unresolved questions, and any external side-effect handles. A child self-report is not controller proof.
 
@@ -112,7 +112,7 @@ When delegation is explicitly testing proactive memory behavior, require every c
 
 For plugin-managed shared ledgers, load [Shared-Ledger Delegation](shared-ledger-delegation.md). For paper plus released source plus target-system comparisons, load [Paper, Source, and Target-System Gap Audits](paper-source-target-gap-audits.md). For large report consolidation, load [Multi-Source Markdown Synthesis](multi-source-markdown-synthesis.md).
 
-If the user asks for a swarm, maximum safe fan-out, or a product stress simulation, prefer the dedicated `hermes-swarm-coordination` skill after this authority contract rather than expanding this branch into a second swarm protocol. Give workers distinct scenarios that cover normal workflows and edge surfaces such as isolation, navigation or ranking, public CLI/API contracts, boundary validation, refresh/recovery, and persistent state side effects.
+If the user asks for a swarm, maximum safe fan-out, or a product stress simulation, prefer a dedicated host-compatible swarm-coordination owner when one is available and authorized rather than expanding this branch into a second swarm protocol. Give workers distinct scenarios that cover normal workflows and edge surfaces such as isolation, navigation or ranking, public CLI/API contracts, boundary validation, refresh/recovery, and persistent state side effects.
 
 ## Failure and timeout handling
 

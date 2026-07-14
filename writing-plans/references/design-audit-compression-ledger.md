@@ -55,17 +55,14 @@ Ask at most one focused clarification if missing input blocks safe design. Other
 
 ### 1. Inspect repository evidence
 
-Before designing, inspect actual project evidence using Hermes tools and read-only commands first.
+Before designing, inspect actual project evidence using the active host's available read/search capabilities and read-only commands first.
 
 Useful starting points:
 
-```python
-search_files("<domain terms or symbols>", path=".")
-search_files("<error message or behavior>", path=".")
-search_files("AGENTS.md", target="files", path=".")
-search_files("README*", target="files", path=".")
-search_files("*test*", target="files", path=".")
-read_file("<relevant file>")
+```text
+<host search capability>: find domain terms, symbols, errors, and behavior within the project
+<host file discovery capability>: locate project instructions, README files, and relevant tests
+<host read capability>: open only the bounded source spans needed for the decision
 ```
 
 Also read nearby call sites, tests, configs, type definitions, architecture notes, and documented conventions. Use git history only when ownership, regression history, or compatibility risk matters.

@@ -29,6 +29,8 @@ FORBIDDEN_PARTS = {"__pycache__", ".closure", ".workflow", "dist"}
 LOCAL_LINK = re.compile(r"\]\((?!https?://|#|mailto:)([^)#]+)(?:#[^)]+)?\)")
 LOCAL_ONLY_ROOTS = {".git", ".work"}
 LOCAL_ONLY_FILES = {"CODEX_STATE.md"}
+CODEX_SKILL_KEYS = {"name", "description", "license", "metadata", "allowed-tools"}
+SUPPORTED_HOSTS = ["codex", "hermes-agent"]
 
 
 def is_repository_local(path: Path) -> bool:
@@ -42,12 +44,22 @@ def is_repository_local(path: Path) -> bool:
     )
 
 
-def frontmatter_version(skill_root: Path) -> str:
+def skill_frontmatter(skill_root: Path) -> dict:
     text = (skill_root / "SKILL.md").read_text(encoding="utf-8")
-    match = re.search(r"(?m)^version:\s*([^\s#]+)\s*$", text)
+    match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
     if not match:
-        raise AssertionError(f"missing skill version: {skill_root}")
-    return match.group(1)
+        raise AssertionError(f"missing skill frontmatter: {skill_root}")
+    value = yaml.safe_load(match.group(1))
+    if not isinstance(value, dict):
+        raise AssertionError(f"skill frontmatter is not a mapping: {skill_root}")
+    return value
+
+
+def frontmatter_version(skill_root: Path) -> str:
+    metadata = skill_frontmatter(skill_root).get("metadata")
+    if not isinstance(metadata, dict) or not isinstance(metadata.get("version"), str):
+        raise AssertionError(f"missing metadata.version: {skill_root}")
+    return metadata["version"]
 
 
 class BundleContractTests(unittest.TestCase):
@@ -85,7 +97,25 @@ class BundleContractTests(unittest.TestCase):
         for item in skills:
             skill_root = ROOT / item["path"]
             self.assertTrue(skill_root.is_dir(), f"missing bundled skill: {item['path']}")
+            frontmatter = skill_frontmatter(skill_root)
+            self.assertFalse(set(frontmatter) - CODEX_SKILL_KEYS)
+            self.assertEqual(item["id"], frontmatter["name"])
+            metadata = frontmatter["metadata"]
+            self.assertEqual(SUPPORTED_HOSTS, metadata["hosts"])
+            self.assertIsInstance(metadata["author"], str)
+            self.assertTrue(metadata["author"])
+            hermes = metadata["hermes"]
+            self.assertEqual("software-development", hermes["category"])
+            self.assertIsInstance(hermes["tags"], list)
+            self.assertIsInstance(hermes["related_skills"], list)
             self.assertEqual(item["version"], frontmatter_version(skill_root))
+            agent_metadata = yaml.safe_load((skill_root / "agents" / "openai.yaml").read_text(encoding="utf-8"))
+            interface = agent_metadata["interface"]
+            self.assertIsInstance(interface["display_name"], str)
+            self.assertGreaterEqual(len(interface["short_description"]), 25)
+            self.assertLessEqual(len(interface["short_description"]), 64)
+            self.assertIn(f"${item['id']}", interface["default_prompt"])
+            self.assertIs(agent_metadata["policy"]["allow_implicit_invocation"], True)
         for profile in ("standalone", "extended"):
             self.assertEqual(3, len(MANIFEST["test_profiles"][profile]))
         self.assertEqual("LONG_DOCUMENT_SKILL_ROOT", MANIFEST["optional_external_dependencies"][0]["environment_variable"])

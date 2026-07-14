@@ -35,6 +35,8 @@ def _frontmatter(path: Path) -> dict[str, str]:
         if line and not line.startswith((" ", "\t")) and ":" in line:
             key, value = line.split(":", 1)
             result[key.strip()] = value.strip().strip('"')
+        elif line.startswith("  version: "):
+            result["version"] = line.removeprefix("  version: ").strip().strip('"')
     for field in ("name", "description", "version"):
         if not result.get(field):
             raise ValueError(f"skill frontmatter lacks {field}: {path}")
@@ -64,8 +66,8 @@ def inspect_plugin(plugin_root: Path, evidence_path: Path) -> dict[str, Any]:
         if fields["name"] != name or evidence.get("skill_versions", {}).get(name) != fields["version"]:
             raise ValueError(f"explicit skill identity/version mismatch: {name}")
         metadata = (skill_root / "agents" / "openai.yaml").read_text(encoding="utf-8")
-        if "allow_implicit_invocation: true" not in metadata:
-            raise ValueError(f"implicit invocation metadata is missing: {name}")
+        if "allow_implicit_invocation: true" not in metadata or "default_prompt:" not in metadata or f"${name}" not in metadata:
+            raise ValueError(f"Codex invocation metadata is incomplete: {name}")
         if any(marker in metadata for marker in ("hooks:", "mcp:", "apps:", "remote_writes_default: true", "live_autonomous_closure_default: true")):
             raise ValueError(f"skill metadata attempts to widen plugin authority: {name}")
         discovered[name] = {

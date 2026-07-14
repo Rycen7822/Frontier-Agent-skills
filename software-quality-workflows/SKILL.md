@@ -1,10 +1,11 @@
 ---
 name: software-quality-workflows
 description: "Use for software work that needs explicit authority or scope control, diagnosis of an unknown failure, public-contract, security, or release handling, delegated execution, structured review, or layered verification. Routine low-risk same-session edits use the direct path without loading domain branches."
-version: 4.0.0
-author: Hermes Agent
 license: MIT
 metadata:
+  version: 4.0.0
+  author: Hermes Agent
+  hosts: [codex, hermes-agent]
   hermes:
     tags: [software-development, design, specifications, implementation, debugging, tdd, testing, verification, review, refactoring, security, quality, delegation, subagents]
     category: software-development
@@ -16,6 +17,10 @@ metadata:
 ## Owner contract
 
 This skill owns the software safety kernel, lifecycle routing, single policy ownership, and completion evidence. All software work obeys the short kernel; routine work does not need a durable workflow or the full reference stack.
+
+## Host compatibility
+
+Run unchanged in Codex and Hermes Agent. Resolve bundled paths from this skill's root, obey active host/system/project authority, and select each operation by capability rather than a product-specific tool name. Use only exposed capabilities; otherwise take the named local fallback or report `not_run`, `blocked`, or `inconclusive`. Product-specific adapters and metadata never redefine the kernel.
 
 ## Safety kernel
 
@@ -57,7 +62,7 @@ Autonomous closure is an execution policy, not a fifth workflow mode. First run 
 
 The deterministic controller is the only phase, promotion, terminal, or `CLOSED` authority. Workers may propose candidates, counterexamples, verification requests, and blockers; they cannot modify the contract, controller, verifier kernel, holdouts, or publication ceiling. [Verifier Kernel](references/verifier-kernel.md) qualifies and freezes independent evidence before search. Candidate work uses isolated local worktrees, fresh integration replay, and requirements, engineering, verifier-integrity, and authority sign-off. P4 permits local patches only: no merge, push, release, deploy, or other remote write.
 
-Live Codex execution and multi-candidate search are default-off. A capability-qualified adapter may execute one local candidate under the frozen sandbox and scope; all output is diagnostic until strict schema, snapshot, artifact, and controller validation accepts a proposal. Capacity, authentication, timeout, cancellation, drift, and partial changes produce typed failure handling rather than implicit retry or user-wait loops.
+Live host-agent execution and multi-candidate search are default-off. A capability-qualified adapter may execute one local candidate under the frozen sandbox and scope; output stays diagnostic until schema, snapshot, artifact, and controller validation accepts it. The Codex adapter is optional. Capacity, authentication, timeout, cancellation, drift, and partial changes produce typed failures rather than implicit retries or user-wait loops.
 
 ## Mode-aware lifecycle
 
@@ -138,31 +143,31 @@ Do not scan or load the full catalog pre-emptively. A selected branch records it
 
 | Resource | Purpose |
 |---|---|
-| [Independent reviewer prompt](templates/requesting-code-review/independent-reviewer-prompt.md) | Read-only revision/scope-bound review |
+| [Independent reviewer prompt](templates/requesting-code-review/independent-reviewer-prompt.md) | Scoped read-only review |
 | [Scoped fixer prompt](templates/requesting-code-review/fix-agent-prompt.md) | Allowlisted fixes; no self-approval |
-| [Design-discovery spec reviewer prompt](templates/design-discovery-spec-reviewer-prompt.md) | Optional independent specification readiness |
-| [Design-discovery server](scripts/design-discovery/server.cjs) | Optional dependency-free visual runtime |
-| [Design-discovery start script](scripts/design-discovery/start-server.sh) | Hermes-tracked foreground launcher |
-| [Design-discovery stop script](scripts/design-discovery/stop-server.sh) | Scoped shutdown and ephemeral cleanup |
-| [Contract validator](scripts/validate_skill_contracts.py) | Read-only packaging/policy/safety/schema checks |
-| [Owner registry](references/owner-registry.json) | Machine-readable single-owner, trigger, exclusion, and policy map |
-| [Workflow modes](references/workflow-modes.md) | M0/M1/M2/M3 activation and state boundaries |
-| [Workflow state contract](references/workflow-state-contract.md) | Typed state, events, transitions, actor authority, and closure |
-| [Context projection](references/context-projection.md) | Bounded frontier capsule and sensitive-data rules |
-| [Repair and invalidation](references/repair-and-invalidation.md) | Field-sensitive propagation, local repair, and escalation |
-| [Local workflow adapter](adapters/local-filesystem.md) | M2/M3 atomic state, events, artifacts, locks, and resume |
-| [Codex exec adapter](adapters/codex-exec.md) | Default-off capability probe, task/result/session binding, and typed pre-result failure mapping |
-| [Plugin runtime gate](adapters/plugin-runtime.md) | Deferred P2 activation criteria and local fallback |
-| [Workflow router](scripts/route_workflow.py) | Explainable M0–M3, owner, reference, reason, and gate selection |
-| [Closure admission](scripts/assess_closure_admission.py) | Observable-fact admission into direct, eligible, or typed terminal handling |
-| [Closure controller](scripts/advance_closure.py) | Sole deterministic closure transition and terminal-certificate authority |
-| [Verifier bundle validator](scripts/validate_verifier_bundle.py) | Qualification, freeze, and candidate-verdict binding checks |
-| [Workflow state validator](scripts/validate_workflow_state.py) | State/event/transition/scope/approval/retry/closure checks |
-| [Frontier calculator](scripts/compute_frontier.py) | Ready/blocked nodes and conflict-free parallel batches |
-| [Context projector](scripts/project_context.py) | State-versioned, budgeted, sensitive-safe frontier view |
-| [Invalidation calculator](scripts/propagate_invalidation.py) | Field-sensitive affected/preserved/escalation report |
-| [Workflow reconciler](scripts/reconcile_workflow.py) | Resume drift for source, plan, artifacts, events, locks, and background work |
-| [Local adapter script](scripts/local_workflow_adapter.py) | Atomic M2/M3 state/event/artifact/lock operations |
+| [Design spec reviewer](templates/design-discovery-spec-reviewer-prompt.md) | Optional spec-readiness review |
+| [Design server](scripts/design-discovery/server.cjs) | Local visual companion |
+| [Design start](scripts/design-discovery/start-server.sh) | Tracked launcher |
+| [Design stop](scripts/design-discovery/stop-server.sh) | Scoped cleanup |
+| [Contract validator](scripts/validate_skill_contracts.py) | Policy/package checks |
+| [Owner registry](references/owner-registry.json) | Owner routing catalog |
+| [Workflow modes](references/workflow-modes.md) | M0–M3 boundaries |
+| [Workflow state](references/workflow-state-contract.md) | State/events/closure |
+| [Context projection](references/context-projection.md) | Bounded capsules |
+| [Repair](references/repair-and-invalidation.md) | Invalidation and repair |
+| [Local adapter](adapters/local-filesystem.md) | Atomic M2/M3 storage |
+| [Codex adapter](adapters/codex-exec.md) | Optional Codex execution |
+| [Plugin gate](adapters/plugin-runtime.md) | Deferred activation |
+| [Workflow router](scripts/route_workflow.py) | Mode/owner selection |
+| [Closure admission](scripts/assess_closure_admission.py) | Closure eligibility |
+| [Closure controller](scripts/advance_closure.py) | Sole transition authority |
+| [Verifier validator](scripts/validate_verifier_bundle.py) | Verifier qualification |
+| [State validator](scripts/validate_workflow_state.py) | State/event checks |
+| [Frontier calculator](scripts/compute_frontier.py) | Ready/blocked nodes |
+| [Context projector](scripts/project_context.py) | Capsule renderer |
+| [Invalidation calculator](scripts/propagate_invalidation.py) | Affected-state report |
+| [Workflow reconciler](scripts/reconcile_workflow.py) | Resume drift |
+| [Adapter script](scripts/local_workflow_adapter.py) | State operations |
 
 ## Completion contract
 

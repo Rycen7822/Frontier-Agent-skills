@@ -1,5 +1,6 @@
 interface:
-  display_name: Writing Plans
-  short_description: Compile a durable implementation plan or frozen closure contract
+  display_name: "Writing Plans"
+  short_description: "Compile durable plans and closure contracts"
+  default_prompt: "Use $writing-plans to compile this software change into the lightest durable implementation plan and handoff."
 policy:
   allow_implicit_invocation: true

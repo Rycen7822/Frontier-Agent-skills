@@ -11,9 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 class WritingDocsV3Tests(unittest.TestCase):
     def test_entry_version_structure_budget_and_exact_reference_map(self) -> None:
         text = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-        self.assertRegex(text, r"(?m)^version: 3\.0\.0$")
+        self.assertRegex(text, r"(?m)^  version: 3\.0\.0$")
         headings = [
             "## Owner contract",
+            "## Host compatibility",
             "## Route before planning",
             "## Autonomous closure branch",
             "## Select Brief / Handoff / Program",
@@ -48,19 +49,26 @@ class WritingDocsV3Tests(unittest.TestCase):
         self.assertIn("contract_frozen + plan_validated + handoff_emitted", text)
         self.assertIn("does not mean implementation, sign-off, publication, or workflow closure", text)
         self.assertNotIn("advance_closure.py", text)
+        self.assertIn("Codex and Hermes Agent", text)
+        self.assertIn("Resolve bundled paths from this skill's root", text)
+        self.assertIn("capability rather than a product-specific tool name", text)
+        audit = (ROOT / "references" / "design-audit-compression-ledger.md").read_text(encoding="utf-8")
+        self.assertNotIn("using Hermes tools", audit)
 
     def test_openai_metadata_is_narrow_and_exact(self) -> None:
         metadata = (ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
         self.assertEqual(
             "interface:\n"
-            "  display_name: Writing Plans\n"
-            "  short_description: Compile a durable implementation plan or frozen closure contract\n"
+            "  display_name: \"Writing Plans\"\n"
+            "  short_description: \"Compile durable plans and closure contracts\"\n"
+            "  default_prompt: \"Use $writing-plans to compile this software change into the lightest durable implementation plan and handoff.\"\n"
             "policy:\n"
             "  allow_implicit_invocation: true\n",
             metadata,
         )
-        self.assertIn("display_name: Writing Plans", metadata)
-        self.assertIn("short_description: Compile a durable implementation plan or frozen closure contract", metadata)
+        self.assertIn('display_name: "Writing Plans"', metadata)
+        self.assertIn('short_description: "Compile durable plans and closure contracts"', metadata)
+        self.assertIn("$writing-plans", metadata)
         self.assertIn("allow_implicit_invocation: true", metadata)
         self.assertNotIn("execute", metadata.lower())
 

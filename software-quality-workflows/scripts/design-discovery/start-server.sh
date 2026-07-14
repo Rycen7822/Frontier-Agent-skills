@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Start the Hermes design-discovery companion in the foreground.
-# Hermes must own background lifecycle through terminal(background=true).
+# Start the host-neutral design-discovery companion in the foreground.
+# The active agent host must own the tracked background lifecycle.
 # Usage: start-server.sh [--project-dir <path>] [--host <bind-host>] [--url-host <display-host>]
 set -u
 
@@ -43,9 +43,9 @@ fi
 
 SESSION_ID="$$-$(date +%s)"
 if [[ -n "$PROJECT_DIR" ]]; then
-  SESSION_DIR="${PROJECT_DIR}/.hermes-design-discovery/${SESSION_ID}"
+  SESSION_DIR="${PROJECT_DIR}/.agent-design-discovery/${SESSION_ID}"
 else
-  SESSION_DIR="/tmp/hermes-design-discovery-${SESSION_ID}"
+  SESSION_DIR="/tmp/agent-design-discovery-${SESSION_ID}"
 fi
 STATE_DIR="${SESSION_DIR}/state"
 PID_FILE="${STATE_DIR}/server.pid"

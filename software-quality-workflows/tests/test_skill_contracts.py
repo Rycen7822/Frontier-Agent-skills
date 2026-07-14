@@ -28,10 +28,11 @@ def make_minimal_skill(root: Path) -> None:
         "---\n"
         "name: software-quality-workflows\n"
         "description: Synthetic contract fixture for validator tests.\n"
-        "version: 2.0.0\n"
-        "author: Hermes Agent\n"
         "license: MIT\n"
         "metadata:\n"
+        "  version: 2.0.0\n"
+        "  author: Hermes Agent\n"
+        "  hosts: [codex, hermes-agent]\n"
         "  hermes:\n"
         "    tags: [development, testing, verification]\n"
         "    category: software-development\n"
@@ -273,7 +274,8 @@ class SkillContractTests(unittest.TestCase):
         visual = (ROOT / "references" / "visual-design-companion.md").read_text(
             encoding="utf-8"
         ).lower()
-        self.assertIn("terminal(background=true", visual)
+        self.assertIn("startup match: server-started", visual)
+        self.assertNotIn("terminal(background=true", visual)
         self.assertIn("process", visual)
         self.assertNotIn("claude code", visual)
         self.assertNotIn("gemini cli", visual)
@@ -292,7 +294,8 @@ class SkillContractTests(unittest.TestCase):
         start_script = (
             ROOT / "scripts" / "design-discovery" / "start-server.sh"
         ).read_text(encoding="utf-8")
-        self.assertIn(".hermes-design-discovery", start_script)
+        self.assertIn(".agent-design-discovery", start_script)
+        self.assertNotIn(".hermes-design-discovery", start_script)
         self.assertNotIn("CODEX_CI", start_script)
         self.assertNotIn(".superpowers", start_script)
 
@@ -311,14 +314,31 @@ class SkillContractTests(unittest.TestCase):
             skill,
         )
         self.assertNotIn("external tdd skill", skill_lower)
-        self.assertNotIn("## Hermes compatibility", skill)
+        self.assertIn("## Host compatibility", skill)
+        self.assertIn("Codex and Hermes Agent", skill)
+        self.assertIn("Resolve bundled paths from this skill's root", skill)
+        self.assertIn("capability rather than a product-specific tool name", skill)
         agent_metadata = (ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
         self.assertIn("allow_implicit_invocation: true", agent_metadata)
+        self.assertIn("default_prompt:", agent_metadata)
+        self.assertIn("$software-quality-workflows", agent_metadata)
         self.assertNotIn("live_autonomous_closure_default", agent_metadata)
         self.assertNotIn("remote_writes_default", agent_metadata)
-        self.assertIn("Live Codex execution and multi-candidate search are default-off", skill)
+        self.assertIn("Live host-agent execution and multi-candidate search are default-off", skill)
+        self.assertNotIn("Live Codex execution and multi-candidate search are default-off", skill)
         for retired_host_detail in ("skill_view", "delegate_task", "runtime/session-dependent", "status=dispatched"):
             self.assertNotIn(retired_host_detail, skill_lower)
+
+        shared_references = {
+            "references/delegated-development.md": ("delegate_task", "hermes-swarm-coordination"),
+            "references/shared-ledger-delegation.md": ("delegate_task", "skill_view(", "skill_manage"),
+            "references/visual-design-companion.md": ("Start under Hermes", "terminal(", "process(action=", "browser_navigate", "write_file", "read_file", ".hermes-design-discovery"),
+            "references/workflow-state-contract.md": ("Hermes live todos",),
+        }
+        for relative, markers in shared_references.items():
+            text = (ROOT / relative).read_text(encoding="utf-8")
+            for marker in markers:
+                self.assertNotIn(marker, text, f"{relative} contains host-specific default {marker!r}")
 
     def test_decision_fixture_validator_is_total_for_malformed_json(self) -> None:
         malformed = [
@@ -392,13 +412,13 @@ class SkillContractTests(unittest.TestCase):
             self.assertIn("portability.stale", codes)
             self.assertIn("gate.masked-exit", codes)
 
-    def test_synthetic_tree_accepts_hermes_native_tool_names(self) -> None:
+    def test_synthetic_tree_accepts_capability_first_tool_language(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             make_minimal_skill(root)
             path = root / "references" / "systematic-debugging.md"
             path.write_text(
-                "# Debugging\n\nUse `read_file`, `search_files`, `write_file`, and `session_search`.\n",
+                "# Debugging\n\nUse the active host's read, search, edit, command, and session-history capabilities.\n",
                 encoding="utf-8",
             )
             violations = validator.validate_skill(root)
@@ -407,13 +427,13 @@ class SkillContractTests(unittest.TestCase):
                 validator.compact_violations(violations),
             )
 
-    def test_synthetic_tree_requires_complete_hermes_frontmatter(self) -> None:
+    def test_synthetic_tree_requires_complete_dual_host_frontmatter(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             make_minimal_skill(root)
             path = root / "SKILL.md"
             path.write_text(
-                path.read_text(encoding="utf-8").replace("version: 2.0.0\n", ""),
+                path.read_text(encoding="utf-8").replace("  version: 2.0.0\n", ""),
                 encoding="utf-8",
             )
             codes = {item.code for item in validator.validate_skill(root)}
@@ -449,7 +469,7 @@ class SkillContractTests(unittest.TestCase):
                 path = root / "SKILL.md"
                 text = path.read_text(encoding="utf-8")
                 path.write_text(
-                    text.replace("version: 2.0.0", f"version: {version}", 1),
+                    text.replace("  version: 2.0.0", f"  version: {version}", 1),
                     encoding="utf-8",
                 )
                 violations = validator.validate_skill(root)
@@ -464,7 +484,7 @@ class SkillContractTests(unittest.TestCase):
                 path = root / "SKILL.md"
                 text = path.read_text(encoding="utf-8")
                 path.write_text(
-                    text.replace("version: 2.0.0", f"version: {version}", 1),
+                    text.replace("  version: 2.0.0", f"  version: {version}", 1),
                     encoding="utf-8",
                 )
                 codes = {item.code for item in validator.validate_skill(root)}
@@ -485,8 +505,8 @@ class SkillContractTests(unittest.TestCase):
                 "related_skills: writing-plans",
             ),
             "non_mapping_metadata": (
-                "metadata:\n  hermes:",
-                "metadata: invalid\n  hermes:",
+                "metadata:\n  version:",
+                "metadata: invalid\n  version:",
             ),
             "non_mapping_hermes": (
                 "  hermes:\n    tags:",
@@ -500,33 +520,37 @@ class SkillContractTests(unittest.TestCase):
                 "related_skills: [writing-plans]",
                 "related_skills: [writing-plans, bad entry]",
             ),
-            "missing_top_level_separator_space": (
-                "version: 2.0.0",
-                "version:2.0.0",
+            "missing_metadata_separator_space": (
+                "  version: 2.0.0",
+                "  version:2.0.0",
+            ),
+            "malformed_hosts_list": (
+                "  hosts: [codex, hermes-agent]",
+                "  hosts: [codex,, hermes-agent]",
             ),
             "missing_nested_separator_space": (
                 "tags: [development, testing, verification]",
                 "tags:[development, testing, verification]",
             ),
             "plain_scalar_comment": (
-                "author: Hermes Agent",
-                "author: # comment",
+                "  author: Hermes Agent",
+                "  author: # comment",
             ),
             "plain_scalar_sequence_indicator": (
-                "author: Hermes Agent",
-                "author: - item",
+                "  author: Hermes Agent",
+                "  author: - item",
             ),
             "plain_scalar_mapping_indicator": (
-                "author: Hermes Agent",
-                "author: foo:",
+                "  author: Hermes Agent",
+                "  author: foo:",
             ),
             "malformed_single_quoted_scalar": (
-                "author: Hermes Agent",
-                "author: 'foo'bar'",
+                "  author: Hermes Agent",
+                "  author: 'foo'bar'",
             ),
             "implicit_boolean_scalar": (
-                "author: Hermes Agent",
-                "author: yes",
+                "  author: Hermes Agent",
+                "  author: yes",
             ),
             "implicit_boolean_list_entry": (
                 "tags: [development, testing, verification]",
@@ -558,6 +582,7 @@ class SkillContractTests(unittest.TestCase):
                 "interface:\n"
                 "  display_name: Fixture\n"
                 "  short_description: Synthetic agent metadata\n"
+                "  default_prompt: Use $software-quality-workflows for this fixture.\n"
                 "policy:\n"
                 "  allow_implicit_invocation: true\n"
                 "  live_autonomous_closure_default: false\n"

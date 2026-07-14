@@ -103,9 +103,9 @@ def _safe_bundle_relative(value: Any) -> str:
 
 def skill_version(path: Path) -> str:
     text = (path / "SKILL.md").read_text(encoding="utf-8")
-    match = re.search(r"(?m)^version:\s*([^\s#]+)\s*$", text)
+    match = re.search(r"(?m)^  version:\s*([^\s#]+)\s*$", text)
     if not match:
-        raise ValueError(f"missing version in {path / 'SKILL.md'}")
+        raise ValueError(f"missing metadata.version in {path / 'SKILL.md'}")
     return match.group(1)
 
 

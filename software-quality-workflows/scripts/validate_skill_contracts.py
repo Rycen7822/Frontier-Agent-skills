@@ -179,17 +179,17 @@ def _parse_inline_slug_list(value: str, field: str) -> list[str]:
     return items
 
 
-def _parse_hermes_frontmatter(text: str) -> dict[str, Any]:
+def _parse_dual_host_frontmatter(text: str) -> dict[str, Any]:
     if not text.startswith("---\n"):
         raise ValueError("opening delimiter is missing")
     end = text.find("\n---\n", 4)
     if end < 0:
         raise ValueError("closing delimiter is missing")
     lines = text[4:end].splitlines()
-    if len(lines) != 10:
-        raise ValueError(f"expected 10 canonical frontmatter lines; got {len(lines)}")
+    if len(lines) != 11:
+        raise ValueError(f"expected 11 canonical dual-host frontmatter lines; got {len(lines)}")
 
-    scalar_top_keys = ("name", "description", "version", "author", "license")
+    scalar_top_keys = ("name", "description", "license")
     raw: dict[str, str] = {}
     for index, key in enumerate(scalar_top_keys):
         prefix = f"{key}: "
@@ -197,14 +197,29 @@ def _parse_hermes_frontmatter(text: str) -> dict[str, Any]:
         if line.startswith((" ", "\t")) or not line.startswith(prefix):
             raise ValueError(f"expected top-level scalar field {key} at line {index + 1}")
         raw[key] = line[len(prefix):].strip()
-    if lines[5] != "metadata:":
+    if lines[3] != "metadata:":
         raise ValueError("metadata must be a mapping")
-    if lines[6] != "  hermes:":
+
+    metadata_keys = ("version", "author")
+    raw_metadata: dict[str, str] = {}
+    for index, key in enumerate(metadata_keys, start=4):
+        prefix = f"  {key}: "
+        line = lines[index]
+        if not line.startswith(prefix):
+            raise ValueError(f"expected metadata.{key}")
+        raw_metadata[key] = line[len(prefix):].strip()
+    hosts_prefix = "  hosts: "
+    if not lines[6].startswith(hosts_prefix):
+        raise ValueError("expected metadata.hosts")
+    hosts = _parse_inline_slug_list(lines[6][len(hosts_prefix):], "metadata.hosts")
+    if hosts != ["codex", "hermes-agent"]:
+        raise ValueError("metadata.hosts must be exactly [codex, hermes-agent]")
+    if lines[7] != "  hermes:":
         raise ValueError("metadata.hermes must be a mapping")
 
     nested_keys = ("tags", "category", "related_skills")
     nested: dict[str, str] = {}
-    for index, key in enumerate(nested_keys, start=7):
+    for index, key in enumerate(nested_keys, start=8):
         prefix = f"    {key}: "
         line = lines[index]
         if not line.startswith(prefix):
@@ -213,10 +228,17 @@ def _parse_hermes_frontmatter(text: str) -> dict[str, Any]:
 
     name = _parse_frontmatter_scalar(raw["name"], "name")
     description = _parse_frontmatter_scalar(raw["description"], "description")
-    version = raw["version"].strip()
+    version = raw_metadata["version"].strip()
+    if version.startswith('"'):
+        try:
+            version = json.loads(version)
+        except json.JSONDecodeError as error:
+            raise ValueError("metadata.version has invalid double-quoted syntax") from error
+    if not isinstance(version, str) or not version:
+        raise ValueError("metadata.version must be a non-empty string")
     if not SEMANTIC_VERSION.fullmatch(version):
         raise ValueError("version must use canonical semantic-version syntax")
-    author = _parse_frontmatter_scalar(raw["author"], "author")
+    author = _parse_frontmatter_scalar(raw_metadata["author"], "metadata.author")
     license_name = _parse_frontmatter_scalar(raw["license"], "license")
     category = _parse_frontmatter_scalar(nested["category"], "metadata.hermes.category")
     tags = _parse_inline_slug_list(nested["tags"], "metadata.hermes.tags")
@@ -226,10 +248,11 @@ def _parse_hermes_frontmatter(text: str) -> dict[str, Any]:
     return {
         "name": name,
         "description": description,
-        "version": version,
-        "author": author,
         "license": license_name,
         "metadata": {
+            "version": version,
+            "author": author,
+            "hosts": hosts,
             "hermes": {
                 "tags": tags,
                 "category": category,
@@ -239,6 +262,10 @@ def _parse_hermes_frontmatter(text: str) -> dict[str, Any]:
     }
 
 
+# Compatibility alias for callers that consumed the former private parser name.
+_parse_hermes_frontmatter = _parse_dual_host_frontmatter
+
+
 def _check_skill_entry(root: Path, violations: list[Violation]) -> set[str]:
     path = root / "SKILL.md"
     if not path.is_file():
@@ -246,14 +273,14 @@ def _check_skill_entry(root: Path, violations: list[Violation]) -> set[str]:
         return set()
     text = path.read_text(encoding="utf-8")
     try:
-        frontmatter = _parse_hermes_frontmatter(text)
+        frontmatter = _parse_dual_host_frontmatter(text)
     except ValueError as error:
         violations.append(
             Violation(
                 "entry.frontmatter",
                 "SKILL.md",
                 1,
-                f"invalid canonical Hermes frontmatter: {error}",
+                f"invalid canonical dual-host frontmatter: {error}",
             )
         )
     else:
@@ -261,7 +288,7 @@ def _check_skill_entry(root: Path, violations: list[Violation]) -> set[str]:
             violations.append(
                 Violation("entry.name", "SKILL.md", 2, "skill name does not match directory")
             )
-        if not SEMANTIC_VERSION.fullmatch(frontmatter["version"]):
+        if not SEMANTIC_VERSION.fullmatch(frontmatter["metadata"]["version"]):
             violations.append(Violation("entry.version", "SKILL.md", 1, "version must be semantic"))
         category = frontmatter["metadata"]["hermes"]["category"]
         if category != "software-development":
@@ -374,7 +401,7 @@ def _check_agent_metadata(root: Path, violations: list[Violation]) -> None:
         for marker in ("hooks:", "mcp:", "apps:", "remote_writes_default: true", "live_autonomous_closure_default: true"):
             if marker in text:
                 violations.append(Violation("agent-metadata.unsafe", relative, 1, f"agent metadata contains forbidden setting: {marker}"))
-        for required in ("interface:", "display_name:", "short_description:", "allow_implicit_invocation:"):
+        for required in ("interface:", "display_name:", "short_description:", "default_prompt:", "allow_implicit_invocation:"):
             if required not in text:
                 violations.append(Violation("agent-metadata.required", relative, 1, f"agent metadata lacks {required}"))
 

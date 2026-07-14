@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop one Hermes design-discovery companion and clean ephemeral state.
+# Stop one host-neutral design-discovery companion and clean ephemeral state.
 # Usage: stop-server.sh <session_dir>
 set -u
 
@@ -30,7 +30,7 @@ if kill -0 "$pid" 2>/dev/null; then
 fi
 
 rm -f "$PID_FILE" "${STATE_DIR}/server.log"
-if [[ "$SESSION_DIR" == /tmp/hermes-design-discovery-* ]]; then
+if [[ "$SESSION_DIR" == /tmp/agent-design-discovery-* ]]; then
   rm -rf "$SESSION_DIR"
 fi
 echo '{"status":"stopped"}'
