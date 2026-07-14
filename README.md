@@ -1,6 +1,12 @@
 # Frontier Agent Skills
 
-This repository is the development source of truth for the `writing-plans` and `software-quality-workflows` Hermes skills. The copies installed under `$HERMES_HOME/skills/` are separate deployment directories, not symlinks: editing this repository does not change an active Hermes installation until an operator explicitly synchronizes the validated skill directories and starts a fresh session or resets the current one.
+This repository is the development source of truth for the dual-host `writing-plans` and `software-quality-workflows` skills. Copies installed under `$CODEX_HOME/skills/` or `$HERMES_HOME/skills/` are separate deployment directories, not symlinks: editing this repository does not change an active Codex or Hermes Agent installation until an operator explicitly synchronizes the validated skill directories and starts a fresh host session.
+
+## Design target
+
+These skills are purpose-built for frontier-grade coding agents, especially `gpt-5.6-sol` at `max` reasoning effort and models with comparable planning, tool-use, and long-horizon execution capabilities. They assume the model already possesses broad software-engineering knowledge; the skills focus on the small set of high-leverage constraints, decision points, and verification contracts needed to complete complex development tasks reliably.
+
+The design goal is maximum execution guidance with minimum context burden. Compact entrypoints route the model to progressively disclosed references and deterministic checks only when they are relevant, avoiding exhaustive tutorials and repeated generic advice while preserving enough structure for planning, implementation, recovery, and evidence-backed closure.
 
 The repository also owns the deterministic validation, evaluation, archive, and non-release plugin-readiness tooling for the two-skill closure bundle. The archive root prefix remains `software-engineering-closure-bundle` for compatibility with the existing artifact schema; the Git repository name does not redefine that package contract.
 

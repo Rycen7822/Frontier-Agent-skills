@@ -50,7 +50,7 @@ No event stores private reasoning or raw credentials. Sensitive content is repre
 
 Closure requires all named verifiers passed with fresh evidence, no unfinished nodes, pending background work, active locks, or known blocking gaps, and current source/scope/plan hashes. Use both closure status and scoped epistemic status. Schema validity is not semantic correctness, and local closure does not imply merge, deploy, publish, or human approval readiness.
 
-Hermes live todos remain ephemeral projections. Reconciliation may compare a supplied node-status mapping and report missing, orphaned, or drifted todo rows, but todo never overrides canonical workflow state and is regenerated after resume.
+Host-native live plans or todos remain ephemeral projections. Reconciliation may compare a supplied node-status mapping and report missing, orphaned, or drifted rows, but a host UI never overrides canonical workflow state and is regenerated after resume.
 
 ## Stable validator codes
 

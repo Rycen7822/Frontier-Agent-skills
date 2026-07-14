@@ -1,10 +1,11 @@
 ---
 name: writing-plans
 description: Use when an authorized software change needs a durable implementation plan, a cross-context handoff, or an autonomous-closure request must be compiled into a frozen intended-state contract. Do not use for routine Direct edits, unresolved diagnosis, or actual execution, verification, sign-off, publication, or workflow closure.
-version: 3.0.0
-author: Hermes Agent (adapted from obra/superpowers)
 license: MIT
 metadata:
+  version: 3.0.0
+  author: Hermes Agent (adapted from obra/superpowers)
+  hosts: [codex, hermes-agent]
   hermes:
     tags: [planning, design, implementation, closure-contract, documentation]
     category: software-development
@@ -20,6 +21,12 @@ Own the intended-state artifacts for a software change: the lightest durable pla
 `writing-plans` does not diagnose an unknown failure, edit production code, run candidate search, accept verifier evidence, advance workflow state, sign off, publish, or close a task. Execution is owned by `software-quality-workflows` (SQW) and its domain owners. Do not duplicate the execution lifecycle, cleanup policy, verification authority, or version-control policy in a plan. Direct work remains planless unless the user explicitly requests a durable plan.
 
 A plan is an index over authoritative sources and stable contracts, not a copy of the source tree. Prefer IDs, symbols, schemas, invariants, acceptance examples, and source-bound pointers over speculative code or fragile line numbers.
+
+## Host compatibility
+
+Run this skill unchanged in Codex and Hermes Agent. Follow the active host, system, and project instructions before this skill; host capability never expands user authority.
+
+Resolve bundled paths from this skill's root, not from the project working directory; every `scripts/...`, `schemas/...`, `references/...`, or `templates/...` path below is skill-root-relative. Select each operation by capability rather than a product-specific tool name: use only the active host's available read, search, edit, command, planning, clarification, and delegation surfaces. Treat durable plan UI and delegation as optional; when absent or unauthorized, write the same plan artifacts locally and execute or hand off without inventing a host API. `agents/openai.yaml` is Codex-facing UI metadata and `metadata.hermes` is Hermes-facing discovery metadata; neither changes the workflow contract.
 
 ## Route before planning
 

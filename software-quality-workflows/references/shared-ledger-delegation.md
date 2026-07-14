@@ -6,7 +6,7 @@ Apply [Authority and Scope](authority-and-scope.md) first. This reference select
 
 ## Capability selection
 
-Read the live `delegate_task` schema before dispatching. Some Hermes runtimes expose per-child toolset selection and others expose a fixed child capability set. Pass only parameters accepted by the active schema; never copy an unsupported `toolsets` argument from an older example.
+Inspect the active host's live delegation schema before dispatching. Some runtimes expose per-child capability selection and others expose a fixed child capability set. Pass only parameters accepted by the active schema; never copy an unsupported capability argument from another host or version.
 
 When the runtime supports child toolset selection:
 
@@ -20,7 +20,7 @@ When the runtime does not support child toolset selection, state the required op
 
 1. Give every child stable identifiers such as room, task, agent, and role IDs plus the exact workspace path.
 2. Require the protocol's registration, join, or open action before ordinary reads or writes.
-3. Tell the child which bundled usage skill to load with `skill_view(name="<plugin>:<usage-skill>")` if procedural detail is needed. Parent-loaded skill text is not inherited by a fresh child context.
+3. Tell the child the exact qualified bundled-skill name and use the child's available skill-loading capability if procedural detail is needed. Parent-loaded skill text is not assumed to appear in a fresh child context.
 4. Use payload files for large generated requests or long JSON, and delegate the stable file path or task selector rather than a truncated inline payload.
 5. Require the child to write its result to a unique room artifact or evidence file, then return the artifact ID/path and top findings.
 6. The controller verifies room status, artifact existence, terminal gate state, and any external side effects before reporting completion.
@@ -30,15 +30,15 @@ When the runtime does not support child toolset selection, state the required op
 ```text
 Assigned identifiers: <room/task/agent/role>
 First domain action: <register/join/open command or tool call>
-Canonical protocol skill: skill_view(name="<plugin>:<usage-skill>")
+Canonical protocol skill: <plugin>:<usage-skill> through the active host's skill-loading capability
 Allowed operations: <bounded list>
-Protected operations: no skill_manage; no unassigned task edits; no publication or destructive action
+Protected operations: no skill-library mutation; no unassigned task edits; no publication or destructive action
 Payload source of truth: <workspace file or task selector>
 Required output: <artifact/evidence path plus summary and verification handle>
 Nesting: disabled unless explicitly authorized
 ```
 
-Leaf children cannot use every controller capability. Even when a broad `skills` surface is available in another runtime, explicitly prohibit `skill_manage` unless the delegated task is skill-library maintenance.
+Leaf children cannot use every controller capability. Even when a broad skill-management surface is available, explicitly prohibit skill-library mutation unless the delegated task is skill-library maintenance.
 
 ## Shared-state rules
 
