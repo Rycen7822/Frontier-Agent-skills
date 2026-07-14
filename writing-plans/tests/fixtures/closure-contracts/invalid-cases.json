@@ -1,0 +1,18 @@
+{
+  "schema_version": "closure-contract-negative-cases/1.0",
+  "cases": [
+    {"id": "duplicate_id", "expected_code": "contract.id-duplicate"},
+    {"id": "hard_missing_source", "expected_code": "contract.hard-source-missing"},
+    {"id": "hard_missing_verifier", "expected_code": "contract.hard-verifier-missing"},
+    {"id": "soft_hard_conflict", "expected_code": "contract.objective-hard-conflict"},
+    {"id": "unsafe_default", "expected_code": "contract.default-unsafe"},
+    {"id": "publication_exceeds_authority", "expected_code": "contract.publication-authority"},
+    {"id": "unknown_corner_ref", "expected_code": "contract.ref-unresolved"},
+    {"id": "protected_write_overlap", "expected_code": "contract.protected-write-overlap"},
+    {"id": "unresolved_ambiguity", "expected_code": "contract.ambiguity-unresolved"},
+    {"id": "reverse_plan_ref", "expected_code": "contract.reverse-plan-ref"},
+    {"id": "unknown_terminal_status", "expected_code": "contract.terminal-status"},
+    {"id": "frozen_hash_mismatch", "expected_code": "contract.hash-mismatch"},
+    {"id": "no_hard_constraint", "expected_code": "contract.hard-required"}
+  ]
+}

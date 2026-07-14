@@ -1,0 +1,301 @@
+from __future__ import annotations
+
+from copy import deepcopy
+from hashlib import sha256
+import importlib.util
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest import mock
+
+from jsonschema import Draft202012Validator
+
+
+ROOT = Path(__file__).resolve().parents[1]
+BUILDER_PATH = ROOT / "scripts" / "build_codex_plugin.py"
+SPEC = importlib.util.spec_from_file_location("build_codex_plugin", BUILDER_PATH)
+assert SPEC is not None and SPEC.loader is not None
+builder = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(builder)
+SMOKE_PATH = ROOT / "scripts" / "smoke_codex_plugin.py"
+SMOKE_SPEC = importlib.util.spec_from_file_location("smoke_codex_plugin", SMOKE_PATH)
+assert SMOKE_SPEC is not None and SMOKE_SPEC.loader is not None
+smoke = importlib.util.module_from_spec(SMOKE_SPEC)
+SMOKE_SPEC.loader.exec_module(smoke)
+CLI_SMOKE_PATH = ROOT / "scripts" / "smoke_codex_cli_install.py"
+CLI_SMOKE_SPEC = importlib.util.spec_from_file_location("smoke_codex_cli_install", CLI_SMOKE_PATH)
+assert CLI_SMOKE_SPEC is not None and CLI_SMOKE_SPEC.loader is not None
+cli_smoke = importlib.util.module_from_spec(CLI_SMOKE_SPEC)
+CLI_SMOKE_SPEC.loader.exec_module(cli_smoke)
+PLUGIN_VALIDATOR = Path.home() / ".codex" / "skills" / ".system" / "plugin-creator" / "scripts" / "validate_plugin.py"
+PLUGIN_SCAFFOLDER = Path.home() / ".codex" / "skills" / ".system" / "plugin-creator" / "scripts" / "create_basic_plugin.py"
+
+
+class PluginBuildTests(unittest.TestCase):
+    def test_staging_build_is_deterministic_hashed_and_ingestion_valid(self) -> None:
+        evidences = []
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            for directory in (first, second):
+                parent = Path(directory)
+                output = parent / "software-engineering-closure-plugin"
+                evidence = parent / "build-evidence.json"
+                observed = builder.build(ROOT, output, None, evidence)
+                self.assertEqual({".codex-plugin", "skills"}, {path.name for path in output.iterdir()})
+                manifest = json.loads((output / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+                self.assertEqual(output.name, manifest["name"])
+                self.assertEqual("1.0.0", manifest["version"])
+                self.assertEqual("./skills/", manifest["skills"])
+                self.assertTrue({"author", "interface"} <= set(manifest))
+                self.assertEqual({"writing-plans", "software-quality-workflows"}, {path.name for path in (output / "skills").iterdir()})
+                self.assertEqual(observed, json.loads(evidence.read_text(encoding="utf-8")))
+                self.assertEqual(observed["plugin_file_count"], len(observed["files"]))
+                self.assertEqual(len(observed["files"]), len({item["path"] for item in observed["files"]}))
+                schema = json.loads((ROOT / "packaging" / "schemas" / "p6-plugin-build-evidence.schema.json").read_text(encoding="utf-8"))
+                Draft202012Validator.check_schema(schema)
+                self.assertEqual([], list(Draft202012Validator(schema).iter_errors(observed)))
+                unhashed = deepcopy(observed)
+                observed_hash = unhashed.pop("evidence_hash")
+                self.assertEqual(
+                    observed_hash,
+                    "sha256:" + sha256(json.dumps(unhashed, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest(),
+                )
+                evidences.append(observed)
+            self.assertEqual(evidences[0], evidences[1])
+
+    def test_staging_passes_installed_plugin_ingestion_validator_when_available(self) -> None:
+        if not PLUGIN_VALIDATOR.is_file():
+            self.skipTest("plugin-creator validator is not installed")
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            output = parent / "software-engineering-closure-plugin"
+            builder.build(ROOT, output, None, parent / "evidence.json")
+            completed = subprocess.run(
+                [sys.executable, str(PLUGIN_VALIDATOR), str(output)],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, completed.returncode, completed.stderr or completed.stdout)
+
+    def test_output_and_evidence_are_both_no_overwrite(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            output = parent / "software-engineering-closure-plugin"
+            evidence = parent / "build-evidence.json"
+            builder.build(ROOT, output, None, evidence)
+            with self.assertRaises(ValueError):
+                builder.build(ROOT, output, None, parent / "second-evidence.json")
+            with self.assertRaises(ValueError):
+                builder.build(ROOT, parent / "second-plugin", None, evidence)
+
+    def test_dist_build_rejects_missing_or_forged_release_evidence_while_p5_is_shadow(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            output = parent / "dist" / "software-engineering-closure-plugin"
+            evidence = parent / "build-evidence.json"
+            with self.assertRaisesRegex(ValueError, "release evidence"):
+                builder.build(ROOT, output, None, evidence)
+            forged = parent / "release.json"
+            forged.write_text(json.dumps({
+                "schema_version": "p6-release-evidence/1.0",
+                "bundle_version": "1.0.0",
+                "source_tree_hash": "sha256:" + "1" * 64,
+                "source_revision": "a" * 40,
+                "source_revision_signed": True,
+                "source_clean": True,
+                "p5_report_content_hash": "sha256:" + "2" * 64,
+                "release_gate": "passed",
+                "approved_activation_level": "explicit_only",
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "P5|source tree"):
+                builder.build(ROOT, output, forged, evidence)
+            self.assertFalse(output.exists())
+            self.assertFalse(evidence.exists())
+
+    def test_source_symlink_and_manifest_version_drift_fail_before_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            copied = parent / "bundle"
+            shutil.copytree(ROOT, copied, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+            target = copied / "writing-plans" / "references" / "plan-profiles.md"
+            target.unlink()
+            target.symlink_to(copied / "README.md")
+            output = parent / "software-engineering-closure-plugin"
+            evidence = parent / "evidence.json"
+            with self.assertRaisesRegex(ValueError, "symlink"):
+                builder.build(copied, output, None, evidence)
+            self.assertFalse(output.exists())
+            target.unlink()
+            shutil.copy2(ROOT / "writing-plans" / "references" / "plan-profiles.md", target)
+            manifest_path = copied / "bundle-manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["skills"][0]["version"] = "9.9.9"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "version mismatch"):
+                builder.build(copied, output, None, evidence)
+            self.assertFalse(output.exists())
+
+    def test_static_discovery_install_and_uninstall_smoke_is_hash_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            output = parent / "software-engineering-closure-plugin"
+            evidence = parent / "evidence.json"
+            builder.build(ROOT, output, None, evidence)
+            result = smoke.isolated_smoke(output, evidence)
+            self.assertEqual({"writing-plans", "software-quality-workflows"}, set(result["discovered_skills"]))
+            self.assertTrue(result["isolated_install_discovery"])
+            self.assertTrue(result["uninstall_clean"])
+            self.assertFalse(result["actual_codex_cli_install"])
+            self.assertFalse(result["model_invoked"])
+            schema = json.loads((ROOT / "packaging" / "schemas" / "p6-static-smoke.schema.json").read_text(encoding="utf-8"))
+            Draft202012Validator.check_schema(schema)
+            self.assertEqual([], list(Draft202012Validator(schema).iter_errors(result)))
+            target = output / "skills" / "writing-plans" / "SKILL.md"
+            target.write_text(target.read_text(encoding="utf-8") + "\nmutation\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "bytes differ"):
+                smoke.isolated_smoke(output, evidence)
+
+    def test_actual_codex_cli_install_and_remove_smoke_is_isolated_and_hash_bound(self) -> None:
+        if shutil.which("codex") is None or not PLUGIN_VALIDATOR.is_file() or not PLUGIN_SCAFFOLDER.is_file():
+            self.skipTest("Codex plugin CLI or plugin-creator helpers are unavailable")
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            marketplace = parent / "marketplace"
+            work = parent / "work"
+            work.mkdir()
+            scaffold = subprocess.run(
+                [
+                    sys.executable,
+                    str(PLUGIN_SCAFFOLDER),
+                    "software-engineering-closure-plugin",
+                    "--path",
+                    str(marketplace / "plugins"),
+                    "--with-skills",
+                    "--with-marketplace",
+                    "--marketplace-path",
+                    str(marketplace / ".agents" / "plugins" / "marketplace.json"),
+                    "--marketplace-name",
+                    "closure-shadow-test",
+                    "--install-policy",
+                    "AVAILABLE",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, scaffold.returncode, scaffold.stderr or scaffold.stdout)
+            plugin = marketplace / "plugins" / "software-engineering-closure-plugin"
+            shutil.rmtree(plugin)
+            evidence = parent / "build-evidence.json"
+            builder.build(ROOT, plugin, None, evidence)
+            static_path = parent / "static-smoke.json"
+            static_path.write_text(
+                json.dumps(smoke.isolated_smoke(plugin, evidence), sort_keys=True),
+                encoding="utf-8",
+            )
+            result = cli_smoke.run_cli_smoke(
+                plugin,
+                evidence,
+                static_path,
+                marketplace,
+                work,
+                PLUGIN_VALIDATOR,
+            )
+            schema = json.loads((ROOT / "packaging" / "schemas" / "p6-cli-smoke.schema.json").read_text(encoding="utf-8"))
+            Draft202012Validator.check_schema(schema)
+            self.assertEqual([], list(Draft202012Validator(schema).iter_errors(result)))
+            self.assertTrue(result["actual_codex_cli_install"])
+            self.assertTrue(result["uninstall_clean"])
+            self.assertTrue(result["marketplace_removed"])
+            self.assertEqual("not_run_gate_blocked", result["implicit_route_invocation"])
+            unhashed = deepcopy(result)
+            observed_hash = unhashed.pop("evidence_hash")
+            self.assertEqual(
+                observed_hash,
+                "sha256:" + sha256(json.dumps(unhashed, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest(),
+            )
+            self.assertEqual([], list(work.iterdir()))
+
+            tampered = parent / "tampered-build-evidence.json"
+            tampered_payload = json.loads(evidence.read_text(encoding="utf-8"))
+            tampered_payload["source_file_count"] += 1
+            tampered.write_text(json.dumps(tampered_payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "self-hash"):
+                cli_smoke.run_cli_smoke(
+                    plugin,
+                    tampered,
+                    static_path,
+                    marketplace,
+                    work,
+                    PLUGIN_VALIDATOR,
+                )
+            real_agents = marketplace / "real-agents"
+            (marketplace / ".agents").rename(real_agents)
+            (marketplace / ".agents").symlink_to(real_agents.name, target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, "symlinked marketplace"):
+                cli_smoke.run_cli_smoke(
+                    plugin,
+                    evidence,
+                    static_path,
+                    marketplace,
+                    work,
+                    PLUGIN_VALIDATOR,
+                )
+
+    def test_cli_smoke_strips_credentials_and_rehomes_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            isolated = Path(directory)
+            with mock.patch.dict(
+                cli_smoke.os.environ,
+                {
+                    "PATH": cli_smoke.os.environ.get("PATH", ""),
+                    "OPENAI_API_KEY": "secret",
+                    "CUSTOM_TOKEN": "secret",
+                    "SESSION_COOKIE": "secret",
+                    "CODEX_HOME": "/not-isolated",
+                    "XDG_CONFIG_HOME": "/not-isolated",
+                    "SAFE_VALUE": "kept",
+                },
+                clear=True,
+            ):
+                environment = cli_smoke._safe_environment(isolated)
+            self.assertNotIn("OPENAI_API_KEY", environment)
+            self.assertNotIn("CUSTOM_TOKEN", environment)
+            self.assertNotIn("SESSION_COOKIE", environment)
+            self.assertEqual("kept", environment["SAFE_VALUE"])
+            self.assertEqual(str(isolated), environment["HOME"])
+            self.assertEqual(str(isolated / ".codex"), environment["CODEX_HOME"])
+            self.assertEqual(str(isolated / ".config"), environment["XDG_CONFIG_HOME"])
+
+    def test_source_drift_during_copy_aborts_and_cleans_partial_publication(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            copied = parent / "bundle"
+            shutil.copytree(ROOT, copied, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+            output = parent / "software-engineering-closure-plugin"
+            evidence = parent / "evidence.json"
+            original_copytree = builder.shutil.copytree
+            changed = False
+
+            def drifting_copytree(source: Path, destination: Path, *args: object, **kwargs: object) -> Path:
+                nonlocal changed
+                result = original_copytree(source, destination, *args, **kwargs)
+                if not changed:
+                    changed = True
+                    target = copied / "writing-plans" / "references" / "plan-profiles.md"
+                    target.write_text(target.read_text(encoding="utf-8") + "\ndrift\n", encoding="utf-8")
+                return result
+
+            with mock.patch.object(builder.shutil, "copytree", side_effect=drifting_copytree):
+                with self.assertRaisesRegex(ValueError, "SOURCE_DRIFT"):
+                    builder.build(copied, output, None, evidence)
+            self.assertFalse(output.exists())
+            self.assertFalse(evidence.exists())
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,98 @@
+{
+  "schema_version": "writing-plan-route/3.0",
+  "stage": "writing-plans-3.0-contract",
+  "defaults": {
+    "explicit_plan_request": false,
+    "same_session_execution": true,
+    "root_cause_status": "not_applicable",
+    "intent_status": "defined",
+    "autonomous_closure_admission": "not_requested",
+    "durable_handoff": false,
+    "resume_required": false,
+    "public_contract": false,
+    "migration_or_rollback": false,
+    "external_side_effect": false,
+    "independent_write_slices": 0,
+    "strategy_family_count": 1,
+    "disposable_spike": false,
+    "long_corpus_only": false,
+    "copy_paste_projection_requested": false
+  },
+  "cases": [
+    {
+      "id": "known_local_bug_direct",
+      "facts": {"root_cause_status": "known"},
+      "expected": {"route": "direct", "profile": null, "execution_policy": "standard", "reason_codes": ["routine_direct_path"], "required_artifacts": []}
+    },
+    {
+      "id": "unknown_bug_before_plan",
+      "facts": {"root_cause_status": "unknown"},
+      "expected": {"route": "sqw-diagnosis", "profile": null, "execution_policy": "standard", "reason_codes": ["root_cause_unknown"], "handoff_owner": "software-quality-workflows"}
+    },
+    {
+      "id": "closure_ineligible_falls_back_direct",
+      "facts": {"autonomous_closure_admission": "ineligible"},
+      "expected": {"route": "direct", "profile": null, "execution_policy": "standard", "reason_codes": ["closure_ineligible_direct_fallback"], "required_artifacts": []}
+    },
+    {
+      "id": "closure_eligible_local_reversible",
+      "facts": {"autonomous_closure_admission": "eligible"},
+      "expected": {"route": "writing-plans", "profile": "program", "execution_policy": "autonomous_closure", "primary_reference": "references/closure-contract.md", "reason_codes": ["closure_eligible"], "required_artifacts": ["closure_contract", "program_plan"], "handoff_owner": "software-quality-workflows"}
+    },
+    {
+      "id": "closure_eligible_migration",
+      "facts": {"autonomous_closure_admission": "eligible", "migration_or_rollback": true},
+      "expected": {"route": "writing-plans", "profile": "program", "execution_policy": "autonomous_closure", "reason_codes": ["closure_eligible", "migration_or_rollback"], "required_references": ["references/deprecation-migration-plans.md"], "required_artifacts": ["closure_contract", "program_plan"]}
+    },
+    {
+      "id": "material_ambiguity_to_intent_owner",
+      "facts": {"intent_status": "materially_underdefined"},
+      "expected": {"route": "sqw-intent", "profile": null, "execution_policy": "standard", "reason_codes": ["material_intent_underdefined"], "handoff_owner": "software-quality-workflows"}
+    },
+    {
+      "id": "low_risk_defaults_compile_contract",
+      "facts": {"intent_status": "low_risk_defaults_available", "autonomous_closure_admission": "eligible"},
+      "expected": {"route": "writing-plans", "profile": "program", "execution_policy": "autonomous_closure", "reason_codes": ["closure_eligible", "low_risk_defaults"], "required_artifacts": ["closure_contract", "program_plan"]}
+    },
+    {
+      "id": "long_corpus_external_owner",
+      "facts": {"long_corpus_only": true},
+      "expected": {"route": "long-document", "profile": null, "execution_policy": "standard", "reason_codes": ["long_corpus_owner"], "handoff_owner": "long-document-segmented-writing"}
+    },
+    {
+      "id": "disposable_spike_before_freeze",
+      "facts": {"disposable_spike": true},
+      "expected": {"route": "spike", "profile": null, "execution_policy": "standard", "primary_reference": "references/spike.md", "reason_codes": ["disposable_spike"], "required_artifacts": ["spike_verdict"]}
+    },
+    {
+      "id": "two_strategy_families_one_write_slice",
+      "facts": {"autonomous_closure_admission": "eligible", "strategy_family_count": 2, "independent_write_slices": 1},
+      "expected": {"route": "writing-plans", "profile": "program", "execution_policy": "autonomous_closure", "reason_codes": ["closure_eligible", "multiple_strategy_families"], "required_artifacts": ["closure_contract", "program_plan"]}
+    },
+    {
+      "id": "one_strategy_three_write_slices",
+      "facts": {"same_session_execution": false, "independent_write_slices": 3},
+      "expected": {"route": "writing-plans", "profile": "handoff", "execution_policy": "standard", "reason_codes": ["cross_context_handoff", "independent_write_slices"]}
+    },
+    {
+      "id": "public_migration_resume_program",
+      "facts": {"public_contract": true, "migration_or_rollback": true, "resume_required": true},
+      "expected": {"route": "writing-plans", "profile": "program", "execution_policy": "standard", "reason_codes": ["public_contract", "migration_or_rollback", "resume_required"], "required_references": ["references/deprecation-migration-plans.md", "references/architecture-decision-records.md"], "required_artifacts": ["program_plan"]}
+    },
+    {
+      "id": "explicit_local_plan_brief",
+      "facts": {"explicit_plan_request": true},
+      "expected": {"route": "writing-plans", "profile": "brief", "execution_policy": "standard", "reason_codes": ["explicit_plan_request"]}
+    },
+    {
+      "id": "admission_terminal_is_terminal",
+      "facts": {"autonomous_closure_admission": "terminal"},
+      "expected": {"route": "terminal", "profile": null, "execution_policy": "standard", "reason_codes": ["closure_admission_terminal"], "terminal_status": "admission_terminal"}
+    },
+    {
+      "id": "unknown_risk_fact_never_direct",
+      "facts": {"public_contract": null},
+      "expected": {"route": "terminal", "profile": null, "execution_policy": "standard", "reason_codes": ["route_fact_unknown"], "terminal_status": "insufficient_route_facts"}
+    }
+  ]
+}

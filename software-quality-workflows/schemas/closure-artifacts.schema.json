@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hermes.local/sqw/closure-artifacts-1.0.schema.json",
+  "title": "SQW Closure Artifact Union 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "artifact_id", "workflow_id", "closure_epoch", "source_revision", "scope_hash", "contract_hash", "verifier_bundle_hash", "created_at", "producer", "classification", "content_hash", "payload"],
+  "properties": {
+    "schema_id": {"enum": ["sqw://closure-artifacts/admission-result/1.0", "sqw://closure-artifacts/baseline-result/1.0", "sqw://closure-artifacts/candidate-manifest/1.0", "sqw://closure-artifacts/candidate-evaluation/1.0", "sqw://closure-artifacts/counterexample/1.0", "sqw://closure-artifacts/signoff-result/1.0", "sqw://closure-artifacts/terminal-certificate/1.0", "sqw://closure-artifacts/plan-change-proposal/1.0"]},
+    "artifact_id": {"type": "string", "pattern": "^[A-Z][A-Z0-9-]{1,95}$"},
+    "workflow_id": {"oneOf": [{"type": "string", "pattern": "^wf-[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"}, {"const": "not_created"}]},
+    "closure_epoch": {"type": "integer", "minimum": 0},
+    "source_revision": {"type": "string", "minLength": 1, "maxLength": 256},
+    "scope_hash": {"$ref": "#/$defs/hash"},
+    "contract_hash": {"oneOf": [{"$ref": "#/$defs/hash"}, {"const": "not_frozen"}]},
+    "verifier_bundle_hash": {"oneOf": [{"$ref": "#/$defs/hash"}, {"const": "not_frozen"}]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "producer": {"$ref": "#/$defs/producer"},
+    "classification": {"enum": ["public", "internal", "sensitive"]},
+    "content_hash": {"$ref": "#/$defs/hash"},
+    "payload": {"type": "object"}
+  },
+  "oneOf": [
+    {"properties": {"schema_id": {"const": "sqw://closure-artifacts/admission-result/1.0"}, "artifact_id": {"type": "string", "pattern": "^AR-"}, "workflow_id": {"const": "not_created"}, "closure_epoch": {"const": 0}, "contract_hash": {"const": "not_frozen"}, "verifier_bundle_hash": {"const": "not_frozen"}, "payload": {"$ref": "#/$defs/admission_result"}}},
+    {"$ref": "#/$defs/baseline_branch"},
+    {"$ref": "#/$defs/candidate_manifest_branch"},
+    {"$ref": "#/$defs/candidate_evaluation_branch"},
+    {"$ref": "#/$defs/counterexample_branch"},
+    {"$ref": "#/$defs/signoff_branch"},
+    {"properties": {"schema_id": {"const": "sqw://closure-artifacts/terminal-certificate/1.0"}, "artifact_id": {"type": "string", "pattern": "^TC-"}, "payload": {"$ref": "#/$defs/terminal_certificate"}}},
+    {"$ref": "#/$defs/plan_change_branch"}
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "non_empty": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "string_array": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 1024}},
+    "artifact_ref": {"type": "string", "pattern": "^artifact:[a-z][a-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "artifact_refs": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"$ref": "#/$defs/artifact_ref"}},
+    "producer": {"type": "object", "additionalProperties": false, "required": ["actor", "run_id"], "properties": {"actor": {"enum": ["controller", "worker", "reviewer", "tool"]}, "run_id": {"type": "string", "pattern": "^RUN-"}}},
+    "pre_verifier_identity": {"properties": {"workflow_id": {"type": "string", "pattern": "^wf-[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"}, "closure_epoch": {"type": "integer", "minimum": 1}, "contract_hash": {"$ref": "#/$defs/hash"}, "verifier_bundle_hash": {"const": "not_frozen"}}},
+    "durable_identity": {"properties": {"workflow_id": {"type": "string", "pattern": "^wf-[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"}, "closure_epoch": {"type": "integer", "minimum": 1}, "contract_hash": {"$ref": "#/$defs/hash"}, "verifier_bundle_hash": {"$ref": "#/$defs/hash"}}},
+    "baseline_branch": {"allOf": [{"$ref": "#/$defs/pre_verifier_identity"}, {"properties": {"schema_id": {"const": "sqw://closure-artifacts/baseline-result/1.0"}, "artifact_id": {"type": "string", "pattern": "^BL-"}, "payload": {"$ref": "#/$defs/baseline_result"}}}]},
+    "candidate_manifest_branch": {"allOf": [{"$ref": "#/$defs/durable_identity"}, {"properties": {"schema_id": {"const": "sqw://closure-artifacts/candidate-manifest/1.0"}, "artifact_id": {"type": "string", "pattern": "^CM-"}, "payload": {"$ref": "#/$defs/candidate_manifest"}}}]},
+    "candidate_evaluation_branch": {"allOf": [{"$ref": "#/$defs/durable_identity"}, {"properties": {"schema_id": {"const": "sqw://closure-artifacts/candidate-evaluation/1.0"}, "artifact_id": {"type": "string", "pattern": "^CEVAL-"}, "payload": {"$ref": "#/$defs/candidate_evaluation"}}}]},
+    "counterexample_branch": {"allOf": [{"$ref": "#/$defs/durable_identity"}, {"properties": {"schema_id": {"const": "sqw://closure-artifacts/counterexample/1.0"}, "artifact_id": {"type": "string", "pattern": "^CE-"}, "payload": {"$ref": "#/$defs/counterexample"}}}]},
+    "signoff_branch": {"allOf": [{"$ref": "#/$defs/durable_identity"}, {"properties": {"schema_id": {"const": "sqw://closure-artifacts/signoff-result/1.0"}, "artifact_id": {"type": "string", "pattern": "^SO-"}, "payload": {"$ref": "#/$defs/signoff_result"}}}]},
+    "plan_change_branch": {"allOf": [{"$ref": "#/$defs/durable_identity"}, {"properties": {"schema_id": {"const": "sqw://closure-artifacts/plan-change-proposal/1.0"}, "artifact_id": {"type": "string", "pattern": "^PCP-"}, "payload": {"$ref": "#/$defs/plan_change_proposal"}}}]},
+    "admission_result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "reason_codes", "missing_conditions", "required_pre_freeze_actions", "recommended_mode", "required_primary_owner"],
+      "properties": {"status": {"enum": ["direct_preferred", "closure_eligible", "spec_underdetermined", "spec_unsat", "authority_blocked", "environment_unavailable", "verifier_unqualified_candidate"]}, "reason_codes": {"$ref": "#/$defs/string_array"}, "missing_conditions": {"$ref": "#/$defs/string_array"}, "required_pre_freeze_actions": {"$ref": "#/$defs/string_array"}, "recommended_mode": {"enum": ["M0_DIRECT", "M2_SPARSE", "M3_FULL"]}, "required_primary_owner": {"enum": ["change-execution", "autonomous-closure"]}}
+    },
+    "baseline_result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "environment_fingerprint", "gate_results", "known_gap_refs", "evidence_refs", "baseline_hash"],
+      "properties": {"status": {"enum": ["qualified", "rejected", "unstable", "environment_unavailable"]}, "environment_fingerprint": {"$ref": "#/$defs/hash"}, "gate_results": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/gate_result"}}, "known_gap_refs": {"$ref": "#/$defs/artifact_refs"}, "evidence_refs": {"$ref": "#/$defs/artifact_refs"}, "baseline_hash": {"$ref": "#/$defs/hash"}}
+    },
+    "gate_result": {"type": "object", "additionalProperties": false, "required": ["gate_id", "status", "evidence_refs"], "properties": {"gate_id": {"$ref": "#/$defs/non_empty"}, "status": {"enum": ["pass", "fail_expected", "fail_unexpected", "not_run"]}, "evidence_refs": {"$ref": "#/$defs/artifact_refs"}}},
+    "candidate_manifest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidate_id", "parent", "strategy_family_ref", "objective", "hypothesis", "target_counterexample_refs", "allowed_writes", "protected_paths", "worktree_ref", "base_candidate_hash", "patch_hash", "status", "expected_disproof_oracles"],
+      "properties": {"candidate_id": {"type": "string", "pattern": "^C-"}, "parent": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^C-"}]}, "strategy_family_ref": {"type": "string", "pattern": "^SF-"}, "objective": {"$ref": "#/$defs/non_empty"}, "hypothesis": {"$ref": "#/$defs/non_empty"}, "target_counterexample_refs": {"$ref": "#/$defs/artifact_refs"}, "allowed_writes": {"$ref": "#/$defs/string_array"}, "protected_paths": {"$ref": "#/$defs/string_array"}, "worktree_ref": {"$ref": "#/$defs/artifact_ref"}, "base_candidate_hash": {"$ref": "#/$defs/hash"}, "patch_hash": {"$ref": "#/$defs/hash"}, "status": {"enum": ["created", "running", "evaluated", "pruned", "promoted", "superseded"]}, "expected_disproof_oracles": {"$ref": "#/$defs/string_array"}}
+    },
+    "candidate_evaluation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidate_id", "parent_candidate_ref", "strategy_family_ref", "patch_hash", "worktree_ref", "hard_constraint_results", "regression_results", "soft_objective_metrics", "risk_findings", "diff_stats", "counterexample_refs", "evaluation_cost", "eligible_for_promotion"],
+      "properties": {"candidate_id": {"type": "string", "pattern": "^C-"}, "parent_candidate_ref": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^C-"}]}, "strategy_family_ref": {"type": "string", "pattern": "^SF-"}, "patch_hash": {"$ref": "#/$defs/hash"}, "worktree_ref": {"$ref": "#/$defs/artifact_ref"}, "hard_constraint_results": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/evaluation_result"}}, "regression_results": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/evaluation_result"}}, "soft_objective_metrics": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/soft_metric"}}, "risk_findings": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/risk_finding"}}, "diff_stats": {"type": "object", "additionalProperties": false, "required": ["files_changed", "lines_added", "lines_deleted"], "properties": {"files_changed": {"type": "integer", "minimum": 0}, "lines_added": {"type": "integer", "minimum": 0}, "lines_deleted": {"type": "integer", "minimum": 0}}}, "counterexample_refs": {"$ref": "#/$defs/artifact_refs"}, "evaluation_cost": {"type": "object", "additionalProperties": false, "required": ["wall_seconds", "cost_class"], "properties": {"wall_seconds": {"type": "number", "minimum": 0}, "cost_class": {"enum": ["low", "medium", "high"]}}}, "eligible_for_promotion": {"type": "boolean"}}
+    },
+    "evaluation_result": {"type": "object", "additionalProperties": false, "required": ["id", "status", "evidence_refs"], "properties": {"id": {"$ref": "#/$defs/non_empty"}, "status": {"enum": ["pass", "fail", "not_run"]}, "evidence_refs": {"$ref": "#/$defs/artifact_refs"}}},
+    "soft_metric": {"type": "object", "additionalProperties": false, "required": ["objective_ref", "value", "unit", "direction", "evidence_refs"], "properties": {"objective_ref": {"$ref": "#/$defs/non_empty"}, "value": {"type": "number"}, "unit": {"$ref": "#/$defs/non_empty"}, "direction": {"enum": ["minimize", "maximize", "target"]}, "evidence_refs": {"$ref": "#/$defs/artifact_refs"}}},
+    "risk_finding": {"type": "object", "additionalProperties": false, "required": ["id", "severity", "blocking", "category", "summary", "evidence_refs"], "properties": {"id": {"$ref": "#/$defs/non_empty"}, "severity": {"enum": ["critical", "high", "medium", "low", "info"]}, "blocking": {"type": "boolean"}, "category": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 128}, "summary": {"$ref": "#/$defs/non_empty"}, "evidence_refs": {"$ref": "#/$defs/artifact_refs"}}},
+    "counterexample": {
+      "type": "object", "additionalProperties": false,
+      "required": ["counterexample_id", "constraint_refs", "corner_ref", "oracle_id", "input_ref", "expected", "observed", "reproduction", "trace_refs", "minimized", "classification", "localization"],
+      "properties": {"counterexample_id": {"type": "string", "pattern": "^CE-"}, "constraint_refs": {"$ref": "#/$defs/string_array"}, "corner_ref": {"type": "string", "pattern": "^CORNER-"}, "oracle_id": {"type": "string", "pattern": "^ORACLE-"}, "input_ref": {"$ref": "#/$defs/artifact_ref"}, "expected": {"$ref": "#/$defs/non_empty"}, "observed": {"$ref": "#/$defs/non_empty"}, "reproduction": {"type": "object", "additionalProperties": false, "required": ["command_ref", "run_id", "exit_code"], "properties": {"command_ref": {"$ref": "#/$defs/non_empty"}, "run_id": {"type": "string", "pattern": "^RUN-"}, "exit_code": {"type": "integer"}}}, "trace_refs": {"$ref": "#/$defs/artifact_refs"}, "minimized": {"type": "boolean"}, "classification": {"enum": ["product_failure", "baseline_failure", "harness_gap", "environment", "permission", "stochastic"]}, "localization": {"type": "object", "additionalProperties": false, "required": ["owner_seam", "confidence"], "properties": {"owner_seam": {"$ref": "#/$defs/non_empty"}, "confidence": {"enum": ["high", "medium", "low"]}}}}
+    },
+    "axis_review": {"type": "object", "additionalProperties": false, "required": ["status", "review_result_ref", "review_result_hash"], "properties": {"status": {"enum": ["pass", "fail", "inconclusive"]}, "review_result_ref": {"$ref": "#/$defs/artifact_ref"}, "review_result_hash": {"$ref": "#/$defs/hash"}}},
+    "axis_evidence": {"type": "object", "additionalProperties": false, "required": ["status", "evidence_refs"], "properties": {"status": {"enum": ["pass", "fail", "inconclusive"]}, "evidence_refs": {"$ref": "#/$defs/artifact_refs"}}},
+    "signoff_result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidate_ref", "candidate_hash", "axes", "required_gate_results", "freshness", "residual_risk", "verdict"],
+      "properties": {"candidate_ref": {"$ref": "#/$defs/artifact_ref"}, "candidate_hash": {"$ref": "#/$defs/hash"}, "axes": {"type": "object", "additionalProperties": false, "required": ["requirements", "engineering", "verifier_integrity", "authority"], "properties": {"requirements": {"$ref": "#/$defs/axis_review"}, "engineering": {"$ref": "#/$defs/axis_review"}, "verifier_integrity": {"$ref": "#/$defs/axis_evidence"}, "authority": {"$ref": "#/$defs/axis_evidence"}}}, "required_gate_results": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/gate_result"}}, "freshness": {"type": "object", "additionalProperties": false, "required": ["source_revision", "scope_hash", "contract_hash", "verifier_bundle_hash", "baseline_hash"], "properties": {"source_revision": {"$ref": "#/$defs/non_empty"}, "scope_hash": {"$ref": "#/$defs/hash"}, "contract_hash": {"$ref": "#/$defs/hash"}, "verifier_bundle_hash": {"$ref": "#/$defs/hash"}, "baseline_hash": {"$ref": "#/$defs/hash"}}}, "residual_risk": {"$ref": "#/$defs/string_array"}, "verdict": {"enum": ["pass", "fail", "inconclusive"]}}
+    },
+    "terminal_certificate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["terminal_status", "summary", "blocking_items", "evidence_refs", "minimal_missing_information", "minimal_unsat_core", "attempted_strategies", "budget_consumed", "preserved_artifacts", "safe_next_action", "source_revision", "scope_hash", "contract_hash", "verifier_bundle_hash"],
+      "properties": {"terminal_status": {"enum": ["CLOSED", "SPEC_UNDERDETERMINED", "SPEC_UNSAT", "AUTHORITY_BLOCKED", "ENVIRONMENT_UNAVAILABLE", "BASELINE_UNSTABLE", "VERIFIER_UNQUALIFIED", "NON_CONVERGED", "BUDGET_EXHAUSTED", "WORKFLOW_INVALID", "ABORTED_BY_SOURCE_DRIFT"]}, "summary": {"$ref": "#/$defs/non_empty"}, "blocking_items": {"$ref": "#/$defs/string_array"}, "evidence_refs": {"$ref": "#/$defs/artifact_refs"}, "minimal_missing_information": {"$ref": "#/$defs/string_array"}, "minimal_unsat_core": {"$ref": "#/$defs/string_array"}, "attempted_strategies": {"$ref": "#/$defs/string_array"}, "budget_consumed": {"$ref": "#/$defs/budget_consumed"}, "preserved_artifacts": {"$ref": "#/$defs/artifact_refs"}, "safe_next_action": {"$ref": "#/$defs/non_empty"}, "source_revision": {"$ref": "#/$defs/non_empty"}, "scope_hash": {"$ref": "#/$defs/hash"}, "contract_hash": {"oneOf": [{"$ref": "#/$defs/hash"}, {"const": "not_frozen"}]}, "verifier_bundle_hash": {"oneOf": [{"$ref": "#/$defs/hash"}, {"const": "not_frozen"}]}, "incumbent_candidate_ref": {"$ref": "#/$defs/artifact_ref"}, "signoff_result_ref": {"$ref": "#/$defs/artifact_ref"}, "required_gate_result_refs": {"$ref": "#/$defs/artifact_refs"}, "residual_risk_refs": {"$ref": "#/$defs/artifact_refs"}, "publication_state_ref": {"$ref": "#/$defs/artifact_ref"}},
+      "allOf": [
+        {"if": {"properties": {"terminal_status": {"const": "SPEC_UNDERDETERMINED"}}, "required": ["terminal_status"]}, "then": {"properties": {"minimal_missing_information": {"minItems": 1}}}},
+        {"if": {"properties": {"terminal_status": {"const": "SPEC_UNSAT"}}, "required": ["terminal_status"]}, "then": {"properties": {"minimal_unsat_core": {"minItems": 1}}}},
+        {"if": {"properties": {"terminal_status": {"enum": ["NON_CONVERGED", "BUDGET_EXHAUSTED"]}}, "required": ["terminal_status"]}, "then": {"properties": {"attempted_strategies": {"minItems": 1}, "budget_consumed": {"minProperties": 1}}}},
+        {"if": {"properties": {"terminal_status": {"const": "CLOSED"}}, "required": ["terminal_status"]}, "then": {"required": ["incumbent_candidate_ref", "signoff_result_ref", "required_gate_result_refs", "residual_risk_refs", "publication_state_ref"], "properties": {"blocking_items": {"maxItems": 0}, "minimal_missing_information": {"maxItems": 0}, "minimal_unsat_core": {"maxItems": 0}}}}
+      ]
+    },
+    "budget_consumed": {"oneOf": [{"type": "object", "maxProperties": 0}, {"type": "object", "additionalProperties": false, "required": ["iterations", "candidate_evaluations", "review_rounds"], "properties": {"iterations": {"type": "integer", "minimum": 0}, "candidate_evaluations": {"type": "integer", "minimum": 0}, "review_rounds": {"type": "integer", "minimum": 0}}}]},
+    "plan_change_proposal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["event_type", "reason_code", "affected_plan_refs", "evidence_refs", "proposed_action"],
+      "properties": {"event_type": {"const": "plan_change_proposed"}, "reason_code": {"type": "string", "pattern": "^[a-z0-9_]+$"}, "affected_plan_refs": {"$ref": "#/$defs/string_array"}, "evidence_refs": {"$ref": "#/$defs/artifact_refs"}, "proposed_action": {"enum": ["reopen_design_decision", "recompile_plan", "request_new_contract_epoch", "block_execution"]}}
+    }
+  }
+}

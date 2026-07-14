@@ -1,0 +1,5 @@
+interface:
+  display_name: Software Quality Workflows
+  short_description: Route and execute software work with proportional safety, verification, review, and optional autonomous closure
+policy:
+  allow_implicit_invocation: true

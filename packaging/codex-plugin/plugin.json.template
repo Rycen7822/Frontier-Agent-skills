@@ -1,0 +1,23 @@
+{
+  "name": "software-engineering-closure-plugin",
+  "version": "${BUNDLE_VERSION}",
+  "description": "Bounded planning and software-quality closure skills with deterministic local contracts.",
+  "author": {
+    "name": "Hermes Agent"
+  },
+  "license": "MIT",
+  "keywords": ["software-development", "planning", "verification", "autonomous-closure"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Software Engineering Closure",
+    "shortDescription": "Plan and verify bounded software changes",
+    "longDescription": "Writing Plans and Software Quality Workflows with deterministic local closure contracts and default-off live execution.",
+    "developerName": "Hermes Agent",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Create a bounded implementation plan for this change.",
+      "Route and verify this local software task."
+    ]
+  }
+}

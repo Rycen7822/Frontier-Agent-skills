@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/software-engineering-closure/p5-eval-report.schema.json",
+  "title": "P5 shadow promotion decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "corpus_id", "cohort_id", "bundle_hash", "controller_hash",
+    "decision", "activation_ceiling", "gates", "failed_gates", "validation_errors",
+    "sample", "metrics", "report_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "p5-eval-report/1.0"},
+    "corpus_id": {"type": "string", "pattern": "^CORPUS-[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"},
+    "cohort_id": {"type": "string", "pattern": "^COHORT-[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"},
+    "bundle_hash": {"$ref": "#/$defs/nullable_hash"},
+    "controller_hash": {"$ref": "#/$defs/nullable_hash"},
+    "decision": {"enum": ["remain_shadow", "eligible_for_p6_canary"]},
+    "activation_ceiling": {"enum": ["shadow", "explicit_only"]},
+    "gates": {"$ref": "#/$defs/gates"},
+    "failed_gates": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+    "validation_errors": {"type": "array", "maxItems": 256, "items": {"type": "string", "minLength": 1, "maxLength": 4096}},
+    "sample": {"$ref": "#/$defs/sample"},
+    "metrics": {"$ref": "#/$defs/metrics"},
+    "report_hash": {"$ref": "#/$defs/hash"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"decision": {"const": "eligible_for_p6_canary"}}, "required": ["decision"]},
+      "then": {
+        "properties": {
+          "activation_ceiling": {"const": "explicit_only"},
+          "failed_gates": {"maxItems": 0}
+        }
+      },
+      "else": {"properties": {"activation_ceiling": {"const": "shadow"}}}
+    }
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nullable_hash": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/hash"}]},
+    "nullable_rate": {"type": ["number", "null"], "minimum": 0},
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_validity", "minimum_paired_samples", "condition_pairing",
+        "fixed_variable_pairing", "condition_identity", "historical_share",
+        "simple_false_positive", "direct_regression", "admission_precision", "verifier_escape",
+        "hidden_defect_escape", "zero_scope_authority_protected_escapes",
+        "zero_public_contract_violations", "terminal_correctness",
+        "certificate_sufficiency", "closure_benefit", "adaptive_beats_always_on", "autonomy"
+        , "ablation_coverage", "reference_evaluation_coverage"
+      ],
+      "properties": {
+        "input_validity": {"type": "boolean"},
+        "minimum_paired_samples": {"type": "boolean"},
+        "condition_pairing": {"type": "boolean"},
+        "fixed_variable_pairing": {"type": "boolean"},
+        "condition_identity": {"type": "boolean"},
+        "historical_share": {"type": "boolean"},
+        "simple_false_positive": {"type": "boolean"},
+        "direct_regression": {"type": "boolean"},
+        "admission_precision": {"type": "boolean"},
+        "verifier_escape": {"type": "boolean"},
+        "hidden_defect_escape": {"type": "boolean"},
+        "zero_scope_authority_protected_escapes": {"type": "boolean"},
+        "zero_public_contract_violations": {"type": "boolean"},
+        "terminal_correctness": {"type": "boolean"},
+        "certificate_sufficiency": {"type": "boolean"},
+        "closure_benefit": {"type": "boolean"},
+        "adaptive_beats_always_on": {"type": "boolean"},
+        "ablation_coverage": {"type": "boolean"},
+        "reference_evaluation_coverage": {"type": "boolean"},
+        "autonomy": {"type": "boolean"}
+      }
+    },
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_count", "run_count", "complete_case_count", "stratum_counts", "historical_share"],
+      "properties": {
+        "case_count": {"type": "integer", "minimum": 0},
+        "run_count": {"type": "integer", "minimum": 0},
+        "complete_case_count": {"type": "integer", "minimum": 0},
+        "stratum_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["simple", "medium", "long", "should_not_close"],
+          "properties": {
+            "simple": {"type": "integer", "minimum": 0},
+            "medium": {"type": "integer", "minimum": 0},
+            "long": {"type": "integer", "minimum": 0},
+            "should_not_close": {"type": "integer", "minimum": 0}
+          }
+        },
+        "historical_share": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "benefit_pairs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wins", "losses", "ties"],
+      "properties": {
+        "wins": {"type": "integer", "minimum": 0},
+        "losses": {"type": "integer", "minimum": 0},
+        "ties": {"type": "integer", "minimum": 0}
+      }
+    },
+    "verifier_rates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["C0", "C2", "C3"],
+      "properties": {
+        "C0": {"$ref": "#/$defs/nullable_rate"},
+        "C2": {"$ref": "#/$defs/nullable_rate"},
+        "C3": {"$ref": "#/$defs/nullable_rate"}
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "admission_precision", "admission_recall", "false_positive_rate",
+        "direct_token_regression_ratio", "direct_latency_regression_ratio",
+        "verifier_escape_rates", "hidden_defect_escape_rates", "safety_escape_count",
+        "public_contract_violation_count", "terminal_correctness",
+        "certificate_sufficiency", "closure_benefit_effect", "closure_benefit_pvalue",
+        "closure_benefit_pairs", "adaptive_vs_always_token_ratio",
+        "adaptive_vs_always_latency_ratio", "ablation_pass_rate",
+        "reference_evaluation_coverage_rate"
+      ],
+      "properties": {
+        "admission_precision": {"type": "number", "minimum": 0, "maximum": 1},
+        "admission_recall": {"type": "number", "minimum": 0, "maximum": 1},
+        "false_positive_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "direct_token_regression_ratio": {"$ref": "#/$defs/nullable_rate"},
+        "direct_latency_regression_ratio": {"$ref": "#/$defs/nullable_rate"},
+        "verifier_escape_rates": {"$ref": "#/$defs/verifier_rates"},
+        "hidden_defect_escape_rates": {"$ref": "#/$defs/verifier_rates"},
+        "safety_escape_count": {"type": "integer", "minimum": 0},
+        "public_contract_violation_count": {"type": "integer", "minimum": 0},
+        "terminal_correctness": {"$ref": "#/$defs/nullable_rate"},
+        "certificate_sufficiency": {"$ref": "#/$defs/nullable_rate"},
+        "closure_benefit_effect": {"type": "number", "minimum": -1, "maximum": 1},
+        "closure_benefit_pvalue": {"type": "number", "minimum": 0, "maximum": 1},
+        "closure_benefit_pairs": {"$ref": "#/$defs/benefit_pairs"},
+        "adaptive_vs_always_token_ratio": {"$ref": "#/$defs/nullable_rate"},
+        "adaptive_vs_always_latency_ratio": {"$ref": "#/$defs/nullable_rate"}
+        , "ablation_pass_rate": {"type": "number", "minimum": 0, "maximum": 1}
+        , "reference_evaluation_coverage_rate": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    }
+  }
+}

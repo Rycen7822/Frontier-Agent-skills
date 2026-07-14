@@ -1,0 +1,219 @@
+{
+  "schema_version": "1.1",
+  "plan_id": "plan-manifest-refresh-20260713",
+  "profile": "program",
+  "execution_policy": "standard",
+  "status": "ready",
+  "state_version": 1,
+  "source": {
+    "repository": ".",
+    "base_revision": "explicit-unversioned",
+    "scope_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "observed_at": "2026-07-13T13:30:00+00:00",
+    "policy_bundle_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "scope": {
+    "allowed_reads": ["src/**", "tests/**"],
+    "allowed_writes": ["src/manifest/**", "tests/manifest/**"],
+    "protected_paths": [],
+    "risk_ceiling": "local_reversible"
+  },
+  "goal": "Preserve result identity when legacy manifests are compared after a metadata schema upgrade.",
+  "non_goals": ["Redesign cache storage outside the manifest owner."],
+  "global_invariants": [
+    {
+      "id": "I-01",
+      "statement": "Current-format manifests retain byte-for-byte comparison behavior.",
+      "sensitive": false
+    }
+  ],
+  "facts": [
+    {
+      "id": "F-01",
+      "statement": "Legacy entries omit metadata_code.",
+      "evidence_refs": ["E-01"],
+      "freshness": "source_bound",
+      "sensitive": false
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D-01",
+      "statement": "Normalize legacy entries at the comparison owner seam.",
+      "alternatives_rejected": [
+        {
+          "option": "Rewrite manifests eagerly.",
+          "reason": "That would widen migration and write authority unnecessarily."
+        }
+      ],
+      "evidence_refs": ["E-01", "E-02"],
+    "change_action": "rewrite",
+    "provenance": "repository",
+    "materiality": "medium",
+    "reversibility": "local",
+    "contract_effect": "none",
+      "legacy_refs": ["D-01"],
+      "sensitive": false
+    }
+  ],
+  "evidence": [
+    {
+      "id": "E-01",
+      "status": "observed",
+      "claim": "The legacy fixture omits metadata_code.",
+      "artifact_ref": "source:tests/manifest/legacy-fixture",
+      "source_revision": "explicit-unversioned",
+      "observed_at": "2026-07-13T13:30:00+00:00",
+      "freshness_policy": {"kind": "source_bound"},
+      "sensitive": false
+    },
+    {
+      "id": "E-02",
+      "status": "observed",
+      "claim": "Manifest identity is decided at the comparison owner seam.",
+      "artifact_ref": "source:symbol:RefreshPlanner.compare_manifest",
+      "source_revision": "explicit-unversioned",
+      "observed_at": "2026-07-13T13:30:00+00:00",
+      "freshness_policy": {"kind": "source_bound"},
+      "sensitive": false
+    },
+    {
+      "id": "E-03",
+      "status": "observed",
+      "claim": "The focused legacy characterization distinguishes the old behavior.",
+      "artifact_ref": "artifact:focused-red-result",
+      "producer_node": "P-01",
+      "source_revision": "explicit-unversioned",
+      "observed_at": "2026-07-13T13:30:00+00:00",
+      "freshness_policy": {"kind": "source_bound"},
+      "sensitive": false
+    },
+    {
+      "id": "E-04",
+      "status": "required",
+      "claim": "The legacy regression passes after repair.",
+      "producer_node": "P-02",
+      "freshness_policy": {"kind": "source_bound"},
+      "sensitive": false
+    },
+    {
+      "id": "E-05",
+      "status": "required",
+      "claim": "The current-format fixture remains unchanged.",
+      "producer_node": "P-02",
+      "freshness_policy": {"kind": "source_bound"},
+      "sensitive": false
+    }
+  ],
+  "nodes": [
+    {
+      "id": "P-01",
+      "kind": "verification",
+      "status": "done",
+      "objective": "Establish a failing legacy-manifest characterization.",
+      "completion_criterion": "The focused characterization captures the intended semantic distinction.",
+      "depends_on": [],
+      "inputs": ["F-01", "D-01", "I-01"],
+      "outputs": ["E-03"],
+      "read_set": ["tests/manifest/**", "src/manifest/**"],
+      "write_set": ["tests/manifest/**"],
+      "resource_set": ["local-test-runner"],
+      "side_effect_level": "local_reversible",
+      "constraint_refs": [],
+      "corner_refs": [],
+      "verifier_requirement_refs": [],
+      "verifier": {
+        "kind": "command",
+        "completion_criterion": "Focused characterization records the intended failure.",
+        "false_green_risk": "The fixture could bypass the production comparison owner.",
+        "required_evidence": ["E-03"],
+        "command_ref": "pytest:legacy-manifest-comparison",
+        "expected_distinction": {
+          "before": "Fails for the intended legacy semantic reason.",
+          "after": "Passes after repair without changing the current-format fixture."
+        }
+      },
+      "retry": {
+        "allowed": true,
+        "max_attempts": 2,
+        "idempotency": "idempotent"
+      },
+      "refinement": {"parent": null, "replaces": []},
+      "sensitive": false
+    },
+    {
+      "id": "P-02",
+      "kind": "implementation",
+      "status": "ready",
+      "objective": "Normalize legacy entry shape at the comparison seam.",
+      "completion_criterion": "Legacy and current-format identity checks both satisfy their evidence contract.",
+      "depends_on": ["P-01"],
+      "inputs": ["E-03", "D-01", "I-01"],
+      "outputs": ["E-04", "E-05"],
+      "read_set": ["src/manifest/**", "tests/manifest/**"],
+      "write_set": ["src/manifest/**", "tests/manifest/**"],
+      "resource_set": ["working-tree"],
+      "side_effect_level": "local_reversible",
+      "constraint_refs": [],
+      "corner_refs": [],
+      "verifier_requirement_refs": [],
+      "verifier": {
+        "kind": "evidence_set",
+        "completion_criterion": "All legacy and current-format evidence is observed.",
+        "false_green_risk": "The legacy path might bypass the production comparison seam.",
+        "required_evidence": ["E-04", "E-05"]
+      },
+      "retry": {
+        "allowed": true,
+        "max_attempts": 2,
+        "idempotency": "inspect_before_retry"
+      },
+      "refinement": {"parent": null, "replaces": []},
+      "sensitive": false
+    }
+  ],
+  "edges": [
+    {"id": "X-01", "kind": "control", "from": "P-01", "to": "P-02"},
+    {"id": "X-02", "kind": "evidence", "from": "E-03", "to": "P-02", "sensitivity": {"fields": ["status", "claim", "source_revision"]}},
+    {"id": "X-03", "kind": "invariant", "from": "I-01", "to": "P-02"}
+  ],
+  "current_frontier": ["P-02"],
+  "risks": [
+    {
+      "id": "R-01",
+      "statement": "Normalization could alter current-format identity.",
+      "mitigation_refs": ["E-05"],
+      "escalation": "Invalidate D-01 and reopen owner-seam selection."
+    }
+  ],
+  "gaps": [
+    {
+      "id": "G-01",
+      "status": "fog",
+      "question": "Whether cache migration is needed after deployed usage is measured.",
+      "blocks": []
+    }
+  ],
+  "approvals": [],
+  "snapshots": [
+    {
+      "id": "S-01",
+      "kind": "path",
+      "path": "tests/manifest/legacy-fixture.json",
+      "sensitive": false
+    }
+  ],
+  "policy_claims": [
+    {
+      "policy": "implementation-proof-mechanism",
+      "normative_owner": "software-quality-workflows/verification-discipline",
+      "artifact_ref": "software-quality-workflows/references/verification-discipline.md"
+    }
+  ],
+  "closure": {
+    "status": "open",
+    "epistemic_status": "needs_repair",
+    "required_evidence": ["E-03", "E-04", "E-05"],
+    "residual_uncertainty": ["Deployed cache behavior is outside the current source scope."]
+  }
+}

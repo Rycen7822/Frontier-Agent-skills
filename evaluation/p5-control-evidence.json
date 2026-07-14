@@ -1,0 +1,551 @@
+{
+  "ablations": [
+    {
+      "evidence_refs": [],
+      "id": "all_review_rubrics",
+      "status": "not_run"
+    },
+    {
+      "evidence_refs": [],
+      "id": "always_on_full_plan",
+      "status": "not_run"
+    },
+    {
+      "evidence_refs": [],
+      "id": "load_all_references",
+      "status": "not_run"
+    },
+    {
+      "evidence_refs": [],
+      "id": "no_closure_contract",
+      "status": "not_run"
+    },
+    {
+      "evidence_refs": [],
+      "id": "no_context_projection",
+      "status": "not_run"
+    },
+    {
+      "evidence_refs": [],
+      "id": "no_field_sensitive_invalidation",
+      "status": "not_run"
+    },
+    {
+      "evidence_refs": [],
+      "id": "no_terminal_certificates",
+      "status": "not_run"
+    },
+    {
+      "evidence_refs": [],
+      "id": "no_verifier_qualification",
+      "status": "not_run"
+    },
+    {
+      "evidence_refs": [],
+      "id": "self_review_signoff",
+      "status": "not_run"
+    },
+    {
+      "evidence_refs": [],
+      "id": "single_vs_bounded_portfolio",
+      "status": "not_run"
+    },
+    {
+      "evidence_refs": [],
+      "id": "worker_mutable_contract",
+      "status": "not_run"
+    }
+  ],
+  "bundle_hash": "sha256:4b9fda1f055f09ebc2f054306a134ec0164d0b96d2ba30d088dda9d8eb700c37",
+  "cohort_id": "COHORT-P5-SEED-4B9FDA1F055F",
+  "controller_hash": "sha256:5503ca4950ef9e534a7869f09d6ba8fc509a012143f7659b01a924587501c7d5",
+  "reference_evaluations": [
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "adversarial-decision-check",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "api-interface-design",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "architecture-module-design",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "authority-and-scope",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "autonomous-closure",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "browser-runtime-verification",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "change-execution",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "cleanup",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "code-smell-checklist",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "context-projection",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "debugger-assisted-diagnosis",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "delegated-development",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "dependency-lockfile-drift",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "evidence-delegation",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "intent-and-design-discovery",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "managed-runtime-sdk-smoke",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "merge-conflict-resolution",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "ml-ai-review-rubric",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "multi-source-markdown-synthesis",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "observability-instrumentation",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "observability-operability-review",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "paper-source-target-gap-audits",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "performance-optimization",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "plugin-installed-surface",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "plugin-quality",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "product-api-accessibility-review",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "read-only-architecture-audits",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "real-runtime-stability-loop",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "receiving-code-review",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "repair-and-invalidation",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "repository-recovery",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "requesting-code-review",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "requirements-traceability-review",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "review-comments-pushback",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "review-result-schema",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "runtime-version-contracts",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "security-hardening",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "shared-ledger-delegation",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "source-driven-implementation",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "systematic-debugging",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "test-driven-development",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "test-lifecycle-management",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "test-patterns",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "test-patterns-contract-migrations",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "test-patterns-evaluation-fixtures",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "test-patterns-runtime-surfaces",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "test-patterns-workflow-boundaries",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "testing-ci-security-evidence",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "verification-discipline",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "verifier-kernel",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_applicable",
+      "authority": "companion",
+      "decision_case_status": "not_applicable",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_run",
+      "owner_id": "visual-design-companion",
+      "precision_case_status": "not_run"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "workflow-modes",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "workflow-state-contract",
+      "precision_case_status": "not_applicable"
+    },
+    {
+      "ablation_status": "not_run",
+      "authority": "normative_owner",
+      "decision_case_status": "not_run",
+      "evidence_refs": [],
+      "exclusion_case_status": "not_applicable",
+      "owner_id": "workspace-artifact-hygiene",
+      "precision_case_status": "not_applicable"
+    }
+  ],
+  "schema_version": "p5-control-evidence/1.0"
+}

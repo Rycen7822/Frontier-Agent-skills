@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/software-engineering-closure/p6-cli-smoke.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "plugin_name", "bundle_version", "plugin_tree_hash",
+    "build_evidence_hash", "static_smoke_content_hash", "p5_decision",
+    "activation_level", "release_gate", "blocking_prerequisites", "release_eligible",
+    "source_revision_verified", "marketplace_name", "codex_cli_version",
+    "actual_codex_cli_install", "model_invoked", "remote_writes",
+    "credential_environment_inherited",
+    "marketplace_layout_valid", "marketplace_added", "discovered_before_install",
+    "installed_enabled", "installed_tree_hash", "cache_matches_staging",
+    "staged_validator_passed", "installed_validator_passed", "source_unchanged",
+    "marketplace_source_unchanged",
+    "uninstall_clean", "marketplace_removed", "final_config_clean",
+    "discovered_skills", "explicit_skill_invocation", "implicit_route_invocation",
+    "commands", "evidence_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "p6-cli-smoke/1.0"},
+    "plugin_name": {"const": "software-engineering-closure-plugin"},
+    "bundle_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "plugin_tree_hash": {"$ref": "#/$defs/hash"},
+    "build_evidence_hash": {"$ref": "#/$defs/hash"},
+    "static_smoke_content_hash": {"$ref": "#/$defs/hash"},
+    "p5_decision": {"const": "remain_shadow"},
+    "activation_level": {"const": "shadow"},
+    "release_gate": {"const": "blocked_prerequisites"},
+    "blocking_prerequisites": {
+      "const": ["p4_live_success_canary", "p5_real_cohort", "signed_clean_source_revision"]
+    },
+    "release_eligible": {"const": false},
+    "source_revision_verified": {"const": false},
+    "marketplace_name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"},
+    "codex_cli_version": {"type": "string", "minLength": 1, "maxLength": 256},
+    "actual_codex_cli_install": {"const": true},
+    "model_invoked": {"const": false},
+    "remote_writes": {"const": false},
+    "credential_environment_inherited": {"const": false},
+    "marketplace_layout_valid": {"const": true},
+    "marketplace_added": {"const": true},
+    "discovered_before_install": {"const": true},
+    "installed_enabled": {"const": true},
+    "installed_tree_hash": {"$ref": "#/$defs/hash"},
+    "cache_matches_staging": {"const": true},
+    "staged_validator_passed": {"const": true},
+    "installed_validator_passed": {"const": true},
+    "source_unchanged": {"const": true},
+    "marketplace_source_unchanged": {"const": true},
+    "uninstall_clean": {"const": true},
+    "marketplace_removed": {"const": true},
+    "final_config_clean": {"const": true},
+    "discovered_skills": {
+      "const": ["software-quality-workflows", "writing-plans"]
+    },
+    "explicit_skill_invocation": {"const": "not_run_gate_blocked"},
+    "implicit_route_invocation": {"const": "not_run_gate_blocked"},
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "marketplace_add", "list_available", "plugin_add", "list_installed",
+        "plugin_remove", "list_after_remove", "marketplace_remove",
+        "marketplace_list_final"
+      ],
+      "properties": {
+        "marketplace_add": {"const": 0},
+        "list_available": {"const": 0},
+        "plugin_add": {"const": 0},
+        "list_installed": {"const": 0},
+        "plugin_remove": {"const": 0},
+        "list_after_remove": {"const": 0},
+        "marketplace_remove": {"const": 0},
+        "marketplace_list_final": {"const": 0}
+      }
+    },
+    "evidence_hash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0",
+  "bundle_id": "VB-001",
+  "closure_epoch": 1,
+  "status": "qualified",
+  "content_hash": "sha256:7398bdaad95ff2aeb607e8fa485b26714494350d6e9b30a34e71fa03e41683c1",
+  "contract_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "source_revision": "explicit-unversioned",
+  "scope_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "environment_fingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "protected_paths": ["tests/protected/**", "schemas/**", "scripts/advance_closure.py"],
+  "oracles": [
+    {
+      "id": "ORACLE-BEHAVIOR-001",
+      "requirement_refs": ["VR-BEHAVIOR-001"],
+      "constraint_refs": ["HC-001"],
+      "class": "repository_test",
+      "authority": "repository_protected",
+      "command": {"kind": "script", "target": "tests/protected/test_charge_once.py"},
+      "environment_refs": ["artifact:environment/ENV-001"],
+      "corner_refs": ["CORNER-concurrency-32"],
+      "expected_baseline": "fail_known",
+      "qualification_level": "discriminating",
+      "repeat_policy": {"runs": 3, "warmup_runs": 0, "flake_tolerance": 0.0, "evidence_refs": ["artifact:evidence/EV-REPEAT"]},
+      "cost_class": "low",
+      "timeout_seconds": 30,
+      "counterexample_adapter": "scripts/adapt_counterexample.py",
+      "evidence_schema_id": "sqw://evidence/test-result/1.0",
+      "protected_from_candidate": true
+    },
+    {
+      "id": "ORACLE-HIDDEN-001",
+      "requirement_refs": ["VR-SECURITY-001"],
+      "constraint_refs": ["HC-SECURITY-001"],
+      "class": "hidden",
+      "authority": "external",
+      "command": {"kind": "external", "target": "controlled:hidden-security-oracle"},
+      "environment_refs": ["artifact:environment/ENV-001"],
+      "corner_refs": ["CORNER-adversarial-replay"],
+      "expected_baseline": "pass",
+      "qualification_level": "independent",
+      "repeat_policy": {"runs": 2, "warmup_runs": 0, "flake_tolerance": 0.0, "evidence_refs": ["artifact:evidence/EV-HIDDEN-REPEAT"]},
+      "cost_class": "medium",
+      "timeout_seconds": 120,
+      "counterexample_adapter": "controlled:hidden-adapter",
+      "evidence_schema_id": "sqw://evidence/hidden-result/1.0",
+      "protected_from_candidate": true
+    }
+  ],
+  "qualification_summary": {
+    "status": "pass",
+    "required_oracle_ids": ["ORACLE-BEHAVIOR-001", "ORACLE-HIDDEN-001"],
+    "qualified_oracle_ids": ["ORACLE-BEHAVIOR-001", "ORACLE-HIDDEN-001"],
+    "unqualified_oracle_ids": [],
+    "baseline_result_refs": ["artifact:baseline/BL-001"],
+    "discrimination_evidence_refs": ["artifact:evidence/EV-DISCRIMINATION"],
+    "independence_evidence_refs": ["artifact:evidence/EV-INDEPENDENCE"]
+  },
+  "limitations": []
+}

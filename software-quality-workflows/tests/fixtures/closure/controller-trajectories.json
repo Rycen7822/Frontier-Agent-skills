@@ -1,0 +1,132 @@
+{
+  "schema_version": "sqw-controller-trajectories/1.0",
+  "direct": {
+    "id": "direct-selected",
+    "facts": {
+      "autonomous_closure_requested": false,
+      "intent_status": "defined",
+      "machine_observable_outcome": true,
+      "requirements_stable_enough": true,
+      "known_requirement_conflict": false,
+      "scope_freezable": true,
+      "authority_freezable": true,
+      "reproducible_environment": true,
+      "verifier_separable": true,
+      "bounded_side_effects": true,
+      "resume_required": false,
+      "expensive_proof_reusable": false,
+      "local_repair_likely": false,
+      "strategy_family_count": 1,
+      "search_value": "none",
+      "framework_tax": "low"
+    },
+    "expected_status": "direct_preferred"
+  },
+  "closure": [
+    {
+      "id": "single-candidate-closed",
+      "steps": [
+        {"type": "contract_frozen", "refs": ["artifact:contract/CC-001"]},
+        {"type": "baseline_started"},
+        {"type": "baseline_qualified", "refs": ["artifact:baseline/BL-001"]},
+        {"type": "verifier_bundle_frozen", "refs": ["artifact:verifier/VB-001"]},
+        {"type": "verifier_qualified", "refs": ["artifact:verifier/VB-001"]},
+        {"type": "strategy_family_registered"},
+        {"type": "candidate_created", "refs": ["artifact:candidate/C-007"]},
+        {"type": "candidate_evaluated", "refs": ["artifact:evaluation/CEVAL-007"]},
+        {"type": "candidate_promoted", "refs": ["artifact:candidate/C-007", "artifact:evaluation/CEVAL-007"]},
+        {"type": "signoff_started"},
+        {"type": "signoff_completed", "refs": ["artifact:signoff/SO-007"]},
+        {"type": "terminal_certificate_emitted", "refs": ["artifact:terminal/TC-CLOSED"]}
+      ],
+      "expected_terminal": "CLOSED"
+    },
+    {
+      "id": "counterexample-local-repair-closed",
+      "steps": [
+        {"type": "contract_frozen", "refs": ["artifact:contract/CC-001"]},
+        {"type": "baseline_started"},
+        {"type": "baseline_qualified", "refs": ["artifact:baseline/BL-001"]},
+        {"type": "verifier_bundle_frozen", "refs": ["artifact:verifier/VB-001"]},
+        {"type": "verifier_qualified", "refs": ["artifact:verifier/VB-001"]},
+        {"type": "candidate_created", "refs": ["artifact:candidate/C-007"]},
+        {"type": "candidate_evaluated", "refs": ["artifact:evaluation/CEVAL-007-FAIL"]},
+        {"type": "counterexample_observed", "refs": ["artifact:counterexample/CE-019"]},
+        {"type": "candidate_pruned", "refs": ["artifact:candidate/C-007"]},
+        {"type": "candidate_created", "refs": ["artifact:candidate/C-008"]},
+        {"type": "candidate_evaluated", "refs": ["artifact:evaluation/CEVAL-008"]},
+        {"type": "candidate_promoted", "refs": ["artifact:candidate/C-008", "artifact:evaluation/CEVAL-008"]},
+        {"type": "signoff_started"},
+        {"type": "signoff_completed", "refs": ["artifact:signoff/SO-008"]},
+        {"type": "terminal_certificate_emitted", "refs": ["artifact:terminal/TC-CLOSED-008"]}
+      ],
+      "expected_terminal": "CLOSED"
+    },
+    {
+      "id": "verifier-unqualified",
+      "steps": [
+        {"type": "contract_frozen", "refs": ["artifact:contract/CC-001"]},
+        {"type": "baseline_started"},
+        {"type": "baseline_qualified", "refs": ["artifact:baseline/BL-001"]},
+        {"type": "verifier_bundle_frozen", "refs": ["artifact:verifier/VB-REJECT"]},
+        {"type": "verifier_rejected", "refs": ["artifact:evidence/EV-VB-REJECT"]},
+        {"type": "terminal_certificate_emitted", "refs": ["artifact:terminal/TC-VERIFIER"]}
+      ],
+      "expected_terminal": "VERIFIER_UNQUALIFIED"
+    },
+    {
+      "id": "spec-underdetermined",
+      "steps": [
+        {"type": "terminal_certificate_emitted", "refs": ["artifact:terminal/TC-SPEC-UNDER"]}
+      ],
+      "expected_terminal": "SPEC_UNDERDETERMINED"
+    },
+    {
+      "id": "spec-unsat",
+      "steps": [
+        {"type": "terminal_certificate_emitted", "refs": ["artifact:terminal/TC-SPEC-UNSAT"]}
+      ],
+      "expected_terminal": "SPEC_UNSAT"
+    },
+    {
+      "id": "budget-exhausted",
+      "steps": [
+        {"type": "contract_frozen", "refs": ["artifact:contract/CC-001"]},
+        {"type": "baseline_started"},
+        {"type": "baseline_qualified", "refs": ["artifact:baseline/BL-001"]},
+        {"type": "verifier_bundle_frozen", "refs": ["artifact:verifier/VB-001"]},
+        {"type": "verifier_qualified", "refs": ["artifact:verifier/VB-001"]},
+        {"type": "candidate_created", "refs": ["artifact:candidate/C-007"]},
+        {"type": "budget_consumed", "budget_delta": {"iterations": 8, "candidate_evaluations": 0, "review_rounds": 0}},
+        {"type": "terminal_certificate_emitted", "refs": ["artifact:terminal/TC-BUDGET"]}
+      ],
+      "expected_terminal": "BUDGET_EXHAUSTED"
+    },
+    {
+      "id": "source-drift-during-search",
+      "steps": [
+        {"type": "contract_frozen", "refs": ["artifact:contract/CC-001"]},
+        {"type": "baseline_started"},
+        {"type": "baseline_qualified", "refs": ["artifact:baseline/BL-001"]},
+        {"type": "verifier_bundle_frozen", "refs": ["artifact:verifier/VB-001"]},
+        {"type": "verifier_qualified", "refs": ["artifact:verifier/VB-001"]},
+        {"type": "candidate_created", "refs": ["artifact:candidate/C-007"]},
+        {"type": "source_drift_detected", "refs": ["artifact:terminal/TC-DRIFT"], "source_revision": "revision-after-drift"}
+      ],
+      "expected_terminal": "ABORTED_BY_SOURCE_DRIFT"
+    },
+    {
+      "id": "protected-surface-tampering",
+      "steps": [
+        {"type": "contract_frozen", "refs": ["artifact:contract/CC-001"]},
+        {"type": "baseline_started"},
+        {"type": "baseline_qualified", "refs": ["artifact:baseline/BL-001"]},
+        {"type": "verifier_bundle_frozen", "refs": ["artifact:verifier/VB-001"]},
+        {"type": "verifier_qualified", "refs": ["artifact:verifier/VB-001"]},
+        {"type": "candidate_created", "refs": ["artifact:candidate/C-007"], "changed_refs": ["tests/protected/oracle.py"], "expect": "rejected"},
+        {"type": "terminal_certificate_emitted", "refs": ["artifact:terminal/TC-WORKFLOW-INVALID"]}
+      ],
+      "expected_terminal": "WORKFLOW_INVALID"
+    }
+  ]
+}

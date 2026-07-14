@@ -1,0 +1,5 @@
+interface:
+  display_name: Writing Plans
+  short_description: Compile a durable implementation plan or frozen closure contract
+policy:
+  allow_implicit_invocation: true
