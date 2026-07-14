@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hermes.local/sqw/review-result-2.0.schema.json",
+  "title": "SQW Review Result 2.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "code_review_verdict", "verification_status", "merge_readiness", "external_approvals", "coverage", "blocking_reasons", "reviewed_base_sha", "reviewed_head_sha", "reviewed_scope_hash", "findings"],
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "code_review_verdict": {"enum": ["pass", "changes_requested", "inconclusive"]},
+    "verification_status": {"enum": ["passed", "failed", "partial", "not_run"]},
+    "merge_readiness": {"enum": ["ready", "blocked", "unknown", "not_applicable"]},
+    "external_approvals": {"enum": ["satisfied", "missing", "unknown", "not_applicable"]},
+    "coverage": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/coverage"}},
+    "blocking_reasons": {"$ref": "#/$defs/string_array"},
+    "reviewed_base_sha": {"type": "string", "minLength": 1, "maxLength": 256},
+    "reviewed_head_sha": {"type": "string", "minLength": 1, "maxLength": 256},
+    "reviewed_scope_hash": {"$ref": "#/$defs/hash"},
+    "findings": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/finding"}},
+    "summary": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "positive_notes": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/positive_note"}}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"code_review_verdict": {"const": "pass"}}, "required": ["code_review_verdict"]},
+      "then": {
+        "properties": {"blocking_reasons": {"maxItems": 0}},
+        "not": {"properties": {"coverage": {"contains": {"properties": {"status": {"const": "not_reviewed"}}, "required": ["status"]}}}}
+      }
+    },
+    {
+      "if": {"properties": {"merge_readiness": {"const": "ready"}}, "required": ["merge_readiness"]},
+      "then": {
+        "properties": {
+          "code_review_verdict": {"const": "pass"},
+          "verification_status": {"const": "passed"},
+          "external_approvals": {"enum": ["satisfied", "not_applicable"]},
+          "blocking_reasons": {"maxItems": 0},
+          "coverage": {"minItems": 1, "items": {"properties": {"status": {"const": "full"}}, "required": ["status"]}}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "string_array": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 2048}},
+    "coverage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "status", "snapshot_id"],
+      "properties": {"path": {"type": "string", "minLength": 1, "maxLength": 1024}, "status": {"enum": ["full", "sampled", "not_reviewed"]}, "snapshot_id": {"type": "string", "minLength": 1, "maxLength": 256}}
+    },
+    "finding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "severity", "blocking", "category", "path", "line", "evidence", "impact", "recommended_fix", "confidence", "verification", "code_fixable", "source_revision"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^F-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+        "severity": {"enum": ["critical", "high", "medium", "low", "info"]},
+        "blocking": {"type": "boolean"},
+        "category": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 128},
+        "path": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "line": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]},
+        "evidence": {"type": "string", "minLength": 1, "maxLength": 8192},
+        "impact": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "recommended_fix": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "confidence": {"enum": ["high", "medium", "low"]},
+        "verification": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "code_fixable": {"type": "boolean"},
+        "source_revision": {"type": "string", "minLength": 1, "maxLength": 256}
+      }
+    },
+    "positive_note": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "line", "strength", "source_revision"],
+      "properties": {"path": {"type": "string", "minLength": 1, "maxLength": 1024}, "line": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]}, "strength": {"type": "string", "minLength": 1, "maxLength": 4096}, "source_revision": {"type": "string", "minLength": 1, "maxLength": 256}}
+    }
+  }
+}

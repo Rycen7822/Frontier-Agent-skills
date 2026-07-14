@@ -1,0 +1,17 @@
+{
+  "schema_version": "2.0",
+  "code_review_verdict": "pass",
+  "verification_status": "passed",
+  "merge_readiness": "ready",
+  "external_approvals": "satisfied",
+  "coverage": [
+    {"path": "src/payments/charge.py", "status": "full", "snapshot_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+  ],
+  "blocking_reasons": [],
+  "reviewed_base_sha": "base-001",
+  "reviewed_head_sha": "head-001",
+  "reviewed_scope_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "findings": [],
+  "summary": "No blocking findings in the frozen scope.",
+  "positive_notes": []
+}

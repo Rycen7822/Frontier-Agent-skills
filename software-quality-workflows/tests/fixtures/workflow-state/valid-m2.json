@@ -1,0 +1,191 @@
+{
+  "schema_version": "1.1",
+  "workflow_id": "wf-manifest-refresh",
+  "mode": "M2_SPARSE",
+  "request_mode": "change",
+  "execution_policy": "standard",
+  "policy_bundle_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "status": "active",
+  "state_version": 3,
+  "source": {
+    "repository": ".",
+    "base_revision": "explicit-unversioned",
+    "observed_revision": "explicit-unversioned",
+    "scope_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "authority": {
+    "risk_ceiling": "local_reversible",
+    "external_writes": "forbidden",
+    "destructive_actions": "forbidden",
+    "approvals": []
+  },
+  "scope": {
+    "allowed_reads": ["src/**", "tests/**"],
+    "allowed_writes": ["src/manifest/**", "tests/manifest/**"],
+    "protected_paths": ["docs/private/**"],
+    "coverage": "targeted"
+  },
+  "global_invariants": [
+    {
+      "id": "I-01",
+      "statement": "Current-format manifest identity remains unchanged.",
+      "status": "current",
+      "sensitive": false
+    }
+  ],
+  "active_owners": {
+    "primary": "change-execution",
+    "normative": ["test-driven-development", "verification-discipline"],
+    "companions": [],
+    "loaded_references": [
+      {
+        "owner_id": "change-execution",
+        "path": "references/change-execution.md",
+        "reason_code": "standard_change_owner",
+        "phase": "SEARCHING"
+      },
+      {
+        "owner_id": "test-driven-development",
+        "path": "references/test-driven-development.md",
+        "reason_code": "proof_first_change",
+        "phase": "SEARCHING"
+      },
+      {
+        "owner_id": "verification-discipline",
+        "path": "references/verification-discipline.md",
+        "reason_code": "focused_proof_available",
+        "phase": "SEARCHING"
+      }
+    ]
+  },
+  "plan_ref": {
+    "artifact_ref": "plan:plan-manifest-refresh#P-02",
+    "state_ref": "worknotes/plan-state.json",
+    "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "nodes": [
+    {
+      "id": "N-01",
+      "operation_type": "tool",
+      "status": "done",
+      "objective": "Run the focused legacy fixture.",
+      "plan_node_ref": "plan:plan-manifest-refresh#P-01",
+      "depends_on": [],
+      "input_refs": ["I-01"],
+      "output_refs": ["EV-01"],
+      "input_contracts": [],
+      "output_contracts": [{"ref": "EV-01", "schema_id": "sqw.test-result/1.0"}],
+      "read_set": ["src/manifest/**", "tests/manifest/**"],
+      "write_set": [],
+      "resource_set": ["local-test-runner"],
+      "side_effect": "local_ephemeral",
+      "verifier_refs": ["VER-01"],
+      "required_approvals": [],
+      "attempt_policy": {
+        "max_attempts": 1,
+        "attempts_used": 1,
+        "idempotency": "idempotent"
+      },
+      "sensitive": false
+    },
+    {
+      "id": "N-02",
+      "operation_type": "model",
+      "status": "ready",
+      "objective": "Patch the comparison owner without changing current behavior.",
+      "plan_node_ref": "plan:plan-manifest-refresh#P-02",
+      "depends_on": ["N-01"],
+      "input_refs": ["EV-01", "I-01", "plan:plan-manifest-refresh#D-01"],
+      "output_refs": ["EV-02"],
+      "input_contracts": [{"ref": "EV-01", "schema_id": "sqw.test-result/1.0"}],
+      "output_contracts": [{"ref": "EV-02", "schema_id": "sqw.test-result/1.0"}],
+      "read_set": ["src/manifest/**", "tests/manifest/**"],
+      "write_set": ["src/manifest/**", "tests/manifest/**"],
+      "resource_set": ["working-tree"],
+      "side_effect": "local_reversible",
+      "verifier_refs": ["VER-02"],
+      "required_approvals": [],
+      "attempt_policy": {
+        "max_attempts": 2,
+        "attempts_used": 0,
+        "idempotency": "inspect_before_retry"
+      },
+      "sensitive": false
+    }
+  ],
+  "verifiers": [
+    {
+      "id": "VER-01",
+      "kind": "focused_behavior",
+      "status": "passed",
+      "claim": "The legacy fixture distinguishes the prior behavior.",
+      "required_evidence": ["EV-01"],
+      "observed_evidence": ["EV-01"],
+      "evidence_sensitivity": [
+        {"ref": "EV-01", "fields": ["claim", "content_hash", "observation.classification", "observation.exit_code", "source.revision"]}
+      ]
+    },
+    {
+      "id": "VER-02",
+      "kind": "regression_guard",
+      "status": "pending",
+      "claim": "Legacy and current formats satisfy the contract after repair.",
+      "required_evidence": ["EV-02"],
+      "observed_evidence": [],
+      "evidence_sensitivity": [
+        {"ref": "EV-02", "fields": ["claim", "content_hash", "observation.classification", "observation.exit_code", "source.revision"]}
+      ]
+    }
+  ],
+  "edges": [
+    {"id": "X-01", "kind": "control", "from": "N-01", "to": "N-02"},
+    {
+      "id": "X-02",
+      "kind": "evidence",
+      "from": "EV-01",
+      "to": "N-02",
+      "sensitivity": {"fields": ["observation.exit_code", "claim", "source.revision"]}
+    },
+    {"id": "X-03", "kind": "invariant", "from": "I-01", "to": "N-02"}
+  ],
+  "frontier": ["N-02"],
+  "locks": [],
+  "artifacts": [
+    {
+      "id": "EV-01",
+      "kind": "test_result",
+      "schema_id": "sqw.test-result/1.0",
+      "claim": "The legacy fixture reaches the comparison seam and fails for the intended reason.",
+      "producer": {"node_id": "N-01", "run_id": "RUN-01"},
+      "source": {
+        "revision": "explicit-unversioned",
+        "scope_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "observation": {
+        "command_ref": "command:focused-legacy-test",
+        "working_directory": ".",
+        "exit_code": 1,
+        "duration_ms": 842,
+        "result_summary": "One intended characterization failure.",
+        "classification": "expected_red"
+      },
+      "artifact_ref": ".workflow/artifacts/EV-01.json",
+      "content_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "freshness": "fresh",
+      "coverage": {"level": "focused", "paths": ["src/manifest/**", "tests/manifest/**"]},
+      "limitations": [],
+      "sensitive": false
+    }
+  ],
+  "recent_failures": [],
+  "events_ref": ".workflow/events.jsonl",
+  "pending_background": [],
+  "closure": {
+    "status": "open",
+    "required_verifiers": ["VER-01", "VER-02"],
+    "evidence_refs": ["EV-01"],
+    "known_gaps": [],
+    "residual_risk": [],
+    "epistemic_status": "needs_repair"
+  }
+}

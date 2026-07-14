@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hermes/schemas/closure-contract.schema.json",
+  "title": "Frozen Closure Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contract_id", "epoch", "status", "content_hash", "created_at", "frozen_at", "source", "request", "authority", "scope", "assumptions", "hard_constraints", "soft_objectives", "corners", "protected_surfaces", "verifier_requirements", "search_policy", "publication_policy", "ambiguities", "terminal_policy"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "contract_id": {"type": "string", "pattern": "^CC-[A-Z0-9][A-Z0-9._-]{2,127}$"},
+    "epoch": {"type": "integer", "minimum": 1},
+    "status": {"enum": ["draft", "frozen", "superseded"]},
+    "content_hash": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/hash"}]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "frozen_at": {"oneOf": [{"type": "null"}, {"type": "string", "format": "date-time"}]},
+    "source": {"$ref": "#/$defs/source"},
+    "request": {"$ref": "#/$defs/request"},
+    "authority": {"$ref": "#/$defs/authority"},
+    "scope": {"$ref": "#/$defs/scope"},
+    "assumptions": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/assumption"}},
+    "hard_constraints": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/hard_constraint"}},
+    "soft_objectives": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/soft_objective"}},
+    "corners": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/corner"}},
+    "protected_surfaces": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/protected_surface"}},
+    "verifier_requirements": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/verifier_requirement"}},
+    "search_policy": {"$ref": "#/$defs/search_policy"},
+    "publication_policy": {"$ref": "#/$defs/publication_policy"},
+    "ambiguities": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/ambiguity"}},
+    "terminal_policy": {"$ref": "#/$defs/terminal_policy"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nonempty_string": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "string_array": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/nonempty_string"}},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "base_revision", "scope_hash", "observed_at", "policy_bundle_hash"],
+      "properties": {
+        "repository": {"$ref": "#/$defs/nonempty_string"},
+        "base_revision": {"$ref": "#/$defs/nonempty_string"},
+        "scope_hash": {"$ref": "#/$defs/hash"},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "policy_bundle_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objective", "non_goals", "source_anchors", "success_summary"],
+      "properties": {
+        "objective": {"$ref": "#/$defs/nonempty_string"},
+        "non_goals": {"$ref": "#/$defs/string_array"},
+        "source_anchors": {"$ref": "#/$defs/string_array"},
+        "success_summary": {"$ref": "#/$defs/nonempty_string"}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_mode", "autonomy_ceiling", "allowed_side_effects", "forbidden_actions", "preauthorized_external_actions"],
+      "properties": {
+        "request_mode": {"const": "change"},
+        "autonomy_ceiling": {"enum": ["read_only", "local_ephemeral", "local_reversible", "draft_pr"]},
+        "allowed_side_effects": {"type": "array", "maxItems": 20, "items": {"enum": ["read_only", "local_ephemeral", "local_reversible", "draft_pr"]}},
+        "forbidden_actions": {"$ref": "#/$defs/string_array"},
+        "preauthorized_external_actions": {"$ref": "#/$defs/string_array"}
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope_hash", "allowed_read_paths", "allowed_write_paths", "forbidden_paths"],
+      "properties": {
+        "scope_hash": {"$ref": "#/$defs/hash"},
+        "allowed_read_paths": {"$ref": "#/$defs/string_array"},
+        "allowed_write_paths": {"$ref": "#/$defs/string_array"},
+        "forbidden_paths": {"$ref": "#/$defs/string_array"}
+      }
+    },
+    "assumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement", "source", "classification", "materiality", "reversibility", "confidence", "challenge_oracle", "decision"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^A-[A-Z0-9][A-Z0-9._-]*$"},
+        "statement": {"$ref": "#/$defs/nonempty_string"},
+        "source": {"$ref": "#/$defs/nonempty_string"},
+        "classification": {"enum": ["observed", "inferred", "defaulted"]},
+        "materiality": {"enum": ["low", "medium", "high"]},
+        "reversibility": {"enum": ["local", "migration_required", "irreversible"]},
+        "confidence": {"enum": ["high", "medium", "low"]},
+        "challenge_oracle": {"type": "string", "pattern": "^VR-[A-Z0-9][A-Z0-9._-]*$"},
+        "decision": {"enum": ["accepted", "requires_terminal_ambiguity"]}
+      }
+    },
+    "hard_constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement", "source_anchors", "observable", "blocking", "applies_to_corners", "oracle_requirement_refs", "protected_from_candidate", "manual_or_external_judgment_required"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^HC-[A-Z0-9][A-Z0-9._-]*$"},
+        "statement": {"$ref": "#/$defs/nonempty_string"},
+        "source_anchors": {"$ref": "#/$defs/string_array"},
+        "observable": {"$ref": "#/$defs/nonempty_string"},
+        "blocking": {"type": "boolean"},
+        "applies_to_corners": {"type": "array", "maxItems": 500, "items": {"type": "string", "pattern": "^CORNER-[A-Z0-9][A-Z0-9._-]*$"}},
+        "oracle_requirement_refs": {"type": "array", "maxItems": 500, "items": {"type": "string", "pattern": "^VR-[A-Z0-9][A-Z0-9._-]*$"}},
+        "protected_from_candidate": {"type": "boolean"},
+        "manual_or_external_judgment_required": {"type": "boolean"}
+      }
+    },
+    "soft_objective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement", "priority", "direction", "metric", "baseline_ref", "tolerance", "oracle_requirement_refs", "conflicts_with_hard_constraint_refs"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^SO-[A-Z0-9][A-Z0-9._-]*$"},
+        "statement": {"$ref": "#/$defs/nonempty_string"},
+        "priority": {"type": "integer", "minimum": 1},
+        "direction": {"enum": ["minimize", "maximize"]},
+        "metric": {"$ref": "#/$defs/nonempty_string"},
+        "baseline_ref": {"$ref": "#/$defs/nonempty_string"},
+        "tolerance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_regression_ratio"],
+          "properties": {"max_regression_ratio": {"type": "number", "minimum": 0}}
+        },
+        "oracle_requirement_refs": {"type": "array", "maxItems": 500, "items": {"type": "string", "pattern": "^VR-[A-Z0-9][A-Z0-9._-]*$"}},
+        "conflicts_with_hard_constraint_refs": {"type": "array", "maxItems": 500, "items": {"type": "string", "pattern": "^HC-[A-Z0-9][A-Z0-9._-]*$"}}
+      }
+    },
+    "corner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "dimensions", "selection_reason", "criticality", "verifier_requirement_refs"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^CORNER-[A-Z0-9][A-Z0-9._-]*$"},
+        "dimensions": {"type": "object"},
+        "selection_reason": {"$ref": "#/$defs/nonempty_string"},
+        "criticality": {"enum": ["signoff", "affected", "exploratory"]},
+        "verifier_requirement_refs": {"type": "array", "maxItems": 500, "items": {"type": "string", "pattern": "^VR-[A-Z0-9][A-Z0-9._-]*$"}}
+      }
+    },
+    "protected_surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "protection", "source_anchors"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^PS-[A-Z0-9][A-Z0-9._-]*$"},
+        "path": {"$ref": "#/$defs/nonempty_string"},
+        "protection": {"enum": ["controller_owned", "read_only", "candidate_forbidden"]},
+        "source_anchors": {"$ref": "#/$defs/string_array"}
+      }
+    },
+    "verifier_requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "claim", "required_level", "allowed_oracle_classes", "independence", "repeat_policy", "max_cost_class", "counterexample_required_on_failure"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^VR-[A-Z0-9][A-Z0-9._-]*$"},
+        "claim": {"$ref": "#/$defs/nonempty_string"},
+        "required_level": {"enum": ["smoke", "discriminating", "signoff"]},
+        "allowed_oracle_classes": {"type": "array", "maxItems": 20, "items": {"enum": ["repository_test", "property_test", "runtime_probe", "static_analysis", "manual_or_external"]}},
+        "independence": {"enum": ["controller_owned", "controller_owned_or_promoted", "independent_external"]},
+        "repeat_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runs", "allowed_flakes"],
+          "properties": {
+            "runs": {"type": "integer", "minimum": 1, "maximum": 100},
+            "allowed_flakes": {"type": "integer", "minimum": 0, "maximum": 99}
+          }
+        },
+        "max_cost_class": {"enum": ["low", "medium", "high"]},
+        "counterexample_required_on_failure": {"type": "boolean"}
+      }
+    },
+    "search_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default_strategy", "candidate_portfolio", "max_iterations", "max_candidate_evaluations", "max_parallel_writers", "max_total_changed_lines", "max_review_rounds", "early_stop", "selection_order"],
+      "properties": {
+        "default_strategy": {"const": "single_candidate_cegis"},
+        "candidate_portfolio": {"enum": ["disabled", "conditional"]},
+        "max_iterations": {"type": "integer", "minimum": 1},
+        "max_candidate_evaluations": {"type": "integer", "minimum": 1},
+        "max_parallel_writers": {"type": "integer", "minimum": 1},
+        "max_total_changed_lines": {"type": "integer", "minimum": 1},
+        "max_review_rounds": {"type": "integer", "minimum": 0},
+        "early_stop": {"const": "first_signoff_candidate_unless_soft_objective_competition_is_predeclared"},
+        "selection_order": {"type": "array", "maxItems": 7, "items": {"enum": ["hard_constraint_violations", "regressions", "soft_objectives_by_priority", "risk", "complexity", "diff_size", "evaluation_cost"]}}
+      }
+    },
+    "publication_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ceiling", "required_owner", "requires_fresh_signoff"],
+      "properties": {
+        "ceiling": {"enum": ["none", "local_patch", "draft_pr"]},
+        "required_owner": {"$ref": "#/$defs/nonempty_string"},
+        "requires_fresh_signoff": {"type": "boolean"}
+      }
+    },
+    "ambiguity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement", "materiality", "status", "terminal_status", "minimal_missing_information"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^AMB-[A-Z0-9][A-Z0-9._-]*$"},
+        "statement": {"$ref": "#/$defs/nonempty_string"},
+        "materiality": {"enum": ["low", "medium", "high"]},
+        "status": {"enum": ["resolved", "unresolved", "terminal_required"]},
+        "terminal_status": {"enum": ["SPEC_UNDERDETERMINED", "SPEC_UNSAT", "AUTHORITY_BLOCKED"]},
+        "minimal_missing_information": {"$ref": "#/$defs/string_array"}
+      }
+    },
+    "terminal_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed_statuses", "noninteractive", "require_typed_certificate"],
+      "properties": {
+        "allowed_statuses": {"type": "array", "maxItems": 11, "items": {"enum": ["CLOSED", "SPEC_UNDERDETERMINED", "SPEC_UNSAT", "AUTHORITY_BLOCKED", "ENVIRONMENT_UNAVAILABLE", "BASELINE_UNSTABLE", "VERIFIER_UNQUALIFIED", "NON_CONVERGED", "BUDGET_EXHAUSTED", "WORKFLOW_INVALID", "ABORTED_BY_SOURCE_DRIFT"]}},
+        "noninteractive": {"const": true},
+        "require_typed_certificate": {"const": true}
+      }
+    }
+  }
+}

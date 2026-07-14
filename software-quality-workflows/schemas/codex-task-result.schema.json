@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sqw://codex-task-result/1.0",
+  "title": "Codex task result proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "status",
+    "candidate_ref",
+    "changed_paths",
+    "proposed_events",
+    "verification_requests",
+    "blocker",
+    "claims"
+  ],
+  "properties": {
+    "task_id": {"type": "string", "pattern": "^TASK-[A-Z0-9][A-Z0-9._-]{0,95}$"},
+    "status": {"enum": ["completed", "blocked", "failed"]},
+    "candidate_ref": {
+      "anyOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^artifact:candidate/C-[A-Za-z0-9][A-Za-z0-9._-]{0,125}$"}
+      ]
+    },
+    "changed_paths": {"$ref": "#/$defs/path_array"},
+    "proposed_events": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {"enum": ["candidate_generated", "counterexample_observed", "verification_requested", "task_blocked", "task_failed"]}
+    },
+    "verification_requests": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^VR-[A-Z0-9][A-Z0-9._-]{0,95}$"}
+    },
+    "blocker": {
+      "anyOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/blocker"}
+      ]
+    },
+    "claims": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {"$ref": "#/$defs/claim"}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "completed"}}, "required": ["status"]},
+      "then": {
+        "properties": {
+          "candidate_ref": {"type": "string"},
+          "blocker": {"type": "null"},
+          "changed_paths": {"minItems": 1},
+          "claims": {"minItems": 1},
+          "proposed_events": {"contains": {"const": "candidate_generated"}, "minContains": 1, "maxContains": 1}
+        }
+      },
+      "else": {
+        "properties": {
+          "candidate_ref": {"type": "null"},
+          "blocker": {"$ref": "#/$defs/blocker"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "blocked"}}, "required": ["status"]},
+      "then": {"properties": {"proposed_events": {"contains": {"const": "task_blocked"}, "minContains": 1, "maxContains": 1}}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "failed"}}, "required": ["status"]},
+      "then": {"properties": {"proposed_events": {"contains": {"const": "task_failed"}, "minContains": 1, "maxContains": 1}}}
+    }
+  ],
+  "$defs": {
+    "path_array": {
+      "type": "array",
+      "maxItems": 1000,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 1024}
+    },
+    "artifact_refs": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^artifact:[a-z][a-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "summary", "evidence_refs", "retryable"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^E_[A-Z0-9_]+$"},
+        "summary": {"type": "string", "minLength": 1, "maxLength": 2048},
+        "evidence_refs": {"$ref": "#/$defs/artifact_refs"},
+        "retryable": {"type": "boolean"}
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "evidence_refs", "confidence_scope"],
+      "properties": {
+        "claim": {"type": "string", "minLength": 1, "maxLength": 2048},
+        "evidence_refs": {"$ref": "#/$defs/artifact_refs"},
+        "confidence_scope": {"type": "string", "minLength": 1, "maxLength": 512}
+      }
+    }
+  }
+}

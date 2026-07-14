@@ -1,0 +1,807 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+VALIDATOR_PATH = ROOT / "scripts" / "validate_skill_contracts.py"
+SPEC = importlib.util.spec_from_file_location("validate_skill_contracts", VALIDATOR_PATH)
+assert SPEC is not None and SPEC.loader is not None
+validator = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = validator
+SPEC.loader.exec_module(validator)
+
+
+def make_minimal_skill(root: Path) -> None:
+    (root / "references").mkdir()
+    (root / "tests" / "fixtures").mkdir(parents=True)
+    resources = sorted(validator.REQUIRED_CORE)
+    links = "\n".join(f"- [{Path(item).stem}]({item})" for item in resources)
+    (root / "SKILL.md").write_text(
+        "---\n"
+        "name: software-quality-workflows\n"
+        "description: Synthetic contract fixture for validator tests.\n"
+        "version: 2.0.0\n"
+        "author: Hermes Agent\n"
+        "license: MIT\n"
+        "metadata:\n"
+        "  hermes:\n"
+        "    tags: [development, testing, verification]\n"
+        "    category: software-development\n"
+        "    related_skills: [writing-plans]\n"
+        "---\n\n"
+        "# Fixture Skill\n\n"
+        "## Policy ownership\n\n"
+        "Each policy has one owner.\n\n"
+        "## Active resources\n\n"
+        f"{links}\n",
+        encoding="utf-8",
+    )
+    for resource in resources:
+        path = root / resource
+        title = Path(resource).stem.replace("-", " ").title()
+        body = f"# {title}\n\nSynthetic owner.\n"
+        path.write_text(body, encoding="utf-8")
+    fixture_source = ROOT / "tests" / "fixtures" / "decision-cases.json"
+    (root / "tests" / "fixtures" / "decision-cases.json").write_text(
+        fixture_source.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+
+def valid_manifest() -> dict:
+    return {
+        "base_revision": "base-1",
+        "head_revision": "head-2",
+        "scope_hash": "scope-hash-2",
+        "paths": [
+            {
+                "path": "src/core.py",
+                "status": "modified",
+                "snapshot_id": "sha256:core-2",
+            }
+        ],
+    }
+
+
+def valid_result() -> dict:
+    return {
+        "schema_version": "2.0",
+        "code_review_verdict": "pass",
+        "verification_status": "passed",
+        "merge_readiness": "ready",
+        "external_approvals": "satisfied",
+        "coverage": [
+            {"path": "src/core.py", "status": "full", "snapshot_id": "sha256:core-2"}
+        ],
+        "blocking_reasons": [],
+        "reviewed_base_sha": "base-1",
+        "reviewed_head_sha": "head-2",
+        "reviewed_scope_hash": "scope-hash-2",
+        "findings": [
+            {
+                "id": "F-001",
+                "severity": "low",
+                "blocking": False,
+                "category": "maintainability",
+                "path": "src/core.py",
+                "line": 12,
+                "evidence": "The branch duplicates an existing guard.",
+                "impact": "Two paths can drift.",
+                "recommended_fix": "Reuse the existing guard.",
+                "confidence": "high",
+                "verification": "Focused test passed.",
+                "code_fixable": True,
+                "source_revision": "head-2"
+            }
+        ]
+    }
+
+
+def valid_context() -> dict:
+    return {
+        "scope_manifest": valid_manifest(),
+        "current_head": "head-2",
+        "current_scope_hash": "scope-hash-2",
+    }
+
+
+class SkillContractTests(unittest.TestCase):
+    def test_active_skill_satisfies_contracts(self) -> None:
+        violations = validator.validate_skill(ROOT)
+        if violations:
+            self.fail(validator.compact_violations(violations))
+
+    def test_decision_fixture_contract(self) -> None:
+        path = ROOT / "tests" / "fixtures" / "decision-cases.json"
+        cases = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual([], validator.validate_decision_cases(cases))
+        ids = {case["id"] for case in cases}
+        self.assertTrue(
+            {
+                "review_only",
+                "diagnose_only",
+                "complex_bugfix",
+                "existing_patch",
+                "debug_existing_pid",
+                "pr_review",
+                "docs_only",
+                "public_api_change",
+                "long_output_failure",
+                "requirements_traceability_review",
+                "module_boundary_refactor",
+                "flaky_reproducer_minimization",
+                "merge_conflict_resolution",
+                "independent_oracle_change",
+                "wide_api_migration",
+                "prototype_experiment",
+            }
+            <= ids
+        )
+
+    def test_engineering_absorption_contracts(self) -> None:
+        new_owners = {
+            "references/architecture-module-design.md",
+            "references/delegated-development.md",
+            "references/requirements-traceability-review.md",
+            "references/merge-conflict-resolution.md",
+        }
+        self.assertTrue(
+            new_owners <= validator.REQUIRED_CORE,
+            f"missing required owners: {sorted(new_owners - validator.REQUIRED_CORE)}",
+        )
+
+        router = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+        for resource in new_owners:
+            self.assertIn(f"]({resource})", router)
+        self.assertIn("Prototype, spike, disposable experiment", router)
+
+        architecture = (ROOT / "references" / "architecture-module-design.md").read_text(
+            encoding="utf-8"
+        ).lower()
+        self.assertIn("interfaces are caller knowledge", architecture)
+        self.assertIn("seam placement", architecture)
+        self.assertIn("deletion test", architecture)
+        self.assertIn("materially different", architecture)
+        self.assertIn("hard to reverse", architecture)
+
+        traceability = (
+            ROOT / "references" / "requirements-traceability-review.md"
+        ).read_text(encoding="utf-8").lower()
+        self.assertIn("traceability matrix", traceability)
+        for status in ("full", "partial", "missing", "not_applicable"):
+            self.assertIn(status, traceability)
+        self.assertIn("never reconstruct requirements from the implementation", traceability)
+        self.assertIn("invent missing acceptance criteria", traceability)
+        self.assertIn("schema 2.0", traceability)
+
+        conflict = (ROOT / "references" / "merge-conflict-resolution.md").read_text(
+            encoding="utf-8"
+        ).lower()
+        self.assertIn("base", conflict)
+        self.assertIn("ours", conflict)
+        self.assertIn("theirs", conflict)
+        self.assertIn("allowlist", conflict)
+        self.assertIn("abort", conflict)
+        self.assertIn("generated", conflict)
+
+        debugging = (ROOT / "references" / "systematic-debugging.md").read_text(
+            encoding="utf-8"
+        ).lower()
+        self.assertIn("feedback-loop quality", debugging)
+        self.assertIn("original reproduction", debugging)
+        self.assertIn("ranked", debugging)
+        self.assertIn("failure rate", debugging)
+        self.assertIn("bounded trial/time budget", debugging)
+
+        tdd = (ROOT / "references" / "test-driven-development.md").read_text(
+            encoding="utf-8"
+        ).lower()
+        self.assertIn("independent oracle", tdd)
+        self.assertIn("plausible wrong implementation", tdd)
+        self.assertIn("vertical slice", tdd)
+
+        delegated = (ROOT / "references" / "delegated-development.md").read_text(
+            encoding="utf-8"
+        ).lower()
+        self.assertIn("specification gate first", delegated)
+        self.assertIn("engineering-quality gate second", delegated)
+        self.assertIn("a child self-report is not controller proof", delegated)
+        self.assertIn("do not claim completion while", delegated)
+        for resource in (
+            "shared-ledger-delegation.md",
+            "paper-source-target-gap-audits.md",
+            "multi-source-markdown-synthesis.md",
+        ):
+            self.assertIn(resource, delegated)
+
+        api = (ROOT / "references" / "api-interface-design.md").read_text(
+            encoding="utf-8"
+        ).lower()
+        self.assertIn("expand", api)
+        self.assertIn("migrate", api)
+        self.assertIn("contract", api)
+        self.assertIn("old readers", api)
+
+        artifacts = (ROOT / "references" / "workspace-artifact-hygiene.md").read_text(
+            encoding="utf-8"
+        ).lower()
+        self.assertIn("prototype and experiment artifacts", artifacts)
+        self.assertIn("decision question", artifacts)
+        self.assertIn("production readiness", artifacts)
+
+        review = (ROOT / "references" / "requesting-code-review.md").read_text(
+            encoding="utf-8"
+        ).lower()
+        prompt = (
+            ROOT
+            / "templates"
+            / "requesting-code-review"
+            / "independent-reviewer-prompt.md"
+        ).read_text(encoding="utf-8").lower()
+        self.assertIn("requirements-traceability-review.md", review)
+        self.assertIn("do not double-count", review)
+        self.assertIn("requirements traceability", prompt)
+        self.assertIn("do not invent requirements", prompt)
+
+    def test_design_discovery_absorption_contracts(self) -> None:
+        owner_path = "references/intent-and-design-discovery.md"
+        self.assertIn(owner_path, validator.REQUIRED_CORE)
+
+        router = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn(f"]({owner_path})", router)
+        self.assertIn("underdefined intent", router.lower())
+
+        owner = (ROOT / owner_path).read_text(encoding="utf-8").lower()
+        for phrase in (
+            "one question at a time",
+            "materially different approaches",
+            "project convention",
+            "writing-plans",
+            "approval is required only",
+            "visual-design-companion.md",
+            "design-discovery-spec-reviewer-prompt.md",
+        ):
+            self.assertIn(phrase, owner)
+
+        visual = (ROOT / "references" / "visual-design-companion.md").read_text(
+            encoding="utf-8"
+        ).lower()
+        self.assertIn("terminal(background=true", visual)
+        self.assertIn("process", visual)
+        self.assertNotIn("claude code", visual)
+        self.assertNotIn("gemini cli", visual)
+
+        template = ROOT / "templates" / "design-discovery-spec-reviewer-prompt.md"
+        self.assertTrue(template.is_file())
+        for relative in (
+            "scripts/design-discovery/frame-template.html",
+            "scripts/design-discovery/helper.js",
+            "scripts/design-discovery/server.cjs",
+            "scripts/design-discovery/start-server.sh",
+            "scripts/design-discovery/stop-server.sh",
+        ):
+            self.assertTrue((ROOT / relative).is_file(), relative)
+
+        start_script = (
+            ROOT / "scripts" / "design-discovery" / "start-server.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn(".hermes-design-discovery", start_script)
+        self.assertNotIn("CODEX_CI", start_script)
+        self.assertNotIn(".superpowers", start_script)
+
+    def test_primary_development_entry_contract(self) -> None:
+        skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+        skill_lower = skill.lower()
+
+        self.assertIn("routine low-risk same-session edits use the direct path", skill_lower)
+        self.assertIn("all software work obeys the short kernel", skill_lower)
+        self.assertNotIn("default umbrella for all software development work", skill_lower)
+        self.assertNotIn("all software development tasks enter through this skill", skill_lower)
+        for mode in ("m0 direct", "m1 trace", "m2 sparse", "m3 full"):
+            self.assertIn(mode, skill_lower)
+        self.assertIn(
+            "](references/test-driven-development.md)",
+            skill,
+        )
+        self.assertNotIn("external tdd skill", skill_lower)
+        self.assertNotIn("## Hermes compatibility", skill)
+        agent_metadata = (ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
+        self.assertIn("allow_implicit_invocation: true", agent_metadata)
+        self.assertNotIn("live_autonomous_closure_default", agent_metadata)
+        self.assertNotIn("remote_writes_default", agent_metadata)
+        self.assertIn("Live Codex execution and multi-candidate search are default-off", skill)
+        for retired_host_detail in ("skill_view", "delegate_task", "runtime/session-dependent", "status=dispatched"):
+            self.assertNotIn(retired_host_detail, skill_lower)
+
+    def test_decision_fixture_validator_is_total_for_malformed_json(self) -> None:
+        malformed = [
+            {
+                "id": [],
+                "prompt": 7,
+                "mode": [],
+                "max_risk": {},
+                "required_gates": [["focused"]],
+                "forbidden_actions": ["", ""],
+            }
+        ]
+        errors = validator.validate_decision_cases(malformed)
+        self.assertGreaterEqual(len(errors), 6)
+
+    def test_synthetic_clean_tree_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_minimal_skill(root)
+            self.assertEqual([], validator.validate_skill(root))
+
+    def test_registry_mode_does_not_require_flat_reference_catalog_in_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "skill"
+            shutil.copytree(ROOT, root)
+            entry = (root / "SKILL.md").read_text(encoding="utf-8")
+            compact_entry = "\n".join(
+                line
+                for line in entry.splitlines()
+                if "](references/" not in line or "](references/owner-registry.json)" in line
+            ) + "\n"
+            (root / "SKILL.md").write_text(compact_entry, encoding="utf-8")
+            violations = validator.validate_skill(root)
+            self.assertEqual([], violations, validator.compact_violations(violations))
+
+    def test_synthetic_tree_rejects_orphan_and_missing_link(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_minimal_skill(root)
+            (root / "references" / "orphan.md").write_text("# Orphan\n", encoding="utf-8")
+            (root / "references" / "systematic-debugging.md").unlink()
+            codes = {item.code for item in validator.validate_skill(root)}
+            self.assertIn("active.orphan", codes)
+            self.assertIn("active.missing", codes)
+
+    def test_synthetic_tree_resolves_links_from_the_containing_document(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_minimal_skill(root)
+            path = root / "references" / "systematic-debugging.md"
+            path.write_text(
+                "# Debugging\n\n[broken sibling](references/authority-and-scope.md)\n",
+                encoding="utf-8",
+            )
+            violations = validator.validate_skill(root)
+            self.assertTrue(
+                any(item.code == "link.missing" and item.path == "references/systematic-debugging.md" for item in violations),
+                validator.compact_violations(violations),
+            )
+
+    def test_synthetic_tree_rejects_masked_gate_and_foreign_host_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_minimal_skill(root)
+            path = root / "references" / "systematic-debugging.md"
+            path.write_text(
+                "# Debugging\n\nUse $software-quality-workflows.\n\ntest command | tail\n",
+                encoding="utf-8",
+            )
+            codes = {item.code for item in validator.validate_skill(root)}
+            self.assertIn("portability.stale", codes)
+            self.assertIn("gate.masked-exit", codes)
+
+    def test_synthetic_tree_accepts_hermes_native_tool_names(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_minimal_skill(root)
+            path = root / "references" / "systematic-debugging.md"
+            path.write_text(
+                "# Debugging\n\nUse `read_file`, `search_files`, `write_file`, and `session_search`.\n",
+                encoding="utf-8",
+            )
+            violations = validator.validate_skill(root)
+            self.assertFalse(
+                any(item.code == "portability.stale" for item in violations),
+                validator.compact_violations(violations),
+            )
+
+    def test_synthetic_tree_requires_complete_hermes_frontmatter(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_minimal_skill(root)
+            path = root / "SKILL.md"
+            path.write_text(
+                path.read_text(encoding="utf-8").replace("version: 2.0.0\n", ""),
+                encoding="utf-8",
+            )
+            codes = {item.code for item in validator.validate_skill(root)}
+            self.assertIn("entry.frontmatter", codes)
+
+    def test_semantic_version_contract(self) -> None:
+        valid_versions = (
+            "0.0.0",
+            "1.2.3-alpha",
+            "1.2.3-alpha.1",
+            "1.2.3-0.3.7",
+            "1.2.3-x.7.z.92",
+            "1.2.3+001",
+            "1.2.3-alpha+001",
+            "1.2.3-x-y-z.--",
+        )
+        invalid_versions = (
+            "01.2.3",
+            "1.02.3",
+            "1.2.03",
+            "1.2.3-01",
+            "1.2.3-foo..bar",
+            "1.2.3+foo..bar",
+            "1.2.3-",
+            "1.2.3+",
+            "1.2.3-alpha_beta",
+            "١.2.3",
+        )
+        for version in valid_versions:
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                make_minimal_skill(root)
+                path = root / "SKILL.md"
+                text = path.read_text(encoding="utf-8")
+                path.write_text(
+                    text.replace("version: 2.0.0", f"version: {version}", 1),
+                    encoding="utf-8",
+                )
+                violations = validator.validate_skill(root)
+                self.assertFalse(
+                    any(item.code in {"entry.frontmatter", "entry.version"} for item in violations),
+                    validator.compact_violations(violations),
+                )
+        for version in invalid_versions:
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                make_minimal_skill(root)
+                path = root / "SKILL.md"
+                text = path.read_text(encoding="utf-8")
+                path.write_text(
+                    text.replace("version: 2.0.0", f"version: {version}", 1),
+                    encoding="utf-8",
+                )
+                codes = {item.code for item in validator.validate_skill(root)}
+                self.assertTrue({"entry.frontmatter", "entry.version"} & codes)
+
+    def test_synthetic_tree_rejects_malformed_hermes_frontmatter_shapes(self) -> None:
+        mutations = {
+            "malformed_tags_list": (
+                "tags: [development, testing, verification]",
+                "tags: [development,, verification]",
+            ),
+            "scalar_tags": (
+                "tags: [development, testing, verification]",
+                "tags: development",
+            ),
+            "scalar_related_skills": (
+                "related_skills: [writing-plans]",
+                "related_skills: writing-plans",
+            ),
+            "non_mapping_metadata": (
+                "metadata:\n  hermes:",
+                "metadata: invalid\n  hermes:",
+            ),
+            "non_mapping_hermes": (
+                "  hermes:\n    tags:",
+                "  hermes: invalid\n    tags:",
+            ),
+            "empty_tags_list": (
+                "tags: [development, testing, verification]",
+                "tags: []",
+            ),
+            "invalid_related_skill_entry": (
+                "related_skills: [writing-plans]",
+                "related_skills: [writing-plans, bad entry]",
+            ),
+            "missing_top_level_separator_space": (
+                "version: 2.0.0",
+                "version:2.0.0",
+            ),
+            "missing_nested_separator_space": (
+                "tags: [development, testing, verification]",
+                "tags:[development, testing, verification]",
+            ),
+            "plain_scalar_comment": (
+                "author: Hermes Agent",
+                "author: # comment",
+            ),
+            "plain_scalar_sequence_indicator": (
+                "author: Hermes Agent",
+                "author: - item",
+            ),
+            "plain_scalar_mapping_indicator": (
+                "author: Hermes Agent",
+                "author: foo:",
+            ),
+            "malformed_single_quoted_scalar": (
+                "author: Hermes Agent",
+                "author: 'foo'bar'",
+            ),
+            "implicit_boolean_scalar": (
+                "author: Hermes Agent",
+                "author: yes",
+            ),
+            "implicit_boolean_list_entry": (
+                "tags: [development, testing, verification]",
+                "tags: [development, true]",
+            ),
+            "numeric_list_entry": (
+                "tags: [development, testing, verification]",
+                "tags: [development, 123]",
+            ),
+        }
+        for name, (old, new) in mutations.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                make_minimal_skill(root)
+                path = root / "SKILL.md"
+                text = path.read_text(encoding="utf-8")
+                self.assertIn(old, text)
+                path.write_text(text.replace(old, new, 1), encoding="utf-8")
+                codes = {item.code for item in validator.validate_skill(root)}
+                self.assertIn("entry.frontmatter", codes)
+
+    def test_synthetic_tree_accepts_bounded_openai_metadata_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_minimal_skill(root)
+            path = root / "agents" / "openai.yaml"
+            path.parent.mkdir()
+            path.write_text(
+                "interface:\n"
+                "  display_name: Fixture\n"
+                "  short_description: Synthetic agent metadata\n"
+                "policy:\n"
+                "  allow_implicit_invocation: true\n"
+                "  live_autonomous_closure_default: false\n"
+                "  remote_writes_default: false\n",
+                encoding="utf-8",
+            )
+            self.assertEqual([], validator.validate_skill(root))
+
+    def test_active_tree_rejects_legacy_recipe_aggregator(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "skill"
+            shutil.copytree(ROOT, root)
+            path = root / "references" / "version-sensitive-recipes.md"
+            path.write_text("# Retired recipe aggregator\n", encoding="utf-8")
+            codes = {item.code for item in validator.validate_skill(root)}
+            self.assertIn("recipe.compatibility", codes)
+
+    def test_review_result_accepts_valid_envelope(self) -> None:
+        errors = validator.validate_review_result(valid_result(), **valid_context())
+        self.assertEqual([], errors)
+
+    def test_scope_manifest_validator_is_total_for_malformed_json(self) -> None:
+        errors, context = validator.validate_scope_manifest(
+            {
+                "base_revision": [],
+                "head_revision": {},
+                "scope_hash": 3,
+                "paths": [
+                    {"path": [], "status": [], "snapshot_id": {}},
+                    {"path": "dup", "status": "modified", "snapshot_id": "one"},
+                    {"path": "dup", "status": "modified", "snapshot_id": "two"},
+                ],
+            }
+        )
+        self.assertIsNotNone(context)
+        self.assertGreaterEqual(len(errors), 7)
+
+    def test_review_result_rejects_version_1_without_silent_upgrade(self) -> None:
+        result = valid_result()
+        result["schema_version"] = "1.0"
+        errors = validator.validate_review_result(result, **valid_context())
+        self.assertIn(
+            "schema_version must be '2.0'; version 1.0 results require re-review",
+            errors,
+        )
+
+        historical_shape = valid_result()
+        historical_shape["schema_version"] = "1.0"
+        historical_shape.pop("reviewed_scope_hash")
+        for item in historical_shape["coverage"]:
+            item.pop("snapshot_id")
+        historical_errors = validator.validate_review_result(
+            historical_shape, **valid_context()
+        )
+        self.assertIn(
+            "schema_version 1.0 results require re-review against a frozen manifest",
+            historical_errors,
+        )
+
+    def test_review_result_rejects_blocking_pass(self) -> None:
+        result = valid_result()
+        result["findings"][0]["blocking"] = True
+        errors = validator.validate_review_result(result, **valid_context())
+        self.assertIn("blocking finding conflicts with code_review_verdict=pass", errors)
+
+    def test_review_result_rejects_partial_pass_and_ready_without_proof(self) -> None:
+        result = valid_result()
+        result["coverage"][0]["status"] = "not_reviewed"
+        result["verification_status"] = "partial"
+        result["external_approvals"] = "missing"
+        errors = validator.validate_review_result(result, **valid_context())
+        self.assertIn("not_reviewed coverage conflicts with code_review_verdict=pass", errors)
+        self.assertIn("merge_readiness=ready requires verification_status=passed", errors)
+        self.assertIn(
+            "merge_readiness=ready conflicts with missing or unknown external approvals", errors
+        )
+
+    def test_review_result_rejects_stale_revision_and_out_of_scope_finding(self) -> None:
+        manifest = valid_manifest()
+        manifest["paths"][0]["path"] = "src/other.py"
+        errors = validator.validate_review_result(
+            valid_result(),
+            scope_manifest=manifest,
+            current_head="head-3",
+            current_scope_hash="scope-hash-2",
+        )
+        self.assertIn("review result is stale for the current head revision", errors)
+        self.assertIn("findings[0].path is outside the scope allowlist", errors)
+
+    def test_review_result_rejects_false_ready_predicate(self) -> None:
+        result = valid_result()
+        result["code_review_verdict"] = "changes_requested"
+        result["coverage"] = []
+        result["blocking_reasons"] = ["unresolved required decision"]
+        errors = validator.validate_review_result(result, **valid_context())
+        self.assertIn("merge_readiness=ready requires code_review_verdict=pass", errors)
+        self.assertIn("merge_readiness=ready requires no blocking_reasons", errors)
+        self.assertIn("merge_readiness=ready requires non-empty full coverage", errors)
+        self.assertIn("coverage is missing allowlisted paths: ['src/core.py']", errors)
+
+    def test_review_result_is_total_and_rejects_malformed_fields(self) -> None:
+        result = valid_result()
+        result["code_review_verdict"] = []
+        result["reviewed_head_sha"] = 7
+        result["coverage"][0] = {"path": 9, "status": [], "snapshot_id": []}
+        result["blocking_reasons"] = [3, ""]
+        result["findings"][0].update(
+            {
+                "id": 4,
+                "category": "",
+                "line": True,
+                "evidence": 5,
+                "impact": None,
+                "recommended_fix": [],
+                "verification": {},
+                "source_revision": 7,
+            }
+        )
+        errors = validator.validate_review_result(result, **valid_context())
+        expected_fragments = {
+            "code_review_verdict must be one of",
+            "reviewed_head_sha must be a non-empty string",
+            "coverage[0].path must be a non-empty string",
+            "coverage[0].status must be one of",
+            "coverage[0].snapshot_id must be a non-empty string",
+            "blocking_reasons[0] must be a non-empty string",
+            "findings[0].id must be a non-empty string",
+            "findings[0].category must be a non-empty string",
+            "findings[0].line must be null or a positive integer",
+            "findings[0].evidence must be a non-empty string",
+            "findings[0].impact must be a non-empty string",
+            "findings[0].recommended_fix must be a non-empty string",
+            "findings[0].verification must be a non-empty string",
+        }
+        for fragment in expected_fragments:
+            self.assertTrue(any(fragment in error for error in errors), (fragment, errors))
+
+    def test_review_result_enforces_coverage_manifest_and_uniqueness(self) -> None:
+        result = valid_result()
+        result["merge_readiness"] = "blocked"
+        result["coverage"] = [
+            {"path": "src/core.py", "status": "full", "snapshot_id": "sha256:core-2"},
+            {"path": "src/core.py", "status": "full", "snapshot_id": "sha256:core-2"},
+            {"path": "src/outside.py", "status": "sampled", "snapshot_id": "sha256:outside"},
+        ]
+        manifest = valid_manifest()
+        manifest["paths"].append(
+            {"path": "docs/old.md", "status": "deleted", "snapshot_id": "sha256:old-base"}
+        )
+        errors = validator.validate_review_result(
+            result,
+            scope_manifest=manifest,
+            current_head="head-2",
+            current_scope_hash="scope-hash-2",
+        )
+        self.assertIn("duplicate coverage paths: ['src/core.py']", errors)
+        self.assertIn("coverage[2].path is outside the scope allowlist", errors)
+        self.assertIn("coverage is missing allowlisted paths: ['docs/old.md']", errors)
+
+    def test_review_result_requires_frozen_manifest_and_freshness_context(self) -> None:
+        errors = validator.validate_review_result(valid_result())
+        self.assertIn("scope_manifest context is required", errors)
+        self.assertIn("current_head context is required", errors)
+        self.assertIn("current_scope_hash context is required", errors)
+
+    def test_review_result_rejects_reviewer_revision_substitution_and_scope_drift(self) -> None:
+        result = valid_result()
+        result["reviewed_head_sha"] = "head-3"
+        result["reviewed_scope_hash"] = "scope-hash-3"
+        result["coverage"][0]["snapshot_id"] = "sha256:core-3"
+        result["findings"][0]["source_revision"] = "head-3"
+        substituted = validator.validate_review_result(
+            result,
+            scope_manifest=valid_manifest(),
+            current_head="head-3",
+            current_scope_hash="scope-hash-3",
+        )
+        self.assertIn("reviewed_head_sha does not match the frozen scope manifest", substituted)
+        self.assertIn("reviewed_scope_hash does not match the frozen scope manifest", substituted)
+        self.assertIn("coverage[0].snapshot_id does not match the frozen scope manifest", substituted)
+
+        dirty_drift = validator.validate_review_result(
+            valid_result(),
+            scope_manifest=valid_manifest(),
+            current_head="head-2",
+            current_scope_hash="scope-hash-3",
+        )
+        self.assertIn("current scope hash differs from the frozen scope manifest", dirty_drift)
+
+    def test_review_result_cli_requires_context_before_reporting_ok(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "review.json"
+            manifest_path = Path(directory) / "scope.json"
+            path.write_text(json.dumps(valid_result()), encoding="utf-8")
+            manifest_path.write_text(json.dumps(valid_manifest()), encoding="utf-8")
+            missing_context = subprocess.run(
+                [sys.executable, str(VALIDATOR_PATH), "--review-result", str(path)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(1, missing_context.returncode)
+            self.assertIn("scope_manifest context is required", missing_context.stdout)
+            self.assertIn("current_head context is required", missing_context.stdout)
+            self.assertIn("current_scope_hash context is required", missing_context.stdout)
+            self.assertNotIn("OK:", missing_context.stdout)
+
+            complete_context = subprocess.run(
+                [
+                    sys.executable,
+                    str(VALIDATOR_PATH),
+                    "--review-result",
+                    str(path),
+                    "--scope-manifest",
+                    str(manifest_path),
+                    "--current-head",
+                    "head-2",
+                    "--current-scope-hash",
+                    "scope-hash-2",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(0, complete_context.returncode, complete_context.stdout)
+            self.assertIn("OK: review result satisfies schema 2.0", complete_context.stdout)
+
+    def test_long_and_short_failures_preserve_original_return_code(self) -> None:
+        for line_count in (1, 400):
+            script = (
+                "import sys; "
+                f"[print('context line', i) for i in range({line_count})]; "
+                "print('root cause', file=sys.stderr); sys.exit(7)"
+            )
+            completed = subprocess.run(
+                [sys.executable, "-c", script],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            compact_failure = completed.stderr.strip().splitlines()[-1:]
+            self.assertEqual(7, completed.returncode)
+            self.assertEqual(["root cause"], compact_failure)
+
+
+if __name__ == "__main__":
+    unittest.main()

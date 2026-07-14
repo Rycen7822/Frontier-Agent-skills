@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/software-engineering-closure/p5-eval-run.schema.json",
+  "title": "P5 paired shadow run record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "run_id", "eval_case_id", "condition", "cohort_id", "model",
+    "reasoning_effort", "bundle_hash", "controller_hash", "repository_revision",
+    "condition_hash", "fixed_variables_hash", "route_result_ref", "contract_ref", "terminal_ref",
+    "metrics_ref", "hidden_oracle_ref", "human_labels_ref", "closure_selected",
+    "remote_writes", "publication_ceiling", "outcome", "framework_tax", "autonomy"
+  ],
+  "properties": {
+    "schema_version": {"const": "p5-eval-run/1.0"},
+    "run_id": {"type": "string", "pattern": "^RUN-[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"},
+    "eval_case_id": {"type": "string", "pattern": "^EVAL-[0-9]{4,}$"},
+    "condition": {"enum": ["C0", "C1", "C2", "C3", "C4", "C5"]},
+    "cohort_id": {"type": "string", "pattern": "^COHORT-[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"},
+    "model": {"type": "string", "minLength": 1, "maxLength": 128},
+    "reasoning_effort": {"type": "string", "minLength": 1, "maxLength": 128},
+    "bundle_hash": {"$ref": "#/$defs/hash"},
+    "controller_hash": {"$ref": "#/$defs/hash"},
+    "condition_hash": {"$ref": "#/$defs/hash"},
+    "repository_revision": {"type": "string", "minLength": 1, "maxLength": 512},
+    "fixed_variables_hash": {"$ref": "#/$defs/hash"},
+    "route_result_ref": {"$ref": "#/$defs/ref"},
+    "contract_ref": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/ref"}]},
+    "terminal_ref": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/ref"}]},
+    "metrics_ref": {"$ref": "#/$defs/ref"},
+    "hidden_oracle_ref": {"type": "string", "pattern": "^restricted:[A-Za-z0-9][A-Za-z0-9._/-]{1,255}$"},
+    "human_labels_ref": {"type": "string", "pattern": "^restricted:[A-Za-z0-9][A-Za-z0-9._/-]{1,255}$"},
+    "closure_selected": {"type": "boolean"},
+    "remote_writes": {"const": false},
+    "publication_ceiling": {"enum": ["none", "local_patch"]},
+    "outcome": {"$ref": "#/$defs/outcome"},
+    "framework_tax": {"$ref": "#/$defs/framework_tax"},
+    "autonomy": {"$ref": "#/$defs/autonomy"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"closure_selected": {"const": true}}, "required": ["closure_selected"]},
+      "then": {"properties": {"contract_ref": {"$ref": "#/$defs/ref"}}},
+      "else": {"properties": {"contract_ref": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"condition": {"enum": ["C0", "C1", "C2"]}}, "required": ["condition"]},
+      "then": {"properties": {"closure_selected": {"const": false}}}
+    },
+    {
+      "if": {"properties": {"condition": {"const": "C4"}}, "required": ["condition"]},
+      "then": {"properties": {"closure_selected": {"const": true}}}
+    }
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "ref": {"type": "string", "pattern": "^(artifact|fixture|restricted):[A-Za-z0-9][A-Za-z0-9._/-]{1,255}$"},
+    "nullable_boolean": {"type": ["boolean", "null"]},
+    "nonnegative_integer": {"type": "integer", "minimum": 0},
+    "nonnegative_number": {"type": "number", "minimum": 0},
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hard_constraint_closure", "hidden_defect_escape", "intent_fidelity",
+        "scope_violation_count", "protected_surface_violation_count",
+        "authority_violation_count", "public_contract_violation_count",
+        "verifier_escape", "severe_defect_escape",
+        "terminal_correct", "certificate_sufficient"
+      ],
+      "properties": {
+        "hard_constraint_closure": {"$ref": "#/$defs/nullable_boolean"},
+        "hidden_defect_escape": {"type": "boolean"},
+        "intent_fidelity": {"type": "number", "minimum": 0, "maximum": 1},
+        "scope_violation_count": {"$ref": "#/$defs/nonnegative_integer"},
+        "protected_surface_violation_count": {"$ref": "#/$defs/nonnegative_integer"},
+        "authority_violation_count": {"$ref": "#/$defs/nonnegative_integer"},
+        "public_contract_violation_count": {"$ref": "#/$defs/nonnegative_integer"},
+        "verifier_escape": {"type": "boolean"},
+        "severe_defect_escape": {"type": "boolean"},
+        "terminal_correct": {"$ref": "#/$defs/nullable_boolean"},
+        "certificate_sufficient": {"$ref": "#/$defs/nullable_boolean"}
+      }
+    },
+    "framework_tax": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_tokens", "output_reasoning_tokens", "model_calls", "subagent_calls",
+        "raw_tool_calls", "verifier_calls", "critical_path_depth", "wall_time_seconds",
+        "compute_cost", "context_capsule_bytes", "full_reference_bytes",
+        "controller_overhead_seconds"
+      ],
+      "properties": {
+        "input_tokens": {"$ref": "#/$defs/nonnegative_integer"},
+        "output_reasoning_tokens": {"$ref": "#/$defs/nonnegative_integer"},
+        "model_calls": {"$ref": "#/$defs/nonnegative_integer"},
+        "subagent_calls": {"$ref": "#/$defs/nonnegative_integer"},
+        "raw_tool_calls": {"$ref": "#/$defs/nonnegative_integer"},
+        "verifier_calls": {"$ref": "#/$defs/nonnegative_integer"},
+        "critical_path_depth": {"$ref": "#/$defs/nonnegative_integer"},
+        "wall_time_seconds": {"$ref": "#/$defs/nonnegative_number"},
+        "compute_cost": {"$ref": "#/$defs/nonnegative_number"},
+        "context_capsule_bytes": {"$ref": "#/$defs/nonnegative_integer"},
+        "full_reference_bytes": {"$ref": "#/$defs/nonnegative_integer"},
+        "controller_overhead_seconds": {"$ref": "#/$defs/nonnegative_number"}
+      }
+    },
+    "autonomy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "midrun_user_questions", "safe_default_count", "incorrect_safe_default_count",
+        "blocked_action_violations", "unattended_terminal", "crash_resume_succeeded",
+        "manual_controller_repair"
+      ],
+      "properties": {
+        "midrun_user_questions": {"$ref": "#/$defs/nonnegative_integer"},
+        "safe_default_count": {"$ref": "#/$defs/nonnegative_integer"},
+        "incorrect_safe_default_count": {"$ref": "#/$defs/nonnegative_integer"},
+        "blocked_action_violations": {"$ref": "#/$defs/nonnegative_integer"},
+        "unattended_terminal": {"type": "boolean"},
+        "crash_resume_succeeded": {"$ref": "#/$defs/nullable_boolean"},
+        "manual_controller_repair": {"type": "boolean"}
+      }
+    }
+  }
+}

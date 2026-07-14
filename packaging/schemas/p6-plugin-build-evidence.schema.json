@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/software-engineering-closure/p6-plugin-build-evidence.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "bundle_version", "skill_versions", "source_tree_hash",
+    "source_file_count", "plugin_tree_hash", "plugin_file_count", "plugin_name",
+    "output_class", "release_gate_used", "p5_report_content_hash", "p5_decision",
+    "files", "evidence_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "p6-plugin-build-evidence/1.0"},
+    "bundle_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "skill_versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["writing-plans", "software-quality-workflows"],
+      "properties": {
+        "writing-plans": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "software-quality-workflows": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}
+      }
+    },
+    "source_tree_hash": {"$ref": "#/$defs/hash"},
+    "source_file_count": {"type": "integer", "minimum": 1},
+    "plugin_tree_hash": {"$ref": "#/$defs/hash"},
+    "plugin_file_count": {"type": "integer", "minimum": 3},
+    "plugin_name": {"const": "software-engineering-closure-plugin"},
+    "output_class": {"enum": ["staging", "release"]},
+    "release_gate_used": {"type": "boolean"},
+    "p5_report_content_hash": {"$ref": "#/$defs/hash"},
+    "p5_decision": {"enum": ["remain_shadow", "eligible_for_p6_canary"]},
+    "files": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 10000,
+      "items": {"$ref": "#/$defs/file"}
+    },
+    "evidence_hash": {"$ref": "#/$defs/hash"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"output_class": {"const": "release"}}, "required": ["output_class"]},
+      "then": {
+        "properties": {
+          "release_gate_used": {"const": true},
+          "p5_decision": {"const": "eligible_for_p6_canary"}
+        }
+      },
+      "else": {"properties": {"release_gate_used": {"const": false}}}
+    }
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "content_hash", "size", "mode"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"},
+        "content_hash": {"$ref": "#/$defs/hash"},
+        "size": {"type": "integer", "minimum": 0},
+        "mode": {"enum": ["0644", "0755"]}
+      }
+    }
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/software-engineering-closure/p5-control-evidence.schema.json",
+  "title": "P5 ablation and reference evaluation evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "cohort_id", "bundle_hash", "controller_hash", "ablations", "reference_evaluations"],
+  "properties": {
+    "schema_version": {"const": "p5-control-evidence/1.0"},
+    "cohort_id": {"type": "string", "pattern": "^COHORT-[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"},
+    "bundle_hash": {"$ref": "#/$defs/hash"},
+    "controller_hash": {"$ref": "#/$defs/hash"},
+    "ablations": {
+      "type": "array",
+      "minItems": 11,
+      "maxItems": 11,
+      "items": {"$ref": "#/$defs/ablation"}
+    },
+    "reference_evaluations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {"$ref": "#/$defs/reference_evaluation"}
+    }
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "artifact_refs": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^artifact:[A-Za-z0-9][A-Za-z0-9._/-]{1,255}$"}
+    },
+    "status": {"enum": ["passed", "failed", "not_run", "not_applicable"]},
+    "ablation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "evidence_refs"],
+      "properties": {
+        "id": {
+          "enum": [
+            "no_closure_contract", "worker_mutable_contract", "no_verifier_qualification",
+            "self_review_signoff", "load_all_references", "always_on_full_plan",
+            "no_context_projection", "no_field_sensitive_invalidation",
+            "no_terminal_certificates", "single_vs_bounded_portfolio", "all_review_rubrics"
+          ]
+        },
+        "status": {"enum": ["passed", "failed", "not_run"]},
+        "evidence_refs": {"$ref": "#/$defs/artifact_refs"}
+      }
+    },
+    "reference_evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner_id", "authority", "decision_case_status", "precision_case_status",
+        "exclusion_case_status", "ablation_status", "evidence_refs"
+      ],
+      "properties": {
+        "owner_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,127}$"},
+        "authority": {"enum": ["normative_owner", "companion"]},
+        "decision_case_status": {"$ref": "#/$defs/status"},
+        "precision_case_status": {"$ref": "#/$defs/status"},
+        "exclusion_case_status": {"$ref": "#/$defs/status"},
+        "ablation_status": {"$ref": "#/$defs/status"},
+        "evidence_refs": {"$ref": "#/$defs/artifact_refs"}
+      }
+    }
+  }
+}

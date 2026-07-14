@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/software-engineering-closure/p5-eval-corpus.schema.json",
+  "title": "P5 shadow evaluation corpus",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "corpus_id", "cohort_id", "model", "reasoning_effort",
+    "bundle_hash", "controller_hash", "activation_level", "multi_candidate_enabled",
+    "target_counts", "cases"
+  ],
+  "properties": {
+    "schema_version": {"const": "p5-eval-corpus/1.0"},
+    "corpus_id": {"type": "string", "pattern": "^CORPUS-[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"},
+    "cohort_id": {"type": "string", "pattern": "^COHORT-[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"},
+    "model": {"type": "string", "minLength": 1, "maxLength": 128},
+    "reasoning_effort": {"type": "string", "minLength": 1, "maxLength": 128},
+    "bundle_hash": {"$ref": "#/$defs/hash"},
+    "controller_hash": {"$ref": "#/$defs/hash"},
+    "activation_level": {"const": "shadow"},
+    "multi_candidate_enabled": {"type": "boolean"},
+    "target_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["simple", "medium", "long", "should_not_close"],
+      "properties": {
+        "simple": {"type": "integer", "minimum": 50},
+        "medium": {"type": "integer", "minimum": 50},
+        "long": {"type": "integer", "minimum": 30},
+        "should_not_close": {"type": "integer", "minimum": 20}
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "ref": {"type": "string", "pattern": "^(artifact|fixture|restricted):[A-Za-z0-9][A-Za-z0-9._/-]{1,255}$"},
+    "labels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent_determinacy", "machine_observability", "verifier_separability",
+        "failure_locality", "side_effect_risk", "public_contract_surface",
+        "state_coupling", "verification_cost", "strategy_ambiguity",
+        "resume_value", "parallelism_value"
+      ],
+      "properties": {
+        "intent_determinacy": {"enum": ["determinate", "low_risk_defaults", "underdetermined"]},
+        "machine_observability": {"enum": ["high", "partial", "none"]},
+        "verifier_separability": {"enum": ["separable", "partially_separable", "not_separable"]},
+        "failure_locality": {"enum": ["local", "mixed", "global", "unknown"]},
+        "side_effect_risk": {"enum": ["bounded", "external", "privileged", "irreversible"]},
+        "public_contract_surface": {"enum": ["none", "internal", "public"]},
+        "state_coupling": {"enum": ["low", "medium", "high"]},
+        "verification_cost": {"enum": ["low", "medium", "high", "external_dominated"]},
+        "strategy_ambiguity": {"enum": ["single_family", "multiple_families", "unknown"]},
+        "resume_value": {"enum": ["low", "medium", "high"]},
+        "parallelism_value": {"enum": ["low", "evidence_only", "independent_writes", "portfolio"]}
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eval_case_id", "title", "family", "stratum", "provenance", "request_ref",
+        "repository_ref", "repository_revision", "labels", "should_close",
+        "portfolio_eligible", "hidden_oracle_ref", "conditions"
+      ],
+      "properties": {
+        "eval_case_id": {"type": "string", "pattern": "^EVAL-[0-9]{4,}$"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 512},
+        "family": {
+          "enum": [
+            "deterministic_bugfix", "unknown_reproducible_bug", "behavior_preserving_refactor",
+            "public_api_migration", "dependency_runtime_upgrade", "performance_with_parity",
+            "security_boundary", "browser_installed_runtime", "flaky_concurrency_fault",
+            "ci_build_release_evidence", "multi_module_feature", "underdetermined_product",
+            "subjective_no_oracle", "external_authority_blocked", "verifier_hacking_trap",
+            "source_drift_dirty_work", "slow_external_job", "upfront_plan_anchoring"
+          ]
+        },
+        "stratum": {"enum": ["simple", "medium", "long", "should_not_close"]},
+        "provenance": {"enum": ["historical", "synthetic", "safety_trap"]},
+        "request_ref": {"$ref": "#/$defs/ref"},
+        "repository_ref": {"$ref": "#/$defs/ref"},
+        "repository_revision": {"type": "string", "minLength": 1, "maxLength": 512},
+        "labels": {"$ref": "#/$defs/labels"},
+        "should_close": {"type": "boolean"},
+        "portfolio_eligible": {"type": "boolean"},
+        "hidden_oracle_ref": {"type": "string", "pattern": "^restricted:[A-Za-z0-9][A-Za-z0-9._/-]{1,255}$"},
+        "conditions": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": {"enum": ["C0", "C1", "C2", "C3", "C4", "C5"]},
+          "allOf": [
+            {"contains": {"const": "C0"}, "minContains": 1, "maxContains": 1},
+            {"contains": {"const": "C1"}, "minContains": 1, "maxContains": 1},
+            {"contains": {"const": "C2"}, "minContains": 1, "maxContains": 1},
+            {"contains": {"const": "C3"}, "minContains": 1, "maxContains": 1},
+            {"contains": {"const": "C4"}, "minContains": 1, "maxContains": 1}
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"provenance": {"const": "historical"}}, "required": ["provenance"]},
+          "then": {
+            "properties": {
+              "request_ref": {"type": "string", "pattern": "^restricted:[A-Za-z0-9][A-Za-z0-9._/-]{1,255}$"},
+              "repository_ref": {"type": "string", "pattern": "^restricted:[A-Za-z0-9][A-Za-z0-9._/-]{1,255}$"}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

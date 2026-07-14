@@ -1,0 +1,98 @@
+# Frontier Agent Skills
+
+This repository is the development source of truth for the `writing-plans` and `software-quality-workflows` Hermes skills. The copies installed under `$HERMES_HOME/skills/` are separate deployment directories, not symlinks: editing this repository does not change an active Hermes installation until an operator explicitly synchronizes the validated skill directories and starts a fresh session or resets the current one.
+
+The repository also owns the deterministic validation, evaluation, archive, and non-release plugin-readiness tooling for the two-skill closure bundle. The archive root prefix remains `software-engineering-closure-bundle` for compatibility with the existing artifact schema; the Git repository name does not redefine that package contract.
+
+## Closure bundle
+
+Candidate changes, intentional compatibility removals, migration commands, and the current shadow blockers are recorded in [RELEASE_NOTES.md](RELEASE_NOTES.md).
+
+This bundle coordinates two independent skills without adding a third policy owner:
+
+- `writing-plans` owns intended design, the frozen Closure Contract, and plan handoff.
+- `software-quality-workflows` owns actual execution, verification, controller transitions, sign-off, and terminal certificates.
+
+Routine low-risk work remains on the Direct path. Autonomous closure is an explicitly admitted M2/M3 execution policy and never expands user authority or publication rights.
+
+## Validation
+
+Run the three standalone profiles from this directory:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s writing-plans/tests -p 'test_*.py' -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_*.py' -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+Extended long-document integration is optional. Set `LONG_DOCUMENT_SKILL_ROOT` to an installed skill root before running the same commands; without it, extended-only cases skip.
+
+Build deterministic source archives from a clean allowlisted staging copy, never by recursively zipping the development directory:
+
+```bash
+scripts/build_source_archive.py \
+  --source-root . \
+  --layout bundle \
+  --output ../software-engineering-closure-bundle.zip \
+  --evidence-output ../software-engineering-closure-bundle.zip.evidence.json
+
+scripts/build_source_archive.py \
+  --source-root . \
+  --layout skills_only \
+  --output ../hermes-writing-plans-and-software-quality-workflows.zip \
+  --evidence-output ../hermes-writing-plans-and-software-quality-workflows.zip.evidence.json
+```
+
+Both layouts normalize ZIP timestamps and modes, reject symlinks/source drift/no-overwrite conflicts, exclude generated cache/runtime paths, and emit a per-file hash inventory. `skills_only` contains exactly the two top-level skill directories. Archive evidence deliberately records `source_revision_verified=false`; a reproducible allowlisted snapshot is not a signed Git revision.
+
+The plugin builder creates an isolated staging tree only. It does not install, activate, publish, merge, release, or deploy anything.
+
+## Non-release plugin readiness smoke
+
+Use an absent task-owned staging path; the builder and evidence outputs are no-overwrite. This sequence builds and statically checks the thin plugin without entering `dist/`:
+
+```bash
+scripts/build_codex_plugin.py \
+  --source-root . \
+  --output ../tmp/p6-staging/software-engineering-closure-plugin \
+  --evidence-output ../tmp/p6-staging/build-evidence.json
+
+scripts/smoke_codex_plugin.py \
+  --plugin-root ../tmp/p6-staging/software-engineering-closure-plugin \
+  --build-evidence ../tmp/p6-staging/build-evidence.json \
+  --output ../tmp/p6-staging/static-smoke.json
+```
+
+For the optional real CLI install/remove smoke, start from an absent `../tmp/p6-cli-marketplace` and use the installed `plugin-creator` helper to create the required repo-local layout. Replace only the task-owned scaffold with the already hashed staging tree, then run the smoke:
+
+```bash
+MARKETPLACE_ROOT=../tmp/p6-cli-marketplace
+python3 "$HOME/.codex/skills/.system/plugin-creator/scripts/create_basic_plugin.py" \
+  software-engineering-closure-plugin \
+  --path "$MARKETPLACE_ROOT/plugins" \
+  --with-skills \
+  --with-marketplace \
+  --marketplace-path "$MARKETPLACE_ROOT/.agents/plugins/marketplace.json" \
+  --marketplace-name closure-shadow-local \
+  --install-policy AVAILABLE
+rm -rf "$MARKETPLACE_ROOT/plugins/software-engineering-closure-plugin"
+cp -a ../tmp/p6-staging/software-engineering-closure-plugin \
+  "$MARKETPLACE_ROOT/plugins/software-engineering-closure-plugin"
+
+scripts/smoke_codex_cli_install.py \
+  --plugin-root "$MARKETPLACE_ROOT/plugins/software-engineering-closure-plugin" \
+  --build-evidence ../tmp/p6-staging/build-evidence.json \
+  --static-smoke ../tmp/p6-staging/static-smoke.json \
+  --marketplace-root "$MARKETPLACE_ROOT" \
+  --work-root ../tmp \
+  --plugin-validator "$HOME/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py" \
+  --output ../tmp/p6-staging/codex-cli-smoke.json
+```
+
+The CLI smoke creates a temporary HOME/CODEX_HOME/XDG tree under `--work-root`, removes credential-bearing environment variables, performs local marketplace add/list/install/list/remove/list/marketplace-remove, verifies the installed cache byte-for-byte, and deletes the isolated HOME. It never calls `codex exec`, invokes a model, or writes remotely. The current report must mark explicit skill invocation and implicit routing as `not_run_gate_blocked`: P4 still lacks a successful live-output canary, P5 remains shadow without a real cohort, and this non-release staging build is not a verified clean signed revision. Successful installation is not release or canary evidence.
+
+## Activation and evaluation
+
+The checked-in activation level is `shadow`. Live autonomous closure, multi-candidate search, and remote writes are false in `bundle-manifest.json`. The P5 evaluator and honest seed corpus are documented in [evaluation/README.md](evaluation/README.md); the current report is `remain_shadow` because there are no live paired runs, no historical cohort, and the 50/50/30/20 sample minimums are not met.
+
+A successful synthetic test of the evaluator proves only that its gates work. It is not P5 evidence. Only a schema-valid real cohort bound to the current bundle/controller may produce `eligible_for_p6_canary`, whose maximum next level is explicit-only. The builder must continue to reject `dist/` release output without separate passed release evidence.

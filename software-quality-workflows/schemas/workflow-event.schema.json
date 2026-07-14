@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hermes.local/sqw/workflow-event-1.1.schema.json",
+  "title": "SQW Workflow Event 1.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "sequence", "timestamp", "actor", "type", "payload"],
+  "properties": {
+    "schema_version": {"const": "1.1"},
+    "event_id": {"type": "string", "pattern": "^evt-[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
+    "workflow_id": {"type": "string", "pattern": "^wf-[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "actor": {"$ref": "#/$defs/actor"},
+    "type": {"enum": ["workflow_opened", "route_selected", "reference_loaded", "node_refined", "node_started", "node_output_committed", "node_completed", "node_failed", "artifact_observed", "fact_invalidated", "dependency_invalidated", "repair_scoped", "retry_approved", "approval_granted", "approval_revoked", "lock_acquired", "lock_released", "source_drift_detected", "review_submitted", "plan_change_proposed", "closure_proposed", "workflow_closed", "workflow_resumed", "closure_admission_started", "closure_admission_completed", "contract_compiled", "contract_frozen", "contract_superseded", "baseline_started", "baseline_qualified", "baseline_rejected", "verifier_bundle_frozen", "verifier_qualified", "verifier_rejected", "strategy_family_registered", "candidate_created", "candidate_evaluation_started", "candidate_evaluated", "candidate_pruned", "candidate_promoted", "counterexample_observed", "counterexample_minimized", "budget_consumed", "signoff_started", "signoff_completed", "terminal_certificate_emitted", "publication_handoff_requested", "publication_handoff_completed"]},
+    "state_version": {"type": "integer", "minimum": 1},
+    "node_id": {"type": "string", "pattern": "^N-"},
+    "run_id": {"type": "string", "pattern": "^RUN-"},
+    "source_revision": {"type": "string", "minLength": 1, "maxLength": 256},
+    "previous_event_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "source_state_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "result_state_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "event_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "payload": {"$ref": "#/$defs/payload"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"type": {"enum": ["closure_admission_started", "closure_admission_completed"]}}, "required": ["type"]},
+      "then": {"not": {"anyOf": [{"required": ["workflow_id"]}, {"required": ["state_version"]}]}},
+      "else": {"required": ["workflow_id", "state_version"]}
+    }
+  ],
+  "$defs": {
+    "string_array": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 1024}},
+    "actor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {"enum": ["controller", "worker", "reviewer", "tool", "system"]},
+        "id": {"type": "string", "minLength": 1, "maxLength": 256}
+      }
+    },
+    "changed_field": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ref", "fields"],
+      "properties": {
+        "ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "fields": {"$ref": "#/$defs/string_array"}
+      }
+    },
+    "artifact_binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["artifact_ref", "content_hash"],
+      "properties": {
+        "artifact_ref": {"type": "string", "pattern": "^artifact:[a-z][a-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+        "content_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "payload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["classification", "summary", "artifact_refs", "changed_refs", "side_effects_observed"],
+      "properties": {
+        "classification": {"enum": ["public", "internal", "sensitive_pointer"]},
+        "summary": {"type": "string", "minLength": 1, "maxLength": 2048},
+        "artifact_refs": {"$ref": "#/$defs/string_array"},
+        "artifact_bindings": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/artifact_binding"}},
+        "changed_refs": {"$ref": "#/$defs/string_array"},
+        "changed_fields": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/changed_field"}},
+        "side_effects_observed": {"$ref": "#/$defs/string_array"},
+        "failure_ref": {"type": "string", "pattern": "^ERR-"},
+        "approval_ref": {"type": "string", "pattern": "^AP-"},
+        "resource": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "lease_expires_at": {"type": "string", "format": "date-time"},
+        "plan_change_ref": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "budget_delta": {
+          "type": "object", "additionalProperties": false,
+          "required": ["iterations", "candidate_evaluations", "review_rounds"],
+          "properties": {
+            "iterations": {"type": "integer", "minimum": 0},
+            "candidate_evaluations": {"type": "integer", "minimum": 0},
+            "review_rounds": {"type": "integer", "minimum": 0}
+          }
+        },
+        "next_phase": {"enum": ["SEARCHING", "PLANNING"]}
+      }
+    }
+  }
+}
