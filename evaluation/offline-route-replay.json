@@ -1,0 +1,349 @@
+{
+  "baseline": {
+    "identity": "frontier-engineering/4.0.0+3.0.0",
+    "revision": "262090d40051afd6a5fc5d1f8be1606bb62f97c4",
+    "skill_versions": {
+      "software-quality-workflows": "4.0.0",
+      "writing-plans": "3.0.0"
+    }
+  },
+  "case_count": 25,
+  "decision": "deterministic_route_ready",
+  "gates": {
+    "curated_primary_card_accuracy": true,
+    "m0_median_active_reference_bytes": true,
+    "m0_p95_active_reference_bytes": true,
+    "mandatory_context_truncation": true,
+    "reference_byte_reduction": true,
+    "unnecessary_card_load_rate": true
+  },
+  "limitations": [
+    "hidden route labels are not present in this curated replay",
+    "natural model routing and outcome quality require real Sol max runs",
+    "route-fact replay does not satisfy paired task or canary publication gates"
+  ],
+  "metrics": {
+    "baseline_median_reference_bytes": 18924,
+    "curated_primary_card_accuracy": 1.0,
+    "hidden_primary_card_accuracy": null,
+    "m0_median_active_reference_bytes": 3404,
+    "m0_p95_active_reference_bytes": 4044,
+    "mandatory_context_truncation_count": 0,
+    "median_active_reference_bytes": 2226,
+    "median_reference_byte_reduction": 0.8823715916296766,
+    "p95_active_reference_bytes": 4044,
+    "unnecessary_card_load_rate": 0.0
+  },
+  "report_hash": "sha256:4b897126d484ab91e2122ede37cda2f32ee27fa13956db77519fbf229065ae6a",
+  "rows": [
+    {
+      "baseline_case_id": "three_disjoint_read_audits",
+      "baseline_reference_bytes": 29556,
+      "mandatory_truncation_count": 0,
+      "pair_id": "sqw-delegated-read-audit",
+      "primary_card_exact": true,
+      "skill_id": "software-quality-workflows",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "delegated_read_audit",
+      "vnext_mode": "M2_SPARSE",
+      "vnext_reference_bytes": 3234
+    },
+    {
+      "baseline_case_id": "repeated_runtime_stability",
+      "baseline_reference_bytes": 46191,
+      "mandatory_truncation_count": 0,
+      "pair_id": "sqw-durable-change",
+      "primary_card_exact": true,
+      "skill_id": "software-quality-workflows",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "durable_change",
+      "vnext_mode": "M2_SPARSE",
+      "vnext_reference_bytes": 4044
+    },
+    {
+      "baseline_case_id": "closure_eligible_local",
+      "baseline_reference_bytes": 34292,
+      "mandatory_truncation_count": 0,
+      "pair_id": "sqw-eligible-admission-enters-wp-compile",
+      "primary_card_exact": true,
+      "skill_id": "software-quality-workflows",
+      "vnext_active_cards": 0,
+      "vnext_case_id": "eligible_admission_enters_wp_compile",
+      "vnext_mode": "None",
+      "vnext_reference_bytes": 0
+    },
+    {
+      "baseline_case_id": "explicit_durable_plan",
+      "baseline_reference_bytes": 0,
+      "mandatory_truncation_count": 0,
+      "pair_id": "sqw-explicit-plan-handoff",
+      "primary_card_exact": true,
+      "skill_id": "software-quality-workflows",
+      "vnext_active_cards": 0,
+      "vnext_case_id": "explicit_plan_handoff",
+      "vnext_mode": "None",
+      "vnext_reference_bytes": 0
+    },
+    {
+      "baseline_case_id": "known_local_bug",
+      "baseline_reference_bytes": 18924,
+      "mandatory_truncation_count": 0,
+      "pair_id": "sqw-known-local-bug",
+      "primary_card_exact": true,
+      "skill_id": "software-quality-workflows",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "known_local_bug",
+      "vnext_mode": "M0_DIRECT",
+      "vnext_reference_bytes": 4044
+    },
+    {
+      "baseline_case_id": "public_api_change",
+      "baseline_reference_bytes": 29852,
+      "mandatory_truncation_count": 0,
+      "pair_id": "sqw-known-public-contract-surface",
+      "primary_card_exact": true,
+      "skill_id": "software-quality-workflows",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "known_public_contract_surface",
+      "vnext_mode": "M0_DIRECT",
+      "vnext_reference_bytes": 4044
+    },
+    {
+      "baseline_case_id": "read_only_architecture_audit",
+      "baseline_reference_bytes": 3958,
+      "mandatory_truncation_count": 0,
+      "pair_id": "sqw-read-only-audit",
+      "primary_card_exact": true,
+      "skill_id": "software-quality-workflows",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "read_only_audit",
+      "vnext_mode": "M0_DIRECT",
+      "vnext_reference_bytes": 3234
+    },
+    {
+      "baseline_case_id": "destructive_repository_recovery",
+      "baseline_reference_bytes": 21201,
+      "mandatory_truncation_count": 0,
+      "pair_id": "sqw-repository-recovery",
+      "primary_card_exact": true,
+      "skill_id": "software-quality-workflows",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "repository_recovery",
+      "vnext_mode": "M0_DIRECT",
+      "vnext_reference_bytes": 3404
+    },
+    {
+      "baseline_case_id": "routine_docs_typo",
+      "baseline_reference_bytes": 18924,
+      "mandatory_truncation_count": 0,
+      "pair_id": "sqw-routine-local-change",
+      "primary_card_exact": true,
+      "skill_id": "software-quality-workflows",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "routine_local_change",
+      "vnext_mode": "M0_DIRECT",
+      "vnext_reference_bytes": 4044
+    },
+    {
+      "baseline_case_id": "shadow_trace_observation",
+      "baseline_reference_bytes": 18924,
+      "mandatory_truncation_count": 0,
+      "pair_id": "sqw-trace-only-change",
+      "primary_card_exact": true,
+      "skill_id": "software-quality-workflows",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "trace_only_change",
+      "vnext_mode": "M1_TRACE",
+      "vnext_reference_bytes": 4044
+    },
+    {
+      "baseline_case_id": "underdefined_feature",
+      "baseline_reference_bytes": 21472,
+      "mandatory_truncation_count": 0,
+      "pair_id": "sqw-underdefined-intent",
+      "primary_card_exact": true,
+      "skill_id": "software-quality-workflows",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "underdefined_intent",
+      "vnext_mode": "M0_DIRECT",
+      "vnext_reference_bytes": 2711
+    },
+    {
+      "baseline_case_id": "unknown_failure",
+      "baseline_reference_bytes": 18100,
+      "mandatory_truncation_count": 0,
+      "pair_id": "sqw-unknown-failure",
+      "primary_card_exact": true,
+      "skill_id": "software-quality-workflows",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "unknown_failure",
+      "vnext_mode": "M0_DIRECT",
+      "vnext_reference_bytes": 3012
+    },
+    {
+      "baseline_case_id": "admission_terminal_is_terminal",
+      "baseline_reference_bytes": 0,
+      "mandatory_truncation_count": 0,
+      "pair_id": "wp-admission-terminal",
+      "primary_card_exact": true,
+      "skill_id": "writing-plans",
+      "vnext_active_cards": 0,
+      "vnext_case_id": "admission_terminal",
+      "vnext_mode": "terminal",
+      "vnext_reference_bytes": 0
+    },
+    {
+      "baseline_case_id": "closure_eligible_local_reversible",
+      "baseline_reference_bytes": 24500,
+      "mandatory_truncation_count": 0,
+      "pair_id": "wp-closure-compile",
+      "primary_card_exact": true,
+      "skill_id": "writing-plans",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "closure_compile",
+      "vnext_mode": "program",
+      "vnext_reference_bytes": 3899
+    },
+    {
+      "baseline_case_id": "closure_ineligible_falls_back_direct",
+      "baseline_reference_bytes": 0,
+      "mandatory_truncation_count": 0,
+      "pair_id": "wp-closure-direct-fallback",
+      "primary_card_exact": true,
+      "skill_id": "writing-plans",
+      "vnext_active_cards": 0,
+      "vnext_case_id": "closure_direct_fallback",
+      "vnext_mode": "direct",
+      "vnext_reference_bytes": 0
+    },
+    {
+      "baseline_case_id": "one_strategy_three_write_slices",
+      "baseline_reference_bytes": 7188,
+      "mandatory_truncation_count": 0,
+      "pair_id": "wp-cross-context-multi-slice-handoff",
+      "primary_card_exact": true,
+      "skill_id": "writing-plans",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "cross_context_multi_slice_handoff",
+      "vnext_mode": "handoff",
+      "vnext_reference_bytes": 2032
+    },
+    {
+      "baseline_case_id": "disposable_spike_before_freeze",
+      "baseline_reference_bytes": 3301,
+      "mandatory_truncation_count": 0,
+      "pair_id": "wp-disposable-spike",
+      "primary_card_exact": true,
+      "skill_id": "writing-plans",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "disposable_spike",
+      "vnext_mode": "spike",
+      "vnext_reference_bytes": 2354
+    },
+    {
+      "baseline_case_id": "public_migration_resume_program",
+      "baseline_reference_bytes": 25904,
+      "mandatory_truncation_count": 0,
+      "pair_id": "wp-durable-handoff",
+      "primary_card_exact": true,
+      "skill_id": "writing-plans",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "durable_handoff",
+      "vnext_mode": "handoff",
+      "vnext_reference_bytes": 2032
+    },
+    {
+      "baseline_case_id": "explicit_local_plan_brief",
+      "baseline_reference_bytes": 2935,
+      "mandatory_truncation_count": 0,
+      "pair_id": "wp-explicit-brief",
+      "primary_card_exact": true,
+      "skill_id": "writing-plans",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "explicit_brief",
+      "vnext_mode": "brief",
+      "vnext_reference_bytes": 1687
+    },
+    {
+      "baseline_case_id": "long_corpus_external_owner",
+      "baseline_reference_bytes": 0,
+      "mandatory_truncation_count": 0,
+      "pair_id": "wp-long-corpus-handoff",
+      "primary_card_exact": true,
+      "skill_id": "writing-plans",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "long_corpus_handoff",
+      "vnext_mode": "long-document",
+      "vnext_reference_bytes": 2226
+    },
+    {
+      "baseline_case_id": "material_ambiguity_to_intent_owner",
+      "baseline_reference_bytes": 10790,
+      "mandatory_truncation_count": 0,
+      "pair_id": "wp-material-intent-gap",
+      "primary_card_exact": true,
+      "skill_id": "writing-plans",
+      "vnext_active_cards": 0,
+      "vnext_case_id": "material_intent_gap",
+      "vnext_mode": "sqw-intent",
+      "vnext_reference_bytes": 0
+    },
+    {
+      "baseline_case_id": "closure_eligible_migration",
+      "baseline_reference_bytes": 28832,
+      "mandatory_truncation_count": 0,
+      "pair_id": "wp-migration-program",
+      "primary_card_exact": true,
+      "skill_id": "writing-plans",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "migration_program",
+      "vnext_mode": "program",
+      "vnext_reference_bytes": 2097
+    },
+    {
+      "baseline_case_id": "public_migration_resume_program",
+      "baseline_reference_bytes": 25904,
+      "mandatory_truncation_count": 0,
+      "pair_id": "wp-public-resume-program",
+      "primary_card_exact": true,
+      "skill_id": "writing-plans",
+      "vnext_active_cards": 1,
+      "vnext_case_id": "public_resume_program",
+      "vnext_mode": "program",
+      "vnext_reference_bytes": 2097
+    },
+    {
+      "baseline_case_id": "known_local_bug_direct",
+      "baseline_reference_bytes": 0,
+      "mandatory_truncation_count": 0,
+      "pair_id": "wp-routine-direct",
+      "primary_card_exact": true,
+      "skill_id": "writing-plans",
+      "vnext_active_cards": 0,
+      "vnext_case_id": "routine_direct",
+      "vnext_mode": "direct",
+      "vnext_reference_bytes": 0
+    },
+    {
+      "baseline_case_id": "unknown_bug_before_plan",
+      "baseline_reference_bytes": 11151,
+      "mandatory_truncation_count": 0,
+      "pair_id": "wp-unknown-root-cause",
+      "primary_card_exact": true,
+      "skill_id": "writing-plans",
+      "vnext_active_cards": 0,
+      "vnext_case_id": "unknown_root_cause",
+      "vnext_mode": "sqw-diagnosis",
+      "vnext_reference_bytes": 0
+    }
+  ],
+  "schema_version": "offline-route-replay/1.0",
+  "vnext": {
+    "identity": "frontier-engineering/5.0.0+4.0.0/build-17c49c9177edb09581dc9ce5",
+    "revision": "262090d40051afd6a5fc5d1f8be1606bb62f97c4",
+    "skill_versions": {
+      "software-quality-workflows": "5.0.0",
+      "writing-plans": "4.0.0"
+    }
+  }
+}

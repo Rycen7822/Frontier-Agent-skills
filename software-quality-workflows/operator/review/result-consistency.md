@@ -1,0 +1,12 @@
+# Local Review Result Consistency
+
+This operator contract owns validation of `schemas/review-result.schema.json`. It is controller input and never a model-navigation card.
+
+- Require schema version 3.0, exact fields, valid enums, unique finding IDs, and one unique coverage entry for every frozen-scope path.
+- Bind reviewed base/head/scope, coverage snapshots, finding paths, and finding revisions to the frozen manifest and separately re-observed current source/scope.
+- A blocking finding must appear in `blocking_reasons`; `pass` cannot coexist with blockers or `not_reviewed` coverage.
+- `sampled` coverage is a valid bounded local judgment only with a non-empty sampling note. It never becomes full coverage by renderer or publisher interpretation.
+- `complete` or `partial` spec traceability requires evidence refs. Missing stable requirements are `not_assessed` or `not_applicable`, and a fidelity-dependent verdict becomes inconclusive.
+- Optional summaries and positive notes are presentation data, not approval evidence. Finding disposition is a separate immutable ledger.
+
+Reviewer output is untrusted until structural, manifest, consistency, and freshness checks pass. On invalid output, retry once against the same scope with the violations; never silently repair a substantive contradiction or widen input. A second failure leaves review evidence unavailable and the local verdict inconclusive.

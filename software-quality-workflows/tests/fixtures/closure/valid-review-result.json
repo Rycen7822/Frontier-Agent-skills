@@ -1,9 +1,8 @@
 {
-  "schema_version": "2.0",
+  "schema_version": "3.0",
   "code_review_verdict": "pass",
   "verification_status": "passed",
-  "merge_readiness": "ready",
-  "external_approvals": "satisfied",
+  "spec_traceability": {"status": "complete", "evidence_refs": ["traceability:matrix#TRACE-001"]},
   "coverage": [
     {"path": "src/payments/charge.py", "status": "full", "snapshot_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
   ],

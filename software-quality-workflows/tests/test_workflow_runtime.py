@@ -93,7 +93,16 @@ class WorkflowRuntimeTests(unittest.TestCase):
         _node(state, "N-02")["sensitive"] = True
         _node(state, "N-02")["objective"] = "Repair private customer Alice record."
         _node(state, "N-02")["read_set"] = ["private/customer-alice.json"]
-        text, metadata = project_context(state, budget_chars=900)
+        card_refs = [{"card_id": "sqw.verify.gate-selection", "card_hash": "sha256:2690d4f76f4022714710524656afd060ec7f6b747366b5e9f235362c582a7d22"}]
+        projections = {"runtime-test": {"purpose": "secret-safe frontier projection"}}
+        with self.assertRaisesRegex(ValueError, "mandatory context exceeds budget"):
+            project_context(state, budget_bytes=900, card_refs=card_refs, artifact_projections=projections)
+        text, metadata = project_context(
+            state,
+            budget_bytes=8192,
+            card_refs=card_refs,
+            artifact_projections=projections,
+        )
         self.assertIn("state_version: 3", text)
         self.assertIn("local_reversible", text)
         self.assertIn("I-01", text)
@@ -102,7 +111,10 @@ class WorkflowRuntimeTests(unittest.TestCase):
         self.assertNotIn("customer Alice", text)
         self.assertNotIn("customer-alice.json", text)
         self.assertIn("[SENSITIVE_POINTER]", text)
-        self.assertTrue(metadata["budget_exceeded"])
+        self.assertLessEqual(metadata["actual_bytes"], 8192)
+        self.assertEqual(card_refs, metadata["card_refs"])
+        self.assertEqual(["runtime-test"], metadata["artifact_projection_ids"])
+        self.assertEqual(0, metadata["mandatory_truncation_count"])
         self.assertTrue(metadata["requires_on_demand_read"])
 
     def test_invalidation_is_field_precise_and_preserves_unrelated_branch(self) -> None:

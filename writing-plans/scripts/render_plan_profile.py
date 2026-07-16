@@ -108,13 +108,26 @@ def render_program(
         raise ValueError(f"Program contract binding is invalid: {sorted({item.code for item in binding_errors})}")
 
     state_hash = state.get("content_hash") or canonical_state_hash(state)
-    node_lines = [f"{node.get('id')}: {node.get('objective')} ({node.get('status')})" for node in state.get("nodes", [])]
-    frontier_ids = set(state.get("current_frontier", []))
-    frontier = [line for line in node_lines if line.split(":", 1)[0] in frontier_ids]
-    blocked = [line for line in node_lines if "(blocked)" in line]
+    node_by_id = {node.get("id"): node for node in state.get("nodes", [])}
+    frontier_nodes = [node_by_id[node_id] for node_id in state.get("current_frontier", []) if node_id in node_by_id]
+    relevant_refs = {
+        ref
+        for node in frontier_nodes
+        for ref in node.get("inputs", []) + node.get("outputs", []) + node.get("depends_on", []) + node.get("verifier", {}).get("required_evidence", [])
+    }
     decisions = [
-        f"{item.get('id')}: {item.get('statement')} [provenance={item.get('provenance')}, materiality={item.get('materiality')}, reversibility={item.get('reversibility')}, contract_effect={item.get('contract_effect')}]"
+        f"{item.get('id')}: {item.get('statement')} [provenance={item.get('provenance')}, materiality={item.get('materiality')}, reversibility={item.get('reversibility')}]"
         for item in state.get("decisions", [])
+        if item.get("id") in relevant_refs
+    ]
+    invariants = [
+        f"{item.get('id')}: {item.get('statement')} [locality={item.get('locality')}]"
+        for item in state.get("global_invariants", [])
+        if item.get("locality") == "global" or item.get("id") in relevant_refs
+    ]
+    frontier = [
+        f"{node.get('id')}: {node.get('objective')} ({node.get('status')}); completion={node.get('completion_criterion')}; reads={node.get('read_set', [])}; writes={node.get('write_set', [])}; effects={node.get('effect_set', [])}"
+        for node in frontier_nodes
     ]
     coverage_rows = [
         "| {id} | {constraints} | {corners} | {verifiers} |".format(
@@ -123,30 +136,24 @@ def render_program(
             corners=", ".join(node.get("corner_refs", [])) or "none",
             verifiers=", ".join(node.get("verifier_requirement_refs", [])) or "none",
         )
-        for node in state.get("nodes", [])
+        for node in frontier_nodes
     ]
-    strategy_rows: list[str] = []
-    for decision in state.get("decisions", []):
-        strategy_rows.append(f"| {decision.get('id')} | {decision.get('statement')} | selected | {decision.get('provenance')} |")
-        for index, alternative in enumerate(decision.get("alternatives_rejected", []), start=1):
-            strategy_rows.append(f"| {decision.get('id')}-ALT-{index} | {alternative.get('option')} | rejected | {alternative.get('reason')} |")
+    strategy_rows = [f"| {item.get('id')} | {item.get('statement')} | selected | {item.get('provenance')} |" for item in state.get("decisions", []) if item.get("id") in relevant_refs]
+    blocking_gaps = [
+        f"{item.get('id')}: {item.get('question')}"
+        for item in state.get("gaps", [])
+        if item.get("status") != "closed" and set(item.get("blocks", [])) & set(state.get("current_frontier", []))
+    ]
+    risks = [
+        f"{item.get('id')}: {item.get('statement')} -> {item.get('escalation')}"
+        for item in state.get("risks", [])
+        if set(item.get("mitigation_refs", [])) & relevant_refs
+    ]
+    verification = [f"{node.get('id')}: {node.get('verifier', {}).get('completion_criterion')}" for node in frontier_nodes]
     contract_block = ""
     if policy == "autonomous_closure":
-        contract_block = f"""
-- Closure contract: {contract_ref['artifact_ref']}
-- Contract hash / epoch: {contract_ref['content_hash']} / {contract_ref['epoch']}
-"""
-    rollout = [
-        f"{node.get('id')}: {node.get('objective')}"
-        for node in state.get("nodes", [])
-        if node.get("kind") in {"migration", "release"}
-    ]
-    verification = [
-        f"{node.get('id')}: {node.get('verifier', {}).get('completion_criterion')}"
-        for node in state.get("nodes", [])
-        if node.get("kind") == "verification"
-    ]
-    return f"""# Program/Migration Map: {state['goal']}
+        contract_block = f"\n- Closure contract: {contract_ref['artifact_ref']}\n- Contract hash / epoch: {contract_ref['content_hash']} / {contract_ref['epoch']}\n"
+    text = f"""# Program/Migration Map: {state['goal']}
 
 - Plan ID: {state['plan_id']}
 - Profile: program
@@ -154,16 +161,18 @@ def render_program(
 - State ref/hash: {state_ref} / {state_hash}
 - Source revision: {state['source']['base_revision']}
 - Scope hash: {state['source']['scope_hash']}
+- Bundle/cards: {state['source']['bundle_id']} / {state['source']['reference_manifest_hash']}
+- canonical_artifacts: full graph, evidence, alternatives, and history remain in {state_ref} at {state_hash}
 {contract_block}
 ## Non-goals
 
 {_items(state.get('non_goals'))}
 
-## Global invariants
+## Applicable invariants
 
-{_items([f"{item.get('id')}: {item.get('statement')}" for item in state.get('global_invariants', [])])}
+{_items(invariants)}
 
-## Decisions
+## Major current decisions
 
 {_items(decisions)}
 
@@ -183,17 +192,13 @@ def render_program(
 
 {_items(frontier)}
 
-## Blocked nodes
+## Blocking gaps
 
-{_items(blocked)}
+{_items(blocking_gaps)}
 
-## Fog / not yet specified
+## Risk and rollback
 
-{_items([f"{item.get('id')}: {item.get('question')}" for item in state.get('gaps', []) if item.get('status') != 'closed'])}
-
-## Rollout and rollback
-
-{_items(rollout)}
+{_items(risks)}
 
 ## Verification and plan closure
 
@@ -201,6 +206,9 @@ def render_program(
 - Plan closure status: {state.get('closure', {}).get('status')}
 - Required evidence: {', '.join(state.get('closure', {}).get('required_evidence', [])) or 'none'}
 """
+    if len(text.encode("utf-8")) > 8192:
+        raise ValueError("current-frontier Program projection exceeds 8192 bytes")
+    return text
 
 
 def add_novice_projection(text: str, data: dict[str, Any]) -> str:

@@ -18,9 +18,10 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from _workflow_state import load_json, load_json_lines  # noqa: E402
+from assess_closure_admission import assess_admission  # noqa: E402
 from reconcile_workflow import reconcile  # noqa: E402
 from route_workflow import assess as assess_workflow  # noqa: E402
-from validate_owner_registry import validate_registry  # noqa: E402
+from validate_policy_owners import validate as validate_policy_owners  # noqa: E402
 import validate_skill_contracts as skill_contracts  # noqa: E402
 from validate_workflow_state import validate_event_stream, validate_state  # noqa: E402
 
@@ -55,7 +56,8 @@ class CrossSkillIntegrationTests(unittest.TestCase):
         old_prefix = "plan:plan-manifest-refresh#"
         new_prefix = f"plan:{plan['plan_id']}#"
         workflow["plan_ref"] = {
-            "artifact_ref": new_prefix + "P-02",
+            "plan_id": plan["plan_id"],
+            "artifact_ref": f"artifact:plan/{plan['plan_id']}",
             "state_ref": str(PLAN_FIXTURE),
             "content_hash": plan_hash,
         }
@@ -87,17 +89,20 @@ class CrossSkillIntegrationTests(unittest.TestCase):
         self.assertEqual([], validate_event_stream([proposal], EVENT_SCHEMA, require_contiguous=False))
         incomplete = deepcopy(proposal)
         incomplete["payload"].pop("plan_change_ref")
-        self.assertIn("workflow.event-shape", {item.code for item in validate_event_stream([incomplete], EVENT_SCHEMA, require_contiguous=False)})
+        self.assertIn("workflow.event-schema", {item.code for item in validate_event_stream([incomplete], EVENT_SCHEMA, require_contiguous=False)})
         for forbidden in ("approval_granted", "workflow_closed"):
             child = deepcopy(proposal)
             child["type"] = forbidden
+            child["payload"].pop("plan_change_ref", None)
+            if forbidden == "approval_granted":
+                child["payload"]["approval_ref"] = "AP-SECURITY"
             self.assertIn("workflow.actor-forbidden", {item.code for item in validate_event_stream([child], EVENT_SCHEMA, require_contiguous=False)})
 
     def test_cross_skill_ownership_text_has_one_directional_boundaries(self) -> None:
-        writing_contract = (WRITING_ROOT / "references" / "plan-state-contract.md").read_text(encoding="utf-8")
-        workflow_contract = (SQW_ROOT / "references" / "workflow-state-contract.md").read_text(encoding="utf-8")
+        writing_contract = (WRITING_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        workflow_contract = (SQW_ROOT / "operator" / "closure" / "controller-events.md").read_text(encoding="utf-8")
         sqw_entry = (SQW_ROOT / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("SQW workflow state owns actual runs", writing_contract)
+        self.assertIn("SQW independently owns execution and proof", writing_contract)
         self.assertIn("Plan state owns intended outcomes", workflow_contract)
         self.assertIn("plan_change_proposed", workflow_contract)
         self.assertIn("writing-plans` owns", sqw_entry)
@@ -107,23 +112,18 @@ class CrossSkillIntegrationTests(unittest.TestCase):
             self.assertIn("whole-draft", long_doc.lower())
             self.assertNotIn("M2 Sparse", long_doc)
 
-    def test_owner_registry_has_one_normative_owner_per_policy(self) -> None:
-        registry = load_json(SQW_ROOT / "references" / "owner-registry.json")
-        schema = load_json(SQW_ROOT / "schemas" / "owner-registry.schema.json")
-        self.assertEqual([], validate_registry(registry, schema, SQW_ROOT))
-        policies = [
-            policy
-            for owner in registry["owners"]
-            if owner["authority"] == "normative_owner"
-            for policy in owner["owns"]
-        ]
-        self.assertEqual(len(policies), len(set(policies)))
+    def test_policy_registry_has_one_exact_owner_per_policy(self) -> None:
+        registry = load_json(SQW_ROOT / "registries" / "policy-owners.json")
+        manifest = load_json(SQW_ROOT / "registries" / "reference-cards.manifest.json")
+        self.assertEqual([], validate_policy_owners(registry, manifest))
+        policy_ids = [item["policy_id"] for item in registry["policies"]]
+        self.assertEqual(len(policy_ids), len(set(policy_ids)))
 
     def test_writing_entry_does_not_reclaim_execution_cleanup_or_vcs_policy(self) -> None:
         entry = (WRITING_ROOT / "SKILL.md").read_text(encoding="utf-8").lower()
         for forbidden in ("git commit", "git add", "python -m pytest", "cleanup execution", "benchmark fixture expansion"):
             self.assertNotIn(forbidden, entry)
-        self.assertIn("execution is owned by `software-quality-workflows`", entry)
+        self.assertIn("sqw independently owns execution and proof", entry)
 
     def test_sqw_entry_does_not_copy_long_document_drafting_sequence(self) -> None:
         entry = (SQW_ROOT / "SKILL.md").read_text(encoding="utf-8").lower()
@@ -139,9 +139,12 @@ class CrossSkillIntegrationTests(unittest.TestCase):
             self.assertNotIn(foreign_contract, entry)
 
     def test_unknown_root_cause_routes_to_diagnosis_not_implementation_plan(self) -> None:
+        plan_defaults = json.loads(
+            (WRITING_ROOT / "tests" / "fixtures" / "plan-route-cases.json").read_text(encoding="utf-8")
+        )["defaults"]
         plan = writing_route.assess(
             {
-                **writing_route.DEFAULTS,
+                **plan_defaults,
                 "explicit_plan_request": True,
                 "root_cause_status": "unknown",
             }
@@ -149,25 +152,61 @@ class CrossSkillIntegrationTests(unittest.TestCase):
         self.assertEqual("sqw-diagnosis", plan["route"])
         self.assertIsNone(plan["profile"])
         defaults = json.loads((SQW_ROOT / "tests" / "fixtures" / "workflow-route-cases.json").read_text(encoding="utf-8"))["defaults"]
-        workflow = assess_workflow({**defaults, "task_kind": "bugfix", "root_cause_status": "unknown"})
-        self.assertEqual("systematic-debugging", workflow["primary_owner"])
-        self.assertNotIn("writing-plans", workflow["required_references"])
+        workflow = assess_workflow({**defaults, "root_cause_status": "unknown"})
+        self.assertEqual("systematic-debugging", workflow["primary_owner_id"])
+        self.assertEqual("sqw.entry.diagnose-failure", workflow["primary_card"]["card_id"])
+        self.assertNotIn("required_references", workflow)
 
     def test_direct_route_excludes_delegation_review_and_full_authority(self) -> None:
         defaults = json.loads((SQW_ROOT / "tests" / "fixtures" / "workflow-route-cases.json").read_text(encoding="utf-8"))["defaults"]
         route = assess_workflow(defaults)
         self.assertEqual("M0_DIRECT", route["workflow_mode"])
-        self.assertEqual(
-            [
-                "references/change-execution.md",
-                "references/test-driven-development.md",
-                "references/verification-discipline.md",
-            ],
-            route["required_references"],
+        self.assertEqual("sqw.entry.direct-change", route["primary_card"]["card_id"])
+        self.assertNotIn("required_references", route)
+        self.assertNotIn("active_normative_owners", route)
+        self.assertEqual([], route["required_artifact_projection_ids"])
+
+    def test_admission_routes_direct_or_wp_compile_without_creating_workflow_state(self) -> None:
+        admission_facts = load_json(
+            SQW_ROOT / "tests" / "fixtures" / "closure" / "controller-trajectories.json"
+        )["direct"]["facts"]
+        workflow_defaults = load_json(
+            SQW_ROOT / "tests" / "fixtures" / "workflow-route-cases.json"
+        )["defaults"]
+        plan_defaults = load_json(
+            WRITING_ROOT / "tests" / "fixtures" / "plan-route-cases.json"
+        )["defaults"]
+
+        direct_admission = assess_admission(admission_facts)
+        self.assertEqual("DIRECT_SELECTED", direct_admission["decision"])
+        direct = assess_workflow(
+            {
+                **workflow_defaults,
+                "admission_decision": direct_admission["decision"],
+                "admission_ref": "artifact:admission/" + direct_admission["admission_id"],
+            }
         )
-        self.assertFalse(any("closure" in item for item in route["required_references"]))
-        for excluded in ("authority-and-scope", "delegated-development", "requesting-code-review"):
-            self.assertFalse(any(excluded in item for item in route["required_references"]))
+        self.assertEqual(("standard", "sqw.entry.direct-change"), (direct["execution_policy"], direct["primary_card"]["card_id"]))
+        self.assertNotIn("workflow_id", direct)
+        self.assertNotIn("terminal_status", direct)
+
+        eligible_admission = assess_admission(
+            {**admission_facts, "autonomous_closure_requested": True, "resume_required": True}
+        )
+        compile_route = assess_workflow(
+            {
+                **workflow_defaults,
+                "admission_decision": eligible_admission["decision"],
+                "admission_ref": "artifact:admission/" + eligible_admission["admission_id"],
+            }
+        )
+        self.assertEqual(("writing-plans", None), (compile_route["primary_owner_id"], compile_route["primary_card"]))
+        plan = writing_route.assess(
+            {**plan_defaults, "closure_admission_decision": eligible_admission["decision"]}
+        )
+        self.assertEqual("wp.closure.compile", plan["primary_card"]["card_id"])
+        self.assertEqual(["closure-admission"], plan["required_artifact_projection_ids"])
+        self.assertNotIn("workflow_id", plan)
 
     def test_closure_vocabulary_and_hermes_frontmatter_are_compatible(self) -> None:
         plan_schema = load_json(WRITING_ROOT / "schemas" / "plan-state.schema.json")

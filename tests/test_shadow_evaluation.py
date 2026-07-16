@@ -41,17 +41,15 @@ FAMILIES = [
     "upfront_plan_anchoring",
 ]
 ABLATIONS = [
-    "no_closure_contract",
-    "worker_mutable_contract",
-    "no_verifier_qualification",
-    "self_review_signoff",
-    "load_all_references",
-    "always_on_full_plan",
-    "no_context_projection",
-    "no_field_sensitive_invalidation",
-    "no_terminal_certificates",
-    "single_vs_bounded_portfolio",
-    "all_review_rubrics",
+    "no_policy_graph",
+    "no_card_navigation",
+    "no_exact_transport_ref",
+    "no_context_lease",
+    "no_artifact_boundary_reroute",
+    "no_controller_context_separation",
+    "mutable_verifier",
+    "no_local_invalidation",
+    "no_one_card_limit",
 ]
 
 
@@ -185,20 +183,25 @@ def complete_runs(corpus: dict) -> list[dict]:
 
 
 def passing_controls(corpus: dict) -> dict:
-    registry = json.loads(
-        (ROOT / "software-quality-workflows" / "references" / "owner-registry.json").read_text(encoding="utf-8")
-    )
+    policies = [
+        policy
+        for skill in ("software-quality-workflows", "writing-plans")
+        for policy in json.loads(
+            (ROOT / skill / "registries" / "policy-owners.json").read_text(encoding="utf-8")
+        )["policies"]
+    ]
     references = []
-    for owner in registry["owners"]:
-        normative = owner["authority"] == "normative_owner"
+    for policy in policies:
+        machine_owned = policy["owner_type"] == "machine"
         references.append({
-            "owner_id": owner["id"],
-            "authority": owner["authority"],
-            "decision_case_status": "passed" if normative else "not_applicable",
-            "precision_case_status": "not_applicable" if normative else "passed",
-            "exclusion_case_status": "not_applicable" if normative else "passed",
-            "ablation_status": "passed" if normative else "not_applicable",
-            "evidence_refs": [f"artifact:reference-eval/{owner['id']}"],
+            "policy_id": policy["policy_id"],
+            "owner_type": policy["owner_type"],
+            "owner_id": policy["owner_id"],
+            "decision_case_status": "passed",
+            "precision_case_status": "not_applicable" if machine_owned else "passed",
+            "exclusion_case_status": "not_applicable" if machine_owned else "passed",
+            "ablation_status": "passed",
+            "evidence_refs": [f"artifact:policy-eval/{policy['policy_id']}"],
         })
     return {
         "schema_version": "p5-control-evidence/1.0",

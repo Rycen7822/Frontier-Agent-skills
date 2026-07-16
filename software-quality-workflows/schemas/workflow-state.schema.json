@@ -4,14 +4,16 @@
   "title": "SQW Workflow State 1.1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "workflow_id", "mode", "request_mode", "execution_policy", "policy_bundle_hash", "status", "state_version", "source", "authority", "scope", "global_invariants", "active_owners", "nodes", "verifiers", "edges", "frontier", "locks", "artifacts", "recent_failures", "events_ref", "pending_background", "closure"],
+  "required": ["schema_version", "workflow_id", "bundle_id", "policy_bundle_hash", "card_manifest_hash", "mode", "request_mode", "execution_policy", "status", "state_version", "source", "authority", "scope", "global_invariants", "active_owners", "nodes", "verifiers", "edges", "frontier", "locks", "artifacts", "recent_failures", "events_ref", "pending_background", "closure"],
   "properties": {
     "schema_version": {"const": "1.1"},
     "workflow_id": {"type": "string", "pattern": "^wf-[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
+    "bundle_id": {"const": "frontier-engineering/5.0.0+4.0.0"},
     "mode": {"enum": ["M1_TRACE", "M2_SPARSE", "M3_FULL"]},
     "request_mode": {"enum": ["report", "review", "diagnose", "change", "recovery"]},
     "execution_policy": {"enum": ["standard", "autonomous_closure"]},
     "policy_bundle_hash": {"$ref": "#/$defs/hash"},
+    "card_manifest_hash": {"$ref": "#/$defs/hash"},
     "status": {"enum": ["open", "active", "blocked", "closing", "closed", "aborted"]},
     "state_version": {"type": "integer", "minimum": 1},
     "state_hash": {"$ref": "#/$defs/hash"},
@@ -20,6 +22,7 @@
     "scope": {"$ref": "#/$defs/scope"},
     "global_invariants": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/invariant"}},
     "active_owners": {"$ref": "#/$defs/active_owners"},
+    "context_trace_ref": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/artifact_ref"}]},
     "plan_ref": {"$ref": "#/$defs/plan_ref"},
     "nodes": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/node"}},
     "verifiers": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/verifier"}},
@@ -58,7 +61,7 @@
     "id_array": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"$ref": "#/$defs/ref_id"}},
     "string_array": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 1024}},
     "owner_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]+$"},
-    "workflow_phase": {"enum": ["ADMISSION", "SPEC_COMPILING", "CONTRACT_FROZEN", "BASELINING", "VERIFIER_QUALIFYING", "PLANNING", "SEARCHING", "SIGNING_OFF", "TERMINAL", "DIRECT", "DIAGNOSING", "RECOVERY"]},
+    "workflow_phase": {"enum": ["BASELINING", "VERIFIER_QUALIFYING", "SEARCHING", "SIGNING_OFF", "TERMINAL", "DIRECT", "DIAGNOSING", "RECOVERY"]},
     "artifact_ref": {"type": "string", "pattern": "^artifact:[a-z][a-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
     "source": {
       "type": "object", "additionalProperties": false,
@@ -103,39 +106,38 @@
     },
     "invariant": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "statement", "status", "sensitive"],
+      "required": ["id", "statement", "status", "locality", "targets", "sensitive"],
       "properties": {
         "id": {"type": "string", "pattern": "^I-"},
         "statement": {"$ref": "#/$defs/non_empty"},
         "status": {"enum": ["current", "changed", "unknown", "invalidated"]},
+        "locality": {"enum": ["global", "node_set", "resource_set"]},
+        "targets": {"$ref": "#/$defs/string_array"},
         "sensitive": {"type": "boolean"}
-      }
-    },
-    "loaded_reference": {
-      "type": "object", "additionalProperties": false,
-      "required": ["owner_id", "path", "reason_code", "phase"],
-      "properties": {
-        "owner_id": {"$ref": "#/$defs/owner_id"},
-        "path": {"type": "string", "pattern": "^references/[a-z0-9-]+\\.md$"},
-        "reason_code": {"type": "string", "pattern": "^[a-z0-9_]+$"},
-        "phase": {"$ref": "#/$defs/workflow_phase"}
-      }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"locality": {"const": "global"}}, "required": ["locality"]},
+          "then": {"properties": {"targets": {"maxItems": 0}}},
+          "else": {"properties": {"targets": {"minItems": 1}}}
+        }
+      ]
     },
     "active_owners": {
       "type": "object", "additionalProperties": false,
-      "required": ["primary", "normative", "companions", "loaded_references"],
+      "required": ["primary", "normative", "companions"],
       "properties": {
         "primary": {"$ref": "#/$defs/owner_id"},
         "normative": {"type": "array", "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/owner_id"}},
-        "companions": {"type": "array", "maxItems": 6, "uniqueItems": true, "items": {"$ref": "#/$defs/owner_id"}},
-        "loaded_references": {"type": "array", "maxItems": 12, "items": {"$ref": "#/$defs/loaded_reference"}}
+        "companions": {"type": "array", "maxItems": 6, "uniqueItems": true, "items": {"$ref": "#/$defs/owner_id"}}
       }
     },
     "plan_ref": {
       "type": "object", "additionalProperties": false,
-      "required": ["artifact_ref", "state_ref", "content_hash"],
+      "required": ["plan_id", "artifact_ref", "state_ref", "content_hash"],
       "properties": {
-        "artifact_ref": {"type": "string", "pattern": "^plan:[A-Za-z0-9._-]+#[A-Za-z0-9._-]+$"},
+        "plan_id": {"type": "string", "pattern": "^plan-[A-Za-z0-9._-]+$"},
+        "artifact_ref": {"type": "string", "pattern": "^artifact:plan/[A-Za-z0-9._-]+$"},
         "state_ref": {"type": "string", "minLength": 1, "maxLength": 1024},
         "content_hash": {"$ref": "#/$defs/hash"}
       }
@@ -152,7 +154,7 @@
     },
     "node": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "operation_type", "status", "objective", "depends_on", "input_refs", "output_refs", "input_contracts", "output_contracts", "read_set", "write_set", "resource_set", "side_effect", "verifier_refs", "required_approvals", "attempt_policy", "sensitive"],
+      "required": ["id", "operation_type", "status", "objective", "depends_on", "input_refs", "output_refs", "input_contracts", "output_contracts", "read_set", "write_set", "resource_set", "effect_set", "side_effect", "verifier_refs", "required_approvals", "attempt_policy", "sensitive"],
       "properties": {
         "id": {"type": "string", "pattern": "^N-"},
         "operation_type": {"enum": ["model", "tool", "manual", "background", "approval", "verification"]},
@@ -167,6 +169,7 @@
         "read_set": {"$ref": "#/$defs/string_array"},
         "write_set": {"$ref": "#/$defs/string_array"},
         "resource_set": {"$ref": "#/$defs/string_array"},
+        "effect_set": {"$ref": "#/$defs/string_array"},
         "side_effect": {"enum": ["none", "local_ephemeral", "local_reversible", "external_reversible", "external_non_idempotent", "destructive"]},
         "verifier_refs": {"$ref": "#/$defs/id_array"},
         "required_approvals": {"$ref": "#/$defs/id_array"},
@@ -213,7 +216,7 @@
       "required": ["id", "kind", "from", "to"],
       "properties": {
         "id": {"type": "string", "pattern": "^X-"},
-        "kind": {"enum": ["control", "data", "evidence", "invariant", "effect", "resource", "approval"]},
+        "kind": {"enum": ["data", "control", "evidence", "invariant", "read", "write", "resource", "approval"]},
         "from": {"$ref": "#/$defs/ref_id"},
         "to": {"$ref": "#/$defs/ref_id"},
         "sensitivity": {"$ref": "#/$defs/sensitivity"}
@@ -325,13 +328,17 @@
     },
     "closure_run": {
       "type": "object", "additionalProperties": false,
-      "required": ["phase", "policy_bundle_hash", "active_candidate_refs", "active_counterexample_refs", "budget", "terminal_status", "terminal_certificate_ref"],
+      "required": ["phase", "policy_bundle_hash", "handoff_ref", "admission_ref", "authority_manifest_ref", "contract_ref", "active_candidate_refs", "active_counterexample_refs", "budget", "terminal_status", "terminal_certificate_ref"],
       "properties": {
-        "phase": {"enum": ["SPEC_COMPILING", "CONTRACT_FROZEN", "BASELINING", "VERIFIER_QUALIFYING", "PLANNING", "SEARCHING", "SIGNING_OFF", "TERMINAL"]},
+        "phase": {"enum": ["BASELINING", "VERIFIER_QUALIFYING", "SEARCHING", "SIGNING_OFF", "TERMINAL"]},
         "policy_bundle_hash": {"$ref": "#/$defs/hash"},
+        "handoff_ref": {"$ref": "#/$defs/artifact_binding"},
+        "admission_ref": {"$ref": "#/$defs/artifact_binding"},
+        "authority_manifest_ref": {"$ref": "#/$defs/artifact_binding"},
         "contract_ref": {"$ref": "#/$defs/epoch_binding"},
         "verifier_bundle_ref": {"$ref": "#/$defs/epoch_binding"},
         "baseline_ref": {"$ref": "#/$defs/artifact_binding"},
+        "signoff_result_ref": {"$ref": "#/$defs/artifact_binding"},
         "incumbent_candidate_ref": {"$ref": "#/$defs/artifact_ref"},
         "active_candidate_refs": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/artifact_ref"}},
         "active_counterexample_refs": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"$ref": "#/$defs/artifact_ref"}},
@@ -341,26 +348,11 @@
       },
       "allOf": [
         {
-          "if": {"properties": {"phase": {"const": "SPEC_COMPILING"}}, "required": ["phase"]},
-          "then": {
-            "properties": {"active_candidate_refs": {"maxItems": 0}, "active_counterexample_refs": {"maxItems": 0}, "terminal_status": {"type": "null"}, "terminal_certificate_ref": {"type": "null"}},
-            "not": {"anyOf": [{"required": ["contract_ref"]}, {"required": ["baseline_ref"]}, {"required": ["verifier_bundle_ref"]}, {"required": ["incumbent_candidate_ref"]}]}
-          }
-        },
-        {
-          "if": {"properties": {"phase": {"const": "CONTRACT_FROZEN"}}, "required": ["phase"]},
-          "then": {
-            "required": ["contract_ref"],
-            "properties": {"active_candidate_refs": {"maxItems": 0}, "active_counterexample_refs": {"maxItems": 0}, "terminal_status": {"type": "null"}, "terminal_certificate_ref": {"type": "null"}},
-            "not": {"anyOf": [{"required": ["baseline_ref"]}, {"required": ["verifier_bundle_ref"]}, {"required": ["incumbent_candidate_ref"]}]}
-          }
-        },
-        {
           "if": {"properties": {"phase": {"const": "BASELINING"}}, "required": ["phase"]},
           "then": {
             "required": ["contract_ref"],
             "properties": {"active_candidate_refs": {"maxItems": 0}, "active_counterexample_refs": {"maxItems": 0}, "terminal_status": {"type": "null"}, "terminal_certificate_ref": {"type": "null"}},
-            "not": {"anyOf": [{"required": ["verifier_bundle_ref"]}, {"required": ["incumbent_candidate_ref"]}]}
+            "not": {"anyOf": [{"required": ["baseline_ref"]}, {"required": ["verifier_bundle_ref"]}, {"required": ["incumbent_candidate_ref"]}, {"required": ["signoff_result_ref"]}]}
           }
         },
         {
@@ -368,15 +360,7 @@
           "then": {
             "required": ["contract_ref", "baseline_ref"],
             "properties": {"active_candidate_refs": {"maxItems": 0}, "active_counterexample_refs": {"maxItems": 0}, "terminal_status": {"type": "null"}, "terminal_certificate_ref": {"type": "null"}},
-            "not": {"required": ["incumbent_candidate_ref"]}
-          }
-        },
-        {
-          "if": {"properties": {"phase": {"const": "PLANNING"}}, "required": ["phase"]},
-          "then": {
-            "required": ["contract_ref", "baseline_ref", "verifier_bundle_ref"],
-            "properties": {"active_candidate_refs": {"maxItems": 0}, "active_counterexample_refs": {"maxItems": 0}, "terminal_status": {"type": "null"}, "terminal_certificate_ref": {"type": "null"}},
-            "not": {"required": ["incumbent_candidate_ref"]}
+            "not": {"anyOf": [{"required": ["incumbent_candidate_ref"]}, {"required": ["signoff_result_ref"]}]}
           }
         },
         {
@@ -400,7 +384,7 @@
         },
         {
           "if": {"properties": {"phase": {"const": "TERMINAL"}, "terminal_status": {"const": "CLOSED"}}, "required": ["phase", "terminal_status"]},
-          "then": {"required": ["contract_ref", "baseline_ref", "verifier_bundle_ref", "incumbent_candidate_ref", "terminal_certificate_ref"]}
+          "then": {"required": ["contract_ref", "baseline_ref", "verifier_bundle_ref", "incumbent_candidate_ref", "signoff_result_ref", "terminal_certificate_ref"]}
         }
       ]
     }

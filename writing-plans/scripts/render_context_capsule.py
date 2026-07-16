@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from hashlib import sha256
 import json
 from pathlib import Path
 import sys
@@ -39,6 +40,8 @@ def render(
     *,
     closure_contract: dict[str, Any] | None = None,
     runtime_projection: dict[str, Any] | None = None,
+    card_refs: list[dict[str, str]] | None = None,
+    projection_spec_id: str = "wp.slicing.context-capsules@1",
 ) -> tuple[str, dict[str, Any]]:
     objects = _index(state)
     node = objects.get(node_id)
@@ -46,6 +49,23 @@ def render(
         raise ValueError(f"node does not exist: {node_id}")
     node_sensitive = bool(node.get("sensitive")) or contains_secret_like(node)
     state_hash = capsule_source_hash(state)
+    if card_refs is None:
+        manifest = load_json(Path(__file__).resolve().parents[1] / "registries" / "reference-cards.manifest.json")
+        card_refs = [
+            {"card_id": card["card_id"], "card_hash": card["sha256"]}
+            for card in manifest.get("cards", [])
+            if card.get("card_id") == "wp.slicing.context-capsules"
+        ]
+    if not 1 <= len(card_refs) <= 8 or any(
+        set(item) != {"card_id", "card_hash"}
+        or not str(item.get("card_id", "")).startswith(("wp.", "sqw."))
+        or not str(item.get("card_hash", "")).startswith("sha256:")
+        for item in card_refs
+    ):
+        raise ValueError("card_refs must contain one to eight exact card ID/hash bindings")
+    if not projection_spec_id.startswith("wp.") or "@" not in projection_spec_id:
+        raise ValueError("projection_spec_id must be a versioned WP policy ID")
+    effective_budget = min(budget, 8192)
     execution_policy = state.get("execution_policy", "standard")
     contract_ref = state.get("closure_contract_ref")
     if execution_policy == "autonomous_closure":
@@ -83,6 +103,8 @@ def render(
         f"Plan: {state['plan_id']} / {state['profile']} / {state['status']}",
         f"State: version={state['state_version']} hash={state_hash}",
         f"Source: revision={state['source']['base_revision']} scope={state['source']['scope_hash']}",
+        f"Bundle: {state['source']['bundle_id']} policy={state['source']['policy_bundle_hash']} cards={state['source']['reference_manifest_hash']}",
+        "Cards: " + ", ".join(f"{item['card_id']}@{item['card_hash']}" for item in card_refs),
         f"Execution policy: {execution_policy}",
         "",
         "## Goal",
@@ -96,12 +118,14 @@ def render(
         f"Allowed reads: {', '.join(node['read_set']) or 'none'}",
         f"Allowed writes: {', '.join(node['write_set']) or 'none'}",
         f"Resources: {', '.join(node['resource_set']) or 'none'}",
+        f"Effects: {', '.join(node['effect_set']) or 'none'}",
         f"Side effect: {node['side_effect_level']}",
         f"Constraints: {', '.join(node.get('constraint_refs', [])) or 'none'}",
         f"Corners: {', '.join(node.get('corner_refs', [])) or 'none'}",
         f"Verifier requirements: {', '.join(node.get('verifier_requirement_refs', [])) or 'none'}",
         f"Active decisions: {', '.join(item.get('id') for item in state.get('decisions', []) if isinstance(item.get('id'), str)) or 'none'}",
         f"Blocking plan gaps: {', '.join(item.get('id') for item in blocking_gaps) or 'none'}",
+        "Policies: " + (", ".join(f"{item['policy_id']}@{item['policy_hash']}" for item in state.get("policy_claims", [])) or "none"),
         "",
         "## Global invariants",
     ]
@@ -150,6 +174,9 @@ def render(
     )
 
     mandatory_text = redact_secret_like("\n".join(mandatory).rstrip() + "\n")
+    mandatory_bytes = len(mandatory_text.encode("utf-8"))
+    if mandatory_bytes > effective_budget:
+        raise ValueError(f"mandatory capsule exceeds budget: required={mandatory_bytes} budget={effective_budget}")
     optional_blocks: list[tuple[str, str]] = []
     relevant_refs: list[str] = []
     for ref in node.get("inputs", []) + node.get("outputs", []) + verifier.get("required_evidence", []):
@@ -173,14 +200,14 @@ def render(
     omitted: list[str] = []
     if optional_blocks:
         heading = "\n## Relevant facts, decisions, evidence, and blockers\n"
-        if len(text) + len(heading) <= budget:
+        if len((text + heading).encode("utf-8")) <= effective_budget:
             text += heading
         else:
             omitted.extend(ref for ref, _ in optional_blocks)
             optional_blocks = []
     for ref, block in optional_blocks:
         candidate = text + block + "\n"
-        if len(candidate) <= budget:
+        if len(candidate.encode("utf-8")) <= effective_budget:
             text = candidate
             included.append(ref)
         else:
@@ -189,6 +216,7 @@ def render(
     all_future = [item["id"] for item in state.get("nodes", []) if item["id"] != node_id and item["id"] not in node.get("depends_on", [])]
     omitted.extend(ref for ref in all_future if ref not in omitted)
     text = redact_secret_like(text)
+    projection_hash = "sha256:" + sha256(text.encode("utf-8")).hexdigest()
     metadata = {
         "plan_id": state["plan_id"],
         "node_id": node_id,
@@ -197,9 +225,18 @@ def render(
         "execution_policy": execution_policy,
         "contract_hash": contract_ref.get("content_hash") if isinstance(contract_ref, dict) else None,
         "contract_epoch": contract_ref.get("epoch") if isinstance(contract_ref, dict) else None,
-        "budget_chars": budget,
+        "requested_budget": budget,
+        "budget_chars": effective_budget,
+        "budget_bytes": effective_budget,
         "actual_chars": len(text),
-        "budget_exceeded": len(mandatory_text) > budget,
+        "actual_bytes": len(text.encode("utf-8")),
+        "mandatory_chars": len(mandatory_text),
+        "mandatory_bytes": mandatory_bytes,
+        "mandatory_truncation_count": 0,
+        "budget_exceeded": False,
+        "card_refs": card_refs,
+        "projection_spec_id": projection_spec_id,
+        "projection_hash": projection_hash,
         "included_refs": sorted(set(included)),
         "omitted_refs": sorted(set(omitted)),
         "omission_reason": "budget_or_unrelated_future_state" if omitted else None,

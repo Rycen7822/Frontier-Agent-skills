@@ -35,41 +35,93 @@ ARTIFACT_FIXTURE = ROOT / "tests" / "fixtures" / "closure" / "valid-artifacts.js
 VERIFIER_FIXTURE = ROOT / "tests" / "fixtures" / "verifier-bundles" / "valid-qualified.json"
 REVIEW_FIXTURE = ROOT / "tests" / "fixtures" / "closure" / "valid-review-result.json"
 WRITING_CONTRACT_FIXTURE = ROOT.parent / "writing-plans" / "tests" / "fixtures" / "closure-contracts" / "valid-minimal.json"
+WRITING_ADMISSION_FIXTURE = ROOT.parent / "writing-plans" / "tests" / "fixtures" / "closure-contracts" / "valid-admission.json"
+WRITING_AUTHORITY_FIXTURE = ROOT.parent / "writing-plans" / "tests" / "fixtures" / "closure-contracts" / "valid-authority-manifest.json"
+WRITING_PLAN_FIXTURE = ROOT.parent / "writing-plans" / "tests" / "fixtures" / "plan-state" / "valid-program.json"
 TRAJECTORY_FIXTURE = ROOT / "tests" / "fixtures" / "closure" / "controller-trajectories.json"
-REGISTRY = load_json(ROOT / "references" / "owner-registry.json")
 STATE_SCHEMA = load_json(ROOT / "schemas" / "workflow-state.schema.json")
 
 
-def closure_state(phase: str = "SPEC_COMPILING") -> dict:
+def _template_state() -> dict:
     state = load_json(ROOT / "tests" / "fixtures" / "workflow-state" / "valid-m2.json")
     state["execution_policy"] = "autonomous_closure"
     state["mode"] = "M2_SPARSE"
     state["request_mode"] = "change"
-    paths = {item["id"]: item["path"] for item in REGISTRY["owners"]}
-    normative = ["authority-and-scope", "verifier-kernel", "workflow-state-contract", "workflow-modes", "verification-discipline"]
+    normative = ["authority-and-scope", "verifier-kernel", "workflow-mode-selection", "workflow-modes", "verification-discipline"]
     state["active_owners"] = {
         "primary": "autonomous-closure",
         "normative": normative,
         "companions": [],
-        "loaded_references": [
-            {"owner_id": owner, "path": paths[owner], "reason_code": "closure_owner_required", "phase": phase}
-            for owner in ["autonomous-closure", *normative]
-        ],
-    }
-    state["closure_run"] = {
-        "phase": phase,
-        "policy_bundle_hash": state["policy_bundle_hash"],
-        "active_candidate_refs": [],
-        "active_counterexample_refs": [],
-        "budget": {"iterations_used": 0, "iterations_limit": 8, "candidate_evaluations_used": 0, "candidate_evaluations_limit": 10, "review_rounds_used": 0, "review_rounds_limit": 2},
-        "terminal_status": None,
-        "terminal_certificate_ref": None,
     }
     state["scope"].update({
         "allowed_reads": ["src/**", "tests/**"],
         "allowed_writes": ["src/manifest/**", "tests/manifest/**", "src/payments/**", "tests/payments/**"],
         "protected_paths": ["docs/private/**", ".closure/**", "tests/protected/**"],
     })
+    return state
+
+
+def _handoff_artifacts(state: dict) -> tuple[dict, dict, dict]:
+    admission = load_json(WRITING_ADMISSION_FIXTURE)
+    authority = load_json(WRITING_AUTHORITY_FIXTURE)
+    authority.update({
+        "request_mode": "change",
+        "source_revision": state["source"]["base_revision"],
+        "scope_hash": state["source"]["scope_hash"],
+        "autonomy_ceiling": state["authority"]["risk_ceiling"],
+    })
+    admission_hash = canonical_artifact_hash(admission)
+    authority_hash = canonical_artifact_hash(authority)
+    contract = load_json(WRITING_CONTRACT_FIXTURE)
+    contract.update({
+        "contract_id": "CC-001",
+        "epoch": 1,
+        "status": "frozen",
+        "frozen_at": "2026-07-14T00:01:00Z",
+        "bundle_id": state["bundle_id"],
+        "closure_admission_ref": f"artifact:admission/{admission['admission_id']}",
+        "closure_admission_hash": admission_hash,
+        "authority_manifest_ref": f"artifact:authority/{authority['manifest_id']}",
+        "authority_manifest_hash": authority_hash,
+    })
+    contract["source"].update({
+        "repository": state["source"]["repository"],
+        "base_revision": state["source"]["base_revision"],
+        "scope_hash": state["source"]["scope_hash"],
+        "policy_bundle_hash": state["policy_bundle_hash"],
+        "reference_manifest_hash": state["card_manifest_hash"],
+    })
+    contract["authority"].update({"request_mode": "change", "autonomy_ceiling": state["authority"]["risk_ceiling"]})
+    contract["scope"].update({
+        "scope_hash": state["source"]["scope_hash"],
+        "allowed_read_paths": state["scope"]["allowed_reads"],
+        "allowed_write_paths": state["scope"]["allowed_writes"],
+        "forbidden_paths": state["scope"]["protected_paths"],
+    })
+    contract["protected_surfaces"] = [
+        {"id": f"PS-{index:03d}", "path": path, "protection": "controller_owned", "source_anchors": ["policy:closure-kernel#protected-surface"]}
+        for index, path in enumerate(state["scope"]["protected_paths"], 1)
+    ]
+    contract["content_hash"] = canonical_artifact_hash(contract)
+    return admission, authority, contract
+
+
+def closure_state(phase: str = "BASELINING") -> dict:
+    state = _template_state()
+    admission, authority, contract = _handoff_artifacts(state)
+    state["closure_run"] = {
+        "phase": phase,
+        "policy_bundle_hash": state["policy_bundle_hash"],
+        "handoff_ref": {"artifact_ref": "artifact:handoff/handoff-0123456789abcdefabcd", "content_hash": "sha256:" + "5" * 64},
+        "admission_ref": {"artifact_ref": contract["closure_admission_ref"], "content_hash": canonical_artifact_hash(admission)},
+        "authority_manifest_ref": {"artifact_ref": contract["authority_manifest_ref"], "content_hash": canonical_artifact_hash(authority)},
+        "contract_ref": {"artifact_ref": "artifact:contract/CC-001", "content_hash": contract["content_hash"], "epoch": 1},
+        "active_candidate_refs": [],
+        "active_counterexample_refs": [],
+        "budget": {"iterations_used": 0, "iterations_limit": 8, "candidate_evaluations_used": 0, "candidate_evaluations_limit": 10, "review_rounds_used": 0, "review_rounds_limit": 2},
+        "terminal_status": None,
+        "terminal_certificate_ref": None,
+    }
     state.pop("state_hash", None)
     state["state_hash"] = canonical_hash(state)
     return state
@@ -95,29 +147,10 @@ def controller_event(state: dict, event_type: str, *, refs: list[str] | None = N
 def artifact_map() -> dict[str, dict]:
     values = load_json(ARTIFACT_FIXTURE)
     by_type = {item["schema_id"].split("/")[-2]: item for item in values}
-    template_state = closure_state()
+    template_state = _template_state()
     workflow_id = template_state["workflow_id"]
     scope_hash = template_state["source"]["scope_hash"]
-    contract = load_json(WRITING_CONTRACT_FIXTURE)
-    contract.update({"contract_id": "CC-001", "epoch": 1, "status": "frozen", "frozen_at": "2026-07-14T00:01:00Z"})
-    contract["source"].update({
-        "repository": template_state["source"]["repository"],
-        "base_revision": template_state["source"]["base_revision"],
-        "scope_hash": scope_hash,
-        "policy_bundle_hash": template_state["policy_bundle_hash"],
-    })
-    contract["authority"].update({"request_mode": "change", "autonomy_ceiling": template_state["authority"]["risk_ceiling"]})
-    contract["scope"].update({
-        "scope_hash": scope_hash,
-        "allowed_read_paths": template_state["scope"]["allowed_reads"],
-        "allowed_write_paths": template_state["scope"]["allowed_writes"],
-        "forbidden_paths": template_state["scope"]["protected_paths"],
-    })
-    contract["protected_surfaces"] = [
-        {"id": f"PS-{index:03d}", "path": path, "protection": "controller_owned", "source_anchors": ["policy:closure-kernel#protected-surface"]}
-        for index, path in enumerate(template_state["scope"]["protected_paths"], 1)
-    ]
-    contract["content_hash"] = canonical_artifact_hash(contract)
+    admission, authority, contract = _handoff_artifacts(template_state)
     contract_hash = contract["content_hash"]
     verifier = load_json(VERIFIER_FIXTURE)
     verifier["closure_epoch"] = 1
@@ -143,6 +176,8 @@ def artifact_map() -> dict[str, dict]:
             item["verifier_bundle_hash"] = "not_frozen" if item["schema_id"].endswith("baseline-result/1.0") else verifier_hash
             if item["schema_id"].endswith("candidate-manifest/1.0"):
                 item["payload"]["protected_paths"] = sorted(set(template_state["scope"]["protected_paths"]) | set(verifier["protected_paths"]))
+            if item["schema_id"].endswith("candidate-evaluation/1.0"):
+                item["payload"]["hard_constraint_results"] = [{"id": "HC-001", "status": "pass", "evidence_refs": ["artifact:evidence/EV-HC-PASS"]}]
             if item["schema_id"].endswith("signoff-result/1.0"):
                 item["payload"]["freshness"]["scope_hash"] = scope_hash
                 item["payload"]["freshness"]["contract_hash"] = contract_hash
@@ -169,6 +204,8 @@ def artifact_map() -> dict[str, dict]:
     })
     terminal["content_hash"] = canonical_artifact_hash(terminal)
     return {
+        contract["closure_admission_ref"]: admission,
+        contract["authority_manifest_ref"]: authority,
         "artifact:contract/CC-001": contract,
         "artifact:baseline/BL-001": by_type["baseline-result"],
         "artifact:verifier/VB-001": verifier,
@@ -178,6 +215,74 @@ def artifact_map() -> dict[str, dict]:
         "artifact:signoff/SO-007": by_type["signoff-result"],
         "artifact:terminal/TC-CLOSED": terminal,
     }
+
+
+def supersession_artifact_map(epoch: int = 2) -> tuple[dict[str, dict], list[str]]:
+    artifacts = artifact_map()
+    state = _template_state()
+    admission = deepcopy(artifacts["artifact:admission/admission-0123456789abcdefabcd"])
+    admission["admission_id"] = "admission-fedcba9876543210fedc"
+    admission_ref = f"artifact:admission/{admission['admission_id']}"
+    authority = deepcopy(artifacts["artifact:authority/auth-0123456789abcdefabcd"])
+    authority["manifest_id"] = "auth-fedcba9876543210fedc"
+    authority_ref = f"artifact:authority/{authority['manifest_id']}"
+    plan = load_json(WRITING_PLAN_FIXTURE)
+    plan["plan_id"] = "plan-manifest-refresh-20260715"
+    plan["source"].update({
+        "repository": state["source"]["repository"],
+        "base_revision": state["source"]["base_revision"],
+        "scope_hash": state["source"]["scope_hash"],
+        "bundle_id": state["bundle_id"],
+        "policy_bundle_hash": state["policy_bundle_hash"],
+        "reference_manifest_hash": state["card_manifest_hash"],
+    })
+    plan["scope"].update({
+        "allowed_reads": state["scope"]["allowed_reads"],
+        "allowed_writes": state["scope"]["allowed_writes"],
+        "protected_paths": state["scope"]["protected_paths"],
+        "risk_ceiling": state["authority"]["risk_ceiling"],
+    })
+    plan["content_hash"] = canonical_artifact_hash(plan)
+    plan_ref = f"artifact:plan/{plan['plan_id']}"
+    contract = deepcopy(artifacts["artifact:contract/CC-001"])
+    contract.update({
+        "contract_id": "CC-002",
+        "epoch": epoch,
+        "closure_admission_ref": admission_ref,
+        "closure_admission_hash": canonical_artifact_hash(admission),
+        "authority_manifest_ref": authority_ref,
+        "authority_manifest_hash": canonical_artifact_hash(authority),
+    })
+    contract["content_hash"] = canonical_artifact_hash(contract)
+    contract_ref = "artifact:contract/CC-002"
+    handoff = {
+        "schema_version": "1.0",
+        "handoff_id": "handoff-fedcba9876543210fedc",
+        "bundle_id": state["bundle_id"],
+        "source_revision": state["source"]["base_revision"],
+        "execution_policy": "autonomous_closure",
+        "profile": "program",
+        "closure_admission_ref": admission_ref,
+        "closure_admission_hash": canonical_artifact_hash(admission),
+        "plan_ref": plan_ref,
+        "plan_hash": plan["content_hash"],
+        "closure_contract_ref": contract_ref,
+        "closure_contract_hash": contract["content_hash"],
+        "authority_manifest_ref": authority_ref,
+        "scope_hash": state["source"]["scope_hash"],
+        "frontier_node_ids": plan["current_frontier"],
+        "required_execution_policy_ids": ["sqw.change.lifecycle", "sqw.verify.completion-evidence"],
+        "unresolved_blockers": [],
+    }
+    handoff_ref = f"artifact:handoff/{handoff['handoff_id']}"
+    artifacts.update({
+        admission_ref: admission,
+        authority_ref: authority,
+        plan_ref: plan,
+        contract_ref: contract,
+        handoff_ref: handoff,
+    })
+    return artifacts, [handoff_ref, admission_ref, plan_ref, contract_ref]
 
 
 def trajectory_artifacts() -> dict[str, dict]:
@@ -364,7 +469,7 @@ def review_artifact(state: dict, candidate: dict) -> dict:
 
 def nested_artifact_refs(value: object) -> set[str]:
     if isinstance(value, str):
-        return {value} if value.startswith("artifact:") else set()
+        return {value} if value.startswith("artifact:") and "/" in value.removeprefix("artifact:") else set()
     if isinstance(value, dict):
         return set().union(*(nested_artifact_refs(item) for item in value.values())) if value else set()
     if isinstance(value, list):
@@ -397,27 +502,24 @@ def write_artifact_graph(root: Path, state: dict, roots: set[str], artifacts: di
 class ClosureControllerTests(unittest.TestCase):
     def test_phase_eligible_events_prevent_skips_and_controller_only_acceptance(self) -> None:
         state = closure_state()
-        self.assertIn("contract_frozen", eligible_events(state))
-        self.assertNotIn("baseline_qualified", eligible_events(state))
+        self.assertIn("baseline_qualified", eligible_events(state))
+        self.assertNotIn("verifier_qualified", eligible_events(state))
         with self.assertRaises(ClosureError):
-            apply_event(state, controller_event(state, "baseline_qualified", refs=["artifact:baseline/BL-001"]), artifact_map())
+            apply_event(state, controller_event(state, "verifier_qualified", refs=["artifact:verifier/VB-001"]), artifact_map())
         with self.assertRaises(ClosureError):
-            apply_event(state, controller_event(state, "contract_frozen", refs=["artifact:contract/CC-001"], actor="worker"), artifact_map())
+            apply_event(state, controller_event(state, "baseline_qualified", refs=["artifact:baseline/BL-001"], actor="worker"), artifact_map())
 
     def test_single_candidate_full_trace_is_deterministic_and_closes_only_after_signoff(self) -> None:
         def replay() -> dict:
             state = closure_state()
             artifacts = artifact_map()
             steps = [
-                ("contract_frozen", ["artifact:contract/CC-001"], {}),
-                ("baseline_started", [], {}),
                 ("baseline_qualified", ["artifact:baseline/BL-001"], {}),
                 ("verifier_bundle_frozen", ["artifact:verifier/VB-001"], {}),
                 ("verifier_qualified", ["artifact:verifier/VB-001"], {}),
-                ("strategy_family_registered", [], {}),
                 ("candidate_created", ["artifact:candidate/C-007"], {}),
                 ("candidate_evaluated", ["artifact:evaluation/CEVAL-007"], {}),
-                ("candidate_promoted", ["artifact:candidate/C-007"], {}),
+                ("candidate_promoted", ["artifact:candidate/C-007", "artifact:evaluation/CEVAL-007"], {}),
                 ("signoff_started", [], {}),
                 ("signoff_completed", ["artifact:signoff/SO-007"], {}),
                 ("terminal_certificate_emitted", ["artifact:terminal/TC-CLOSED"], {}),
@@ -515,51 +617,57 @@ class ClosureControllerTests(unittest.TestCase):
     def test_contract_supersession_requires_a_strictly_new_epoch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            artifacts = artifact_map()
+            state = closure_state("SEARCHING")
+            current = artifact_map()
+            state["closure_run"].update({
+                "baseline_ref": {"artifact_ref": "artifact:baseline/BL-001", "content_hash": current["artifact:baseline/BL-001"]["content_hash"]},
+                "verifier_bundle_ref": {"artifact_ref": "artifact:verifier/VB-001", "content_hash": current["artifact:verifier/VB-001"]["content_hash"], "epoch": 1},
+                "active_candidate_refs": ["artifact:candidate/C-007"],
+            })
+            state["state_hash"] = canonical_hash(state)
             state_path = root / "state.0.json"
-            state_path.write_text(json.dumps(closure_state()), encoding="utf-8")
             event_path = root / "event.1.json"
-            event_path.write_text(json.dumps(controller_event(closure_state(), "contract_frozen", refs=["artifact:contract/CC-001"])), encoding="utf-8")
-            write_artifact(root, "artifact:contract/CC-001", artifacts["artifact:contract/CC-001"])
-            state1 = advance_once(state_path, event_path, root, root / "state.1.json")
+            output_path = root / "state.1.json"
+            state_path.write_text(json.dumps(state), encoding="utf-8")
 
-            event2 = controller_event(state1, "contract_superseded")
-            (root / "event.2.json").write_text(json.dumps(event2), encoding="utf-8")
-            state2 = advance_once(root / "state.1.json", root / "event.2.json", root, root / "state.2.json")
-            replacement = deepcopy(artifacts["artifact:contract/CC-001"])
-            replacement["contract_id"] = "CC-002"
-            replacement["content_hash"] = canonical_artifact_hash(replacement)
-            write_artifact(root, "artifact:contract/CC-002", replacement)
-            event3 = controller_event(state2, "contract_frozen", refs=["artifact:contract/CC-002"])
-            (root / "event.3.json").write_text(json.dumps(event3), encoding="utf-8")
+            stale_artifacts, refs = supersession_artifact_map(epoch=1)
+            event = controller_event(state, "contract_superseded", refs=refs)
+            event_path.write_text(json.dumps(event), encoding="utf-8")
+            write_artifact_graph(root, state, set(refs) | {"artifact:contract/CC-001", "artifact:baseline/BL-001", "artifact:verifier/VB-001", "artifact:candidate/C-007"}, stale_artifacts)
             with self.assertRaises(ControllerConflict):
-                advance_once(root / "state.2.json", root / "event.3.json", root, root / "state.3.json")
+                advance_once(state_path, event_path, root, output_path)
 
-            replacement["epoch"] = 2
-            replacement["content_hash"] = canonical_artifact_hash(replacement)
-            write_artifact(root, "artifact:contract/CC-002", replacement)
-            state3 = advance_once(root / "state.2.json", root / "event.3.json", root, root / "state.3.json")
+            artifacts, refs = supersession_artifact_map(epoch=2)
+            write_artifact_graph(root, state, set(refs) | {"artifact:contract/CC-001", "artifact:baseline/BL-001", "artifact:verifier/VB-001", "artifact:candidate/C-007"}, artifacts)
+            state2 = advance_once(state_path, event_path, root, output_path)
+            self.assertEqual("BASELINING", state2["closure_run"]["phase"])
+            self.assertEqual(2, state2["closure_run"]["contract_ref"]["epoch"])
+            self.assertEqual(refs[0], state2["closure_run"]["handoff_ref"]["artifact_ref"])
+            self.assertEqual(refs[2], state2["plan_ref"]["artifact_ref"])
+            self.assertEqual([], state2["closure_run"]["active_candidate_refs"])
+
             historical = load_json(root / "contract" / "CC-001.json")
             historical["request"]["objective"] = "Self-consistent but altered historical contract."
             historical["content_hash"] = canonical_artifact_hash(historical)
             (root / "contract" / "CC-001.json").write_text(json.dumps(historical), encoding="utf-8")
-            event4 = controller_event(state3, "baseline_started")
-            (root / "event.4.json").write_text(json.dumps(event4), encoding="utf-8")
+            event2 = controller_event(state2, "baseline_qualified", refs=["artifact:baseline/BL-001"])
+            (root / "event.2.json").write_text(json.dumps(event2), encoding="utf-8")
             with self.assertRaises(ControllerConflict):
-                advance_once(root / "state.3.json", root / "event.4.json", root, root / "state.4.json")
-        self.assertEqual(2, state3["closure_run"]["contract_ref"]["epoch"])
+                advance_once(output_path, root / "event.2.json", root, root / "state.2.json")
 
     def test_controller_revalidates_the_writing_owned_frozen_contract(self) -> None:
         state = closure_state()
-        malformed = deepcopy(artifact_map()["artifact:contract/CC-001"])
+        artifacts = artifact_map()
+        malformed = deepcopy(artifacts["artifact:contract/CC-001"])
         malformed.pop("contract_id")
         malformed["content_hash"] = canonical_artifact_hash(malformed)
-        event = controller_event(state, "contract_frozen", refs=["artifact:contract/CC-001"])
+        artifacts["artifact:contract/CC-001"] = malformed
+        event = controller_event(state, "baseline_qualified", refs=["artifact:baseline/BL-001"])
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "state.json").write_text(json.dumps(state), encoding="utf-8")
             (root / "proposal.json").write_text(json.dumps(event), encoding="utf-8")
-            write_artifact(root, "artifact:contract/CC-001", malformed)
+            write_artifact_graph(root, state, {"artifact:contract/CC-001", "artifact:baseline/BL-001"}, artifacts)
             with self.assertRaises(ControllerConflict):
                 advance_once(root / "state.json", root / "proposal.json", root, root / "state.next.json")
 
@@ -579,12 +687,16 @@ class ClosureControllerTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            state = bind(closure_state("PLANNING"))
+            state = bind(closure_state("SEARCHING"))
             (root / "state.json").write_text(json.dumps(state), encoding="utf-8")
-            event = controller_event(state, "strategy_family_registered")
+            event = controller_event(state, "candidate_created", refs=["artifact:candidate/C-007"])
             (root / "proposal.json").write_text(json.dumps(event), encoding="utf-8")
-            for ref in ("artifact:contract/CC-001", "artifact:baseline/BL-001", "artifact:verifier/VB-001"):
-                write_artifact(root, ref, artifacts[ref])
+            write_artifact_graph(
+                root,
+                state,
+                {"artifact:contract/CC-001", "artifact:baseline/BL-001", "artifact:verifier/VB-001", "artifact:candidate/C-007"},
+                artifacts,
+            )
             verifier_path = root / "verifier" / "VB-001.json"
             tampered_verifier = load_json(verifier_path)
             tampered_verifier["qualification_summary"] = "tampered after binding"
@@ -598,8 +710,12 @@ class ClosureControllerTests(unittest.TestCase):
             (root / "state.json").write_text(json.dumps(state), encoding="utf-8")
             event = controller_event(state, "signoff_completed", refs=["artifact:signoff/SO-007"])
             (root / "proposal.json").write_text(json.dumps(event), encoding="utf-8")
-            for ref in ("artifact:contract/CC-001", "artifact:baseline/BL-001", "artifact:verifier/VB-001", "artifact:candidate/C-007"):
-                write_artifact(root, ref, artifacts[ref])
+            write_artifact_graph(
+                root,
+                state,
+                {"artifact:contract/CC-001", "artifact:baseline/BL-001", "artifact:verifier/VB-001", "artifact:candidate/C-007"},
+                artifacts,
+            )
             substituted = deepcopy(artifacts["artifact:signoff/SO-007"])
             substituted["payload"]["candidate_hash"] = "sha256:" + "f" * 64
             substituted["content_hash"] = canonical_artifact_hash(substituted)
@@ -615,6 +731,7 @@ class ClosureControllerTests(unittest.TestCase):
             "baseline_ref": {"artifact_ref": "artifact:baseline/BL-001", "content_hash": artifacts["artifact:baseline/BL-001"]["content_hash"]},
             "verifier_bundle_ref": {"artifact_ref": "artifact:verifier/VB-001", "content_hash": artifacts["artifact:verifier/VB-001"]["content_hash"], "epoch": 1},
             "incumbent_candidate_ref": "artifact:candidate/C-007",
+            "signoff_result_ref": {"artifact_ref": "artifact:signoff/SO-007", "content_hash": artifacts["artifact:signoff/SO-007"]["content_hash"]},
         })
         state["closure_run"]["budget"].update({"candidate_evaluations_used": 1, "review_rounds_used": 1})
         state["state_hash"] = canonical_hash(state)
@@ -634,7 +751,7 @@ class ClosureControllerTests(unittest.TestCase):
 
             supporting = set().union(*(nested_artifact_refs(artifacts[ref]) for ref in canonical_refs)) - canonical_refs
             for ref in supporting:
-                value = load_json(REVIEW_FIXTURE) if ref.startswith("artifact:review/") else generic_artifact(state, ref)
+                value = deepcopy(artifacts[ref]) if ref in artifacts else load_json(REVIEW_FIXTURE) if ref.startswith("artifact:review/") else generic_artifact(state, ref)
                 write_artifact(root, ref, value)
             with self.assertRaises(ControllerConflict):
                 advance_once(root / "state.json", root / "proposal.json", root, root / "state.next.json")
@@ -659,7 +776,7 @@ class ClosureControllerTests(unittest.TestCase):
 
     def test_candidate_changed_refs_cannot_cross_allowed_or_protected_surfaces(self) -> None:
         artifacts = artifact_map()
-        state = closure_state("PLANNING")
+        state = closure_state("SEARCHING")
         state["closure_run"].update({
             "contract_ref": {"artifact_ref": "artifact:contract/CC-001", "content_hash": artifacts["artifact:contract/CC-001"]["content_hash"], "epoch": 1},
             "baseline_ref": {"artifact_ref": "artifact:baseline/BL-001", "content_hash": artifacts["artifact:baseline/BL-001"]["content_hash"]},
@@ -720,7 +837,7 @@ class ClosureControllerTests(unittest.TestCase):
 
     def test_candidate_manifest_cannot_omit_verifier_kernel_protection(self) -> None:
         artifacts = artifact_map()
-        state = closure_state("PLANNING")
+        state = closure_state("SEARCHING")
         state["closure_run"].update({
             "contract_ref": {"artifact_ref": "artifact:contract/CC-001", "content_hash": artifacts["artifact:contract/CC-001"]["content_hash"], "epoch": 1},
             "baseline_ref": {"artifact_ref": "artifact:baseline/BL-001", "content_hash": artifacts["artifact:baseline/BL-001"]["content_hash"]},
@@ -811,9 +928,10 @@ class ClosureControllerTests(unittest.TestCase):
         contract = {"soft_objectives": [{"id": "SO-LATENCY", "priority": 1, "direction": "minimize"}]}
         ranked = rank_candidates(candidates, contract)
         self.assertEqual(["C-000", "C-001", "C-002", "C-003"], [item["candidate_id"] for item in ranked["ranked"]])
-        self.assertEqual("C-001", ranked["winner_candidate_id"])
+        self.assertEqual("C-000", ranked["winner_candidate_id"])
+        self.assertTrue(ranked["ranked"][0]["controller_eligible"])
         self.assertEqual(
-            {"hard_constraint_failure_count", "blocking_regression_count", "soft_objective_vector_by_priority", "unresolved_high_risk_count", "architecture_duplication_count", "changed_surface_risk", "diff_complexity", "changed_lines", "evaluation_cost"},
+            {"hard_constraint_failure_count", "blocking_regression_count", "soft_objective_vector_by_priority", "unresolved_high_risk_count", "architecture_duplication_count", "changed_surface_risk", "diff_complexity", "changed_lines", "evaluation_cost", "controller_eligible"},
             set(ranked["ranked"][0]["comparison"]),
         )
         json.dumps(ranked, allow_nan=False)
@@ -834,11 +952,11 @@ class ClosureControllerTests(unittest.TestCase):
 
         def prepare(root: Path) -> tuple[Path, Path, Path]:
             state = closure_state()
-            event = controller_event(state, "contract_frozen", refs=["artifact:contract/CC-001"])
+            event = controller_event(state, "baseline_qualified", refs=["artifact:baseline/BL-001"])
             state_path, event_path, output_path = root / "state.json", root / "proposal.json", root / "state.next.json"
             state_path.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
             event_path.write_text(json.dumps(event, sort_keys=True), encoding="utf-8")
-            write_artifact(root, "artifact:contract/CC-001", artifacts["artifact:contract/CC-001"])
+            write_artifact_graph(root, state, {"artifact:contract/CC-001", "artifact:baseline/BL-001"}, artifacts)
             return state_path, event_path, output_path
 
         with tempfile.TemporaryDirectory() as directory:
@@ -879,11 +997,11 @@ class ClosureControllerTests(unittest.TestCase):
 
         def prepare(root: Path) -> tuple[Path, Path, Path]:
             state = closure_state()
-            event = controller_event(state, "contract_frozen", refs=["artifact:contract/CC-001"])
+            event = controller_event(state, "baseline_qualified", refs=["artifact:baseline/BL-001"])
             state_path, event_path, output_path = root / "state.json", root / "proposal.json", root / "state.next.json"
             state_path.write_text(json.dumps(state), encoding="utf-8")
             event_path.write_text(json.dumps(event), encoding="utf-8")
-            write_artifact(root, "artifact:contract/CC-001", artifacts["artifact:contract/CC-001"])
+            write_artifact_graph(root, state, {"artifact:contract/CC-001", "artifact:baseline/BL-001"}, artifacts)
             return state_path, event_path, output_path
 
         with tempfile.TemporaryDirectory() as directory:
@@ -937,7 +1055,7 @@ class ClosureControllerTests(unittest.TestCase):
                 advance_once(state_path, event_path, forged_root, output_path, failpoint="after_journal")
             journal_path = forged_root / ".advance-pending.json"
             forged = load_json(journal_path)
-            forged["next_state"]["active_owners"]["loaded_references"][0]["reason_code"] = "forged_journal_state"
+            forged["next_state"]["closure_run"]["baseline_ref"]["content_hash"] = "sha256:" + "f" * 64
             forged["next_state"]["state_hash"] = canonical_hash(forged["next_state"])
             forged["next_state_hash"] = forged["next_state"]["state_hash"]
             journal_path.write_text(json.dumps(forged), encoding="utf-8")
@@ -949,7 +1067,7 @@ class ClosureControllerTests(unittest.TestCase):
             state_path, event_path, output_path = prepare(tampered_root)
             advance_once(state_path, event_path, tampered_root, output_path)
             tampered = load_json(output_path)
-            tampered["active_owners"]["loaded_references"][0]["reason_code"] = "tampered_but_self_hashed"
+            tampered["closure_run"]["baseline_ref"]["content_hash"] = "sha256:" + "e" * 64
             tampered["state_hash"] = canonical_hash(tampered)
             self.assertEqual([], validate_state(tampered, STATE_SCHEMA))
             output_path.write_text(json.dumps(tampered), encoding="utf-8")
@@ -958,8 +1076,8 @@ class ClosureControllerTests(unittest.TestCase):
 
     def test_all_planned_synthetic_trajectories_replay_without_codex(self) -> None:
         fixture = load_json(TRAJECTORY_FIXTURE)
-        self.assertEqual(fixture["direct"]["expected_status"], admit(fixture["direct"]["facts"])["status"])
-        self.assertGreaterEqual(len(fixture["closure"]), 8)
+        self.assertEqual(fixture["direct"]["expected_decision"], admit(fixture["direct"]["facts"])["decision"])
+        self.assertGreaterEqual(len(fixture["closure"]), 6)
         artifacts = trajectory_artifacts()
 
         for trajectory in fixture["closure"]:
@@ -968,6 +1086,7 @@ class ClosureControllerTests(unittest.TestCase):
                 state = closure_state()
                 state_path = root / "state.0.json"
                 state_path.write_text(json.dumps(state), encoding="utf-8")
+                write_artifact_graph(root, state, {"artifact:contract/CC-001"}, artifacts)
                 accepted_count = 0
                 for index, step in enumerate(trajectory["steps"], 1):
                     fields = {"budget_delta": step["budget_delta"]} if "budget_delta" in step else {}
@@ -1013,10 +1132,11 @@ class ClosureControllerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             state = closure_state()
-            event = controller_event(state, "contract_frozen", refs=["artifact:contract/CC-001"], actor="worker")
+            event = controller_event(state, "baseline_qualified", refs=["artifact:baseline/BL-001"], actor="worker")
             (root / "state.json").write_text(json.dumps(state), encoding="utf-8")
             (root / "proposal.json").write_text(json.dumps(event), encoding="utf-8")
-            write_artifact(root, "artifact:contract/CC-001", artifact_map()["artifact:contract/CC-001"])
+            artifacts = artifact_map()
+            write_artifact_graph(root, state, {"artifact:contract/CC-001", "artifact:baseline/BL-001"}, artifacts)
             result = subprocess.run(
                 [sys.executable, str(SCRIPTS / "advance_closure.py"), "--state", str(root / "state.json"), "--event", str(root / "proposal.json"), "--artifacts-root", str(root), "--output", str(root / "state.next.json")],
                 capture_output=True,
@@ -1031,11 +1151,12 @@ class ClosureControllerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             state = closure_state()
-            event = controller_event(state, "contract_frozen", refs=["artifact:contract/CC-001"])
+            event = controller_event(state, "baseline_qualified", refs=["artifact:baseline/BL-001"])
             state_path, event_path, output_path = root / "state.json", root / "proposal.json", root / "state.next.json"
             state_path.write_text(json.dumps(state), encoding="utf-8")
             event_path.write_text(json.dumps(event), encoding="utf-8")
-            write_artifact(root, "artifact:contract/CC-001", artifact_map()["artifact:contract/CC-001"])
+            artifacts = artifact_map()
+            write_artifact_graph(root, state, {"artifact:contract/CC-001", "artifact:baseline/BL-001"}, artifacts)
             result = subprocess.run(
                 [sys.executable, str(SCRIPTS / "advance_closure.py"), "--state", str(state_path), "--event", str(event_path), "--artifacts-root", str(root), "--output", str(output_path)],
                 capture_output=True,

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from hashlib import sha256
 import json
 from pathlib import Path
 import sys
@@ -13,6 +14,10 @@ from _closure import eligible_events
 from _workflow_state import InputError, canonical_hash, contains_secret_like, load_json, redact_secret_like
 
 
+ROOT = Path(__file__).resolve().parents[1]
+CARD_MANIFEST = ROOT / "registries" / "reference-cards.manifest.json"
+
+
 def _artifact_summary(item: dict[str, Any]) -> str:
     artifact_id = item.get("id", "artifact")
     if item.get("sensitive") or contains_secret_like(item):
@@ -20,26 +25,63 @@ def _artifact_summary(item: dict[str, Any]) -> str:
     return f"- {artifact_id}: {item.get('claim', '')} ({item.get('freshness', 'unknown')}; {item.get('artifact_ref', 'no-pointer')})"
 
 
-def project_context(state: dict[str, Any], *, budget_chars: int = 6000) -> tuple[str, dict[str, Any]]:
-    if budget_chars < 500:
-        raise ValueError("budget_chars must be at least 500")
+def project_context(
+    state: dict[str, Any],
+    *,
+    budget_bytes: int = 8192,
+    card_refs: list[dict[str, Any]],
+    artifact_projections: dict[str, dict[str, Any]],
+) -> tuple[str, dict[str, Any]]:
+    if type(budget_bytes) is not int or budget_bytes < 500:
+        raise ValueError("budget_bytes must be an integer of at least 500")
+    effective_budget = min(budget_bytes, 8192)
+    if not isinstance(card_refs, list) or not 1 <= len(card_refs) <= 3:
+        raise ValueError("card_refs must contain one to three exact card identities")
+    manifest = load_json(CARD_MANIFEST)
+    if state.get("bundle_id") != manifest.get("bundle_id"):
+        raise ValueError("workflow bundle does not match the live card manifest")
+    card_index = {item.get("card_id"): item.get("sha256") for item in manifest.get("cards", []) if isinstance(item, dict)}
+    seen_cards: set[str] = set()
+    for ref in card_refs:
+        if not isinstance(ref, dict) or set(ref) != {"card_id", "card_hash"}:
+            raise ValueError("card_refs must contain exact card_id/card_hash objects")
+        if not isinstance(ref["card_id"], str) or ref["card_id"] in seen_cards or card_index.get(ref["card_id"]) != ref.get("card_hash"):
+            raise ValueError("card_refs contain a stale, duplicate, or unknown identity")
+        seen_cards.add(ref["card_id"])
+    if not isinstance(artifact_projections, dict) or any(not isinstance(key, str) or not key or not isinstance(value, dict) for key, value in artifact_projections.items()):
+        raise ValueError("artifact_projections must map projection IDs to objects")
     nodes = {item["id"]: item for item in state.get("nodes", [])}
     artifacts = {item["id"]: item for item in state.get("artifacts", [])}
     verifiers = {item["id"]: item for item in state.get("verifiers", [])}
     approvals = {item["id"]: item for item in state.get("authority", {}).get("approvals", [])}
     frontier = [ref for ref in state.get("frontier", []) if ref in nodes]
+    state_hash = canonical_hash(state)
+    projection_payload = {
+        "state_hash": state_hash,
+        "card_refs": card_refs,
+        "artifact_projections": artifact_projections,
+    }
+    projection_hash = "sha256:" + sha256(json.dumps(projection_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
     mandatory: list[str] = [
         "# Workflow frontier",
         "",
         f"workflow: {state.get('workflow_id')} / {state.get('mode')} / {state.get('request_mode')} / {state.get('status')}",
         f"state_version: {state.get('state_version')}",
-        f"state_hash: {canonical_hash(state)}",
+        f"state_hash: {state_hash}",
+        f"projection_hash: {projection_hash}",
+        "cards: " + ", ".join(f"{item['card_id']}@{item['card_hash']}" for item in card_refs),
+        "artifact projections: " + (", ".join(sorted(artifact_projections)) or "none"),
         f"source: {state.get('source', {}).get('observed_revision')} / scope {state.get('source', {}).get('scope_hash')}",
         f"authority: {state.get('authority', {}).get('risk_ceiling')}; external_writes={state.get('authority', {}).get('external_writes')}; destructive={state.get('authority', {}).get('destructive_actions')}",
         f"protected_paths: {', '.join(state.get('scope', {}).get('protected_paths', [])) or 'none'}",
         "",
     ]
+    for projection_id in sorted(artifact_projections):
+        value = redact_secret_like(json.dumps(artifact_projections[projection_id], ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+        mandatory.append(f"projection {projection_id}: {value}")
+    if artifact_projections:
+        mandatory.append("")
     included: set[str] = set()
     closure_anchor_refs: list[str] = []
     run = state.get("closure_run") if isinstance(state.get("closure_run"), dict) else None
@@ -76,26 +118,16 @@ def project_context(state: dict[str, Any], *, budget_chars: int = 6000) -> tuple
         ])
     mandatory.append("## Global invariants")
 
-    active = state.get("active_owners") if isinstance(state.get("active_owners"), dict) else {}
-    loaded_refs: list[str] = []
-    unload_refs: list[str] = []
-    current_phase = run.get("phase") if run is not None else None
-    for item in active.get("loaded_references", []) if isinstance(active.get("loaded_references"), list) else []:
-        if not isinstance(item, dict) or not isinstance(item.get("path"), str):
-            continue
-        if current_phase is None or item.get("phase") == current_phase:
-            loaded_refs.append(item["path"])
-        else:
-            unload_refs.append(item["path"])
     for invariant in state.get("global_invariants", []):
+        locality = invariant.get("locality")
+        targets = set(invariant.get("targets", []))
+        frontier_resources = {resource for node_id in frontier for resource in nodes[node_id].get("resource_set", [])}
+        applies = locality == "global" or locality == "node_set" and bool(targets & set(frontier)) or locality == "resource_set" and bool(targets & frontier_resources)
+        if not applies:
+            continue
         included.add(invariant["id"])
         statement = "[SENSITIVE_POINTER]" if invariant.get("sensitive") or contains_secret_like(invariant) else invariant.get("statement", "")
         mandatory.append(f"- {invariant['id']} ({invariant.get('status')}): {statement}")
-
-    mandatory.extend(["", "## Loaded references"])
-    mandatory.extend(f"- {path}" for path in loaded_refs[:12])
-    if not loaded_refs:
-        mandatory.append("- none")
 
     mandatory.extend(["", "## Current frontier"])
     relevant_artifacts: list[str] = []
@@ -107,6 +139,7 @@ def project_context(state: dict[str, Any], *, budget_chars: int = 6000) -> tuple
         reads = "[SENSITIVE_POINTER]" if node_sensitive else (", ".join(node.get("read_set", [])) or "none")
         writes = "[SENSITIVE_POINTER]" if node_sensitive else (", ".join(node.get("write_set", [])) or "none")
         resources = "[SENSITIVE_POINTER]" if node_sensitive else (", ".join(node.get("resource_set", [])) or "none")
+        effects = "[SENSITIVE_POINTER]" if node_sensitive else (", ".join(node.get("effect_set", [])) or "none")
         mandatory.extend(
             [
                 f"### {node_id}",
@@ -115,6 +148,7 @@ def project_context(state: dict[str, Any], *, budget_chars: int = 6000) -> tuple
                 f"Allowed reads: {reads}",
                 f"Allowed writes: {writes}",
                 f"Resources: {resources}",
+                f"Effects: {effects}",
                 f"Side effect: {node.get('side_effect')}",
                 f"Retry: {node.get('attempt_policy', {}).get('attempts_used')}/{node.get('attempt_policy', {}).get('max_attempts')} {node.get('attempt_policy', {}).get('idempotency')}",
             ]
@@ -146,18 +180,21 @@ def project_context(state: dict[str, Any], *, budget_chars: int = 6000) -> tuple
         if artifact["id"] not in included:
             optional.append((artifact["id"], _artifact_summary(artifact)))
 
+    mandatory_bytes = len(mandatory_text.encode("utf-8"))
+    if mandatory_bytes > effective_budget:
+        raise ValueError(f"mandatory context exceeds budget: {mandatory_bytes} > {effective_budget} bytes")
     text = mandatory_text
     omitted: list[str] = []
     if optional:
         heading = "\n## Recent relevant failure and optional evidence\n"
-        if len(text) + len(heading) <= budget_chars:
+        if len((text + heading).encode("utf-8")) <= effective_budget:
             text += heading
         else:
             omitted.extend(ref for ref, _ in optional)
             optional = []
     for ref, block in optional:
         candidate = text + block + "\n"
-        if len(candidate) <= budget_chars:
+        if len(candidate.encode("utf-8")) <= effective_budget:
             text = candidate
             included.add(ref)
         else:
@@ -167,32 +204,21 @@ def project_context(state: dict[str, Any], *, budget_chars: int = 6000) -> tuple
         if node_id not in frontier and node_id not in omitted:
             omitted.append(node_id)
     text = redact_secret_like(text)
-    mandatory_exceeded = len(mandatory_text) > budget_chars
-    if len(text) > budget_chars:
-        marker = "\n[context truncated at hard character budget]\n"
-        retained: list[str] = []
-        used = 0
-        for line in text.splitlines(keepends=True):
-            if used + len(line) + len(marker) > budget_chars:
-                break
-            retained.append(line)
-            used += len(line)
-        text = "".join(retained).rstrip() + marker
-        if len(text) > budget_chars:
-            text = text[:budget_chars]
     metadata = {
         "workflow_id": state.get("workflow_id"),
         "state_version": state.get("state_version"),
-        "state_hash": canonical_hash(state),
-        "budget_chars": budget_chars,
-        "actual_chars": len(text),
-        "budget_exceeded": mandatory_exceeded,
+        "state_hash": state_hash,
+        "projection_hash": projection_hash,
+        "card_refs": card_refs,
+        "artifact_projection_ids": sorted(artifact_projections),
+        "budget_bytes": effective_budget,
+        "actual_bytes": len(text.encode("utf-8")),
+        "mandatory_bytes": mandatory_bytes,
+        "mandatory_truncation_count": 0,
         "included_refs": sorted(included),
         "omitted_refs": sorted(set(omitted)),
         "requires_on_demand_read": bool(omitted),
         "omission_reason": "budget_or_non_frontier_state" if omitted else None,
-        "loaded_refs": sorted(set(loaded_refs)),
-        "unload_refs": sorted(set(unload_refs)),
         "closure_anchor_refs": sorted(set(closure_anchor_refs)),
     }
     return text, metadata
@@ -201,12 +227,29 @@ def project_context(state: dict[str, Any], *, budget_chars: int = 6000) -> tuple
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("state", type=Path)
-    parser.add_argument("--budget-chars", type=int, default=6000)
+    parser.add_argument("--budget-bytes", type=int, default=8192)
+    parser.add_argument("--card-ref", action="append", required=True, metavar="CARD_ID=SHA256")
+    parser.add_argument("--artifact-projection", action="append", default=[], metavar="PROJECTION_ID=JSON_PATH")
     parser.add_argument("--metadata", type=Path)
     args = parser.parse_args(argv)
     try:
         state = load_json(args.state)
-        text, metadata = project_context(state, budget_chars=args.budget_chars)
+        card_refs = []
+        for raw in args.card_ref:
+            card_id, separator, card_hash = raw.partition("=")
+            if not separator:
+                raise ValueError("card refs must use CARD_ID=SHA256")
+            card_refs.append({"card_id": card_id, "card_hash": card_hash})
+        projections: dict[str, dict[str, Any]] = {}
+        for raw in args.artifact_projection:
+            projection_id, separator, path = raw.partition("=")
+            if not separator or projection_id in projections:
+                raise ValueError("artifact projections must use unique PROJECTION_ID=JSON_PATH")
+            value = load_json(path)
+            if not isinstance(value, dict):
+                raise ValueError("artifact projection JSON must be an object")
+            projections[projection_id] = value
+        text, metadata = project_context(state, budget_bytes=args.budget_bytes, card_refs=card_refs, artifact_projections=projections)
     except (InputError, ValueError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, indent=2))
         return 2

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build pending P5 ablation/reference controls from registry v2 without fake passes."""
+"""Build pending P5 ablation/policy controls from vNext registries without fake passes."""
 
 from __future__ import annotations
 
@@ -25,17 +25,18 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def build(corpus: dict[str, Any], registry: dict[str, Any]) -> dict[str, Any]:
+def build(corpus: dict[str, Any], policies: list[dict[str, Any]]) -> dict[str, Any]:
     references = []
-    for owner in sorted(registry["owners"], key=lambda item: item["id"]):
-        normative = owner["authority"] == "normative_owner"
+    for policy in sorted(policies, key=lambda item: item["policy_id"]):
+        machine_owned = policy["owner_type"] == "machine"
         references.append({
-            "owner_id": owner["id"],
-            "authority": owner["authority"],
-            "decision_case_status": "not_run" if normative else "not_applicable",
-            "precision_case_status": "not_applicable" if normative else "not_run",
-            "exclusion_case_status": "not_applicable" if normative else "not_run",
-            "ablation_status": "not_run" if normative else "not_applicable",
+            "policy_id": policy["policy_id"],
+            "owner_type": policy["owner_type"],
+            "owner_id": policy["owner_id"],
+            "decision_case_status": "not_run",
+            "precision_case_status": "not_applicable" if machine_owned else "not_run",
+            "exclusion_case_status": "not_applicable" if machine_owned else "not_run",
+            "ablation_status": "not_run",
             "evidence_refs": [],
         })
     controls = {
@@ -62,10 +63,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         corpus = load_json(args.corpus)
-        registry = load_json(ROOT / "software-quality-workflows" / "references" / "owner-registry.json")
+        policies = [
+            policy
+            for skill in ("software-quality-workflows", "writing-plans")
+            for policy in load_json(ROOT / skill / "registries" / "policy-owners.json")["policies"]
+        ]
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as handle:
-            json.dump(build(corpus, registry), handle, ensure_ascii=False, indent=2, sort_keys=True)
+            json.dump(build(corpus, policies), handle, ensure_ascii=False, indent=2, sort_keys=True)
             handle.write("\n")
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))

@@ -109,6 +109,25 @@ def skill_version(path: Path) -> str:
     return match.group(1)
 
 
+def _validate_exact_bundle_identity(source_root: Path) -> None:
+    builder_path = source_root / "bundle" / "build_bundle_manifest.py"
+    output_path = source_root / "frontier-engineering.bundle.json"
+    if builder_path.is_symlink() or not builder_path.is_file():
+        raise ValueError("exact bundle identity builder is missing or symlinked")
+    namespace: dict[str, Any] = {
+        "__file__": str(builder_path),
+        "__name__": "frontier_bundle_identity_validation",
+    }
+    exec(compile(builder_path.read_text(encoding="utf-8"), str(builder_path), "exec"), namespace)
+    expected = namespace["build_manifest"]()
+    observed = _strict_json(output_path)
+    if observed != expected:
+        raise ValueError("frontier-engineering.bundle.json does not match the exact two-skill source")
+    rendered = (json.dumps(expected, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    if output_path.is_symlink() or output_path.read_bytes() != rendered:
+        raise ValueError("frontier-engineering.bundle.json is not the canonical generated artifact")
+
+
 def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
     skills = manifest.get("skills")
     if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != {"writing-plans", "software-quality-workflows"}:
@@ -122,6 +141,7 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
         observed = skill_version(path)
         if observed != item["version"]:
             raise ValueError(f"version mismatch for {item['id']}: manifest={item['version']} skill={observed}")
+    _validate_exact_bundle_identity(source_root)
     activation = manifest.get("activation_policy")
     required_activation = {
         "current_level", "live_autonomous_closure_default", "multi_candidate_enabled",

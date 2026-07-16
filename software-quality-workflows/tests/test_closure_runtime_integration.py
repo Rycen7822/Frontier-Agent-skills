@@ -25,27 +25,25 @@ from validate_workflow_state import validate_state  # noqa: E402
 
 STATE_SCHEMA = load_json(ROOT / "schemas" / "workflow-state.schema.json")
 EVENT_SCHEMA = load_json(ROOT / "schemas" / "workflow-event.schema.json")
-REGISTRY = load_json(ROOT / "references" / "owner-registry.json")
 
 
-def _closure_state(phase: str = "SPEC_COMPILING") -> dict:
+def _closure_state(phase: str = "BASELINING") -> dict:
     state = load_json(ROOT / "tests" / "fixtures" / "workflow-state" / "valid-m2.json")
     state["execution_policy"] = "autonomous_closure"
     state["request_mode"] = "change"
-    paths = {item["id"]: item["path"] for item in REGISTRY["owners"]}
-    normative = ["authority-and-scope", "verifier-kernel", "workflow-state-contract", "workflow-modes", "verification-discipline"]
+    normative = ["authority-and-scope", "verifier-kernel", "workflow-mode-selection", "workflow-modes", "verification-discipline"]
     state["active_owners"] = {
         "primary": "autonomous-closure",
         "normative": normative,
         "companions": [],
-        "loaded_references": [
-            {"owner_id": owner, "path": paths[owner], "reason_code": "closure_owner_required", "phase": phase}
-            for owner in ["autonomous-closure", *normative]
-        ],
     }
     state["closure_run"] = {
         "phase": phase,
         "policy_bundle_hash": state["policy_bundle_hash"],
+        "handoff_ref": {"artifact_ref": "artifact:handoff/handoff-0123456789abcdefabcd", "content_hash": "sha256:" + "5" * 64},
+        "admission_ref": {"artifact_ref": "artifact:admission/admission-0123456789abcdefabcd", "content_hash": "sha256:" + "6" * 64},
+        "authority_manifest_ref": {"artifact_ref": "artifact:authority/auth-0123456789abcdefabcd", "content_hash": "sha256:" + "7" * 64},
+        "contract_ref": {"artifact_ref": "artifact:contract/CC-001.json", "content_hash": "sha256:" + "1" * 64, "epoch": 1},
         "active_candidate_refs": [],
         "active_counterexample_refs": [],
         "budget": {"iterations_used": 0, "iterations_limit": 8, "candidate_evaluations_used": 0, "candidate_evaluations_limit": 10, "review_rounds_used": 0, "review_rounds_limit": 2},
@@ -85,12 +83,11 @@ class ClosureRuntimeIntegrationTests(unittest.TestCase):
             adapter.initialize(state)
             proposed = deepcopy(state)
             proposed["state_version"] += 1
-            proposed["closure_run"]["phase"] = "CONTRACT_FROZEN"
             proposed["state_hash"] = canonical_hash(proposed)
             with self.assertRaisesRegex(AdapterConflict, "advance_closure.py"):
                 adapter.commit_state(proposed, expected_state_version=state["state_version"])
             with self.assertRaisesRegex(AdapterConflict, "advance_closure.py"):
-                adapter.append_event({"type": "contract_frozen"}, expected_last_sequence=0)
+                adapter.append_event({"type": "baseline_qualified"}, expected_last_sequence=0)
             self.assertEqual(state["state_version"], adapter.load_state()["state_version"])
             self.assertEqual(b"", adapter.events_path.read_bytes())
 
@@ -98,13 +95,14 @@ class ClosureRuntimeIntegrationTests(unittest.TestCase):
         state = _closure_state()
         result = compute_frontier(state, actor="worker-01")
         self.assertEqual([], result["ready"])
-        self.assertEqual("SPEC_COMPILING", result["closure"]["phase"])
+        self.assertEqual("BASELINING", result["closure"]["phase"])
         self.assertEqual("controller", result["closure"]["transition_authority"])
         self.assertEqual(sorted(eligible_events(state)), result["closure"]["eligible_controller_events"])
         self.assertEqual([], result["closure"]["worker_transition_events"])
-        self.assertIn("spec_auditor", result["closure"]["eligible_task_roles"])
+        self.assertIn("test_analyst", result["closure"]["eligible_task_roles"])
 
-        malformed = _closure_state("CONTRACT_FROZEN")
+        malformed = _closure_state("BASELINING")
+        malformed["closure_run"].pop("contract_ref")
         blocked = compute_frontier(malformed)
         self.assertIn("missing:contract_ref", blocked["closure"]["blocked_reasons"])
         self.assertFalse(blocked["closure"]["phase_ready"])
@@ -128,7 +126,7 @@ class ClosureRuntimeIntegrationTests(unittest.TestCase):
         global_result = propagate_invalidation(state, {contract_ref}, closure_graph=closure_graph)
         self.assertEqual("global_or_parent_replan", global_result["repair_type"])
         self.assertTrue(global_result["closure"]["new_epoch_required"])
-        self.assertEqual("SPEC_COMPILING", global_result["closure"]["restart_phase"])
+        self.assertEqual("BASELINING", global_result["closure"]["restart_phase"])
         self.assertIn("artifact:candidate/CAND-001.json", global_result["affected"])
         self.assertIn("artifact:signoff/SIGN-001.json", global_result["affected"])
 
@@ -139,26 +137,30 @@ class ClosureRuntimeIntegrationTests(unittest.TestCase):
         self.assertIn("artifact:signoff/SIGN-001.json", local_result["affected"])
         plan_result = propagate_invalidation(state, {"plan"}, closure_graph=closure_graph)
         self.assertTrue(plan_result["closure"]["new_epoch_required"])
-        self.assertEqual("SPEC_COMPILING", plan_result["closure"]["restart_phase"])
+        self.assertEqual("BASELINING", plan_result["closure"]["restart_phase"])
         self.assertIn("N-02", plan_result["frontier"])
 
-    def test_context_has_a_hard_budget_closure_anchors_and_reference_unload_set(self) -> None:
+    def test_context_has_a_hard_budget_closure_anchors_and_exact_projection_identity(self) -> None:
         state = _bound_search_state()
-        state["active_owners"]["loaded_references"].append({
-            "owner_id": "risk-based-testing",
-            "path": "references/risk-based-testing.md",
-            "reason_code": "old_phase_companion",
-            "phase": "BASELINING",
-        })
-        text, metadata = project_context(state, budget_chars=2500)
-        self.assertLessEqual(len(text), 2500)
+        card_refs = [{"card_id": "sqw.runtime.stability-round", "card_hash": "sha256:8072b05938bb1842fb89346535b961a26eda249f72732291d76f487aa5a72945"}]
+        projections = {"closure_runtime_projection": {"phase": "SEARCHING"}}
+        text, metadata = project_context(state, budget_bytes=8192, card_refs=card_refs, artifact_projections=projections)
+        self.assertLessEqual(len(text.encode("utf-8")), 8192)
         self.assertIn("## Autonomous closure", text)
         self.assertIn("phase: SEARCHING", text)
         self.assertIn("artifact:contract/CC-001.json", text)
         self.assertIn("transition authority: controller", text)
-        self.assertIn("references/risk-based-testing.md", metadata["unload_refs"])
-        self.assertNotIn("references/risk-based-testing.md", metadata["loaded_refs"])
+        self.assertEqual(card_refs, metadata["card_refs"])
+        self.assertEqual(["closure_runtime_projection"], metadata["artifact_projection_ids"])
+        self.assertEqual(0, metadata["mandatory_truncation_count"])
         self.assertIn("artifact:candidate/CAND-001.json", metadata["closure_anchor_refs"])
+        with self.assertRaisesRegex(ValueError, "stale, duplicate, or unknown"):
+            project_context(
+                state,
+                budget_bytes=8192,
+                card_refs=[{"card_id": "sqw.runtime.stability-round", "card_hash": "sha256:" + "0" * 64}],
+                artifact_projections=projections,
+            )
 
     def test_reconcile_blocks_source_pending_transition_and_orphan_runtime_state(self) -> None:
         state = _bound_search_state()

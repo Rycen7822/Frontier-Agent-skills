@@ -8,51 +8,31 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class WritingDocsV3Tests(unittest.TestCase):
-    def test_entry_version_structure_budget_and_exact_reference_map(self) -> None:
+class WritingDocsV4Tests(unittest.TestCase):
+    def test_entry_version_structure_budget_and_router_boundary(self) -> None:
         text = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-        self.assertRegex(text, r"(?m)^  version: 3\.0\.0$")
+        self.assertRegex(text, r"(?m)^  version: 4\.0\.0$")
         headings = [
-            "## Owner contract",
-            "## Host compatibility",
-            "## Route before planning",
-            "## Autonomous closure branch",
-            "## Select Brief / Handoff / Program",
-            "## Compile and freeze contract",
-            "## Build the canonical plan",
-            "## Progressive disclosure",
-            "## Handoff to SQW",
+            "## Owner boundary",
+            "## Route",
+            "## Profile selection",
+            "## Closure boundary",
+            "## One-card protocol",
+            "## SQW handoff",
             "## Completion",
-            "## Reference map",
         ]
         positions = [text.index(heading) for heading in headings]
         self.assertEqual(sorted(positions), positions)
-        self.assertLess(len(text.encode("utf-8")), 16000)
-        reference_section = text[text.index("## Reference map") :]
-        links = set(re.findall(r"\]\((references/[^)]+)\)", reference_section))
-        self.assertEqual(
-            {
-                "references/architecture-decision-records.md",
-                "references/closure-contract.md",
-                "references/context-and-output-economy-plans.md",
-                "references/deprecation-migration-plans.md",
-                "references/design-audit-compression-ledger.md",
-                "references/implementation-slicing-and-context-capsules.md",
-                "references/plan-profiles.md",
-                "references/plan-state-contract.md",
-                "references/spike.md",
-            },
-            links,
-        )
-        for link in links:
-            self.assertTrue((ROOT / link).is_file(), link)
+        self.assertEqual(headings, re.findall(r"(?m)^## .+$", text))
+        self.assertLessEqual(len(text.encode("utf-8")), 6144)
+        self.assertIn("zero or one `primary_card`", text)
+        self.assertIn("reference-cards.manifest.json", text)
         self.assertIn("contract_frozen + plan_validated + handoff_emitted", text)
         self.assertIn("does not mean implementation, sign-off, publication, or workflow closure", text)
         self.assertNotIn("advance_closure.py", text)
         self.assertIn("Codex and Hermes Agent", text)
-        self.assertIn("Resolve bundled paths from this skill's root", text)
-        self.assertIn("capability rather than a product-specific tool name", text)
-        audit = (ROOT / "references" / "design-audit-compression-ledger.md").read_text(encoding="utf-8")
+        self.assertIn("Resolve bundled paths from this skill root", text)
+        audit = (ROOT / "references" / "design" / "evidence-and-decision-ledger.md").read_text(encoding="utf-8")
         self.assertNotIn("using Hermes tools", audit)
 
     def test_openai_metadata_is_narrow_and_exact(self) -> None:
@@ -72,31 +52,35 @@ class WritingDocsV3Tests(unittest.TestCase):
         self.assertIn("allow_implicit_invocation: true", metadata)
         self.assertNotIn("execute", metadata.lower())
 
-    def test_closure_contract_reference_has_fixed_owner_sections(self) -> None:
-        text = (ROOT / "references" / "closure-contract.md").read_text(encoding="utf-8")
-        headings = re.findall(r"(?m)^## .+$", text)
-        self.assertEqual(
-            [
-                "## Ownership and activation",
-                "## Source hierarchy and intent inference",
-                "## Authority and autonomy ceiling",
-                "## Assumptions and safe defaults",
-                "## Hard constraints",
-                "## Soft objectives and lexicographic order",
-                "## Corner selection",
-                "## Verifier requirements",
-                "## Search and publication policy",
-                "## Ambiguity / unsat certificates",
-                "## Freeze, epoch, supersession",
-                "## Handoff to SQW",
-                "## Completion criterion",
-            ],
-            headings,
+    def test_closure_contract_owners_are_split_from_runtime(self) -> None:
+        model = "\n".join(
+            (ROOT / "references" / "closure" / name).read_text(encoding="utf-8")
+            for name in (
+                "compile.md",
+                "hard-constraints-and-corners.md",
+                "assumptions-and-ambiguity.md",
+                "search-and-publication-policy.md",
+                "freeze-and-handoff.md",
+            )
         )
-        for pointer in ("design-audit-compression-ledger.md", "spike.md", "deprecation-migration-plans.md", "plan-state-contract.md", "authority-and-scope.md", "intent-and-design-discovery.md", "verifier-kernel.md", "autonomous-closure.md"):
-            self.assertIn(pointer, text)
-        self.assertIn("must not contain a plan reference", text)
-        self.assertIn("SPEC_UNDERDETERMINED", text)
+        runtime = (ROOT / "operator" / "closure-contract-runtime.md").read_text(encoding="utf-8")
+        for token in (
+            "source precedence",
+            "authority",
+            "safe defaults",
+            "hard constraint",
+            "soft objectives",
+            "corner",
+            "verifier requirement",
+            "search and publication",
+            "SPEC_UNDERDETERMINED",
+            "SPEC_UNSAT",
+            "immutable",
+            "plan-execution-handoff",
+        ):
+            self.assertIn(token.lower(), model.lower())
+        self.assertIn("frozen contract independent of plan", model.lower())
+        self.assertIn("not a model-facing reference card", runtime.lower())
         for status in (
             "CLOSED",
             "SPEC_UNDERDETERMINED",
@@ -110,18 +94,64 @@ class WritingDocsV3Tests(unittest.TestCase):
             "WORKFLOW_INVALID",
             "ABORTED_BY_SOURCE_DRIFT",
         ):
-            self.assertIn(status, text)
+            self.assertIn(status, runtime)
 
-    def test_retained_references_are_synchronized_to_v3_contract(self) -> None:
+    def test_design_and_slicing_owners_preserve_decision_semantics(self) -> None:
+        design = "\n".join(
+            (ROOT / "references" / "design" / name).read_text(encoding="utf-8").lower()
+            for name in (
+                "depth-selection.md",
+                "evidence-and-decision-ledger.md",
+                "alternative-compression.md",
+                "planning-gate.md",
+            )
+        )
+        for token in (
+            "d0",
+            "d1",
+            "d2",
+            "owner/seam",
+            "source identity",
+            "counterevidence",
+            "keep",
+            "rewrite",
+            "split",
+            "merge",
+            "defer",
+            "delete",
+            "replace",
+            "false-green",
+            "ready_for_slicing",
+        ):
+            self.assertIn(token, design)
+
+        slicing = "\n".join(
+            (ROOT / "references" / "slicing" / name).read_text(encoding="utf-8").lower()
+            for name in ("outcome-slices.md", "context-capsules.md")
+        )
+        for token in (
+            "vertical",
+            "current frontier",
+            "read/write/resource",
+            "candidate",
+            "mandatory",
+            "on-demand",
+            "sensitive",
+            "truncation is always zero",
+        ):
+            self.assertIn(token, slicing)
+
+    def test_profiles_economy_and_leaf_owners_preserve_source_contracts(self) -> None:
         required_tokens = {
-            "plan-profiles.md": ("Execution policy", "Constraint coverage", "Brief", "Handoff"),
-            "plan-state-contract.md": ("1.1", "closure_contract_ref", "dual ledger", "candidate"),
-            "context-and-output-economy-plans.md": ("contract hash", "incumbent", "hard failures", "budget"),
-            "implementation-slicing-and-context-capsules.md": ("closure phase", "candidate", "canonical plan node"),
-            "design-audit-compression-ledger.md": ("strategy family", "epoch", "noninteractive", "certificate"),
-            "architecture-decision-records.md": ("sign-off-ready", "incumbent"),
-            "deprecation-migration-plans.md": ("consumer oracle", "rollback window", "removal constraint"),
-            "spike.md": ("admission", "freeze", "silent promotion"),
+            "profiles/brief.md": ("one observable outcome", "false-green", "create no graph/state/Closure Contract"),
+            "profiles/handoff.md": ("ordered outcome slices", "current frontier", "standard execution"),
+            "profiles/program.md": ("current frontier", "expand-migrate-contract", "8,192-byte"),
+            "economy/output-classification.md": ("always-visible anchors", "warnings", "tiny budgets"),
+            "economy/projection-and-verification.md": ("actual high-level agent envelope", "on-demand", "parity"),
+            "decisions/architecture-decision-record.md": ("supersession", "publication authority", "alternatives"),
+            "migration/deprecation-and-rollout.md": ("consumer oracle", "rollback window", "removal constraints"),
+            "experiments/disposable-spike.md": ("admission", "freeze", "silent promotion"),
+            "bridges/long-document-handoff.md": ("long-document segmented-writing", "source/coverage/evidence", "typed handoff blocker"),
         }
         for name, tokens in required_tokens.items():
             text = (ROOT / "references" / name).read_text(encoding="utf-8").lower()

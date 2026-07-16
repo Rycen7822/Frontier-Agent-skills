@@ -1,10 +1,12 @@
 {
   "schema_version": "1.1",
   "workflow_id": "wf-manifest-refresh",
+  "bundle_id": "frontier-engineering/5.0.0+4.0.0",
   "mode": "M2_SPARSE",
   "request_mode": "change",
   "execution_policy": "standard",
   "policy_bundle_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "card_manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
   "status": "active",
   "state_version": 3,
   "source": {
@@ -30,36 +32,20 @@
       "id": "I-01",
       "statement": "Current-format manifest identity remains unchanged.",
       "status": "current",
+      "locality": "global",
+      "targets": [],
       "sensitive": false
     }
   ],
   "active_owners": {
     "primary": "change-execution",
     "normative": ["test-driven-development", "verification-discipline"],
-    "companions": [],
-    "loaded_references": [
-      {
-        "owner_id": "change-execution",
-        "path": "references/change-execution.md",
-        "reason_code": "standard_change_owner",
-        "phase": "SEARCHING"
-      },
-      {
-        "owner_id": "test-driven-development",
-        "path": "references/test-driven-development.md",
-        "reason_code": "proof_first_change",
-        "phase": "SEARCHING"
-      },
-      {
-        "owner_id": "verification-discipline",
-        "path": "references/verification-discipline.md",
-        "reason_code": "focused_proof_available",
-        "phase": "SEARCHING"
-      }
-    ]
+    "companions": []
   },
+  "context_trace_ref": "artifact:context-trace/trace-manifest-refresh",
   "plan_ref": {
-    "artifact_ref": "plan:plan-manifest-refresh#P-02",
+    "plan_id": "plan-manifest-refresh",
+    "artifact_ref": "artifact:plan/plan-manifest-refresh",
     "state_ref": "worknotes/plan-state.json",
     "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
   },
@@ -78,6 +64,7 @@
       "read_set": ["src/manifest/**", "tests/manifest/**"],
       "write_set": [],
       "resource_set": ["local-test-runner"],
+      "effect_set": ["process:focused-test"],
       "side_effect": "local_ephemeral",
       "verifier_refs": ["VER-01"],
       "required_approvals": [],
@@ -102,6 +89,7 @@
       "read_set": ["src/manifest/**", "tests/manifest/**"],
       "write_set": ["src/manifest/**", "tests/manifest/**"],
       "resource_set": ["working-tree"],
+      "effect_set": ["workspace:manifest"],
       "side_effect": "local_reversible",
       "verifier_refs": ["VER-02"],
       "required_approvals": [],

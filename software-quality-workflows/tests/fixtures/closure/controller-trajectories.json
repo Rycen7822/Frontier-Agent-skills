@@ -11,7 +11,7 @@
       "scope_freezable": true,
       "authority_freezable": true,
       "reproducible_environment": true,
-      "verifier_separable": true,
+      "verifier_qualification_feasible": true,
       "bounded_side_effects": true,
       "resume_required": false,
       "expensive_proof_reusable": false,
@@ -20,18 +20,15 @@
       "search_value": "none",
       "framework_tax": "low"
     },
-    "expected_status": "direct_preferred"
+    "expected_decision": "DIRECT_SELECTED"
   },
   "closure": [
     {
       "id": "single-candidate-closed",
       "steps": [
-        {"type": "contract_frozen", "refs": ["artifact:contract/CC-001"]},
-        {"type": "baseline_started"},
         {"type": "baseline_qualified", "refs": ["artifact:baseline/BL-001"]},
         {"type": "verifier_bundle_frozen", "refs": ["artifact:verifier/VB-001"]},
         {"type": "verifier_qualified", "refs": ["artifact:verifier/VB-001"]},
-        {"type": "strategy_family_registered"},
         {"type": "candidate_created", "refs": ["artifact:candidate/C-007"]},
         {"type": "candidate_evaluated", "refs": ["artifact:evaluation/CEVAL-007"]},
         {"type": "candidate_promoted", "refs": ["artifact:candidate/C-007", "artifact:evaluation/CEVAL-007"]},
@@ -44,8 +41,6 @@
     {
       "id": "counterexample-local-repair-closed",
       "steps": [
-        {"type": "contract_frozen", "refs": ["artifact:contract/CC-001"]},
-        {"type": "baseline_started"},
         {"type": "baseline_qualified", "refs": ["artifact:baseline/BL-001"]},
         {"type": "verifier_bundle_frozen", "refs": ["artifact:verifier/VB-001"]},
         {"type": "verifier_qualified", "refs": ["artifact:verifier/VB-001"]},
@@ -65,34 +60,15 @@
     {
       "id": "verifier-unqualified",
       "steps": [
-        {"type": "contract_frozen", "refs": ["artifact:contract/CC-001"]},
-        {"type": "baseline_started"},
         {"type": "baseline_qualified", "refs": ["artifact:baseline/BL-001"]},
         {"type": "verifier_bundle_frozen", "refs": ["artifact:verifier/VB-REJECT"]},
-        {"type": "verifier_rejected", "refs": ["artifact:evidence/EV-VB-REJECT"]},
         {"type": "terminal_certificate_emitted", "refs": ["artifact:terminal/TC-VERIFIER"]}
       ],
       "expected_terminal": "VERIFIER_UNQUALIFIED"
     },
     {
-      "id": "spec-underdetermined",
-      "steps": [
-        {"type": "terminal_certificate_emitted", "refs": ["artifact:terminal/TC-SPEC-UNDER"]}
-      ],
-      "expected_terminal": "SPEC_UNDERDETERMINED"
-    },
-    {
-      "id": "spec-unsat",
-      "steps": [
-        {"type": "terminal_certificate_emitted", "refs": ["artifact:terminal/TC-SPEC-UNSAT"]}
-      ],
-      "expected_terminal": "SPEC_UNSAT"
-    },
-    {
       "id": "budget-exhausted",
       "steps": [
-        {"type": "contract_frozen", "refs": ["artifact:contract/CC-001"]},
-        {"type": "baseline_started"},
         {"type": "baseline_qualified", "refs": ["artifact:baseline/BL-001"]},
         {"type": "verifier_bundle_frozen", "refs": ["artifact:verifier/VB-001"]},
         {"type": "verifier_qualified", "refs": ["artifact:verifier/VB-001"]},
@@ -105,8 +81,6 @@
     {
       "id": "source-drift-during-search",
       "steps": [
-        {"type": "contract_frozen", "refs": ["artifact:contract/CC-001"]},
-        {"type": "baseline_started"},
         {"type": "baseline_qualified", "refs": ["artifact:baseline/BL-001"]},
         {"type": "verifier_bundle_frozen", "refs": ["artifact:verifier/VB-001"]},
         {"type": "verifier_qualified", "refs": ["artifact:verifier/VB-001"]},
@@ -118,8 +92,6 @@
     {
       "id": "protected-surface-tampering",
       "steps": [
-        {"type": "contract_frozen", "refs": ["artifact:contract/CC-001"]},
-        {"type": "baseline_started"},
         {"type": "baseline_qualified", "refs": ["artifact:baseline/BL-001"]},
         {"type": "verifier_bundle_frozen", "refs": ["artifact:verifier/VB-001"]},
         {"type": "verifier_qualified", "refs": ["artifact:verifier/VB-001"]},

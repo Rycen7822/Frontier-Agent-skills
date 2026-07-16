@@ -14,7 +14,7 @@ from _closure import compute_invalidation as compute_closure_invalidation
 from _workflow_state import InputError, load_json
 
 
-SEMANTIC_EDGE_KINDS = {"control", "data", "evidence", "invariant", "effect", "resource", "approval"}
+SEMANTIC_EDGE_KINDS = {"data", "control", "evidence", "invariant", "read", "write", "resource", "approval"}
 
 
 def propagate_invalidation(
@@ -64,6 +64,19 @@ def propagate_invalidation(
         for output_ref in node.get("output_refs", []):
             connect(node["id"], output_ref)
 
+    invariants = {item.get("id"): item for item in state.get("global_invariants", []) if isinstance(item, dict)}
+    for invariant_id in sorted(changed_refs & set(invariants)):
+        invariant = invariants[invariant_id]
+        if invariant.get("locality") == "node_set":
+            for target in invariant.get("targets", []):
+                if isinstance(target, str):
+                    connect(invariant_id, target)
+        elif invariant.get("locality") == "resource_set":
+            targets = set(invariant.get("targets", []))
+            for node in state.get("nodes", []):
+                if targets & set(node.get("resource_set", [])):
+                    connect(invariant_id, node.get("id"))
+
     affected = set(changed_refs)
     queue = deque(sorted(changed_refs))
     while queue:
@@ -86,7 +99,7 @@ def propagate_invalidation(
         reasons.append("source_scope_goal_or_plan_changed")
     if "authority" in affected or any(str(ref).startswith("AP-") for ref in affected):
         reasons.append("authority_or_approval_changed")
-    if any(str(ref).startswith("I-") for ref in affected):
+    if any(str(ref).startswith("I-") and invariants.get(ref, {}).get("locality") == "global" for ref in affected):
         reasons.append("global_invariant_changed")
     if any(str(ref).startswith("plan:") and "#D-" in str(ref) for ref in affected):
         reasons.append("plan_decision_changed")
@@ -160,7 +173,7 @@ def propagate_invalidation(
                 kind = "counterexample" if changed in counterexamples else ("candidate" if changed in candidates or changed == incumbent else "artifact")
             closure_parts.append(compute_closure_invalidation({"kind": kind, "ref": changed}, graph))
         if closure_parts:
-            phase_order = {"SPEC_COMPILING": 0, "BASELINING": 1, "VERIFIER_QUALIFYING": 2, "SEARCHING": 3}
+            phase_order = {"BASELINING": 0, "VERIFIER_QUALIFYING": 1, "SEARCHING": 2}
             restart_phase = min((item["restart_phase"] for item in closure_parts), key=lambda item: phase_order.get(item, 99))
             closure_affected = {ref for item in closure_parts for ref in item["affected"]}
             closure_reasons = {reason for item in closure_parts for reason in item["reason_codes"]}
@@ -191,6 +204,12 @@ def propagate_invalidation(
         "frontier": repair_frontier,
         "required_rechecks": sorted(set(rechecks)),
         "escalation_reasons": sorted(set(reasons)),
+        "repair_slice": repair_frontier,
+        "preserved_slice": sorted(all_refs - affected),
+        "invalidated_artifacts": sorted(ref for ref in affected if str(ref).startswith(("EV-", "artifact:"))),
+        "required_revalidation_gates": sorted(set(rechecks)),
+        "escalation_reason": sorted(set(reasons)),
+        "new_primary_card_id": "sqw.control.repair-and-invalidation",
     }
     if closure_result is not None:
         result["closure"] = closure_result

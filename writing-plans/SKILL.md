@@ -3,7 +3,7 @@ name: writing-plans
 description: Use when an authorized software change needs a durable implementation plan, a cross-context handoff, or an autonomous-closure request must be compiled into a frozen intended-state contract. Do not use for routine Direct edits, unresolved diagnosis, or actual execution, verification, sign-off, publication, or workflow closure.
 license: MIT
 metadata:
-  version: 3.0.0
+  version: 4.0.0
   author: Hermes Agent (adapted from obra/superpowers)
   hosts: [codex, hermes-agent]
   hermes:
@@ -14,125 +14,57 @@ metadata:
 
 # Writing Plans
 
-## Owner contract
+## Owner boundary
 
-Own the intended-state artifacts for a software change: the lightest durable plan that preserves scope, constraints, decisions, dependency order, recovery, and proof, plus a frozen Closure Contract when autonomous closure is eligible. Compile what must become true; do not claim what has actually become true.
+Own the lightest durable intended-state plan preserving scope, constraints, decisions, order, recovery, and proof, plus a frozen Closure Contract when eligible. Compile what must become true; never claim actual execution truth.
 
-`writing-plans` does not diagnose an unknown failure, edit production code, run candidate search, accept verifier evidence, advance workflow state, sign off, publish, or close a task. Execution is owned by `software-quality-workflows` (SQW) and its domain owners. Do not duplicate the execution lifecycle, cleanup policy, verification authority, or version-control policy in a plan. Direct work remains planless unless the user explicitly requests a durable plan.
+Diagnosis, code edits, evidence acceptance, execution state, sign-off, publication, and closure belong to `software-quality-workflows` (SQW). Direct work remains planless unless a durable plan is requested. Long non-software corpora belong to `long-document-segmented-writing`.
 
-A plan is an index over authoritative sources and stable contracts, not a copy of the source tree. Prefer IDs, symbols, schemas, invariants, acceptance examples, and source-bound pointers over speculative code or fragile line numbers.
+The contract is identical in Codex and Hermes Agent. Resolve bundled paths from this skill root and use equivalent host capabilities; plan UI and delegation are optional. Plans index authoritative sources and stable IDs rather than copying the repository.
 
-## Host compatibility
+## Route
 
-Run this skill unchanged in Codex and Hermes Agent. Follow the active host, system, and project instructions before this skill; host capability never expands user authority.
+Observe facts; do not infer nullable safety facts as false. Run `scripts/assess_plan_mode.py` with input conforming to `schemas/plan-route-facts.schema.json`, then validate the exact result against `schemas/plan-route-result.schema.json` and the live card manifest.
 
-Resolve bundled paths from this skill's root, not from the project working directory; every `scripts/...`, `schemas/...`, `references/...`, or `templates/...` path below is skill-root-relative. Select each operation by capability rather than a product-specific tool name: use only the active host's available read, search, edit, command, planning, clarification, and delegation surfaces. Treat durable plan UI and delegation as optional; when absent or unauthorized, write the same plan artifacts locally and execute or hand off without inventing a host API. `agents/openai.yaml` is Codex-facing UI metadata and `metadata.hermes` is Hermes-facing discovery metadata; neither changes the workflow contract.
+Fixed precedence: terminal Admission stops; unknown root cause or material intent gap returns to SQW; long corpus selects its bridge; one feasibility uncertainty selects spike; `CLOSURE_ELIGIBLE` selects Program + `autonomous_closure` + `wp.closure.compile`; public contract/migration/resume/external effects select Program; cross-context/durable/multi-slice/executable handoff selects Handoff; an explicit remaining request selects Brief; otherwise return Direct.
 
-## Route before planning
+Accept exactly zero or one `primary_card` transport reference from the route. Never choose a card by filename, memory, or broad similarity.
 
-Create a bounded JSON facts object and run:
+## Profile selection
 
-```bash
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/assess_plan_mode.py facts.json
-```
+- Brief (`wp.profiles.brief`): one same-session outcome; no graph, state, or Closure Contract.
+- Handoff (`wp.profiles.handoff`): ordered slices, frontier, boundaries, gaps, proof, rollback, and standard handoff.
+- Program (`wp.profiles.program`): multi-owner/public/migration/resume/closure graph. `schemas/plan-state.schema.json` is truth; render only frontier-relevant decisions/invariants within 8,192 bytes.
 
-Honor the returned route and `execution_policy`; do not reimplement its precedence in prose:
+Closure is Program-only. Move upward if a lighter profile erases migration, authority, recovery, or verifier dependencies.
 
-1. Missing authority or a typed admission failure stops planning at the reported terminal handoff.
-2. Unknown root cause routes to SQW diagnosis before implementation planning.
-3. Underdefined outcome routes to intent and design discovery.
-4. Long non-software drafting routes to the long-document owner; a disposable feasibility question routes to the spike contract.
-5. A clear, local, reversible same-session change routes to SQW Direct unless a plan was explicitly requested.
-6. An autonomous request uses the three-state closure admission result below.
-7. Otherwise select the lightest standard profile that preserves the required handoff and recovery evidence.
+## Closure boundary
 
-Nullable safety facts are unknown, not false. A public contract, migration, external-system dependency, long corpus, or spike condition that is not established must fail closed. Strategy families and independent write slices are separate facts.
+Use closure only after an independent Admission says `CLOSURE_ELIGIBLE`. Start at `wp.closure.compile`, resolve its four section decisions one at a time, and validate the complete draft with `scripts/validate_closure_contract.py` against `schemas/closure-contract.schema.json`.
 
-## Autonomous closure branch
+Freeze with `scripts/freeze_closure_contract.py` to a new immutable path. Verify Admission, Authority Manifest, bundle, source, scope, policy/card manifests, authority hash, and ceiling. Freeze is atomic/no-overwrite; supersede by epoch. Never bind plans, future candidates, runtime verdicts, raw logs, or publication claims.
 
-Closure admission has exactly three outcomes:
+Build Program state only after freeze. It binds the exact contract ID/epoch/hash and the same source, scope, bundle, policy, card-manifest, and authority identities. Validate through `scripts/validate_plan_state.py`. Generated profiles and capsules are disposable projections: capsules bind exact card/projection hashes, have an effective 8,192-byte ceiling, and fail closed if mandatory content does not fit.
 
-- `eligible`: compile and freeze a Closure Contract, then build a contract-bound Program plan.
-- `ineligible`: fall back to the returned Direct or standard planning route without creating a closure contract.
-- typed terminal: emit the bounded compiler/admission handoff named by the route; do not invent intent and do not pause an autonomous workflow waiting for a routine preference.
+## One-card protocol
 
-Before freeze, a bounded spike may resolve one explicitly identified feasibility uncertainty. Its evidence can inform the contract, but spike code and candidate history never become the contract or production implementation by silent promotion.
+Load the selected card, verify it against `registries/reference-cards.manifest.json`, and make only its named decision. Follow at most one evidence-supported neighbor. Emit its artifact or typed blocker, then reroute. Do not preload siblings, operator manuals, or directories.
 
-The Closure Contract is distinct from the plan. It fixes admitted intent, authority, hard constraints, ordered soft objectives, corners, verifier requirements, and search/publication policy. The Program plan describes intended implementation structure under that frozen contract. Neither artifact records actual execution state.
+Cards own model decisions. Schemas/scripts own machine truth. `operator/` owns runtime mechanics and is never part of the model card graph. Templates are projections, not policy owners. Record policy claims as stable `policy_id + bundle_version + policy_hash`, never as a Markdown path.
 
-## Select Brief / Handoff / Program/Migration Map
+If context is approaching its limit, persist canonical state and render a node capsule with `scripts/render_context_capsule.py`; do not write a prose substitute. Manifest/card drift invalidates only such generated context, while source/scope/contract/root-policy drift requires wider replanning.
 
-| Profile | Execution policy | Use | Durable shape |
-|---|---|---|---|
-| **Brief Change Card** | `standard` | Small, clear, same-session change where a compact plan was requested | One bounded Markdown card; no graph and no closure contract |
-| **Executable Handoff** | `standard` | Another context or agent must resume, or ordering/recovery evidence matters | Markdown handoff with anchors, ordered slices, proof, rollback, and unresolved gaps |
-| **Program/Migration Map** | `standard` or `autonomous_closure` | Multi-owner graph, migration, public contract, or eligible closure | Canonical plan-state 1.1 plus rendered map and context capsules |
+## SQW handoff
 
-Direct is an SQW execution route, not a fourth plan profile. Autonomous closure is Program-only. If the selected profile cannot preserve a public migration, authority boundary, cross-context recovery, or verifier dependency, move upward rather than compressing away the constraint.
+Writing Plans hands off intended state; SQW independently owns execution and proof. Emit exactly `schemas/plan-execution-handoff.schema.json`:
 
-## Compile and freeze contract
+- standard execution: plan identity, source revision, authority manifest, scope, current frontier, required SQW policy IDs, and blockers; all Admission/Closure Contract fields are null;
+- autonomous closure: Program plus non-null Admission and frozen Closure Contract refs/hashes under the same bundle/source/scope/authority boundary.
 
-For `autonomous_closure`, compile a draft against `schemas/closure-contract.schema.json` and the semantic owner in `scripts/validate_closure_contract.py`. The draft must bind an admitted request, externally observed source revision, scope hash, policy-bundle hash, authority hash and ceiling, hard/soft/corner IDs, verifier/oracle requirements, protected paths, and fixed terminal vocabulary.
-
-Validate before freeze:
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_closure_contract.py draft.json --schema schemas/closure-contract.schema.json --for-freeze
-```
-
-Freeze to a separate, new path with `scripts/freeze_closure_contract.py`, supplying the independently observed revision, scope, policy, and authority bindings. Freeze is atomic and no-overwrite; never edit a frozen epoch. The contract must not contain a plan reference, candidate, incumbent, runtime verdict, raw log, or publication claim.
-
-If authoritative sources conflict, hard constraints are unsatisfiable, or required intent cannot be inferred safely, produce the minimal typed ambiguity/unsat compiler handoff. Do not soften a hard constraint, widen authority, or fabricate a default merely to obtain a valid file.
-
-## Build the canonical plan
-
-Program state uses `schemas/plan-state.schema.json` version 1.1. A contract-bound Program records `execution_policy: autonomous_closure`, the exact `closure_contract_ref`, source/policy hashes, decision provenance/materiality/reversibility/contract effect, and node-level constraint, corner, and verifier-requirement references. Standard plans must not carry a closure contract.
-
-Validate the canonical state before rendering:
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_plan_state.py standard-plan-state.json
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_plan_state.py closure-plan-state.json --closure-contract frozen-contract.json
-```
-
-Use `scripts/render_plan_profile.py` for Brief, Handoff, or Program output and `scripts/render_context_capsule.py` for a bounded node handoff. Derive rendered coverage from canonical state; do not accept caller-authored summaries as substitutes for plan identity or constraint bindings.
-
-Each node names one stable owner seam, inputs/preconditions, intended outputs, dependencies, invariants, acceptance proof, false-green risks, rollback/recovery, and blocking gaps. Keep a dual ledger: intended plan state here, actual execution/evidence state in SQW. Candidate IDs may appear only as bounded SQW evidence references, never as canonical plan nodes or completion claims.
-
-## Progressive disclosure
-
-Keep the entry point compact and load references only for the active profile or risk. The default active-reference budget is five. Exceed it only when the route returns an explicit reason for a public contract, migration, external system, long corpus, or spike, and record that reason in the handoff.
-
-Context capsules carry the frozen contract identity, current canonical node, required invariants/decisions/authority, false-green risks, blocking gaps, and a bounded runtime projection. Exclude full contracts, candidate histories, raw logs, generated corpora, and repeated source prose. Re-open source anchors at execution time instead of treating an old capsule as current truth.
-
-## Handoff to SQW
-
-Hand off exact artifact paths and identities:
-
-- selected profile and `execution_policy`;
-- validated canonical plan-state path/hash and current node/frontier;
-- frozen contract path/hash/ID/epoch for autonomous closure;
-- source revision, scope hash, policy-bundle hash, authority ceiling, protected paths, and unresolved certificates;
-- required verifier, rollback, migration, and publication boundaries.
-
-SQW owns admission into execution, controller transitions, isolated candidate work, verifier qualification, actual-state/evidence ledgers, independent review, sign-off, terminal state, and publication. A writing handoff requests those owners; it never impersonates them.
+Do not include internal route-card IDs in the handoff. Point to canonical plan state instead of embedding historical nodes. SQW may reject stale, under-authorized, unverifiable, or conflicting plans.
 
 ## Completion
 
-For a standard profile, completion means the requested plan artifact is internally consistent, source-bound, validated where a schema exists, and handed off with explicit gaps. For autonomous closure, writing completion is exactly `contract_frozen + plan_validated + handoff_emitted`.
+Standard writing is complete when the requested artifact is internally consistent, source-bound, proportionate, schema-valid where applicable, and handed off with explicit gaps.
 
-Writing completion does not mean implementation, sign-off, publication, or workflow closure. Report those as unproven until SQW supplies fresh evidence through its owning workflow.
-
-The actual-state handoff may report `needs_repair`, `verified_within_scope`, `blocked`, or `empirical_validation_required`. These are SQW-owned epistemic statuses, not plan completion claims.
-
-## Reference map
-
-- [Architecture decision records](references/architecture-decision-records.md)
-- [Closure Contract](references/closure-contract.md)
-- [Context and output economy](references/context-and-output-economy-plans.md)
-- [Deprecation and migration plans](references/deprecation-migration-plans.md)
-- [Design-audit compression ledger](references/design-audit-compression-ledger.md)
-- [Implementation slicing and context capsules](references/implementation-slicing-and-context-capsules.md)
-- [Plan profiles](references/plan-profiles.md)
-- [Plan-state contract](references/plan-state-contract.md)
-- [Disposable feasibility spikes](references/spike.md)
+Autonomous writing is complete exactly at `contract_frozen + plan_validated + handoff_emitted`. This does not mean implementation, sign-off, publication, or workflow closure. Report all four as unproven until SQW supplies fresh owner-qualified evidence.

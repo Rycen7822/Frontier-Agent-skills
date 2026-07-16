@@ -27,14 +27,15 @@ from build_codex_plugin import _strict_json, skill_version, validate_source  # n
 Layout = Literal["bundle", "skills_only"]
 EXPECTED_SKILLS = {"writing-plans", "software-quality-workflows"}
 BUNDLE_ROOT_PREFIX = "software-engineering-closure-bundle"
-BUNDLE_DIRECTORIES = {"evaluation", "packaging", "scripts", "tests"}
-BUNDLE_FILES = {"README.md", "RELEASE_NOTES.md", "bundle-manifest.json"}
+BUNDLE_DIRECTORIES = {"bundle", "evaluation", "packaging", "scripts", "tests"}
+BUNDLE_FILES = {"README.md", "RELEASE_NOTES.md", "bundle-manifest.json", "frontier-engineering.bundle.json"}
 IGNORED_TOP_LEVEL = {
     ".git",
     ".gitignore",
     ".pytest_cache",
     ".work",
     "CODEX_STATE.md",
+    "share",
     "__pycache__",
     "dist",
     "tmp",

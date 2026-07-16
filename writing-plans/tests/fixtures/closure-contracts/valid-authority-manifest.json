@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "manifest_id": "auth-0123456789abcdefabcd",
+  "request_mode": "change",
+  "source_revision": "revision-abc123",
+  "scope_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "autonomy_ceiling": "local_reversible",
+  "allowed_side_effects": ["local_ephemeral", "local_reversible"],
+  "forbidden_actions": ["push", "deploy", "publish", "auto_merge"]
+}

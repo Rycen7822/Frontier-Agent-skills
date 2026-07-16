@@ -1,9 +1,9 @@
 {
   "activation_ceiling": "shadow",
-  "bundle_hash": "sha256:97d1c7b20cedb1de31a646acf759d1a337cd80b35d4bb359da0e2041e50e1891",
-  "cohort_id": "COHORT-P5-SEED-97D1C7B20CED",
-  "controller_hash": "sha256:5503ca4950ef9e534a7869f09d6ba8fc509a012143f7659b01a924587501c7d5",
-  "corpus_id": "CORPUS-P5-SEED-97D1C7B20CED",
+  "bundle_hash": "sha256:b695ab188f974f28320dabacca4e8602dcce4ba596c10b20711c26deaa6aa2cd",
+  "cohort_id": "COHORT-P5-SEED-B695AB188F97",
+  "controller_hash": "sha256:2dda5af16d4b17d3e775ca7dc95cd6a6af8ce75b016e2a58e140c6ab801b8932",
+  "corpus_id": "CORPUS-P5-SEED-B695AB188F97",
   "decision": "remain_shadow",
   "failed_gates": [
     "ablation_coverage",
@@ -76,7 +76,7 @@
       "C3": null
     }
   },
-  "report_hash": "sha256:493193dc88e229ab16742ab1b523c6bf38c9a71207b44253a6e6561a119cdf51",
+  "report_hash": "sha256:8363e34039e7081aa1df6742bec53ffacc4e12b89675cea4cf41b71413aec06b",
   "sample": {
     "case_count": 18,
     "complete_case_count": 0,

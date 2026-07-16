@@ -30,8 +30,6 @@ from _workflow_state import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_STATE_SCHEMA = ROOT / "schemas" / "workflow-state.schema.json"
 DEFAULT_EVENT_SCHEMA = ROOT / "schemas" / "workflow-event.schema.json"
-DEFAULT_OWNER_REGISTRY = ROOT / "references" / "owner-registry.json"
-_OWNER_CACHE: dict[str, dict[str, Any]] | None = None
 EFFECT_ORDER = {
     "none": 0,
     "local_ephemeral": 1,
@@ -47,7 +45,12 @@ WORKER_EVENT_TYPES = {"reference_loaded", "node_output_committed", "node_failed"
 REVIEWER_EVENT_TYPES = {"review_submitted", "artifact_observed", "verifier_qualified", "verifier_rejected", "counterexample_observed", "signoff_completed"}
 TOOL_EVENT_TYPES = {"artifact_observed", "baseline_qualified", "baseline_rejected", "verifier_qualified", "verifier_rejected", "candidate_created", "candidate_evaluated", "counterexample_observed", "signoff_completed"}
 ADMISSION_EVENT_TYPES = {"closure_admission_started", "closure_admission_completed"}
-CONTROLLER_ONLY_EVENT_TYPES = {"candidate_promoted", "contract_frozen", "contract_superseded", "terminal_certificate_emitted"}
+CONTROLLER_ONLY_EVENT_TYPES = {
+    "baseline_qualified", "verifier_bundle_frozen", "verifier_qualified", "candidate_created",
+    "candidate_evaluated", "candidate_pruned", "candidate_promoted", "counterexample_observed",
+    "budget_consumed", "signoff_started", "signoff_completed", "contract_superseded",
+    "terminal_certificate_emitted", "source_drift_detected", "workflow_closed",
+}
 NODE_EVENT_TYPES = {"node_refined", "node_started", "node_output_committed", "node_completed", "node_failed"}
 RUN_EVENT_TYPES = {"node_started", "node_output_committed", "node_completed", "node_failed"}
 WORKFLOW_TRANSITIONS = {
@@ -71,23 +74,12 @@ NODE_TRANSITIONS = {
     "cancelled": set(),
 }
 CLOSURE_PHASE_TRANSITIONS = {
-    "SPEC_COMPILING": {"CONTRACT_FROZEN", "TERMINAL"},
-    "CONTRACT_FROZEN": {"BASELINING", "SPEC_COMPILING", "TERMINAL"},
-    "BASELINING": {"VERIFIER_QUALIFYING", "SPEC_COMPILING", "TERMINAL"},
-    "VERIFIER_QUALIFYING": {"PLANNING", "BASELINING", "SPEC_COMPILING", "TERMINAL"},
-    "PLANNING": {"SEARCHING", "VERIFIER_QUALIFYING", "BASELINING", "SPEC_COMPILING", "TERMINAL"},
-    "SEARCHING": {"SIGNING_OFF", "PLANNING", "VERIFIER_QUALIFYING", "BASELINING", "SPEC_COMPILING", "TERMINAL"},
-    "SIGNING_OFF": {"SEARCHING", "PLANNING", "VERIFIER_QUALIFYING", "BASELINING", "SPEC_COMPILING", "TERMINAL"},
+    "BASELINING": {"VERIFIER_QUALIFYING", "TERMINAL"},
+    "VERIFIER_QUALIFYING": {"SEARCHING", "BASELINING", "TERMINAL"},
+    "SEARCHING": {"SIGNING_OFF", "BASELINING", "TERMINAL"},
+    "SIGNING_OFF": {"SEARCHING", "BASELINING", "TERMINAL"},
     "TERMINAL": set(),
 }
-
-
-def _owner_registry() -> dict[str, dict[str, Any]]:
-    global _OWNER_CACHE
-    if _OWNER_CACHE is None:
-        registry = load_json(DEFAULT_OWNER_REGISTRY)
-        _OWNER_CACHE = {item["id"]: item for item in registry.get("owners", [])}
-    return _OWNER_CACHE
 
 
 def _objects(state: dict[str, Any]) -> Iterable[tuple[str, int, dict[str, Any]]]:
@@ -196,21 +188,15 @@ def _validate_closure_run(state: dict[str, Any], run: dict[str, Any]) -> list[Vi
             violations.append(Violation("workflow.closure-budget", f"/closure_run/budget/{used}", f"{used} exceeds {limit}"))
 
     required_by_phase = {
-        "SPEC_COMPILING": set(),
-        "CONTRACT_FROZEN": {"contract_ref"},
         "BASELINING": {"contract_ref"},
         "VERIFIER_QUALIFYING": {"contract_ref", "baseline_ref"},
-        "PLANNING": {"contract_ref", "baseline_ref", "verifier_bundle_ref"},
         "SEARCHING": {"contract_ref", "baseline_ref", "verifier_bundle_ref"},
         "SIGNING_OFF": {"contract_ref", "baseline_ref", "verifier_bundle_ref", "incumbent_candidate_ref"},
         "TERMINAL": {"terminal_certificate_ref"},
     }
     future_forbidden = {
-        "SPEC_COMPILING": {"contract_ref", "baseline_ref", "verifier_bundle_ref", "incumbent_candidate_ref"},
-        "CONTRACT_FROZEN": {"baseline_ref", "verifier_bundle_ref", "incumbent_candidate_ref"},
-        "BASELINING": {"verifier_bundle_ref", "incumbent_candidate_ref"},
-        "VERIFIER_QUALIFYING": {"incumbent_candidate_ref"},
-        "PLANNING": {"incumbent_candidate_ref"},
+        "BASELINING": {"baseline_ref", "verifier_bundle_ref", "incumbent_candidate_ref", "signoff_result_ref"},
+        "VERIFIER_QUALIFYING": {"incumbent_candidate_ref", "signoff_result_ref"},
         "SEARCHING": set(),
         "SIGNING_OFF": set(),
         "TERMINAL": set(),
@@ -230,7 +216,7 @@ def _validate_closure_run(state: dict[str, Any], run: dict[str, Any]) -> list[Vi
         if terminal_status is None or terminal_ref is None:
             violations.append(Violation("workflow.closure-phase", "/closure_run/terminal_status", "TERMINAL requires status and certificate"))
         if terminal_status == "CLOSED":
-            for field in ("contract_ref", "baseline_ref", "verifier_bundle_ref", "incumbent_candidate_ref"):
+            for field in ("contract_ref", "baseline_ref", "verifier_bundle_ref", "incumbent_candidate_ref", "signoff_result_ref"):
                 if run.get(field) is None:
                     violations.append(Violation("workflow.closure-phase", f"/closure_run/{field}", f"CLOSED requires {field}"))
     elif terminal_status is not None or terminal_ref is not None:
@@ -271,58 +257,17 @@ def validate_state(
     if schema_failed:
         return violations
 
-    owners = _owner_registry()
     active = state.get("active_owners", {})
     primary = active.get("primary")
-    primary_row = owners.get(primary)
-    if primary_row is None:
-        violations.append(Violation("workflow.owner-unknown", "/active_owners/primary", f"unsupported owner cannot silently remove gates: {primary}"))
-    elif primary_row.get("authority") != "normative_owner":
-        violations.append(Violation("workflow.owner-stack", "/active_owners/primary", "companion cannot be primary", primary))
     normative = active.get("normative", [])
     companions = active.get("companions", [])
-    for field, expected_authority in (("normative", "normative_owner"), ("companions", "companion")):
-        for index, owner_id in enumerate(active.get(field, [])):
-            row = owners.get(owner_id)
-            if row is None:
-                violations.append(Violation("workflow.owner-unknown", pointer(("active_owners", field, index)), f"unsupported owner cannot silently remove gates: {owner_id}"))
-            elif row.get("authority") != expected_authority or owner_id == primary:
-                violations.append(Violation("workflow.owner-stack", pointer(("active_owners", field, index)), f"owner has wrong active authority: {owner_id}", owner_id))
     active_ids = [primary, *normative, *companions]
     active_ids = [owner_id for owner_id in active_ids if isinstance(owner_id, str)]
-    required: set[str] = set()
-    pending = list(active_ids)
-    while pending:
-        owner_id = pending.pop()
-        for target in owners.get(owner_id, {}).get("requires", []):
-            if target not in required:
-                required.add(target)
-                pending.append(target)
-    loaded = active.get("loaded_references", [])
-    loaded_ids = [item.get("owner_id") for item in loaded]
-    if len(active_ids) != len(set(active_ids)) or len(loaded_ids) != len(set(loaded_ids)) or set(active_ids) != set(loaded_ids):
-        violations.append(Violation("workflow.owner-stack", "/active_owners/loaded_references", "loaded references must exactly match unique active owners"))
-    for index, item in enumerate(loaded):
-        row = owners.get(item.get("owner_id"))
-        if row is None or item.get("path") != row.get("path"):
-            violations.append(Violation("workflow.owner-stack", pointer(("active_owners", "loaded_references", index)), "loaded owner/path does not match registry", item.get("owner_id")))
-        elif isinstance(closure_run, dict) and item.get("phase") != closure_run.get("phase"):
-            violations.append(Violation("workflow.owner-stack", pointer(("active_owners", "loaded_references", index, "phase")), "loaded reference phase differs from closure run phase", item.get("owner_id")))
-        elif item.get("phase") not in row.get("phases", []) and item.get("owner_id") not in required:
-            violations.append(Violation("workflow.owner-stack", pointer(("active_owners", "loaded_references", index, "phase")), "owner is not active in the loaded phase", item.get("owner_id")))
-    if not required.issubset(set(active_ids)):
-        violations.append(Violation("workflow.owner-stack", "/active_owners/normative", f"required owner closure is incomplete: {sorted(required - set(active_ids))}"))
-    for owner_id in active_ids:
-        conflicts = set(owners.get(owner_id, {}).get("conflicts_with", [])) & set(active_ids)
-        if conflicts:
-            violations.append(Violation("workflow.owner-stack", "/active_owners", f"active owner conflict: {owner_id}, {sorted(conflicts)}"))
-    if len(active_ids) > 8:
-        overflow_reasons = [item.get("reason_code") for item in loaded[8:]]
-        if len(overflow_reasons) != len(set(overflow_reasons)):
-            violations.append(Violation("workflow.owner-stack", "/active_owners/loaded_references", "every reference above the soft budget needs a unique reason code"))
+    if len(active_ids) != len(set(active_ids)):
+        violations.append(Violation("workflow.owner-stack", "/active_owners", "active owner IDs must be unique"))
 
-    plan_ref = state.get("plan_ref", {}).get("artifact_ref")
-    plan_prefix = plan_ref.split("#", 1)[0] + "#" if isinstance(plan_ref, str) and "#" in plan_ref else None
+    plan_id = state.get("plan_ref", {}).get("plan_id")
+    plan_prefix = f"plan:{plan_id}#" if isinstance(plan_id, str) else None
     for node_index, node in enumerate(state.get("nodes", [])):
         candidate_refs = [("plan_node_ref", node.get("plan_node_ref"))]
         candidate_refs.extend(("input_refs", ref) for ref in node.get("input_refs", []) if str(ref).startswith("plan:"))
@@ -345,6 +290,16 @@ def validate_state(
     artifacts = {item.get("id"): item for item in state.get("artifacts", [])}
     verifiers = {item.get("id"): item for item in state.get("verifiers", [])}
     approvals = {item.get("id"): item for item in state.get("authority", {}).get("approvals", [])}
+    declared_resources = {resource for node in state.get("nodes", []) for resource in node.get("resource_set", [])}
+    for index, invariant in enumerate(state.get("global_invariants", [])):
+        locality = invariant.get("locality")
+        targets = set(invariant.get("targets", []))
+        if locality == "global" and targets:
+            violations.append(Violation("workflow.invariant-locality", pointer(("global_invariants", index, "targets")), "global invariant must not declare local targets", invariant.get("id")))
+        elif locality == "node_set" and (not targets or not targets.issubset(nodes)):
+            violations.append(Violation("workflow.invariant-locality", pointer(("global_invariants", index, "targets")), "node-set invariant targets must resolve to workflow nodes", invariant.get("id")))
+        elif locality == "resource_set" and (not targets or not targets.issubset(declared_resources)):
+            violations.append(Violation("workflow.invariant-locality", pointer(("global_invariants", index, "targets")), "resource-set invariant targets must resolve to declared resources", invariant.get("id")))
     frontier = state.get("frontier", [])
     for index, node_id in enumerate(frontier):
         node = nodes.get(node_id)
@@ -464,9 +419,23 @@ def validate_transition(previous: dict[str, Any], current: dict[str, Any], *, ac
 
     before_nodes = {item.get("id"): item for item in previous.get("nodes", [])}
     after_nodes = {item.get("id"): item for item in current.get("nodes", [])}
+    previous_run = previous.get("closure_run") if isinstance(previous.get("closure_run"), dict) else {}
+    current_run = current.get("closure_run") if isinstance(current.get("closure_run"), dict) else {}
+    previous_contract = previous_run.get("contract_ref") if isinstance(previous_run.get("contract_ref"), dict) else {}
+    current_contract = current_run.get("contract_ref") if isinstance(current_run.get("contract_ref"), dict) else {}
+    contract_superseded = (
+        isinstance(previous_contract.get("epoch"), int)
+        and isinstance(current_contract.get("epoch"), int)
+        and current_contract["epoch"] > previous_contract["epoch"]
+        and current_contract != previous_contract
+        and current_run.get("handoff_ref") != previous_run.get("handoff_ref")
+        and current.get("plan_ref") != previous.get("plan_ref")
+        and current_run.get("phase") == "BASELINING"
+    )
     for node_id, before in before_nodes.items():
         if node_id not in after_nodes:
-            violations.append(Violation("workflow.node-deleted", "/nodes", "canonical nodes cannot be deleted; supersede them", node_id))
+            if not contract_superseded:
+                violations.append(Violation("workflow.node-deleted", "/nodes", "canonical nodes cannot be deleted; supersede them", node_id))
             continue
         old, new = before.get("status"), after_nodes[node_id].get("status")
         if old != new and new not in NODE_TRANSITIONS.get(old, set()):

@@ -25,7 +25,7 @@ class VNextP0ContractTests(unittest.TestCase):
             )
         )
         self.assertEqual("2.0", workflow["schema_version"])
-        self.assertEqual("writing-plan-route/3.0", plans["schema_version"])
+        self.assertEqual("2.0", plans["schema_version"])
         self.assertGreaterEqual(len(workflow["cases"]), 16)
         self.assertGreaterEqual(len(plans["cases"]), 12)
         for payload in (workflow, plans):
@@ -34,9 +34,6 @@ class VNextP0ContractTests(unittest.TestCase):
             for case in payload["cases"]:
                 self.assertIsInstance(case["facts"], dict)
                 self.assertIn("expected", case)
-        for case in workflow["cases"]:
-            self.assertTrue(case["prompt"].strip())
-            self.assertIn("baseline_observation", case)
 
     def test_vnext_entry_contract(self) -> None:
         sqw = (SQW_ROOT / "SKILL.md").read_text(encoding="utf-8")
@@ -44,10 +41,10 @@ class VNextP0ContractTests(unittest.TestCase):
         self.assertNotIn("Default umbrella for all software development work", sqw)
         self.assertNotIn("All software development tasks enter through this skill", sqw)
         self.assertNotIn("**Always use before:**", writing)
-        self.assertIn("version: 4.0.0", sqw)
-        self.assertIn("version: 3.0.0", writing)
+        self.assertIn("version: 5.0.0", sqw)
+        self.assertIn("version: 4.0.0", writing)
         self.assertIn("M0 Direct", sqw)
-        for profile in ("Brief Change Card", "Executable Handoff", "Program/Migration Map"):
+        for profile in ("Brief (`wp.profiles.brief`)", "Handoff (`wp.profiles.handoff`)", "Program (`wp.profiles.program`)"):
             self.assertIn(profile, writing)
 
     def test_scoped_closure_vocabulary(self) -> None:
@@ -65,8 +62,8 @@ class VNextP0ContractTests(unittest.TestCase):
             "blocked",
             "empirical_validation_required",
         ):
-            self.assertIn(status, writing)
             self.assertIn(status, sqw)
+        self.assertIn("unproven", writing)
 
     def test_route_profiles_and_modes_cover_counterexamples(self) -> None:
         workflow = json.loads(
@@ -78,50 +75,48 @@ class VNextP0ContractTests(unittest.TestCase):
         workflow_cases = {case["id"]: case["expected"] for case in workflow["cases"]}
         plan_cases = {case["id"]: case["expected"] for case in plans["cases"]}
         required_workflow_cases = {
-            "plugin_source_only_edit",
-            "browser_visual_defect",
-            "performance_optimization",
-            "slow_external_job_dominates",
-            "shadow_trace_observation",
+            "known_public_contract_surface",
+            "trace_only_change",
+            "durable_change",
+            "eligible_admission_enters_wp_compile",
+            "terminal_admission_emits_terminal",
         }
         self.assertTrue(required_workflow_cases.issubset(workflow_cases))
         self.assertEqual(
-            {"M0_DIRECT", "M1_TRACE", "M2_SPARSE", "M3_FULL"},
-            {case["workflow_mode"] for case in workflow_cases.values()},
+            {None, "M0_DIRECT", "M1_TRACE", "M2_SPARSE"},
+            {case.get("workflow_mode") for case in workflow_cases.values()},
         )
-        self.assertEqual("M0_DIRECT", workflow_cases["routine_docs_typo"]["workflow_mode"])
-        self.assertEqual("systematic-debugging", workflow_cases["unknown_failure"]["primary_owner"])
-        self.assertEqual("M3_FULL", workflow_cases["schema_migration_rollout"]["workflow_mode"])
-        self.assertEqual("brief", plan_cases["explicit_local_plan_brief"]["profile"])
-        self.assertEqual("program", plan_cases["public_migration_resume_program"]["profile"])
-        self.assertEqual("long-document", plan_cases["long_corpus_external_owner"]["route"])
+        self.assertEqual("M0_DIRECT", workflow_cases["routine_local_change"]["workflow_mode"])
+        self.assertEqual("systematic-debugging", workflow_cases["unknown_failure"]["primary_owner_id"])
+        self.assertEqual("M2_SPARSE", workflow_cases["durable_change"]["workflow_mode"])
+        self.assertEqual("brief", plan_cases["explicit_brief"]["profile"])
+        self.assertEqual("program", plan_cases["public_resume_program"]["profile"])
+        self.assertEqual("long-document", plan_cases["long_corpus_handoff"]["route"])
 
     def test_reference_budget_review_tiers_and_conditional_authority(self) -> None:
         sqw = (SQW_ROOT / "SKILL.md").read_text(encoding="utf-8")
-        original_entry_bytes = 18_062
-        self.assertLessEqual(
-            len(sqw.encode("utf-8")),
-            int(original_entry_bytes * 0.90),
-            "P0 requires a measured, material entry-context reduction from the frozen original",
-        )
+        self.assertLessEqual(len(sqw.encode("utf-8")), 7_168)
+        self.assertLessEqual(len((WRITING_ROOT / "SKILL.md").read_bytes()), 6_144)
         for mode in ("M0 Direct", "M1 Trace", "M2 Sparse", "M3 Full"):
             self.assertIn(mode, sqw)
         for tier in ("R0", "R1", "R2"):
             self.assertIn(tier, sqw)
-        self.assertIn("Default active stack", sqw)
-        self.assertIn("More than three external references is a soft warning", sqw)
-        self.assertIn("Load full [Authority and Scope]", sqw)
-        authority = (SQW_ROOT / "references" / "authority-and-scope.md").read_text(encoding="utf-8")
-        self.assertIn("M0 does not create a durable manifest by default", authority)
-        delegated = (SQW_ROOT / "references" / "delegated-development.md").read_text(encoding="utf-8")
-        self.assertIn("only for M2 Sparse or M3 Full", delegated)
-        self.assertIn("declared `write_set` values do not overlap", delegated)
+        self.assertIn("zero or one exact `primary_card`", sqw)
+        self.assertIn("at most three exact cards", sqw)
+        self.assertNotIn("references/authority-and-scope.md", sqw)
+        safety = SQW_ROOT / "references" / "safety"
+        self.assertIn("M0", (safety / "scope-and-dirty-worktree.md").read_text(encoding="utf-8"))
+        self.assertIn("READ_ONLY", (safety / "side-effect-risk.md").read_text(encoding="utf-8"))
+        self.assertIn("scan_candidate", (safety / "evidence-coverage-and-freshness.md").read_text(encoding="utf-8"))
+        delegated = (SQW_ROOT / "references" / "delegation" / "admission-and-slicing.md").read_text(encoding="utf-8")
+        self.assertIn("M2/M3 execution", delegated)
+        self.assertIn("overlapping writes/resources", delegated)
 
     def test_new_major_removes_compatibility_paths(self) -> None:
         writing = (WRITING_ROOT / "SKILL.md").read_text(encoding="utf-8")
         self.assertNotIn("git commit", writing.lower())
         self.assertNotIn("python -m pytest", writing.lower())
-        self.assertIn("Do not duplicate the execution", writing)
+        self.assertIn("SQW independently owns execution and proof", writing)
         names = {path.name for path in (WRITING_ROOT / "references").glob("*.md")}
         compatibility_paths = {
             "context-compaction-resistant-upgrade-plans.md",
@@ -138,11 +133,11 @@ class VNextP0ContractTests(unittest.TestCase):
         for name in compatibility_paths:
             self.assertFalse((WRITING_ROOT / "references" / name).exists(), name)
         owner_expectations = {
-            "intent-and-design-discovery.md": "Fillable requirement blocks",
-            "workspace-artifact-hygiene.md": "Compact before deletion",
-            "test-patterns.md": "PAT-13 — Benchmark fixture curation",
-            "test-patterns.md#legacy": "PAT-14 — Legacy manifest comparison",
-            "performance-optimization.md": "Result-preserving decision contract",
+            "entry/intent-discovery.md": "# Intent Discovery",
+            "workspace/task-artifact-ownership.md": "# Task-Artifact Ownership",
+            "test/patterns/benchmark-fixture-curation.md": "# Benchmark Fixture Curation Pattern",
+            "test/patterns/legacy-manifest-comparison.md": "# Legacy Manifest Comparison Pattern",
+            "domain/performance/optimization-and-parity.md": "# Performance Optimization and Parity",
         }
         for key, marker in owner_expectations.items():
             filename = key.split("#", 1)[0]

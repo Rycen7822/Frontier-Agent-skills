@@ -91,7 +91,7 @@ def _mutate(state: dict, name: str) -> None:
     elif name == "profile_overbuilt":
         state["profile"] = "brief"
     elif name == "owner_duplicate":
-        state["policy_claims"].append({"policy": "implementation-proof-mechanism", "normative_owner": "another-owner", "artifact_ref": "source:symbol:Other.compare"})
+        state["policy_claims"].append({"policy_id": "sqw.verify.completion-evidence", "bundle_version": "frontier-engineering/5.0.0+4.0.0", "policy_hash": "sha256:" + "5" * 64})
     elif name == "sensitive_unclassified":
         state["facts"][0]["statement"] = "api_key=SUPERSECRET_1234567890"
     elif name == "verifier_unresolved":
@@ -106,6 +106,23 @@ class PlanStateTests(unittest.TestCase):
     def test_valid_program_has_no_violations(self) -> None:
         self.assertEqual([], _validate(_base()))
 
+    def test_v4_policy_invariant_effect_and_bundle_identity_are_schema_owned(self) -> None:
+        state = _base()
+        self.assertEqual([], _validate(state))
+        self.assertTrue({"bundle_id", "policy_bundle_hash", "reference_manifest_hash"} <= set(state["source"]))
+        self.assertEqual({"policy_id", "bundle_version", "policy_hash"}, set(state["policy_claims"][0]))
+        self.assertNotIn(".md", json.dumps(state["policy_claims"]))
+        self.assertTrue({"locality", "applicability", "targets"} <= set(state["global_invariants"][0]))
+        self.assertTrue(all("effect_set" in node for node in state["nodes"]))
+
+        legacy = _base()
+        legacy["policy_claims"][0] = {
+            "policy": "implementation-proof-mechanism",
+            "normative_owner": "references/verification-discipline.md",
+            "artifact_ref": "references/verification-discipline.md",
+        }
+        self.assertIn("plan.schema", {item.code for item in _validate(legacy)})
+
     def test_each_stable_violation_code_has_a_negative_fixture(self) -> None:
         catalog = json.loads((FIXTURES / "invalid-cases.json").read_text(encoding="utf-8"))
         self.assertEqual(21, len(catalog["cases"]))
@@ -117,7 +134,10 @@ class PlanStateTests(unittest.TestCase):
                 self.assertIn(case["expected_code"], codes, sorted(codes))
 
     def test_schema_contract_enums_and_codes_do_not_drift(self) -> None:
-        contract = (ROOT / "references" / "plan-state-contract.md").read_text(encoding="utf-8")
+        contract = "\n".join(
+            (ROOT / "operator" / name).read_text(encoding="utf-8")
+            for name in ("plan-state-runtime.md", "error-codes.md")
+        )
         catalog = json.loads((FIXTURES / "invalid-cases.json").read_text(encoding="utf-8"))
         for case in catalog["cases"]:
             self.assertIn(case["expected_code"], contract)
@@ -134,7 +154,7 @@ class PlanStateTests(unittest.TestCase):
         state["goal"] += " changed"
         self.assertNotEqual(first, canonical_state_hash(state))
 
-    def test_capsule_redacts_sensitive_objects_and_reports_budget(self) -> None:
+    def test_capsule_redacts_and_fails_closed_before_mandatory_truncation(self) -> None:
         state = _base()
         decision = state["decisions"][0]
         decision["sensitive"] = True
@@ -144,18 +164,45 @@ class PlanStateTests(unittest.TestCase):
         extra["id"] = "P-03"
         extra["status"] = "blocked"
         state["nodes"].append(extra)
-        full_text, full_metadata = render(state, "P-02", 10_000)
+        card_refs = [{"card_id": "wp.slicing.context-capsules", "card_hash": "sha256:" + "6" * 64}]
+        full_text, full_metadata = render(state, "P-02", 10_000, card_refs=card_refs)
         self.assertNotIn("SECRET_DO_NOT_RENDER", full_text)
         self.assertNotIn("UNMARKED_SECRET_1234567890", full_text)
         self.assertIn("E-03: [REDACTED]", full_text)
         self.assertIn("D-01: [REDACTED]", full_text)
-        self.assertFalse(full_metadata["budget_exceeded"])
-        text, metadata = render(state, "P-02", 500)
+        self.assertEqual(0, full_metadata["mandatory_truncation_count"])
+        self.assertEqual(card_refs, full_metadata["card_refs"])
+        self.assertRegex(full_metadata["projection_hash"], r"^sha256:[0-9a-f]{64}$")
+        with self.assertRaisesRegex(ValueError, "mandatory capsule exceeds budget"):
+            render(state, "P-02", full_metadata["mandatory_chars"] - 1, card_refs=card_refs)
+        text, metadata = render(state, "P-02", full_metadata["mandatory_chars"] + 20, card_refs=card_refs)
         self.assertNotIn("SECRET_DO_NOT_RENDER", text)
-        self.assertTrue(metadata["budget_exceeded"])
+        self.assertEqual(0, metadata["mandatory_truncation_count"])
         self.assertIn("P-03", metadata["omitted_refs"])
         self.assertIn("State: version=", text)
         self.assertIn("Global invariants", text)
+
+    def test_frontier_detects_read_write_effect_and_invariant_applicability_conflicts(self) -> None:
+        state = _base()
+        clone = deepcopy(_node(state, "P-02"))
+        clone.update({"id": "P-03", "depends_on": [], "inputs": ["I-01"], "outputs": [], "write_set": [], "resource_set": [], "effect_set": ["workspace:other"]})
+        clone["verifier"]["required_evidence"] = []
+        state["nodes"].append(clone)
+        state["current_frontier"].append("P-03")
+        self.assertIn("plan.effect-conflict", {item.code for item in _validate(state)})
+
+        effects = _base()
+        clone = deepcopy(_node(effects, "P-02"))
+        clone.update({"id": "P-03", "depends_on": [], "inputs": ["I-01"], "outputs": [], "read_set": [], "write_set": [], "resource_set": [], "effect_set": ["workspace:manifest-owner"]})
+        clone["verifier"]["required_evidence"] = []
+        effects["nodes"].append(clone)
+        effects["current_frontier"].append("P-03")
+        self.assertIn("plan.effect-conflict", {item.code for item in _validate(effects)})
+
+        locality = _base()
+        locality["global_invariants"][0].update({"locality": "node_set", "applicability": "when_target_active", "targets": ["P-01"]})
+        _node(locality, "P-02")["kind"] = "migration"
+        self.assertIn("plan.invariant-unbound", {item.code for item in _validate(locality)})
 
     def test_freshness_distinguishes_local_and_global_staleness(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -430,7 +477,8 @@ class PlanStateTests(unittest.TestCase):
             fixture.write_text("{}\n", encoding="utf-8")
             state = _base()
             state["snapshots"][0]["content_hash"] = file_hash(fixture)
-            capsule_text, metadata = render(state, "P-02", 10_000)
+            card_refs = [{"card_id": "wp.slicing.context-capsules", "card_hash": "sha256:" + "6" * 64}]
+            capsule_text, metadata = render(state, "P-02", 10_000, card_refs=card_refs)
             capsule = repository / ".workflow" / "capsules" / "P-02.md"
             capsule.parent.mkdir(parents=True)
             capsule.write_text(capsule_text, encoding="utf-8")
@@ -443,6 +491,9 @@ class PlanStateTests(unittest.TestCase):
                     "content_hash": file_hash(capsule),
                     "plan_state_hash": metadata["state_hash"],
                     "plan_state_version": metadata["state_version"],
+                    "card_refs": metadata["card_refs"],
+                    "projection_spec_id": metadata["projection_spec_id"],
+                    "projection_hash": metadata["projection_hash"],
                     "sensitive": False,
                 }
             )
@@ -450,6 +501,21 @@ class PlanStateTests(unittest.TestCase):
             state_path.write_text(json.dumps(state), encoding="utf-8")
             fresh = check_freshness(state_path, repository_override=repository)
             self.assertEqual("fresh", fresh["status"], fresh)
+            manifest_stale = check_freshness(
+                state_path,
+                repository_override=repository,
+                current_reference_manifest_hash="sha256:" + "9" * 64,
+            )
+            self.assertEqual("partially_stale", manifest_stale["status"], manifest_stale)
+            self.assertEqual(["S-02"], manifest_stale["directly_stale_ids"])
+            self.assertNotIn("freshness_global_issue", manifest_stale["escalation_reasons"])
+            card_stale = check_freshness(
+                state_path,
+                repository_override=repository,
+                current_card_hashes={"wp.slicing.context-capsules": "sha256:" + "7" * 64},
+            )
+            self.assertEqual("partially_stale", card_stale["status"], card_stale)
+            self.assertEqual(["S-02"], card_stale["directly_stale_ids"])
             state["state_version"] += 1
             state_path.write_text(json.dumps(state), encoding="utf-8")
             stale = check_freshness(state_path, repository_override=repository)
@@ -526,6 +592,27 @@ class PlanStateTests(unittest.TestCase):
         self.assertIn("non-canonical", program)
         self.assertIn(projection_data["state_hash"], program)
         self.assertIn(projection_data["scope_hash"], program)
+
+    def test_program_default_is_reconstructable_current_frontier_under_budget(self) -> None:
+        state = _base()
+        state["decisions"].append(
+            {
+                "id": "D-99",
+                "statement": "UNRELATED_FUTURE_DECISION " + "x" * 9000,
+                "alternatives_rejected": [{"option": "future", "reason": "not current"}],
+                "evidence_refs": [],
+                "provenance": "source",
+                "materiality": "low",
+                "reversibility": "local",
+                "contract_effect": "none",
+            }
+        )
+        program = render_program(state, state_ref="plan.json")
+        self.assertLessEqual(len(program.encode("utf-8")), 8192)
+        self.assertIn("P-02", program)
+        self.assertNotIn("UNRELATED_FUTURE_DECISION", program)
+        self.assertNotIn("P-01: Establish", program)
+        self.assertIn("canonical_artifacts", program)
 
     def test_parser_rejects_duplicate_keys_deep_and_oversized_input(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

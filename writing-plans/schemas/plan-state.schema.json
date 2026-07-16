@@ -64,7 +64,7 @@
       "additionalProperties": false,
       "required": ["artifact_ref", "content_hash", "epoch"],
       "properties": {
-        "artifact_ref": {"type": "string", "pattern": "^artifact:closure-contract/[A-Za-z0-9._-]+$"},
+        "artifact_ref": {"type": "string", "pattern": "^artifact:contract/[A-Za-z0-9._-]+$"},
         "content_hash": {"$ref": "#/$defs/hash"},
         "epoch": {"type": "integer", "minimum": 1}
       }
@@ -76,13 +76,15 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repository", "base_revision", "scope_hash", "observed_at", "policy_bundle_hash"],
+      "required": ["repository", "base_revision", "scope_hash", "observed_at", "bundle_id", "policy_bundle_hash", "reference_manifest_hash"],
       "properties": {
         "repository": {"type": "string", "minLength": 1, "maxLength": 4096},
         "base_revision": {"type": "string", "minLength": 1, "maxLength": 256},
         "scope_hash": {"$ref": "#/$defs/hash"},
         "observed_at": {"type": "string", "format": "date-time"},
-        "policy_bundle_hash": {"$ref": "#/$defs/hash"}
+        "bundle_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "policy_bundle_hash": {"$ref": "#/$defs/hash"},
+        "reference_manifest_hash": {"$ref": "#/$defs/hash"}
       }
     },
     "scope": {
@@ -99,10 +101,13 @@
     "invariant": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "statement"],
+      "required": ["id", "statement", "locality", "applicability", "targets"],
       "properties": {
         "id": {"type": "string", "pattern": "^I-"},
         "statement": {"$ref": "#/$defs/non_empty_string"},
+        "locality": {"enum": ["global", "node_set", "resource_set"]},
+        "applicability": {"enum": ["always", "when_target_active", "when_resource_touched"]},
+        "targets": {"$ref": "#/$defs/string_array"},
         "sensitive": {"type": "boolean"}
       }
     },
@@ -219,7 +224,7 @@
     "node": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind", "status", "objective", "depends_on", "inputs", "outputs", "read_set", "write_set", "resource_set", "side_effect_level", "constraint_refs", "corner_refs", "verifier_requirement_refs", "verifier", "retry", "refinement"],
+      "required": ["id", "kind", "status", "objective", "depends_on", "inputs", "outputs", "read_set", "write_set", "resource_set", "effect_set", "side_effect_level", "constraint_refs", "corner_refs", "verifier_requirement_refs", "verifier", "retry", "refinement"],
       "properties": {
         "id": {"type": "string", "pattern": "^P-"},
         "kind": {"enum": ["discovery", "decision", "verification", "implementation", "migration", "cleanup", "documentation", "approval", "release"]},
@@ -232,6 +237,7 @@
         "read_set": {"$ref": "#/$defs/string_array"},
         "write_set": {"$ref": "#/$defs/string_array"},
         "resource_set": {"$ref": "#/$defs/string_array"},
+        "effect_set": {"$ref": "#/$defs/string_array"},
         "side_effect_level": {"enum": ["none", "local_ephemeral", "local_reversible", "external_reversible", "external_non_idempotent", "destructive"]},
         "constraint_refs": {"type": "array", "maxItems": 500, "items": {"type": "string", "pattern": "^HC-[A-Z0-9][A-Z0-9._-]*$"}},
         "corner_refs": {"type": "array", "maxItems": 500, "items": {"type": "string", "pattern": "^CORNER-[A-Z0-9][A-Z0-9._-]*$"}},
@@ -298,6 +304,12 @@
     "snapshot": {
       "type": "object",
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "capsule"}}, "required": ["kind"]},
+          "then": {"required": ["source_revision", "content_hash", "plan_state_hash", "plan_state_version", "card_refs", "projection_spec_id", "projection_hash"]}
+        }
+      ],
       "required": ["id", "kind", "path"],
       "properties": {
         "id": {"type": "string", "pattern": "^S-"},
@@ -310,17 +322,29 @@
         "source_revision": {"type": "string", "maxLength": 256},
         "plan_state_hash": {"$ref": "#/$defs/hash"},
         "plan_state_version": {"type": "integer", "minimum": 1},
+        "card_refs": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/card_ref"}},
+        "projection_spec_id": {"type": "string", "pattern": "^wp\\.[a-z0-9.-]+@[1-9][0-9]*$"},
+        "projection_hash": {"$ref": "#/$defs/hash"},
         "sensitive": {"type": "boolean"}
+      }
+    },
+    "card_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["card_id", "card_hash"],
+      "properties": {
+        "card_id": {"type": "string", "pattern": "^(wp|sqw)(\\.[a-z0-9][a-z0-9-]*)+$"},
+        "card_hash": {"$ref": "#/$defs/hash"}
       }
     },
     "policy_claim": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["policy", "normative_owner", "artifact_ref"],
+      "required": ["policy_id", "bundle_version", "policy_hash"],
       "properties": {
-        "policy": {"type": "string", "minLength": 1, "maxLength": 256},
-        "normative_owner": {"type": "string", "minLength": 1, "maxLength": 256},
-        "artifact_ref": {"type": "string", "minLength": 1, "maxLength": 4096}
+        "policy_id": {"type": "string", "pattern": "^(wp|sqw)(\\.[a-z0-9][a-z0-9-]*)+$"},
+        "bundle_version": {"type": "string", "minLength": 1, "maxLength": 256},
+        "policy_hash": {"$ref": "#/$defs/hash"}
       }
     },
     "closure": {

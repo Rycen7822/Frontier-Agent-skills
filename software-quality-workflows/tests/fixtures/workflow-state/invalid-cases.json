@@ -16,7 +16,7 @@
     {"id": "closure-premature", "mutation": "closure_premature", "expected_code": "workflow.closure-premature"},
     {"id": "sensitive-unclassified", "mutation": "sensitive_unclassified", "expected_code": "workflow.sensitive-unclassified"},
     {"id": "io-schema-mismatch", "mutation": "io_schema_mismatch", "expected_code": "workflow.io-schema-mismatch"},
-    {"id": "owner-unknown", "mutation": "owner_unknown", "expected_code": "workflow.owner-unknown"},
+    {"id": "owner-duplicate", "mutation": "owner_duplicate", "expected_code": "workflow.owner-stack"},
     {"id": "plan-ref-mismatch", "mutation": "plan_ref_mismatch", "expected_code": "workflow.plan-ref-mismatch"}
   ]
 }

@@ -5,12 +5,12 @@
     {
       "id": "writing-plans",
       "path": "writing-plans",
-      "version": "3.0.0"
+      "version": "4.0.0"
     },
     {
       "id": "software-quality-workflows",
       "path": "software-quality-workflows",
-      "version": "4.0.0"
+      "version": "5.0.0"
     }
   ],
   "cross_skill_contracts": [

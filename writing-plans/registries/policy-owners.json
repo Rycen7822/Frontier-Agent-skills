@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "bundle_id": "frontier-engineering/5.0.0+4.0.0",
+  "skill_id": "writing-plans",
+  "skill_version": "4.0.0",
+  "policies": [
+    {"policy_id": "wp.route.precedence", "owner_type": "machine", "owner_id": "scripts/assess_plan_mode.py", "depends_on": []},
+    {"policy_id": "wp.navigation.resolve", "owner_type": "machine", "owner_id": "scripts/resolve_reference_card.py", "depends_on": []},
+    {"policy_id": "wp.plan.routing", "owner_type": "card", "owner_id": "wp.entry.plan-route", "depends_on": ["wp.route.precedence"]},
+    {"policy_id": "wp.profile.brief", "owner_type": "card", "owner_id": "wp.profiles.brief", "depends_on": ["wp.plan.routing"]},
+    {"policy_id": "wp.profile.handoff", "owner_type": "card", "owner_id": "wp.profiles.handoff", "depends_on": ["wp.plan.routing"]},
+    {"policy_id": "wp.profile.program", "owner_type": "card", "owner_id": "wp.profiles.program", "depends_on": ["wp.plan.routing"]},
+    {"policy_id": "wp.closure.compile", "owner_type": "card", "owner_id": "wp.closure.compile", "depends_on": ["wp.plan.routing"]},
+    {"policy_id": "wp.closure.constraints-corners", "owner_type": "card", "owner_id": "wp.closure.hard-constraints-and-corners", "depends_on": ["wp.closure.compile"]},
+    {"policy_id": "wp.closure.assumptions-ambiguity", "owner_type": "card", "owner_id": "wp.closure.assumptions-and-ambiguity", "depends_on": ["wp.closure.compile"]},
+    {"policy_id": "wp.closure.search-publication", "owner_type": "card", "owner_id": "wp.closure.search-and-publication-policy", "depends_on": ["wp.closure.compile"]},
+    {"policy_id": "wp.closure.freeze-handoff", "owner_type": "card", "owner_id": "wp.closure.freeze-and-handoff", "depends_on": ["wp.closure.constraints-corners", "wp.closure.assumptions-ambiguity", "wp.closure.search-publication"]},
+    {"policy_id": "wp.design.depth", "owner_type": "card", "owner_id": "wp.design.depth-selection", "depends_on": ["wp.plan.routing"]},
+    {"policy_id": "wp.design.evidence-ledger", "owner_type": "card", "owner_id": "wp.design.evidence-and-decision-ledger", "depends_on": ["wp.design.depth"]},
+    {"policy_id": "wp.design.alternative-compression", "owner_type": "card", "owner_id": "wp.design.alternative-compression", "depends_on": ["wp.design.evidence-ledger"]},
+    {"policy_id": "wp.design.planning-gate", "owner_type": "card", "owner_id": "wp.design.planning-gate", "depends_on": ["wp.design.depth"]},
+    {"policy_id": "wp.slicing.outcomes", "owner_type": "card", "owner_id": "wp.slicing.outcome-slices", "depends_on": ["wp.plan.routing"]},
+    {"policy_id": "wp.slicing.context-capsules", "owner_type": "card", "owner_id": "wp.slicing.context-capsules", "depends_on": ["wp.slicing.outcomes"]},
+    {"policy_id": "wp.economy.output-classification", "owner_type": "card", "owner_id": "wp.economy.output-classification", "depends_on": ["wp.plan.routing"]},
+    {"policy_id": "wp.economy.projection-verification", "owner_type": "card", "owner_id": "wp.economy.projection-and-verification", "depends_on": ["wp.economy.output-classification"]},
+    {"policy_id": "wp.migration.deprecation-rollout", "owner_type": "card", "owner_id": "wp.migration.deprecation-and-rollout", "depends_on": ["wp.plan.routing"]},
+    {"policy_id": "wp.decisions.architecture", "owner_type": "card", "owner_id": "wp.decisions.architecture-decision-record", "depends_on": ["wp.plan.routing"]},
+    {"policy_id": "wp.bridges.long-document", "owner_type": "card", "owner_id": "wp.bridges.long-document-handoff", "depends_on": ["wp.plan.routing"]},
+    {"policy_id": "wp.spike.experiment", "owner_type": "card", "owner_id": "wp.experiments.disposable-spike", "depends_on": ["wp.plan.routing"]}
+  ]
+}

@@ -50,12 +50,27 @@ def freeze_contract(
     authority_ceiling: str | None = None,
     expected_base_revision: str | None = None,
     expected_policy_bundle_hash: str | None = None,
+    expected_reference_manifest_hash: str | None = None,
+    expected_bundle_id: str | None = None,
     expected_authority_hash: str | None = None,
+    admission_artifact: dict[str, Any] | None = None,
+    authority_manifest: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     draft_file = Path(draft_path)
     output_file = Path(output_path)
-    if any(value is None for value in (expected_scope_hash, authority_ceiling, expected_base_revision, expected_policy_bundle_hash, expected_authority_hash)):
-        raise ContractInputError("freeze requires admitted source, scope, policy bundle, and authority bindings")
+    required_bindings = (
+        expected_scope_hash,
+        authority_ceiling,
+        expected_base_revision,
+        expected_policy_bundle_hash,
+        expected_reference_manifest_hash,
+        expected_bundle_id,
+        expected_authority_hash,
+        admission_artifact,
+        authority_manifest,
+    )
+    if any(value is None for value in required_bindings):
+        raise ContractInputError("freeze requires admission, authority, source, scope, bundle, policy, and reference-manifest bindings")
     if draft_file.resolve() == output_file.resolve():
         raise ContractInputError("draft and frozen lock paths must be different")
     if output_file.exists():
@@ -70,7 +85,11 @@ def freeze_contract(
         authority_ceiling=authority_ceiling,
         expected_base_revision=expected_base_revision,
         expected_policy_bundle_hash=expected_policy_bundle_hash,
+        expected_reference_manifest_hash=expected_reference_manifest_hash,
+        expected_bundle_id=expected_bundle_id,
         expected_authority_hash=expected_authority_hash,
+        admission_artifact=admission_artifact,
+        authority_manifest=authority_manifest,
     )
     if violations:
         codes = sorted({item.code for item in violations})
@@ -86,7 +105,11 @@ def freeze_contract(
         authority_ceiling=authority_ceiling,
         expected_base_revision=expected_base_revision,
         expected_policy_bundle_hash=expected_policy_bundle_hash,
+        expected_reference_manifest_hash=expected_reference_manifest_hash,
+        expected_bundle_id=expected_bundle_id,
         expected_authority_hash=expected_authority_hash,
+        admission_artifact=admission_artifact,
+        authority_manifest=authority_manifest,
     )
     if post_violations:
         codes = sorted({item.code for item in post_violations})
@@ -107,6 +130,10 @@ def freeze_contract(
             "source_revision": frozen["source"]["base_revision"],
             "scope_hash": frozen["source"]["scope_hash"],
             "policy_bundle_hash": frozen["source"]["policy_bundle_hash"],
+            "reference_manifest_hash": frozen["source"]["reference_manifest_hash"],
+            "bundle_id": frozen["bundle_id"],
+            "closure_admission_hash": frozen["closure_admission_hash"],
+            "authority_manifest_hash": frozen["authority_manifest_hash"],
         },
     }
 
@@ -121,7 +148,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--authority-ceiling", required=True, choices=sorted(AUTHORITY_RANK))
     parser.add_argument("--expected-base-revision", required=True)
     parser.add_argument("--expected-policy-bundle-hash", required=True)
+    parser.add_argument("--expected-reference-manifest-hash", required=True)
+    parser.add_argument("--expected-bundle-id", required=True)
     parser.add_argument("--expected-authority-hash", required=True)
+    parser.add_argument("--admission", required=True)
+    parser.add_argument("--authority-manifest", required=True)
     args = parser.parse_args(argv)
     try:
         result = freeze_contract(
@@ -133,7 +164,11 @@ def main(argv: list[str] | None = None) -> int:
             authority_ceiling=args.authority_ceiling,
             expected_base_revision=args.expected_base_revision,
             expected_policy_bundle_hash=args.expected_policy_bundle_hash,
+            expected_reference_manifest_hash=args.expected_reference_manifest_hash,
+            expected_bundle_id=args.expected_bundle_id,
             expected_authority_hash=args.expected_authority_hash,
+            admission_artifact=load_contract(args.admission),
+            authority_manifest=load_contract(args.authority_manifest),
         )
     except (ContractInputError, OSError, KeyError, TypeError, ValueError) as exc:
         print(json.dumps({"ok": False, "error": {"code": "contract.freeze", "message": str(exc)}}, indent=2))

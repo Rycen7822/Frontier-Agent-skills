@@ -15,7 +15,7 @@ import re
 import sys
 from typing import Any
 
-from _closure import ClosureError, apply_event, rank_candidates
+from _closure import ClosureError, apply_event, rank_candidates, select_promotion
 from _workflow_state import (
     InputError,
     canonical_artifact_hash,
@@ -24,6 +24,7 @@ from _workflow_state import (
     load_json,
     load_json_lines,
     patterns_may_overlap,
+    review_supports_full_signoff,
     validate_against_schema,
     validate_closure_artifact,
     validate_review_result,
@@ -43,6 +44,7 @@ ARTIFACT_REF_RE = re.compile(r"^artifact:([a-z][a-z0-9-]*)/([A-Za-z0-9][A-Za-z0-
 HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 WRITING_ROOT = ROOT.parent / "writing-plans"
 WRITING_CONTRACT_SCHEMA = WRITING_ROOT / "schemas" / "closure-contract.schema.json"
+WRITING_HANDOFF_SCHEMA = WRITING_ROOT / "schemas" / "plan-execution-handoff.schema.json"
 WRITING_CONTRACT_VALIDATOR = WRITING_ROOT / "scripts" / "validate_closure_contract.py"
 _WRITING_VALIDATOR_CACHE: tuple[Any, dict[str, Any]] | None = None
 GENESIS_EVENT_HASH = "sha256:" + "0" * 64
@@ -365,10 +367,15 @@ def _validate_promotion(event: dict[str, Any], artifacts: dict[str, dict[str, An
         return []
     payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
     refs = payload.get("artifact_refs") if isinstance(payload.get("artifact_refs"), list) else []
-    manifests = [artifacts.get(ref) for ref in refs if isinstance(ref, str) and isinstance(artifacts.get(ref), dict) and artifacts[ref].get("schema_id") == "sqw://closure-artifacts/candidate-manifest/1.0"]
-    if len(manifests) != 1:
-        return ["promotion requires exactly one candidate manifest"]
-    promoted_id = manifests[0].get("payload", {}).get("candidate_id")
+    try:
+        selected_ref = select_promotion(state, event, artifacts)
+    except ClosureError as exc:
+        return [str(exc)]
+    selected = artifacts.get(selected_ref, {})
+    promoted_id = selected.get("payload", {}).get("candidate_id")
+    proposed_manifests = [ref for ref in refs if isinstance(artifacts.get(ref), dict) and artifacts[ref].get("schema_id") == "sqw://closure-artifacts/candidate-manifest/1.0"]
+    if proposed_manifests and proposed_manifests != [selected_ref]:
+        return ["producer-selected candidate differs from controller-computed promotion"]
     evaluations = [
         artifacts[ref]
         for ref in refs
@@ -377,8 +384,8 @@ def _validate_promotion(event: dict[str, Any], artifacts: dict[str, dict[str, An
         and artifacts[ref].get("schema_id") == "sqw://closure-artifacts/candidate-evaluation/1.0"
     ]
     promoted = [item for item in evaluations if item.get("payload", {}).get("candidate_id") == promoted_id]
-    if len(promoted) != 1 or promoted[0].get("payload", {}).get("eligible_for_promotion") is not True:
-        return ["promotion requires one eligible evaluation for the promoted candidate"]
+    if len(promoted) != 1:
+        return ["promotion requires one controller-qualified evaluation for the promoted candidate"]
     run = state.get("closure_run") if isinstance(state.get("closure_run"), dict) else {}
     incumbent_ref = run.get("incumbent_candidate_ref")
     if not isinstance(incumbent_ref, str):
@@ -406,7 +413,12 @@ def _validate_promotion(event: dict[str, Any], artifacts: dict[str, dict[str, An
     return []
 
 
-def _validate_contract(ref: str, artifact: dict[str, Any], state: dict[str, Any]) -> list[str]:
+def _validate_contract(
+    ref: str,
+    artifact: dict[str, Any],
+    state: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+) -> list[str]:
     errors: list[str] = []
     source = artifact.get("source") if isinstance(artifact.get("source"), dict) else {}
     observed_revision = source.get("observed_revision", source.get("base_revision"))
@@ -423,6 +435,8 @@ def _validate_contract(ref: str, artifact: dict[str, Any], state: dict[str, Any]
     if source.get("policy_bundle_hash") != state.get("policy_bundle_hash"):
         errors.append("contract policy bundle drift")
     validate_contract, schema = _writing_validator()
+    admission_ref = artifact.get("closure_admission_ref")
+    authority_ref = artifact.get("authority_manifest_ref")
     violations = validate_contract(
         artifact,
         schema,
@@ -430,6 +444,10 @@ def _validate_contract(ref: str, artifact: dict[str, Any], state: dict[str, Any]
         authority_ceiling=state.get("authority", {}).get("risk_ceiling"),
         expected_base_revision=state.get("source", {}).get("base_revision"),
         expected_policy_bundle_hash=state.get("policy_bundle_hash"),
+        expected_reference_manifest_hash=state.get("card_manifest_hash"),
+        expected_bundle_id=state.get("bundle_id"),
+        admission_artifact=artifacts.get(admission_ref) if isinstance(admission_ref, str) else None,
+        authority_manifest=artifacts.get(authority_ref) if isinstance(authority_ref, str) else None,
     )
     errors.extend(f"writing contract {item.code}@{item.path}" for item in violations)
     return [f"{ref}: {message}" for message in errors]
@@ -483,7 +501,18 @@ def _validate_artifacts(
     for ref, artifact in artifacts.items():
         schema_id = artifact.get("schema_id")
         if ref.startswith("artifact:contract/"):
-            errors.extend(_validate_contract(ref, artifact, state))
+            errors.extend(_validate_contract(ref, artifact, state, artifacts))
+        elif ref.startswith("artifact:admission/"):
+            contracts = [item for key, item in artifacts.items() if key.startswith("artifact:contract/")]
+            if not any(item.get("closure_admission_ref") == ref for item in contracts):
+                errors.append(f"{ref}: Admission is not the frozen contract binding")
+        elif ref.startswith("artifact:authority/"):
+            contracts = [item for key, item in artifacts.items() if key.startswith("artifact:contract/")]
+            if not any(item.get("authority_manifest_ref") == ref for item in contracts):
+                errors.append(f"{ref}: Authority Manifest is not the frozen contract binding")
+        elif ref.startswith(("artifact:handoff/", "artifact:plan/")):
+            if sum(key.startswith("artifact:contract/") for key in artifacts) < 2:
+                errors.append(f"{ref}: Writing Plans boundary artifact is only valid during contract supersession")
         elif isinstance(schema_id, str) and schema_id.startswith("sqw://closure-artifacts/"):
             source_revision = expected_source_revision if expected_source_revision is not None and schema_id == "sqw://closure-artifacts/terminal-certificate/1.0" else state_source_revision
             expected_verifier_hash = "not_frozen" if schema_id == "sqw://closure-artifacts/baseline-result/1.0" else verifier_binding.get("content_hash") if verifier_binding else None
@@ -538,6 +567,8 @@ def _validate_artifacts(
         else:
             errors.extend(_validate_generic_artifact(ref, artifact, state))
     bindings = {
+        "admission_ref": run.get("admission_ref"),
+        "authority_manifest_ref": run.get("authority_manifest_ref"),
         "contract_ref": run.get("contract_ref"),
         "baseline_ref": run.get("baseline_ref"),
         "verifier_bundle_ref": run.get("verifier_bundle_ref"),
@@ -550,7 +581,8 @@ def _validate_artifacts(
         if not isinstance(artifact, dict):
             errors.append(f"{field}: bound artifact is missing")
             continue
-        if artifact.get("content_hash") != binding.get("content_hash"):
+        observed_hash = artifact.get("content_hash") if isinstance(artifact.get("content_hash"), str) else canonical_artifact_hash(artifact)
+        if observed_hash != binding.get("content_hash"):
             errors.append(f"{field}: bound artifact content hash changed")
         if "epoch" in binding:
             observed_epoch = artifact.get("epoch") if field == "contract_ref" else artifact.get("closure_epoch")
@@ -589,7 +621,8 @@ def _validate_artifacts(
             if isinstance(baseline, dict):
                 if verifier.get("environment_fingerprint") != baseline.get("payload", {}).get("environment_fingerprint"):
                     errors.append(f"{ref}: verifier environment differs from qualified baseline")
-                baseline_refs = verifier.get("qualification_summary", {}).get("baseline_result_refs", [])
+                qualification = verifier.get("qualification_summary") if isinstance(verifier.get("qualification_summary"), dict) else {}
+                baseline_refs = qualification.get("baseline_result_refs", [])
                 if baseline_binding.get("artifact_ref") not in baseline_refs:
                     errors.append(f"{ref}: verifier qualification does not cite the bound baseline")
     for ref, artifact in artifacts.items():
@@ -641,12 +674,8 @@ def _validate_artifacts(
                 continue
             if axis.get("review_result_hash") != canonical_artifact_hash(review):
                 errors.append(f"{ref}: {axis_name} review result hash differs from referenced review")
-            if axis.get("status") == "pass" and (
-                review.get("code_review_verdict") != "pass"
-                or review.get("verification_status") != "passed"
-                or review.get("merge_readiness") != "ready"
-            ):
-                errors.append(f"{ref}: passing {axis_name} axis requires a passing ready review result")
+            if axis.get("status") == "pass" and not review_supports_full_signoff(review):
+                errors.append(f"{ref}: passing {axis_name} axis requires a full-scope passing local review result")
     budget = run.get("budget") if isinstance(run.get("budget"), dict) else {}
     expected_budget = {
         "iterations": budget.get("iterations_used", 0),
@@ -765,6 +794,9 @@ def _recover_pending(
     promotion_errors = _validate_promotion(accepted_event, artifacts, current_state)
     if promotion_errors:
         raise ControllerConflict("pending promotion validation failed: " + "; ".join(promotion_errors[:8]))
+    supersession_errors = _validate_supersession_handoff(accepted_event, artifacts, current_state)
+    if supersession_errors:
+        raise ControllerConflict("pending supersession validation failed: " + "; ".join(supersession_errors[:8]))
     prior_events = [item for item in events if item.get("event_id") != accepted_event.get("event_id")]
     _enforce_contract_epoch(root, prior_events, accepted_event, artifacts)
     try:
@@ -788,6 +820,225 @@ def _recover_pending(
     journal_path.unlink(missing_ok=True)
     _sync_directory(journal_path.parent)
     return next_state
+
+
+def _canonical_object_hash(value: Any) -> str:
+    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return "sha256:" + sha256(payload).hexdigest()
+
+
+def initialize_workflow_from_handoff(
+    workflow_id: str,
+    handoff: dict[str, Any],
+    admission: dict[str, Any],
+    plan: dict[str, Any],
+    contract: dict[str, Any],
+    authority_manifest: dict[str, Any],
+    *,
+    handoff_schema: dict[str, Any] | None = None,
+    state_schema: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    handoff_schema = handoff_schema or load_json(WRITING_HANDOFF_SCHEMA)
+    state_schema = state_schema or load_json(STATE_SCHEMA)
+    schema_issues = validate_against_schema(handoff, handoff_schema, code="handoff.schema")
+    if schema_issues:
+        raise ControllerConflict("invalid plan execution handoff: " + "; ".join(item.message for item in schema_issues[:8]))
+    if handoff.get("execution_policy") != "autonomous_closure" or handoff.get("profile") != "program" or handoff.get("unresolved_blockers"):
+        raise ControllerConflict("closure initializer requires an unblocked autonomous Program handoff")
+    admission_hash = _canonical_object_hash(admission)
+    authority_hash = _canonical_object_hash(authority_manifest)
+    plan_hash = canonical_artifact_hash(plan)
+    contract_hash = canonical_artifact_hash(contract)
+    admission_id = admission.get("admission_id")
+    authority_id = authority_manifest.get("manifest_id")
+    expected = {
+        "closure_admission_ref": f"artifact:admission/{admission_id}",
+        "closure_admission_hash": admission_hash,
+        "plan_hash": plan_hash,
+        "closure_contract_hash": contract_hash,
+        "authority_manifest_ref": f"artifact:authority/{authority_id}",
+    }
+    mismatches = [field for field, value in expected.items() if handoff.get(field) != value]
+    if mismatches:
+        raise ControllerConflict(f"handoff artifact identity mismatch: {sorted(mismatches)}")
+    if admission.get("decision") != "CLOSURE_ELIGIBLE" or admission.get("next_action") != "COMPILE_CLOSURE_CONTRACT":
+        raise ControllerConflict("Admission does not authorize closure compilation")
+    if contract.get("status") != "frozen" or contract.get("content_hash") != contract_hash:
+        raise ControllerConflict("handoff Closure Contract is not canonically frozen")
+    if plan.get("content_hash") not in {None, plan_hash}:
+        raise ControllerConflict("handoff plan content hash is not canonical")
+    if plan.get("schema_version") != "1.1" or plan.get("profile") != "program" or not isinstance(plan.get("plan_id"), str):
+        raise ControllerConflict("handoff plan is not a canonical Program state")
+    source = plan.get("source") if isinstance(plan.get("source"), dict) else {}
+    contract_source = contract.get("source") if isinstance(contract.get("source"), dict) else {}
+    validate_contract, contract_schema = _writing_validator()
+    contract_violations = validate_contract(
+        contract,
+        contract_schema,
+        expected_scope_hash=handoff.get("scope_hash"),
+        authority_ceiling=authority_manifest.get("autonomy_ceiling"),
+        expected_base_revision=handoff.get("source_revision"),
+        expected_policy_bundle_hash=source.get("policy_bundle_hash"),
+        expected_reference_manifest_hash=source.get("reference_manifest_hash"),
+        expected_bundle_id=handoff.get("bundle_id"),
+        admission_artifact=admission,
+        authority_manifest=authority_manifest,
+    )
+    if contract_violations:
+        raise ControllerConflict("handoff Closure Contract boundary is invalid: " + "; ".join(f"{item.code}@{item.path}" for item in contract_violations[:8]))
+    shared_checks = (
+        (handoff.get("bundle_id"), source.get("bundle_id"), contract.get("bundle_id")),
+        (handoff.get("source_revision"), source.get("base_revision"), contract_source.get("base_revision")),
+        (handoff.get("scope_hash"), source.get("scope_hash"), contract_source.get("scope_hash")),
+        (source.get("policy_bundle_hash"), contract_source.get("policy_bundle_hash")),
+        (source.get("reference_manifest_hash"), contract_source.get("reference_manifest_hash")),
+        (handoff.get("authority_manifest_ref"), contract.get("authority_manifest_ref")),
+        (authority_manifest.get("autonomy_ceiling"), contract.get("authority", {}).get("autonomy_ceiling")),
+    )
+    if any(len(set(values)) != 1 for values in shared_checks):
+        raise ControllerConflict("handoff bundle/source/scope/policy/authority boundary mismatch")
+    if contract.get("closure_admission_ref") != handoff.get("closure_admission_ref") or contract.get("closure_admission_hash") != admission_hash:
+        raise ControllerConflict("contract does not bind the supplied Admission")
+    if contract.get("authority_manifest_hash") != authority_hash:
+        raise ControllerConflict("contract does not bind the supplied Authority Manifest")
+
+    risk_ceiling = authority_manifest.get("autonomy_ceiling")
+    state = {
+        "schema_version": "1.1",
+        "workflow_id": workflow_id,
+        "bundle_id": handoff["bundle_id"],
+        "mode": "M2_SPARSE",
+        "request_mode": "change",
+        "execution_policy": "autonomous_closure",
+        "policy_bundle_hash": source["policy_bundle_hash"],
+        "card_manifest_hash": source["reference_manifest_hash"],
+        "status": "active",
+        "state_version": 1,
+        "source": {
+            "repository": source.get("repository", "."),
+            "base_revision": handoff["source_revision"],
+            "observed_revision": handoff["source_revision"],
+            "scope_hash": handoff["scope_hash"],
+        },
+        "authority": {
+            "risk_ceiling": risk_ceiling,
+            "external_writes": "approved" if risk_ceiling in {"external_reversible", "external_non_idempotent", "destructive"} else "forbidden",
+            "destructive_actions": "approved" if risk_ceiling == "destructive" else "forbidden",
+            "approvals": [],
+        },
+        "scope": {
+            "allowed_reads": list(plan.get("scope", {}).get("allowed_reads", [])),
+            "allowed_writes": list(plan.get("scope", {}).get("allowed_writes", [])),
+            "protected_paths": list(plan.get("scope", {}).get("protected_paths", [])),
+            "coverage": "affected",
+        },
+        "global_invariants": [
+            {
+                "id": item["id"],
+                "statement": item["statement"],
+                "status": "current",
+                "locality": "global",
+                "targets": [],
+                "sensitive": bool(item.get("sensitive")),
+            }
+            for item in plan.get("global_invariants", [])
+            if isinstance(item, dict) and item.get("locality") == "global"
+        ],
+        "active_owners": {
+            "primary": "autonomous-closure",
+            "normative": ["authority-and-scope", "verifier-kernel", "workflow-mode-selection", "workflow-modes", "verification-discipline"],
+            "companions": [],
+        },
+        "plan_ref": {
+            "plan_id": plan["plan_id"],
+            "artifact_ref": handoff["plan_ref"],
+            "state_ref": handoff["plan_ref"],
+            "content_hash": handoff["plan_hash"],
+        },
+        "nodes": [],
+        "verifiers": [],
+        "edges": [],
+        "frontier": [],
+        "locks": [],
+        "artifacts": [],
+        "recent_failures": [],
+        "events_ref": ".workflow/events.jsonl",
+        "pending_background": [],
+        "closure": {"status": "open", "required_verifiers": [], "evidence_refs": [], "known_gaps": [], "residual_risk": [], "epistemic_status": "needs_repair"},
+        "closure_run": {
+            "phase": "BASELINING",
+            "policy_bundle_hash": source["policy_bundle_hash"],
+            "handoff_ref": {"artifact_ref": f"artifact:handoff/{handoff['handoff_id']}", "content_hash": _canonical_object_hash(handoff)},
+            "admission_ref": {"artifact_ref": handoff["closure_admission_ref"], "content_hash": admission_hash},
+            "authority_manifest_ref": {"artifact_ref": handoff["authority_manifest_ref"], "content_hash": authority_hash},
+            "contract_ref": {"artifact_ref": handoff["closure_contract_ref"], "content_hash": contract_hash, "epoch": contract["epoch"]},
+            "active_candidate_refs": [],
+            "active_counterexample_refs": [],
+            "budget": {"iterations_used": 0, "iterations_limit": contract["search_policy"]["max_iterations"], "candidate_evaluations_used": 0, "candidate_evaluations_limit": contract["search_policy"]["max_candidate_evaluations"], "review_rounds_used": 0, "review_rounds_limit": contract["search_policy"]["max_review_rounds"]},
+            "terminal_status": None,
+            "terminal_certificate_ref": None,
+        },
+    }
+    state["state_hash"] = canonical_hash(state)
+    violations = validate_state(state, state_schema)
+    if violations:
+        raise ControllerConflict("initialized workflow is invalid: " + "; ".join(f"{item.code}@{item.path}" for item in violations[:8]))
+    return state
+
+
+def _validate_supersession_handoff(
+    event: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    state: dict[str, Any],
+) -> list[str]:
+    if event.get("type") != "contract_superseded":
+        return []
+    refs = event.get("payload", {}).get("artifact_refs", []) if isinstance(event.get("payload"), dict) else []
+    if len(refs) != 4 or len(set(refs)) != 4:
+        return ["contract_superseded requires exactly handoff, Admission, plan, and contract refs"]
+
+    def one(prefix: str) -> tuple[str, dict[str, Any]] | None:
+        matches = [(ref, artifacts.get(ref)) for ref in refs if isinstance(ref, str) and ref.startswith(prefix)]
+        return matches[0] if len(matches) == 1 and isinstance(matches[0][1], dict) else None
+
+    boundary = [one(prefix) for prefix in ("artifact:handoff/", "artifact:admission/", "artifact:plan/", "artifact:contract/")]
+    if any(item is None for item in boundary):
+        return ["contract_superseded boundary refs are incomplete or ambiguous"]
+    handoff_ref, handoff = boundary[0]  # type: ignore[misc]
+    _, admission = boundary[1]  # type: ignore[misc]
+    _, plan = boundary[2]  # type: ignore[misc]
+    _, contract = boundary[3]  # type: ignore[misc]
+    authority_ref = contract.get("authority_manifest_ref")
+    authority = artifacts.get(authority_ref) if isinstance(authority_ref, str) else None
+    if not isinstance(authority, dict):
+        return ["contract_superseded Authority Manifest is unresolved"]
+    if handoff_ref != f"artifact:handoff/{handoff.get('handoff_id')}":
+        return ["contract_superseded handoff ref does not identify its handoff_id"]
+    try:
+        initialized = initialize_workflow_from_handoff(
+            str(state.get("workflow_id")),
+            handoff,
+            admission,
+            plan,
+            contract,
+            authority,
+        )
+    except ControllerConflict as exc:
+        return [f"contract_superseded Writing Plans handoff is invalid: {exc}"]
+    current_run = state.get("closure_run") if isinstance(state.get("closure_run"), dict) else {}
+    current_epoch = current_run.get("contract_ref", {}).get("epoch") if isinstance(current_run.get("contract_ref"), dict) else None
+    next_epoch = initialized.get("closure_run", {}).get("contract_ref", {}).get("epoch")
+    if not isinstance(current_epoch, int) or not isinstance(next_epoch, int) or next_epoch <= current_epoch:
+        return ["contract_superseded epoch must be strictly greater than the current epoch"]
+    immutable_fields = ("bundle_id", "request_mode", "execution_policy", "policy_bundle_hash", "card_manifest_hash")
+    if any(initialized.get(field) != state.get(field) for field in immutable_fields):
+        return ["contract_superseded handoff changes immutable workflow identity"]
+    if initialized.get("source") != state.get("source") or initialized.get("authority") != state.get("authority"):
+        return ["contract_superseded handoff changes frozen source or authority"]
+    scope_fields = ("allowed_reads", "allowed_writes", "protected_paths")
+    if any(initialized.get("scope", {}).get(field) != state.get("scope", {}).get(field) for field in scope_fields):
+        return ["contract_superseded handoff changes the admitted workflow scope"]
+    return []
 
 
 def advance_once(
@@ -874,6 +1125,9 @@ def advance_once(
             promotion_errors = _validate_promotion(event, artifacts, state)
             if promotion_errors:
                 raise ControllerConflict("idempotent promotion validation failed: " + "; ".join(promotion_errors[:8]))
+            supersession_errors = _validate_supersession_handoff(event, artifacts, state)
+            if supersession_errors:
+                raise ControllerConflict("idempotent supersession validation failed: " + "; ".join(supersession_errors[:8]))
             try:
                 expected = apply_event(state, event, artifacts)
             except ClosureError as exc:
@@ -912,6 +1166,9 @@ def advance_once(
         promotion_errors = _validate_promotion(event, artifacts, state)
         if promotion_errors:
             raise ControllerConflict("promotion validation failed: " + "; ".join(promotion_errors[:8]))
+        supersession_errors = _validate_supersession_handoff(event, artifacts, state)
+        if supersession_errors:
+            raise ControllerConflict("supersession validation failed: " + "; ".join(supersession_errors[:8]))
         _enforce_contract_epoch(root, events, event, artifacts)
         try:
             next_state = apply_event(state, event, artifacts)

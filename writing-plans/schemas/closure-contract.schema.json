@@ -4,10 +4,15 @@
   "title": "Frozen Closure Contract",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "contract_id", "epoch", "status", "content_hash", "created_at", "frozen_at", "source", "request", "authority", "scope", "assumptions", "hard_constraints", "soft_objectives", "corners", "protected_surfaces", "verifier_requirements", "search_policy", "publication_policy", "ambiguities", "terminal_policy"],
+  "required": ["schema_version", "contract_id", "bundle_id", "closure_admission_ref", "closure_admission_hash", "authority_manifest_ref", "authority_manifest_hash", "epoch", "status", "content_hash", "created_at", "frozen_at", "source", "request", "authority", "scope", "assumptions", "hard_constraints", "soft_objectives", "corners", "protected_surfaces", "verifier_requirements", "search_policy", "publication_policy", "ambiguities", "terminal_policy"],
   "properties": {
     "schema_version": {"const": "1.0"},
     "contract_id": {"type": "string", "pattern": "^CC-[A-Z0-9][A-Z0-9._-]{2,127}$"},
+    "bundle_id": {"const": "frontier-engineering/5.0.0+4.0.0"},
+    "closure_admission_ref": {"type": "string", "pattern": "^artifact:admission/admission-[0-9a-f]{20}$"},
+    "closure_admission_hash": {"$ref": "#/$defs/hash"},
+    "authority_manifest_ref": {"type": "string", "pattern": "^artifact:authority/auth-[0-9a-f]{20}$"},
+    "authority_manifest_hash": {"$ref": "#/$defs/hash"},
     "epoch": {"type": "integer", "minimum": 1},
     "status": {"enum": ["draft", "frozen", "superseded"]},
     "content_hash": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/hash"}]},
@@ -35,13 +40,14 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repository", "base_revision", "scope_hash", "observed_at", "policy_bundle_hash"],
+      "required": ["repository", "base_revision", "scope_hash", "observed_at", "policy_bundle_hash", "reference_manifest_hash"],
       "properties": {
         "repository": {"$ref": "#/$defs/nonempty_string"},
         "base_revision": {"$ref": "#/$defs/nonempty_string"},
         "scope_hash": {"$ref": "#/$defs/hash"},
         "observed_at": {"type": "string", "format": "date-time"},
-        "policy_bundle_hash": {"$ref": "#/$defs/hash"}
+        "policy_bundle_hash": {"$ref": "#/$defs/hash"},
+        "reference_manifest_hash": {"$ref": "#/$defs/hash"}
       }
     },
     "request": {
@@ -118,7 +124,8 @@
         "id": {"type": "string", "pattern": "^SO-[A-Z0-9][A-Z0-9._-]*$"},
         "statement": {"$ref": "#/$defs/nonempty_string"},
         "priority": {"type": "integer", "minimum": 1},
-        "direction": {"enum": ["minimize", "maximize"]},
+        "direction": {"enum": ["minimize", "maximize", "target"]},
+        "target_value": {"type": "number"},
         "metric": {"$ref": "#/$defs/nonempty_string"},
         "baseline_ref": {"$ref": "#/$defs/nonempty_string"},
         "tolerance": {
@@ -129,7 +136,14 @@
         },
         "oracle_requirement_refs": {"type": "array", "maxItems": 500, "items": {"type": "string", "pattern": "^VR-[A-Z0-9][A-Z0-9._-]*$"}},
         "conflicts_with_hard_constraint_refs": {"type": "array", "maxItems": 500, "items": {"type": "string", "pattern": "^HC-[A-Z0-9][A-Z0-9._-]*$"}}
-      }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"direction": {"const": "target"}}, "required": ["direction"]},
+          "then": {"required": ["target_value"]},
+          "else": {"not": {"required": ["target_value"]}}
+        }
+      ]
     },
     "corner": {
       "type": "object",
