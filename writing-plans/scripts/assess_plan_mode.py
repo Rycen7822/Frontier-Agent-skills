@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select the lightest writing-plans route/profile from observable facts."""
+"""Select one Writing Plans route and, when local, one exact manifest card."""
 
 from __future__ import annotations
 
@@ -7,14 +7,19 @@ import argparse
 import json
 from pathlib import Path
 import sys
-from typing import Any
+from typing import Any, NamedTuple
 
-DEFAULTS: dict[str, Any] = {
-    "explicit_plan_request": False,
+ROOT = Path(__file__).resolve().parents[1]
+MANIFEST_PATH = ROOT / "registries" / "reference-cards.manifest.json"
+REQUIRED_FACTS = {
+    "schema_version",
+    "explicit_plan_request",
+    "root_cause_status",
+    "intent_status",
+    "closure_admission_decision",
+}
+OPTIONAL_DEFAULTS: dict[str, Any] = {
     "same_session_execution": True,
-    "root_cause_status": "not_applicable",
-    "intent_status": "defined",
-    "autonomous_closure_admission": "not_requested",
     "durable_handoff": False,
     "public_contract": False,
     "migration_or_rollback": False,
@@ -26,8 +31,7 @@ DEFAULTS: dict[str, Any] = {
     "copy_paste_projection_requested": False,
     "disposable_spike": False,
 }
-
-BOOLEAN_OR_NULL_FACTS = {
+BOOLEAN_FACTS = {
     "explicit_plan_request",
     "same_session_execution",
     "durable_handoff",
@@ -41,235 +45,274 @@ BOOLEAN_OR_NULL_FACTS = {
 }
 ROOT_CAUSE_STATUSES = {"known", "unknown", "not_applicable"}
 INTENT_STATUSES = {"defined", "materially_underdefined", "low_risk_defaults_available"}
-ADMISSION_STATUSES = {"not_requested", "eligible", "ineligible", "terminal"}
+ADMISSION_DECISIONS = {"NOT_REQUESTED", "DIRECT_SELECTED", "CLOSURE_ELIGIBLE", "TERMINAL"}
+RESULT_KEYS = {
+    "schema_version",
+    "route",
+    "profile",
+    "execution_policy",
+    "primary_card",
+    "required_artifact_projection_ids",
+    "reason_codes",
+    "handoff_owner",
+}
+
+
+class PlanRouteError(ValueError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class PlanRouteViolation(NamedTuple):
+    code: str
+    path: str
+    message: str
+
+
+def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise PlanRouteError("PLAN_ROUTE_MANIFEST_INVALID", f"duplicate manifest key: {key}")
+        result[key] = value
+    return result
+
+
+def _load_manifest(root: Path) -> dict[str, Any]:
+    path = root / "registries" / "reference-cards.manifest.json"
+    info = path.lstat()
+    if not path.is_file() or path.is_symlink() or info.st_nlink != 1:
+        raise PlanRouteError("PLAN_ROUTE_MANIFEST_INVALID", f"unsafe card manifest: {path}")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_strict_object)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise PlanRouteError("PLAN_ROUTE_MANIFEST_INVALID", f"invalid card manifest: {exc}") from exc
+    if not isinstance(value, dict):
+        raise PlanRouteError("PLAN_ROUTE_MANIFEST_INVALID", "card manifest must be an object")
+    return value
+
+
+def _validated_facts(raw: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise PlanRouteError("PLAN_ROUTE_INPUT_INVALID", "plan route facts must be an object")
+    if not raw:
+        raise PlanRouteError("PLAN_ROUTE_INPUT_INCOMPLETE", "plan route facts must not be empty")
+    allowed = REQUIRED_FACTS | set(OPTIONAL_DEFAULTS)
+    unknown = sorted(set(raw) - allowed)
+    if unknown:
+        raise PlanRouteError("PLAN_ROUTE_INPUT_UNKNOWN_FIELD", f"unknown route facts: {unknown}")
+    missing = sorted(REQUIRED_FACTS - set(raw))
+    if missing:
+        raise PlanRouteError("PLAN_ROUTE_INPUT_INCOMPLETE", f"missing plan route facts: {missing}")
+    facts = {**OPTIONAL_DEFAULTS, **raw}
+    if facts["schema_version"] != "1.0":
+        raise PlanRouteError("PLAN_ROUTE_INPUT_INVALID", "schema_version must be 1.0")
+    for field in BOOLEAN_FACTS:
+        if not isinstance(facts[field], bool):
+            raise PlanRouteError("PLAN_ROUTE_INPUT_INVALID", f"{field} must be boolean")
+    for field, allowed_values in (
+        ("root_cause_status", ROOT_CAUSE_STATUSES),
+        ("intent_status", INTENT_STATUSES),
+        ("closure_admission_decision", ADMISSION_DECISIONS),
+    ):
+        if facts[field] not in allowed_values:
+            raise PlanRouteError("PLAN_ROUTE_INPUT_INVALID", f"invalid {field}: {facts[field]!r}")
+    for field, minimum in (("independent_write_slices", 0), ("strategy_family_count", 1)):
+        value = facts[field]
+        if type(value) is not int or value < minimum:
+            raise PlanRouteError("PLAN_ROUTE_INPUT_INVALID", f"{field} must be an integer >= {minimum}")
+    return facts
+
+
+def _card(card_id: str, root: Path = ROOT) -> dict[str, Any]:
+    manifest = _load_manifest(root)
+    matches = [item for item in manifest.get("cards", []) if item.get("card_id") == card_id]
+    if len(matches) != 1:
+        raise PlanRouteError("PLAN_ROUTE_CARD_UNAVAILABLE", f"manifest does not contain exactly one {card_id}")
+    item = matches[0]
+    return {key: item[key] for key in ("card_id", "path", "sha256", "bytes")}
 
 
 def _result(
     route: str,
+    *,
     profile: str | None,
     reasons: list[str],
-    *,
     execution_policy: str = "standard",
-    primary_reference: str | None = None,
-    required: list[str] | None = None,
-    optional: list[str] | None = None,
-    must_not_load: list[str] | None = None,
+    card_id: str | None = None,
     required_artifacts: list[str] | None = None,
     handoff_owner: str | None = None,
-    terminal_status: str | None = None,
-    projection: str | None = None,
 ) -> dict[str, Any]:
-    result: dict[str, Any] = {
+    return {
+        "schema_version": "1.0",
         "route": route,
         "profile": profile,
         "execution_policy": execution_policy,
-        "primary_reference": primary_reference,
-        "required_references": required or [],
-        "optional_references": optional or [],
-        "must_not_load": must_not_load or [],
-        "reason_codes": reasons,
-        "required_artifacts": required_artifacts or [],
+        "primary_card": _card(card_id) if card_id else None,
+        "required_artifact_projection_ids": list(dict.fromkeys(required_artifacts or [])),
+        "reason_codes": list(dict.fromkeys(reasons)),
         "handoff_owner": handoff_owner,
-        "terminal_status": terminal_status,
-        "forbidden_assumptions": [
-            "root-cause rediscovery is part of implementation",
-            "VCS publication or external execution is authorized",
-            "autonomous closure may pause for a mid-run user answer",
-        ],
     }
-    if projection:
-        result["projection"] = projection
-    return result
-
-
-def _validated_facts(raw: dict[str, Any]) -> dict[str, Any]:
-    unknown = sorted(set(raw) - set(DEFAULTS))
-    if unknown:
-        raise ValueError(f"unknown route facts: {unknown}")
-    facts = {**DEFAULTS, **raw}
-    for field in BOOLEAN_OR_NULL_FACTS:
-        value = facts[field]
-        if value is not None and not isinstance(value, bool):
-            raise ValueError(f"{field} must be true, false, or null")
-    for field, allowed in (
-        ("root_cause_status", ROOT_CAUSE_STATUSES),
-        ("intent_status", INTENT_STATUSES),
-        ("autonomous_closure_admission", ADMISSION_STATUSES),
-    ):
-        if facts[field] not in allowed:
-            raise ValueError(f"invalid {field}: {facts[field]!r}")
-    for field, minimum in (("independent_write_slices", 0), ("strategy_family_count", 1)):
-        value = facts[field]
-        if type(value) is not int or value < minimum:
-            raise ValueError(f"{field} must be an integer >= {minimum}")
-    return facts
-
-
-def _program_references(facts: dict[str, Any], *, closure: bool) -> list[str]:
-    references = [
-        "references/plan-profiles.md",
-        "references/plan-state-contract.md",
-        "references/implementation-slicing-and-context-capsules.md",
-    ]
-    if closure:
-        references.append("references/closure-contract.md")
-    if facts["migration_or_rollback"] is True:
-        references.append("references/deprecation-migration-plans.md")
-    if facts["public_contract"] is True:
-        references.append("references/architecture-decision-records.md")
-    if closure and facts["strategy_family_count"] > 1:
-        references.append("references/design-audit-compression-ledger.md")
-    return references
-
-
-def _budget_reasons(references: list[str]) -> list[str]:
-    return [f"reference_budget_exception:{reference}" for reference in references[5:]]
 
 
 def assess(raw: dict[str, Any]) -> dict[str, Any]:
     facts = _validated_facts(raw)
-    no_closure = ["references/closure-contract.md", "references/design-audit-compression-ledger.md"]
-    if facts["long_corpus_only"] is True:
-        return _result(
-            "long-document",
-            None,
-            ["long_corpus_owner"],
-            must_not_load=no_closure,
-            handoff_owner="long-document-segmented-writing",
-        )
+    admission = facts["closure_admission_decision"]
+    if admission == "TERMINAL":
+        return _result("terminal", profile=None, reasons=["CLOSURE_ADMISSION_TERMINAL"])
     if facts["root_cause_status"] == "unknown":
-        diagnosis = "software-quality-workflows/references/systematic-debugging.md"
         return _result(
             "sqw-diagnosis",
-            None,
-            ["root_cause_unknown"],
-            primary_reference=diagnosis,
-            required=[diagnosis],
-            must_not_load=no_closure,
+            profile=None,
+            reasons=["ROOT_CAUSE_UNKNOWN"],
             handoff_owner="software-quality-workflows",
-        )
-    if facts["disposable_spike"] is True:
-        return _result(
-            "spike",
-            None,
-            ["disposable_spike"],
-            primary_reference="references/spike.md",
-            required=["references/spike.md"],
-            must_not_load=["references/closure-contract.md"],
-            required_artifacts=["spike_verdict"],
         )
     if facts["intent_status"] == "materially_underdefined":
-        intent = "software-quality-workflows/references/intent-and-design-discovery.md"
         return _result(
             "sqw-intent",
-            None,
-            ["material_intent_underdefined"],
-            primary_reference=intent,
-            required=[intent],
-            must_not_load=["references/closure-contract.md"],
+            profile=None,
+            reasons=["MATERIAL_INTENT_UNDERDEFINED"],
             handoff_owner="software-quality-workflows",
         )
-    admission = facts["autonomous_closure_admission"]
-    if admission == "terminal":
+    if facts["long_corpus_only"]:
         return _result(
-            "terminal",
-            None,
-            ["closure_admission_terminal"],
-            must_not_load=no_closure,
-            terminal_status="admission_terminal",
+            "long-document",
+            profile=None,
+            reasons=["LONG_CORPUS_OWNER"],
+            card_id="wp.bridges.long-document-handoff",
+            handoff_owner="long-document-segmented-writing",
         )
-    unknown_boolean_facts = sorted(field for field in BOOLEAN_OR_NULL_FACTS if facts[field] is None)
-    if unknown_boolean_facts:
-        return _result(
-            "terminal",
-            None,
-            ["route_fact_unknown"],
-            must_not_load=no_closure,
-            terminal_status="insufficient_route_facts",
-        )
-    if admission == "ineligible":
-        safe_direct = facts["same_session_execution"] is True and all(
-            facts[field] is False
-            for field in ("explicit_plan_request", "durable_handoff", "public_contract", "migration_or_rollback", "resume_required", "external_side_effect", "copy_paste_projection_requested")
-        ) and facts["independent_write_slices"] <= 1
-        if safe_direct:
-            return _result("direct", None, ["closure_ineligible_direct_fallback"], must_not_load=no_closure)
-        return _result(
-            "terminal",
-            None,
-            ["closure_ineligible"],
-            must_not_load=no_closure,
-            terminal_status="closure_ineligible",
-        )
-    if admission == "eligible":
-        required = _program_references(facts, closure=True)
-        reasons = ["closure_eligible"]
-        if facts["intent_status"] == "low_risk_defaults_available":
-            reasons.append("low_risk_defaults")
+    if facts["disposable_spike"]:
+        return _result("spike", profile=None, reasons=["DISPOSABLE_SPIKE"], card_id="wp.experiments.disposable-spike")
+    if admission == "CLOSURE_ELIGIBLE":
+        reasons = ["CLOSURE_CONTRACT_REQUIRED"]
         if facts["strategy_family_count"] > 1:
-            reasons.append("multiple_strategy_families")
-        for field in ("public_contract", "migration_or_rollback", "external_side_effect", "resume_required"):
-            if facts[field] is True:
-                reasons.append(field)
-        reasons.extend(_budget_reasons(required))
+            reasons.append("MULTIPLE_STRATEGY_FAMILIES")
         return _result(
             "writing-plans",
-            "program",
-            reasons,
+            profile="program",
             execution_policy="autonomous_closure",
-            primary_reference="references/closure-contract.md",
-            required=required,
-            required_artifacts=["closure_contract", "program_plan"],
-            handoff_owner="software-quality-workflows",
+            reasons=reasons,
+            card_id="wp.closure.compile",
+            required_artifacts=["closure-admission"],
         )
     program_reasons = [
-        field
-        for field in ("public_contract", "migration_or_rollback", "external_side_effect", "resume_required")
-        if facts[field] is True
+        reason
+        for field, reason in (
+            ("public_contract", "PUBLIC_CONTRACT"),
+            ("migration_or_rollback", "MIGRATION_OR_ROLLBACK"),
+            ("resume_required", "RESUME_REQUIRED"),
+            ("external_side_effect", "EXTERNAL_SIDE_EFFECT"),
+        )
+        if facts[field]
     ]
     if program_reasons:
-        required = _program_references(facts, closure=False)
         return _result(
             "writing-plans",
-            "program",
-            program_reasons + _budget_reasons(required),
-            primary_reference="references/plan-profiles.md",
-            required=required,
-            required_artifacts=["program_plan"],
-            handoff_owner="software-quality-workflows",
+            profile="program",
+            reasons=program_reasons,
+            card_id="wp.profiles.program",
         )
-
     handoff_reasons: list[str] = []
-    if facts["same_session_execution"] is False:
-        handoff_reasons.append("cross_context_handoff")
-    if facts["durable_handoff"] is True:
-        handoff_reasons.append("durable_handoff")
+    if not facts["same_session_execution"]:
+        handoff_reasons.append("CROSS_CONTEXT_HANDOFF")
+    if facts["durable_handoff"]:
+        handoff_reasons.append("DURABLE_HANDOFF")
     if facts["independent_write_slices"] > 1:
-        handoff_reasons.append("independent_write_slices")
-    if facts["copy_paste_projection_requested"] is True:
-        handoff_reasons.append("novice_projection_requested")
+        handoff_reasons.append("INDEPENDENT_WRITE_SLICES")
+    if facts["copy_paste_projection_requested"]:
+        handoff_reasons.append("EXECUTABLE_PROJECTION_REQUESTED")
     if handoff_reasons:
         return _result(
             "writing-plans",
-            "handoff",
-            handoff_reasons,
-            primary_reference="references/plan-profiles.md",
-            required=["references/plan-profiles.md", "references/implementation-slicing-and-context-capsules.md"],
-            required_artifacts=["plan_handoff"],
-            handoff_owner="software-quality-workflows",
-            projection="novice_executable" if facts["copy_paste_projection_requested"] is True else None,
+            profile="handoff",
+            reasons=handoff_reasons,
+            card_id="wp.profiles.handoff",
         )
-    if facts["explicit_plan_request"] is True:
+    if facts["explicit_plan_request"]:
         return _result(
             "writing-plans",
-            "brief",
-            ["explicit_plan_request"],
-            primary_reference="references/plan-profiles.md",
-            required=["references/plan-profiles.md"],
-            required_artifacts=["brief_plan"],
-            handoff_owner="software-quality-workflows",
+            profile="brief",
+            reasons=["EXPLICIT_PLAN_REQUEST"],
+            card_id="wp.profiles.brief",
         )
-    return _result("direct", None, ["routine_direct_path"], must_not_load=no_closure)
+    direct_reason = "CLOSURE_DIRECT_SELECTED" if admission == "DIRECT_SELECTED" else "ROUTINE_DIRECT_PATH"
+    return _result(
+        "direct",
+        profile=None,
+        reasons=[direct_reason],
+        handoff_owner="software-quality-workflows",
+    )
+
+
+def validate_plan_route_result(result: Any, root: Path = ROOT) -> list[PlanRouteViolation]:
+    violations: list[PlanRouteViolation] = []
+    if not isinstance(result, dict) or set(result) != RESULT_KEYS:
+        return [PlanRouteViolation("plan-route.shape", "/", "result must contain the exact route keys")]
+    card = result.get("primary_card")
+    if card is not None:
+        if not isinstance(card, dict) or set(card) != {"card_id", "path", "sha256", "bytes"}:
+            violations.append(PlanRouteViolation("plan-route.card-shape", "/primary_card", "invalid transport ref"))
+        else:
+            try:
+                expected = _card(card["card_id"], root)
+            except (OSError, TypeError, ValueError):
+                expected = None
+            if card != expected:
+                violations.append(PlanRouteViolation("plan-route.card-identity", "/primary_card", "card identity differs from manifest"))
+    if result.get("route") not in {"direct", "sqw-diagnosis", "sqw-intent", "writing-plans", "spike", "long-document", "terminal"}:
+        violations.append(PlanRouteViolation("plan-route.route", "/route", "unknown route"))
+    for field in ("required_artifact_projection_ids", "reason_codes"):
+        value = result.get(field)
+        if (
+            not isinstance(value, list)
+            or any(not isinstance(item, str) or not item for item in value)
+            or len(value) != len(set(value))
+        ):
+            violations.append(PlanRouteViolation("plan-route.list-shape", f"/{field}", "must be a unique non-empty string list"))
+
+    route = result.get("route")
+    profile = result.get("profile")
+    policy = result.get("execution_policy")
+    owner = result.get("handoff_owner")
+    card_id = card.get("card_id") if isinstance(card, dict) else None
+    artifacts = result.get("required_artifact_projection_ids")
+    expected_local_cards = {
+        "brief": "wp.profiles.brief",
+        "handoff": "wp.profiles.handoff",
+    }
+    if route == "writing-plans":
+        valid_program_card = profile == "program" and card_id in {"wp.profiles.program", "wp.closure.compile"}
+        if not (card_id == expected_local_cards.get(profile) or valid_program_card) or owner is not None:
+            violations.append(PlanRouteViolation("plan-route.local-selection", "/primary_card", "profile and local card do not match"))
+        if card_id == "wp.closure.compile":
+            if policy != "autonomous_closure" or artifacts != ["closure-admission"]:
+                violations.append(PlanRouteViolation("plan-route.closure-binding", "/execution_policy", "closure compile requires Admission projection"))
+        elif policy != "standard" or artifacts != []:
+            violations.append(PlanRouteViolation("plan-route.standard-binding", "/execution_policy", "standard profile cannot require closure artifacts"))
+    elif route == "spike":
+        if profile is not None or card_id != "wp.experiments.disposable-spike" or owner is not None or policy != "standard" or artifacts != []:
+            violations.append(PlanRouteViolation("plan-route.spike-selection", "/primary_card", "spike must select only its exact experiment card"))
+    elif route == "long-document":
+        if (
+            profile is not None
+            or card_id != "wp.bridges.long-document-handoff"
+            or owner != "long-document-segmented-writing"
+            or policy != "standard"
+            or artifacts != []
+        ):
+            violations.append(PlanRouteViolation("plan-route.long-document-selection", "/primary_card", "long corpus handoff must select the exact local bridge"))
+    else:
+        expected_owner = {
+            "direct": "software-quality-workflows",
+            "sqw-diagnosis": "software-quality-workflows",
+            "sqw-intent": "software-quality-workflows",
+            "terminal": None,
+        }.get(route)
+        if profile is not None or card is not None or owner != expected_owner or policy != "standard" or artifacts != []:
+            violations.append(PlanRouteViolation("plan-route.handoff-selection", "/", "cross-skill or terminal route has an invalid local selection"))
+    return violations
 
 
 def _read_input(path: str) -> dict[str, Any]:
@@ -277,12 +320,9 @@ def _read_input(path: str) -> dict[str, Any]:
         text = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
         value = json.loads(text)
     except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(str(exc)) from exc
+        raise PlanRouteError("PLAN_ROUTE_INPUT_INVALID", str(exc)) from exc
     if not isinstance(value, dict):
-        raise ValueError("route input must be a JSON object")
-    unknown = sorted(set(value) - set(DEFAULTS))
-    if unknown:
-        raise ValueError(f"unknown route facts: {unknown}")
+        raise PlanRouteError("PLAN_ROUTE_INPUT_INVALID", "route input must be a JSON object")
     return value
 
 
@@ -292,8 +332,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         result = assess(_read_input(args.input))
-    except ValueError as exc:
-        print(json.dumps({"ok": False, "error": str(exc)}, indent=2))
+    except (OSError, PlanRouteError, ValueError) as exc:
+        code = exc.code if isinstance(exc, PlanRouteError) else "PLAN_ROUTE_INPUT_INVALID"
+        print(json.dumps({"ok": False, "error": {"code": code, "message": str(exc)}}, indent=2))
         return 2
     print(json.dumps({"ok": True, **result}, ensure_ascii=False, indent=2))
     return 0

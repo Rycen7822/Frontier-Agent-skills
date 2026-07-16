@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontier-agent.local/sqw/publication-readiness-1.0.schema.json",
+  "title": "SQW Publication Readiness 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "review_result_ref", "review_result_hash", "source_revision", "scope_hash", "requested_action", "publication_ceiling", "remote_checks", "required_approvals", "branch_policy", "readiness", "blocking_reasons"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "review_result_ref": {"type": "string", "pattern": "^artifact:review/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "review_result_hash": {"$ref": "#/$defs/hash"},
+    "source_revision": {"$ref": "#/$defs/non_empty"},
+    "scope_hash": {"$ref": "#/$defs/hash"},
+    "requested_action": {"$ref": "#/$defs/action"},
+    "publication_ceiling": {
+      "type": "object", "additionalProperties": false,
+      "required": ["allowed_actions", "authority_ref"],
+      "properties": {
+        "allowed_actions": {"type": "array", "minItems": 1, "maxItems": 7, "uniqueItems": true, "items": {"$ref": "#/$defs/action"}},
+        "authority_ref": {"$ref": "#/$defs/non_empty"}
+      }
+    },
+    "remote_checks": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/remote_check"}},
+    "required_approvals": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/approval"}},
+    "branch_policy": {"$ref": "#/$defs/branch_policy"},
+    "readiness": {"enum": ["ready", "blocked", "unknown"]},
+    "blocking_reasons": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"$ref": "#/$defs/non_empty"}}
+  },
+  "allOf": [
+    {"if": {"properties": {"readiness": {"const": "ready"}}, "required": ["readiness"]}, "then": {"properties": {"blocking_reasons": {"maxItems": 0}}}},
+    {"if": {"properties": {"readiness": {"enum": ["blocked", "unknown"]}}, "required": ["readiness"]}, "then": {"properties": {"blocking_reasons": {"minItems": 1}}}}
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "non_empty": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "action": {"enum": ["review_comment", "branch_push", "merge", "release", "deploy", "publish"]},
+    "remote_check": {
+      "type": "object", "additionalProperties": false,
+      "required": ["check_id", "status", "evidence_ref"],
+      "properties": {"check_id": {"$ref": "#/$defs/non_empty"}, "status": {"enum": ["passed", "failed", "unknown", "not_applicable"]}, "evidence_ref": {"$ref": "#/$defs/non_empty"}}
+    },
+    "approval": {
+      "type": "object", "additionalProperties": false,
+      "required": ["approval_id", "status", "evidence_ref"],
+      "properties": {"approval_id": {"$ref": "#/$defs/non_empty"}, "status": {"enum": ["satisfied", "missing", "unknown", "not_applicable"]}, "evidence_ref": {"$ref": "#/$defs/non_empty"}}
+    },
+    "branch_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "evidence_ref"],
+      "properties": {"status": {"enum": ["satisfied", "blocked", "unknown", "not_applicable"]}, "evidence_ref": {"$ref": "#/$defs/non_empty"}}
+    }
+  }
+}

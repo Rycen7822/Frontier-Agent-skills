@@ -12,8 +12,8 @@
     "controller_hash": {"$ref": "#/$defs/hash"},
     "ablations": {
       "type": "array",
-      "minItems": 11,
-      "maxItems": 11,
+      "minItems": 9,
+      "maxItems": 9,
       "items": {"$ref": "#/$defs/ablation"}
     },
     "reference_evaluations": {
@@ -39,10 +39,10 @@
       "properties": {
         "id": {
           "enum": [
-            "no_closure_contract", "worker_mutable_contract", "no_verifier_qualification",
-            "self_review_signoff", "load_all_references", "always_on_full_plan",
-            "no_context_projection", "no_field_sensitive_invalidation",
-            "no_terminal_certificates", "single_vs_bounded_portfolio", "all_review_rubrics"
+            "no_policy_graph", "no_card_navigation", "no_exact_transport_ref",
+            "no_context_lease", "no_artifact_boundary_reroute",
+            "no_controller_context_separation", "mutable_verifier",
+            "no_local_invalidation", "no_one_card_limit"
           ]
         },
         "status": {"enum": ["passed", "failed", "not_run"]},
@@ -53,12 +53,13 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "owner_id", "authority", "decision_case_status", "precision_case_status",
+        "policy_id", "owner_type", "owner_id", "decision_case_status", "precision_case_status",
         "exclusion_case_status", "ablation_status", "evidence_refs"
       ],
       "properties": {
-        "owner_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,127}$"},
-        "authority": {"enum": ["normative_owner", "companion"]},
+        "policy_id": {"type": "string", "pattern": "^(?:sqw|wp)\\.[a-z0-9.-]+$"},
+        "owner_type": {"enum": ["card", "machine"]},
+        "owner_id": {"type": "string", "minLength": 1, "maxLength": 256},
         "decision_case_status": {"$ref": "#/$defs/status"},
         "precision_case_status": {"$ref": "#/$defs/status"},
         "exclusion_case_status": {"$ref": "#/$defs/status"},

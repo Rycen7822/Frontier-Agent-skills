@@ -7,88 +7,78 @@ import sys
 import tempfile
 import unittest
 
+from jsonschema import Draft202012Validator
+
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from assess_plan_mode import assess  # noqa: E402
+from assess_plan_mode import RESULT_KEYS, assess, validate_plan_route_result  # noqa: E402
 
 
 class PlanRouteTests(unittest.TestCase):
     def setUp(self) -> None:
         self.fixture = json.loads((ROOT / "tests" / "fixtures" / "plan-route-cases.json").read_text(encoding="utf-8"))
 
-    def test_all_frozen_routes_match(self) -> None:
-        defaults = self.fixture["defaults"]
+    def test_all_sparse_frozen_routes_select_zero_or_one_exact_card(self) -> None:
         for case in self.fixture["cases"]:
             with self.subTest(case=case["id"]):
-                actual = assess({**defaults, **case["facts"]})
-                expected = case["expected"]
-                self.assertEqual(expected["route"], actual["route"])
-                self.assertEqual(expected.get("profile"), actual["profile"])
-                self.assertEqual(expected["execution_policy"], actual["execution_policy"])
-                self.assertEqual(expected["reason_codes"], actual["reason_codes"])
-                for field in ("primary_reference", "required_artifacts", "handoff_owner", "terminal_status"):
-                    if field in expected:
-                        self.assertEqual(expected[field], actual[field])
-                self.assertTrue(set(expected.get("required_references", [])).issubset(actual["required_references"]))
-                self.assertTrue(set(expected.get("must_not_load", [])).issubset(actual["must_not_load"]))
-                for reference in actual["required_references"] + actual["optional_references"]:
-                    self.assertIn("/", reference, f"reference must be a reachable path: {reference}")
+                actual = assess({**self.fixture["defaults"], **case["facts"]})
+                self.assertEqual(RESULT_KEYS, set(actual))
+                self.assertEqual([], validate_plan_route_result(actual, ROOT))
+                self.assertNotIn("required_references", actual)
+                for key, expected in case["expected"].items():
+                    if key == "primary_card_id":
+                        observed = actual["primary_card"]["card_id"] if actual["primary_card"] else None
+                    else:
+                        observed = actual[key]
+                    self.assertEqual(expected, observed, (key, actual))
 
-    def test_strategy_families_and_write_slices_are_not_conflated(self) -> None:
-        cases = {case["id"]: case for case in self.fixture["cases"]}
-        strategies = assess({**self.fixture["defaults"], **cases["two_strategy_families_one_write_slice"]["facts"]})
-        slices = assess({**self.fixture["defaults"], **cases["one_strategy_three_write_slices"]["facts"]})
-        self.assertEqual("program", strategies["profile"])
-        self.assertNotIn("independent_write_slices", strategies["reason_codes"])
-        self.assertEqual("handoff", slices["profile"])
-        self.assertNotIn("multiple_strategy_families", slices["reason_codes"])
+    def test_route_fact_and_result_schemas_are_strict(self) -> None:
+        facts = self.fixture["defaults"]
+        result = assess(facts)
+        for schema_name, instance in (("plan-route-facts.schema.json", facts), ("plan-route-result.schema.json", result)):
+            schema = json.loads((ROOT / "schemas" / schema_name).read_text(encoding="utf-8"))
+            Draft202012Validator.check_schema(schema)
+        self.assertEqual([], list(Draft202012Validator(schema).iter_errors(instance)))
+        self.assertTrue(validate_plan_route_result({**result, "required_references": []}, ROOT))
+        brief = assess({**facts, "explicit_plan_request": True})
+        wrong_profile = {**brief, "profile": "program"}
+        self.assertIn("plan-route.local-selection", {item.code for item in validate_plan_route_result(wrong_profile, ROOT)})
 
-    def test_program_references_are_loaded_only_by_concrete_trigger(self) -> None:
+    def test_strategy_families_and_write_slices_remain_distinct(self) -> None:
         defaults = self.fixture["defaults"]
-        core = {
-            "references/plan-profiles.md",
-            "references/plan-state-contract.md",
-            "references/implementation-slicing-and-context-capsules.md",
-        }
-        resumed = assess({**defaults, "resume_required": True})
-        self.assertEqual(core, set(resumed["required_references"]))
-        self.assertNotIn("references/deprecation-migration-plans.md", resumed["required_references"])
-        self.assertNotIn("references/architecture-decision-records.md", resumed["required_references"])
+        strategies = assess({**defaults, "closure_admission_decision": "CLOSURE_ELIGIBLE", "strategy_family_count": 2})
+        slices = assess({**defaults, "independent_write_slices": 3})
+        self.assertEqual(("program", "wp.closure.compile"), (strategies["profile"], strategies["primary_card"]["card_id"]))
+        self.assertNotIn("INDEPENDENT_WRITE_SLICES", strategies["reason_codes"])
+        self.assertEqual(("handoff", "wp.profiles.handoff"), (slices["profile"], slices["primary_card"]["card_id"]))
+        self.assertNotIn("MULTIPLE_STRATEGY_FAMILIES", slices["reason_codes"])
 
-        migration = assess({**defaults, "migration_or_rollback": True})
-        self.assertTrue(core <= set(migration["required_references"]))
-        self.assertIn("references/deprecation-migration-plans.md", migration["required_references"])
-        self.assertNotIn("references/architecture-decision-records.md", migration["required_references"])
+    def test_external_bridge_and_spike_select_exact_current_cards(self) -> None:
+        defaults = self.fixture["defaults"]
+        spike = assess({**defaults, "disposable_spike": True})
+        bridge = assess({**defaults, "long_corpus_only": True})
+        self.assertEqual(
+            ("wp.experiments.disposable-spike", "references/experiments/disposable-spike.md"),
+            (spike["primary_card"]["card_id"], spike["primary_card"]["path"]),
+        )
+        self.assertEqual(
+            ("wp.bridges.long-document-handoff", "references/bridges/long-document-handoff.md"),
+            (bridge["primary_card"]["card_id"], bridge["primary_card"]["path"]),
+        )
 
-        public = assess({**defaults, "public_contract": True})
-        self.assertTrue(core <= set(public["required_references"]))
-        self.assertIn("references/architecture-decision-records.md", public["required_references"])
-        self.assertNotIn("references/deprecation-migration-plans.md", public["required_references"])
-
-    def test_cli_rejects_unknown_facts(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            source = Path(directory) / "input.json"
-            source.write_text(json.dumps({"unexpected_complexity_score": 9}), encoding="utf-8")
-            result = subprocess.run(
-                [sys.executable, "-B", str(SCRIPTS / "assess_plan_mode.py"), str(source)],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        self.assertEqual(2, result.returncode)
-        self.assertIn("unknown route facts", result.stdout)
-
-    def test_cli_rejects_invalid_tristate_and_counts(self) -> None:
-        for payload in (
-            {"root_cause_status": "probably"},
-            {"public_contract": "false"},
-            {"independent_write_slices": -1},
-            {"strategy_family_count": 0},
-        ):
-            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as directory:
+    def test_cli_rejects_empty_unknown_invalid_tristate_and_counts(self) -> None:
+        payloads = (
+            ({}, "PLAN_ROUTE_INPUT_INCOMPLETE"),
+            ({**self.fixture["defaults"], "unexpected_complexity_score": 9}, "PLAN_ROUTE_INPUT_UNKNOWN_FIELD"),
+            ({**self.fixture["defaults"], "root_cause_status": "probably"}, "PLAN_ROUTE_INPUT_INVALID"),
+            ({**self.fixture["defaults"], "independent_write_slices": -1}, "PLAN_ROUTE_INPUT_INVALID"),
+        )
+        for payload, code in payloads:
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as directory:
                 source = Path(directory) / "input.json"
                 source.write_text(json.dumps(payload), encoding="utf-8")
                 result = subprocess.run(
@@ -98,33 +88,9 @@ class PlanRouteTests(unittest.TestCase):
                     check=False,
                 )
             self.assertEqual(2, result.returncode)
+            self.assertEqual(code, json.loads(result.stdout)["error"]["code"])
 
-    def test_closure_eligible_never_treats_unknown_trigger_as_false(self) -> None:
-        defaults = self.fixture["defaults"]
-        for field in ("public_contract", "migration_or_rollback", "external_side_effect", "long_corpus_only", "disposable_spike"):
-            with self.subTest(field=field):
-                result = assess({**defaults, "autonomous_closure_admission": "eligible", field: None})
-                self.assertEqual("terminal", result["route"])
-                self.assertEqual("insufficient_route_facts", result["terminal_status"])
-
-    def test_reference_budget_exceptions_name_every_reference_over_five(self) -> None:
-        result = assess(
-            {
-                **self.fixture["defaults"],
-                "autonomous_closure_admission": "eligible",
-                "public_contract": True,
-                "migration_or_rollback": True,
-                "strategy_family_count": 2,
-            }
-        )
-        overflow = result["required_references"][5:]
-        self.assertGreaterEqual(len(overflow), 1)
-        self.assertEqual(
-            [f"reference_budget_exception:{reference}" for reference in overflow],
-            [reason for reason in result["reason_codes"] if reason.startswith("reference_budget_exception:")],
-        )
-
-    def test_profile_templates_are_bounded_projections(self) -> None:
+    def test_profile_templates_remain_bounded_projections(self) -> None:
         templates = ROOT / "templates"
         brief = (templates / "brief-change-card.md").read_text(encoding="utf-8")
         handoff = (templates / "executable-handoff.md").read_text(encoding="utf-8")
@@ -135,7 +101,6 @@ class PlanRouteTests(unittest.TestCase):
         self.assertIn("Gaps/fog", handoff)
         self.assertIn("State ref", program)
         self.assertIn("Rollout and rollback", program)
-        self.assertIn("not yet specified", program)
 
     def test_removed_compatibility_surface_is_absent(self) -> None:
         removed_paths = {

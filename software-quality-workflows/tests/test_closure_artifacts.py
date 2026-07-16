@@ -15,14 +15,17 @@ from _workflow_state import (  # noqa: E402
     canonical_artifact_hash,
     load_json,
     validate_closure_artifact,
+    validate_publication_readiness,
     validate_review_result,
 )
 
 
 ARTIFACT_SCHEMA = load_json(ROOT / "schemas" / "closure-artifacts.schema.json")
 REVIEW_SCHEMA = load_json(ROOT / "schemas" / "review-result.schema.json")
+PUBLICATION_SCHEMA = load_json(ROOT / "schemas" / "publication-readiness.schema.json")
 ARTIFACT_FIXTURE = ROOT / "tests" / "fixtures" / "closure" / "valid-artifacts.json"
 REVIEW_FIXTURE = ROOT / "tests" / "fixtures" / "closure" / "valid-review-result.json"
+PUBLICATION_FIXTURE = ROOT / "tests" / "fixtures" / "closure" / "valid-publication-readiness.json"
 
 
 def artifacts() -> list[dict]:
@@ -42,6 +45,14 @@ def review_manifest() -> dict:
 
 
 class ClosureArtifactTests(unittest.TestCase):
+    def test_local_review_and_publication_schemas_have_disjoint_authority(self) -> None:
+        review_fields = set(REVIEW_SCHEMA["properties"])
+        publication_fields = set(PUBLICATION_SCHEMA["properties"])
+        self.assertFalse({"merge_readiness", "external_approvals", "requested_action", "publication_ceiling"} & review_fields)
+        self.assertTrue({"requested_action", "publication_ceiling", "remote_checks", "required_approvals", "branch_policy", "readiness"} <= publication_fields)
+        self.assertTrue((ROOT / "operator" / "review" / "result-consistency.md").is_file())
+        self.assertTrue((ROOT / "operator" / "review" / "publication-readiness.md").is_file())
+
     def test_tagged_union_accepts_exactly_the_eight_planned_artifact_types(self) -> None:
         expected = {
             "admission-result", "baseline-result", "candidate-manifest", "candidate-evaluation",
@@ -139,6 +150,16 @@ class ClosureArtifactTests(unittest.TestCase):
         manifest = review_manifest()
         self.assertEqual([], validate_review_result(result, REVIEW_SCHEMA, manifest, current_head="head-001", current_scope_hash="sha256:" + "b" * 64))
 
+        sampled = deepcopy(result)
+        sampled["coverage"][0]["status"] = "sampled"
+        sampled["coverage"][0]["sampling_note"] = "Reviewed the changed parser and its owning call path."
+        self.assertEqual([], validate_review_result(sampled, REVIEW_SCHEMA, manifest, current_head="head-001", current_scope_hash="sha256:" + "b" * 64))
+
+        mixed = deepcopy(result)
+        mixed["merge_readiness"] = "ready"
+        mixed["external_approvals"] = "satisfied"
+        self.assertIn("review.schema", {item.code for item in validate_review_result(mixed, REVIEW_SCHEMA, manifest, current_head="head-001", current_scope_hash="sha256:" + "b" * 64)})
+
         stale = deepcopy(result)
         self.assertIn("review.freshness", {item.code for item in validate_review_result(stale, REVIEW_SCHEMA, manifest, current_head="head-002", current_scope_hash="sha256:" + "b" * 64)})
         snapshot = deepcopy(result)
@@ -156,6 +177,38 @@ class ClosureArtifactTests(unittest.TestCase):
         duplicate_manifest = review_manifest()
         duplicate_manifest["paths"].append(deepcopy(duplicate_manifest["paths"][0]))
         self.assertIn("review.manifest", {item.code for item in validate_review_result(result, REVIEW_SCHEMA, duplicate_manifest, current_head="head-001", current_scope_hash="sha256:" + "b" * 64)})
+
+    def test_publication_readiness_is_separate_and_cannot_infer_remote_readiness(self) -> None:
+        review = load_json(REVIEW_FIXTURE)
+        publication = load_json(PUBLICATION_FIXTURE)
+        publication["review_result_hash"] = canonical_artifact_hash(review)
+        self.assertEqual([], validate_publication_readiness(publication, PUBLICATION_SCHEMA, review, REVIEW_SCHEMA, review_manifest(), current_head="head-001", current_scope_hash="sha256:" + "b" * 64))
+
+        sampled_review = deepcopy(review)
+        sampled_review["coverage"][0]["status"] = "sampled"
+        sampled_review["coverage"][0]["sampling_note"] = "Only the changed path was sampled."
+        publication["review_result_hash"] = canonical_artifact_hash(sampled_review)
+        self.assertIn("publication.consistency", {item.code for item in validate_publication_readiness(publication, PUBLICATION_SCHEMA, sampled_review, REVIEW_SCHEMA, review_manifest(), current_head="head-001", current_scope_hash="sha256:" + "b" * 64)})
+
+        unauthorized = deepcopy(publication)
+        unauthorized["review_result_hash"] = canonical_artifact_hash(review)
+        unauthorized["publication_ceiling"]["allowed_actions"] = ["branch_push"]
+        self.assertIn("publication.authority", {item.code for item in validate_publication_readiness(unauthorized, PUBLICATION_SCHEMA, review, REVIEW_SCHEMA, review_manifest(), current_head="head-001", current_scope_hash="sha256:" + "b" * 64)})
+
+        failed_remote = deepcopy(publication)
+        failed_remote["review_result_hash"] = canonical_artifact_hash(review)
+        failed_remote["remote_checks"][0]["status"] = "failed"
+        self.assertIn("publication.consistency", {item.code for item in validate_publication_readiness(failed_remote, PUBLICATION_SCHEMA, review, REVIEW_SCHEMA, review_manifest(), current_head="head-001", current_scope_hash="sha256:" + "b" * 64)})
+
+        unexplained = deepcopy(publication)
+        unexplained["review_result_hash"] = canonical_artifact_hash(review)
+        unexplained["readiness"] = "blocked"
+        self.assertIn("publication.schema", {item.code for item in validate_publication_readiness(unexplained, PUBLICATION_SCHEMA, review, REVIEW_SCHEMA, review_manifest(), current_head="head-001", current_scope_hash="sha256:" + "b" * 64)})
+
+        unvalidated_review = deepcopy(review)
+        unvalidated_review["schema_version"] = "2.0"
+        publication["review_result_hash"] = canonical_artifact_hash(unvalidated_review)
+        self.assertIn("publication.review", {item.code for item in validate_publication_readiness(publication, PUBLICATION_SCHEMA, unvalidated_review, REVIEW_SCHEMA, review_manifest(), current_head="head-001", current_scope_hash="sha256:" + "b" * 64)})
 
 
 if __name__ == "__main__":

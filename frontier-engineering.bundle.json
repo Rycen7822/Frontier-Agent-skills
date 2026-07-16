@@ -1,0 +1,39 @@
+{
+  "bundle_id": "frontier-engineering/5.0.0+4.0.0",
+  "compatible_schema_epoch": 1,
+  "contracts": {
+    "plan-execution-handoff": {
+      "contract_id": "https://local.frontier-agent/schemas/plan-execution-handoff.schema.json",
+      "normative_owner_hash": "sha256:455b986ff3be7be01155cf76b9fd1d4c0868f2ef4ac6c9e2f776a6497acb87bc",
+      "normative_owner_path": "writing-plans/schemas/plan-execution-handoff.schema.json"
+    }
+  },
+  "release_build_id": "build-17c49c9177edb09581dc9ce5",
+  "schema_version": "frontier-engineering-bundle/1.0",
+  "skills": {
+    "software-quality-workflows": {
+      "policy_registry": {
+        "content_hash": "sha256:4f59c3fc02c02744ad2d12b31343bd41da5d58f3d11668f3473591ede5249402",
+        "path": "software-quality-workflows/registries/policy-owners.json"
+      },
+      "reference_card_manifest": {
+        "content_hash": "sha256:614e16c2cf4d47edbcbe815f390529aa6ddbda8debab90e8b02830da60c9d411",
+        "path": "software-quality-workflows/registries/reference-cards.manifest.json"
+      },
+      "root_hash": "sha256:2e6d9f79a196bccb887905b5e23b0407ad9ff5ee80dbecca93422615476ee1de",
+      "version": "5.0.0"
+    },
+    "writing-plans": {
+      "policy_registry": {
+        "content_hash": "sha256:74b318170a1a1561e35782e500c2fd2a6b0c0cc797436ee4c3e85bad432e2c55",
+        "path": "writing-plans/registries/policy-owners.json"
+      },
+      "reference_card_manifest": {
+        "content_hash": "sha256:5ffff10d8b7798a422b4f355441c47b3046f3f824784d95d969e062e4171116d",
+        "path": "writing-plans/registries/reference-cards.manifest.json"
+      },
+      "root_hash": "sha256:ce54b9c5c59ac4cea9ca0816dcb14209c691f7650c46cf230d09747be056bf6c",
+      "version": "4.0.0"
+    }
+  }
+}

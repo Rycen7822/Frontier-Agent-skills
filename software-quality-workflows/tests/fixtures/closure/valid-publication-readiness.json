@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "review_result_ref": "artifact:review/RR-001",
+  "review_result_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "source_revision": "head-001",
+  "scope_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "requested_action": "merge",
+  "publication_ceiling": {
+    "allowed_actions": ["merge"],
+    "authority_ref": "approval:AP-PUBLISH-001"
+  },
+  "remote_checks": [
+    {"check_id": "required-checks", "status": "passed", "evidence_ref": "artifact:evidence/EV-REMOTE-001"}
+  ],
+  "required_approvals": [
+    {"approval_id": "code-owner", "status": "satisfied", "evidence_ref": "artifact:approval/AP-CODEOWNER"}
+  ],
+  "branch_policy": {"status": "satisfied", "evidence_ref": "artifact:evidence/EV-BRANCH-001"},
+  "readiness": "ready",
+  "blocking_reasons": []
+}

@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 from pathlib import Path
 import re
 import stat
 import unittest
 
 import yaml
+from jsonschema import Draft202012Validator
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = json.loads((ROOT / "bundle-manifest.json").read_text(encoding="utf-8"))
+BUNDLE_BUILDER_PATH = ROOT / "bundle" / "build_bundle_manifest.py"
+BUNDLE_BUILDER_SPEC = importlib.util.spec_from_file_location("build_bundle_manifest", BUNDLE_BUILDER_PATH)
+assert BUNDLE_BUILDER_SPEC is not None and BUNDLE_BUILDER_SPEC.loader is not None
+BUNDLE_BUILDER = importlib.util.module_from_spec(BUNDLE_BUILDER_SPEC)
+BUNDLE_BUILDER_SPEC.loader.exec_module(BUNDLE_BUILDER)
 REMOVED_WRITING_PATHS = {
     "references/compatibility-map.json",
     "references/context-compaction-resistant-upgrade-plans.md",
@@ -27,7 +34,7 @@ REMOVED_WRITING_PATHS = {
 }
 FORBIDDEN_PARTS = {"__pycache__", ".closure", ".workflow", "dist"}
 LOCAL_LINK = re.compile(r"\]\((?!https?://|#|mailto:)([^)#]+)(?:#[^)]+)?\)")
-LOCAL_ONLY_ROOTS = {".git", ".work"}
+LOCAL_ONLY_ROOTS = {".git", ".work", "share"}
 LOCAL_ONLY_FILES = {"CODEX_STATE.md"}
 CODEX_SKILL_KEYS = {"name", "description", "license", "metadata", "allowed-tools"}
 SUPPORTED_HOSTS = ["codex", "hermes-agent"]
@@ -63,6 +70,25 @@ def frontmatter_version(skill_root: Path) -> str:
 
 
 class BundleContractTests(unittest.TestCase):
+    def test_release_bundle_identity_is_exact_and_reproducible(self) -> None:
+        generated = BUNDLE_BUILDER.build_manifest()
+        checked_in = json.loads((ROOT / "frontier-engineering.bundle.json").read_text(encoding="utf-8"))
+        self.assertEqual(generated, checked_in)
+        schema = json.loads(
+            (ROOT / "bundle" / "frontier-engineering-bundle.schema.json").read_text(encoding="utf-8")
+        )
+        Draft202012Validator.check_schema(schema)
+        self.assertEqual([], list(Draft202012Validator(schema).iter_errors(checked_in)))
+        self.assertEqual("frontier-engineering/5.0.0+4.0.0", checked_in["bundle_id"])
+        self.assertEqual(
+            {"software-quality-workflows": "5.0.0", "writing-plans": "4.0.0"},
+            {skill_id: item["version"] for skill_id, item in checked_in["skills"].items()},
+        )
+        for item in checked_in["skills"].values():
+            self.assertRegex(item["root_hash"], r"^sha256:[0-9a-f]{64}$")
+            self.assertRegex(item["policy_registry"]["content_hash"], r"^sha256:[0-9a-f]{64}$")
+            self.assertRegex(item["reference_card_manifest"]["content_hash"], r"^sha256:[0-9a-f]{64}$")
+
     def test_repository_local_artifacts_are_ignored(self) -> None:
         ignore_path = ROOT / ".gitignore"
         self.assertTrue(ignore_path.is_file(), "repository must declare its local-only artifact boundary")
@@ -73,6 +99,7 @@ class BundleContractTests(unittest.TestCase):
         }
         required = {
             "/CODEX_STATE.md",
+            "/share/",
             "/.work/*.md",
             "/.work/tmp/",
             "/.work/p4-live-canary-evidence/",
@@ -94,6 +121,10 @@ class BundleContractTests(unittest.TestCase):
         self.assertEqual("1.0", MANIFEST["bundle_schema_version"])
         skills = MANIFEST["skills"]
         self.assertEqual({"writing-plans", "software-quality-workflows"}, {item["id"] for item in skills})
+        self.assertEqual(
+            {"writing-plans": "4.0.0", "software-quality-workflows": "5.0.0"},
+            {item["id"]: item["version"] for item in skills},
+        )
         for item in skills:
             skill_root = ROOT / item["path"]
             self.assertTrue(skill_root.is_dir(), f"missing bundled skill: {item['path']}")

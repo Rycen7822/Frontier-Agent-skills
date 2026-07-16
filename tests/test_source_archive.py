@@ -72,6 +72,14 @@ class SourceArchiveTests(unittest.TestCase):
                         "software-engineering-closure-bundle/bundle-manifest.json",
                         names,
                     )
+                    self.assertIn(
+                        "software-engineering-closure-bundle/frontier-engineering.bundle.json",
+                        names,
+                    )
+                    self.assertIn(
+                        "software-engineering-closure-bundle/bundle/frontier-engineering-bundle.schema.json",
+                        names,
+                    )
             self.assertEqual(observed[0], observed[1])
             self.assertEqual(archives[0], archives[1])
 
@@ -135,14 +143,14 @@ class SourceArchiveTests(unittest.TestCase):
                     ".git", ".work", "CODEX_STATE.md", "__pycache__", ".pytest_cache", "dist"
                 ),
             )
-            target = copied / "writing-plans" / "references" / "plan-profiles.md"
+            target = copied / "writing-plans" / "references" / "profiles" / "brief.md"
             target.unlink()
             target.symlink_to(copied / "README.md")
             with self.assertRaisesRegex(ValueError, "symlink"):
                 archiver.build_archive(copied, parent / "symlink.zip", parent / "symlink.json", "bundle")
 
             target.unlink()
-            shutil.copy2(ROOT / "writing-plans" / "references" / "plan-profiles.md", target)
+            shutil.copy2(ROOT / "writing-plans" / "references" / "profiles" / "brief.md", target)
             original_copy = archiver.shutil.copy2
             changed = False
 

@@ -12,7 +12,7 @@ The repository also owns the deterministic validation, evaluation, archive, and 
 
 ## Closure bundle
 
-Candidate changes, intentional compatibility removals, migration commands, and the current shadow blockers are recorded in [RELEASE_NOTES.md](RELEASE_NOTES.md).
+Candidate changes, intentional compatibility removals, atomic old-run handling, and the current shadow blockers are recorded in [RELEASE_NOTES.md](RELEASE_NOTES.md). The release-generated [bundle identity](frontier-engineering.bundle.json) binds the exact SQW 5.0.0 + Writing Plans 4.0.0 pair; neither skill is independently overridable.
 
 This bundle coordinates two independent skills without adding a third policy owner:
 
@@ -29,6 +29,15 @@ Run the three standalone profiles from this directory:
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s writing-plans/tests -p 'test_*.py' -v
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_*.py' -v
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+Before packaging, verify generated navigation and release identities:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 writing-plans/scripts/build_reference_manifest.py --check
+PYTHONDONTWRITEBYTECODE=1 software-quality-workflows/scripts/build_reference_manifest.py --check
+PYTHONDONTWRITEBYTECODE=1 bundle/build_bundle_manifest.py --check
+PYTHONDONTWRITEBYTECODE=1 scripts/evaluate_offline_route_replay.py --check
 ```
 
 Extended long-document integration is optional. Set `LONG_DOCUMENT_SKILL_ROOT` to an installed skill root before running the same commands; without it, extended-only cases skip.
@@ -95,10 +104,10 @@ scripts/smoke_codex_cli_install.py \
   --output ../tmp/p6-staging/codex-cli-smoke.json
 ```
 
-The CLI smoke creates a temporary HOME/CODEX_HOME/XDG tree under `--work-root`, removes credential-bearing environment variables, performs local marketplace add/list/install/list/remove/list/marketplace-remove, verifies the installed cache byte-for-byte, and deletes the isolated HOME. It never calls `codex exec`, invokes a model, or writes remotely. The current report must mark explicit skill invocation and implicit routing as `not_run_gate_blocked`: P4 still lacks a successful live-output canary, P5 remains shadow without a real cohort, and this non-release staging build is not a verified clean signed revision. Successful installation is not release or canary evidence.
+The CLI smoke creates a temporary HOME/CODEX_HOME/XDG tree under `--work-root`, removes credential-bearing environment variables, performs local marketplace add/list/install/list/remove/list/marketplace-remove, verifies the installed cache byte-for-byte, and deletes the isolated HOME. It never calls `codex exec`, invokes a model, or writes remotely. The current report must mark explicit skill invocation and implicit routing as `not_run_gate_blocked`: P8 still lacks a successful live-output canary and real paired cohort, and this non-release staging build is not a verified clean signed revision. Successful installation is not release or canary evidence.
 
 ## Activation and evaluation
 
-The checked-in activation level is `shadow`. Live autonomous closure, multi-candidate search, and remote writes are false in `bundle-manifest.json`. The P5 evaluator and honest seed corpus are documented in [evaluation/README.md](evaluation/README.md); the current report is `remain_shadow` because there are no live paired runs, no historical cohort, and the 50/50/30/20 sample minimums are not met.
+The checked-in activation level is `shadow`. Live autonomous closure, multi-candidate search, and remote writes are false in `bundle-manifest.json`. The deterministic offline replay and the retained paired-evaluation interface are documented in [evaluation/README.md](evaluation/README.md). Curated offline routing passes its bounded gates, but hidden routing and real Sol `max` outcomes are not run; the promotion report therefore remains `remain_shadow` because there is no live paired or historical cohort and the 50/50/30/20 minimums are not met.
 
-A successful synthetic test of the evaluator proves only that its gates work. It is not P5 evidence. Only a schema-valid real cohort bound to the current bundle/controller may produce `eligible_for_p6_canary`, whose maximum next level is explicit-only. The builder must continue to reject `dist/` release output without separate passed release evidence.
+A successful deterministic or synthetic evaluator test proves only that its gates work. It is not P8 effect evidence. Only a schema-valid real cohort bound to the current bundle/controller may authorize an explicit local pilot; implicit M0 and M2/M3 local-write canaries require their later independent gates. The builder must continue to reject `dist/` release output without separate passed release evidence.

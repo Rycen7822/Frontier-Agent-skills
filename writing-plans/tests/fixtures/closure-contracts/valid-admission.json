@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "admission_id": "admission-0123456789abcdefabcd",
+  "decision": "CLOSURE_ELIGIBLE",
+  "terminal_status": null,
+  "reason_codes": [
+    "BOUNDED_LOCAL_SIDE_EFFECTS",
+    "MACHINE_OBSERVABLE_OUTCOME",
+    "VERIFIER_QUALIFICATION_FEASIBLE"
+  ],
+  "missing_conditions": [],
+  "next_action": "COMPILE_CLOSURE_CONTRACT",
+  "recommended_execution_mode": "M2_SPARSE"
+}

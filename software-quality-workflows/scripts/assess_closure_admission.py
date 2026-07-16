@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from hashlib import sha256
 import json
 from pathlib import Path
 import sys
@@ -12,23 +13,23 @@ from typing import Any
 from _workflow_state import InputError, load_json
 
 
-FACT_DEFAULTS: dict[str, Any] = {
-    "autonomous_closure_requested": False,
-    "intent_status": "defined",
-    "machine_observable_outcome": None,
-    "requirements_stable_enough": None,
-    "known_requirement_conflict": False,
-    "scope_freezable": None,
-    "authority_freezable": None,
-    "reproducible_environment": None,
-    "verifier_separable": None,
-    "bounded_side_effects": None,
-    "resume_required": False,
-    "expensive_proof_reusable": False,
-    "local_repair_likely": False,
-    "strategy_family_count": 1,
-    "search_value": "none",
-    "framework_tax": "low",
+FACT_FIELDS = {
+    "autonomous_closure_requested",
+    "intent_status",
+    "machine_observable_outcome",
+    "requirements_stable_enough",
+    "known_requirement_conflict",
+    "scope_freezable",
+    "authority_freezable",
+    "reproducible_environment",
+    "verifier_qualification_feasible",
+    "bounded_side_effects",
+    "resume_required",
+    "expensive_proof_reusable",
+    "local_repair_likely",
+    "strategy_family_count",
+    "search_value",
+    "framework_tax",
 }
 
 SAFETY_FACTS = (
@@ -37,7 +38,7 @@ SAFETY_FACTS = (
     "scope_freezable",
     "authority_freezable",
     "reproducible_environment",
-    "verifier_separable",
+    "verifier_qualification_feasible",
     "bounded_side_effects",
 )
 BOOLEAN_FACTS = set(SAFETY_FACTS) | {
@@ -49,48 +50,63 @@ BOOLEAN_FACTS = set(SAFETY_FACTS) | {
 }
 
 
+class AdmissionError(ValueError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 def _result(
-    status: str,
+    facts: dict[str, Any],
+    decision: str,
     *,
     reasons: list[str],
+    next_action: str,
+    terminal_status: str | None = None,
     missing: list[str] | None = None,
-    actions: list[str] | None = None,
     mode: str = "M2_SPARSE",
-    owner: str = "autonomous-closure",
 ) -> dict[str, Any]:
+    canonical = json.dumps(facts, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return {
-        "status": status,
+        "schema_version": "1.0",
+        "admission_id": "admission-" + sha256(canonical).hexdigest()[:20],
+        "decision": decision,
+        "terminal_status": terminal_status,
         "reason_codes": list(dict.fromkeys(reasons)),
         "missing_conditions": list(dict.fromkeys(missing or [])),
-        "required_pre_freeze_actions": list(dict.fromkeys(actions or [])),
-        "recommended_mode": mode,
-        "required_primary_owner": owner,
+        "next_action": next_action,
+        "recommended_execution_mode": mode,
     }
 
 
 def _validated(raw_facts: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(raw_facts, dict):
-        raise ValueError("closure admission facts must be an object")
-    unknown = sorted(set(raw_facts) - set(FACT_DEFAULTS))
+        raise AdmissionError("ADMISSION_INPUT_INVALID", "closure admission facts must be an object")
+    if not raw_facts:
+        raise AdmissionError("ADMISSION_INPUT_INCOMPLETE", "closure admission facts must not be empty")
+    unknown = sorted(set(raw_facts) - FACT_FIELDS)
     if unknown:
-        raise ValueError(f"unknown closure admission facts: {unknown}")
-    facts = {**FACT_DEFAULTS, **raw_facts}
+        raise AdmissionError("ADMISSION_INPUT_UNKNOWN_FIELD", f"unknown closure admission facts: {unknown}")
+    missing = sorted(FACT_FIELDS - set(raw_facts))
+    if missing:
+        raise AdmissionError("ADMISSION_INPUT_INCOMPLETE", f"missing closure admission facts: {missing}")
+    facts = dict(raw_facts)
     for key in BOOLEAN_FACTS:
         value = facts[key]
         if key in SAFETY_FACTS:
             if value is not None and not isinstance(value, bool):
-                raise ValueError(f"{key} must be boolean or null")
+                raise AdmissionError("ADMISSION_INPUT_INVALID", f"{key} must be boolean or null")
         elif not isinstance(value, bool):
-            raise ValueError(f"{key} must be boolean")
+            raise AdmissionError("ADMISSION_INPUT_INVALID", f"{key} must be boolean")
     if facts["intent_status"] not in {"defined", "low_risk_defaults_available", "materially_underdefined"}:
-        raise ValueError(f"invalid intent_status: {facts['intent_status']!r}")
+        raise AdmissionError("ADMISSION_INPUT_INVALID", f"invalid intent_status: {facts['intent_status']!r}")
     count = facts["strategy_family_count"]
     if not isinstance(count, int) or isinstance(count, bool) or not 1 <= count <= 64:
-        raise ValueError("strategy_family_count must be an integer from 1 through 64")
+        raise AdmissionError("ADMISSION_INPUT_INVALID", "strategy_family_count must be an integer from 1 through 64")
     if facts["search_value"] not in {"none", "low", "medium", "high"}:
-        raise ValueError(f"invalid search_value: {facts['search_value']!r}")
+        raise AdmissionError("ADMISSION_INPUT_INVALID", f"invalid search_value: {facts['search_value']!r}")
     if facts["framework_tax"] not in {"low", "medium", "high"}:
-        raise ValueError(f"invalid framework_tax: {facts['framework_tax']!r}")
+        raise AdmissionError("ADMISSION_INPUT_INVALID", f"invalid framework_tax: {facts['framework_tax']!r}")
     return facts
 
 
@@ -99,18 +115,23 @@ def assess_admission(raw_facts: dict[str, Any]) -> dict[str, Any]:
 
     if facts["known_requirement_conflict"]:
         return _result(
-            "spec_unsat",
-            reasons=["known_requirement_conflict"],
-            missing=[],
-            actions=["emit_spec_unsat_certificate"],
+            facts,
+            "TERMINAL",
+            reasons=["KNOWN_REQUIREMENT_CONFLICT"],
+            next_action="EMIT_TERMINAL",
+            terminal_status="SPEC_UNSAT",
+            mode="M0_DIRECT",
         )
 
     if facts["intent_status"] == "materially_underdefined":
         return _result(
-            "spec_underdetermined",
-            reasons=["material_intent_ambiguity"],
+            facts,
+            "TERMINAL",
+            reasons=["MATERIAL_INTENT_AMBIGUITY"],
+            next_action="EMIT_TERMINAL",
+            terminal_status="SPEC_UNDERDETERMINED",
             missing=["intent_status"],
-            actions=["emit_spec_underdetermined_certificate"],
+            mode="M0_DIRECT",
         )
 
     missing_spec = [
@@ -119,38 +140,70 @@ def assess_admission(raw_facts: dict[str, Any]) -> dict[str, Any]:
     ]
     if missing_spec:
         return _result(
-            "spec_underdetermined",
-            reasons=["observable_spec_missing"],
+            facts,
+            "TERMINAL",
+            reasons=["OBSERVABLE_SPEC_MISSING"],
+            next_action="EMIT_TERMINAL",
+            terminal_status="SPEC_UNDERDETERMINED",
             missing=missing_spec,
-            actions=["resolve_observable_spec"],
+            mode="M0_DIRECT",
+        )
+
+    if facts["bounded_side_effects"] is not True:
+        return _result(
+            facts,
+            "TERMINAL",
+            reasons=["SIDE_EFFECT_BOUNDARY_UNAVAILABLE"],
+            next_action="EMIT_TERMINAL",
+            terminal_status="SIDE_EFFECT_UNBOUNDED",
+            missing=["bounded_side_effects"],
+            mode="M0_DIRECT",
         )
 
     missing_authority = [
-        key for key in ("scope_freezable", "authority_freezable", "bounded_side_effects")
+        key for key in ("scope_freezable", "authority_freezable")
         if facts[key] is not True
     ]
     if missing_authority:
         return _result(
-            "authority_blocked",
-            reasons=["authority_or_scope_not_freezable"],
+            facts,
+            "TERMINAL",
+            reasons=["AUTHORITY_OR_SCOPE_NOT_FREEZABLE"],
+            next_action="EMIT_TERMINAL",
+            terminal_status="AUTHORITY_BLOCKED",
             missing=missing_authority,
-            actions=["emit_authority_blocked_certificate"],
+            mode="M0_DIRECT",
         )
 
     if facts["reproducible_environment"] is not True:
         return _result(
-            "environment_unavailable",
-            reasons=["environment_not_reproducible"],
+            facts,
+            "TERMINAL",
+            reasons=["ENVIRONMENT_NOT_REPRODUCIBLE"],
+            next_action="EMIT_TERMINAL",
+            terminal_status="ENVIRONMENT_UNAVAILABLE",
             missing=["reproducible_environment"],
-            actions=["restore_or_bind_environment"],
+            mode="M0_DIRECT",
         )
 
-    if facts["verifier_separable"] is not True:
+    if facts["verifier_qualification_feasible"] is False:
         return _result(
-            "verifier_unqualified_candidate",
-            reasons=["verifier_not_separable"],
-            missing=["verifier_separable"],
-            actions=["qualify_verifier"],
+            facts,
+            "TERMINAL",
+            reasons=["VERIFIER_QUALIFICATION_DISPROVEN"],
+            next_action="EMIT_TERMINAL",
+            terminal_status="VERIFIER_UNQUALIFIABLE",
+            missing=["verifier_qualification_feasible"],
+            mode="M0_DIRECT",
+        )
+    if facts["verifier_qualification_feasible"] is None:
+        return _result(
+            facts,
+            "DIRECT_SELECTED",
+            reasons=["VERIFIER_FEASIBILITY_UNCONFIRMED"],
+            next_action="ROUTE_STANDARD",
+            missing=["verifier_qualification_feasible"],
+            mode="M0_DIRECT",
         )
 
     benefit_reasons: list[str] = []
@@ -170,10 +223,11 @@ def assess_admission(raw_facts: dict[str, Any]) -> dict[str, Any]:
 
     if not benefit_reasons:
         return _result(
-            "direct_preferred",
-            reasons=["no_closure_value_boundary"],
+            facts,
+            "DIRECT_SELECTED",
+            reasons=["NO_CLOSURE_VALUE_BOUNDARY"],
+            next_action="ROUTE_STANDARD",
             mode="M0_DIRECT",
-            owner="change-execution",
         )
 
     tax = {"low": 1, "medium": 2, "high": 3}[facts["framework_tax"]]
@@ -181,18 +235,31 @@ def assess_admission(raw_facts: dict[str, Any]) -> dict[str, Any]:
         tax = max(1, tax - 1)
     if value < tax:
         return _result(
-            "direct_preferred",
-            reasons=benefit_reasons + ["framework_tax_exceeds_value"],
+            facts,
+            "DIRECT_SELECTED",
+            reasons=[reason.upper() for reason in benefit_reasons] + ["FRAMEWORK_TAX_EXCEEDS_VALUE"],
+            next_action="ROUTE_STANDARD",
             mode="M0_DIRECT",
-            owner="change-execution",
         )
 
-    reasons = benefit_reasons
+    reasons = [reason.upper() for reason in benefit_reasons]
     if facts["intent_status"] == "low_risk_defaults_available":
-        reasons.append("low_risk_defaults_available")
+        reasons.append("LOW_RISK_DEFAULTS_AVAILABLE")
     if facts["autonomous_closure_requested"]:
-        reasons.append("closure_requested")
-    return _result("closure_eligible", reasons=reasons)
+        reasons.append("CLOSURE_REQUESTED")
+    reasons.extend(
+        [
+            "BOUNDED_LOCAL_SIDE_EFFECTS",
+            "MACHINE_OBSERVABLE_OUTCOME",
+            "VERIFIER_QUALIFICATION_FEASIBLE",
+        ]
+    )
+    return _result(
+        facts,
+        "CLOSURE_ELIGIBLE",
+        reasons=reasons,
+        next_action="COMPILE_CLOSURE_CONTRACT",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -201,8 +268,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         result = assess_admission(load_json(args.facts))
+    except AdmissionError as exc:
+        print(json.dumps({"ok": False, "error": {"code": exc.code, "message": str(exc)}}, ensure_ascii=False, indent=2))
+        return 2
     except (OSError, InputError, ValueError) as exc:
-        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
+        print(json.dumps({"ok": False, "error": {"code": "ADMISSION_INPUT_INVALID", "message": str(exc)}}, ensure_ascii=False, indent=2))
         return 2
     print(json.dumps({"ok": True, **result}, ensure_ascii=False, indent=2))
     return 0

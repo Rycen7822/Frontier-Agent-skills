@@ -78,8 +78,8 @@ def _mutate(state: dict, name: str) -> dict:
         state["artifacts"][0]["claim"] = "access_token=RAW_TOKEN_1234567890"
     elif name == "io_schema_mismatch":
         state["artifacts"][0]["schema_id"] = "sqw.other-result/1.0"
-    elif name == "owner_unknown":
-        state["active_owners"]["normative"] = ["unsupported-external-owner"]
+    elif name == "owner_duplicate":
+        state["active_owners"]["companions"] = [state["active_owners"]["primary"]]
     elif name == "plan_ref_mismatch":
         _node(state, "N-02")["plan_node_ref"] = "plan:another-plan#P-02"
     elif name == "source_stale":
@@ -169,6 +169,8 @@ class WorkflowStateTests(unittest.TestCase):
                 event["event_id"] = "evt-000099"
                 event["sequence"] = 99
                 event["type"] = event_type
+                if event_type == "approval_granted":
+                    event["payload"]["approval_ref"] = "AP-SECURITY"
                 codes = {item.code for item in validate_event_stream([event], EVENT_SCHEMA, require_contiguous=False)}
                 self.assertIn("workflow.actor-forbidden", codes)
 

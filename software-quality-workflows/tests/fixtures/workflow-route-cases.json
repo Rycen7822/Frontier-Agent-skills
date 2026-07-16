@@ -1,73 +1,188 @@
 {
   "schema_version": "2.0",
   "defaults": {
+    "schema_version": "1.0",
     "request_mode": "change",
-    "task_kind": "routine_change",
+    "intent_status": "adequate",
     "root_cause_status": "not_applicable",
-    "intent_status": "defined",
-    "same_session": true,
-    "durable_handoff": false,
-    "resume_required": false,
-    "independent_read_slices": 0,
-    "independent_write_slices": 0,
-    "strategy_family_count": 1,
-    "writes_are_disjoint": false,
-    "resources_are_disjoint": false,
-    "machine_observable_outcome": true,
-    "requirements_stable_enough": true,
-    "verifier_separable": true,
-    "reproducible_environment": true,
-    "bounded_side_effects": true,
-    "search_value": "none",
-    "dirty_or_concurrent_work": false,
-    "public_contract": false,
-    "security_boundary": false,
-    "migration_or_release": false,
-    "installed_surface": false,
-    "external_side_effect": false,
-    "destructive_or_irreversible": false,
-    "privileged": false,
-    "shared_mutable_state": false,
-    "source_version_uncertain": false,
-    "verification_cost": "low",
-    "failure_locality": "likely_local",
-    "explicit_plan_request": false,
-    "autonomous_closure_requested": false,
-    "trace_only": false,
-    "plugin_source": false,
-    "browser_runtime": false,
-    "performance_sensitive": false,
-    "slow_external_job": false,
-    "publication_ceiling": "none",
-    "user_constraints": {"no_subagents": false, "no_external_writes": true, "max_review_rounds": 2, "max_candidate_evaluations": 10}
+    "implicated_surfaces": [],
+    "unknown_implicated_facts": [],
+    "surface_assessment": {
+      "taxonomy_version": "sqw-route-surfaces/1",
+      "coverage": "complete",
+      "assessed_families": [
+        "public_contract",
+        "data_state",
+        "security_privacy",
+        "runtime_platform",
+        "dependency_supply_chain",
+        "browser_ui",
+        "performance_resource",
+        "plugin_installed_surface",
+        "migration_release",
+        "workspace_vcs",
+        "external_side_effect",
+        "test_fixture_benchmark",
+        "observability_operations",
+        "concurrency_shared_state"
+      ],
+      "evidence_refs": [
+        "request:current",
+        "repo:surface-inventory@sha256:abc"
+      ]
+    },
+    "persistence_need": "none",
+    "delegation_need": "none",
+    "external_side_effect": "none",
+    "explicit_autonomous_closure": false
   },
   "cases": [
-    {"id":"routine_docs_typo","prompt":"Fix a local documentation typo and verify the changed surface.","facts":{},"baseline_observation":"Known local owner and cheap distinction.","expected":{"workflow_mode":"M0_DIRECT","execution_policy":"standard","primary_owner":"change-execution","closure_admission":"not_applicable","durable_state_required":false}},
-    {"id":"known_local_bug","prompt":"Fix a reproduced local bug with a known root cause.","facts":{"task_kind":"bugfix","root_cause_status":"known"},"baseline_observation":"Reproduction already supports the owner seam.","expected":{"workflow_mode":"M0_DIRECT","execution_policy":"standard","primary_owner":"change-execution"}},
-    {"id":"unknown_failure","prompt":"Diagnose an unexplained local failure before changing code.","facts":{"task_kind":"failure","root_cause_status":"unknown"},"baseline_observation":"Root cause is not supported.","expected":{"workflow_mode":"M0_DIRECT","execution_policy":"standard","primary_owner":"systematic-debugging"}},
-    {"id":"underdefined_feature","prompt":"Clarify a materially underdefined feature outcome.","facts":{"intent_status":"materially_underdefined"},"baseline_observation":"Several material outcomes remain viable.","expected":{"workflow_mode":"M0_DIRECT","primary_owner":"intent-and-design-discovery","closure_admission":"not_applicable"}},
-    {"id":"underdefined_autonomous","prompt":"Close an autonomous request whose material intent is missing.","facts":{"intent_status":"materially_underdefined","autonomous_closure_requested":true},"baseline_observation":"Safe defaults cannot decide material behavior.","expected":{"workflow_mode":"M0_DIRECT","primary_owner":"intent-and-design-discovery","closure_admission":"terminal","durable_state_required":false}},
-    {"id":"explicit_durable_plan","prompt":"Produce a resumable implementation handoff before edits.","facts":{"explicit_plan_request":true,"same_session":false,"durable_handoff":true},"baseline_observation":"The user requested a durable plan.","expected":{"workflow_mode":"M2_SPARSE","primary_owner":"writing-plans","plan_profile":"handoff","durable_state_required":false}},
-    {"id":"dirty_patch_takeover","prompt":"Continue a local change while preserving dirty concurrent work.","facts":{"dirty_or_concurrent_work":true},"baseline_observation":"The base must be snapshotted and scoped.","expected":{"workflow_mode":"M2_SPARSE","primary_owner":"change-execution"}},
-    {"id":"read_only_architecture_audit","prompt":"Audit architecture without edits.","facts":{"request_mode":"report","task_kind":"audit"},"baseline_observation":"Read-only coverage is sufficient.","expected":{"workflow_mode":"M0_DIRECT","primary_owner":"read-only-architecture-audits"}},
-    {"id":"public_api_change","prompt":"Change a public API with compatibility proof.","facts":{"public_contract":true},"baseline_observation":"Public consumers create a durable boundary.","expected":{"workflow_mode":"M2_SPARSE","execution_policy":"standard","primary_owner":"change-execution","plan_profile":"program"}},
-    {"id":"schema_migration_rollout","prompt":"Migrate a schema with rollout and rollback.","facts":{"task_kind":"migration","public_contract":true,"migration_or_release":true,"resume_required":true},"baseline_observation":"Migration spans durable release boundaries.","expected":{"workflow_mode":"M3_FULL","execution_policy":"standard","primary_owner":"change-execution","plan_profile":"program"}},
-    {"id":"security_sensitive_upload","prompt":"Change an upload boundary with security negatives.","facts":{"security_boundary":true,"external_side_effect":true},"baseline_observation":"Security and external effects require explicit gates.","expected":{"workflow_mode":"M2_SPARSE","primary_owner":"change-execution","approval_required":true}},
-    {"id":"installed_plugin_failure","prompt":"Diagnose a failure visible only through an installed plugin.","facts":{"task_kind":"failure","root_cause_status":"unknown","installed_surface":true},"baseline_observation":"Installed provenance and diagnosis are both required.","expected":{"workflow_mode":"M2_SPARSE","primary_owner":"systematic-debugging"}},
-    {"id":"plugin_source_only_edit","prompt":"Modify plugin source without installing or publishing.","facts":{"plugin_source":true},"baseline_observation":"Source/package proof is required; installed proof is not implied.","expected":{"workflow_mode":"M2_SPARSE","primary_owner":"change-execution"}},
-    {"id":"browser_visual_defect","prompt":"Diagnose a browser runtime defect with observable DOM evidence.","facts":{"task_kind":"failure","root_cause_status":"unknown","browser_runtime":true},"baseline_observation":"Root cause is unknown and browser evidence is required.","expected":{"workflow_mode":"M2_SPARSE","primary_owner":"systematic-debugging"}},
-    {"id":"performance_optimization","prompt":"Optimize a measured hot path while preserving parity.","facts":{"performance_sensitive":true,"verification_cost":"high"},"baseline_observation":"Baseline, noise, and parity gates are material.","expected":{"workflow_mode":"M2_SPARSE","primary_owner":"change-execution"}},
-    {"id":"shadow_trace_observation","prompt":"Trace a routine change without upgrading proof.","facts":{"trace_only":true},"baseline_observation":"M1 records the Direct route.","expected":{"workflow_mode":"M1_TRACE","execution_policy":"standard","primary_owner":"change-execution","durable_state_required":false}},
-    {"id":"slow_external_job_dominates","prompt":"Make a local change whose canonical verifier is a slow external job.","facts":{"slow_external_job":true,"verification_cost":"high"},"baseline_observation":"One non-shareable bottleneck makes fanout wasteful.","expected":{"workflow_mode":"M1_TRACE","primary_owner":"change-execution"}},
-    {"id":"three_disjoint_read_audits","prompt":"Run three independent read-only audits with durable reports.","facts":{"request_mode":"report","task_kind":"audit","independent_read_slices":3,"durable_handoff":true},"baseline_observation":"Read slices are independent and resumable.","expected":{"workflow_mode":"M2_SPARSE","primary_owner":"read-only-architecture-audits","active_companions":["evidence-delegation"]}},
-    {"id":"shared_schema_writers","prompt":"Coordinate three isolated writers against shared schema state.","facts":{"independent_write_slices":3,"writes_are_disjoint":true,"resources_are_disjoint":true,"shared_mutable_state":true,"durable_handoff":true},"baseline_observation":"Writers isolate but durable controller state is required.","expected":{"workflow_mode":"M2_SPARSE","primary_owner":"change-execution"}},
-    {"id":"destructive_repository_recovery","prompt":"Recover repository content with destructive options bounded by approval.","facts":{"request_mode":"recovery","task_kind":"recovery","destructive_or_irreversible":true},"baseline_observation":"Recovery and approval are explicit.","expected":{"workflow_mode":"M3_FULL","primary_owner":"repository-recovery","approval_required":true}},
-    {"id":"merge_conflict","prompt":"Resolve a merge conflict without auto-continue or commit.","facts":{"request_mode":"recovery","task_kind":"merge_conflict","dirty_or_concurrent_work":true},"baseline_observation":"Conflict recovery precedes ordinary implementation.","expected":{"workflow_mode":"M3_FULL","primary_owner":"merge-conflict-resolution"}},
-    {"id":"repeated_runtime_stability","prompt":"Run a resumable runtime stability repair loop.","facts":{"task_kind":"runtime_stability","resume_required":true,"verification_cost":"high"},"baseline_observation":"Repeated runtime evidence needs durable state.","expected":{"workflow_mode":"M3_FULL","primary_owner":"change-execution","active_companions":["real-runtime-stability-loop"]}},
-    {"id":"closure_eligible_local","prompt":"Autonomously close a resumable machine-verifiable local change.","facts":{"autonomous_closure_requested":true,"resume_required":true},"baseline_observation":"All safety conditions hold and resume value exceeds tax.","expected":{"workflow_mode":"M2_SPARSE","execution_policy":"autonomous_closure","primary_owner":"autonomous-closure","closure_admission":"eligible","plan_profile":"program"}},
-    {"id":"closure_requested_direct_preferred","prompt":"Request closure for a routine task with no closure value boundary.","facts":{"autonomous_closure_requested":true},"baseline_observation":"Framework state has no justified value.","expected":{"workflow_mode":"M0_DIRECT","execution_policy":"standard","primary_owner":"change-execution","closure_admission":"ineligible"}},
-    {"id":"closure_environment_terminal","prompt":"Request closure while the required environment is unavailable.","facts":{"autonomous_closure_requested":true,"resume_required":true,"reproducible_environment":false},"baseline_observation":"The environment cannot support a truthful verifier.","expected":{"workflow_mode":"M2_SPARSE","execution_policy":"autonomous_closure","primary_owner":"autonomous-closure","closure_admission":"terminal","durable_state_required":false}},
-    {"id":"two_strategy_families_one_slice","prompt":"Compare two implementation strategies for one write slice.","facts":{"strategy_family_count":2,"search_value":"high"},"baseline_observation":"Strategy search is valuable but not delegation.","expected":{"workflow_mode":"M2_SPARSE","execution_policy":"autonomous_closure","primary_owner":"autonomous-closure","closure_admission":"eligible","active_companions":[]}},
-    {"id":"one_strategy_three_write_slices","prompt":"Execute three disjoint write slices under one strategy.","facts":{"independent_write_slices":3,"writes_are_disjoint":true,"resources_are_disjoint":true,"durable_handoff":true},"baseline_observation":"Writable delegation is useful without a candidate portfolio.","expected":{"workflow_mode":"M2_SPARSE","execution_policy":"standard","primary_owner":"change-execution"}}
+    {
+      "id": "routine_local_change",
+      "facts": {},
+      "expected": {
+        "route_action": "EXECUTE",
+        "workflow_mode": "M0_DIRECT",
+        "execution_policy": "standard",
+        "primary_owner_id": "change-execution",
+        "primary_card_id": "sqw.entry.direct-change",
+        "reason_codes": ["ROUTINE_LOCAL_CHANGE"]
+      }
+    },
+    {
+      "id": "known_local_bug",
+      "facts": {"root_cause_status": "known"},
+      "expected": {
+        "route_action": "EXECUTE",
+        "workflow_mode": "M0_DIRECT",
+        "primary_card_id": "sqw.entry.direct-change"
+      }
+    },
+    {
+      "id": "unknown_failure",
+      "facts": {"root_cause_status": "unknown", "explicit_autonomous_closure": true},
+      "expected": {
+        "route_action": "EXECUTE",
+        "primary_owner_id": "systematic-debugging",
+        "primary_card_id": "sqw.entry.diagnose-failure"
+      }
+    },
+    {
+      "id": "underdefined_intent",
+      "facts": {"intent_status": "materially_underdefined", "explicit_autonomous_closure": true},
+      "expected": {
+        "route_action": "EXECUTE",
+        "primary_owner_id": "intent-and-design-discovery",
+        "primary_card_id": "sqw.entry.intent-discovery"
+      }
+    },
+    {
+      "id": "repository_recovery",
+      "facts": {"request_mode": "recovery", "root_cause_status": "unknown"},
+      "expected": {
+        "route_action": "EXECUTE",
+        "primary_card_id": "sqw.entry.recovery"
+      }
+    },
+    {
+      "id": "read_only_audit",
+      "facts": {"request_mode": "report"},
+      "expected": {
+        "route_action": "EXECUTE",
+        "primary_card_id": "sqw.entry.read-only-audit"
+      }
+    },
+    {
+      "id": "review_entry",
+      "facts": {"request_mode": "review"},
+      "expected": {
+        "route_action": "EXECUTE",
+        "primary_card_id": "sqw.review.tier-selection"
+      }
+    },
+    {
+      "id": "explicit_plan_handoff",
+      "facts": {"request_mode": "plan", "persistence_need": "durable"},
+      "expected": {
+        "route_action": "EXECUTE",
+        "workflow_mode": null,
+        "primary_owner_id": "writing-plans",
+        "primary_card_id": null,
+        "reason_codes": ["PLAN_ROUTE_REQUIRED"]
+      }
+    },
+    {
+      "id": "closure_requires_admission",
+      "facts": {"explicit_autonomous_closure": true},
+      "expected": {
+        "route_action": "ASSESS_CLOSURE",
+        "workflow_mode": null,
+        "execution_policy": null,
+        "primary_owner_id": null,
+        "primary_card_id": null
+      }
+    },
+    {
+      "id": "trace_only_change",
+      "facts": {"persistence_need": "trace"},
+      "expected": {
+        "workflow_mode": "M1_TRACE",
+        "primary_card_id": "sqw.entry.direct-change"
+      }
+    },
+    {
+      "id": "durable_change",
+      "facts": {"persistence_need": "durable"},
+      "expected": {
+        "workflow_mode": "M2_SPARSE",
+        "primary_card_id": "sqw.entry.direct-change"
+      }
+    },
+    {
+      "id": "delegated_read_audit",
+      "facts": {"request_mode": "report", "delegation_need": "read"},
+      "expected": {
+        "workflow_mode": "M2_SPARSE",
+        "primary_card_id": "sqw.entry.read-only-audit"
+      }
+    },
+    {
+      "id": "known_public_contract_surface",
+      "facts": {"implicated_surfaces": ["public_contract"]},
+      "expected": {
+        "workflow_mode": "M0_DIRECT",
+        "primary_card_id": "sqw.entry.direct-change"
+      }
+    },
+    {
+      "id": "direct_admission_returns_standard",
+      "facts": {"admission_decision": "DIRECT_SELECTED", "admission_ref": "artifact:admission/direct-01"},
+      "expected": {
+        "route_action": "EXECUTE",
+        "execution_policy": "standard",
+        "primary_card_id": "sqw.entry.direct-change",
+        "reason_codes": ["CLOSURE_DIRECT_SELECTED"]
+      }
+    },
+    {
+      "id": "eligible_admission_enters_wp_compile",
+      "facts": {"admission_decision": "CLOSURE_ELIGIBLE", "admission_ref": "artifact:admission/eligible-01"},
+      "expected": {
+        "route_action": "EXECUTE",
+        "workflow_mode": null,
+        "execution_policy": "autonomous_closure",
+        "primary_owner_id": "writing-plans",
+        "primary_card_id": null
+      }
+    },
+    {
+      "id": "terminal_admission_emits_terminal",
+      "facts": {"admission_decision": "TERMINAL", "admission_ref": "artifact:admission/terminal-01"},
+      "expected": {
+        "route_action": "EMIT_TERMINAL",
+        "workflow_mode": null,
+        "primary_card_id": null
+      }
+    }
   ]
 }

@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "skill_version": "4.0.0",
+  "migration_stage": "P5",
+  "edges": [
+    {"source": "wp.closure.compile", "edge_id": "compile-to-constraints-corners", "target": "wp.closure.hard-constraints-and-corners", "mode": "semantic"},
+    {"source": "wp.closure.compile", "edge_id": "compile-to-assumptions-ambiguity", "target": "wp.closure.assumptions-and-ambiguity", "mode": "semantic"},
+    {"source": "wp.closure.compile", "edge_id": "compile-to-search-publication", "target": "wp.closure.search-and-publication-policy", "mode": "semantic"},
+    {"source": "wp.closure.compile", "edge_id": "compile-to-freeze-handoff", "target": "wp.closure.freeze-and-handoff", "mode": "hard"},
+    {"source": "wp.design.depth-selection", "edge_id": "depth-to-evidence-ledger", "target": "wp.design.evidence-and-decision-ledger", "mode": "hard"},
+    {"source": "wp.design.evidence-and-decision-ledger", "edge_id": "evidence-to-alternative-compression", "target": "wp.design.alternative-compression", "mode": "semantic"},
+    {"source": "wp.design.alternative-compression", "edge_id": "alternatives-to-planning-gate", "target": "wp.design.planning-gate", "mode": "hard"},
+    {"source": "wp.slicing.outcome-slices", "edge_id": "slices-to-context-capsules", "target": "wp.slicing.context-capsules", "mode": "hard"},
+    {"source": "wp.economy.output-classification", "edge_id": "output-to-projection-verification", "target": "wp.economy.projection-and-verification", "mode": "hard"}
+  ]
+}

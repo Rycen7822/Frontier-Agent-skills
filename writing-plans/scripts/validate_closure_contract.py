@@ -7,6 +7,7 @@ import argparse
 from datetime import datetime
 import json
 from pathlib import Path
+import re
 import sys
 from typing import Any, Iterable
 
@@ -97,7 +98,11 @@ def validate_contract(
     authority_ceiling: str | None = None,
     expected_base_revision: str | None = None,
     expected_policy_bundle_hash: str | None = None,
+    expected_reference_manifest_hash: str | None = None,
+    expected_bundle_id: str | None = None,
     expected_authority_hash: str | None = None,
+    admission_artifact: dict[str, Any] | None = None,
+    authority_manifest: dict[str, Any] | None = None,
 ) -> list[Violation]:
     violations = [
         Violation("contract.schema", item.path, item.message, item.object_id)
@@ -120,6 +125,10 @@ def validate_contract(
         violations.append(_violation("contract.source-mismatch", "/source/base_revision", "contract does not match the admitted source revision"))
     if expected_policy_bundle_hash is not None and source.get("policy_bundle_hash") != expected_policy_bundle_hash:
         violations.append(_violation("contract.policy-mismatch", "/source/policy_bundle_hash", "contract does not match the admitted policy bundle"))
+    if expected_reference_manifest_hash is not None and source.get("reference_manifest_hash") != expected_reference_manifest_hash:
+        violations.append(_violation("contract.reference-manifest-mismatch", "/source/reference_manifest_hash", "contract does not match the admitted reference-card manifest"))
+    if expected_bundle_id is not None and contract.get("bundle_id") != expected_bundle_id:
+        violations.append(_violation("contract.bundle-mismatch", "/bundle_id", "contract does not match the admitted bundle identity"))
     if isinstance(source_scope_hash, str) and isinstance(scope_hash, str) and source_scope_hash != scope_hash:
         violations.append(_violation("contract.scope-mismatch", "/scope/scope_hash", "source and scope hashes differ"))
     if expected_scope_hash is not None and (source_scope_hash != expected_scope_hash or scope_hash != expected_scope_hash):
@@ -139,6 +148,73 @@ def validate_contract(
     preauthorized_actions = set(_refs(authority.get("preauthorized_external_actions")))
     for action in sorted(forbidden_actions & preauthorized_actions):
         violations.append(_violation("contract.authority-conflict", "/authority", f"action {action!r} is both forbidden and preauthorized"))
+
+    if admission_artifact is not None:
+        admission_id = admission_artifact.get("admission_id")
+        expected_ref = f"artifact:admission/{admission_id}" if isinstance(admission_id, str) else None
+        if contract.get("closure_admission_hash") != canonical_object_hash(admission_artifact):
+            violations.append(_violation("contract.admission-hash-mismatch", "/closure_admission_hash", "closure admission content does not match its bound hash"))
+        if expected_ref is None or contract.get("closure_admission_ref") != expected_ref:
+            violations.append(_violation("contract.admission-ref-mismatch", "/closure_admission_ref", "closure admission reference does not identify the supplied artifact"))
+        admission_keys = {
+            "schema_version",
+            "admission_id",
+            "decision",
+            "terminal_status",
+            "reason_codes",
+            "missing_conditions",
+            "next_action",
+            "recommended_execution_mode",
+        }
+        if set(admission_artifact) != admission_keys or not isinstance(admission_id, str) or re.fullmatch(r"admission-[0-9a-f]{20}", admission_id) is None:
+            violations.append(_violation("contract.admission-shape", "/closure_admission_ref", "closure admission does not match the canonical boundary shape"))
+        admission_bindings = (
+            ("schema_version", admission_artifact.get("schema_version"), "1.0"),
+            ("decision", admission_artifact.get("decision"), "CLOSURE_ELIGIBLE"),
+            ("terminal_status", admission_artifact.get("terminal_status"), None),
+            ("next_action", admission_artifact.get("next_action"), "COMPILE_CLOSURE_CONTRACT"),
+            ("recommended_execution_mode", admission_artifact.get("recommended_execution_mode"), "M2_SPARSE"),
+        )
+        for field, actual, expected in admission_bindings:
+            if actual != expected:
+                violations.append(_violation("contract.admission-mismatch", f"/closure_admission_ref#{field}", f"closure admission {field} does not match the contract boundary"))
+        for field in ("reason_codes", "missing_conditions"):
+            values = admission_artifact.get(field)
+            valid = isinstance(values, list) and all(isinstance(item, str) and item for item in values) and len(values) == len(set(values))
+            if not valid or field == "reason_codes" and not values:
+                violations.append(_violation("contract.admission-shape", f"/closure_admission_ref#{field}", f"closure admission {field} is invalid"))
+
+    if authority_manifest is not None:
+        manifest_id = authority_manifest.get("manifest_id")
+        expected_ref = f"artifact:authority/{manifest_id}" if isinstance(manifest_id, str) else None
+        if contract.get("authority_manifest_hash") != canonical_object_hash(authority_manifest):
+            violations.append(_violation("contract.authority-manifest-hash-mismatch", "/authority_manifest_hash", "authority manifest content does not match its bound hash"))
+        if expected_ref is None or contract.get("authority_manifest_ref") != expected_ref:
+            violations.append(_violation("contract.authority-manifest-ref-mismatch", "/authority_manifest_ref", "authority manifest reference does not identify the supplied artifact"))
+        authority_keys = {
+            "schema_version",
+            "manifest_id",
+            "request_mode",
+            "source_revision",
+            "scope_hash",
+            "autonomy_ceiling",
+            "allowed_side_effects",
+            "forbidden_actions",
+        }
+        if set(authority_manifest) != authority_keys or not isinstance(manifest_id, str) or re.fullmatch(r"auth-[0-9a-f]{20}", manifest_id) is None:
+            violations.append(_violation("contract.authority-manifest-shape", "/authority_manifest_ref", "authority manifest does not match the canonical boundary shape"))
+        authority_bindings = (
+            ("schema_version", authority_manifest.get("schema_version"), "1.0"),
+            ("request_mode", authority_manifest.get("request_mode"), authority.get("request_mode")),
+            ("source_revision", authority_manifest.get("source_revision"), source.get("base_revision")),
+            ("scope_hash", authority_manifest.get("scope_hash"), source_scope_hash),
+            ("autonomy_ceiling", authority_manifest.get("autonomy_ceiling"), actual_ceiling),
+            ("allowed_side_effects", authority_manifest.get("allowed_side_effects"), authority.get("allowed_side_effects")),
+            ("forbidden_actions", authority_manifest.get("forbidden_actions"), authority.get("forbidden_actions")),
+        )
+        for field, actual, expected in authority_bindings:
+            if actual != expected:
+                violations.append(_violation("contract.authority-manifest-mismatch", f"/authority_manifest_ref#{field}", f"authority manifest {field} does not match the contract boundary"))
 
     request = contract.get("request") if isinstance(contract.get("request"), dict) else {}
     _check_anchors(violations, _refs(request.get("source_anchors")), "/request/source_anchors")
@@ -273,7 +349,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--authority-ceiling", choices=sorted(AUTHORITY_RANK))
     parser.add_argument("--expected-base-revision")
     parser.add_argument("--expected-policy-bundle-hash")
+    parser.add_argument("--expected-reference-manifest-hash")
+    parser.add_argument("--expected-bundle-id")
     parser.add_argument("--expected-authority-hash")
+    parser.add_argument("--admission")
+    parser.add_argument("--authority-manifest")
     args = parser.parse_args(argv)
     try:
         contract = load_contract(args.contract)
@@ -286,7 +366,11 @@ def main(argv: list[str] | None = None) -> int:
             authority_ceiling=args.authority_ceiling,
             expected_base_revision=args.expected_base_revision,
             expected_policy_bundle_hash=args.expected_policy_bundle_hash,
+            expected_reference_manifest_hash=args.expected_reference_manifest_hash,
+            expected_bundle_id=args.expected_bundle_id,
             expected_authority_hash=args.expected_authority_hash,
+            admission_artifact=load_contract(args.admission) if args.admission else None,
+            authority_manifest=load_contract(args.authority_manifest) if args.authority_manifest else None,
         )
     except (ContractInputError, PlanInputError, OSError, KeyError, TypeError, ValueError) as exc:
         print(json.dumps({"ok": False, "error": {"code": "contract.input", "message": str(exc)}}, indent=2))

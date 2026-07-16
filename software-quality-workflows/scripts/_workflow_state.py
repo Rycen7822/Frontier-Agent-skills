@@ -136,6 +136,7 @@ def pointer(parts: Iterable[str | int]) -> str:
 def canonical_hash(state: dict[str, Any]) -> str:
     clean = dict(state)
     clean.pop("state_hash", None)
+    clean.pop("context_trace_ref", None)
     _check_bounds(clean)
     payload = json.dumps(clean, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return "sha256:" + sha256(payload).hexdigest()
@@ -255,18 +256,6 @@ def validate_review_result(
         violations.append(Violation("review.consistency", "/blocking_reasons", "every blocking finding must be named in blocking_reasons"))
     if result.get("code_review_verdict") == "pass" and (blocking_ids or blocking_reasons or any(isinstance(item, dict) and item.get("status") == "not_reviewed" for item in coverage)):
         violations.append(Violation("review.consistency", "/code_review_verdict", "pass cannot coexist with blockers or not-reviewed coverage"))
-    if result.get("merge_readiness") == "ready":
-        ready = (
-            result.get("code_review_verdict") == "pass"
-            and result.get("verification_status") == "passed"
-            and result.get("external_approvals") in {"satisfied", "not_applicable"}
-            and bool(coverage)
-            and all(isinstance(item, dict) and item.get("status") == "full" for item in coverage)
-            and not blocking_reasons
-        )
-        if not ready:
-            violations.append(Violation("review.consistency", "/merge_readiness", "ready requires pass, passed verification, approvals, full coverage, and no blockers"))
-
     if not isinstance(manifest, dict) or not isinstance(manifest.get("paths"), list):
         violations.append(Violation("review.manifest", "", "a frozen scope manifest is required"))
         return violations
@@ -305,6 +294,91 @@ def validate_review_result(
     if current_head != manifest.get("head_revision") or current_scope_hash != manifest.get("scope_hash"):
         violations.append(Violation("review.freshness", "", "current source or scope differs from frozen review manifest"))
     return violations
+
+
+def validate_publication_readiness(
+    result: Any,
+    schema: dict[str, Any],
+    review_result: Any,
+    review_schema: dict[str, Any],
+    manifest: Any,
+    *,
+    current_head: str,
+    current_scope_hash: str,
+) -> list[Violation]:
+    """Validate remote publication readiness without treating local review as authority."""
+
+    violations = validate_against_schema(result, schema, code="publication.schema")
+    if not isinstance(result, dict) or not isinstance(review_result, dict):
+        if not isinstance(review_result, dict):
+            violations.append(Violation("publication.review", "/review_result_ref", "a validated local review result is required"))
+        return violations
+
+    review_violations = validate_review_result(
+        review_result,
+        review_schema,
+        manifest,
+        current_head=current_head,
+        current_scope_hash=current_scope_hash,
+    )
+    violations.extend(
+        Violation("publication.review", f"/review_result{item.path}", item.message, item.object_id)
+        for item in review_violations
+    )
+
+    if result.get("review_result_hash") != canonical_artifact_hash(review_result):
+        violations.append(Violation("publication.review", "/review_result_hash", "review result hash does not match the supplied local review"))
+    if result.get("source_revision") != review_result.get("reviewed_head_sha") or result.get("scope_hash") != review_result.get("reviewed_scope_hash"):
+        violations.append(Violation("publication.review", "", "publication source and scope must match the local review"))
+    if current_head != result.get("source_revision") or current_scope_hash != result.get("scope_hash"):
+        violations.append(Violation("publication.freshness", "", "current source or scope differs from the publication decision"))
+
+    ceiling = result.get("publication_ceiling") if isinstance(result.get("publication_ceiling"), dict) else {}
+    allowed_actions = ceiling.get("allowed_actions") if isinstance(ceiling.get("allowed_actions"), list) else []
+    if result.get("requested_action") not in allowed_actions:
+        violations.append(Violation("publication.authority", "/requested_action", "requested publication action is outside the explicit authority ceiling"))
+
+    remote_checks = result.get("remote_checks") if isinstance(result.get("remote_checks"), list) else []
+    approvals = result.get("required_approvals") if isinstance(result.get("required_approvals"), list) else []
+    check_ids = [item.get("check_id") for item in remote_checks if isinstance(item, dict) and isinstance(item.get("check_id"), str)]
+    approval_ids = [item.get("approval_id") for item in approvals if isinstance(item, dict) and isinstance(item.get("approval_id"), str)]
+    if len(check_ids) != len(set(check_ids)):
+        violations.append(Violation("publication.consistency", "/remote_checks", "remote check IDs must be unique"))
+    if len(approval_ids) != len(set(approval_ids)):
+        violations.append(Violation("publication.consistency", "/required_approvals", "approval IDs must be unique"))
+    if result.get("readiness") in {"blocked", "unknown"} and not result.get("blocking_reasons"):
+        violations.append(Violation("publication.consistency", "/blocking_reasons", "blocked or unknown readiness requires a blocking reason"))
+
+    if result.get("readiness") == "ready":
+        local_ready = review_supports_full_signoff(review_result)
+        remote_ready = (
+            bool(remote_checks)
+            and all(isinstance(item, dict) and item.get("status") in {"passed", "not_applicable"} for item in remote_checks)
+            and all(isinstance(item, dict) and item.get("status") in {"satisfied", "not_applicable"} for item in approvals)
+            and isinstance(result.get("branch_policy"), dict)
+            and result["branch_policy"].get("status") in {"satisfied", "not_applicable"}
+            and not result.get("blocking_reasons")
+        )
+        if not local_ready or not remote_ready:
+            violations.append(Violation("publication.consistency", "/readiness", "ready requires a fresh full-scope local pass, complete applicable traceability, remote checks, approvals, branch policy, and no blockers"))
+    return violations
+
+
+def review_supports_full_signoff(result: Any) -> bool:
+    """Return whether a validated local review can support full-scope sign-off."""
+
+    if not isinstance(result, dict):
+        return False
+    coverage = result.get("coverage") if isinstance(result.get("coverage"), list) else []
+    traceability = result.get("spec_traceability") if isinstance(result.get("spec_traceability"), dict) else {}
+    return (
+        result.get("code_review_verdict") == "pass"
+        and result.get("verification_status") == "passed"
+        and bool(coverage)
+        and all(isinstance(item, dict) and item.get("status") == "full" for item in coverage)
+        and traceability.get("status") in {"complete", "not_applicable"}
+        and not result.get("blocking_reasons")
+    )
 
 
 def contains_secret_like(value: Any) -> bool:

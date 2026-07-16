@@ -22,7 +22,7 @@ SPEC.loader.exec_module(validator)
 def make_minimal_skill(root: Path) -> None:
     (root / "references").mkdir()
     (root / "tests" / "fixtures").mkdir(parents=True)
-    resources = sorted(validator.REQUIRED_CORE)
+    resources = ["references/synthetic-core.md"]
     links = "\n".join(f"- [{Path(item).stem}]({item})" for item in resources)
     (root / "SKILL.md").write_text(
         "---\n"
@@ -47,6 +47,7 @@ def make_minimal_skill(root: Path) -> None:
     )
     for resource in resources:
         path = root / resource
+        path.parent.mkdir(parents=True, exist_ok=True)
         title = Path(resource).stem.replace("-", " ").title()
         body = f"# {title}\n\nSynthetic owner.\n"
         path.write_text(body, encoding="utf-8")
@@ -73,11 +74,13 @@ def valid_manifest() -> dict:
 
 def valid_result() -> dict:
     return {
-        "schema_version": "2.0",
+        "schema_version": "3.0",
         "code_review_verdict": "pass",
         "verification_status": "passed",
-        "merge_readiness": "ready",
-        "external_approvals": "satisfied",
+        "spec_traceability": {
+            "status": "complete",
+            "evidence_refs": ["traceability:matrix#TRACE-001"],
+        },
         "coverage": [
             {"path": "src/core.py", "status": "full", "snapshot_id": "sha256:core-2"}
         ],
@@ -147,44 +150,29 @@ class SkillContractTests(unittest.TestCase):
         )
 
     def test_engineering_absorption_contracts(self) -> None:
-        new_owners = {
-            "references/architecture-module-design.md",
-            "references/delegated-development.md",
-            "references/requirements-traceability-review.md",
-            "references/merge-conflict-resolution.md",
-        }
-        self.assertTrue(
-            new_owners <= validator.REQUIRED_CORE,
-            f"missing required owners: {sorted(new_owners - validator.REQUIRED_CORE)}",
-        )
+        conflict_resource = "references/recovery/merge-state-and-sides.md"
+        traceability_resource = "references/review/requirements-traceability.md"
+        architecture_resource = "references/domain/architecture/module-boundary-design.md"
+        manifest = json.loads((ROOT / "registries" / "reference-cards.manifest.json").read_text(encoding="utf-8"))
+        card_paths = {item["path"] for item in manifest["cards"]}
+        self.assertTrue({conflict_resource, traceability_resource, architecture_resource, "references/workspace/prototype-lifecycle.md"}.issubset(card_paths))
 
-        router = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-        for resource in new_owners:
-            self.assertIn(f"]({resource})", router)
-        self.assertIn("Prototype, spike, disposable experiment", router)
+        architecture = (ROOT / architecture_resource).read_text(encoding="utf-8").lower()
+        alternatives = (ROOT / "references" / "domain" / "architecture" / "alternative-decision.md").read_text(encoding="utf-8").lower()
+        self.assertIn("caller knowledge", architecture)
+        self.assertIn("deletion/distribution tests", architecture)
+        self.assertIn("narrow seam", architecture)
+        self.assertIn("materially different", alternatives)
+        self.assertIn("hard-to-reverse", alternatives)
 
-        architecture = (ROOT / "references" / "architecture-module-design.md").read_text(
-            encoding="utf-8"
-        ).lower()
-        self.assertIn("interfaces are caller knowledge", architecture)
-        self.assertIn("seam placement", architecture)
-        self.assertIn("deletion test", architecture)
-        self.assertIn("materially different", architecture)
-        self.assertIn("hard to reverse", architecture)
-
-        traceability = (
-            ROOT / "references" / "requirements-traceability-review.md"
-        ).read_text(encoding="utf-8").lower()
-        self.assertIn("traceability matrix", traceability)
+        traceability = (ROOT / traceability_resource).read_text(encoding="utf-8").lower()
+        self.assertIn("requirement-to-implementation-to-proof matrix", traceability)
         for status in ("full", "partial", "missing", "not_applicable"):
             self.assertIn(status, traceability)
-        self.assertIn("never reconstruct requirements from the implementation", traceability)
-        self.assertIn("invent missing acceptance criteria", traceability)
-        self.assertIn("schema 2.0", traceability)
+        self.assertIn("requirements would be inferred from implementation", traceability)
+        self.assertIn("never invent acceptance criteria", traceability)
 
-        conflict = (ROOT / "references" / "merge-conflict-resolution.md").read_text(
-            encoding="utf-8"
-        ).lower()
+        conflict = (ROOT / conflict_resource).read_text(encoding="utf-8").lower()
         self.assertIn("base", conflict)
         self.assertIn("ours", conflict)
         self.assertIn("theirs", conflict)
@@ -192,86 +180,93 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("abort", conflict)
         self.assertIn("generated", conflict)
 
-        debugging = (ROOT / "references" / "systematic-debugging.md").read_text(
-            encoding="utf-8"
-        ).lower()
-        self.assertIn("feedback-loop quality", debugging)
-        self.assertIn("original reproduction", debugging)
-        self.assertIn("ranked", debugging)
-        self.assertIn("failure rate", debugging)
-        self.assertIn("bounded trial/time budget", debugging)
+        diagnose = (ROOT / "references" / "entry" / "diagnose-failure.md").read_text(encoding="utf-8").lower()
+        reproduce = (ROOT / "references" / "diagnosis" / "reproduce-and-bound.md").read_text(encoding="utf-8").lower()
+        hypothesis = (ROOT / "references" / "diagnosis" / "hypothesis-and-discrimination.md").read_text(encoding="utf-8").lower()
+        transition = (ROOT / "references" / "diagnosis" / "bugfix-transition.md").read_text(encoding="utf-8").lower()
+        debugger = (ROOT / "references" / "recipes" / "debugger-assisted-diagnosis.md").read_text(encoding="utf-8").lower()
+        self.assertIn("implementation_blocked", diagnose)
+        self.assertIn("original reproduction", reproduce)
+        self.assertIn("bounded trial/time budget", reproduce)
+        self.assertIn("ranked portfolio", hypothesis)
+        self.assertIn("one controlled variable", hypothesis)
+        self.assertIn("existing patch", transition)
+        self.assertIn("meaningful regression distinction", transition)
+        self.assertIn("task-owned", debugger)
 
-        tdd = (ROOT / "references" / "test-driven-development.md").read_text(
-            encoding="utf-8"
-        ).lower()
-        self.assertIn("independent oracle", tdd)
-        self.assertIn("plausible wrong implementation", tdd)
-        self.assertIn("vertical slice", tdd)
+        red = (ROOT / "references" / "test" / "behavior-distinction-and-red.md").read_text(encoding="utf-8").lower()
+        green = (ROOT / "references" / "test" / "green-and-refactor.md").read_text(encoding="utf-8").lower()
+        oracle = (ROOT / "references" / "test" / "oracle-quality.md").read_text(encoding="utf-8").lower()
+        self.assertIn("independent", red)
+        self.assertIn("plausible wrong implementation", red)
+        self.assertIn("vertical slice", red)
+        self.assertIn("smallest general change", green)
+        self.assertIn("production helper", oracle)
 
-        delegated = (ROOT / "references" / "delegated-development.md").read_text(
-            encoding="utf-8"
-        ).lower()
-        self.assertIn("specification gate first", delegated)
-        self.assertIn("engineering-quality gate second", delegated)
-        self.assertIn("a child self-report is not controller proof", delegated)
-        self.assertIn("do not claim completion while", delegated)
-        for resource in (
-            "shared-ledger-delegation.md",
-            "paper-source-target-gap-audits.md",
-            "multi-source-markdown-synthesis.md",
-        ):
-            self.assertIn(resource, delegated)
+        delegation_root = ROOT / "references" / "delegation"
+        admission = (delegation_root / "admission-and-slicing.md").read_text(encoding="utf-8").lower()
+        worker = (delegation_root / "candidate-worker-contract.md").read_text(encoding="utf-8").lower()
+        fan_in = (delegation_root / "fan-in-and-integration.md").read_text(encoding="utf-8").lower()
+        self.assertIn("reliability/latency/separation benefit", admission)
+        self.assertIn("overlapping writes/resources", admission)
+        self.assertIn("never self-approve", worker)
+        self.assertIn("worker summaries and reported tests are evidence proposals", fan_in)
+        self.assertIn("return control to router", fan_in)
 
-        api = (ROOT / "references" / "api-interface-design.md").read_text(
-            encoding="utf-8"
-        ).lower()
+        api = (ROOT / "references" / "domain" / "api" / "compatibility-migration.md").read_text(encoding="utf-8").lower()
         self.assertIn("expand", api)
         self.assertIn("migrate", api)
         self.assertIn("contract", api)
         self.assertIn("old readers", api)
 
-        artifacts = (ROOT / "references" / "workspace-artifact-hygiene.md").read_text(
+        prototype = (ROOT / "references" / "workspace" / "prototype-lifecycle.md").read_text(
             encoding="utf-8"
         ).lower()
-        self.assertIn("prototype and experiment artifacts", artifacts)
-        self.assertIn("decision question", artifacts)
-        self.assertIn("production readiness", artifacts)
+        self.assertIn("one decision question", prototype)
+        self.assertIn("falsifiable", prototype)
+        self.assertIn("expiry/disposition", prototype)
+        self.assertIn("production readiness", prototype)
 
-        review = (ROOT / "references" / "requesting-code-review.md").read_text(
-            encoding="utf-8"
-        ).lower()
+        review = (ROOT / "references" / "review" / "review-execution.md").read_text(encoding="utf-8").lower()
         prompt = (
             ROOT
             / "templates"
             / "requesting-code-review"
             / "independent-reviewer-prompt.md"
         ).read_text(encoding="utf-8").lower()
-        self.assertIn("requirements-traceability-review.md", review)
-        self.assertIn("do not double-count", review)
+        self.assertIn("sqw.review.requirements-traceability", review)
+        self.assertIn("no reviewer traverses other rubrics", review)
+        self.assertIn("never give reviewer a fixer contract", review)
         self.assertIn("requirements traceability", prompt)
         self.assertIn("do not invent requirements", prompt)
 
     def test_design_discovery_absorption_contracts(self) -> None:
-        owner_path = "references/intent-and-design-discovery.md"
-        self.assertIn(owner_path, validator.REQUIRED_CORE)
+        owner_path = "references/entry/intent-discovery.md"
+        manifest = json.loads((ROOT / "registries" / "reference-cards.manifest.json").read_text(encoding="utf-8"))
+        self.assertIn(owner_path, {item["path"] for item in manifest["cards"]})
+        self.assertIn("material intent alternatives", (ROOT / "SKILL.md").read_text(encoding="utf-8").lower())
 
-        router = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn(f"]({owner_path})", router)
-        self.assertIn("underdefined intent", router.lower())
-
-        owner = (ROOT / owner_path).read_text(encoding="utf-8").lower()
+        owner = "\n".join(
+            (ROOT / relative).read_text(encoding="utf-8").lower()
+            for relative in (
+                owner_path,
+                "references/intent/material-intent-gaps.md",
+                "references/intent/design-alternative-selection.md",
+                "references/intent/spec-freeze-handoff.md",
+            )
+        )
         for phrase in (
-            "one question at a time",
-            "materially different approaches",
-            "project convention",
+            "one material question at a time",
+            "materially different",
+            "project documentation convention",
             "writing-plans",
-            "approval is required only",
-            "visual-design-companion.md",
+            "approval only when",
+            "visual_probe_needed",
             "design-discovery-spec-reviewer-prompt.md",
         ):
             self.assertIn(phrase, owner)
 
-        visual = (ROOT / "references" / "visual-design-companion.md").read_text(
+        visual = (ROOT / "operator" / "design-discovery" / "visual-runtime.md").read_text(
             encoding="utf-8"
         ).lower()
         self.assertIn("startup match: server-started", visual)
@@ -283,16 +278,17 @@ class SkillContractTests(unittest.TestCase):
         template = ROOT / "templates" / "design-discovery-spec-reviewer-prompt.md"
         self.assertTrue(template.is_file())
         for relative in (
-            "scripts/design-discovery/frame-template.html",
-            "scripts/design-discovery/helper.js",
-            "scripts/design-discovery/server.cjs",
-            "scripts/design-discovery/start-server.sh",
-            "scripts/design-discovery/stop-server.sh",
+            "operator/design-discovery/frame-template.html",
+            "operator/design-discovery/helper.js",
+            "operator/design-discovery/server.cjs",
+            "operator/design-discovery/start-server.sh",
+            "operator/design-discovery/stop-server.sh",
+            "operator/design-discovery/design-discovery-upstream-license.txt",
         ):
             self.assertTrue((ROOT / relative).is_file(), relative)
 
         start_script = (
-            ROOT / "scripts" / "design-discovery" / "start-server.sh"
+            ROOT / "operator" / "design-discovery" / "start-server.sh"
         ).read_text(encoding="utf-8")
         self.assertIn(".agent-design-discovery", start_script)
         self.assertNotIn(".hermes-design-discovery", start_script)
@@ -310,7 +306,7 @@ class SkillContractTests(unittest.TestCase):
         for mode in ("m0 direct", "m1 trace", "m2 sparse", "m3 full"):
             self.assertIn(mode, skill_lower)
         self.assertIn(
-            "](references/test-driven-development.md)",
+            "](references/test/behavior-distinction-and-red.md)",
             skill,
         )
         self.assertNotIn("external tdd skill", skill_lower)
@@ -330,10 +326,10 @@ class SkillContractTests(unittest.TestCase):
             self.assertNotIn(retired_host_detail, skill_lower)
 
         shared_references = {
-            "references/delegated-development.md": ("delegate_task", "hermes-swarm-coordination"),
-            "references/shared-ledger-delegation.md": ("delegate_task", "skill_view(", "skill_manage"),
-            "references/visual-design-companion.md": ("Start under Hermes", "terminal(", "process(action=", "browser_navigate", "write_file", "read_file", ".hermes-design-discovery"),
-            "references/workflow-state-contract.md": ("Hermes live todos",),
+            "references/delegation/admission-and-slicing.md": ("delegate_task", "hermes-swarm-coordination"),
+            "operator/delegation/shared-ledger-runtime.md": ("delegate_task", "skill_view(", "skill_manage"),
+            "operator/design-discovery/visual-runtime.md": ("Start under Hermes", "terminal(", "process(action=", "browser_navigate", "write_file", "read_file", ".hermes-design-discovery"),
+            "operator/closure/controller-events.md": ("Hermes live todos",),
         }
         for relative, markers in shared_references.items():
             text = (ROOT / relative).read_text(encoding="utf-8")
@@ -360,7 +356,7 @@ class SkillContractTests(unittest.TestCase):
             make_minimal_skill(root)
             self.assertEqual([], validator.validate_skill(root))
 
-    def test_registry_mode_does_not_require_flat_reference_catalog_in_entry(self) -> None:
+    def test_generated_manifest_does_not_require_card_catalog_in_entry(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "skill"
             shutil.copytree(ROOT, root)
@@ -368,7 +364,7 @@ class SkillContractTests(unittest.TestCase):
             compact_entry = "\n".join(
                 line
                 for line in entry.splitlines()
-                if "](references/" not in line or "](references/owner-registry.json)" in line
+                if "](references/" not in line
             ) + "\n"
             (root / "SKILL.md").write_text(compact_entry, encoding="utf-8")
             violations = validator.validate_skill(root)
@@ -379,7 +375,7 @@ class SkillContractTests(unittest.TestCase):
             root = Path(directory)
             make_minimal_skill(root)
             (root / "references" / "orphan.md").write_text("# Orphan\n", encoding="utf-8")
-            (root / "references" / "systematic-debugging.md").unlink()
+            (root / "references" / "synthetic-core.md").unlink()
             codes = {item.code for item in validator.validate_skill(root)}
             self.assertIn("active.orphan", codes)
             self.assertIn("active.missing", codes)
@@ -388,14 +384,14 @@ class SkillContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             make_minimal_skill(root)
-            path = root / "references" / "systematic-debugging.md"
+            path = root / "references" / "synthetic-core.md"
             path.write_text(
                 "# Debugging\n\n[broken sibling](references/authority-and-scope.md)\n",
                 encoding="utf-8",
             )
             violations = validator.validate_skill(root)
             self.assertTrue(
-                any(item.code == "link.missing" and item.path == "references/systematic-debugging.md" for item in violations),
+                any(item.code == "link.missing" and item.path == "references/synthetic-core.md" for item in violations),
                 validator.compact_violations(violations),
             )
 
@@ -403,7 +399,7 @@ class SkillContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             make_minimal_skill(root)
-            path = root / "references" / "systematic-debugging.md"
+            path = root / "references" / "synthetic-core.md"
             path.write_text(
                 "# Debugging\n\nUse $software-quality-workflows.\n\ntest command | tail\n",
                 encoding="utf-8",
@@ -416,7 +412,7 @@ class SkillContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             make_minimal_skill(root)
-            path = root / "references" / "systematic-debugging.md"
+            path = root / "references" / "synthetic-core.md"
             path.write_text(
                 "# Debugging\n\nUse the active host's read, search, edit, command, and session-history capabilities.\n",
                 encoding="utf-8",
@@ -604,6 +600,17 @@ class SkillContractTests(unittest.TestCase):
         errors = validator.validate_review_result(valid_result(), **valid_context())
         self.assertEqual([], errors)
 
+    def test_review_result_accepts_explicitly_bounded_sampled_local_verdict(self) -> None:
+        result = valid_result()
+        result["coverage"][0]["status"] = "sampled"
+        result["coverage"][0]["sampling_note"] = "Reviewed the changed branch and its owning caller."
+        self.assertEqual([], validator.validate_review_result(result, **valid_context()))
+        del result["coverage"][0]["sampling_note"]
+        self.assertIn(
+            "coverage[0].sampling_note is required for sampled coverage",
+            validator.validate_review_result(result, **valid_context()),
+        )
+
     def test_scope_manifest_validator_is_total_for_malformed_json(self) -> None:
         errors, context = validator.validate_scope_manifest(
             {
@@ -622,23 +629,24 @@ class SkillContractTests(unittest.TestCase):
 
     def test_review_result_rejects_version_1_without_silent_upgrade(self) -> None:
         result = valid_result()
-        result["schema_version"] = "1.0"
+        result["schema_version"] = "2.0"
         errors = validator.validate_review_result(result, **valid_context())
         self.assertIn(
-            "schema_version must be '2.0'; version 1.0 results require re-review",
+            "schema_version must be '3.0'; earlier results require re-review",
             errors,
         )
 
         historical_shape = valid_result()
         historical_shape["schema_version"] = "1.0"
         historical_shape.pop("reviewed_scope_hash")
+        historical_shape.pop("spec_traceability")
         for item in historical_shape["coverage"]:
             item.pop("snapshot_id")
         historical_errors = validator.validate_review_result(
             historical_shape, **valid_context()
         )
         self.assertIn(
-            "schema_version 1.0 results require re-review against a frozen manifest",
+            "pre-3.0 results require re-review against a frozen manifest",
             historical_errors,
         )
 
@@ -648,17 +656,15 @@ class SkillContractTests(unittest.TestCase):
         errors = validator.validate_review_result(result, **valid_context())
         self.assertIn("blocking finding conflicts with code_review_verdict=pass", errors)
 
-    def test_review_result_rejects_partial_pass_and_ready_without_proof(self) -> None:
+    def test_review_result_separates_local_verdict_from_publication_fields(self) -> None:
         result = valid_result()
         result["coverage"][0]["status"] = "not_reviewed"
         result["verification_status"] = "partial"
+        result["merge_readiness"] = "ready"
         result["external_approvals"] = "missing"
         errors = validator.validate_review_result(result, **valid_context())
         self.assertIn("not_reviewed coverage conflicts with code_review_verdict=pass", errors)
-        self.assertIn("merge_readiness=ready requires verification_status=passed", errors)
-        self.assertIn(
-            "merge_readiness=ready conflicts with missing or unknown external approvals", errors
-        )
+        self.assertIn("unexpected result fields: ['external_approvals', 'merge_readiness']", errors)
 
     def test_review_result_rejects_stale_revision_and_out_of_scope_finding(self) -> None:
         manifest = valid_manifest()
@@ -672,16 +678,14 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("review result is stale for the current head revision", errors)
         self.assertIn("findings[0].path is outside the scope allowlist", errors)
 
-    def test_review_result_rejects_false_ready_predicate(self) -> None:
+    def test_review_result_rejects_blocking_local_pass_without_claiming_readiness(self) -> None:
         result = valid_result()
         result["code_review_verdict"] = "changes_requested"
         result["coverage"] = []
         result["blocking_reasons"] = ["unresolved required decision"]
         errors = validator.validate_review_result(result, **valid_context())
-        self.assertIn("merge_readiness=ready requires code_review_verdict=pass", errors)
-        self.assertIn("merge_readiness=ready requires no blocking_reasons", errors)
-        self.assertIn("merge_readiness=ready requires non-empty full coverage", errors)
         self.assertIn("coverage is missing allowlisted paths: ['src/core.py']", errors)
+        self.assertNotIn("merge_readiness", "\n".join(errors))
 
     def test_review_result_is_total_and_rejects_malformed_fields(self) -> None:
         result = valid_result()
@@ -722,7 +726,6 @@ class SkillContractTests(unittest.TestCase):
 
     def test_review_result_enforces_coverage_manifest_and_uniqueness(self) -> None:
         result = valid_result()
-        result["merge_readiness"] = "blocked"
         result["coverage"] = [
             {"path": "src/core.py", "status": "full", "snapshot_id": "sha256:core-2"},
             {"path": "src/core.py", "status": "full", "snapshot_id": "sha256:core-2"},
@@ -808,7 +811,7 @@ class SkillContractTests(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(0, complete_context.returncode, complete_context.stdout)
-            self.assertIn("OK: review result satisfies schema 2.0", complete_context.stdout)
+            self.assertIn("OK: local review result satisfies schema 3.0", complete_context.stdout)
 
     def test_long_and_short_failures_preserve_original_return_code(self) -> None:
         for line_count in (1, 400):

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.frontier-agent/schemas/frontier-engineering-bundle.schema.json",
+  "title": "Frontier Engineering Bundle Identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "bundle_id",
+    "compatible_schema_epoch",
+    "release_build_id",
+    "skills",
+    "contracts"
+  ],
+  "properties": {
+    "schema_version": {"const": "frontier-engineering-bundle/1.0"},
+    "bundle_id": {"const": "frontier-engineering/5.0.0+4.0.0"},
+    "compatible_schema_epoch": {"const": 1},
+    "release_build_id": {"type": "string", "pattern": "^build-[0-9a-f]{24}$"},
+    "skills": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["software-quality-workflows", "writing-plans"],
+      "properties": {
+        "software-quality-workflows": {"$ref": "#/$defs/skill"},
+        "writing-plans": {"$ref": "#/$defs/skill"}
+      }
+    },
+    "contracts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan-execution-handoff"],
+      "properties": {
+        "plan-execution-handoff": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["contract_id", "normative_owner_path", "normative_owner_hash"],
+          "properties": {
+            "contract_id": {
+              "const": "https://local.frontier-agent/schemas/plan-execution-handoff.schema.json"
+            },
+            "normative_owner_path": {
+              "const": "writing-plans/schemas/plan-execution-handoff.schema.json"
+            },
+            "normative_owner_hash": {"$ref": "#/$defs/hash"}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "content_hash"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1, "pattern": "^[^/].*\\.json$"},
+        "content_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "root_hash", "policy_registry", "reference_card_manifest"],
+      "properties": {
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "root_hash": {"$ref": "#/$defs/hash"},
+        "policy_registry": {"$ref": "#/$defs/component"},
+        "reference_card_manifest": {"$ref": "#/$defs/component"}
+      }
+    }
+  }
+}

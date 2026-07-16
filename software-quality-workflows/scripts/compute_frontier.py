@@ -20,21 +20,15 @@ SATISFIED = {"done", "skipped", "superseded"}
 CANDIDATE = {"pending", "ready", "blocked", "failed"}
 EXTERNAL = {"external_reversible", "external_non_idempotent", "destructive"}
 _CLOSURE_PHASE_REQUIREMENTS = {
-    "SPEC_COMPILING": (),
-    "CONTRACT_FROZEN": ("contract_ref",),
     "BASELINING": ("contract_ref",),
     "VERIFIER_QUALIFYING": ("contract_ref", "baseline_ref"),
-    "PLANNING": ("contract_ref", "baseline_ref", "verifier_bundle_ref"),
     "SEARCHING": ("contract_ref", "baseline_ref", "verifier_bundle_ref"),
     "SIGNING_OFF": ("contract_ref", "baseline_ref", "verifier_bundle_ref", "incumbent_candidate_ref"),
     "TERMINAL": ("terminal_status", "terminal_certificate_ref"),
 }
 _CLOSURE_TASK_ROLES = {
-    "SPEC_COMPILING": ("spec_auditor",),
-    "CONTRACT_FROZEN": ("test_analyst",),
     "BASELINING": ("test_analyst",),
     "VERIFIER_QUALIFYING": ("test_analyst",),
-    "PLANNING": ("solution_planner",),
     "SEARCHING": ("candidate_worker", "test_analyst"),
     "SIGNING_OFF": ("reviewer",),
     "TERMINAL": (),
@@ -65,7 +59,26 @@ def _time(value: str | None) -> datetime:
 def _conflicts(left: dict[str, Any], right: dict[str, Any]) -> bool:
     if set(left.get("resource_set", [])) & set(right.get("resource_set", [])):
         return True
-    return any(patterns_may_overlap(a, b) for a in left.get("write_set", []) for b in right.get("write_set", []))
+    if set(left.get("effect_set", [])) & set(right.get("effect_set", [])):
+        return True
+    path_pairs = (
+        (left.get("write_set", []), right.get("write_set", [])),
+        (left.get("write_set", []), right.get("read_set", [])),
+        (left.get("read_set", []), right.get("write_set", [])),
+    )
+    return any(patterns_may_overlap(a, b) for left_set, right_set in path_pairs for a in left_set for b in right_set)
+
+
+def _invariant_applies(invariant: dict[str, Any], node: dict[str, Any]) -> bool:
+    locality = invariant.get("locality")
+    targets = set(invariant.get("targets", []))
+    if locality == "global":
+        return True
+    if locality == "node_set":
+        return node.get("id") in targets
+    if locality == "resource_set":
+        return bool(targets & set(node.get("resource_set", [])))
+    return True
 
 
 def compute_frontier(
@@ -106,10 +119,10 @@ def compute_frontier(
                     contracts = {item.get("ref"): item.get("schema_id") for item in node.get("input_contracts", [])}
                     if contracts.get(ref) != artifact.get("schema_id"):
                         reasons.append(f"schema-mismatch:{ref}")
-            elif str(ref).startswith("I-") and invariants.get(ref, {}).get("status") != "current":
+            elif str(ref).startswith("I-") and _invariant_applies(invariants.get(ref, {}), node) and invariants.get(ref, {}).get("status") != "current":
                 reasons.append(f"invariant:{ref}:{invariants.get(ref, {}).get('status', 'missing')}")
         for invariant_id, invariant in invariants.items():
-            if invariant.get("status") in {"changed", "unknown", "invalidated"} and f"invariant:{invariant_id}:{invariant['status']}" not in reasons:
+            if _invariant_applies(invariant, node) and invariant.get("status") in {"changed", "unknown", "invalidated"} and f"invariant:{invariant_id}:{invariant['status']}" not in reasons:
                 reasons.append(f"invariant:{invariant_id}:{invariant['status']}")
 
         effect = node.get("side_effect")

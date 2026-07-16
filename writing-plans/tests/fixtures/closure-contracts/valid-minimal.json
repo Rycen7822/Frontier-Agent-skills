@@ -6,12 +6,18 @@
   "content_hash": null,
   "created_at": "2026-07-14T00:00:00Z",
   "frozen_at": null,
+  "bundle_id": "frontier-engineering/5.0.0+4.0.0",
+  "closure_admission_ref": "artifact:admission/admission-0123456789abcdefabcd",
+  "closure_admission_hash": "sha256:a0ef17d1ece532cc97f5e00deb9d27bbaf287c20fb9fcd03dd8b305cca0aa8d3",
+  "authority_manifest_ref": "artifact:authority/auth-0123456789abcdefabcd",
+  "authority_manifest_hash": "sha256:0c5736759d290c0f409b6563c5228b65f0dfb711e850551ff8d69b3dd924e879",
   "source": {
     "repository": "local-repository",
     "base_revision": "revision-abc123",
     "scope_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
     "observed_at": "2026-07-14T00:00:00Z",
-    "policy_bundle_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    "policy_bundle_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "reference_manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
   },
   "request": {
     "objective": "Preserve the observable result while repairing the owner seam.",

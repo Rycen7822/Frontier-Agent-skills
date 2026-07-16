@@ -76,22 +76,20 @@ AUTONOMY_FIELDS = {
     "manual_controller_repair",
 }
 ABLATION_IDS = {
-    "no_closure_contract",
-    "worker_mutable_contract",
-    "no_verifier_qualification",
-    "self_review_signoff",
-    "load_all_references",
-    "always_on_full_plan",
-    "no_context_projection",
-    "no_field_sensitive_invalidation",
-    "no_terminal_certificates",
-    "single_vs_bounded_portfolio",
-    "all_review_rubrics",
+    "no_policy_graph",
+    "no_card_navigation",
+    "no_exact_transport_ref",
+    "no_context_lease",
+    "no_artifact_boundary_reroute",
+    "no_controller_context_separation",
+    "mutable_verifier",
+    "no_local_invalidation",
+    "no_one_card_limit",
 }
 CONTROL_FIELDS = {"schema_version", "cohort_id", "bundle_hash", "controller_hash", "ablations", "reference_evaluations"}
 ABLATION_FIELDS = {"id", "status", "evidence_refs"}
 REFERENCE_EVAL_FIELDS = {
-    "owner_id", "authority", "decision_case_status", "precision_case_status",
+    "policy_id", "owner_type", "owner_id", "decision_case_status", "precision_case_status",
     "exclusion_case_status", "ablation_status", "evidence_refs",
 }
 CONTROL_STATUSES = {"passed", "failed", "not_run", "not_applicable"}
@@ -264,40 +262,45 @@ def validate_control_evidence(controls: Any, *, corpus: dict[str, Any] | None = 
         errors.append(_error("E_SCHEMA_INVALID", "/reference_evaluations", "reference evaluations must be a bounded array"))
         references = []
     try:
-        registry = _load_json(ROOT / "software-quality-workflows" / "references" / "owner-registry.json")
+        registries = [
+            _load_json(ROOT / skill / "registries" / "policy-owners.json")
+            for skill in ("software-quality-workflows", "writing-plans")
+        ]
         expected = {
-            owner["id"]: owner["authority"]
-            for owner in registry["owners"]
-            if isinstance(owner, dict) and isinstance(owner.get("id"), str)
+            policy["policy_id"]: (policy["owner_type"], policy["owner_id"])
+            for registry in registries
+            for policy in registry["policies"]
+            if isinstance(policy, dict) and isinstance(policy.get("policy_id"), str)
         }
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
         expected = {}
-        errors.append(_error("E_REFERENCE_REGISTRY", "/reference_evaluations", "owner registry is unavailable or invalid"))
+        errors.append(_error("E_POLICY_REGISTRY", "/reference_evaluations", "policy owner registries are unavailable or invalid"))
     observed_references: list[str] = []
     for index, item in enumerate(references):
         pointer = f"/reference_evaluations/{index}"
         if not _exact_fields(item, REFERENCE_EVAL_FIELDS, pointer, errors):
             continue
-        owner_id = item["owner_id"]
-        if not _bounded_string(owner_id, maximum=128) or expected.get(owner_id) != item["authority"]:
-            errors.append(_error("E_REFERENCE_REGISTRY", f"{pointer}/owner_id", "owner identity or authority differs from registry v2"))
+        policy_id = item["policy_id"]
+        owner = (item["owner_type"], item["owner_id"])
+        if not _bounded_string(policy_id, maximum=128) or expected.get(policy_id) != owner:
+            errors.append(_error("E_POLICY_REGISTRY", f"{pointer}/policy_id", "policy owner identity differs from the vNext registries"))
         else:
-            observed_references.append(owner_id)
+            observed_references.append(policy_id)
         for field in ("decision_case_status", "precision_case_status", "exclusion_case_status", "ablation_status"):
             if item[field] not in CONTROL_STATUSES:
                 errors.append(_error("E_SCHEMA_INVALID", f"{pointer}/{field}", "unknown control status"))
-        normative = item["authority"] == "normative_owner"
+        machine_owned = item["owner_type"] == "machine"
         expected_statuses = {
-            "decision_case_status": "passed" if normative else "not_applicable",
-            "precision_case_status": "not_applicable" if normative else "passed",
-            "exclusion_case_status": "not_applicable" if normative else "passed",
-            "ablation_status": "passed" if normative else "not_applicable",
+            "decision_case_status": "passed",
+            "precision_case_status": "not_applicable" if machine_owned else "passed",
+            "exclusion_case_status": "not_applicable" if machine_owned else "passed",
+            "ablation_status": "passed",
         }
         _validate_evidence_refs(item["evidence_refs"], f"{pointer}/evidence_refs", errors)
         if all(item[field] == expected_value for field, expected_value in expected_statuses.items()) and not item["evidence_refs"]:
             errors.append(_error("E_EVIDENCE_MISSING", f"{pointer}/evidence_refs", "complete reference evaluation requires evidence"))
     if set(observed_references) != set(expected) or len(observed_references) != len(set(observed_references)):
-        errors.append(_error("E_REFERENCE_COVERAGE", "/reference_evaluations", "every registry v2 owner must appear exactly once"))
+        errors.append(_error("E_POLICY_COVERAGE", "/reference_evaluations", "every vNext policy must appear exactly once"))
     return sorted(set(errors))
 
 
@@ -597,12 +600,10 @@ def evaluate_shadow(
     for item in reference_evaluations:
         if not isinstance(item, dict):
             continue
-        normative = item.get("authority") == "normative_owner"
-        required = (
-            item.get("decision_case_status") == "passed" and item.get("ablation_status") == "passed"
-            if normative
-            else item.get("precision_case_status") == "passed" and item.get("exclusion_case_status") == "passed"
-        )
+        machine_owned = item.get("owner_type") == "machine"
+        required = item.get("decision_case_status") == "passed" and item.get("ablation_status") == "passed"
+        if not machine_owned:
+            required = required and item.get("precision_case_status") == "passed" and item.get("exclusion_case_status") == "passed"
         if required and item.get("evidence_refs"):
             complete_references += 1
     reference_coverage_rate = complete_references / len(reference_evaluations) if reference_evaluations else 0.0

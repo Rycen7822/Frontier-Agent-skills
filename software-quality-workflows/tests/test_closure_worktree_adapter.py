@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,7 +22,6 @@ from local_workflow_adapter import AdapterConflict, LocalWorkflowAdapter  # noqa
 
 STATE_SCHEMA = load_json(ROOT / "schemas" / "workflow-state.schema.json")
 EVENT_SCHEMA = load_json(ROOT / "schemas" / "workflow-event.schema.json")
-REGISTRY = load_json(ROOT / "references" / "owner-registry.json")
 
 
 def _git(repo: Path, *arguments: str) -> str:
@@ -55,20 +55,19 @@ def _closure_state(revision: str) -> dict:
     state["request_mode"] = "change"
     state["source"]["base_revision"] = revision
     state["source"]["observed_revision"] = revision
-    paths = {item["id"]: item["path"] for item in REGISTRY["owners"]}
-    normative = ["authority-and-scope", "verifier-kernel", "workflow-state-contract", "workflow-modes", "verification-discipline"]
+    normative = ["authority-and-scope", "verifier-kernel", "workflow-mode-selection", "workflow-modes", "verification-discipline"]
     state["active_owners"] = {
         "primary": "autonomous-closure",
         "normative": normative,
         "companions": [],
-        "loaded_references": [
-            {"owner_id": owner, "path": paths[owner], "reason_code": "closure_owner_required", "phase": "SPEC_COMPILING"}
-            for owner in ["autonomous-closure", *normative]
-        ],
     }
     state["closure_run"] = {
-        "phase": "SPEC_COMPILING",
+        "phase": "BASELINING",
         "policy_bundle_hash": state["policy_bundle_hash"],
+        "handoff_ref": {"artifact_ref": "artifact:handoff/handoff-0123456789abcdefabcd", "content_hash": "sha256:" + "5" * 64},
+        "admission_ref": {"artifact_ref": "artifact:admission/admission-0123456789abcdefabcd", "content_hash": "sha256:" + "6" * 64},
+        "authority_manifest_ref": {"artifact_ref": "artifact:authority/auth-0123456789abcdefabcd", "content_hash": "sha256:" + "7" * 64},
+        "contract_ref": {"artifact_ref": "artifact:contract/CC-001", "content_hash": "sha256:" + "1" * 64, "epoch": 1},
         "active_candidate_refs": [],
         "active_counterexample_refs": [],
         "budget": {"iterations_used": 0, "iterations_limit": 8, "candidate_evaluations_used": 0, "candidate_evaluations_limit": 10, "review_rounds_used": 0, "review_rounds_limit": 2},
@@ -236,6 +235,61 @@ class ClosureWorktreeAdapterTests(unittest.TestCase):
             with self.assertRaises(AdapterConflict):
                 adapter.store_artifact(b"must-not-escape\n", sensitive=False)
             self.assertEqual([], list(external_dir.iterdir()))
+
+    def test_content_addressed_artifacts_reject_hardlink_substitution(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo, revision = _repository(Path(directory))
+            adapter = _adapter(repo, revision)
+            stored = adapter.store_artifact(b"immutable\n", sensitive=False)
+            target = adapter.root / stored["artifact_ref"]
+            external = Path(directory) / "external-hardlink.bin"
+            external.write_bytes(b"immutable\n")
+            target.unlink()
+            os.link(external, target)
+
+            with self.assertRaises(AdapterConflict):
+                adapter.store_artifact(b"immutable\n", sensitive=False)
+            self.assertEqual(b"immutable\n", external.read_bytes())
+
+    def test_adapter_rejects_symlinked_root_and_artifact_directory_replacement(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            external_root = base / "external-root"
+            external_root.mkdir()
+            linked_root = base / "linked-root"
+            os.symlink(external_root, linked_root, target_is_directory=True)
+            with self.assertRaises(AdapterConflict):
+                LocalWorkflowAdapter(linked_root, STATE_SCHEMA, EVENT_SCHEMA)
+
+            late_root = base / "late-root"
+            late_adapter = LocalWorkflowAdapter(late_root, STATE_SCHEMA, EVENT_SCHEMA)
+            late_external = base / "late-external"
+            late_external.mkdir()
+            os.symlink(late_external, late_root, target_is_directory=True)
+            with self.assertRaises(AdapterConflict):
+                late_adapter.initialize(_closure_state("f" * 40))
+            self.assertEqual([], list(late_external.iterdir()))
+
+            repo, revision = _repository(base)
+            adapter = _adapter(repo, revision)
+            artifacts = adapter.root / "artifacts"
+            original = adapter.root / "artifacts-original"
+            real_open = os.open
+            swapped = False
+
+            def replace_before_open(path, flags, *args, **kwargs):
+                nonlocal swapped
+                if path == "artifacts" and kwargs.get("dir_fd") is not None and not swapped:
+                    artifacts.rename(original)
+                    artifacts.mkdir(mode=0o700)
+                    swapped = True
+                return real_open(path, flags, *args, **kwargs)
+
+            with mock.patch.object(os, "open", side_effect=replace_before_open):
+                with self.assertRaises(AdapterConflict):
+                    adapter.store_artifact(b"must-not-land-in-replacement\n", sensitive=False)
+            self.assertTrue(swapped)
+            self.assertEqual([], list(artifacts.iterdir()))
 
     def test_candidate_creation_rejects_checkout_filters_without_executing_them(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontier-agent-skills.local/software-quality-workflows/closure-admission.schema.json",
+  "title": "Closure Admission Artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "admission_id",
+    "decision",
+    "terminal_status",
+    "reason_codes",
+    "missing_conditions",
+    "next_action",
+    "recommended_execution_mode"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "admission_id": {"type": "string", "pattern": "^admission-[0-9a-f]{20}$"},
+    "decision": {"enum": ["DIRECT_SELECTED", "CLOSURE_ELIGIBLE", "TERMINAL"]},
+    "terminal_status": {
+      "enum": [null, "SPEC_UNDERDETERMINED", "SPEC_UNSAT", "AUTHORITY_BLOCKED", "ENVIRONMENT_UNAVAILABLE", "VERIFIER_UNQUALIFIABLE", "SIDE_EFFECT_UNBOUNDED"]
+    },
+    "reason_codes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "missing_conditions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "next_action": {"enum": ["ROUTE_STANDARD", "COMPILE_CLOSURE_CONTRACT", "EMIT_TERMINAL"]},
+    "recommended_execution_mode": {"enum": ["M0_DIRECT", "M2_SPARSE"]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"decision": {"const": "TERMINAL"}}},
+      "then": {
+        "properties": {
+          "next_action": {"const": "EMIT_TERMINAL"},
+          "terminal_status": {"not": {"type": "null"}}
+        }
+      },
+      "else": {"properties": {"terminal_status": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"decision": {"const": "DIRECT_SELECTED"}}},
+      "then": {
+        "properties": {
+          "next_action": {"const": "ROUTE_STANDARD"},
+          "recommended_execution_mode": {"const": "M0_DIRECT"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"decision": {"const": "CLOSURE_ELIGIBLE"}}},
+      "then": {
+        "properties": {
+          "next_action": {"const": "COMPILE_CLOSURE_CONTRACT"},
+          "recommended_execution_mode": {"const": "M2_SPARSE"}
+        }
+      }
+    }
+  ]
+}

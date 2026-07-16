@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.frontier-agent/schemas/offline-route-replay.schema.json",
+  "title": "vNext deterministic offline route replay",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "baseline", "vnext", "case_count", "rows", "metrics",
+    "gates", "decision", "limitations", "report_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "offline-route-replay/1.0"},
+    "baseline": {"$ref": "#/$defs/source"},
+    "vnext": {"$ref": "#/$defs/source"},
+    "case_count": {"type": "integer", "minimum": 1, "maximum": 256},
+    "rows": {
+      "type": "array", "minItems": 1, "maxItems": 256,
+      "items": {"$ref": "#/$defs/row"}
+    },
+    "metrics": {"$ref": "#/$defs/metrics"},
+    "gates": {"$ref": "#/$defs/gates"},
+    "decision": {"enum": ["deterministic_route_ready", "deterministic_route_blocked"]},
+    "limitations": {
+      "type": "array", "minItems": 3, "maxItems": 16, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+    },
+    "report_hash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["identity", "revision", "skill_versions"],
+      "properties": {
+        "identity": {"type": "string", "minLength": 1, "maxLength": 128},
+        "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "skill_versions": {
+          "type": "object", "additionalProperties": false,
+          "required": ["software-quality-workflows", "writing-plans"],
+          "properties": {
+            "software-quality-workflows": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+            "writing-plans": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}
+          }
+        }
+      }
+    },
+    "row": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "pair_id", "skill_id", "baseline_case_id", "vnext_case_id",
+        "baseline_reference_bytes", "vnext_reference_bytes", "vnext_active_cards",
+        "vnext_mode", "primary_card_exact", "mandatory_truncation_count"
+      ],
+      "properties": {
+        "pair_id": {"type": "string", "pattern": "^(?:sqw|wp)-[a-z0-9-]+$"},
+        "skill_id": {"enum": ["software-quality-workflows", "writing-plans"]},
+        "baseline_case_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "vnext_case_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "baseline_reference_bytes": {"type": "integer", "minimum": 0},
+        "vnext_reference_bytes": {"type": "integer", "minimum": 0},
+        "vnext_active_cards": {"type": "integer", "minimum": 0, "maximum": 1},
+        "vnext_mode": {"type": "string", "minLength": 1, "maxLength": 64},
+        "primary_card_exact": {"type": "boolean"},
+        "mandatory_truncation_count": {"const": 0}
+      }
+    },
+    "metrics": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "curated_primary_card_accuracy", "hidden_primary_card_accuracy",
+        "median_active_reference_bytes", "p95_active_reference_bytes",
+        "m0_median_active_reference_bytes", "m0_p95_active_reference_bytes",
+        "unnecessary_card_load_rate", "mandatory_context_truncation_count",
+        "baseline_median_reference_bytes", "median_reference_byte_reduction"
+      ],
+      "properties": {
+        "curated_primary_card_accuracy": {"type": "number", "minimum": 0, "maximum": 1},
+        "hidden_primary_card_accuracy": {"type": "null"},
+        "median_active_reference_bytes": {"type": "number", "minimum": 0},
+        "p95_active_reference_bytes": {"type": "integer", "minimum": 0},
+        "m0_median_active_reference_bytes": {"type": "number", "minimum": 0},
+        "m0_p95_active_reference_bytes": {"type": "integer", "minimum": 0},
+        "unnecessary_card_load_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "mandatory_context_truncation_count": {"const": 0},
+        "baseline_median_reference_bytes": {"type": "number", "minimum": 0},
+        "median_reference_byte_reduction": {"type": "number", "minimum": -10, "maximum": 1}
+      }
+    },
+    "gates": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "curated_primary_card_accuracy", "m0_median_active_reference_bytes",
+        "m0_p95_active_reference_bytes", "unnecessary_card_load_rate",
+        "mandatory_context_truncation", "reference_byte_reduction"
+      ],
+      "properties": {
+        "curated_primary_card_accuracy": {"type": "boolean"},
+        "m0_median_active_reference_bytes": {"type": "boolean"},
+        "m0_p95_active_reference_bytes": {"type": "boolean"},
+        "unnecessary_card_load_rate": {"type": "boolean"},
+        "mandatory_context_truncation": {"type": "boolean"},
+        "reference_byte_reduction": {"type": "boolean"}
+      }
+    }
+  }
+}

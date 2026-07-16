@@ -142,10 +142,12 @@ def propagate_affected(
     all_ids = {"source", "scope", "plan"}
     for collection in ("global_invariants", "facts", "decisions", "evidence", "nodes", "edges", "risks", "gaps", "approvals", "snapshots"):
         all_ids.update(item.get("id") for item in state.get(collection, []) if item.get("id"))
+    all_ids.update(item.get("policy_id") for item in state.get("policy_claims", []) if item.get("policy_id"))
     escalation_reasons: list[str] = []
     if affected & {"source", "scope", "plan"}:
         escalation_reasons.append("source_scope_or_plan_identity_changed")
-    if any(ref.startswith("I-") for ref in affected):
+    invariant_by_id = {item.get("id"): item for item in state.get("global_invariants", []) if isinstance(item, dict)}
+    if any(ref.startswith("I-") and invariant_by_id.get(ref, {}).get("locality") == "global" for ref in affected):
         escalation_reasons.append("global_invariant_changed")
     return {
         "affected_ids": sorted(affected),
@@ -166,6 +168,10 @@ def check_freshness(
     changed_fields: dict[str, set[str]] | None = None,
     closure_contract_path: Path | None = None,
     current_policy_bundle_hash: str | None = None,
+    current_bundle_id: str | None = None,
+    current_reference_manifest_hash: str | None = None,
+    current_policy_hashes: dict[str, str] | None = None,
+    current_card_hashes: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     try:
         state = load_json(state_path)
@@ -195,8 +201,25 @@ def check_freshness(
 
     policy = state.get("execution_policy")
     contract_ref = state.get("closure_contract_ref") if isinstance(state.get("closure_contract_ref"), dict) else None
+    source_identity = state.get("source", {})
+    if current_bundle_id is not None and source_identity.get("bundle_id") != current_bundle_id:
+        add("plan", "bundle_changed", "current bundle identity differs from the plan binding", global_issue=True)
     if current_policy_bundle_hash is not None and state.get("source", {}).get("policy_bundle_hash") != current_policy_bundle_hash:
         add_contract("policy_bundle_changed", "current policy bundle differs from the plan binding")
+    if current_reference_manifest_hash is not None and source_identity.get("reference_manifest_hash") != current_reference_manifest_hash:
+        capsule_ids = [item.get("id") for item in state.get("snapshots", []) if item.get("kind") == "capsule" and item.get("id")]
+        for capsule_id in capsule_ids or ["context"]:
+            add(capsule_id, "card_manifest_changed", "card manifest drift invalidates context projection only")
+    for claim in state.get("policy_claims", []):
+        policy_id = claim.get("policy_id")
+        if current_policy_hashes and policy_id in current_policy_hashes and claim.get("policy_hash") != current_policy_hashes[policy_id]:
+            add(policy_id, "policy_hash_changed", "stable policy ID resolves to a different hash")
+    if current_card_hashes:
+        for snapshot in state.get("snapshots", []):
+            if snapshot.get("kind") != "capsule":
+                continue
+            if any(current_card_hashes.get(ref.get("card_id"), ref.get("card_hash")) != ref.get("card_hash") for ref in snapshot.get("card_refs", [])):
+                add(snapshot.get("id", "context"), "card_hash_changed", "card hash drift invalidates context projection only")
     if policy == "autonomous_closure":
         if contract_ref is None or closure_contract_path is None:
             add_contract("contract_missing", "autonomous closure plan lacks a loadable frozen contract")
@@ -372,6 +395,13 @@ def _changed_field(value: str) -> tuple[str, str]:
     return ref, field
 
 
+def _identity_binding(value: str) -> tuple[str, str]:
+    identity, separator, digest = value.partition("=")
+    if not separator or not identity or not digest.startswith("sha256:"):
+        raise argparse.ArgumentTypeError("identity binding must use ID=sha256:HASH")
+    return identity, digest
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("state", type=Path)
@@ -380,6 +410,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scope-hash")
     parser.add_argument("--closure-contract", type=Path)
     parser.add_argument("--policy-bundle-hash")
+    parser.add_argument("--bundle-id")
+    parser.add_argument("--reference-manifest-hash")
+    parser.add_argument("--policy-hash", action="append", default=[], type=_identity_binding, metavar="POLICY_ID=HASH")
+    parser.add_argument("--card-hash", action="append", default=[], type=_identity_binding, metavar="CARD_ID=HASH")
     parser.add_argument("--now", help="deterministic ISO timestamp for tests")
     parser.add_argument("--changed-ref", action="append", default=[], help="plan ID declared stale; repeatable")
     parser.add_argument("--changed-field", action="append", default=[], type=_changed_field, metavar="REF=FIELD", help="field-sensitive change declaration; repeatable")
@@ -397,6 +431,10 @@ def main(argv: list[str] | None = None) -> int:
         changed_fields=changed_fields,
         closure_contract_path=args.closure_contract,
         current_policy_bundle_hash=args.policy_bundle_hash,
+        current_bundle_id=args.bundle_id,
+        current_reference_manifest_hash=args.reference_manifest_hash,
+        current_policy_hashes=dict(args.policy_hash),
+        current_card_hashes=dict(args.card_hash),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return {"fresh": 0, "partially_stale": 1, "stale": 2}[result["status"]]

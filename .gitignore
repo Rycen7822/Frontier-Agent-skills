@@ -1,5 +1,6 @@
 # Agent-local state and work documents
 /CODEX_STATE.md
+/share/
 /.work/*.md
 /.work/tmp/
 /.work/p4-live-canary-evidence/

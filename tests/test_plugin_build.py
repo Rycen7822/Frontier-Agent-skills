@@ -121,7 +121,7 @@ class PluginBuildTests(unittest.TestCase):
             parent = Path(directory)
             copied = parent / "bundle"
             shutil.copytree(ROOT, copied, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
-            target = copied / "writing-plans" / "references" / "plan-profiles.md"
+            target = copied / "writing-plans" / "references" / "profiles" / "brief.md"
             target.unlink()
             target.symlink_to(copied / "README.md")
             output = parent / "software-engineering-closure-plugin"
@@ -130,7 +130,18 @@ class PluginBuildTests(unittest.TestCase):
                 builder.build(copied, output, None, evidence)
             self.assertFalse(output.exists())
             target.unlink()
-            shutil.copy2(ROOT / "writing-plans" / "references" / "plan-profiles.md", target)
+            shutil.copy2(ROOT / "writing-plans" / "references" / "profiles" / "brief.md", target)
+            policy_path = copied / "software-quality-workflows" / "registries" / "policy-owners.json"
+            policy = json.loads(policy_path.read_text(encoding="utf-8"))
+            policy["policies"][0]["owner_id"] = "scripts/tampered-owner.py"
+            policy_path.write_text(json.dumps(policy), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "exact two-skill source"):
+                builder.build(copied, output, None, evidence)
+            self.assertFalse(output.exists())
+            shutil.copy2(
+                ROOT / "software-quality-workflows" / "registries" / "policy-owners.json",
+                policy_path,
+            )
             manifest_path = copied / "bundle-manifest.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest["skills"][0]["version"] = "9.9.9"
@@ -286,7 +297,7 @@ class PluginBuildTests(unittest.TestCase):
                 result = original_copytree(source, destination, *args, **kwargs)
                 if not changed:
                     changed = True
-                    target = copied / "writing-plans" / "references" / "plan-profiles.md"
+                    target = copied / "writing-plans" / "references" / "profiles" / "brief.md"
                     target.write_text(target.read_text(encoding="utf-8") + "\ndrift\n", encoding="utf-8")
                 return result
 

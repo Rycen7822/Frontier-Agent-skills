@@ -11,6 +11,8 @@ import sys
 import tempfile
 import unittest
 
+from jsonschema import Draft202012Validator
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
@@ -29,12 +31,92 @@ SCHEMA_PATH = ROOT / "schemas" / "closure-contract.schema.json"
 class ClosureContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.valid = json.loads((FIXTURES / "valid-minimal.json").read_text(encoding="utf-8"))
+        self.admission = json.loads((FIXTURES / "valid-admission.json").read_text(encoding="utf-8"))
+        self.authority_manifest = json.loads((FIXTURES / "valid-authority-manifest.json").read_text(encoding="utf-8"))
         self.schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
     @staticmethod
     def _object_hash(value: object) -> str:
         payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         return "sha256:" + sha256(payload).hexdigest()
+
+    def _freeze_bindings(self) -> dict:
+        return {
+            "expected_scope_hash": self.valid["source"]["scope_hash"],
+            "authority_ceiling": "local_reversible",
+            "expected_base_revision": self.valid["source"]["base_revision"],
+            "expected_policy_bundle_hash": self.valid["source"]["policy_bundle_hash"],
+            "expected_reference_manifest_hash": self.valid["source"]["reference_manifest_hash"],
+            "expected_bundle_id": self.valid["bundle_id"],
+            "expected_authority_hash": self._object_hash(self.valid["authority"]),
+            "admission_artifact": self.admission,
+            "authority_manifest": self.authority_manifest,
+        }
+
+    def test_v4_contract_and_handoff_identity_schemas_are_exact(self) -> None:
+        required = set(self.schema["required"])
+        self.assertTrue(
+            {"bundle_id", "closure_admission_ref", "closure_admission_hash", "authority_manifest_ref", "authority_manifest_hash"} <= required
+        )
+        self.assertIn("reference_manifest_hash", self.schema["$defs"]["source"]["required"])
+        admission_schema = json.loads((ROOT.parent / "software-quality-workflows" / "schemas" / "closure-admission.schema.json").read_text(encoding="utf-8"))
+        self.assertEqual([], list(Draft202012Validator(admission_schema).iter_errors(self.admission)))
+
+        handoff_schema = json.loads((ROOT / "schemas" / "plan-execution-handoff.schema.json").read_text(encoding="utf-8"))
+        Draft202012Validator.check_schema(handoff_schema)
+        base = {
+            "schema_version": "1.0",
+            "handoff_id": "handoff-0123456789abcdefabcd",
+            "bundle_id": self.valid["bundle_id"],
+            "source_revision": self.valid["source"]["base_revision"],
+            "execution_policy": "standard",
+            "profile": "handoff",
+            "closure_admission_ref": None,
+            "closure_admission_hash": None,
+            "plan_ref": "artifact:plan/PLAN-DEMO-001",
+            "plan_hash": "sha256:" + "5" * 64,
+            "closure_contract_ref": None,
+            "closure_contract_hash": None,
+            "authority_manifest_ref": self.valid["authority_manifest_ref"],
+            "scope_hash": self.valid["source"]["scope_hash"],
+            "frontier_node_ids": ["P-01"],
+            "required_execution_policy_ids": ["sqw.change.lifecycle", "sqw.verify.completion-evidence"],
+            "unresolved_blockers": [],
+        }
+        validator = Draft202012Validator(handoff_schema)
+        self.assertEqual([], list(validator.iter_errors(base)))
+        autonomous = deepcopy(base)
+        autonomous.update(
+            {
+                "execution_policy": "autonomous_closure",
+                "profile": "program",
+                "closure_admission_ref": self.valid["closure_admission_ref"],
+                "closure_admission_hash": self.valid["closure_admission_hash"],
+                "closure_contract_ref": "artifact:contract/CC-DEMO-001",
+                "closure_contract_hash": "sha256:" + "6" * 64,
+            }
+        )
+        self.assertEqual([], list(validator.iter_errors(autonomous)))
+        autonomous["primary_card"] = "sqw.entry.direct-change"
+        self.assertTrue(list(validator.iter_errors(autonomous)))
+
+    def test_freeze_verifies_admission_authority_bundle_and_card_manifest_itself(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            draft = Path(directory) / "contract.draft.json"
+            draft.write_text(json.dumps(self.valid), encoding="utf-8")
+            freeze_contract(draft, Path(directory) / "contract.lock.json", SCHEMA_PATH, frozen_at="2026-07-14T01:00:00Z", **self._freeze_bindings())
+            tampered = deepcopy(self.admission)
+            tampered["decision"] = "DIRECT_SELECTED"
+            bindings = self._freeze_bindings()
+            bindings["admission_artifact"] = tampered
+            with self.assertRaises(ContractInputError):
+                freeze_contract(draft, Path(directory) / "tampered.lock.json", SCHEMA_PATH, frozen_at="2026-07-14T01:00:00Z", **bindings)
+            authority_tampered = deepcopy(self.authority_manifest)
+            authority_tampered["autonomy_ceiling"] = "draft_pr"
+            bindings = self._freeze_bindings()
+            bindings["authority_manifest"] = authority_tampered
+            with self.assertRaises(ContractInputError):
+                freeze_contract(draft, Path(directory) / "authority-tampered.lock.json", SCHEMA_PATH, frozen_at="2026-07-14T01:00:00Z", **bindings)
 
     def _mutated(self, case_id: str) -> dict:
         value = deepcopy(self.valid)
@@ -117,11 +199,7 @@ class ClosureContractTests(unittest.TestCase):
                 lock,
                 SCHEMA_PATH,
                 frozen_at="2026-07-14T01:00:00Z",
-                expected_scope_hash=self.valid["source"]["scope_hash"],
-                authority_ceiling="local_reversible",
-                expected_base_revision=self.valid["source"]["base_revision"],
-                expected_policy_bundle_hash=self.valid["source"]["policy_bundle_hash"],
-                expected_authority_hash=self._object_hash(self.valid["authority"]),
+                **self._freeze_bindings(),
             )
             frozen = load_contract(lock)
             self.assertEqual("frozen", frozen["status"])
@@ -137,11 +215,7 @@ class ClosureContractTests(unittest.TestCase):
                     lock,
                     SCHEMA_PATH,
                     frozen_at="2026-07-14T01:00:00Z",
-                    expected_scope_hash=self.valid["source"]["scope_hash"],
-                    authority_ceiling="local_reversible",
-                    expected_base_revision=self.valid["source"]["base_revision"],
-                    expected_policy_bundle_hash=self.valid["source"]["policy_bundle_hash"],
-                    expected_authority_hash=self._object_hash(self.valid["authority"]),
+                    **self._freeze_bindings(),
                 )
             os.chmod(lock, 0o600)
             with self.assertRaises(ContractInputError):
@@ -150,34 +224,36 @@ class ClosureContractTests(unittest.TestCase):
                     draft,
                     SCHEMA_PATH,
                     frozen_at="2026-07-14T01:00:00Z",
-                    expected_scope_hash=self.valid["source"]["scope_hash"],
-                    authority_ceiling="local_reversible",
-                    expected_base_revision=self.valid["source"]["base_revision"],
-                    expected_policy_bundle_hash=self.valid["source"]["policy_bundle_hash"],
-                    expected_authority_hash=self._object_hash(self.valid["authority"]),
+                    **self._freeze_bindings(),
                 )
 
     def test_freeze_requires_admission_scope_and_authority_bindings(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             draft = Path(directory) / "contract.draft.json"
             draft.write_text(json.dumps(self.valid), encoding="utf-8")
-            with self.assertRaises(ContractInputError):
-                freeze_contract(draft, Path(directory) / "missing-scope.json", SCHEMA_PATH, frozen_at="2026-07-14T01:00:00Z", authority_ceiling="local_reversible")
-            with self.assertRaises(ContractInputError):
-                freeze_contract(draft, Path(directory) / "missing-authority.json", SCHEMA_PATH, frozen_at="2026-07-14T01:00:00Z", expected_scope_hash=self.valid["source"]["scope_hash"])
+            bindings = self._freeze_bindings()
+            for missing in ("expected_scope_hash", "authority_ceiling", "admission_artifact", "authority_manifest"):
+                with self.subTest(missing=missing), self.assertRaises(ContractInputError):
+                    freeze_contract(
+                        draft,
+                        Path(directory) / f"{missing}.json",
+                        SCHEMA_PATH,
+                        frozen_at="2026-07-14T01:00:00Z",
+                        **{key: value for key, value in bindings.items() if key != missing},
+                    )
 
     def test_freeze_requires_source_policy_and_full_authority_identity(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             draft = Path(directory) / "contract.draft.json"
             draft.write_text(json.dumps(self.valid), encoding="utf-8")
-            common = {
-                "expected_scope_hash": self.valid["source"]["scope_hash"],
-                "authority_ceiling": "local_reversible",
-                "expected_base_revision": self.valid["source"]["base_revision"],
-                "expected_policy_bundle_hash": self.valid["source"]["policy_bundle_hash"],
-                "expected_authority_hash": self._object_hash(self.valid["authority"]),
-            }
-            for missing in ("expected_base_revision", "expected_policy_bundle_hash", "expected_authority_hash"):
+            common = self._freeze_bindings()
+            for missing in (
+                "expected_base_revision",
+                "expected_policy_bundle_hash",
+                "expected_reference_manifest_hash",
+                "expected_bundle_id",
+                "expected_authority_hash",
+            ):
                 with self.subTest(missing=missing), self.assertRaises(ContractInputError):
                     freeze_contract(draft, Path(directory) / f"{missing}.json", SCHEMA_PATH, frozen_at="2026-07-14T01:00:00Z", **{key: value for key, value in common.items() if key != missing})
 
@@ -188,9 +264,20 @@ class ClosureContractTests(unittest.TestCase):
             for_freeze=True,
             expected_base_revision="different-revision",
             expected_policy_bundle_hash="sha256:" + "8" * 64,
+            expected_reference_manifest_hash="sha256:" + "6" * 64,
+            expected_bundle_id="different-bundle",
             expected_authority_hash="sha256:" + "7" * 64,
         )
-        self.assertTrue({"contract.source-mismatch", "contract.policy-mismatch", "contract.authority-mismatch"} <= {item.code for item in violations})
+        self.assertTrue(
+            {
+                "contract.source-mismatch",
+                "contract.policy-mismatch",
+                "contract.reference-manifest-mismatch",
+                "contract.bundle-mismatch",
+                "contract.authority-mismatch",
+            }
+            <= {item.code for item in violations}
+        )
 
     def test_freeze_rejects_empty_anchors_scope_protection_and_authority_conflict(self) -> None:
         value = deepcopy(self.valid)

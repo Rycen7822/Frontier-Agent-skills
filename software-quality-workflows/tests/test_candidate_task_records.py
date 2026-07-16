@@ -36,8 +36,6 @@ def _search_adapter(repo: Path, revision: str) -> LocalWorkflowAdapter:
         "baseline_ref": {"artifact_ref": "artifact:baseline/BL-001", "content_hash": "sha256:" + "4" * 64},
         "verifier_bundle_ref": {"artifact_ref": "artifact:verifier/VB-001", "content_hash": "sha256:" + "2" * 64, "epoch": 1},
     })
-    for item in state["active_owners"]["loaded_references"]:
-        item["phase"] = "SEARCHING"
     state["state_hash"] = canonical_hash(state)
     adapter = LocalWorkflowAdapter(repo / ".closure", STATE_SCHEMA, EVENT_SCHEMA)
     adapter.initialize(state)

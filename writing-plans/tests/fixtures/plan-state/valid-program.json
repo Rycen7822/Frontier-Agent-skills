@@ -10,7 +10,9 @@
     "base_revision": "explicit-unversioned",
     "scope_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
     "observed_at": "2026-07-13T13:30:00+00:00",
-    "policy_bundle_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    "bundle_id": "frontier-engineering/5.0.0+4.0.0",
+    "policy_bundle_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "reference_manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
   },
   "scope": {
     "allowed_reads": ["src/**", "tests/**"],
@@ -24,6 +26,9 @@
     {
       "id": "I-01",
       "statement": "Current-format manifests retain byte-for-byte comparison behavior.",
+      "locality": "global",
+      "applicability": "always",
+      "targets": [],
       "sensitive": false
     }
   ],
@@ -118,6 +123,7 @@
       "read_set": ["tests/manifest/**", "src/manifest/**"],
       "write_set": ["tests/manifest/**"],
       "resource_set": ["local-test-runner"],
+      "effect_set": ["workspace:test-fixtures"],
       "side_effect_level": "local_reversible",
       "constraint_refs": [],
       "corner_refs": [],
@@ -153,6 +159,7 @@
       "read_set": ["src/manifest/**", "tests/manifest/**"],
       "write_set": ["src/manifest/**", "tests/manifest/**"],
       "resource_set": ["working-tree"],
+      "effect_set": ["workspace:manifest-owner"],
       "side_effect_level": "local_reversible",
       "constraint_refs": [],
       "corner_refs": [],
@@ -205,9 +212,9 @@
   ],
   "policy_claims": [
     {
-      "policy": "implementation-proof-mechanism",
-      "normative_owner": "software-quality-workflows/verification-discipline",
-      "artifact_ref": "software-quality-workflows/references/verification-discipline.md"
+      "policy_id": "sqw.verify.completion-evidence",
+      "bundle_version": "frontier-engineering/5.0.0+4.0.0",
+      "policy_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
     }
   ],
   "closure": {

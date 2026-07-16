@@ -269,6 +269,19 @@ def semantic_violations(
         if state.get("execution_policy") == "autonomous_closure" and decision.get("contract_effect") == "requires_new_epoch":
             violations.append(Violation("plan.contract-epoch-required", pointer(("decisions", decision_index, "contract_effect")), "accepted contract-changing decision requires a new contract epoch before execution", decision.get("id")))
 
+    invariant_by_id = {item.get("id"): item for item in state.get("global_invariants", []) if isinstance(item, dict)}
+    for index, invariant in enumerate(state.get("global_invariants", [])):
+        locality = invariant.get("locality")
+        applicability = invariant.get("applicability")
+        targets = invariant.get("targets", [])
+        valid_shape = (
+            (locality == "global" and applicability == "always" and not targets)
+            or (locality == "node_set" and applicability == "when_target_active" and bool(targets) and all(str(item).startswith("P-") for item in targets))
+            or (locality == "resource_set" and applicability == "when_resource_touched" and bool(targets))
+        )
+        if not valid_shape:
+            violations.append(Violation("plan.invariant-applicability", pointer(("global_invariants", index)), "invariant locality, applicability, and targets are inconsistent", invariant.get("id")))
+
     graph = _node_graph(state)
     for cycle in _control_cycles(graph):
         violations.append(Violation("plan.control-cycle", "/nodes", "blocking control cycle: " + " -> ".join(cycle), cycle[0]))
@@ -331,9 +344,18 @@ def semantic_violations(
                 violations.append(Violation("plan.approval-missing", pointer(("nodes", index, "side_effect_level")), "external/destructive node lacks a granted approval edge", node_id))
 
         high_risk = effect in EXTERNAL_EFFECTS or node.get("kind") in HIGH_RISK_KINDS
-        invariant_bound = any(str(ref).startswith("I-") for ref in node.get("inputs", [])) or _has_edge(state, "invariant", "I-", node_id)
+        bound_invariant_ids = {str(ref) for ref in node.get("inputs", []) if str(ref).startswith("I-")}
+        bound_invariant_ids.update(
+            str(edge.get("from"))
+            for edge in state.get("edges", [])
+            if edge.get("kind") == "invariant" and edge.get("to") == node_id and str(edge.get("from", "")).startswith("I-")
+        )
+        invariant_bound = any(
+            invariant_id in invariant_by_id and _invariant_applies(invariant_by_id[invariant_id], node)
+            for invariant_id in bound_invariant_ids
+        )
         if high_risk and not invariant_bound:
-            violations.append(Violation("plan.invariant-unbound", pointer(("nodes", index, "inputs")), "high-risk node is not bound to a global invariant", node_id))
+            violations.append(Violation("plan.invariant-unbound", pointer(("nodes", index, "inputs")), "high-risk node lacks an applicable targeted invariant", node_id))
 
         if node.get("status") == "fog" and (node_id in frontier or node.get("write_set") or node.get("outputs")):
             violations.append(Violation("plan.fog-executed", pointer(("nodes", index, "status")), "fog node cannot be executable or produce effects", node_id))
@@ -380,19 +402,39 @@ def semantic_violations(
         if snapshot.get("kind") in {"line", "snippet", "capsule"} and not snapshot.get("content_hash"):
             violations.append(Violation("plan.snapshot-unbound", pointer(("snapshots", index, "content_hash")), "content-bound snapshot requires content_hash", snapshot.get("id")))
         if snapshot.get("kind") == "capsule" and (
-            not snapshot.get("plan_state_hash") or not snapshot.get("plan_state_version")
+            not snapshot.get("plan_state_hash")
+            or not snapshot.get("plan_state_version")
+            or not snapshot.get("card_refs")
+            or not snapshot.get("projection_spec_id")
+            or not snapshot.get("projection_hash")
         ):
-            violations.append(Violation("plan.snapshot-unbound", pointer(("snapshots", index)), "capsule snapshot requires plan_state_hash and plan_state_version", snapshot.get("id")))
+            violations.append(Violation("plan.snapshot-unbound", pointer(("snapshots", index)), "capsule snapshot requires state, card-manifest, and projection identity", snapshot.get("id")))
+        if snapshot.get("kind") == "capsule" and snapshot.get("content_hash") and snapshot.get("projection_hash") != snapshot.get("content_hash"):
+            violations.append(Violation("plan.snapshot-unbound", pointer(("snapshots", index, "projection_hash")), "capsule projection hash must match rendered content hash", snapshot.get("id")))
         if snapshot.get("line_start") and snapshot.get("line_end") and snapshot["line_end"] < snapshot["line_start"]:
             violations.append(Violation("plan.snapshot-unbound", pointer(("snapshots", index, "line_end")), "line_end cannot precede line_start", snapshot.get("id")))
 
     frontier_nodes = [node_by_id[node_id] for node_id in frontier if node_id in node_by_id and node_by_id[node_id].get("status") == "ready"]
     for left_index, left in enumerate(frontier_nodes):
         for right in frontier_nodes[left_index + 1 :]:
-            write_conflict = any(patterns_may_overlap(a, b) for a in left.get("write_set", []) for b in right.get("write_set", []))
+            write_write = any(patterns_may_overlap(a, b) for a in left.get("write_set", []) for b in right.get("write_set", []))
+            write_read = any(patterns_may_overlap(a, b) for a in left.get("write_set", []) for b in right.get("read_set", []))
+            read_write = any(patterns_may_overlap(a, b) for a in left.get("read_set", []) for b in right.get("write_set", []))
             resource_conflict = bool(set(left.get("resource_set", [])) & set(right.get("resource_set", [])))
-            if write_conflict or resource_conflict:
-                violations.append(Violation("plan.effect-conflict", "/current_frontier", f"frontier nodes conflict: {left['id']} and {right['id']}", left["id"]))
+            effect_conflict = any(patterns_may_overlap(a, b) for a in left.get("effect_set", []) for b in right.get("effect_set", []))
+            conflicts = [
+                name
+                for name, present in (
+                    ("write-write", write_write),
+                    ("write-read", write_read),
+                    ("read-write", read_write),
+                    ("resource", resource_conflict),
+                    ("effect", effect_conflict),
+                )
+                if present
+            ]
+            if conflicts:
+                violations.append(Violation("plan.effect-conflict", "/current_frontier", f"frontier nodes conflict ({', '.join(conflicts)}): {left['id']} and {right['id']}", left["id"]))
 
     for source_id, source_node in node_by_id.items():
         if source_node.get("status") != "invalidated":
@@ -412,17 +454,20 @@ def semantic_violations(
     if state.get("profile") == "brief" and (state.get("nodes") or state.get("edges") or state.get("current_frontier")):
         violations.append(Violation("plan.profile-overbuilt", "/profile", "Brief profile must not carry durable graph state"))
 
-    claims: dict[str, set[str]] = defaultdict(set)
+    claims: dict[str, set[tuple[str, str]]] = defaultdict(set)
     claim_paths: dict[str, str] = {}
     for index, claim in enumerate(state.get("policy_claims", [])):
-        policy = claim.get("policy")
-        owner = claim.get("normative_owner")
-        if policy and owner:
-            claims[policy].add(owner)
-            claim_paths.setdefault(policy, pointer(("policy_claims", index)))
-    for policy, owners in claims.items():
-        if len(owners) > 1:
-            violations.append(Violation("plan.owner-duplicate", claim_paths[policy], f"policy has multiple normative owners: {sorted(owners)}"))
+        policy_id = claim.get("policy_id")
+        bundle_version = claim.get("bundle_version")
+        policy_hash = claim.get("policy_hash")
+        if policy_id and bundle_version and policy_hash:
+            claims[policy_id].add((bundle_version, policy_hash))
+            claim_paths.setdefault(policy_id, pointer(("policy_claims", index)))
+            if bundle_version != state.get("source", {}).get("bundle_id"):
+                violations.append(Violation("plan.policy-binding", pointer(("policy_claims", index, "bundle_version")), "policy claim bundle differs from plan bundle identity", policy_id))
+    for policy_id, bindings in claims.items():
+        if len(bindings) > 1:
+            violations.append(Violation("plan.owner-duplicate", claim_paths[policy_id], f"policy has multiple bundle/hash bindings: {sorted(bindings)}"))
 
     return violations
 
@@ -459,6 +504,21 @@ def validate_file(
         current_scope_hash=current_scope_hash,
         closure_contract=closure_contract,
     )
+
+
+def _invariant_applies(invariant: dict[str, Any], node: dict[str, Any]) -> bool:
+    locality = invariant.get("locality")
+    targets = invariant.get("targets", [])
+    if locality == "global":
+        return invariant.get("applicability") == "always" and not targets
+    if locality == "node_set":
+        return invariant.get("applicability") == "when_target_active" and node.get("id") in targets
+    if locality == "resource_set":
+        resources = list(node.get("resource_set", [])) + list(node.get("effect_set", []))
+        return invariant.get("applicability") == "when_resource_touched" and any(
+            patterns_may_overlap(target, resource) for target in targets for resource in resources
+        )
+    return False
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -37,6 +37,7 @@ from _workflow_state import (
     load_json,
     load_json_lines,
     patterns_may_overlap,
+    review_supports_full_signoff,
     validate_against_schema,
     validate_closure_artifact,
     validate_review_result,
@@ -358,21 +359,45 @@ def _assert_safe_checkout_configuration(repository: Path, base_revision: str) ->
 
 
 def _ensure_direct_child_directory(root: Path, name: str) -> Path:
+    try:
+        root_info = root.lstat()
+    except OSError as exc:
+        raise AdapterConflict(f"controller root is unavailable: {root}: {exc}") from exc
+    if stat.S_ISLNK(root_info.st_mode) or not stat.S_ISDIR(root_info.st_mode):
+        raise AdapterConflict(f"controller root is not a safe directory: {root}")
     root_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
         root_fd = os.open(root, root_flags)
     except OSError as exc:
         raise AdapterConflict(f"controller root is not a safe directory: {root}: {exc}") from exc
     try:
+        opened_root = os.fstat(root_fd)
+        if (opened_root.st_dev, opened_root.st_ino) != (root_info.st_dev, root_info.st_ino):
+            raise AdapterConflict(f"controller root changed while opening: {root}")
         try:
             os.mkdir(name, mode=0o700, dir_fd=root_fd)
         except FileExistsError:
             pass
         try:
+            child_info = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+        except OSError as exc:
+            raise AdapterConflict(f"managed directory is unavailable: {root / name}: {exc}") from exc
+        if stat.S_ISLNK(child_info.st_mode) or not stat.S_ISDIR(child_info.st_mode):
+            raise AdapterConflict(f"managed directory is unsafe: {root / name}")
+        try:
             child_fd = os.open(name, root_flags, dir_fd=root_fd)
         except OSError as exc:
             raise AdapterConflict(f"managed directory is unsafe: {root / name}: {exc}") from exc
-        os.close(child_fd)
+        try:
+            opened_info = os.fstat(child_fd)
+            if (opened_info.st_dev, opened_info.st_ino) != (child_info.st_dev, child_info.st_ino):
+                raise AdapterConflict(f"managed directory changed while opening: {root / name}")
+            resolved_root = root.resolve(strict=True)
+            resolved_child = (root / name).resolve(strict=True)
+            if resolved_child.parent != resolved_root:
+                raise AdapterConflict(f"managed directory escapes controller root: {root / name}")
+        finally:
+            os.close(child_fd)
     finally:
         os.close(root_fd)
     return root / name
@@ -402,6 +427,8 @@ def _write_once(directory: Path, name: str, data: bytes) -> None:
             try:
                 if not stat.S_ISREG(os.fstat(existing_fd).st_mode):
                     raise AdapterConflict(f"existing immutable artifact is not a regular file: {directory / name}")
+                if os.fstat(existing_fd).st_nlink != 1:
+                    raise AdapterConflict(f"existing immutable artifact has unsafe hard links: {directory / name}")
                 chunks: list[bytes] = []
                 remaining = len(data) + 1
                 while remaining > 0:
@@ -416,6 +443,8 @@ def _write_once(directory: Path, name: str, data: bytes) -> None:
             finally:
                 os.close(existing_fd)
         assert descriptor is not None
+        if os.fstat(descriptor).st_nlink != 1:
+            raise AdapterConflict(f"new immutable artifact has unsafe hard links: {directory / name}")
         view = memoryview(data)
         while view:
             written = os.write(descriptor, view)
@@ -477,15 +506,32 @@ def _sync_directory(path: Path) -> None:
 
 @contextmanager
 def _exclusive_guard(root: Path) -> Iterator[None]:
-    root.mkdir(parents=True, exist_ok=True)
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        root_info = root.lstat()
+    except OSError as exc:
+        raise AdapterConflict(f"adapter root is unavailable: {root}: {exc}") from exc
+    if stat.S_ISLNK(root_info.st_mode) or not stat.S_ISDIR(root_info.st_mode):
+        raise AdapterConflict(f"adapter root is not a safe directory: {root}")
+    root_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        root_fd = os.open(root, root_flags)
+    except OSError as exc:
+        raise AdapterConflict(f"adapter root is not a safe directory: {root}: {exc}") from exc
+    opened_root = os.fstat(root_fd)
+    if (opened_root.st_dev, opened_root.st_ino) != (root_info.st_dev, root_info.st_ino):
+        os.close(root_fd)
+        raise AdapterConflict(f"adapter root changed while opening: {root}")
     lock_path = root / ".adapter.lock"
     flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(lock_path, flags, 0o600)
+        descriptor = os.open(".adapter.lock", flags, 0o600, dir_fd=root_fd)
     except OSError as exc:
+        os.close(root_fd)
         raise AdapterConflict(f"unsafe or unavailable adapter lock: {lock_path}: {exc}") from exc
     if not stat.S_ISREG(os.fstat(descriptor).st_mode):
         os.close(descriptor)
+        os.close(root_fd)
         raise AdapterConflict(f"adapter lock is not a regular file: {lock_path}")
     locked = False
     try:
@@ -517,11 +563,25 @@ def _exclusive_guard(root: Path) -> Iterator[None]:
             os.lseek(descriptor, 0, os.SEEK_SET)
             msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
         os.close(descriptor)
+        os.close(root_fd)
 
 
 class LocalWorkflowAdapter:
     def __init__(self, root: Path, state_schema: dict[str, Any], event_schema: dict[str, Any]) -> None:
-        self.root = root.resolve()
+        raw_root = Path(os.path.abspath(os.fspath(root)))
+        if os.path.lexists(raw_root):
+            root_info = raw_root.lstat()
+            if stat.S_ISLNK(root_info.st_mode) or not stat.S_ISDIR(root_info.st_mode):
+                raise AdapterConflict(f"controller root is not a safe directory: {raw_root}")
+            self.root = raw_root.resolve(strict=True)
+        else:
+            try:
+                resolved_parent = raw_root.parent.resolve(strict=True)
+            except OSError as exc:
+                raise AdapterConflict(f"controller root parent is unavailable: {raw_root.parent}: {exc}") from exc
+            if not stat.S_ISDIR(resolved_parent.lstat().st_mode):
+                raise AdapterConflict(f"controller root parent is not a directory: {resolved_parent}")
+            self.root = resolved_parent / raw_root.name
         self.state_schema = state_schema
         self.event_schema = event_schema
         self.state_path = self.root / "state.json"
@@ -1232,8 +1292,8 @@ class LocalWorkflowAdapter:
                 )
                 if violations:
                     raise AdapterConflict("invalid sign-off review: " + "; ".join(f"{item.code}@{item.path}" for item in violations[:12]))
-                if review.get("code_review_verdict") != "pass" or review.get("merge_readiness") != "ready":
-                    raise AdapterConflict("sign-off review is not pass/ready")
+                if not review_supports_full_signoff(review):
+                    raise AdapterConflict("sign-off review is not a full-scope local pass")
 
             expected_axis_refs: dict[str, str] = {}
             for ref, artifact in evidence_artifacts.items():

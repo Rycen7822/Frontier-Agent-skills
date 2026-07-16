@@ -16,32 +16,17 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from validate_owner_registry import validate_registry  # noqa: E402
+from _workflow_reference_cards import (  # noqa: E402
+    build_manifest as build_reference_manifest,
+    canonical_json_bytes as canonical_reference_json_bytes,
+    load_json as load_reference_json,
+)
 
 
 SKILL_NAME = "software-quality-workflows"
-REQUIRED_OWNER_IDS = {
-    "architecture-module-design",
-    "authority-and-scope",
-    "delegated-development",
-    "intent-and-design-discovery",
-    "merge-conflict-resolution",
-    "requirements-traceability-review",
-    "systematic-debugging",
-    "test-driven-development",
-    "verification-discipline",
-    "requesting-code-review",
-    "review-result-schema",
-    "test-lifecycle-management",
-}
-# Public compatibility alias for the legacy flat/direct-link validator contract.
+REQUIRED_OWNER_IDS: set[str] = set()
 REQUIRED_CORE = {f"references/{owner_id}.md" for owner_id in REQUIRED_OWNER_IDS}
 RESOURCE_PREFIXES = ("references/", "templates/", "scripts/", "schemas/", "adapters/", "assets/")
-VERSION_RECIPE_OWNERS = {
-    "dependency-lockfile-drift": ("companion", "recipe"),
-    "managed-runtime-sdk-smoke": ("companion", "recipe"),
-    "runtime-version-contracts": ("normative_owner", "domain"),
-}
 STALE_MARKERS = {
     "multi_agent_v1": "legacy collaboration API",
     "$software-quality-workflows": "Codex-style skill invocation",
@@ -303,24 +288,7 @@ def _check_skill_entry(root: Path, violations: list[Violation]) -> set[str]:
     if "## Policy ownership" not in text:
         violations.append(Violation("entry.owners", "SKILL.md", 1, "missing policy ownership section"))
     direct = extract_local_resources(text)
-    registry_path = root / "references" / "owner-registry.json"
-    schema_path = root / "schemas" / "owner-registry.schema.json"
-    registered_core: set[str] | None = None
-    if registry_path.is_file() and schema_path.is_file():
-        if "references/owner-registry.json" not in direct:
-            violations.append(
-                Violation("entry.registry-link", "SKILL.md", 1, "registry mode requires a discoverable owner-registry link")
-            )
-        try:
-            registry = json.loads(registry_path.read_text(encoding="utf-8"))
-            registered_core = {
-                item.get("path")
-                for item in registry.get("owners", [])
-                if isinstance(item, dict) and isinstance(item.get("path"), str)
-            }
-        except (OSError, UnicodeError, json.JSONDecodeError, AttributeError):
-            pass  # The registry validator reports the structural failure.
-    missing_core = sorted(REQUIRED_CORE - (registered_core if registered_core is not None else direct))
+    missing_core = sorted(REQUIRED_CORE - direct)
     for resource in missing_core:
         violations.append(
             Violation("entry.core-owner", "SKILL.md", 1, f"missing required core owner: {resource}")
@@ -328,9 +296,49 @@ def _check_skill_entry(root: Path, violations: list[Violation]) -> set[str]:
     return direct
 
 
-def _check_active_set(root: Path, direct: set[str], violations: list[Violation]) -> None:
+def _registered_reference_cards(root: Path, violations: list[Violation]) -> set[str]:
+    manifest_path = root / "registries" / "reference-cards.manifest.json"
+    if not manifest_path.exists():
+        return set()
+    relative_manifest = manifest_path.relative_to(root).as_posix()
+    try:
+        expected, issues = build_reference_manifest(root)
+        actual = load_reference_json(manifest_path)
+    except (OSError, TypeError, ValueError) as exc:
+        violations.append(Violation("reference-cards.invalid", relative_manifest, 1, str(exc)))
+        return set()
+    if issues:
+        first = issues[0]
+        violations.append(
+            Violation(
+                "reference-cards.invalid",
+                relative_manifest,
+                1,
+                f"{len(issues)} card contract issue(s); first: {first.code} in {first.path}: {first.message}",
+            )
+        )
+        return set()
+    if canonical_reference_json_bytes(actual) != canonical_reference_json_bytes(expected):
+        violations.append(
+            Violation(
+                "reference-cards.manifest-stale",
+                relative_manifest,
+                1,
+                "manifest does not match the registered card bytes",
+            )
+        )
+        return set()
+    return {item["path"] for item in expected["cards"]}
+
+
+def _check_active_set(
+    root: Path,
+    direct: set[str],
+    registered_reference_cards: set[str],
+    violations: list[Violation],
+) -> None:
     actual: set[str] = set()
-    for directory_name in ("references", "templates", "adapters"):
+    for directory_name in ("references",):
         directory = root / directory_name
         if not directory.is_dir():
             continue
@@ -338,7 +346,11 @@ def _check_active_set(root: Path, direct: set[str], violations: list[Violation])
             if path.is_file():
                 relative = path.relative_to(root).as_posix()
                 actual.add(relative)
-                if directory_name == "references" and path.parent != directory:
+                if (
+                    directory_name == "references"
+                    and path.parent != directory
+                    and relative not in registered_reference_cards
+                ):
                     violations.append(
                         Violation(
                             "active.nested-reference",
@@ -347,35 +359,13 @@ def _check_active_set(root: Path, direct: set[str], violations: list[Violation])
                             "active references must be flat and directly discoverable",
                         )
                     )
-    direct_markdown = {item for item in direct if item.endswith(".md") and item.startswith(("references/", "templates/", "adapters/"))}
-    registry_mode = (
-        (root / "references" / "owner-registry.json").is_file()
-        and (root / "schemas" / "owner-registry.schema.json").is_file()
-    )
-    registry_owned = {item for item in actual if item.startswith("references/")} if registry_mode else set()
-    for relative in sorted(actual - direct_markdown - registry_owned):
+    direct_markdown = {item for item in direct if item.endswith(".md") and item.startswith("references/")}
+    for relative in sorted(actual - direct_markdown - registered_reference_cards):
         violations.append(
             Violation("active.orphan", relative, 1, "Markdown resource is not linked directly from SKILL.md")
         )
     for relative in sorted(direct_markdown - actual):
         violations.append(Violation("active.missing", "SKILL.md", 1, f"direct resource does not exist: {relative}"))
-
-
-def _check_owner_registry(root: Path, violations: list[Violation]) -> None:
-    registry_path = root / "references" / "owner-registry.json"
-    schema_path = root / "schemas" / "owner-registry.schema.json"
-    if not registry_path.exists() and not schema_path.exists():
-        return  # compatibility path for legacy/synthetic direct-link bundles
-    if not registry_path.is_file() or not schema_path.is_file():
-        violations.append(Violation("registry.missing", "references/owner-registry.json", 1, "registry and schema must be installed together"))
-        return
-    try:
-        registry = json.loads(registry_path.read_text(encoding="utf-8"))
-        schema = json.loads(schema_path.read_text(encoding="utf-8"))
-        for item in validate_registry(registry, schema, root):
-            violations.append(Violation(item.code, item.path or "references/owner-registry.json", 1, item.message))
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
-        violations.append(Violation("registry.schema", "references/owner-registry.json", 1, str(exc)))
 
 
 def _check_agent_metadata(root: Path, violations: list[Violation]) -> None:
@@ -439,7 +429,12 @@ def _check_links(root: Path, files: Iterable[Path], violations: list[Violation])
                 )
 
 
-def _check_markdown(root: Path, files: Iterable[Path], violations: list[Violation]) -> None:
+def _check_markdown(
+    root: Path,
+    files: Iterable[Path],
+    registered_reference_cards: set[str],
+    violations: list[Violation],
+) -> None:
     for path in files:
         text = path.read_text(encoding="utf-8")
         relative = path.relative_to(root).as_posix()
@@ -451,7 +446,11 @@ def _check_markdown(root: Path, files: Iterable[Path], violations: list[Violatio
                 )
         if text.count("```") % 2:
             violations.append(Violation("markdown.fence", relative, 1, "unbalanced fenced code block"))
-        if relative != "SKILL.md" and text.startswith("---\n"):
+        if (
+            relative != "SKILL.md"
+            and text.startswith("---\n")
+            and relative not in registered_reference_cards
+        ):
             violations.append(Violation("markdown.reference-frontmatter", relative, 1, "active reference has legacy frontmatter"))
         for marker, explanation in STALE_MARKERS.items():
             offset = text.find(marker)
@@ -484,25 +483,9 @@ def _check_markdown(root: Path, files: Iterable[Path], violations: list[Violatio
 
 
 def _check_version_recipes(root: Path, violations: list[Violation]) -> None:
-    registry_path = root / "references" / "owner-registry.json"
-    if not registry_path.is_file():
-        return
     legacy = root / "references" / "version-sensitive-recipes.md"
     if legacy.exists():
         violations.append(Violation("recipe.compatibility", "references/version-sensitive-recipes.md", 1, "legacy recipe aggregator must stay deleted"))
-    try:
-        registry = json.loads(registry_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return
-    owners = {owner.get("id"): owner for owner in registry.get("owners", []) if isinstance(owner, dict)}
-    for owner_id, (authority, role) in VERSION_RECIPE_OWNERS.items():
-        relative = f"references/{owner_id}.md"
-        if not (root / relative).is_file():
-            violations.append(Violation("recipe.missing", relative, 0, "split version-sensitive owner is missing"))
-            continue
-        owner = owners.get(owner_id)
-        if not isinstance(owner, dict) or owner.get("path") != relative or owner.get("authority") != authority or owner.get("role") != role:
-            violations.append(Violation("recipe.registry", relative, 1, "split version-sensitive owner metadata does not match registry v2"))
 
 
 def validate_decision_cases(data: Any) -> list[str]:
@@ -650,8 +633,7 @@ def validate_review_result(
         "schema_version",
         "code_review_verdict",
         "verification_status",
-        "merge_readiness",
-        "external_approvals",
+        "spec_traceability",
         "coverage",
         "blocking_reasons",
         "reviewed_base_sha",
@@ -662,8 +644,8 @@ def validate_review_result(
     missing = required - data.keys()
     if missing:
         errors.append(f"missing result fields: {sorted(missing)}")
-        if data.get("schema_version") == "1.0":
-            errors.append("schema_version 1.0 results require re-review against a frozen manifest")
+        if data.get("schema_version") in {"1.0", "2.0"}:
+            errors.append("pre-3.0 results require re-review against a frozen manifest")
         return errors
 
     manifest_context: dict[str, Any] | None = None
@@ -684,16 +666,40 @@ def validate_review_result(
 
     allowed_scope = set(manifest_context["snapshots"]) if manifest_context is not None else None
 
-    if data["schema_version"] != "2.0":
-        errors.append("schema_version must be '2.0'; version 1.0 results require re-review")
+    allowed_fields = required | {"summary", "positive_notes"}
+    unexpected = sorted(data.keys() - allowed_fields)
+    if unexpected:
+        errors.append(f"unexpected result fields: {unexpected}")
+
+    if data["schema_version"] != "3.0":
+        errors.append("schema_version must be '3.0'; earlier results require re-review")
     enums = {
         "code_review_verdict": {"pass", "changes_requested", "inconclusive"},
         "verification_status": {"passed", "failed", "partial", "not_run"},
-        "merge_readiness": {"ready", "blocked", "unknown", "not_applicable"},
-        "external_approvals": {"satisfied", "missing", "unknown", "not_applicable"},
     }
     for field, values in enums.items():
         validate_enum(field, values)
+
+    traceability = data["spec_traceability"]
+    if not isinstance(traceability, dict):
+        errors.append("spec_traceability must be an object")
+    else:
+        unexpected_traceability = sorted(traceability.keys() - {"status", "evidence_refs"})
+        if unexpected_traceability:
+            errors.append(f"unexpected spec_traceability fields: {unexpected_traceability}")
+        status = traceability.get("status")
+        allowed_traceability = {"complete", "partial", "not_assessed", "not_applicable"}
+        if not isinstance(status, str) or status not in allowed_traceability:
+            errors.append(f"spec_traceability.status must be one of {sorted(allowed_traceability)}")
+        evidence_refs = traceability.get("evidence_refs")
+        if not isinstance(evidence_refs, list):
+            errors.append("spec_traceability.evidence_refs must be a list")
+        else:
+            for index, ref in enumerate(evidence_refs):
+                if not _is_nonempty_string(ref):
+                    errors.append(f"spec_traceability.evidence_refs[{index}] must be a non-empty string")
+            if status in {"complete", "partial"} and not evidence_refs:
+                errors.append(f"spec_traceability.status={status} requires evidence_refs")
 
     for field in ("reviewed_base_sha", "reviewed_head_sha", "reviewed_scope_hash"):
         if not _is_nonempty_string(data[field]):
@@ -723,7 +729,6 @@ def validate_review_result(
         coverage = data["coverage"]
     coverage_statuses: list[str] = []
     coverage_paths: list[str] = []
-    coverage_snapshots_valid = 0
     for index, item in enumerate(coverage):
         if not isinstance(item, dict):
             errors.append(f"coverage[{index}] must be an object")
@@ -731,6 +736,9 @@ def validate_review_result(
         if not {"path", "status", "snapshot_id"} <= item.keys():
             errors.append(f"coverage[{index}] requires path, status, and snapshot_id")
             continue
+        unexpected_coverage = sorted(item.keys() - {"path", "status", "snapshot_id", "sampling_note"})
+        if unexpected_coverage:
+            errors.append(f"coverage[{index}] has unexpected fields: {unexpected_coverage}")
 
         path_value = item["path"]
         if not _is_nonempty_string(path_value):
@@ -749,8 +757,6 @@ def validate_review_result(
                 errors.append(
                     f"coverage[{index}].snapshot_id does not match the frozen scope manifest"
                 )
-            elif expected_snapshot is not None:
-                coverage_snapshots_valid += 1
 
         status_value = item["status"]
         allowed_coverage = {"full", "sampled", "not_reviewed"}
@@ -758,6 +764,8 @@ def validate_review_result(
             errors.append(f"coverage[{index}].status must be one of {sorted(allowed_coverage)}")
         else:
             coverage_statuses.append(status_value)
+            if status_value == "sampled" and not _is_nonempty_string(item.get("sampling_note")):
+                errors.append(f"coverage[{index}].sampling_note is required for sampled coverage")
 
     duplicate_coverage = sorted(
         item for item, count in Counter(coverage_paths).items() if count > 1
@@ -879,43 +887,6 @@ def validate_review_result(
     if "not_reviewed" in coverage_statuses and data["code_review_verdict"] == "pass":
         errors.append("not_reviewed coverage conflicts with code_review_verdict=pass")
 
-    manifest_fresh = bool(
-        manifest_context is not None
-        and _is_nonempty_string(current_head)
-        and current_head == manifest_context["head_revision"]
-        and _is_nonempty_string(current_scope_hash)
-        and current_scope_hash == manifest_context["scope_hash"]
-        and data["reviewed_base_sha"] == manifest_context["base_revision"]
-        and data["reviewed_head_sha"] == manifest_context["head_revision"]
-        and data["reviewed_scope_hash"] == manifest_context["scope_hash"]
-    )
-    ready = data["merge_readiness"] == "ready"
-    if ready:
-        if data["code_review_verdict"] != "pass":
-            errors.append("merge_readiness=ready requires code_review_verdict=pass")
-        if blocking_reasons:
-            errors.append("merge_readiness=ready requires no blocking_reasons")
-        if blocking:
-            errors.append("merge_readiness=ready conflicts with a blocking finding")
-        if (
-            not coverage
-            or len(coverage_statuses) != len(coverage)
-            or coverage_snapshots_valid != len(coverage)
-            or any(status != "full" for status in coverage_statuses)
-        ):
-            errors.append("merge_readiness=ready requires non-empty full coverage")
-        if data["verification_status"] != "passed":
-            errors.append("merge_readiness=ready requires verification_status=passed")
-        if not isinstance(data["external_approvals"], str) or data["external_approvals"] not in {
-            "satisfied",
-            "not_applicable",
-        }:
-            errors.append(
-                "merge_readiness=ready conflicts with missing or unknown external approvals"
-            )
-        if not manifest_fresh:
-            errors.append("merge_readiness=ready requires the frozen scope manifest to remain current")
-
     if (
         manifest_context is not None
         and _is_nonempty_string(current_head)
@@ -930,11 +901,11 @@ def validate_skill(root: Path) -> list[Violation]:
     violations: list[Violation] = []
     direct = _check_skill_entry(root, violations)
     files = markdown_files(root)
-    _check_active_set(root, direct, violations)
-    _check_owner_registry(root, violations)
+    registered_reference_cards = _registered_reference_cards(root, violations)
+    _check_active_set(root, direct, registered_reference_cards, violations)
     _check_agent_metadata(root, violations)
     _check_links(root, files, violations)
-    _check_markdown(root, files, violations)
+    _check_markdown(root, files, registered_reference_cards, violations)
     _check_version_recipes(root, violations)
     _check_decision_fixture(root, violations)
     return sorted(set(violations))
@@ -995,7 +966,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if len(errors) > 12:
                 print(f"  ... {len(errors) - 12} more")
             return 1
-        print("OK: review result satisfies schema 2.0")
+        print("OK: local review result satisfies schema 3.0")
         return 0
     violations = validate_skill(args.root)
     if violations:
