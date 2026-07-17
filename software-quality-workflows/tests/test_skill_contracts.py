@@ -365,6 +365,7 @@ class SkillContractTests(unittest.TestCase):
                 line
                 for line in entry.splitlines()
                 if "](references/" not in line
+                or "](references/package-support-map.md)" in line
             ) + "\n"
             (root / "SKILL.md").write_text(compact_entry, encoding="utf-8")
             violations = validator.validate_skill(root)

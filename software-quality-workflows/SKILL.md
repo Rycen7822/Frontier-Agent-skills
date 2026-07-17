@@ -54,7 +54,7 @@ Review depth is independent: **R0** self-diff + verifier; **R1** requirements + 
 
 ## Policy ownership
 
-`registries/policy-owners.json` solely owns policy; the generated card manifest solely owns card ID/path/hash/edges. Schemas/scripts own machine truth, cards one model decision, and `operator/` non-model mechanics. Paths are not policy identity.
+Policy: `registries/policy-owners.json`; card ID/path/hash/edges: generated manifest. Use the [support map](references/package-support-map.md) only for lookup; do not preload it. Schemas/scripts own machine truth; cards decide; `operator/` non-model mechanics.
 
 Never choose a card by filename, memory, keyword similarity, or directory scan. Bundle, policy, or manifest mismatch fails closed. A card missing from the generated manifest is not active.
 
