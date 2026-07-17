@@ -16,6 +16,10 @@ CORE_CLOSURE = re.compile(
     + r"|closure[-_ ](?:admission|contract|phase|artifact|state|event)",
     re.IGNORECASE,
 )
+CORE_GRAPH = re.compile(
+    r"neigh" + r"bor|max_active_" + r"neigh" + r"bors|reference-card-" + r"graph|edge-" + r"golden",
+    re.IGNORECASE,
+)
 
 
 class AtomicCutoverContractTests(unittest.TestCase):
@@ -70,10 +74,15 @@ class AtomicCutoverContractTests(unittest.TestCase):
                     text = path.read_text(encoding="utf-8")
                 except UnicodeDecodeError:
                     continue
-                if CORE_CLOSURE.search(text) or "closure" in path.relative_to(ROOT / skill).parts:
+                if (
+                    CORE_CLOSURE.search(text)
+                    or CORE_GRAPH.search(text)
+                    or "closure" in path.relative_to(ROOT / skill).parts
+                ):
                     residuals.append(path.relative_to(ROOT).as_posix())
         for path in (ROOT / "bundle-manifest.json", ROOT / "frontier-engineering.bundle.json"):
-            if CORE_CLOSURE.search(path.read_text(encoding="utf-8")):
+            text = path.read_text(encoding="utf-8")
+            if CORE_CLOSURE.search(text) or CORE_GRAPH.search(text):
                 residuals.append(path.relative_to(ROOT).as_posix())
         self.assertEqual([], residuals)
 
