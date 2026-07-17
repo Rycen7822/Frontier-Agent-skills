@@ -1,25 +1,48 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://local.frontier-agent/schemas/offline-route-replay.schema.json",
-  "title": "vNext deterministic offline route replay",
+  "title": "Outcome-linked deterministic route replay",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "baseline", "vnext", "case_count", "rows", "metrics",
-    "gates", "decision", "limitations", "report_hash"
+    "schema_version", "diagnostic_classification", "baseline", "vnext", "input_bindings",
+    "case_count", "selection_rows", "protected_rows", "entry_rows", "sequence_rows",
+    "metrics", "gates", "decision", "limitations", "report_hash"
   ],
   "properties": {
-    "schema_version": {"const": "offline-route-replay/1.0"},
+    "schema_version": {"const": "offline-route-replay/2.0"},
+    "diagnostic_classification": {"const": "deterministic_diagnostic"},
     "baseline": {"$ref": "#/$defs/baseline_source"},
     "vnext": {"$ref": "#/$defs/candidate_source"},
-    "case_count": {"type": "integer", "minimum": 1, "maximum": 256},
-    "rows": {
-      "type": "array", "minItems": 1, "maxItems": 256,
-      "items": {"$ref": "#/$defs/row"}
+    "input_bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["writing-plans", "software-quality-workflows"],
+      "properties": {
+        "writing-plans": {"$ref": "#/$defs/input_binding"},
+        "software-quality-workflows": {"$ref": "#/$defs/input_binding"}
+      }
+    },
+    "case_count": {"type": "integer", "minimum": 1, "maximum": 512},
+    "selection_rows": {
+      "type": "array", "minItems": 62, "maxItems": 62, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/selection_row"}
+    },
+    "protected_rows": {
+      "type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/protected_row"}
+    },
+    "entry_rows": {
+      "type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/entry_row"}
+    },
+    "sequence_rows": {
+      "type": "array", "minItems": 2, "maxItems": 64, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/sequence_row"}
     },
     "metrics": {"$ref": "#/$defs/metrics"},
     "gates": {"$ref": "#/$defs/gates"},
-    "decision": {"enum": ["deterministic_route_ready", "deterministic_route_blocked"]},
+    "decision": {"enum": ["deterministic_sequence_ready", "deterministic_sequence_blocked"]},
     "limitations": {
       "type": "array", "minItems": 3, "maxItems": 16, "uniqueItems": true,
       "items": {"type": "string", "minLength": 1, "maxLength": 256}
@@ -28,6 +51,16 @@
   },
   "$defs": {
     "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nullable_string": {"type": ["string", "null"]},
+    "skill_id": {"enum": ["software-quality-workflows", "writing-plans"]},
+    "skill_versions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["software-quality-workflows", "writing-plans"],
+      "properties": {
+        "software-quality-workflows": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "writing-plans": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}
+      }
+    },
     "baseline_source": {
       "type": "object", "additionalProperties": false,
       "required": ["identity", "source_archive_hash", "skill_versions"],
@@ -47,70 +80,165 @@
         "skill_versions": {"$ref": "#/$defs/skill_versions"}
       }
     },
-    "skill_versions": {
-      "type": "object", "additionalProperties": false,
-      "required": ["software-quality-workflows", "writing-plans"],
-      "properties": {
-        "software-quality-workflows": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
-        "writing-plans": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}
-      }
-    },
-    "row": {
+    "input_binding": {
       "type": "object", "additionalProperties": false,
       "required": [
-        "pair_id", "skill_id", "baseline_case_id", "vnext_case_id",
-        "baseline_reference_bytes", "vnext_reference_bytes", "vnext_active_cards",
-        "vnext_mode", "primary_card_exact", "mandatory_truncation_count"
+        "skill_version", "router_hash", "decision_map_hash", "card_manifest_hash",
+        "decision_case_fixture_hash", "sequence_fixture_hash"
       ],
       "properties": {
-        "pair_id": {"type": "string", "pattern": "^(?:sqw|wp)-[a-z0-9-]+$"},
-        "skill_id": {"enum": ["software-quality-workflows", "writing-plans"]},
-        "baseline_case_id": {"type": "string", "minLength": 1, "maxLength": 128},
-        "vnext_case_id": {"type": "string", "minLength": 1, "maxLength": 128},
-        "baseline_reference_bytes": {"type": "integer", "minimum": 0},
-        "vnext_reference_bytes": {"type": "integer", "minimum": 0},
-        "vnext_active_cards": {"type": "integer", "minimum": 0, "maximum": 1},
-        "vnext_mode": {"type": "string", "minLength": 1, "maxLength": 64},
-        "primary_card_exact": {"type": "boolean"},
-        "mandatory_truncation_count": {"const": 0}
+        "skill_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "router_hash": {"$ref": "#/$defs/hash"},
+        "decision_map_hash": {"$ref": "#/$defs/hash"},
+        "card_manifest_hash": {"$ref": "#/$defs/hash"},
+        "decision_case_fixture_hash": {"$ref": "#/$defs/hash"},
+        "sequence_fixture_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "selection_row": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "case_id", "skill_id", "expected_decision_id", "actual_decision_id",
+        "expected_card_id", "actual_card_id", "decision_exact", "card_exact",
+        "active_card_count", "active_bytes"
+      ],
+      "properties": {
+        "case_id": {"type": "string", "minLength": 1},
+        "skill_id": {"$ref": "#/$defs/skill_id"},
+        "expected_decision_id": {"type": "string", "minLength": 1},
+        "actual_decision_id": {"$ref": "#/$defs/nullable_string"},
+        "expected_card_id": {"type": "string", "minLength": 1},
+        "actual_card_id": {"$ref": "#/$defs/nullable_string"},
+        "decision_exact": {"type": "boolean"},
+        "card_exact": {"type": "boolean"},
+        "active_card_count": {"type": "integer", "minimum": 0, "maximum": 1},
+        "active_bytes": {"type": "integer", "minimum": 0, "maximum": 8192}
+      }
+    },
+    "protected_row": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "case_id", "skill_id", "kind", "expected_decision_id", "expected_card_id",
+        "excluded_card_id", "actual_decision_id", "actual_card_id", "expected_reason",
+        "actual_reason", "protected_pass", "active_card_count", "active_bytes"
+      ],
+      "properties": {
+        "case_id": {"type": "string", "minLength": 1},
+        "skill_id": {"$ref": "#/$defs/skill_id"},
+        "kind": {"enum": ["near_miss", "negative"]},
+        "expected_decision_id": {"$ref": "#/$defs/nullable_string"},
+        "expected_card_id": {"$ref": "#/$defs/nullable_string"},
+        "excluded_card_id": {"$ref": "#/$defs/nullable_string"},
+        "actual_decision_id": {"$ref": "#/$defs/nullable_string"},
+        "actual_card_id": {"$ref": "#/$defs/nullable_string"},
+        "expected_reason": {"$ref": "#/$defs/nullable_string"},
+        "actual_reason": {"$ref": "#/$defs/nullable_string"},
+        "protected_pass": {"type": "boolean"},
+        "active_card_count": {"type": "integer", "minimum": 0, "maximum": 1},
+        "active_bytes": {"type": "integer", "minimum": 0, "maximum": 8192}
+      }
+    },
+    "entry_row": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "case_id", "skill_id", "expected_action", "actual_action", "expected_owner",
+        "actual_owner", "expected_decision_id", "actual_decision_id", "expected_card_id",
+        "actual_card_id", "entry_exact", "active_card_count", "active_bytes"
+      ],
+      "properties": {
+        "case_id": {"type": "string", "minLength": 1},
+        "skill_id": {"$ref": "#/$defs/skill_id"},
+        "expected_action": {"type": "string", "minLength": 1},
+        "actual_action": {"type": "string", "minLength": 1},
+        "expected_owner": {"$ref": "#/$defs/nullable_string"},
+        "actual_owner": {"$ref": "#/$defs/nullable_string"},
+        "expected_decision_id": {"$ref": "#/$defs/nullable_string"},
+        "actual_decision_id": {"$ref": "#/$defs/nullable_string"},
+        "expected_card_id": {"$ref": "#/$defs/nullable_string"},
+        "actual_card_id": {"$ref": "#/$defs/nullable_string"},
+        "entry_exact": {"type": "boolean"},
+        "active_card_count": {"type": "integer", "minimum": 0, "maximum": 1},
+        "active_bytes": {"type": "integer", "minimum": 0, "maximum": 8192}
+      }
+    },
+    "sequence_row": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "sequence_id", "skill_id", "step_count", "selected_card_ids", "active_bytes_per_step",
+        "total_active_bytes", "unnecessary_card_loads", "terminal_status", "terminal_owner",
+        "terminal_complete"
+      ],
+      "properties": {
+        "sequence_id": {"type": "string", "minLength": 1},
+        "skill_id": {"$ref": "#/$defs/skill_id"},
+        "step_count": {"type": "integer", "minimum": 1, "maximum": 64},
+        "selected_card_ids": {
+          "type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "active_bytes_per_step": {
+          "type": "array", "minItems": 1, "maxItems": 64,
+          "items": {"type": "integer", "minimum": 0, "maximum": 8192}
+        },
+        "total_active_bytes": {"type": "integer", "minimum": 0},
+        "unnecessary_card_loads": {"type": "integer", "minimum": 0},
+        "terminal_status": {"const": "completed"},
+        "terminal_owner": {"$ref": "#/$defs/nullable_string"},
+        "terminal_complete": {"type": "boolean"}
+      }
+    },
+    "distribution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["minimum", "median", "p95", "maximum"],
+      "properties": {
+        "minimum": {"type": "integer", "minimum": 0},
+        "median": {"type": "number", "minimum": 0},
+        "p95": {"type": "integer", "minimum": 0},
+        "maximum": {"type": "integer", "minimum": 0}
       }
     },
     "metrics": {
       "type": "object", "additionalProperties": false,
       "required": [
-        "curated_primary_card_accuracy", "hidden_primary_card_accuracy",
-        "median_active_reference_bytes", "p95_active_reference_bytes",
-        "m0_median_active_reference_bytes", "m0_p95_active_reference_bytes",
-        "unnecessary_card_load_rate", "mandatory_context_truncation_count",
-        "baseline_median_reference_bytes", "median_reference_byte_reduction"
+        "active_card_count", "active_card_coverage_count", "entry_accuracy", "decision_precision",
+        "decision_recall", "terminal_path_completion", "unnecessary_card_loads",
+        "per_step_active_bytes", "sequence_total_active_bytes", "protected_negative_count",
+        "protected_negative_pass_rate", "near_miss_unloaded_count", "negative_unloaded_count"
       ],
       "properties": {
-        "curated_primary_card_accuracy": {"type": "number", "minimum": 0, "maximum": 1},
-        "hidden_primary_card_accuracy": {"type": "null"},
-        "median_active_reference_bytes": {"type": "number", "minimum": 0},
-        "p95_active_reference_bytes": {"type": "integer", "minimum": 0},
-        "m0_median_active_reference_bytes": {"type": "number", "minimum": 0},
-        "m0_p95_active_reference_bytes": {"type": "integer", "minimum": 0},
-        "unnecessary_card_load_rate": {"type": "number", "minimum": 0, "maximum": 1},
-        "mandatory_context_truncation_count": {"const": 0},
-        "baseline_median_reference_bytes": {"type": "number", "minimum": 0},
-        "median_reference_byte_reduction": {"type": "number", "minimum": -10, "maximum": 1}
+        "active_card_count": {"const": 62},
+        "active_card_coverage_count": {"type": "integer", "minimum": 0, "maximum": 62},
+        "entry_accuracy": {"type": "number", "minimum": 0, "maximum": 1},
+        "decision_precision": {"type": "number", "minimum": 0, "maximum": 1},
+        "decision_recall": {"type": "number", "minimum": 0, "maximum": 1},
+        "terminal_path_completion": {"type": "number", "minimum": 0, "maximum": 1},
+        "unnecessary_card_loads": {"type": "integer", "minimum": 0},
+        "per_step_active_bytes": {"$ref": "#/$defs/distribution"},
+        "sequence_total_active_bytes": {"$ref": "#/$defs/distribution"},
+        "protected_negative_count": {"type": "integer", "minimum": 1},
+        "protected_negative_pass_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "near_miss_unloaded_count": {"type": "integer", "minimum": 0},
+        "negative_unloaded_count": {"type": "integer", "minimum": 0}
       }
     },
     "gates": {
       "type": "object", "additionalProperties": false,
       "required": [
-        "curated_primary_card_accuracy", "m0_median_active_reference_bytes",
-        "m0_p95_active_reference_bytes", "unnecessary_card_load_rate",
-        "mandatory_context_truncation", "reference_byte_reduction"
+        "active_card_coverage", "entry_accuracy", "decision_precision", "decision_recall",
+        "terminal_path_completion", "protected_negative_pass_rate", "unnecessary_card_loads",
+        "per_step_active_bytes", "near_miss_selectors_unloaded", "negative_selectors_unloaded"
       ],
       "properties": {
-        "curated_primary_card_accuracy": {"type": "boolean"},
-        "m0_median_active_reference_bytes": {"type": "boolean"},
-        "m0_p95_active_reference_bytes": {"type": "boolean"},
-        "unnecessary_card_load_rate": {"type": "boolean"},
-        "mandatory_context_truncation": {"type": "boolean"},
-        "reference_byte_reduction": {"type": "boolean"}
+        "active_card_coverage": {"type": "boolean"},
+        "entry_accuracy": {"type": "boolean"},
+        "decision_precision": {"type": "boolean"},
+        "decision_recall": {"type": "boolean"},
+        "terminal_path_completion": {"type": "boolean"},
+        "protected_negative_pass_rate": {"type": "boolean"},
+        "unnecessary_card_loads": {"type": "boolean"},
+        "per_step_active_bytes": {"type": "boolean"},
+        "near_miss_selectors_unloaded": {"type": "boolean"},
+        "negative_selectors_unloaded": {"type": "boolean"}
       }
     }
   }

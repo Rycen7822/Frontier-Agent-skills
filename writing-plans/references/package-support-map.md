@@ -71,8 +71,10 @@
 ## tests
 
 - [`tests/fixtures/decision-route-cases-v5.json` · `sha256:467ba88fc938636074adb6735a8e8582c4e6c0ae3e906416c7e74da5f164d796`](../tests/fixtures/decision-route-cases-v5.json)
+- [`tests/fixtures/plan-route-sequences.json` · `sha256:16ecfa839f1307d9556dc5408048e907e09df594ca92125065c43afcc752eda3`](../tests/fixtures/plan-route-sequences.json)
 - [`tests/fixtures/plan-state/invalid-cases.json` · `sha256:986e0ebb213456480c0708e1eeaa4a1498aed9209c47406049fbc2758fba2a4f`](../tests/fixtures/plan-state/invalid-cases.json)
 - [`tests/fixtures/plan-state/valid-program.json` · `sha256:4e485306eaa1e4c128837d21a5f37c6e7441a6fd3f88464a8b533a4a2ee6e41e`](../tests/fixtures/plan-state/valid-program.json)
+- [`tests/test_decision_card_map.py` · `sha256:18abb396f9adaa41b8e97502bf495397c77e81da7b085ac4614eb896076db1cf`](../tests/test_decision_card_map.py)
 - [`tests/test_decision_protocol_v5.py` · `sha256:d41c8b403db8e5e23d25cdace2e155e121ff387f75b03f5e525b462f7e6f512e`](../tests/test_decision_protocol_v5.py)
 - [`tests/test_package_support_map.py` · `sha256:ee5850a4bb51ed51d115f7bc420dc4c1beac4ba8dca6e407e3484af484bdf620`](../tests/test_package_support_map.py)
 - [`tests/test_plan_state.py` · `sha256:ddefa8faee653843cd2b69ca11c594ad7943666da896fd151fc8cb16c731bbc5`](../tests/test_plan_state.py)

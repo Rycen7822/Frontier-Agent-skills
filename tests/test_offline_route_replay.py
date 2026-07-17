@@ -24,7 +24,7 @@ SPEC.loader.exec_module(replay)
 
 
 class OfflineRouteReplayTests(unittest.TestCase):
-    """Task 1 C1 regressions for a content-bound, HEAD-invariant tracked report."""
+    """C1/C5 regressions for a content-bound, HEAD-invariant sequence report."""
 
     @staticmethod
     def _rendered(report: dict[str, object]) -> bytes:
@@ -39,10 +39,18 @@ class OfflineRouteReplayTests(unittest.TestCase):
         )
         Draft202012Validator.check_schema(schema)
         self.assertEqual([], list(Draft202012Validator(schema).iter_errors(checked)))
-        self.assertEqual("deterministic_route_ready", checked["decision"])
+        self.assertEqual("offline-route-replay/2.0", checked["schema_version"])
+        self.assertEqual("deterministic_diagnostic", checked["diagnostic_classification"])
+        self.assertEqual("deterministic_sequence_ready", checked["decision"])
         self.assertTrue(all(checked["gates"].values()))
-        self.assertIsNone(checked["metrics"]["hidden_primary_card_accuracy"])
+        self.assertEqual((62, 62), (
+            checked["metrics"]["active_card_coverage_count"], checked["metrics"]["active_card_count"],
+        ))
         self.assertIn("natural model routing and outcome quality require real Sol max runs", checked["limitations"])
+        self.assertIn(
+            "sequence total active bytes are a diagnostic distribution, not an external context budget",
+            checked["limitations"],
+        )
 
     def test_git_head_is_not_part_of_tracked_payload(self) -> None:
         original_run = subprocess.run
@@ -71,6 +79,14 @@ class OfflineRouteReplayTests(unittest.TestCase):
             {"identity", "bundle_build_id", "bundle_manifest_hash", "skill_versions"},
             set(report["vnext"]),
         )
+        self.assertEqual({"writing-plans", "software-quality-workflows"}, set(report["input_bindings"]))
+        self.assertEqual(
+            {
+                "skill_version", "router_hash", "decision_map_hash", "card_manifest_hash",
+                "decision_case_fixture_hash", "sequence_fixture_hash",
+            },
+            set(report["input_bindings"]["writing-plans"]),
+        )
         self.assertEqual(
             "sha256:09d1ac63e98b2849c648c608baf9d0a4b4e332683d47b263543991be1f2b0166",
             report["baseline"]["source_archive_hash"],
@@ -86,6 +102,29 @@ class OfflineRouteReplayTests(unittest.TestCase):
             (ROOT / "evaluation" / "schemas" / "offline-route-replay.schema.json").read_text(encoding="utf-8")
         )
         self.assertNotIn("revision", json.dumps(schema, sort_keys=True))
+
+    def test_decision_map_and_card_identity_changes_invalidate_checked_replay(self) -> None:
+        original = replay.build_report()
+        original_hash = replay._content_hash
+        targets = (
+            ROOT / "writing-plans" / "registries" / "decision-card-map.json",
+            ROOT / "software-quality-workflows" / "registries" / "reference-cards.manifest.json",
+        )
+        for target in targets:
+            with self.subTest(target=target.relative_to(ROOT)):
+                def changed_hash(path: Path) -> str:
+                    return "sha256:" + "0" * 64 if path == target else original_hash(path)
+
+                with tempfile.TemporaryDirectory() as directory_name:
+                    checked_report = Path(directory_name) / "offline-route-replay.json"
+                    checked_report.write_bytes(self._rendered(original))
+                    with mock.patch.object(replay, "_content_hash", side_effect=changed_hash):
+                        changed = replay.build_report()
+                        self.assertNotEqual(original["report_hash"], changed["report_hash"])
+                        output = io.StringIO()
+                        with redirect_stdout(output):
+                            self.assertEqual(2, replay.main(["--check", "--output", str(checked_report)]))
+                        self.assertIn("missing or stale", output.getvalue())
 
     def test_bound_source_and_manifest_change_report_and_fail_check(self) -> None:
         original = replay.build_report()
@@ -131,11 +170,15 @@ class OfflineRouteReplayTests(unittest.TestCase):
             report["baseline"]["skill_versions"],
         )
         self.assertEqual(
-            {"software-quality-workflows": "5.0.0", "writing-plans": "4.0.0"},
+            {"software-quality-workflows": "6.0.0", "writing-plans": "5.0.0"},
             report["vnext"]["skill_versions"],
         )
-        self.assertEqual(len(report["rows"]), len({row["pair_id"] for row in report["rows"]}))
-        self.assertTrue(all(row["vnext_active_cards"] <= 1 for row in report["rows"]))
+        self.assertEqual(62, len(report["selection_rows"]))
+        self.assertEqual(62, len({row["case_id"] for row in report["selection_rows"]}))
+        self.assertTrue(all(row["active_card_count"] <= 1 for row in report["selection_rows"]))
+        self.assertEqual(report["case_count"], sum(len(report[key]) for key in (
+            "selection_rows", "protected_rows", "entry_rows", "sequence_rows",
+        )))
 
 
 if __name__ == "__main__":
