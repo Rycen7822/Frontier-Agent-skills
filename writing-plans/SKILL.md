@@ -50,7 +50,7 @@ Build Program state only after freeze. It binds the exact contract ID/epoch/hash
 
 Load the selected card, verify it against `registries/reference-cards.manifest.json`, and make only its named decision. Follow at most one evidence-supported neighbor. Emit its artifact or typed blocker, then reroute. Do not preload siblings, operator manuals, or directories.
 
-Cards own model decisions. Schemas/scripts own machine truth. `operator/` owns runtime mechanics and is never part of the model card graph. Templates are projections, not policy owners. Record policy claims as stable `policy_id + bundle_version + policy_hash`, never as a Markdown path.
+Use the [support map](references/package-support-map.md) only for lookup; do not preload it. Cards decide; schemas/scripts own machine truth; `operator/` non-model runtime; templates projections. Policies: `policy_id + bundle_version + policy_hash`, never paths.
 
 If context is approaching its limit, persist canonical state and render a node capsule with `scripts/render_context_capsule.py`; do not write a prose substitute. Manifest/card drift invalidates only such generated context, while source/scope/contract/root-policy drift requires wider replanning.
 

@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 
 from _writing_reference_cards import ContractIssue, build_manifest, canonical_json_bytes, issue_payload, load_json
+from build_reference_manifest import MANIFEST_RELATIVE, SUPPORT_MAP, build_support_map
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,9 +18,13 @@ MANIFEST = ROOT / "registries" / "reference-cards.manifest.json"
 def main() -> int:
     try:
         expected, issues = build_manifest(ROOT)
+        expected_bytes = canonical_json_bytes(expected)
         actual = load_json(MANIFEST)
-        if canonical_json_bytes(actual) != canonical_json_bytes(expected):
+        if canonical_json_bytes(actual) != expected_bytes:
             issues.append(ContractIssue("manifest.stale", str(MANIFEST), "manifest does not match card bytes"))
+        expected_support = build_support_map(ROOT, {MANIFEST_RELATIVE: expected_bytes})
+        if not SUPPORT_MAP.is_file() or SUPPORT_MAP.is_symlink() or SUPPORT_MAP.read_bytes() != expected_support:
+            issues.append(ContractIssue("support-map.stale", str(SUPPORT_MAP), "support map does not match formal inventory bytes"))
     except (OSError, ValueError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
         return 2
