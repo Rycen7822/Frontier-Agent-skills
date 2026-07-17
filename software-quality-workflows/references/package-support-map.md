@@ -114,7 +114,7 @@
 ## operator
 
 - [`operator/context-projection.md` · `sha256:0cd348bb5f1ca8f75be633fc9bd374055958e618b7df9a2235a395bad376e4d2`](../operator/context-projection.md)
-- [`operator/context/projection-runtime.md` · `sha256:1de0781d0c4b1736b00996418d94c46bd792a0533cc0ea733ac708943e0a713c`](../operator/context/projection-runtime.md)
+- [`operator/context/projection-runtime.md` · `sha256:e53a527ebec796bf96da3a8eed7e91911bc10a7bc5d249a64eff7be00a37a841`](../operator/context/projection-runtime.md)
 - [`operator/delegation/shared-ledger-runtime.md` · `sha256:4ee95fb6a77524fff8d3e2dd5ca91180c1847353c4f94a8322301d70f53e3b30`](../operator/delegation/shared-ledger-runtime.md)
 - [`operator/design-discovery/design-discovery-upstream-license.txt` · `sha256:a37e0e9697144819e1d965176ac4ae5bc3fa02d11e7812036bbcadf6dafe2400`](../operator/design-discovery/design-discovery-upstream-license.txt)
 - [`operator/design-discovery/frame-template.html` · `sha256:688506a0afa0b2f05fdd503ed8596a9b1454b92f4530a5565a9a9370a96a382c`](../operator/design-discovery/frame-template.html)
@@ -137,7 +137,7 @@
 - [`tests/fixtures/workflow-state/valid-m2.json` · `sha256:688caa12fa4cd422449998d5f19ab87fcd8855de76297fbfb19df4ca8d870093`](../tests/fixtures/workflow-state/valid-m2.json)
 - [`tests/test_cross_skill_integration.py` · `sha256:44816fbed86eeba87c5fb1763a92ca51129c0a790ae689d3924bf0bb12432be3`](../tests/test_cross_skill_integration.py)
 - [`tests/test_decision_card_map.py` · `sha256:7a7de92cee7a660c823181e277de7063a09389f2d92aaaa063f9131149e9ff46`](../tests/test_decision_card_map.py)
-- [`tests/test_decision_protocol_v6.py` · `sha256:344e030470d2755527eeb54adb94c75c0fce65fb7ec837beb59d4305ff11987e`](../tests/test_decision_protocol_v6.py)
+- [`tests/test_decision_protocol_v6.py` · `sha256:782e471b505636844e1d5b1b26dc38aeb12763428b8bed5a0614d7d9121000a6`](../tests/test_decision_protocol_v6.py)
 - [`tests/test_design_discovery_runtime.py` · `sha256:82a94a46ea48c57832bcb649f3d1e4609a20bec4aa257c929e91b491fa8cdcea`](../tests/test_design_discovery_runtime.py)
 - [`tests/test_package_support_map.py` · `sha256:524e6160f16ce749f5497dbf71ecb43204b9fb660073313f665439d780cd6a8a`](../tests/test_package_support_map.py)
 - [`tests/test_skill_contracts.py` · `sha256:ad55ca8adf3ebdc81ef62c01b7ee0734c5415fb8615f611db3b1be36ca18775d`](../tests/test_skill_contracts.py)

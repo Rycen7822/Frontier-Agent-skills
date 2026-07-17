@@ -28,7 +28,7 @@ Observe facts; do not infer missing safety facts. Run `scripts/assess_plan_mode.
 
 Fixed precedence: unknown root cause or material intent gap returns to SQW; long corpus selects its bridge; one feasibility uncertainty selects spike; public contract, migration, resume, external effect, or multiple strategy families select Program; cross-context, durable, multi-slice, or copy-paste execution selects Handoff; an explicit plan request selects Brief; otherwise return Direct.
 
-Accept exactly zero or one `primary_card` transport reference. Pending decisions enter the queue only through a schema-valid `decision_request` produced by the just-completed mapped card. Unknown, duplicate, completed, producer-mismatched, or prerequisite-missing decisions block with a typed reason. Never choose a card by filename, memory, neighbor link, or broad similarity.
+Accept exactly zero or one `primary_card` transport reference. Pending decisions enter the queue only through a schema-valid `decision_request` produced by the just-completed mapped card. Unknown, duplicate, completed, producer-mismatched, or prerequisite-missing decisions block with a typed reason. Never choose a card by filename, memory, cross-card link, or broad similarity.
 
 ## Profile selection
 

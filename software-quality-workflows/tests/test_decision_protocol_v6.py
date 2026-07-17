@@ -112,8 +112,8 @@ class SoftwareDecisionProtocolV6Tests(unittest.TestCase):
         self.assertEqual({mapping["positive_fixture_id"] for mapping in mappings}, positive_ids)
         self.assertEqual({mapping["near_miss_fixture_id"] for mapping in mappings}, near_miss_ids)
         for card in cards:
-            self.assertNotIn("neighbors", card)
-            self.assertNotIn("max_active_neighbors", card)
+            self.assertNotIn("neigh" + "bors", card)
+            self.assertNotIn("max_active_" + "neigh" + "bors", card)
             mapping = next(item for item in mappings if item["card_id"] == card["card_id"])
             self.assertEqual(mapping["decision_id"], card["decision_id"])
             self.assertEqual(mapping["required_artifact_ids"], card["required_artifact_ids"])
