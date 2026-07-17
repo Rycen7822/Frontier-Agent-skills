@@ -1,57 +1,35 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://frontier-agent-skills.local/software-quality-workflows/route-result.schema.json",
-  "title": "SQW Route Result",
+  "title": "Software Quality Workflows decision route result",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version",
-    "route_action",
-    "workflow_mode",
-    "execution_policy",
-    "selection_stage",
-    "selected_decision_id",
-    "primary_owner_id",
-    "primary_card",
-    "fact_projection",
-    "required_artifact_projection_ids",
-    "reason_codes",
-    "admission_ref"
+    "schema_version", "route_action", "route_owner", "selected_decision_id",
+    "primary_card", "required_artifact_ids", "reason_codes"
   ],
   "properties": {
-    "schema_version": {"const": "1.0"},
-    "route_action": {"enum": ["EXECUTE", "ASSESS_CLOSURE", "EMIT_TERMINAL"]},
-    "workflow_mode": {"enum": [null, "M0_DIRECT", "M1_TRACE", "M2_SPARSE", "M3_FULL"]},
-    "execution_policy": {"enum": [null, "standard", "autonomous_closure"]},
-    "selection_stage": {"type": "string", "minLength": 1},
-    "selected_decision_id": {"type": "string", "minLength": 1},
-    "primary_owner_id": {"type": ["string", "null"], "minLength": 1},
-    "primary_card": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/card_ref"}]},
-    "fact_projection": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["request_mode", "root_cause_status", "implicated_surfaces"],
-      "properties": {
-        "request_mode": {"enum": ["change", "report", "review", "recovery", "plan"]},
-        "root_cause_status": {"enum": ["known", "unknown", "not_applicable"]},
-        "implicated_surfaces": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
-      }
+    "schema_version": {"const": "2.0"},
+    "route_action": {"enum": ["select_card", "handoff", "terminal", "blocked"]},
+    "route_owner": {"enum": ["writing-plans", "software-quality-workflows", null]},
+    "selected_decision_id": {"type": ["string", "null"], "minLength": 1},
+    "primary_card": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["card_id", "path", "sha256", "bytes"],
+          "properties": {
+            "card_id": {"type": "string", "pattern": "^sqw\\."},
+            "path": {"type": "string", "pattern": "^references/"},
+            "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "bytes": {"type": "integer", "minimum": 1, "maximum": 8192}
+          }
+        }
+      ]
     },
-    "required_artifact_projection_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-    "reason_codes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-    "admission_ref": {"type": ["string", "null"], "minLength": 1}
-  },
-  "$defs": {
-    "card_ref": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["card_id", "path", "sha256", "bytes"],
-      "properties": {
-        "card_id": {"type": "string", "pattern": "^sqw\\."},
-        "path": {"type": "string", "pattern": "^references/.*\\.md$"},
-        "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-        "bytes": {"type": "integer", "minimum": 1}
-      }
-    }
+    "required_artifact_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "reason_codes": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"}, "uniqueItems": true}
   }
 }

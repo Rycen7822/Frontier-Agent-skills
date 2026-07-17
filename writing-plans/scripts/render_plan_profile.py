@@ -9,9 +9,7 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from _closure_contract import load_contract
 from _plan_state import canonical_state_hash, load_json
-from validate_plan_state import semantic_violations
 
 
 def _items(value: Any) -> str:
@@ -29,7 +27,7 @@ def _require(data: dict[str, Any], fields: tuple[str, ...]) -> None:
 
 
 def render_brief(data: dict[str, Any]) -> str:
-    _require(data, ("outcome", "scope", "invariants", "approach", "proof", "closure"))
+    _require(data, ("outcome", "scope", "invariants", "approach", "proof", "completion"))
     return f"""# Change Card: {data['outcome']}
 
 - Outcome: {data['outcome']}
@@ -38,7 +36,7 @@ def render_brief(data: dict[str, Any]) -> str:
 - Approach: {data['approach']}
 - Proof: {data['proof']}
 - Risks/open facts: {data.get('risks_open_facts', 'None declared')}
-- Closure: {data['closure']}
+- Completion: {data['completion']}
 """
 
 
@@ -85,27 +83,10 @@ def render_handoff(data: dict[str, Any]) -> str:
 def render_program(
     state: dict[str, Any],
     *,
-    closure_contract: dict[str, Any] | None = None,
     state_ref: str = "canonical-plan-state",
 ) -> str:
-    if state.get("schema_version") != "1.1" or state.get("profile") != "program":
-        raise ValueError("Program rendering requires canonical plan-state 1.1 with profile=program")
-    policy = state.get("execution_policy")
-    contract_ref = state.get("closure_contract_ref")
-    if policy == "autonomous_closure":
-        if not isinstance(contract_ref, dict) or not isinstance(closure_contract, dict):
-            raise ValueError("autonomous Program rendering requires the loaded frozen Closure Contract")
-        if closure_contract.get("status") != "frozen" or contract_ref.get("content_hash") != closure_contract.get("content_hash") or contract_ref.get("epoch") != closure_contract.get("epoch"):
-            raise ValueError("Closure Contract projection does not match the canonical plan binding")
-    elif policy != "standard" or contract_ref is not None or closure_contract is not None:
-        raise ValueError("standard Program must not carry a Closure Contract projection")
-    binding_errors = [
-        item
-        for item in semantic_violations(state, closure_contract=closure_contract)
-        if item.code.startswith("plan.contract") or item.code.startswith("plan.node-contract")
-    ]
-    if binding_errors:
-        raise ValueError(f"Program contract binding is invalid: {sorted({item.code for item in binding_errors})}")
+    if state.get("schema_version") != "2.0" or state.get("profile") != "program":
+        raise ValueError("Program rendering requires canonical plan-state 2.0 with profile=program")
 
     state_hash = state.get("content_hash") or canonical_state_hash(state)
     node_by_id = {node.get("id"): node for node in state.get("nodes", [])}
@@ -129,15 +110,6 @@ def render_program(
         f"{node.get('id')}: {node.get('objective')} ({node.get('status')}); completion={node.get('completion_criterion')}; reads={node.get('read_set', [])}; writes={node.get('write_set', [])}; effects={node.get('effect_set', [])}"
         for node in frontier_nodes
     ]
-    coverage_rows = [
-        "| {id} | {constraints} | {corners} | {verifiers} |".format(
-            id=node.get("id", "?"),
-            constraints=", ".join(node.get("constraint_refs", [])) or "none",
-            corners=", ".join(node.get("corner_refs", [])) or "none",
-            verifiers=", ".join(node.get("verifier_requirement_refs", [])) or "none",
-        )
-        for node in frontier_nodes
-    ]
     strategy_rows = [f"| {item.get('id')} | {item.get('statement')} | selected | {item.get('provenance')} |" for item in state.get("decisions", []) if item.get("id") in relevant_refs]
     blocking_gaps = [
         f"{item.get('id')}: {item.get('question')}"
@@ -150,20 +122,15 @@ def render_program(
         if set(item.get("mitigation_refs", [])) & relevant_refs
     ]
     verification = [f"{node.get('id')}: {node.get('verifier', {}).get('completion_criterion')}" for node in frontier_nodes]
-    contract_block = ""
-    if policy == "autonomous_closure":
-        contract_block = f"\n- Closure contract: {contract_ref['artifact_ref']}\n- Contract hash / epoch: {contract_ref['content_hash']} / {contract_ref['epoch']}\n"
     text = f"""# Program/Migration Map: {state['goal']}
 
 - Plan ID: {state['plan_id']}
 - Profile: program
-- Execution policy: {policy}
 - State ref/hash: {state_ref} / {state_hash}
 - Source revision: {state['source']['base_revision']}
 - Scope hash: {state['source']['scope_hash']}
 - Bundle/cards: {state['source']['bundle_id']} / {state['source']['reference_manifest_hash']}
 - canonical_artifacts: full graph, evidence, alternatives, and history remain in {state_ref} at {state_hash}
-{contract_block}
 ## Non-goals
 
 {_items(state.get('non_goals'))}
@@ -175,12 +142,6 @@ def render_program(
 ## Major current decisions
 
 {_items(decisions)}
-
-## Constraint coverage
-
-| Plan slice | Hard constraints | Corners | Verifier requirements |
-|---|---|---|---|
-{chr(10).join(coverage_rows) or '| none | none | none | none |'}
 
 ## Strategy families
 
@@ -200,11 +161,11 @@ def render_program(
 
 {_items(risks)}
 
-## Verification and plan closure
+## Verification and completion
 
 {_items(verification)}
-- Plan closure status: {state.get('closure', {}).get('status')}
-- Required evidence: {', '.join(state.get('closure', {}).get('required_evidence', [])) or 'none'}
+- Plan completion status: {state.get('completion', {}).get('status')}
+- Required evidence: {', '.join(state.get('completion', {}).get('required_evidence', [])) or 'none'}
 """
     if len(text.encode("utf-8")) > 8192:
         raise ValueError("current-frontier Program projection exceeds 8192 bytes")
@@ -231,18 +192,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("input", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--novice", action="store_true")
-    parser.add_argument("--closure-contract", type=Path)
     args = parser.parse_args(argv)
     try:
         data = load_json(args.input)
         if not isinstance(data, dict):
             raise ValueError("input must be a JSON object")
         if args.profile == "program":
-            contract = load_contract(args.closure_contract) if args.closure_contract else None
-            text = render_program(data, closure_contract=contract, state_ref=str(args.input))
+            text = render_program(data, state_ref=str(args.input))
         else:
-            if args.closure_contract:
-                raise ValueError("Closure Contract projection is only valid for Program")
             text = {"brief": render_brief, "handoff": render_handoff}[args.profile](data)
         if args.novice:
             if args.profile == "brief":

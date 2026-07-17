@@ -1,19 +1,16 @@
 ---
 {
   "card_id": "sqw.review.rubrics.privacy-data-lifecycle",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "rubric",
-  "consumes": [
-    "rubric_review_contract",
-    "bounded_change_material",
-    "affected_data_flows"
+  "decision_id": "sqw.select.review.rubrics.privacy-data-lifecycle",
+  "required_artifact_ids": [
+    "review-tier"
   ],
-  "produces": [
-    "privacy_data_lifecycle_findings"
+  "produced_artifact_ids": [
+    "review-rubrics-privacy-data-lifecycle"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 8192,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Privacy and Data-Lifecycle Rubric

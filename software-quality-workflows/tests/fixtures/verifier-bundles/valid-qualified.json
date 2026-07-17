@@ -1,14 +1,13 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "bundle_id": "VB-001",
-  "closure_epoch": 1,
   "status": "qualified",
-  "content_hash": "sha256:7398bdaad95ff2aeb607e8fa485b26714494350d6e9b30a34e71fa03e41683c1",
+  "content_hash": "sha256:b150ceb74aee0cc58107d6f8023bbb30e77551971d91352c9035621f4517cf1a",
   "contract_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
   "source_revision": "explicit-unversioned",
   "scope_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
   "environment_fingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
-  "protected_paths": ["tests/protected/**", "schemas/**", "scripts/advance_closure.py"],
+  "protected_paths": ["tests/protected/**", "schemas/**", "scripts/validate_verifier_bundle.py"],
   "oracles": [
     {
       "id": "ORACLE-BEHAVIOR-001",

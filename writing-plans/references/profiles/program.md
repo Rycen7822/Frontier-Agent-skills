@@ -1,22 +1,12 @@
 ---
 {
   "card_id": "wp.profiles.program",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "procedure",
-  "consumes": [
-    "plan_route",
-    "request_source",
-    "scope_projection",
-    "authority_projection",
-    "dependency_evidence"
-  ],
-  "produces": [
-    "program_plan",
-    "program_frontier"
-  ],
-  "max_active_neighbors": 0,
-  "max_bytes": 4096,
-  "neighbors": []
+  "decision_id": "wp.select.profiles.program",
+  "required_artifact_ids": [],
+  "produced_artifact_ids": ["plan-program"],
+  "max_bytes": 8192
 }
 ---
 # Program Plan
@@ -28,7 +18,7 @@ Define a durable multi-stage plan and its current executable frontier without tu
 - The work spans stages, migrations, rollback boundaries, resumable execution, or public contract changes.
 
 ## Do not use when
-- A bounded Brief or single handoff is sufficient, or Closure Contract compilation is required first.
+- A bounded Brief or single handoff is sufficient.
 
 ## Required inputs
 - Intended outcomes, source/scope/authority identities, dependency evidence, rollout and rollback constraints, and required proof.
@@ -39,10 +29,11 @@ Define a durable multi-stage plan and its current executable frontier without tu
 3. Identify the detailed current topologically ready conflict-safe frontier and next slices.
 4. Bind rollout, approval, resource/retry/idempotency, verification, risk, and rollback obligations to their owners.
 5. Persist canonical state/full graph/evidence/alternatives outside the card and render only the bounded [Program template](../../templates/program-migration-map.md) current-frontier view.
-6. For closure, bind contract ID/hash/epoch/coverage without copying statements or actual SQW execution state.
+6. When a costly durable architecture choice changes a public/data/security/runtime/deployment/storage/ownership contract, decide whether an ADR is justified under the project's existing convention and documentation authority.
+7. A proposed ADR records status, context, exact decision/owners/contracts, materially considered alternatives and rejection evidence, consequences, proof/rollback, and supersession lineage. Preserve historical ADRs and never infer acceptance or publication authority.
 
 ## Output contract
-- `program_plan` identity/state lineage plus ≤8,192-byte reconstructable `program_frontier` with constraints, decisions, next slices, risk/rollback, evidence gates, and blockers.
+- One `plan-program` with identity/state lineage, optional proposed ADR, and a ≤8,192-byte reconstructable current frontier containing constraints, decisions, next slices, risk/rollback, evidence gates, and blockers.
 
 ## Load next only if
 

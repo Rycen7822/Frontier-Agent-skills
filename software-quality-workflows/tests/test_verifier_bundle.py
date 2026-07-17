@@ -52,7 +52,7 @@ class VerifierBundleTests(unittest.TestCase):
         changed["limitations"] = ["new limitation after hash"]
         self.assertIn("E_HASH_MISMATCH", {item.code for item in validate_bundle(changed, SCHEMA)})
         bundle = valid_bundle()
-        self.assertIn("E_EPOCH_MISMATCH", {item.code for item in validate_bundle(bundle, SCHEMA, expected_closure_epoch=2)})
+        self.assertIn("E_CONTRACT_MISMATCH", {item.code for item in validate_bundle(bundle, SCHEMA, expected_contract_hash="sha256:" + "9" * 64)})
         self.assertIn("E_SOURCE_DRIFT", {item.code for item in validate_bundle(bundle, SCHEMA, expected_source_revision="other")})
 
     def test_oracle_graph_and_candidate_supplementary_authority_cannot_fake_qualification(self) -> None:

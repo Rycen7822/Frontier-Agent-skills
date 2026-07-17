@@ -1,395 +1,289 @@
 #!/usr/bin/env python3
-"""Route validated SQW facts to one exact card or one typed boundary action."""
+"""Select one Software Quality Workflows decision card or a typed boundary result."""
 
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import json
 from pathlib import Path
 import sys
-from typing import Any
+from typing import Any, NamedTuple
 
-from _workflow_reference_cards import load_json
+from _workflow_reference_cards import load_json, strict_json_bytes
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MANIFEST_PATH = ROOT / "registries" / "reference-cards.manifest.json"
-SURFACE_TAXONOMY_VERSION = "sqw-route-surfaces/1"
-SURFACE_FAMILIES = (
-    "public_contract",
-    "data_state",
-    "security_privacy",
-    "runtime_platform",
-    "dependency_supply_chain",
-    "browser_ui",
-    "performance_resource",
-    "plugin_installed_surface",
-    "migration_release",
-    "workspace_vcs",
-    "external_side_effect",
-    "test_fixture_benchmark",
-    "observability_operations",
-    "concurrency_shared_state",
-)
-REQUIRED_FACTS = {
-    "schema_version",
-    "request_mode",
-    "intent_status",
-    "root_cause_status",
-    "implicated_surfaces",
-    "unknown_implicated_facts",
-    "surface_assessment",
-    "persistence_need",
-    "delegation_need",
-    "external_side_effect",
-    "explicit_autonomous_closure",
-}
-OPTIONAL_DEFAULTS = {
-    "admission_decision": "NOT_ASSESSED",
-    "admission_ref": None,
-}
 RESULT_KEYS = {
-    "schema_version",
-    "route_action",
-    "workflow_mode",
-    "execution_policy",
-    "selection_stage",
-    "selected_decision_id",
-    "primary_owner_id",
-    "primary_card",
-    "fact_projection",
-    "required_artifact_projection_ids",
-    "reason_codes",
-    "admission_ref",
+    "schema_version", "route_action", "route_owner", "selected_decision_id",
+    "primary_card", "required_artifact_ids", "reason_codes",
 }
-ENTRY_SELECTIONS = {
-    "direct": ("STANDARD_CHANGE_ENTRY", "form-change-contract", "change-execution", "sqw.entry.direct-change"),
-    "diagnosis": ("DIAGNOSIS_ENTRY", "establish-root-cause", "systematic-debugging", "sqw.entry.diagnose-failure"),
-    "intent": ("INTENT_DISCOVERY_ENTRY", "resolve-material-intent", "intent-and-design-discovery", "sqw.entry.intent-discovery"),
-    "audit": ("READ_ONLY_AUDIT_ENTRY", "perform-read-only-audit", "read-only-architecture-audits", "sqw.entry.read-only-audit"),
-    "review": ("REVIEW_TIER_ENTRY", "select-review-tier", "requesting-code-review", "sqw.review.tier-selection"),
-    "recovery": ("RECOVERY_ENTRY", "recover-repository-state", "merge-conflict-resolution", "sqw.entry.recovery"),
+FACT_KEYS = {
+    "schema_version", "request_mode", "intent_status", "root_cause_status", "implicated_surfaces",
+    "unknown_implicated_facts", "surface_assessment", "persistence_need", "delegation_need",
+    "external_side_effect", "pending_decision_ids", "available_artifact_ids", "completed_decision_ids",
+    "just_completed_card_id", "decision_request",
 }
+MAPPING_KEYS = {
+    "decision_id", "card_id", "priority", "required_artifact_ids", "produced_artifact_ids",
+    "positive_fixture_id", "near_miss_fixture_id",
+}
+SURFACE_FAMILIES = [
+    "public_contract", "data_state", "security_privacy", "runtime_platform", "dependency_supply_chain",
+    "browser_ui", "performance_resource", "plugin_installed_surface", "migration_release", "workspace_vcs",
+    "external_side_effect", "test_fixture_benchmark", "observability_operations", "concurrency_shared_state",
+]
 
 
 class RouteError(ValueError):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
 
 
-@dataclass(frozen=True)
-class Violation:
+class Violation(NamedTuple):
     code: str
-    path: str
+    pointer: str
     message: str
 
 
 def _string_list(value: Any, *, field: str) -> list[str]:
-    if not isinstance(value, list) or any(not isinstance(item, str) or not item for item in value):
-        raise RouteError("ROUTE_FACTS_INVALID", f"{field} must be a list of non-empty strings")
-    if len(value) != len(set(value)):
-        raise RouteError("ROUTE_FACTS_INVALID", f"{field} must not contain duplicates")
-    return value
+    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+        raise RouteError("ROUTE_INPUT_INVALID", f"{field} must be an array of non-empty strings")
+    return list(value)
 
 
 def _validate_surface_assessment(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise RouteError("ROUTE_FACTS_INCOMPLETE", "surface_assessment must be an object")
-    expected_keys = {"taxonomy_version", "coverage", "assessed_families", "evidence_refs"}
-    if set(value) != expected_keys:
+    if not isinstance(value, dict) or set(value) != {
+        "taxonomy_version", "coverage", "assessed_families", "evidence_refs",
+    }:
         raise RouteError("ROUTE_FACTS_INCOMPLETE", "surface_assessment must contain the exact coverage keys")
-    families = _string_list(value["assessed_families"], field="surface_assessment.assessed_families")
+    if value["taxonomy_version"] != "sqw-route-surfaces/1" or value["coverage"] != "complete":
+        raise RouteError("ROUTE_FACTS_INCOMPLETE", "surface assessment identity or coverage is incomplete")
+    if value["assessed_families"] != SURFACE_FAMILIES:
+        raise RouteError("ROUTE_FACTS_INCOMPLETE", "surface assessment must cover every family in canonical order")
     evidence = _string_list(value["evidence_refs"], field="surface_assessment.evidence_refs")
-    if (
-        value["taxonomy_version"] != SURFACE_TAXONOMY_VERSION
-        or value["coverage"] != "complete"
-        or families != list(SURFACE_FAMILIES)
-        or not evidence
-    ):
-        raise RouteError(
-            "ROUTE_FACTS_INCOMPLETE",
-            "surface assessment taxonomy, ordered coverage, or evidence is incomplete",
-        )
-    return value
+    if not evidence or len(evidence) != len(set(evidence)):
+        raise RouteError("ROUTE_FACTS_INCOMPLETE", "surface assessment needs unique evidence refs")
+    return dict(value)
 
 
-def _validated_facts(raw_facts: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(raw_facts, dict):
+def _validated_facts(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
         raise RouteError("ROUTE_INPUT_INVALID", "route facts must be an object")
-    if not raw_facts:
+    if not raw:
         raise RouteError("ROUTE_INPUT_INCOMPLETE", "route facts must not be empty")
-    allowed = REQUIRED_FACTS | set(OPTIONAL_DEFAULTS)
-    unknown = sorted(set(raw_facts) - allowed)
+    unknown = sorted(set(raw) - FACT_KEYS)
     if unknown:
         raise RouteError("ROUTE_INPUT_UNKNOWN_FIELD", f"unknown route facts: {unknown}")
-    missing = sorted(REQUIRED_FACTS - set(raw_facts))
+    missing = sorted(FACT_KEYS - set(raw))
     if missing:
         raise RouteError("ROUTE_INPUT_INCOMPLETE", f"missing route facts: {missing}")
-    facts = {**OPTIONAL_DEFAULTS, **raw_facts}
-    if facts["schema_version"] != "1.0":
-        raise RouteError("ROUTE_INPUT_INVALID", "schema_version must be 1.0")
-    if facts["request_mode"] not in {"change", "report", "review", "recovery", "plan"}:
-        raise RouteError("ROUTE_INPUT_INVALID", f"invalid request_mode: {facts['request_mode']!r}")
-    if facts["intent_status"] not in {"adequate", "materially_underdefined"}:
-        raise RouteError("ROUTE_INPUT_INVALID", f"invalid intent_status: {facts['intent_status']!r}")
-    if facts["root_cause_status"] not in {"known", "unknown", "not_applicable"}:
-        raise RouteError("ROUTE_INPUT_INVALID", f"invalid root_cause_status: {facts['root_cause_status']!r}")
-    if facts["persistence_need"] not in {"none", "trace", "durable"}:
-        raise RouteError("ROUTE_INPUT_INVALID", f"invalid persistence_need: {facts['persistence_need']!r}")
-    if facts["delegation_need"] not in {"none", "read", "write"}:
-        raise RouteError("ROUTE_INPUT_INVALID", f"invalid delegation_need: {facts['delegation_need']!r}")
-    if facts["external_side_effect"] not in {"none", "authorized", "unauthorized", "irreversible"}:
-        raise RouteError("ROUTE_INPUT_INVALID", f"invalid external_side_effect: {facts['external_side_effect']!r}")
-    if not isinstance(facts["explicit_autonomous_closure"], bool):
-        raise RouteError("ROUTE_INPUT_INVALID", "explicit_autonomous_closure must be boolean")
-    if facts["admission_decision"] not in {"NOT_ASSESSED", "DIRECT_SELECTED", "CLOSURE_ELIGIBLE", "TERMINAL"}:
-        raise RouteError("ROUTE_INPUT_INVALID", f"invalid admission_decision: {facts['admission_decision']!r}")
-    if facts["admission_ref"] is not None and (not isinstance(facts["admission_ref"], str) or not facts["admission_ref"]):
-        raise RouteError("ROUTE_INPUT_INVALID", "admission_ref must be null or a non-empty string")
-    if (facts["admission_decision"] == "NOT_ASSESSED") != (facts["admission_ref"] is None):
-        raise RouteError("ROUTE_FACTS_INCOMPLETE", "Admission decision and artifact reference must be bound together")
-
-    _validate_surface_assessment(facts["surface_assessment"])
-    implicated = _string_list(facts["implicated_surfaces"], field="implicated_surfaces")
-    unknown_implicated = _string_list(facts["unknown_implicated_facts"], field="unknown_implicated_facts")
-    unsupported = sorted(set(implicated) - set(SURFACE_FAMILIES))
+    facts = dict(raw)
+    if facts["schema_version"] != "2.0":
+        raise RouteError("ROUTE_INPUT_INVALID", "schema_version must be 2.0")
+    enums = {
+        "request_mode": {"change", "report", "review", "recovery", "plan"},
+        "intent_status": {"adequate", "materially_underdefined"},
+        "root_cause_status": {"known", "unknown", "not_applicable"},
+        "persistence_need": {"none", "trace", "durable"},
+        "delegation_need": {"none", "read", "write"},
+        "external_side_effect": {"none", "authorized", "unauthorized", "irreversible"},
+    }
+    for field, allowed in enums.items():
+        if facts[field] not in allowed:
+            raise RouteError("ROUTE_INPUT_INVALID", f"invalid {field}: {facts[field]!r}")
+    for field in (
+        "implicated_surfaces", "unknown_implicated_facts", "pending_decision_ids",
+        "available_artifact_ids", "completed_decision_ids",
+    ):
+        facts[field] = _string_list(facts[field], field=field)
+    unsupported = sorted(set(facts["implicated_surfaces"]) - set(SURFACE_FAMILIES))
     if unsupported:
         raise RouteError("ROUTE_INPUT_INVALID", f"unknown implicated surfaces: {unsupported}")
-    detached_unknowns = [item for item in unknown_implicated if item.split(".", 1)[0] not in implicated]
-    if detached_unknowns:
-        raise RouteError("ROUTE_FACTS_INVALID", f"unknown facts lack an implicated surface: {detached_unknowns}")
-    if unknown_implicated:
-        raise RouteError("IMPLICATED_FACT_UNKNOWN", f"implicated facts remain unknown: {unknown_implicated}")
-    if facts["external_side_effect"] != "none" and "external_side_effect" not in implicated:
+    if any(item not in facts["implicated_surfaces"] for item in facts["unknown_implicated_facts"]):
+        raise RouteError("ROUTE_FACTS_INVALID", "unknown facts lack an implicated surface")
+    facts["surface_assessment"] = _validate_surface_assessment(facts["surface_assessment"])
+    if facts["external_side_effect"] != "none" and "external_side_effect" not in facts["implicated_surfaces"]:
         raise RouteError("ROUTE_FACTS_INCOMPLETE", "external side effect status lacks an implicated surface")
+    if facts["just_completed_card_id"] is not None and not (
+        isinstance(facts["just_completed_card_id"], str) and facts["just_completed_card_id"]
+    ):
+        raise RouteError("ROUTE_INPUT_INVALID", "just_completed_card_id must be null or a non-empty string")
     return facts
+
+
+def _decision_rows(root: Path = ROOT) -> list[dict[str, Any]]:
+    path = root / "registries" / "decision-card-map.json"
+    if not path.is_file() or path.is_symlink():
+        raise RouteError("ROUTE_MAP_INVALID", "decision-card map is missing or unsafe")
+    value = load_json(path)
+    if not isinstance(value, dict) or set(value) != {"schema_version", "skill_id", "skill_version", "decisions"}:
+        raise RouteError("ROUTE_MAP_INVALID", "decision-card map shape is invalid")
+    if (value["schema_version"], value["skill_id"], value["skill_version"]) != (
+        "decision-card-map/1.0", "software-quality-workflows", "6.0.0",
+    ) or not isinstance(value["decisions"], list):
+        raise RouteError("ROUTE_MAP_INVALID", "decision-card map identity is invalid")
+    rows = value["decisions"]
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != MAPPING_KEYS:
+            raise RouteError("ROUTE_MAP_INVALID", "decision-card mapping shape is invalid")
+        if not isinstance(row["priority"], int) or isinstance(row["priority"], bool) or row["priority"] < 1:
+            raise RouteError("ROUTE_MAP_INVALID", "decision priority is invalid")
+        for field in ("decision_id", "card_id", "positive_fixture_id", "near_miss_fixture_id"):
+            if not isinstance(row[field], str) or not row[field]:
+                raise RouteError("ROUTE_MAP_INVALID", f"{field} is invalid")
+        for field in ("required_artifact_ids", "produced_artifact_ids"):
+            values = _string_list(row[field], field=field)
+            if len(values) != len(set(values)):
+                raise RouteError("ROUTE_MAP_INVALID", f"{field} contains duplicates")
+    for field in ("decision_id", "card_id", "priority", "positive_fixture_id", "near_miss_fixture_id"):
+        values = [row[field] for row in rows]
+        if len(values) != len(set(values)):
+            raise RouteError("ROUTE_MAP_INVALID", f"duplicate {field}")
+    return rows
 
 
 def _card(card_id: str, root: Path = ROOT) -> dict[str, Any]:
     manifest = load_json(root / "registries" / "reference-cards.manifest.json")
-    matches = [item for item in manifest.get("cards", []) if item.get("card_id") == card_id]
+    matches = [card for card in manifest.get("cards", []) if card.get("card_id") == card_id]
     if len(matches) != 1:
         raise RouteError("ROUTE_CARD_UNAVAILABLE", f"manifest does not contain exactly one {card_id}")
-    item = matches[0]
-    return {key: item[key] for key in ("card_id", "path", "sha256", "bytes")}
-
-
-def _fact_projection(facts: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "request_mode": facts["request_mode"],
-        "root_cause_status": facts["root_cause_status"],
-        "implicated_surfaces": facts["implicated_surfaces"],
-    }
-
-
-def _workflow_mode(facts: dict[str, Any]) -> str:
-    if facts["persistence_need"] == "durable" or facts["delegation_need"] != "none":
-        return "M2_SPARSE"
-    if facts["persistence_need"] == "trace":
-        return "M1_TRACE"
-    if facts["external_side_effect"] == "authorized":
-        return "M2_SPARSE"
-    return "M0_DIRECT"
+    card = matches[0]
+    return {field: card[field] for field in ("card_id", "path", "sha256", "bytes")}
 
 
 def _result(
-    facts: dict[str, Any],
+    action: str,
     *,
-    route_action: str,
-    workflow_mode: str | None,
-    execution_policy: str | None,
-    selection_stage: str,
-    selected_decision_id: str,
-    primary_owner_id: str | None,
-    card_id: str | None,
+    owner: str | None,
     reasons: list[str],
-    required_artifacts: list[str] | None = None,
+    decision: dict[str, Any] | None = None,
+    root: Path = ROOT,
 ) -> dict[str, Any]:
     return {
-        "schema_version": "1.0",
-        "route_action": route_action,
-        "workflow_mode": workflow_mode,
-        "execution_policy": execution_policy,
-        "selection_stage": selection_stage,
-        "selected_decision_id": selected_decision_id,
-        "primary_owner_id": primary_owner_id,
-        "primary_card": _card(card_id) if card_id else None,
-        "fact_projection": _fact_projection(facts),
-        "required_artifact_projection_ids": list(dict.fromkeys(required_artifacts or [])),
+        "schema_version": "2.0",
+        "route_action": action,
+        "route_owner": owner,
+        "selected_decision_id": decision["decision_id"] if decision else None,
+        "primary_card": _card(decision["card_id"], root) if decision else None,
+        "required_artifact_ids": list(decision["required_artifact_ids"]) if decision else [],
         "reason_codes": list(dict.fromkeys(reasons)),
-        "admission_ref": facts["admission_ref"],
     }
 
 
-def _entry_result(facts: dict[str, Any], selection: str, reason: str) -> dict[str, Any]:
-    stage, decision_id, owner_id, card_id = ENTRY_SELECTIONS[selection]
+def _blocked(code: str) -> dict[str, Any]:
+    return _result("blocked", owner="software-quality-workflows", reasons=[code])
+
+
+def _select(decision_id: str, reason: str, rows: list[dict[str, Any]], root: Path) -> dict[str, Any]:
+    row = next((item for item in rows if item["decision_id"] == decision_id), None)
+    if row is None:
+        raise RouteError("ROUTE_MAP_INVALID", f"entry decision is unmapped: {decision_id}")
+    return _result("select_card", owner="software-quality-workflows", reasons=[reason], decision=row, root=root)
+
+
+def _queue_result(facts: dict[str, Any], rows: list[dict[str, Any]], root: Path) -> dict[str, Any] | None:
+    pending = list(facts["pending_decision_ids"])
+    completed = list(facts["completed_decision_ids"])
+    if len(pending) != len(set(pending)) or len(completed) != len(set(completed)):
+        return _blocked("DECISION_DUPLICATE")
+    by_decision = {row["decision_id"]: row for row in rows}
+    by_card = {row["card_id"]: row for row in rows}
+    request = facts["decision_request"]
+    if request is not None:
+        if not isinstance(request, dict) or set(request) != {
+            "decision_id", "produced_by_card_id", "produced_artifact_id",
+        } or not all(isinstance(value, str) and value for value in request.values()):
+            return _blocked("DECISION_REQUEST_INVALID")
+        producer = by_card.get(request["produced_by_card_id"])
+        if (
+            producer is None
+            or facts["just_completed_card_id"] != request["produced_by_card_id"]
+            or producer["decision_id"] not in completed
+            or request["produced_artifact_id"] not in producer["produced_artifact_ids"]
+            or request["produced_artifact_id"] not in facts["available_artifact_ids"]
+        ):
+            return _blocked("DECISION_PRODUCER_INVALID")
+        pending.append(request["decision_id"])
+    if not pending:
+        return None
+    if len(pending) != len(set(pending)):
+        return _blocked("DECISION_DUPLICATE")
+    if any(decision_id not in by_decision for decision_id in pending):
+        return _blocked("DECISION_UNKNOWN")
+    if any(decision_id in completed for decision_id in pending):
+        return _blocked("DECISION_COMPLETED")
+    available = set(facts["available_artifact_ids"])
+    eligible = [
+        by_decision[decision_id]
+        for decision_id in pending
+        if set(by_decision[decision_id]["required_artifact_ids"]) <= available
+    ]
+    if not eligible:
+        return _blocked("DECISION_ARTIFACT_UNMET")
+    selected = min(eligible, key=lambda row: (row["priority"], row["decision_id"]))
     return _result(
-        facts,
-        route_action="EXECUTE",
-        workflow_mode=_workflow_mode(facts),
-        execution_policy="standard",
-        selection_stage=stage,
-        selected_decision_id=decision_id,
-        primary_owner_id=owner_id,
-        card_id=card_id,
-        reasons=[reason],
+        "select_card", owner="software-quality-workflows", reasons=["PENDING_DECISION_SELECTED"],
+        decision=selected, root=root,
     )
 
 
-def assess(raw_facts: dict[str, Any]) -> dict[str, Any]:
+def assess(raw_facts: dict[str, Any], root: Path = ROOT) -> dict[str, Any]:
     facts = _validated_facts(raw_facts)
-    admission = facts["admission_decision"]
+    rows = _decision_rows(root)
     if facts["external_side_effect"] in {"unauthorized", "irreversible"}:
-        reason = "EXTERNAL_SIDE_EFFECT_UNAUTHORIZED" if facts["external_side_effect"] == "unauthorized" else "IRREVERSIBLE_AUTHORITY_REQUIRED"
-        return _result(
-            facts,
-            route_action="EMIT_TERMINAL",
-            workflow_mode=None,
-            execution_policy=None,
-            selection_stage="SAFETY_TERMINAL",
-            selected_decision_id="reject-unsafe-side-effect",
-            primary_owner_id=None,
-            card_id=None,
-            reasons=[reason],
+        reason = (
+            "EXTERNAL_SIDE_EFFECT_UNAUTHORIZED"
+            if facts["external_side_effect"] == "unauthorized"
+            else "IRREVERSIBLE_AUTHORITY_REQUIRED"
         )
-    if admission == "TERMINAL":
-        return _result(
-            facts,
-            route_action="EMIT_TERMINAL",
-            workflow_mode=None,
-            execution_policy=None,
-            selection_stage="ADMISSION_TERMINAL",
-            selected_decision_id="emit-admission-terminal",
-            primary_owner_id=None,
-            card_id=None,
-            reasons=["CLOSURE_ADMISSION_TERMINAL"],
-            required_artifacts=["closure-admission"],
-        )
+        return _result("terminal", owner=None, reasons=[reason])
     if facts["request_mode"] == "recovery":
-        return _entry_result(facts, "recovery", "REPOSITORY_RECOVERY_REQUESTED")
+        return _select("sqw.select.entry.recovery", "REPOSITORY_RECOVERY_REQUESTED", rows, root)
     if facts["root_cause_status"] == "unknown":
-        return _entry_result(facts, "diagnosis", "ROOT_CAUSE_UNKNOWN")
+        return _select("sqw.select.entry.diagnose-failure", "ROOT_CAUSE_UNKNOWN", rows, root)
     if facts["intent_status"] == "materially_underdefined":
-        return _entry_result(facts, "intent", "MATERIAL_INTENT_UNDERDEFINED")
+        return _select("sqw.select.entry.intent-discovery", "MATERIAL_INTENT_UNDERDEFINED", rows, root)
     if facts["request_mode"] == "report":
-        return _entry_result(facts, "audit", "READ_ONLY_REQUEST")
+        return _select("sqw.select.entry.read-only-audit", "READ_ONLY_REQUEST", rows, root)
     if facts["request_mode"] == "review":
-        return _entry_result(facts, "review", "REVIEW_REQUESTED")
-    if admission == "CLOSURE_ELIGIBLE":
-        return _result(
-            facts,
-            route_action="EXECUTE",
-            workflow_mode=None,
-            execution_policy="autonomous_closure",
-            selection_stage="CLOSURE_COMPILE_HANDOFF",
-            selected_decision_id="compile-closure-contract",
-            primary_owner_id="writing-plans",
-            card_id=None,
-            reasons=["CLOSURE_CONTRACT_REQUIRED"],
-            required_artifacts=["closure-admission"],
-        )
-    if facts["explicit_autonomous_closure"] and admission == "NOT_ASSESSED":
-        return _result(
-            facts,
-            route_action="ASSESS_CLOSURE",
-            workflow_mode=None,
-            execution_policy=None,
-            selection_stage="CLOSURE_ADMISSION",
-            selected_decision_id="assess-closure",
-            primary_owner_id=None,
-            card_id=None,
-            reasons=["AUTONOMOUS_CLOSURE_REQUESTED"],
-        )
+        return _select("sqw.select.review.tier-selection", "REVIEW_REQUESTED", rows, root)
     if facts["request_mode"] == "plan":
-        return _result(
-            facts,
-            route_action="EXECUTE",
-            workflow_mode=None,
-            execution_policy="standard",
-            selection_stage="PLAN_ROUTE_HANDOFF",
-            selected_decision_id="select-plan-profile",
-            primary_owner_id="writing-plans",
-            card_id=None,
-            reasons=["PLAN_ROUTE_REQUIRED"],
-            required_artifacts=["plan-route-facts"],
-        )
-    direct_reason = "CLOSURE_DIRECT_SELECTED" if admission == "DIRECT_SELECTED" else "ROUTINE_LOCAL_CHANGE"
-    return _entry_result(facts, "direct", direct_reason)
+        return _result("handoff", owner="writing-plans", reasons=["PLAN_ROUTE_REQUIRED"])
+    queued = _queue_result(facts, rows, root)
+    if queued is not None:
+        return queued
+    return _select("sqw.select.entry.direct-change", "ROUTINE_LOCAL_CHANGE", rows, root)
 
 
 def validate_route_result(result: Any, root: Path = ROOT) -> list[Violation]:
-    violations: list[Violation] = []
+    issues: list[Violation] = []
     if not isinstance(result, dict) or set(result) != RESULT_KEYS:
-        return [Violation("route.shape", "/", "result must contain the exact route keys")]
-    if result.get("route_action") not in {"EXECUTE", "ASSESS_CLOSURE", "EMIT_TERMINAL"}:
-        violations.append(Violation("route.action", "/route_action", "unknown route action"))
-    if result.get("workflow_mode") not in {None, "M0_DIRECT", "M1_TRACE", "M2_SPARSE", "M3_FULL"}:
-        violations.append(Violation("route.workflow-mode", "/workflow_mode", "invalid workflow mode"))
-    if result.get("execution_policy") not in {None, "standard", "autonomous_closure"}:
-        violations.append(Violation("route.execution-policy", "/execution_policy", "invalid execution policy"))
+        return [Violation("route.shape", "/", "result keys are not exact")]
+    action = result.get("route_action")
+    decision_id = result.get("selected_decision_id")
     card = result.get("primary_card")
-    if card is not None:
-        if not isinstance(card, dict) or set(card) != {"card_id", "path", "sha256", "bytes"}:
-            violations.append(Violation("route.card-shape", "/primary_card", "invalid card transport ref"))
+    if action == "select_card":
+        if not isinstance(decision_id, str) or not isinstance(card, dict):
+            issues.append(Violation("route.selection", "/", "selection requires one decision and card"))
         else:
             try:
-                expected = _card(card["card_id"], root)
-            except (OSError, TypeError, ValueError):
-                expected = None
-            if card != expected:
-                violations.append(Violation("route.card-identity", "/primary_card", "card identity differs from manifest"))
-    if result.get("route_action") in {"ASSESS_CLOSURE", "EMIT_TERMINAL"} and card is not None:
-        violations.append(Violation("route.card-forbidden", "/primary_card", "boundary action cannot select a card"))
-    if not isinstance(result.get("fact_projection"), dict) or set(result["fact_projection"]) != {"request_mode", "root_cause_status", "implicated_surfaces"}:
-        violations.append(Violation("route.fact-projection", "/fact_projection", "invalid bounded fact projection"))
-    for field in ("required_artifact_projection_ids", "reason_codes"):
-        value = result.get(field)
-        if (
-            not isinstance(value, list)
-            or any(not isinstance(item, str) or not item for item in value)
-            or len(value) != len(set(value))
-        ):
-            violations.append(Violation("route.list-shape", f"/{field}", "must be a unique non-empty string list"))
-
-    action = result.get("route_action")
-    mode = result.get("workflow_mode")
-    policy = result.get("execution_policy")
-    owner = result.get("primary_owner_id")
-    stage = result.get("selection_stage")
-    artifacts = result.get("required_artifact_projection_ids")
-    admission_ref = result.get("admission_ref")
-    if action == "ASSESS_CLOSURE":
-        if any(value is not None for value in (mode, policy, owner, card, admission_ref)) or artifacts != [] or stage != "CLOSURE_ADMISSION":
-            violations.append(Violation("route.closure-assessment", "/", "closure assessment must be pre-workflow and card-free"))
-    elif action == "EMIT_TERMINAL":
-        if any(value is not None for value in (mode, policy, owner, card)):
-            violations.append(Violation("route.terminal-shape", "/", "terminal action cannot create workflow selection"))
-        if admission_ref is None and artifacts not in ([], None):
-            violations.append(Violation("route.terminal-binding", "/admission_ref", "unbound terminal cannot project Admission"))
-        if admission_ref is not None and artifacts != ["closure-admission"]:
-            violations.append(Violation("route.terminal-binding", "/required_artifact_projection_ids", "Admission terminal must project its artifact"))
-    elif action == "EXECUTE":
-        if card is not None:
-            if mode is None or policy != "standard" or not isinstance(owner, str) or not owner or artifacts != []:
-                violations.append(Violation("route.card-execution", "/", "local card execution requires standard policy, mode, owner, and no boundary artifact"))
-        elif stage == "PLAN_ROUTE_HANDOFF":
-            if mode is not None or policy != "standard" or owner != "writing-plans" or artifacts != ["plan-route-facts"] or admission_ref is not None:
-                violations.append(Violation("route.plan-handoff", "/", "plan handoff binding is invalid"))
-        elif stage == "CLOSURE_COMPILE_HANDOFF":
-            if mode is not None or policy != "autonomous_closure" or owner != "writing-plans" or artifacts != ["closure-admission"] or admission_ref is None:
-                violations.append(Violation("route.closure-handoff", "/", "closure compile handoff binding is invalid"))
-        else:
-            violations.append(Violation("route.card-missing", "/primary_card", "EXECUTE requires a local card or registered handoff stage"))
-    return violations
+                row = next(item for item in _decision_rows(root) if item["decision_id"] == decision_id)
+                if card != _card(row["card_id"], root):
+                    issues.append(Violation("route.card", "/primary_card", "selected card identity is stale"))
+            except (RouteError, StopIteration):
+                issues.append(Violation("route.decision", "/selected_decision_id", "decision is not mapped"))
+    elif decision_id is not None or card is not None:
+        issues.append(Violation("route.boundary", "/", "boundary result cannot select a card"))
+    if not isinstance(result.get("reason_codes"), list) or not result["reason_codes"]:
+        issues.append(Violation("route.reason", "/reason_codes", "at least one reason is required"))
+    return issues
 
 
 def _read_input(path: str) -> dict[str, Any]:
     try:
-        text = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
-        value = json.loads(text)
-    except (OSError, json.JSONDecodeError) as exc:
+        value = strict_json_bytes(Path(path).read_bytes(), source=path)
+    except (OSError, ValueError) as exc:
         raise RouteError("ROUTE_INPUT_INVALID", str(exc)) from exc
     if not isinstance(value, dict):
         raise RouteError("ROUTE_INPUT_INVALID", "route input must be a JSON object")
@@ -398,15 +292,15 @@ def _read_input(path: str) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("facts", type=str)
+    parser.add_argument("facts")
     args = parser.parse_args(argv)
     try:
         result = assess(_read_input(args.facts))
-    except (OSError, RouteError, ValueError) as exc:
+    except (OSError, ValueError, RouteError) as exc:
         code = exc.code if isinstance(exc, RouteError) else "ROUTE_INPUT_INVALID"
-        print(json.dumps({"ok": False, "error": {"code": code, "message": str(exc)}}, ensure_ascii=False, indent=2))
+        print(json.dumps({"ok": False, "error": code, "message": str(exc)}, ensure_ascii=False, indent=2))
         return 2
-    print(json.dumps({"ok": True, **result}, ensure_ascii=False, indent=2))
+    print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 

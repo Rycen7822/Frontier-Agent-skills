@@ -1,500 +1,154 @@
 {
-  "bundle_id": "frontier-engineering/5.0.0+4.0.0",
+  "bundle_id": "frontier-engineering/6.0.0+5.0.0",
   "cards": [
     {
-      "bytes": 2226,
+      "bytes": 2188,
       "card_id": "wp.bridges.long-document-handoff",
-      "card_version": 1,
-      "consumes": [
-        "large_source_corpus",
-        "planning_deliverable",
-        "external_owner_availability"
-      ],
+      "card_version": 2,
+      "decision_id": "wp.select.bridges.long-document-handoff",
       "kind": "bridge",
-      "max_active_neighbors": 0,
       "max_bytes": 4096,
-      "neighbors": [],
       "path": "references/bridges/long-document-handoff.md",
-      "produces": [
-        "bounded_document_owner_handoff"
+      "produced_artifact_ids": [
+        "long-document-handoff"
       ],
-      "sha256": "sha256:7b9da6f4aa4af648d268dcbd43c8e0529d2f2deea75c052844f173304da711dd"
+      "required_artifact_ids": [],
+      "sha256": "sha256:7908b71c9c3b2575fd2277f709f1886ded31fcc7b5be92d0dd89fe713562295b"
     },
     {
-      "bytes": 2231,
-      "card_id": "wp.closure.assumptions-and-ambiguity",
-      "card_version": 1,
-      "consumes": [
-        "draft_closure_contract",
-        "source_precedence_evidence",
-        "material_ambiguities"
-      ],
+      "bytes": 4297,
+      "card_id": "wp.design.decision-resolution",
+      "card_version": 2,
+      "decision_id": "wp.select.design.decision-resolution",
       "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/closure/assumptions-and-ambiguity.md",
-      "produces": [
-        "assumption_ambiguity_contract"
-      ],
-      "sha256": "sha256:35ffa664cb1d34f858be367e5aaf62f8dcad7e7d23f8515a7a7c1748325272ed"
-    },
-    {
-      "bytes": 3899,
-      "card_id": "wp.closure.compile",
-      "card_version": 1,
-      "consumes": [
-        "closure_admission_projection",
-        "request_source_projection",
-        "authority_projection",
-        "repository_evidence_projection"
-      ],
-      "kind": "entry",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "compile-to-constraints-corners",
-          "edge_mode": "semantic",
-          "evict_when": "IDs, oracles, and corners are fixed",
-          "missing_decision": "Constraints or corners are incomplete",
-          "required_evidence": "Acceptance/runtime evidence",
-          "to_card_id": "wp.closure.hard-constraints-and-corners"
-        },
-        {
-          "edge_id": "compile-to-assumptions-ambiguity",
-          "edge_mode": "semantic",
-          "evict_when": "Assumptions or certificate fixed",
-          "missing_decision": "Unsafe semantic ambiguity remains",
-          "required_evidence": "Source conflict/alternative evidence",
-          "to_card_id": "wp.closure.assumptions-and-ambiguity"
-        },
-        {
-          "edge_id": "compile-to-search-publication",
-          "edge_mode": "semantic",
-          "evict_when": "Policy fixed",
-          "missing_decision": "Search or publication policy is unresolved",
-          "required_evidence": "Authority/cost/side-effect evidence",
-          "to_card_id": "wp.closure.search-and-publication-policy"
-        },
-        {
-          "edge_id": "compile-to-freeze-handoff",
-          "edge_mode": "hard",
-          "evict_when": "Frozen handoff emitted",
-          "hard_predicate_id": "closure-contract-sections-complete",
-          "missing_decision": "Complete draft is not frozen",
-          "required_evidence": "Validated draft and identities",
-          "to_card_id": "wp.closure.freeze-and-handoff"
-        }
-      ],
-      "path": "references/closure/compile.md",
-      "produces": [
-        "draft_closure_contract",
-        "compiler_certificate"
-      ],
-      "sha256": "sha256:9441ed5a6ec9f90a7dd0740eb05e08c8f6244c93c7323549d5fa1198d874f6c8"
-    },
-    {
-      "bytes": 2641,
-      "card_id": "wp.closure.freeze-and-handoff",
-      "card_version": 1,
-      "consumes": [
-        "validated_closure_contract",
-        "canonical_plan_identity",
-        "handoff_identity_inputs"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/closure/freeze-and-handoff.md",
-      "produces": [
-        "frozen_closure_contract",
-        "plan_execution_handoff"
+      "path": "references/design/decision-resolution.md",
+      "produced_artifact_ids": [
+        "design-decision"
       ],
-      "sha256": "sha256:d7ebbfa014cb9e70fd83df9b6ebfc2a2c21bd45534fc094a00295bf851f33d26"
+      "required_artifact_ids": [],
+      "sha256": "sha256:69f589e4e442230ae0fb2c7d146151e09765ddb58ff95ee58af87c4ed5f582f3"
     },
     {
-      "bytes": 2203,
-      "card_id": "wp.closure.hard-constraints-and-corners",
-      "card_version": 1,
-      "consumes": [
-        "draft_closure_contract",
-        "acceptance_runtime_evidence",
-        "verifier_feasibility"
-      ],
+      "bytes": 3518,
+      "card_id": "wp.economy.output-projection",
+      "card_version": 2,
+      "decision_id": "wp.select.economy.output-projection",
       "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/closure/hard-constraints-and-corners.md",
-      "produces": [
-        "constraint_corner_verifier_contract"
-      ],
-      "sha256": "sha256:bd4243a063cd09cd4ab3bb613465826e050671a7ca91164162eb4bc3d502929c"
-    },
-    {
-      "bytes": 2039,
-      "card_id": "wp.closure.search-and-publication-policy",
-      "card_version": 1,
-      "consumes": [
-        "draft_closure_contract",
-        "authority_projection",
-        "cost_side_effect_evidence"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/closure/search-and-publication-policy.md",
-      "produces": [
-        "search_publication_contract"
-      ],
-      "sha256": "sha256:42f98c410109a69dcb9f17124ad0246a186630f09ccf9a1580a77ed20a4f6657"
-    },
-    {
-      "bytes": 2176,
-      "card_id": "wp.decisions.architecture-decision-record",
-      "card_version": 1,
-      "consumes": [
-        "selected_architecture_decision",
-        "alternative_evidence",
-        "documentation_authority"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/decisions/architecture-decision-record.md",
-      "produces": [
-        "architecture_decision_record"
-      ],
-      "sha256": "sha256:2ecd748ddcae9227f5a393dbdf65719d2ed73a37e4a75e33e511e72530ceb1f1"
-    },
-    {
-      "bytes": 2812,
-      "card_id": "wp.design.alternative-compression",
-      "card_version": 1,
-      "consumes": [
-        "evidence_decision_ledger",
-        "viable_strategy_families",
-        "rollback_proof_evidence"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "alternatives-to-planning-gate",
-          "edge_mode": "hard",
-          "evict_when": "Planning disposition is emitted",
-          "hard_predicate_id": "alternatives-compared",
-          "missing_decision": "Compared alternatives have not passed the planning gate",
-          "required_evidence": "Selected/rejected strategies, compression, proof, rollback, and residual fog",
-          "to_card_id": "wp.design.planning-gate"
-        }
-      ],
-      "path": "references/design/alternative-compression.md",
-      "produces": [
-        "selected_strategy_and_compression"
-      ],
-      "sha256": "sha256:ff023c33f452e84717c5c7f5d6e2c3f23c70a0ed8dac2b90cf9d0bcaf574af78"
-    },
-    {
-      "bytes": 2588,
-      "card_id": "wp.design.depth-selection",
-      "card_version": 1,
-      "consumes": [
-        "normalized_request",
-        "design_risk_evidence",
-        "owner_contract_evidence"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "depth-to-evidence-ledger",
-          "edge_mode": "hard",
-          "evict_when": "Evidence and decision rows are recorded",
-          "hard_predicate_id": "design-depth-needs-evidence",
-          "missing_decision": "D1 or D2 evidence ledger is not formed",
-          "required_evidence": "Risk, owner, contract, and source projection",
-          "to_card_id": "wp.design.evidence-and-decision-ledger"
-        }
-      ],
-      "path": "references/design/depth-selection.md",
-      "produces": [
-        "design_depth_decision"
-      ],
-      "sha256": "sha256:750de252e625bc7279fdbbf8f341053a8c38bd14389bceca4dd50888c843a687"
-    },
-    {
-      "bytes": 2879,
-      "card_id": "wp.design.evidence-and-decision-ledger",
-      "card_version": 1,
-      "consumes": [
-        "design_depth_decision",
-        "repository_evidence",
-        "source_identity"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 1,
       "max_bytes": 8192,
-      "neighbors": [
-        {
-          "edge_id": "evidence-to-alternative-compression",
-          "edge_mode": "semantic",
-          "evict_when": "Strategy family and compression actions are selected",
-          "missing_decision": "Multiple viable strategy families remain",
-          "required_evidence": "Baseline, decision, counterevidence, proof, and rollback rows",
-          "to_card_id": "wp.design.alternative-compression"
-        }
+      "path": "references/economy/output-projection.md",
+      "produced_artifact_ids": [
+        "output-projection"
       ],
-      "path": "references/design/evidence-and-decision-ledger.md",
-      "produces": [
-        "evidence_decision_ledger"
-      ],
-      "sha256": "sha256:acf15242938b4894acb4cc456d3ae1ab0b575c9daf19a1fd97cc30300a058c1b"
+      "required_artifact_ids": [],
+      "sha256": "sha256:6deb4312fe52633faf8b8b9a0bb95c8241084ebc6d8e69c38e30d51ec3ecaeae"
     },
     {
-      "bytes": 1976,
-      "card_id": "wp.design.planning-gate",
-      "card_version": 1,
-      "consumes": [
-        "design_depth_decision",
-        "evidence_decision_ledger",
-        "selected_strategy_and_compression"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/design/planning-gate.md",
-      "produces": [
-        "planning_disposition"
-      ],
-      "sha256": "sha256:399e65565cb28d3010e072f18d1e1b3a26a444d2b06432aa6272b9508654444e"
-    },
-    {
-      "bytes": 2956,
-      "card_id": "wp.economy.output-classification",
-      "card_version": 1,
-      "consumes": [
-        "representative_output_baseline",
-        "downstream_action_contract",
-        "quality_critical_fields"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "output-to-projection-verification",
-          "edge_mode": "hard",
-          "evict_when": "Projection, lazy-load, parity, and measurement gates are fixed",
-          "hard_predicate_id": "output-class-selected",
-          "missing_decision": "Projection and verification policy is not defined",
-          "required_evidence": "Field classes, baseline envelope, consumers, and quality anchors",
-          "to_card_id": "wp.economy.projection-and-verification"
-        }
-      ],
-      "path": "references/economy/output-classification.md",
-      "produces": [
-        "output_classification_contract"
-      ],
-      "sha256": "sha256:e7f3fd2f536e08e98b84014e0ebfe57a781a8d7dfdcb3dc991d3a44c48ddb8f7"
-    },
-    {
-      "bytes": 2617,
-      "card_id": "wp.economy.projection-and-verification",
-      "card_version": 1,
-      "consumes": [
-        "output_classification_contract",
-        "baseline_behavior_evidence",
-        "artifact_storage_contract"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/economy/projection-and-verification.md",
-      "produces": [
-        "projection_and_verification_plan"
-      ],
-      "sha256": "sha256:35bdbbe74b1b904b526d46129f70bb28913513b5d9aca95341a5429f76f9e98f"
-    },
-    {
-      "bytes": 1723,
-      "card_id": "wp.entry.plan-route",
-      "card_version": 1,
-      "consumes": [
-        "plan_route_facts",
-        "request_source",
-        "closure_admission_projection"
-      ],
-      "kind": "entry",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/entry/plan-route.md",
-      "produces": [
-        "plan_route",
-        "profile_selection"
-      ],
-      "sha256": "sha256:b2a6af8c030338ba1b63b22d919a551a9a39fdb3a995007c1c6bb9273965b764"
-    },
-    {
-      "bytes": 2354,
+      "bytes": 2187,
       "card_id": "wp.experiments.disposable-spike",
-      "card_version": 1,
-      "consumes": [
-        "plan_route",
-        "feasibility_question",
-        "source_evidence"
-      ],
+      "card_version": 2,
+      "decision_id": "wp.select.experiments.disposable-spike",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 4096,
-      "neighbors": [],
       "path": "references/experiments/disposable-spike.md",
-      "produces": [
-        "spike_verdict"
+      "produced_artifact_ids": [
+        "spike-evidence"
       ],
-      "sha256": "sha256:c85acf7bb8207ac0c8c165645beda96e920acf3e69e01533fa847b202dee12ff"
+      "required_artifact_ids": [],
+      "sha256": "sha256:31fb4c5ccd63b927103d24d3a35dd1439ae67e207aaf1597bde4d461894bfc21"
     },
     {
-      "bytes": 2403,
+      "bytes": 2339,
       "card_id": "wp.migration.deprecation-and-rollout",
-      "card_version": 1,
-      "consumes": [
-        "deprecated_surface",
-        "consumer_evidence",
-        "replacement_contract"
-      ],
+      "card_version": 2,
+      "decision_id": "wp.select.migration.deprecation-and-rollout",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
       "path": "references/migration/deprecation-and-rollout.md",
-      "produces": [
-        "migration_rollout_removal_plan"
+      "produced_artifact_ids": [
+        "migration-plan"
       ],
-      "sha256": "sha256:1972db46800646effefac88c21420fbeaf82a95f79564481a49429e61192a00a"
+      "required_artifact_ids": [
+        "plan-program"
+      ],
+      "sha256": "sha256:9f9d2fd64613b5397aae67bc4b5f1c82daa9a9d479e1b066c20ee2179f0e14d9"
     },
     {
-      "bytes": 1687,
+      "bytes": 1599,
       "card_id": "wp.profiles.brief",
-      "card_version": 1,
-      "consumes": [
-        "plan_route",
-        "request_source",
-        "scope_projection"
-      ],
+      "card_version": 2,
+      "decision_id": "wp.select.profiles.brief",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 4096,
-      "neighbors": [],
       "path": "references/profiles/brief.md",
-      "produces": [
-        "brief_plan"
+      "produced_artifact_ids": [
+        "plan-brief"
       ],
-      "sha256": "sha256:e938988c50772794f273841e83bf328e58c5fff893510835ccd5375f4e05493e"
+      "required_artifact_ids": [],
+      "sha256": "sha256:3fb3ea91296fc42e114c28b770aa64af4aa5abc47a6354f75aac029f3fa4a7f3"
     },
     {
-      "bytes": 2032,
+      "bytes": 1797,
       "card_id": "wp.profiles.handoff",
-      "card_version": 1,
-      "consumes": [
-        "plan_route",
-        "request_source",
-        "scope_projection",
-        "authority_projection"
-      ],
+      "card_version": 2,
+      "decision_id": "wp.select.profiles.handoff",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 4096,
-      "neighbors": [],
       "path": "references/profiles/handoff.md",
-      "produces": [
-        "executable_handoff",
-        "plan_execution_handoff"
+      "produced_artifact_ids": [
+        "plan-handoff"
       ],
-      "sha256": "sha256:6a635cda980c5b062084e5c7968e785d8a2a364d6037c65553da88e4d80c62f5"
+      "required_artifact_ids": [],
+      "sha256": "sha256:7ba0855badb78a09904984c915a8e33bd8fb5f604288a994c869a6e21ee4f6ac"
     },
     {
-      "bytes": 2097,
+      "bytes": 2341,
       "card_id": "wp.profiles.program",
-      "card_version": 1,
-      "consumes": [
-        "plan_route",
-        "request_source",
-        "scope_projection",
-        "authority_projection",
-        "dependency_evidence"
-      ],
+      "card_version": 2,
+      "decision_id": "wp.select.profiles.program",
       "kind": "procedure",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
+      "max_bytes": 8192,
       "path": "references/profiles/program.md",
-      "produces": [
-        "program_plan",
-        "program_frontier"
+      "produced_artifact_ids": [
+        "plan-program"
       ],
-      "sha256": "sha256:348526a7715ec05db827be390f88ef91f2d163ddfc2d0b22c195623a06d90f91"
+      "required_artifact_ids": [],
+      "sha256": "sha256:522c89671617eda628ca5a0938db0002b0835d9902c39241ad3362f90c65995d"
     },
     {
-      "bytes": 2531,
+      "bytes": 2248,
       "card_id": "wp.slicing.context-capsules",
-      "card_version": 1,
-      "consumes": [
-        "canonical_plan_state",
-        "current_frontier_node",
-        "fresh_identity_projection"
-      ],
+      "card_version": 2,
+      "decision_id": "wp.select.slicing.context-capsules",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
       "path": "references/slicing/context-capsules.md",
-      "produces": [
-        "context_capsule_contract"
+      "produced_artifact_ids": [
+        "context-capsule"
       ],
-      "sha256": "sha256:859b0be52dc060af0b83dfe48c972414accf521da9cffb56a640f06c53dc6f0b"
+      "required_artifact_ids": [
+        "outcome-slices"
+      ],
+      "sha256": "sha256:02d660469aa11c749312fe00a1aba172d1ee748a5f0eb4f8d36f77e3a460172f"
     },
     {
-      "bytes": 3069,
+      "bytes": 2274,
       "card_id": "wp.slicing.outcome-slices",
-      "card_version": 1,
-      "consumes": [
-        "planning_disposition",
-        "canonical_decisions",
-        "dependency_scope_evidence"
-      ],
+      "card_version": 2,
+      "decision_id": "wp.select.slicing.outcome-slices",
       "kind": "procedure",
-      "max_active_neighbors": 1,
       "max_bytes": 8192,
-      "neighbors": [
-        {
-          "edge_id": "slices-to-context-capsules",
-          "edge_mode": "hard",
-          "evict_when": "Current-node capsule specification is emitted",
-          "hard_predicate_id": "cross-context-slice",
-          "missing_decision": "A cross-context slice lacks a bounded capsule contract",
-          "required_evidence": "Canonical node, dependencies, identities, authority, and proof",
-          "to_card_id": "wp.slicing.context-capsules"
-        }
-      ],
       "path": "references/slicing/outcome-slices.md",
-      "produces": [
-        "typed_outcome_slices",
-        "current_frontier"
+      "produced_artifact_ids": [
+        "outcome-slices"
       ],
-      "sha256": "sha256:7abdf75462952688a2b35e33cccd26a28caee29f1ae5cbddfb6f88d7050ebd81"
+      "required_artifact_ids": [
+        "plan-program"
+      ],
+      "sha256": "sha256:495201d7a7c241e02af5ced5a7d9f52e8fe9df21b36a15f1988869d09f259196"
     }
   ],
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "skill_id": "writing-plans",
-  "skill_version": "4.0.0"
+  "skill_version": "5.0.0"
 }

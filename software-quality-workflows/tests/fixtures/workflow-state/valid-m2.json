@@ -1,10 +1,9 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "2.0",
   "workflow_id": "wf-manifest-refresh",
-  "bundle_id": "frontier-engineering/5.0.0+4.0.0",
+  "bundle_id": "frontier-engineering/6.0.0+5.0.0",
   "mode": "M2_SPARSE",
   "request_mode": "change",
-  "execution_policy": "standard",
   "policy_bundle_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
   "card_manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
   "status": "active",
@@ -167,13 +166,5 @@
   ],
   "recent_failures": [],
   "events_ref": ".workflow/events.jsonl",
-  "pending_background": [],
-  "closure": {
-    "status": "open",
-    "required_verifiers": ["VER-01", "VER-02"],
-    "evidence_refs": ["EV-01"],
-    "known_gaps": [],
-    "residual_risk": [],
-    "epistemic_status": "needs_repair"
-  }
+  "pending_background": []
 }

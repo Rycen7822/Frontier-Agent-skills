@@ -1,2340 +1,828 @@
 {
-  "bundle_id": "frontier-engineering/5.0.0+4.0.0",
+  "bundle_id": "frontier-engineering/6.0.0+5.0.0",
   "cards": [
     {
-      "bytes": 2223,
+      "bytes": 2251,
       "card_id": "sqw.bridges.multi-source-synthesis",
-      "card_version": 1,
-      "consumes": [
-        "source_corpus",
-        "synthesis_deliverable",
-        "external_owner_availability"
-      ],
+      "card_version": 2,
+      "decision_id": "sqw.select.bridges.multi-source-synthesis",
       "kind": "bridge",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
+      "max_bytes": 8192,
       "path": "references/bridges/multi-source-synthesis.md",
-      "produces": [
-        "evidence_anchored_synthesis"
+      "produced_artifact_ids": [
+        "bridges-multi-source-synthesis"
       ],
-      "sha256": "sha256:13013ded7d9afd11b065b17a9a34dd253e50a0616f69239e0a568ac1b6481c52"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:b74a2ca966910fafdc5a8a033c36c93423a753db77f7929035668bd6ea373e2b"
     },
     {
-      "bytes": 2202,
+      "bytes": 2252,
       "card_id": "sqw.bridges.source-target-gap-audit",
-      "card_version": 1,
-      "consumes": [
-        "primary_source_identity",
-        "target_identity",
-        "audit_scope"
-      ],
+      "card_version": 2,
+      "decision_id": "sqw.select.bridges.source-target-gap-audit",
       "kind": "bridge",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
+      "max_bytes": 8192,
       "path": "references/bridges/source-target-gap-audit.md",
-      "produces": [
-        "source_target_gap_map"
+      "produced_artifact_ids": [
+        "bridges-source-target-gap-audit"
       ],
-      "sha256": "sha256:0ae1824283b9b365c6d4e81d17819441af856d0134a6ee3165fb3b8f808caaef"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:3bfeabacc79032783d1ddbdeb02ce4ad79277fc0d0f94034155f83fbbb3938f7"
     },
     {
-      "bytes": 1924,
-      "card_id": "sqw.change.local-change-boundary",
-      "card_version": 1,
-      "consumes": [
-        "repository_ownership_evidence",
-        "dependency_evidence",
-        "requested_outcome",
-        "scope_projection"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/change/local-change-boundary.md",
-      "produces": [
-        "owner_seam",
-        "change_boundary"
-      ],
-      "sha256": "sha256:c3907925beb7ccadd6de8cf3ffa408caded20128d39aa2e9d417d091215fabfd"
-    },
-    {
-      "bytes": 2503,
-      "card_id": "sqw.closure.baseline-qualification",
-      "card_version": 1,
-      "consumes": [
-        "validated_plan_execution_handoff",
-        "baseline_phase_projection",
-        "source_environment_projection",
-        "authority_projection"
-      ],
-      "kind": "phase",
-      "max_active_neighbors": 0,
+      "bytes": 3501,
+      "card_id": "sqw.control.evidence-and-verifier-integrity",
+      "card_version": 2,
+      "decision_id": "sqw.select.control.evidence-and-verifier-integrity",
+      "kind": "safety",
       "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/closure/baseline-qualification.md",
-      "produces": [
-        "baseline_qualification_proposal"
+      "path": "references/control/evidence-and-verifier-integrity.md",
+      "produced_artifact_ids": [
+        "control-evidence-and-verifier-integrity"
       ],
-      "sha256": "sha256:4db041e7ff3389fab1130ec8200e73f15c1e703e5e85f9193da8d9599b1dd098"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:1653a75e80d7ad5c9b202dbc227dc02b06838ae3e032decf29fdb8903cfd3a99"
     },
     {
-      "bytes": 2891,
-      "card_id": "sqw.closure.candidate-search",
-      "card_version": 1,
-      "consumes": [
-        "search_phase_projection",
-        "frozen_contract_projection",
-        "qualified_baseline_projection",
-        "qualified_verifier_projection",
-        "budget_projection"
-      ],
-      "kind": "phase",
-      "max_active_neighbors": 0,
+      "bytes": 3349,
+      "card_id": "sqw.control.scope-authority-and-effects",
+      "card_version": 2,
+      "decision_id": "sqw.select.control.scope-authority-and-effects",
+      "kind": "safety",
       "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/closure/candidate-search.md",
-      "produces": [
-        "candidate_search_proposal"
+      "path": "references/control/scope-authority-and-effects.md",
+      "produced_artifact_ids": [
+        "control-scope-authority-and-effects"
       ],
-      "sha256": "sha256:d9711b3ef14644562811f8e1970df4121bc5477163022f44734831dc89f9717e"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:b7aba0e771b8b4b7c99985dd529efe68955659f0aa8374b201307d5c81b086ca"
     },
     {
-      "bytes": 2895,
-      "card_id": "sqw.closure.signoff-and-terminal",
-      "card_version": 1,
-      "consumes": [
-        "signoff_phase_projection",
-        "incumbent_projection",
-        "freshness_projection",
-        "four_axis_evidence_projection",
-        "publication_state_projection"
-      ],
-      "kind": "phase",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/closure/signoff-and-terminal.md",
-      "produces": [
-        "signoff_and_terminal_proposal"
-      ],
-      "sha256": "sha256:f60379d9ef141b64356d582370940f63ea95c44507228b106235867bbee0273a"
-    },
-    {
-      "bytes": 2623,
-      "card_id": "sqw.closure.verifier-qualification",
-      "card_version": 1,
-      "consumes": [
-        "verifier_phase_projection",
-        "qualified_baseline_projection",
-        "frozen_contract_projection",
-        "verifier_bundle_projection"
-      ],
-      "kind": "phase",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/closure/verifier-qualification.md",
-      "produces": [
-        "verifier_qualification_proposal"
-      ],
-      "sha256": "sha256:af6fc90f4e1b38757c9f53f82ed4781a6f04d5fed76b7f5525b6ede76bdba360"
-    },
-    {
-      "bytes": 2774,
-      "card_id": "sqw.control.repair-and-invalidation",
-      "card_version": 1,
-      "consumes": [
-        "typed_dependency_projection",
-        "changed_refs_and_fields",
-        "current_authority_and_evidence"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/control/repair-and-invalidation.md",
-      "produces": [
-        "repair_scope_and_invalidation_decision"
-      ],
-      "sha256": "sha256:12853d1706367d51be43b65eb860695e5bf4a86a21d3ff5db83f6298ba4a834c"
-    },
-    {
-      "bytes": 2611,
-      "card_id": "sqw.control.verifier-independence",
-      "card_version": 1,
-      "consumes": [
-        "required_oracle_inventory",
-        "candidate_change_surface",
-        "risk_and_authority_projection"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/control/verifier-independence.md",
-      "produces": [
-        "verifier_independence_contract"
-      ],
-      "sha256": "sha256:476232058fcd8241f0d9af1617b61893d4ecb358ebcffe2f2e5e4922503dde7c"
-    },
-    {
-      "bytes": 2632,
-      "card_id": "sqw.control.workflow-mode-selection",
-      "card_version": 1,
-      "consumes": [
-        "request_mode",
-        "route_facts",
-        "authority_projection",
-        "scope_projection",
-        "recovery_need"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/control/workflow-mode-selection.md",
-      "produces": [
-        "workflow_mode_decision"
-      ],
-      "sha256": "sha256:5a294a7b98208c31a2d28f60667e83a6fb5d079e6c81a46c98e5fd413694ee46"
-    },
-    {
-      "bytes": 4015,
-      "card_id": "sqw.delegation.admission-and-slicing",
-      "card_version": 1,
-      "consumes": [
-        "delegation_authority",
-        "workflow_mode",
-        "frozen_scope_manifest",
-        "candidate_work_frontier",
-        "host_capability_projection"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "delegation-to-candidate-worker",
-          "edge_mode": "hard",
-          "evict_when": "Candidate-worker contract recorded",
-          "hard_predicate_id": "isolated-write-slice-admitted",
-          "missing_decision": "Admitted isolated write slice lacks its worker contract",
-          "required_evidence": "Write/resource sets, authority, source/scope identity, verifier",
-          "to_card_id": "sqw.delegation.candidate-worker-contract"
-        },
-        {
-          "edge_id": "delegation-to-read-only-evidence",
-          "edge_mode": "hard",
-          "evict_when": "Read-only evidence contract recorded",
-          "hard_predicate_id": "read-only-slice-admitted",
-          "missing_decision": "Admitted read slice lacks its evidence contract",
-          "required_evidence": "Read question, coverage, source/scope identity, no-write authority",
-          "to_card_id": "sqw.delegation.read-only-evidence-contract"
-        }
-      ],
-      "path": "references/delegation/admission-and-slicing.md",
-      "produces": [
-        "delegation_admission_decision",
-        "bounded_slice_manifests"
-      ],
-      "sha256": "sha256:c290af1c05fbef0d624ddaeca4a46e80d50bb4347c764ba552dad4a019f934c8"
-    },
-    {
-      "bytes": 2707,
-      "card_id": "sqw.delegation.candidate-worker-contract",
-      "card_version": 1,
-      "consumes": [
-        "admitted_isolated_write_slice",
-        "source_scope_state_identity",
-        "worker_authority_capsule"
-      ],
+      "bytes": 3825,
+      "card_id": "sqw.delegation.admission-and-contract",
+      "card_version": 2,
+      "decision_id": "sqw.select.delegation.admission-and-contract",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/delegation/candidate-worker-contract.md",
-      "produces": [
-        "candidate_worker_contract",
-        "candidate_result_envelope"
+      "path": "references/delegation/admission-and-contract.md",
+      "produced_artifact_ids": [
+        "delegation-admission-and-contract"
       ],
-      "sha256": "sha256:0225a8d398dba2005bc4d568c87894af02882182bf3b97e1e8501608e832744a"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:ca68195ea9450bdfdfad684c0db2a5825ba029ae129c4cb5eef61d1750148bf9"
     },
     {
-      "bytes": 2816,
+      "bytes": 2841,
       "card_id": "sqw.delegation.fan-in-and-integration",
-      "card_version": 1,
-      "consumes": [
-        "delegated_result_envelopes",
-        "current_source_scope_state",
-        "integration_contract"
-      ],
+      "card_version": 2,
+      "decision_id": "sqw.select.delegation.fan-in-and-integration",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
       "path": "references/delegation/fan-in-and-integration.md",
-      "produces": [
-        "validated_fan_in",
-        "integration_handoff"
+      "produced_artifact_ids": [
+        "delegation-fan-in-and-integration"
       ],
-      "sha256": "sha256:09cbe8be1fc74017c46b4acdea0fca6be8d20c97221c41248810449b2f107470"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:009f353d699f714dbb63275f134764635398d14bf20d715ae690c6a5b0efc5d1"
     },
     {
-      "bytes": 1599,
-      "card_id": "sqw.delegation.read-only-evidence-contract",
-      "card_version": 1,
-      "consumes": [
-        "scope_partition",
-        "source_identity",
-        "delegation_authority"
-      ],
+      "bytes": 3299,
+      "card_id": "sqw.diagnosis.evidence-and-hypothesis",
+      "card_version": 2,
+      "decision_id": "sqw.select.diagnosis.evidence-and-hypothesis",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/delegation/read-only-evidence-contract.md",
-      "produces": [
-        "read_only_slice_contracts",
-        "evidence_envelope_contract"
+      "path": "references/diagnosis/evidence-and-hypothesis.md",
+      "produced_artifact_ids": [
+        "diagnosis-evidence-and-hypothesis"
       ],
-      "sha256": "sha256:3088210407c3a9941c0e3ecb8818a2f66c3ee6df32daec429ecc151392a1f94b"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:ab0cfe963345eebd118595afaf9d1ca26d5c0f44d212fa16c2216fe3c06de041"
     },
     {
-      "bytes": 2526,
-      "card_id": "sqw.diagnosis.bugfix-transition",
-      "card_version": 1,
-      "consumes": [
-        "supported_cause_artifact",
-        "request_mode",
-        "change_authority",
-        "scope_projection",
-        "existing_patch_projection"
+      "bytes": 2932,
+      "card_id": "sqw.domain.api.contract-and-migration",
+      "card_version": 2,
+      "decision_id": "sqw.select.domain.api.contract-and-migration",
+      "kind": "procedure",
+      "max_bytes": 8192,
+      "path": "references/domain/api/contract-and-migration.md",
+      "produced_artifact_ids": [
+        "domain-api-contract-and-migration"
       ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:13bf8f9b1deaca8b3069795f225674958f071b138175a479598979a8c10e8051"
+    },
+    {
+      "bytes": 3365,
+      "card_id": "sqw.domain.architecture.boundaries-and-alternatives",
+      "card_version": 2,
+      "decision_id": "sqw.select.domain.architecture.boundaries-and-alternatives",
       "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/diagnosis/bugfix-transition.md",
-      "produces": [
-        "change_handoff_or_diagnosis_closeout"
-      ],
-      "sha256": "sha256:5d9f11d192b214412b933b4825f8fcd176c0f7daf1ea5b47192a6ef5c5765360"
-    },
-    {
-      "bytes": 3720,
-      "card_id": "sqw.diagnosis.hypothesis-and-discrimination",
-      "card_version": 1,
-      "consumes": [
-        "reproduction_record",
-        "failure_boundary",
-        "source_identity",
-        "probe_authority"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 1,
       "max_bytes": 8192,
-      "neighbors": [
-        {
-          "edge_id": "hypothesis-to-debugger",
-          "edge_mode": "semantic",
-          "evict_when": "The discriminating debugger observation or explicit limitation is recorded",
-          "missing_decision": "A task-owned debugger observation is the cheapest direct discriminator between current competing hypotheses",
-          "required_evidence": "Fresh reproduction, bounded failure surface, ranked hypothesis table, and safe process ownership",
-          "to_card_id": "sqw.recipes.debugger-assisted-diagnosis"
-        }
+      "path": "references/domain/architecture/boundaries-and-alternatives.md",
+      "produced_artifact_ids": [
+        "domain-architecture-boundaries-and-alternatives"
       ],
-      "path": "references/diagnosis/hypothesis-and-discrimination.md",
-      "produces": [
-        "hypothesis_table",
-        "supported_cause_or_inconclusive"
+      "required_artifact_ids": [
+        "workflow-intake"
       ],
-      "sha256": "sha256:7495b2b009a4ef28ab2938e9d23900af7977666f006f3cf7ef9f5e15ca5ee301"
+      "sha256": "sha256:bc23cd18228db9df1d382e7313f22a527b1057d64fe220ad2aa529b0c3f3a77f"
     },
     {
-      "bytes": 2898,
-      "card_id": "sqw.diagnosis.reproduce-and-bound",
-      "card_version": 1,
-      "consumes": [
-        "diagnosis_contract",
-        "runtime_evidence",
-        "source_identity",
-        "safe_probe_authority"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/diagnosis/reproduce-and-bound.md",
-      "produces": [
-        "reproduction_record",
-        "failure_boundary"
-      ],
-      "sha256": "sha256:fcf175a9b853ae942cfdd37ffa8892db3a7fc250d6554955ca5c8cd651464e77"
-    },
-    {
-      "bytes": 1955,
-      "card_id": "sqw.domain.api.boundary-validation",
-      "card_version": 1,
-      "consumes": [
-        "public_contract",
-        "boundary_inputs",
-        "compatibility_class"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/domain/api/boundary-validation.md",
-      "produces": [
-        "boundary_oracles",
-        "negative_proof"
-      ],
-      "sha256": "sha256:f60a12da9095e0d4d7d18f212f8e6f7a1fd64e5ce00824963ca2403e238df088"
-    },
-    {
-      "bytes": 1673,
-      "card_id": "sqw.domain.api.compatibility-migration",
-      "card_version": 1,
-      "consumes": [
-        "contract_decision",
-        "consumer_inventory",
-        "rollout_constraints"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/domain/api/compatibility-migration.md",
-      "produces": [
-        "migration_contract",
-        "removal_gate"
-      ],
-      "sha256": "sha256:291836013952756ec620fe1b1590808659fa7614b878ccdfe615e53603958d8a"
-    },
-    {
-      "bytes": 3204,
-      "card_id": "sqw.domain.api.contract-change",
-      "card_version": 1,
-      "consumes": [
-        "public_contract_inventory",
-        "consumer_evidence",
-        "requested_change"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "api-to-compatibility-migration",
-          "edge_mode": "semantic",
-          "evict_when": "Compatibility and migration policy are recorded",
-          "missing_decision": "Multiple consumers or staged cutover require a migration contract",
-          "required_evidence": "Consumer versions and rollout constraints",
-          "to_card_id": "sqw.domain.api.compatibility-migration"
-        },
-        {
-          "edge_id": "api-to-boundary-validation",
-          "edge_mode": "semantic",
-          "evict_when": "Boundary validation contract is recorded",
-          "missing_decision": "Public boundary negative and compatibility oracles are unresolved",
-          "required_evidence": "Boundary schema and consumer-visible error behavior",
-          "to_card_id": "sqw.domain.api.boundary-validation"
-        }
-      ],
-      "path": "references/domain/api/contract-change.md",
-      "produces": [
-        "contract_decision",
-        "compatibility_need"
-      ],
-      "sha256": "sha256:1b864f490972dd83a74a93efd39efbb11555b2439f80148a28233e38e86cbb78"
-    },
-    {
-      "bytes": 3134,
-      "card_id": "sqw.domain.architecture.alternative-decision",
-      "card_version": 1,
-      "consumes": [
-        "architecture_contracts_and_constraints",
-        "material_design_alternatives",
-        "repository_evidence"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "architecture-alternative-to-migration-proof",
-          "edge_mode": "semantic",
-          "evict_when": "Migration and rollback proof contract recorded",
-          "missing_decision": "Selected design needs staged migration or rollback proof",
-          "required_evidence": "Selected boundary, consumer inventory, coexistence and reversibility constraints",
-          "to_card_id": "sqw.domain.architecture.migration-proof"
-        }
-      ],
-      "path": "references/domain/architecture/alternative-decision.md",
-      "produces": [
-        "architecture_alternative_decision"
-      ],
-      "sha256": "sha256:1c25dfb04c6be9b2ac1b985ac84be9e81edd275b6a41c76c67844966f5a61fc1"
-    },
-    {
-      "bytes": 3174,
-      "card_id": "sqw.domain.architecture.dependency-boundary-design",
-      "card_version": 1,
-      "consumes": [
-        "module_boundary_contract",
-        "dependency_graph_and_owners",
-        "boundary_failure_semantics"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "dependency-to-alternatives",
-          "edge_mode": "semantic",
-          "evict_when": "Alternative decision recorded",
-          "missing_decision": "Dependency contract is known but structural choice remains",
-          "required_evidence": "Classified dependencies, direction constraints, and viable structures",
-          "to_card_id": "sqw.domain.architecture.alternative-decision"
-        }
-      ],
-      "path": "references/domain/architecture/dependency-boundary-design.md",
-      "produces": [
-        "dependency_boundary_contract"
-      ],
-      "sha256": "sha256:45f0d711e4638491193f049d09a0db7e857f801cb777cc31c5b42e9d87a812f5"
-    },
-    {
-      "bytes": 2602,
+      "bytes": 2569,
       "card_id": "sqw.domain.architecture.migration-proof",
-      "card_version": 1,
-      "consumes": [
-        "selected_architecture_decision",
-        "consumer_and_surface_inventory",
-        "migration_and_rollback_constraints"
-      ],
+      "card_version": 2,
+      "decision_id": "sqw.select.domain.architecture.migration-proof",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
       "path": "references/domain/architecture/migration-proof.md",
-      "produces": [
-        "architecture_migration_proof_contract"
+      "produced_artifact_ids": [
+        "domain-architecture-migration-proof"
       ],
-      "sha256": "sha256:84bf4d7956f34241a16b72ce0e7857712671f338710388cd9459a584ed0be39d"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:dc8adca45a6b4078329c20d143c572accd6f7bc0ea91c994473d2a20673aca1a"
     },
     {
-      "bytes": 3968,
-      "card_id": "sqw.domain.architecture.module-boundary-design",
-      "card_version": 1,
-      "consumes": [
-        "architecture_change_pressure",
-        "current_ownership_and_callers",
-        "design_constraints"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "architecture-to-dependency-boundary",
-          "edge_mode": "semantic",
-          "evict_when": "Dependency boundary contract recorded",
-          "missing_decision": "Dependency direction, ownership, or cycle is unresolved",
-          "required_evidence": "Current dependency graph, policy owners, failure and lifecycle boundaries",
-          "to_card_id": "sqw.domain.architecture.dependency-boundary-design"
-        },
-        {
-          "edge_id": "architecture-to-alternatives",
-          "edge_mode": "semantic",
-          "evict_when": "Alternative decision recorded",
-          "missing_decision": "Multiple material module designs remain viable",
-          "required_evidence": "Current/status-quo design, constraints, callers, and dependency facts",
-          "to_card_id": "sqw.domain.architecture.alternative-decision"
-        }
-      ],
-      "path": "references/domain/architecture/module-boundary-design.md",
-      "produces": [
-        "module_boundary_contract",
-        "missing_architecture_decision"
-      ],
-      "sha256": "sha256:13445fa5b313760264c7ec65c88cf5678a847f3ab698b450e1f6191eace2f1d2"
-    },
-    {
-      "bytes": 2505,
+      "bytes": 2482,
       "card_id": "sqw.domain.browser.content-security",
-      "card_version": 1,
-      "consumes": [
-        "browser_content_contract",
-        "renderer_parser_and_trust_boundary",
-        "dom_injection_evidence"
-      ],
+      "card_version": 2,
+      "decision_id": "sqw.select.domain.browser.content-security",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
       "path": "references/domain/browser/content-security.md",
-      "produces": [
-        "browser_content_security_artifact"
+      "produced_artifact_ids": [
+        "domain-browser-content-security"
       ],
-      "sha256": "sha256:c87cb454133de8e9545c0173d14bdf4f53176f4645c1d792e2e1bf68462723ba"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:73fdcdf069130080a1a4226f9ee21214cbb300bc887f8625fcb4bc558a095733"
     },
     {
-      "bytes": 3994,
-      "card_id": "sqw.domain.browser.evidence-layers",
-      "card_version": 1,
-      "consumes": [
-        "browser_claim_and_user_path",
-        "browser_surface_identity",
-        "available_runtime_evidence"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "browser-to-live-readiness",
-          "edge_mode": "hard",
-          "evict_when": "Live-readiness artifact recorded",
-          "hard_predicate_id": "live-readiness-required",
-          "missing_decision": "Live update or readiness is an acceptance surface and proof is absent",
-          "required_evidence": "Route, stream/poll contract, readiness state, event ordering and cleanup needs",
-          "to_card_id": "sqw.domain.browser.live-readiness"
-        },
-        {
-          "edge_id": "browser-to-content-security",
-          "edge_mode": "hard",
-          "evict_when": "Browser content-security artifact recorded",
-          "hard_predicate_id": "untrusted-content-implicated",
-          "missing_decision": "Untrusted rich content, CSP, escaping, or sanitization is implicated",
-          "required_evidence": "Content contract, renderer/parser path, trust boundary, DOM and injection cases",
-          "to_card_id": "sqw.domain.browser.content-security"
-        }
-      ],
-      "path": "references/domain/browser/evidence-layers.md",
-      "produces": [
-        "browser_evidence_plan_and_observation"
-      ],
-      "sha256": "sha256:d36899f4f4848fe90681e1d30c0c18b4c6b9f0812b02695715f2053ade68fca0"
-    },
-    {
-      "bytes": 2411,
-      "card_id": "sqw.domain.browser.live-readiness",
-      "card_version": 1,
-      "consumes": [
-        "browser_evidence_plan_and_observation",
-        "live_update_contract",
-        "readiness_and_cleanup_boundary"
-      ],
+      "bytes": 3106,
+      "card_id": "sqw.domain.browser.evidence-and-readiness",
+      "card_version": 2,
+      "decision_id": "sqw.select.domain.browser.evidence-and-readiness",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/domain/browser/live-readiness.md",
-      "produces": [
-        "browser_live_readiness_artifact"
+      "path": "references/domain/browser/evidence-and-readiness.md",
+      "produced_artifact_ids": [
+        "domain-browser-evidence-and-readiness"
       ],
-      "sha256": "sha256:178350798704d16a3f610e89ae725515b44d9c7853efe4151ddba8959457ec91"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:9f72a2436333e42f6fe7e8fd68be1d92518ed77854333da43ece89fae2c3c5b0"
     },
     {
-      "bytes": 2567,
-      "card_id": "sqw.domain.observability.health-progress-and-recovery",
-      "card_version": 1,
-      "consumes": [
-        "observability_signal_contract",
-        "role_and_dependency_health_semantics",
-        "long_work_state_contract"
-      ],
+      "bytes": 3494,
+      "card_id": "sqw.domain.observability.signal-and-recovery",
+      "card_version": 2,
+      "decision_id": "sqw.select.domain.observability.signal-and-recovery",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/domain/observability/health-progress-and-recovery.md",
-      "produces": [
-        "health_progress_recovery_artifact"
+      "path": "references/domain/observability/signal-and-recovery.md",
+      "produced_artifact_ids": [
+        "domain-observability-signal-and-recovery"
       ],
-      "sha256": "sha256:c1f78300c1f3df9295336d6320657fd07a73978ae3733d5998d3c96d82e09e36"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:c09abb5d7c6639be9ad8fb3e9278989f54c5f937aaa3bdac577ea5fbf1d8654b"
     },
     {
-      "bytes": 3719,
-      "card_id": "sqw.domain.observability.signal-design",
-      "card_version": 1,
-      "consumes": [
-        "operator_questions_and_failure_modes",
-        "instrumentation_boundaries",
-        "telemetry_safety_and_budget"
+      "bytes": 3212,
+      "card_id": "sqw.domain.performance.baseline-and-parity",
+      "card_version": 2,
+      "decision_id": "sqw.select.domain.performance.baseline-and-parity",
+      "kind": "procedure",
+      "max_bytes": 8192,
+      "path": "references/domain/performance/baseline-and-parity.md",
+      "produced_artifact_ids": [
+        "domain-performance-baseline-and-parity"
       ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "observability-to-health-progress",
-          "edge_mode": "semantic",
-          "evict_when": "Health/progress/recovery contract recorded",
-          "missing_decision": "New signals must support readiness, progress, or recovery decisions",
-          "required_evidence": "Role/failure semantics, progress units, cancellation/partial/recovery states, and operator response",
-          "to_card_id": "sqw.domain.observability.health-progress-and-recovery"
-        }
+      "required_artifact_ids": [
+        "workflow-intake"
       ],
-      "path": "references/domain/observability/signal-design.md",
-      "produces": [
-        "observability_signal_contract"
-      ],
-      "sha256": "sha256:0821d97b78b0f244bacfcb05b711cfdfcf80ecaeaeb49ac2c595318ecd50beee"
+      "sha256": "sha256:3185ec060375188556586ccc606449783d8cdc38253981961363dd825a2e0059"
     },
     {
-      "bytes": 3341,
-      "card_id": "sqw.domain.performance.baseline-and-noise",
-      "card_version": 1,
-      "consumes": [
-        "performance_symptom_and_result_identity",
-        "representative_environment",
-        "measurement_evidence"
+      "bytes": 3378,
+      "card_id": "sqw.domain.plugin.package-registration-and-installed-proof",
+      "card_version": 2,
+      "decision_id": "sqw.select.domain.plugin.package-registration-and-installed-proof",
+      "kind": "procedure",
+      "max_bytes": 8192,
+      "path": "references/domain/plugin/package-registration-and-installed-proof.md",
+      "produced_artifact_ids": [
+        "domain-plugin-package-registration-and-installed-proof"
       ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:71470d4da06444dec28e54766dcde406d16a23d9d0a1bf719fd0b1c6c372514e"
+    },
+    {
+      "bytes": 3458,
+      "card_id": "sqw.domain.runtime.version-and-consistency",
+      "card_version": 2,
+      "decision_id": "sqw.select.domain.runtime.version-and-consistency",
+      "kind": "procedure",
+      "max_bytes": 8192,
+      "path": "references/domain/runtime/version-and-consistency.md",
+      "produced_artifact_ids": [
+        "domain-runtime-version-and-consistency"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:b1b45831c68df6a666c993dff39f81bad07dc76e30833762b673b0bb430eb603"
+    },
+    {
+      "bytes": 3140,
+      "card_id": "sqw.domain.security.trust-boundary-and-negatives",
+      "card_version": 2,
+      "decision_id": "sqw.select.domain.security.trust-boundary-and-negatives",
+      "kind": "safety",
+      "max_bytes": 8192,
+      "path": "references/domain/security/trust-boundary-and-negatives.md",
+      "produced_artifact_ids": [
+        "domain-security-trust-boundary-and-negatives"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:8efb2d89f81e8f7c1de0adc1e61192faafd071dab61e323af0cefa972458bf70"
+    },
+    {
+      "bytes": 2734,
+      "card_id": "sqw.domain.source.external-authority",
+      "card_version": 2,
+      "decision_id": "sqw.select.domain.source.external-authority",
       "kind": "decision",
-      "max_active_neighbors": 1,
+      "max_bytes": 8192,
+      "path": "references/domain/source/external-authority.md",
+      "produced_artifact_ids": [
+        "domain-source-external-authority"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:3d65e1ebfd4ea78d87ddd34806821f27ff0d521ee6ccbcb01f2701e22fddd393"
+    },
+    {
+      "bytes": 1950,
+      "card_id": "sqw.entry.diagnose-failure",
+      "card_version": 2,
+      "decision_id": "sqw.select.entry.diagnose-failure",
+      "kind": "decision",
       "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "performance-to-optimization",
-          "edge_mode": "hard",
-          "evict_when": "Optimization and parity artifact recorded",
-          "hard_predicate_id": "performance-baseline-stable",
-          "missing_decision": "Stable baseline identifies a bottleneck but optimization/parity is unresolved",
-          "required_evidence": "Representative method, sample/noise budget, bottleneck evidence, and frozen result identity",
-          "to_card_id": "sqw.domain.performance.optimization-and-parity"
-        }
+      "path": "references/entry/diagnose-failure.md",
+      "produced_artifact_ids": [
+        "workflow-intake"
       ],
-      "path": "references/domain/performance/baseline-and-noise.md",
-      "produces": [
-        "stable_performance_baseline"
+      "required_artifact_ids": [],
+      "sha256": "sha256:84ef6da92f8669f4a6feca8aa5a0a7874fa8c4ca9fdce995f0ac24d166e53593"
+    },
+    {
+      "bytes": 2071,
+      "card_id": "sqw.entry.direct-change",
+      "card_version": 2,
+      "decision_id": "sqw.select.entry.direct-change",
+      "kind": "decision",
+      "max_bytes": 4096,
+      "path": "references/entry/direct-change.md",
+      "produced_artifact_ids": [
+        "workflow-intake"
       ],
-      "sha256": "sha256:d65ee99bc5c83b2e30eac252208a8f5b01426b7948c8ba1cd5f1bd20a4e63bf4"
+      "required_artifact_ids": [],
+      "sha256": "sha256:ee6b8ac8ffc974e3fa9d9b6a7b93726a4f354566a78f3ec31f9cc22ec53583d9"
+    },
+    {
+      "bytes": 1895,
+      "card_id": "sqw.entry.intent-discovery",
+      "card_version": 2,
+      "decision_id": "sqw.select.entry.intent-discovery",
+      "kind": "decision",
+      "max_bytes": 4096,
+      "path": "references/entry/intent-discovery.md",
+      "produced_artifact_ids": [
+        "workflow-intake"
+      ],
+      "required_artifact_ids": [],
+      "sha256": "sha256:8b0ac77a60b1c5ffa01fc264696204dfd4ab48d372124a48ddfacc2cf7985890"
+    },
+    {
+      "bytes": 2074,
+      "card_id": "sqw.entry.read-only-audit",
+      "card_version": 2,
+      "decision_id": "sqw.select.entry.read-only-audit",
+      "kind": "decision",
+      "max_bytes": 4096,
+      "path": "references/entry/read-only-audit.md",
+      "produced_artifact_ids": [
+        "workflow-intake"
+      ],
+      "required_artifact_ids": [],
+      "sha256": "sha256:6a2a793c118fddacd607d3ba954a6ab3ea6c640f9303a044b499d8bcfcaf47c1"
+    },
+    {
+      "bytes": 1843,
+      "card_id": "sqw.entry.recovery",
+      "card_version": 2,
+      "decision_id": "sqw.select.entry.recovery",
+      "kind": "decision",
+      "max_bytes": 4096,
+      "path": "references/entry/recovery.md",
+      "produced_artifact_ids": [
+        "workflow-intake"
+      ],
+      "required_artifact_ids": [],
+      "sha256": "sha256:b7f821af24daa3f39cf4d8920666bc27b844b6900a25bc9a644404001e486704"
+    },
+    {
+      "bytes": 3499,
+      "card_id": "sqw.intent.discovery-and-freeze",
+      "card_version": 2,
+      "decision_id": "sqw.select.intent.discovery-and-freeze",
+      "kind": "procedure",
+      "max_bytes": 8192,
+      "path": "references/intent/discovery-and-freeze.md",
+      "produced_artifact_ids": [
+        "intent-discovery-and-freeze"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:b0ff97c6f963d6441832b87157c556c5466eec80d9341507acf22425f471e2ec"
+    },
+    {
+      "bytes": 2257,
+      "card_id": "sqw.recipes.dependency-lockfile-drift",
+      "card_version": 2,
+      "decision_id": "sqw.select.recipes.dependency-lockfile-drift",
+      "kind": "recipe",
+      "max_bytes": 8192,
+      "path": "references/recipes/dependency-lockfile-drift.md",
+      "produced_artifact_ids": [
+        "recipes-dependency-lockfile-drift"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:7443758b8499b1bda7f0a15f565ea88d45e8468a8da458a29f953250256d30ec"
+    },
+    {
+      "bytes": 2493,
+      "card_id": "sqw.recovery.cleanup",
+      "card_version": 2,
+      "decision_id": "sqw.select.recovery.cleanup",
+      "kind": "procedure",
+      "max_bytes": 8192,
+      "path": "references/recovery/cleanup.md",
+      "produced_artifact_ids": [
+        "recovery-cleanup"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:b7e95d1a1723bb00e68976e435c56137d6e80b6ab0b22d63f4deea8c7790c488"
+    },
+    {
+      "bytes": 3446,
+      "card_id": "sqw.recovery.conflict-recovery",
+      "card_version": 2,
+      "decision_id": "sqw.select.recovery.conflict-recovery",
+      "kind": "procedure",
+      "max_bytes": 8192,
+      "path": "references/recovery/conflict-recovery.md",
+      "produced_artifact_ids": [
+        "recovery-conflict-recovery"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:feb8c3f36d06052eac0af5791aa93b58190b4a3c6cbe682e1f8dac9089ee9521"
     },
     {
       "bytes": 2491,
-      "card_id": "sqw.domain.performance.optimization-and-parity",
-      "card_version": 1,
-      "consumes": [
-        "stable_performance_baseline",
-        "measured_bottleneck",
-        "frozen_result_identity"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/domain/performance/optimization-and-parity.md",
-      "produces": [
-        "result_preserving_optimization_artifact"
-      ],
-      "sha256": "sha256:f5b62dcd35fc2923a083abd2efef337c6656b69898360d29da0c784eb8ef3412"
-    },
-    {
-      "bytes": 2392,
-      "card_id": "sqw.domain.plugin.installed-surface-proof",
-      "card_version": 1,
-      "consumes": [
-        "plugin_build_package_identity",
-        "authorized_install_or_existing_copy",
-        "installed_smoke_contract"
-      ],
-      "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/domain/plugin/installed-surface-proof.md",
-      "produces": [
-        "plugin_installed_surface_proof"
-      ],
-      "sha256": "sha256:000929c05f0cf0c130dfadec3979fc6f06122cf1e5d06925970df1f98cab7a3a"
-    },
-    {
-      "bytes": 3239,
-      "card_id": "sqw.domain.plugin.registration-public-surface",
-      "card_version": 1,
-      "consumes": [
-        "plugin_source_package_artifact",
-        "registration_and_public_contract",
-        "host_runtime_context"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 1,
-      "max_bytes": 8192,
-      "neighbors": [
-        {
-          "edge_id": "plugin-registration-to-installed",
-          "edge_mode": "hard",
-          "evict_when": "Fresh installed-surface proof recorded",
-          "hard_predicate_id": "installed-surface-required",
-          "missing_decision": "Registration change requires fresh installed-process proof",
-          "required_evidence": "Registered package identity, discovery/profile contract, and representative public smoke",
-          "to_card_id": "sqw.domain.plugin.installed-surface-proof"
-        }
-      ],
-      "path": "references/domain/plugin/registration-public-surface.md",
-      "produces": [
-        "plugin_registration_public_artifact"
-      ],
-      "sha256": "sha256:b66e6bcb18b9d40319eade4a0e3dfee43af433f0cdd462408d74628a712ab66e"
-    },
-    {
-      "bytes": 3995,
-      "card_id": "sqw.domain.plugin.source-package-quality",
-      "card_version": 1,
-      "consumes": [
-        "plugin_source_build_package_inventory",
-        "acceptance_layer_matrix",
-        "change_scope"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "plugin-to-registration",
-          "edge_mode": "hard",
-          "evict_when": "Registration/public-surface artifact recorded",
-          "hard_predicate_id": "plugin-registration-implicated",
-          "missing_decision": "Loader, registry, discovery, or public capability is implicated",
-          "required_evidence": "Registration metadata, expected capability surface, host/runtime versions, and public entrypoint",
-          "to_card_id": "sqw.domain.plugin.registration-public-surface"
-        },
-        {
-          "edge_id": "plugin-to-installed-surface",
-          "edge_mode": "hard",
-          "evict_when": "Fresh installed-surface proof recorded",
-          "hard_predicate_id": "installed-surface-required",
-          "missing_decision": "Installed behavior is an acceptance surface and proof is absent",
-          "required_evidence": "Built/package identity, authorized install boundary, discovery root, and smoke contract",
-          "to_card_id": "sqw.domain.plugin.installed-surface-proof"
-        }
-      ],
-      "path": "references/domain/plugin/source-package-quality.md",
-      "produces": [
-        "plugin_source_package_artifact",
-        "missing_plugin_layer"
-      ],
-      "sha256": "sha256:1499d1f006fa3984d1e53f310a2d22b51775fe9a797ccad0b34e8f180c422a9f"
-    },
-    {
-      "bytes": 2511,
-      "card_id": "sqw.domain.runtime.consistency-surfaces",
-      "card_version": 1,
-      "consumes": [
-        "runtime_version_boundary_decision",
-        "runtime_surface_inventory",
-        "compatibility_contract"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/domain/runtime/consistency-surfaces.md",
-      "produces": [
-        "runtime_consistency_artifact"
-      ],
-      "sha256": "sha256:d2b74431bb6b7c9b083c06e8dbec4b1ef1d51244157c3d2d7290b7fd42e83dfd"
-    },
-    {
-      "bytes": 3389,
-      "card_id": "sqw.domain.runtime.version-boundary-selection",
-      "card_version": 1,
-      "consumes": [
-        "runtime_support_inventory",
-        "boundary_probe_evidence",
-        "consumer_requirements"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "runtime-to-consistency",
-          "edge_mode": "hard",
-          "evict_when": "Consistency-surface artifact recorded",
-          "hard_predicate_id": "runtime-version-boundary-selected",
-          "missing_decision": "Runtime boundary is selected but declarations and consumers are not reconciled",
-          "required_evidence": "Selected support contract, exact probe versions, and affected surface inventory",
-          "to_card_id": "sqw.domain.runtime.consistency-surfaces"
-        }
-      ],
-      "path": "references/domain/runtime/version-boundary-selection.md",
-      "produces": [
-        "runtime_version_boundary_decision"
-      ],
-      "sha256": "sha256:b69f968350c8abfc5e633c76399cad6326cd47420e6d45ac3b9f688f42721b3f"
-    },
-    {
-      "bytes": 3147,
-      "card_id": "sqw.domain.security.trust-boundary-and-negatives",
-      "card_version": 1,
-      "consumes": [
-        "implicated_trust_boundaries",
-        "assets_actors_and_privileges",
-        "abuse_and_control_evidence"
-      ],
-      "kind": "safety",
-      "max_active_neighbors": 0,
-      "max_bytes": 6144,
-      "neighbors": [],
-      "path": "references/domain/security/trust-boundary-and-negatives.md",
-      "produces": [
-        "security_trust_boundary_and_negative_proof"
-      ],
-      "sha256": "sha256:8583adcb601dee6b17f9aa3675d542311b813cdc4e0ceaf320e6100bf8465fbe"
-    },
-    {
-      "bytes": 2761,
-      "card_id": "sqw.domain.source.external-authority",
-      "card_version": 1,
-      "consumes": [
-        "repository_dependency_versions",
-        "version_sensitive_question",
-        "authoritative_source_evidence"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/domain/source/external-authority.md",
-      "produces": [
-        "external_source_authority_decision"
-      ],
-      "sha256": "sha256:03d5baea850c63ab7c5f99847f6864484a7f59c192b192700fd92609503f4d17"
-    },
-    {
-      "bytes": 2719,
-      "card_id": "sqw.entry.closure-admission",
-      "card_version": 1,
-      "consumes": [
-        "closure_admission_facts",
-        "authority_projection",
-        "scope_projection",
-        "environment_projection"
-      ],
-      "kind": "entry",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/entry/closure-admission.md",
-      "produces": [
-        "closure_admission_artifact"
-      ],
-      "sha256": "sha256:4a3629cfed5f0c726535ec4622df55ac6257b119862d8da41f9c909728033a8c"
-    },
-    {
-      "bytes": 3012,
-      "card_id": "sqw.entry.diagnose-failure",
-      "card_version": 1,
-      "consumes": [
-        "failure_report",
-        "request_mode",
-        "authority_projection",
-        "source_projection",
-        "existing_patch_projection"
-      ],
-      "kind": "entry",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "diagnose-to-reproduce",
-          "edge_mode": "hard",
-          "evict_when": "Reproduction record and failure boundary are recorded",
-          "hard_predicate_id": "fresh-reproduction-missing",
-          "missing_decision": "Fresh reproduction and bounded failure surface are absent",
-          "required_evidence": "Failure report and executable observation surface",
-          "to_card_id": "sqw.diagnosis.reproduce-and-bound"
-        }
-      ],
-      "path": "references/entry/diagnose-failure.md",
-      "produces": [
-        "diagnosis_contract",
-        "next_edge_id"
-      ],
-      "sha256": "sha256:26ceac5e58d81cce2affb8f371b1d80f7e27cf2c477b50940c0818b6fb802cd8"
-    },
-    {
-      "bytes": 4044,
-      "card_id": "sqw.entry.direct-change",
-      "card_version": 1,
-      "consumes": [
-        "request_mode",
-        "intent_status",
-        "root_cause_status",
-        "authority_projection",
-        "scope_projection"
-      ],
-      "kind": "entry",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "direct-to-owner-seam",
-          "edge_mode": "semantic",
-          "evict_when": "Boundary set",
-          "missing_decision": "Owner unresolved",
-          "required_evidence": "Owner evidence",
-          "to_card_id": "sqw.change.local-change-boundary"
-        },
-        {
-          "edge_id": "direct-to-behavior-distinction",
-          "edge_mode": "semantic",
-          "evict_when": "Distinction set",
-          "missing_decision": "Oracle nondiscriminating",
-          "required_evidence": "Oracle evidence",
-          "to_card_id": "sqw.test.behavior-distinction-and-red"
-        },
-        {
-          "edge_id": "direct-to-gate-selection",
-          "edge_mode": "semantic",
-          "evict_when": "Proof plan set",
-          "missing_decision": "Proof unresolved",
-          "required_evidence": "Gate evidence",
-          "to_card_id": "sqw.verify.gate-selection"
-        },
-        {
-          "edge_id": "direct-to-api-contract",
-          "edge_mode": "hard",
-          "evict_when": "Compatibility set",
-          "hard_predicate_id": "public-contract-implicated",
-          "missing_decision": "Compatibility unresolved",
-          "required_evidence": "Contract evidence",
-          "to_card_id": "sqw.domain.api.contract-change"
-        }
-      ],
-      "path": "references/entry/direct-change.md",
-      "produces": [
-        "change_contract",
-        "proof_need"
-      ],
-      "sha256": "sha256:fadba67335939de220bafc50edd61b5a4743b262851fef59a5286beacd9725ec"
-    },
-    {
-      "bytes": 2711,
-      "card_id": "sqw.entry.intent-discovery",
-      "card_version": 1,
-      "consumes": [
-        "request_source",
-        "repository_evidence",
-        "authority_projection"
-      ],
-      "kind": "entry",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "intent-to-material-gaps",
-          "edge_mode": "hard",
-          "evict_when": "Intent gaps and safe defaults are classified",
-          "hard_predicate_id": "material-intent-assessment-missing",
-          "missing_decision": "Material intent gaps have not been classified",
-          "required_evidence": "Request sources and repository-observable defaults",
-          "to_card_id": "sqw.intent.material-intent-gaps"
-        }
-      ],
-      "path": "references/entry/intent-discovery.md",
-      "produces": [
-        "intent_assessment",
-        "next_edge_id"
-      ],
-      "sha256": "sha256:567a0701e05cd59e3ff44d96d7f051c739edf2e164b363e0873d9de7c46399c9"
-    },
-    {
-      "bytes": 3234,
-      "card_id": "sqw.entry.read-only-audit",
-      "card_version": 1,
-      "consumes": [
-        "audit_question",
-        "scope_projection",
-        "source_identity"
-      ],
-      "kind": "entry",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "audit-to-read-only-delegation",
-          "edge_mode": "hard",
-          "evict_when": "Read-only evidence contracts are emitted",
-          "hard_predicate_id": "independent-read-slices-admitted",
-          "missing_decision": "Independent read-only slices need bounded contracts",
-          "required_evidence": "Scope partition and delegation authority",
-          "to_card_id": "sqw.delegation.read-only-evidence-contract"
-        }
-      ],
-      "path": "references/entry/read-only-audit.md",
-      "produces": [
-        "coverage_contract",
-        "audit_result"
-      ],
-      "sha256": "sha256:b26b0131bc1b01100f325a979f8d49de510b5cbf7c93cd7c3b1350c515d284e4"
-    },
-    {
-      "bytes": 3404,
-      "card_id": "sqw.entry.recovery",
-      "card_version": 1,
-      "consumes": [
-        "repository_state",
-        "operation_state",
-        "authority_projection"
-      ],
-      "kind": "entry",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "recovery-to-merge-state",
-          "edge_mode": "hard",
-          "evict_when": "Merge state and sides are recorded",
-          "hard_predicate_id": "merge-conflict-active",
-          "missing_decision": "Active merge operation and sides are not identified",
-          "required_evidence": "Git operation state and base/ours/theirs evidence",
-          "to_card_id": "sqw.recovery.merge-state-and-sides"
-        },
-        {
-          "edge_id": "recovery-to-repository",
-          "edge_mode": "hard",
-          "evict_when": "Repository recovery result is recorded",
-          "hard_predicate_id": "repository-state-unsafe",
-          "missing_decision": "Repository state is damaged or incomplete",
-          "required_evidence": "Index, refs, worktree, and operation evidence",
-          "to_card_id": "sqw.recovery.repository-recovery"
-        },
-        {
-          "edge_id": "recovery-to-cleanup",
-          "edge_mode": "hard",
-          "evict_when": "Cleanup result and retained state are verified",
-          "hard_predicate_id": "cleanup-authorized",
-          "missing_decision": "Authorized cleanup set and retention proof are unresolved",
-          "required_evidence": "Explicit cleanup authority and object inventory",
-          "to_card_id": "sqw.recovery.cleanup"
-        }
-      ],
-      "path": "references/entry/recovery.md",
-      "produces": [
-        "recovery_route",
-        "protected_state"
-      ],
-      "sha256": "sha256:88ad75f1e8ab1ee496a69addfc3323110093851f194e666c56f588583655cada"
-    },
-    {
-      "bytes": 1985,
-      "card_id": "sqw.intent.design-alternative-selection",
-      "card_version": 1,
-      "consumes": [
-        "material_ambiguities",
-        "scenario_evidence",
-        "authority_projection"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/intent/design-alternative-selection.md",
-      "produces": [
-        "selected_outcome",
-        "selection_rationale"
-      ],
-      "sha256": "sha256:666b75b7de357c72498818120e4f8ebba314090125d9685ba238fcfc7bc38601"
-    },
-    {
-      "bytes": 2839,
-      "card_id": "sqw.intent.material-intent-gaps",
-      "card_version": 1,
-      "consumes": [
-        "request_sources",
-        "repository_defaults",
-        "reversibility_evidence"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "intent-gaps-to-alternatives",
-          "edge_mode": "semantic",
-          "evict_when": "One strategy family or a typed underdetermination result is recorded",
-          "missing_decision": "Two or more materially different feasible outcomes remain",
-          "required_evidence": "Scenario comparison and source constraints",
-          "to_card_id": "sqw.intent.design-alternative-selection"
-        }
-      ],
-      "path": "references/intent/material-intent-gaps.md",
-      "produces": [
-        "intent_gap_classification",
-        "default_decisions"
-      ],
-      "sha256": "sha256:02e213340b321c76d51fb0b91d95a37916fc36246e277411acc5799ad9f9b128"
-    },
-    {
-      "bytes": 3161,
-      "card_id": "sqw.intent.spec-freeze-handoff",
-      "card_version": 1,
-      "consumes": [
-        "resolved_intent_and_requirements",
-        "selected_outcome_or_constrained_design",
-        "specification_authority"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/intent/spec-freeze-handoff.md",
-      "produces": [
-        "frozen_specification_handoff"
-      ],
-      "sha256": "sha256:f0e3f4f55a16518c7de5d2c1255b225da65d2c24377b9fb0c2b6a9e62cfa1538"
-    },
-    {
-      "bytes": 2038,
-      "card_id": "sqw.recipes.debugger-assisted-diagnosis",
-      "card_version": 1,
-      "consumes": [
-        "reproduction_record",
-        "active_hypothesis",
-        "safe_process_ownership"
-      ],
-      "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/recipes/debugger-assisted-diagnosis.md",
-      "produces": [
-        "debugger_discrimination_observation"
-      ],
-      "sha256": "sha256:9a7eb0214c7a03ee5a07b33059ca02084390fb40bf8742283155145d2a77622c"
-    },
-    {
-      "bytes": 2237,
-      "card_id": "sqw.recipes.dependency-lockfile-drift",
-      "card_version": 1,
-      "consumes": [
-        "dependency_constraints",
-        "lockfile_state",
-        "installed_runtime_provenance"
-      ],
-      "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/recipes/dependency-lockfile-drift.md",
-      "produces": [
-        "dependency_drift_classification"
-      ],
-      "sha256": "sha256:db779f71e5911b9b540534bae855a5d7771f1e96aa6b48ecc71c7c142b784d89"
-    },
-    {
-      "bytes": 2131,
-      "card_id": "sqw.recipes.managed-runtime-sdk-smoke",
-      "card_version": 1,
-      "consumes": [
-        "declared_runtime_matrix",
-        "sdk_entrypoint",
-        "runner_provenance"
-      ],
-      "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/recipes/managed-runtime-sdk-smoke.md",
-      "produces": [
-        "managed_runtime_smoke_evidence"
-      ],
-      "sha256": "sha256:bdc316dd147a6ecd6c5e38d223f30b2bbad91d4fb772c1021463db594dae0fd9"
-    },
-    {
-      "bytes": 2513,
-      "card_id": "sqw.recovery.cleanup",
-      "card_version": 1,
-      "consumes": [
-        "cleanup_authority",
-        "object_inventory",
-        "retention_requirements"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/recovery/cleanup.md",
-      "produces": [
-        "cleanup_result",
-        "retention_proof"
-      ],
-      "sha256": "sha256:76d07945726bd407731b92786caa3a2f6cb6915bb68bbc0b2b3ccd7afa948d2e"
-    },
-    {
-      "bytes": 2541,
-      "card_id": "sqw.recovery.conflict-intent-and-proof",
-      "card_version": 1,
-      "consumes": [
-        "merge_state_record",
-        "side_content",
-        "behavior_contracts"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/recovery/conflict-intent-and-proof.md",
-      "produces": [
-        "resolution_contract",
-        "recovery_proof"
-      ],
-      "sha256": "sha256:2b72ae6b28609b391a3060449b8c9da401be584db1b1a6d72ec40380f5808de4"
-    },
-    {
-      "bytes": 3340,
-      "card_id": "sqw.recovery.merge-state-and-sides",
-      "card_version": 1,
-      "consumes": [
-        "git_operation_state",
-        "conflict_inventory",
-        "source_identity"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 1,
-      "max_bytes": 8192,
-      "neighbors": [
-        {
-          "edge_id": "merge-state-to-intent-proof",
-          "edge_mode": "hard",
-          "evict_when": "Conflict resolution intent and proof contract are recorded",
-          "hard_predicate_id": "merge-sides-identified",
-          "missing_decision": "Conflict intent and proof remain unresolved after identifying sides",
-          "required_evidence": "Base, ours, theirs, operation, and affected tests",
-          "to_card_id": "sqw.recovery.conflict-intent-and-proof"
-        }
-      ],
-      "path": "references/recovery/merge-state-and-sides.md",
-      "produces": [
-        "merge_state_record",
-        "side_identity"
-      ],
-      "sha256": "sha256:c611f0696d9e09b476a297634fa74117a7dd7bd2ed6ce4e324a97c8578380489"
-    },
-    {
-      "bytes": 2484,
       "card_id": "sqw.recovery.repository-recovery",
-      "card_version": 1,
-      "consumes": [
-        "repository_state",
-        "protected_state",
-        "recovery_authority"
-      ],
+      "card_version": 2,
+      "decision_id": "sqw.select.recovery.repository-recovery",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
       "path": "references/recovery/repository-recovery.md",
-      "produces": [
-        "repository_recovery_result",
-        "preserved_state"
+      "produced_artifact_ids": [
+        "recovery-repository-recovery"
       ],
-      "sha256": "sha256:4de34197f981430fe562a82ad9b78c5fe2930e7e8547ae16dcb84362ff2f6497"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:188b866efb2acb873cb617d136d09168507fa53843b9cb58eb928480328ababa"
     },
     {
-      "bytes": 2418,
-      "card_id": "sqw.review.finding-disposition",
-      "card_version": 1,
-      "consumes": [
-        "immutable_review_result",
-        "feedback_set",
-        "current_revision_projection",
-        "change_authority"
-      ],
+      "bytes": 2929,
+      "card_id": "sqw.review.execution-and-requirements",
+      "card_version": 2,
+      "decision_id": "sqw.select.review.execution-and-requirements",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/review/finding-disposition.md",
-      "produces": [
-        "finding_disposition_ledger"
+      "path": "references/review/execution-and-requirements.md",
+      "produced_artifact_ids": [
+        "review-execution"
       ],
-      "sha256": "sha256:cefba229b61d6baadcbf97f961f47adcb8b660d11ae024da878f9edd1c1af1d6"
+      "required_artifact_ids": [
+        "review-tier"
+      ],
+      "sha256": "sha256:af466f82e4c1a73115c122e02a8b4c41a56bc852240a7ad4bdff868a7cd0af31"
     },
     {
-      "bytes": 2151,
-      "card_id": "sqw.review.requirements-traceability",
-      "card_version": 1,
-      "consumes": [
-        "stable_requirement_index",
-        "frozen_scope_manifest",
-        "implementation_evidence",
-        "verification_evidence"
-      ],
-      "kind": "rubric",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/review/requirements-traceability.md",
-      "produces": [
-        "requirements_traceability_artifact"
-      ],
-      "sha256": "sha256:af36abd147455403bb9451d888dff36456bc6ec1ac56a70647cb8f72b33a6361"
-    },
-    {
-      "bytes": 2937,
-      "card_id": "sqw.review.result-envelope",
-      "card_version": 1,
-      "consumes": [
-        "review_scope_projection",
-        "finding_set",
-        "coverage_projection",
-        "verification_evidence",
-        "spec_traceability_projection"
-      ],
+      "bytes": 3045,
+      "card_id": "sqw.review.findings-and-result",
+      "card_version": 2,
+      "decision_id": "sqw.select.review.findings-and-result",
       "kind": "procedure",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/review/result-envelope.md",
-      "produces": [
-        "local_review_result"
-      ],
-      "sha256": "sha256:16f90c0f17c37df811e8233bb05137432e1fc1cc0491116384ba7bf0d730cdf4"
-    },
-    {
-      "bytes": 3093,
-      "card_id": "sqw.review.review-execution",
-      "card_version": 1,
-      "consumes": [
-        "review_tier_decision",
-        "frozen_scope_manifest",
-        "bounded_review_material",
-        "rubric_assignment_projection"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 1,
       "max_bytes": 8192,
-      "neighbors": [
-        {
-          "edge_id": "review-to-requirements",
-          "edge_mode": "hard",
-          "evict_when": "Traceability artifact recorded",
-          "hard_predicate_id": "stable-requirements-available",
-          "missing_decision": "Stable requirements exist and traceability is incomplete",
-          "required_evidence": "Requirement IDs and frozen scope",
-          "to_card_id": "sqw.review.requirements-traceability"
-        }
+      "path": "references/review/findings-and-result.md",
+      "produced_artifact_ids": [
+        "review-result"
       ],
-      "path": "references/review/review-execution.md",
-      "produces": [
-        "review_execution_artifacts"
+      "required_artifact_ids": [
+        "review-execution"
       ],
-      "sha256": "sha256:c710c667b4ce67835247f513f000f50b66583d460945de37d9252524eb9732bc"
+      "sha256": "sha256:1c86aef8d2c6ea3421fa29f41860cc50235cac9cb6323e731884d805f0e6e229"
     },
     {
-      "bytes": 1903,
+      "bytes": 1874,
       "card_id": "sqw.review.rubrics.accessibility",
-      "card_version": 1,
-      "consumes": [
-        "rubric_review_contract",
-        "bounded_change_material",
-        "affected_user_interface"
-      ],
+      "card_version": 2,
+      "decision_id": "sqw.select.review.rubrics.accessibility",
       "kind": "rubric",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
       "path": "references/review/rubrics/accessibility.md",
-      "produces": [
-        "accessibility_findings"
+      "produced_artifact_ids": [
+        "review-rubrics-accessibility"
       ],
-      "sha256": "sha256:1961ff0e9ca7926b491c24d287246b6eaf64b780b690285788bf67721e282b9c"
-    },
-    {
-      "bytes": 2079,
-      "card_id": "sqw.review.rubrics.adversarial-decision",
-      "card_version": 1,
-      "consumes": [
-        "high_consequence_claim",
-        "governing_contract",
-        "bounded_artifact",
-        "authority_projection"
+      "required_artifact_ids": [
+        "review-tier"
       ],
-      "kind": "rubric",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/review/rubrics/adversarial-decision.md",
-      "produces": [
-        "adversarial_review_findings"
-      ],
-      "sha256": "sha256:a8118a3383984494b5318d3fe6514faff5d360616e2ac618c634f1782f8b9232"
-    },
-    {
-      "bytes": 1876,
-      "card_id": "sqw.review.rubrics.api-consumer",
-      "card_version": 1,
-      "consumes": [
-        "rubric_review_contract",
-        "bounded_change_material",
-        "api_consumer_contract"
-      ],
-      "kind": "rubric",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/review/rubrics/api-consumer.md",
-      "produces": [
-        "api_consumer_findings"
-      ],
-      "sha256": "sha256:8c3672b35dc6e726a9e771ee56abe16a0f89c0b9d77c7d93e07116c1d56bacb7"
-    },
-    {
-      "bytes": 2051,
-      "card_id": "sqw.review.rubrics.architecture-maintainability",
-      "card_version": 1,
-      "consumes": [
-        "rubric_review_contract",
-        "bounded_change_material",
-        "repository_conventions"
-      ],
-      "kind": "rubric",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/review/rubrics/architecture-maintainability.md",
-      "produces": [
-        "architecture_maintainability_findings"
-      ],
-      "sha256": "sha256:d827dd4aaa7cb54d40a2e3cc15c6166f6281e211dff8016d1aaf2d0cad415de8"
-    },
-    {
-      "bytes": 1962,
-      "card_id": "sqw.review.rubrics.ci-release",
-      "card_version": 1,
-      "consumes": [
-        "rubric_review_contract",
-        "bounded_change_material",
-        "delivery_pipeline_contract"
-      ],
-      "kind": "rubric",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/review/rubrics/ci-release.md",
-      "produces": [
-        "ci_release_findings"
-      ],
-      "sha256": "sha256:938102eaecfe3d3df96bb5b0bfe802032bb2675ebb93343dc82573b657372d0f"
-    },
-    {
-      "bytes": 2156,
-      "card_id": "sqw.review.rubrics.dependency-supply-chain",
-      "card_version": 1,
-      "consumes": [
-        "rubric_review_contract",
-        "bounded_change_material",
-        "dependency_artifact_contract"
-      ],
-      "kind": "rubric",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/review/rubrics/dependency-supply-chain.md",
-      "produces": [
-        "dependency_supply_chain_findings"
-      ],
-      "sha256": "sha256:5e39a03aeffbeec8b9753f2e294e532b37a92bfae64eb6dcef41d6d6f93dc907"
-    },
-    {
-      "bytes": 2339,
-      "card_id": "sqw.review.rubrics.ml-ai",
-      "card_version": 1,
-      "consumes": [
-        "ml_ai_change_projection",
-        "claim_and_baseline_projection",
-        "data_artifact_provenance",
-        "verification_evidence"
-      ],
-      "kind": "rubric",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/review/rubrics/ml-ai.md",
-      "produces": [
-        "ml_ai_review_findings"
-      ],
-      "sha256": "sha256:40aed643d7846e6ced0fd771f63256b1532cfcb20d6b59a63dbecfba79e2cc07"
-    },
-    {
-      "bytes": 2187,
-      "card_id": "sqw.review.rubrics.observability-operability",
-      "card_version": 1,
-      "consumes": [
-        "operational_change_projection",
-        "failure_recovery_projection",
-        "telemetry_evidence"
-      ],
-      "kind": "rubric",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/review/rubrics/observability-operability.md",
-      "produces": [
-        "observability_operability_findings"
-      ],
-      "sha256": "sha256:e67d530f53cda261d60d2450995a46fae199574bd46898228cd2f969897f5119"
-    },
-    {
-      "bytes": 2106,
-      "card_id": "sqw.review.rubrics.privacy-data-lifecycle",
-      "card_version": 1,
-      "consumes": [
-        "rubric_review_contract",
-        "bounded_change_material",
-        "affected_data_flows"
-      ],
-      "kind": "rubric",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/review/rubrics/privacy-data-lifecycle.md",
-      "produces": [
-        "privacy_data_lifecycle_findings"
-      ],
-      "sha256": "sha256:09dd0a525977f62be60d7dd186d7d6f2652c0f266235176f3acfce258cffb3e9"
-    },
-    {
-      "bytes": 1930,
-      "card_id": "sqw.review.rubrics.product-outcome",
-      "card_version": 1,
-      "consumes": [
-        "rubric_review_contract",
-        "bounded_change_material",
-        "intended_user_outcome"
-      ],
-      "kind": "rubric",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/review/rubrics/product-outcome.md",
-      "produces": [
-        "product_outcome_findings"
-      ],
-      "sha256": "sha256:c351e3203ba30da39094872f656c4a859425942a9732b7d385091282d9493507"
-    },
-    {
-      "bytes": 2098,
-      "card_id": "sqw.review.rubrics.secret-handling",
-      "card_version": 1,
-      "consumes": [
-        "rubric_review_contract",
-        "bounded_change_material",
-        "credential_exposure_surface"
-      ],
-      "kind": "rubric",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/review/rubrics/secret-handling.md",
-      "produces": [
-        "secret_handling_findings"
-      ],
-      "sha256": "sha256:53f54b30648faa09bcf537b0f1a31407971e8c0b1e44f93bf09a1fae4576d88f"
-    },
-    {
-      "bytes": 1983,
-      "card_id": "sqw.review.rubrics.test-evidence",
-      "card_version": 1,
-      "consumes": [
-        "rubric_review_contract",
-        "bounded_change_material",
-        "verification_evidence"
-      ],
-      "kind": "rubric",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/review/rubrics/test-evidence.md",
-      "produces": [
-        "test_evidence_findings"
-      ],
-      "sha256": "sha256:822521a8c19f23b2891a375decfedeb208afbafd05d087742df6275ed1d4d127"
-    },
-    {
-      "bytes": 2819,
-      "card_id": "sqw.review.tier-selection",
-      "card_version": 1,
-      "consumes": [
-        "review_request",
-        "scope_projection",
-        "risk_surface_projection",
-        "authority_projection"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "review-tier-to-execution",
-          "edge_mode": "hard",
-          "evict_when": "Execution contract recorded",
-          "hard_predicate_id": "bounded-review-input-ready",
-          "missing_decision": "R1/R2 tier selected with bounded review input",
-          "required_evidence": "Frozen scope and risk evidence",
-          "to_card_id": "sqw.review.review-execution"
-        }
-      ],
-      "path": "references/review/tier-selection.md",
-      "produces": [
-        "review_tier_decision"
-      ],
-      "sha256": "sha256:3b8b69cd6e22b08cd2a054f66fdcbfbd2d1b0d05ed2c95dfc783e024ff8957dc"
-    },
-    {
-      "bytes": 2715,
-      "card_id": "sqw.runtime.exit-and-escalation",
-      "card_version": 1,
-      "consumes": [
-        "runtime_stability_contract",
-        "round_and_issue_ledger_projection",
-        "current_gates_provenance_and_boundaries"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/runtime/exit-and-escalation.md",
-      "produces": [
-        "runtime_stability_exit_or_escalation"
-      ],
-      "sha256": "sha256:56d59982c7256d0dd6e9f06a029b348c2fb42151249959c9ba20ca70273d04be"
-    },
-    {
-      "bytes": 3568,
-      "card_id": "sqw.runtime.stability-contract",
-      "card_version": 1,
-      "consumes": [
-        "runtime_hardening_request",
-        "actual_public_runtime_identity",
-        "authority_and_budget"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "stability-to-round",
-          "edge_mode": "hard",
-          "evict_when": "One revision-bound round result recorded",
-          "hard_predicate_id": "stability-round-required",
-          "missing_decision": "Stability contract, signals, and budget are frozen but another round is required",
-          "required_evidence": "Representative task, active-runtime proof, surfaces, oracle, clean target, stop and side-effect boundaries",
-          "to_card_id": "sqw.runtime.stability-round"
-        }
-      ],
-      "path": "references/runtime/stability-contract.md",
-      "produces": [
-        "runtime_stability_contract"
-      ],
-      "sha256": "sha256:656352b78094078bdbb32dc0768c9b2b2d090289b1191785f68430eb043820f9"
-    },
-    {
-      "bytes": 3820,
-      "card_id": "sqw.runtime.stability-round",
-      "card_version": 1,
-      "consumes": [
-        "runtime_stability_contract",
-        "current_candidate_and_runtime_projection",
-        "prior_round_and_issue_state"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 1,
-      "max_bytes": 8192,
-      "neighbors": [
-        {
-          "edge_id": "stability-round-to-exit",
-          "edge_mode": "hard",
-          "evict_when": "Exit/escalation judgment recorded",
-          "hard_predicate_id": "stability-exit-triggered",
-          "missing_decision": "Stop, blocked, budget, confidence target, or escalation condition requires an exit judgment",
-          "required_evidence": "Round outcome, clean count, issue state, active provenance, gates, pending work, and boundary",
-          "to_card_id": "sqw.runtime.exit-and-escalation"
-        }
-      ],
-      "path": "references/runtime/stability-round.md",
-      "produces": [
-        "runtime_stability_round_result"
-      ],
-      "sha256": "sha256:8072b05938bb1842fb89346535b961a26eda249f72732291d76f487aa5a72945"
-    },
-    {
-      "bytes": 2483,
-      "card_id": "sqw.safety.evidence-coverage-and-freshness",
-      "card_version": 1,
-      "consumes": [
-        "scope_decision",
-        "source_identity",
-        "evidence_inventory",
-        "coverage_projection"
-      ],
-      "kind": "safety",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/safety/evidence-coverage-and-freshness.md",
-      "produces": [
-        "coverage_ledger",
-        "freshness_decision"
-      ],
-      "sha256": "sha256:1e199a7c6c1ec17503d4340c002eafff7f404a454c1568da9389ee3e6cae1735"
-    },
-    {
-      "bytes": 2402,
-      "card_id": "sqw.safety.request-mode-and-authority",
-      "card_version": 1,
-      "consumes": [
-        "request_source",
-        "instruction_projection",
-        "authority_projection"
-      ],
-      "kind": "safety",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/safety/request-mode-and-authority.md",
-      "produces": [
-        "request_mode_decision",
-        "authority_decision"
-      ],
-      "sha256": "sha256:7a9acd42ee4c93490da0f3456024142bccbd903b2d507ea61fea297db39f9092"
-    },
-    {
-      "bytes": 2538,
-      "card_id": "sqw.safety.scope-and-dirty-worktree",
-      "card_version": 1,
-      "consumes": [
-        "request_mode_decision",
-        "authority_decision",
-        "source_identity",
-        "workspace_observation"
-      ],
-      "kind": "safety",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/safety/scope-and-dirty-worktree.md",
-      "produces": [
-        "scope_decision",
-        "scope_manifest_requirements"
-      ],
-      "sha256": "sha256:3ac71c1f95f93e9a2ed5128b5650229c99ec9b21d322d90e6579dcab09f5e5df"
-    },
-    {
-      "bytes": 2673,
-      "card_id": "sqw.safety.side-effect-risk",
-      "card_version": 1,
-      "consumes": [
-        "request_mode_decision",
-        "authority_decision",
-        "proposed_action",
-        "runtime_observation"
-      ],
-      "kind": "safety",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/safety/side-effect-risk.md",
-      "produces": [
-        "side_effect_decision",
-        "probe_boundary"
-      ],
-      "sha256": "sha256:932faacdc5fe1d34b8a25385ef9be23bff5e6e5fc2663d0f08450b9838a73778"
-    },
-    {
-      "bytes": 2584,
-      "card_id": "sqw.test.behavior-distinction-and-red",
-      "card_version": 1,
-      "consumes": [
-        "behavior_contract",
-        "existing_oracles",
-        "source_identity"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/test/behavior-distinction-and-red.md",
-      "produces": [
-        "distinction_contract",
-        "red_evidence"
-      ],
-      "sha256": "sha256:7d9dd79e03c56c59cdae1dcab902f1b284f33d7e55d8f22f5d50fe7fe7153176"
-    },
-    {
-      "bytes": 3355,
-      "card_id": "sqw.test.green-and-refactor",
-      "card_version": 1,
-      "consumes": [
-        "distinction_contract",
-        "red_evidence",
-        "change_contract",
-        "source_identity"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "green-to-oracle-quality",
-          "edge_mode": "semantic",
-          "evict_when": "Oracle sensitivity and independence are recorded",
-          "missing_decision": "The passing test may be tautological, overfit, or unable to reject a plausible wrong implementation",
-          "required_evidence": "Test/implementation diff, oracle provenance, and focused result",
-          "to_card_id": "sqw.test.oracle-quality"
-        }
-      ],
-      "path": "references/test/green-and-refactor.md",
-      "produces": [
-        "green_evidence",
-        "refactor_record"
-      ],
-      "sha256": "sha256:19f3dabff79099151a7af4b31e03ab19789ece0975ffae8980d6f1b8f64f1ea1"
-    },
-    {
-      "bytes": 2931,
-      "card_id": "sqw.test.lifecycle-change-and-retirement",
-      "card_version": 1,
-      "consumes": [
-        "test_classification_and_provenance",
-        "authorized_lifecycle_action",
-        "replacement_and_gate_evidence"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 0,
-      "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/test/lifecycle-change-and-retirement.md",
-      "produces": [
-        "test_lifecycle_transition_artifact"
-      ],
-      "sha256": "sha256:0897b8cc7d2562ccd51b8be101b7469eacb9a0ec2b530570ac4df4584bce86d4"
-    },
-    {
-      "bytes": 3051,
-      "card_id": "sqw.test.lifecycle-classification-and-provenance",
-      "card_version": 1,
-      "consumes": [
-        "touched_test_inventory",
-        "requirement_risk_anchors",
-        "test_gate_inventory"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "test-lifecycle-to-change",
-          "edge_mode": "hard",
-          "evict_when": "Lifecycle action and transition proof recorded",
-          "hard_predicate_id": "test-lifecycle-action-classified",
-          "missing_decision": "Test meaning is classified but its lifecycle action is unresolved",
-          "required_evidence": "Purpose, layer, lifecycle, anchor, owner, gate, and proposed action",
-          "to_card_id": "sqw.test.lifecycle-change-and-retirement"
-        }
-      ],
-      "path": "references/test/lifecycle-classification-and-provenance.md",
-      "produces": [
-        "test_classification_and_provenance"
-      ],
-      "sha256": "sha256:dff93b62793560c63bd1a45daf0c305d24ac77edb079ea9d37c5265a5fe39fa0"
-    },
-    {
-      "bytes": 2475,
-      "card_id": "sqw.test.oracle-quality",
-      "card_version": 1,
-      "consumes": [
-        "distinction_contract",
-        "test_source",
-        "implementation_source",
-        "oracle_provenance"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/test/oracle-quality.md",
-      "produces": [
-        "oracle_quality_decision"
-      ],
-      "sha256": "sha256:bd42917ea0201bc02c28fb2e4f8f77647ae43cc2af316bcc49c71f10d3c58371"
-    },
-    {
-      "bytes": 2260,
-      "card_id": "sqw.test.patterns.benchmark-fixture-curation",
-      "card_version": 1,
-      "consumes": [
-        "benchmark_manifest_and_schema",
-        "acceptance_oracle_and_target",
-        "held_out_policy"
-      ],
-      "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/test/patterns/benchmark-fixture-curation.md",
-      "produces": [
-        "benchmark_fixture_delta_proof"
-      ],
-      "sha256": "sha256:554ffc455aeecc0236008084f9d60e361fa86f490acc703a257da0045deede5f"
-    },
-    {
-      "bytes": 2126,
-      "card_id": "sqw.test.patterns.cross-language-parity",
-      "card_version": 1,
-      "consumes": [
-        "cross_language_public_contract",
-        "versioned_data_fixture",
-        "allowed_platform_differences"
-      ],
-      "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/test/patterns/cross-language-parity.md",
-      "produces": [
-        "cross_language_parity_proof"
-      ],
-      "sha256": "sha256:a294343ccda8ec9a56e22e29728ad635edca2b92ca7909ee85aac23afc447cc2"
-    },
-    {
-      "bytes": 1983,
-      "card_id": "sqw.test.patterns.dashboard-data-lineage",
-      "card_version": 1,
-      "consumes": [
-        "dashboard_query_contract",
-        "api_storage_lineage",
-        "record_fixture"
-      ],
-      "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/test/patterns/dashboard-data-lineage.md",
-      "produces": [
-        "dashboard_data_lineage_proof"
-      ],
-      "sha256": "sha256:96b243ed4560f05df4f319282a1ddaeb5d615dc2d28138dbb189078a594094c8"
-    },
-    {
-      "bytes": 2215,
-      "card_id": "sqw.test.patterns.legacy-manifest-comparison",
-      "card_version": 1,
-      "consumes": [
-        "legacy_current_manifest_fixtures",
-        "identity_comparison_contract",
-        "refresh_scheduling_rule"
-      ],
-      "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/test/patterns/legacy-manifest-comparison.md",
-      "produces": [
-        "legacy_manifest_comparison_proof"
-      ],
-      "sha256": "sha256:5e42490424c6bf5d0ff79624a350df22440743197792095f99fde1ba55e6de9e"
-    },
-    {
-      "bytes": 2189,
-      "card_id": "sqw.test.patterns.native-rewrite-parity",
-      "card_version": 1,
-      "consumes": [
-        "old_new_runtime_contract",
-        "approved_difference_inventory",
-        "parity_fixtures_and_budgets"
-      ],
-      "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/test/patterns/native-rewrite-parity.md",
-      "produces": [
-        "native_rewrite_parity_proof"
-      ],
-      "sha256": "sha256:0b94e28d83889f44dada5368159ca40046dd13a29b3a2fd89a59558481da27d7"
+      "sha256": "sha256:530c07e6ebbde7bdf2bbafbb7267c90220692cedce977efeaf0cd905b90c6939"
     },
     {
       "bytes": 2043,
+      "card_id": "sqw.review.rubrics.adversarial-decision",
+      "card_version": 2,
+      "decision_id": "sqw.select.review.rubrics.adversarial-decision",
+      "kind": "rubric",
+      "max_bytes": 8192,
+      "path": "references/review/rubrics/adversarial-decision.md",
+      "produced_artifact_ids": [
+        "review-rubrics-adversarial-decision"
+      ],
+      "required_artifact_ids": [
+        "review-tier"
+      ],
+      "sha256": "sha256:1e98b6d3832a0936502eb77234d347b77727112ecbeb34a07ea97f83a38dcab7"
+    },
+    {
+      "bytes": 3095,
+      "card_id": "sqw.review.rubrics.engineering-integrity",
+      "card_version": 2,
+      "decision_id": "sqw.select.review.rubrics.engineering-integrity",
+      "kind": "rubric",
+      "max_bytes": 8192,
+      "path": "references/review/rubrics/engineering-integrity.md",
+      "produced_artifact_ids": [
+        "review-rubrics-engineering-integrity"
+      ],
+      "required_artifact_ids": [
+        "review-tier"
+      ],
+      "sha256": "sha256:0a11de3652ad6377b5e11a0c768911033d6c49d65046777b45a17652279b3ac2"
+    },
+    {
+      "bytes": 2258,
+      "card_id": "sqw.review.rubrics.ml-ai",
+      "card_version": 2,
+      "decision_id": "sqw.select.review.rubrics.ml-ai",
+      "kind": "rubric",
+      "max_bytes": 8192,
+      "path": "references/review/rubrics/ml-ai.md",
+      "produced_artifact_ids": [
+        "review-rubrics-ml-ai"
+      ],
+      "required_artifact_ids": [
+        "review-tier"
+      ],
+      "sha256": "sha256:30252db429fe228f890408e494fe60e774a75b6818675b22ce90d0de34fd467f"
+    },
+    {
+      "bytes": 2090,
+      "card_id": "sqw.review.rubrics.privacy-data-lifecycle",
+      "card_version": 2,
+      "decision_id": "sqw.select.review.rubrics.privacy-data-lifecycle",
+      "kind": "rubric",
+      "max_bytes": 8192,
+      "path": "references/review/rubrics/privacy-data-lifecycle.md",
+      "produced_artifact_ids": [
+        "review-rubrics-privacy-data-lifecycle"
+      ],
+      "required_artifact_ids": [
+        "review-tier"
+      ],
+      "sha256": "sha256:c97e469bb122476073e3613afb16d9a38f1e1e2fc98f85a0d610fd9fd3f7442a"
+    },
+    {
+      "bytes": 2641,
+      "card_id": "sqw.review.rubrics.product-and-operability",
+      "card_version": 2,
+      "decision_id": "sqw.select.review.rubrics.product-and-operability",
+      "kind": "rubric",
+      "max_bytes": 8192,
+      "path": "references/review/rubrics/product-and-operability.md",
+      "produced_artifact_ids": [
+        "review-rubrics-product-and-operability"
+      ],
+      "required_artifact_ids": [
+        "review-tier"
+      ],
+      "sha256": "sha256:1074db655bdd720687663904d021ce0c6c37392b4bfefd0d768f156fce6a0ef5"
+    },
+    {
+      "bytes": 2067,
+      "card_id": "sqw.review.rubrics.secret-handling",
+      "card_version": 2,
+      "decision_id": "sqw.select.review.rubrics.secret-handling",
+      "kind": "rubric",
+      "max_bytes": 8192,
+      "path": "references/review/rubrics/secret-handling.md",
+      "produced_artifact_ids": [
+        "review-rubrics-secret-handling"
+      ],
+      "required_artifact_ids": [
+        "review-tier"
+      ],
+      "sha256": "sha256:379bb9fa4c94617721dbe28bb97b7a5c065bf026c44fd3a26cedd239b4014189"
+    },
+    {
+      "bytes": 2220,
+      "card_id": "sqw.review.tier-selection",
+      "card_version": 2,
+      "decision_id": "sqw.select.review.tier-selection",
+      "kind": "decision",
+      "max_bytes": 4096,
+      "path": "references/review/tier-selection.md",
+      "produced_artifact_ids": [
+        "review-tier"
+      ],
+      "required_artifact_ids": [],
+      "sha256": "sha256:4bb3feee44a54fb88b6711113fc5bf1311d29803fa62d6245eb74f8ea596b24f"
+    },
+    {
+      "bytes": 4526,
+      "card_id": "sqw.runtime.stability-campaign",
+      "card_version": 2,
+      "decision_id": "sqw.select.runtime.stability-campaign",
+      "kind": "procedure",
+      "max_bytes": 8192,
+      "path": "references/runtime/stability-campaign.md",
+      "produced_artifact_ids": [
+        "runtime-stability-campaign"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:435b2063caf49e29a075a8f646131d3bb495b466432fd4fa308af109aa1f82bc"
+    },
+    {
+      "bytes": 3151,
+      "card_id": "sqw.test.behavior-cycle",
+      "card_version": 2,
+      "decision_id": "sqw.select.test.behavior-cycle",
+      "kind": "procedure",
+      "max_bytes": 8192,
+      "path": "references/test/behavior-cycle.md",
+      "produced_artifact_ids": [
+        "test-behavior-cycle"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:8e3e8b219b131acdebb1035382e960919860f1c46ab7cf3202fb38d5b6b8dc32"
+    },
+    {
+      "bytes": 3393,
+      "card_id": "sqw.test.oracle-and-lifecycle",
+      "card_version": 2,
+      "decision_id": "sqw.select.test.oracle-and-lifecycle",
+      "kind": "decision",
+      "max_bytes": 8192,
+      "path": "references/test/oracle-and-lifecycle.md",
+      "produced_artifact_ids": [
+        "test-oracle-and-lifecycle"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:027fcbeabc0fb611f034aedd500960ecfda57ab8c5ff5ceb8f7101e12b13b511"
+    },
+    {
+      "bytes": 3375,
+      "card_id": "sqw.test.patterns.contract-migration-proof",
+      "card_version": 2,
+      "decision_id": "sqw.select.test.patterns.contract-migration-proof",
+      "kind": "recipe",
+      "max_bytes": 8192,
+      "path": "references/test/patterns/contract-migration-proof.md",
+      "produced_artifact_ids": [
+        "test-patterns-contract-migration-proof"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:30d8afb13ddb8d697be57b9533c46728f4923806bccf26fffa4ab443a81fee34"
+    },
+    {
+      "bytes": 3006,
+      "card_id": "sqw.test.patterns.dashboard-evidence",
+      "card_version": 2,
+      "decision_id": "sqw.select.test.patterns.dashboard-evidence",
+      "kind": "recipe",
+      "max_bytes": 8192,
+      "path": "references/test/patterns/dashboard-evidence.md",
+      "produced_artifact_ids": [
+        "test-patterns-dashboard-evidence"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:8e6821f421179b089b90370047c7cfd80a6446205bec39b6fee6b1022182bab7"
+    },
+    {
+      "bytes": 3332,
+      "card_id": "sqw.test.patterns.evaluation-fixture-curation",
+      "card_version": 2,
+      "decision_id": "sqw.select.test.patterns.evaluation-fixture-curation",
+      "kind": "recipe",
+      "max_bytes": 8192,
+      "path": "references/test/patterns/evaluation-fixture-curation.md",
+      "produced_artifact_ids": [
+        "test-patterns-evaluation-fixture-curation"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:059286f8dbbe2343f47cbcbcad96ce17e8474bad4f38c2711acdfa432b664f6b"
+    },
+    {
+      "bytes": 3068,
+      "card_id": "sqw.test.patterns.implementation-parity",
+      "card_version": 2,
+      "decision_id": "sqw.select.test.patterns.implementation-parity",
+      "kind": "recipe",
+      "max_bytes": 8192,
+      "path": "references/test/patterns/implementation-parity.md",
+      "produced_artifact_ids": [
+        "test-patterns-implementation-parity"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:74f22d537369d65bbab361bb312ab8e8445ecfd3f99f3f3027e058a4f3ebf691"
+    },
+    {
+      "bytes": 2105,
       "card_id": "sqw.test.patterns.optional-postprocess-boundary",
-      "card_version": 1,
-      "consumes": [
-        "primary_optional_workflow_contract",
-        "side_effect_authority",
-        "failure_semantics"
-      ],
+      "card_version": 2,
+      "decision_id": "sqw.select.test.patterns.optional-postprocess-boundary",
       "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
+      "max_bytes": 8192,
       "path": "references/test/patterns/optional-postprocess-boundary.md",
-      "produces": [
-        "optional_postprocess_boundary_proof"
+      "produced_artifact_ids": [
+        "test-patterns-optional-postprocess-boundary"
       ],
-      "sha256": "sha256:2d2ad8eb9f5e8cdef0ae84fc87c00b693b31b5a103ee081ea74bea5c699da074"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:40ad575a29fe30a9d8ec1dbbe4bbe15019ae4bd4bfefee27f3a813146ccff957"
     },
     {
-      "bytes": 2265,
+      "bytes": 2318,
       "card_id": "sqw.test.patterns.protocol-tool-stress",
-      "card_version": 1,
-      "consumes": [
-        "protocol_tool_contract",
-        "capability_side_effect_matrix",
-        "probe_budget"
-      ],
+      "card_version": 2,
+      "decision_id": "sqw.select.test.patterns.protocol-tool-stress",
       "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
+      "max_bytes": 8192,
       "path": "references/test/patterns/protocol-tool-stress.md",
-      "produces": [
-        "protocol_tool_stress_proof"
+      "produced_artifact_ids": [
+        "test-patterns-protocol-tool-stress"
       ],
-      "sha256": "sha256:1e40c500b62297f3d8b103f6ab29a09b80fcbb11f4b917fce6146b59a9f33860"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:1b744f82c7a51175e9102bb65a6802847d23a68ff8a7be9b6c358ae0392f396b"
     },
     {
-      "bytes": 2214,
+      "bytes": 2284,
       "card_id": "sqw.test.patterns.public-adapter-migration-proof",
-      "card_version": 1,
-      "consumes": [
-        "public_adapter_contract",
-        "migration_compatibility_decision",
-        "adapter_inventory"
-      ],
+      "card_version": 2,
+      "decision_id": "sqw.select.test.patterns.public-adapter-migration-proof",
       "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
+      "max_bytes": 8192,
       "path": "references/test/patterns/public-adapter-migration-proof.md",
-      "produces": [
-        "public_adapter_migration_proof"
+      "produced_artifact_ids": [
+        "test-patterns-public-adapter-migration-proof"
       ],
-      "sha256": "sha256:d6b5fb95184d9584de12bfa6d0404aaca85d28ffb1b70df855a7c7e52d646567"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:f5a0004755d8d9b8833ba7487e23564bf62e14399f4fbc60a71391ff8ef9e8ac"
     },
     {
-      "bytes": 2012,
-      "card_id": "sqw.test.patterns.read-only-dashboard-proof",
-      "card_version": 1,
-      "consumes": [
-        "read_only_dashboard_contract",
-        "backing_store_identity",
-        "public_launch_surface"
-      ],
-      "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/test/patterns/read-only-dashboard-proof.md",
-      "produces": [
-        "read_only_dashboard_proof"
-      ],
-      "sha256": "sha256:f8e44325ea045a71733c666eaf9b23484d240c770eaf02c8e813c87a9cb93ca6"
-    },
-    {
-      "bytes": 2434,
-      "card_id": "sqw.test.patterns.retrieval-fixture-curation",
-      "card_version": 1,
-      "consumes": [
-        "retrieval_case_schema",
-        "retrieval_oracle_and_metrics",
-        "fixture_target_and_provenance"
-      ],
-      "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/test/patterns/retrieval-fixture-curation.md",
-      "produces": [
-        "retrieval_fixture_delta_proof"
-      ],
-      "sha256": "sha256:45c3d4b8daf63dd215fceba48eced3679a19803a1414c6d84fef616363a46ec9"
-    },
-    {
-      "bytes": 2166,
-      "card_id": "sqw.test.patterns.semantic-contract-upgrade",
-      "card_version": 1,
-      "consumes": [
-        "approved_new_semantic_contract",
-        "consumer_compatibility_inventory",
-        "migration_plan"
-      ],
-      "kind": "recipe",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/test/patterns/semantic-contract-upgrade.md",
-      "produces": [
-        "semantic_contract_upgrade_proof"
-      ],
-      "sha256": "sha256:99558b773c9926797759bc5870f1ebe65c3e7b871c76c39b131a7471f41b0951"
-    },
-    {
-      "bytes": 2523,
-      "card_id": "sqw.verify.completion-evidence",
-      "card_version": 1,
-      "consumes": [
-        "verification_plan",
-        "gate_run_records",
-        "failure_classifications",
-        "coverage_ledger",
-        "freshness_decision"
-      ],
+      "bytes": 3181,
+      "card_id": "sqw.verify.classification-and-completion",
+      "card_version": 2,
+      "decision_id": "sqw.select.verify.classification-and-completion",
       "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/verify/completion-evidence.md",
-      "produces": [
-        "completion_evidence_record"
-      ],
-      "sha256": "sha256:5f81b4e5b2ba19d6c35776264c207a864dc894abb34c4f73e7fb092c7dde7602"
-    },
-    {
-      "bytes": 2177,
-      "card_id": "sqw.verify.failure-classification",
-      "card_version": 1,
-      "consumes": [
-        "failed_gate_run",
-        "baseline_evidence",
-        "environment_identity",
-        "scope_identity"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/verify/failure-classification.md",
-      "produces": [
-        "failure_classification"
-      ],
-      "sha256": "sha256:e6aab12e3ca503cf4e799f0ade3914081d6cfa5abcc2bcdb39194921660b1d8f"
-    },
-    {
-      "bytes": 3702,
-      "card_id": "sqw.verify.gate-execution-integrity",
-      "card_version": 1,
-      "consumes": [
-        "verification_plan",
-        "source_identity",
-        "scope_identity",
-        "environment_identity"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 1,
-      "max_bytes": 4096,
-      "neighbors": [
-        {
-          "edge_id": "gate-run-to-failure-classification",
-          "edge_mode": "hard",
-          "evict_when": "Every failed gate has a typed cause classification",
-          "hard_predicate_id": "required-gate-failed",
-          "missing_decision": "A required gate failed and its cause class is unresolved",
-          "required_evidence": "Original command, exit status, log slice, and environment identity",
-          "to_card_id": "sqw.verify.failure-classification"
-        },
-        {
-          "edge_id": "gate-run-to-completion-evidence",
-          "edge_mode": "hard",
-          "evict_when": "Completion evidence record is emitted",
-          "hard_predicate_id": "required-gates-fresh-pass",
-          "missing_decision": "All required gates passed and the completion record is not assembled",
-          "required_evidence": "Fresh gate records bound to current source and scope",
-          "to_card_id": "sqw.verify.completion-evidence"
-        }
-      ],
-      "path": "references/verify/gate-execution-integrity.md",
-      "produces": [
-        "gate_run_records"
-      ],
-      "sha256": "sha256:719609257322f3ede9e328380606ba2ca67046c8e7309307223e562bb2738d20"
-    },
-    {
-      "bytes": 2160,
-      "card_id": "sqw.verify.gate-selection",
-      "card_version": 1,
-      "consumes": [
-        "change_surface",
-        "available_gates",
-        "risk_projection"
-      ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/verify/gate-selection.md",
-      "produces": [
-        "verification_plan",
-        "gate_scope"
-      ],
-      "sha256": "sha256:2690d4f76f4022714710524656afd060ec7f6b747366b5e9f235362c582a7d22"
-    },
-    {
-      "bytes": 2588,
-      "card_id": "sqw.workspace.fixture-and-snapshot-hygiene",
-      "card_version": 1,
-      "consumes": [
-        "fixture_snapshot_contract",
-        "source_and_provenance_inventory",
-        "candidate_boundary"
-      ],
-      "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
-      "path": "references/workspace/fixture-and-snapshot-hygiene.md",
-      "produces": [
-        "fixture_snapshot_hygiene_artifact"
+      "path": "references/verify/classification-and-completion.md",
+      "produced_artifact_ids": [
+        "verify-classification-and-completion"
       ],
-      "sha256": "sha256:a7117812f95f73707a8eea363a89f2409fd657d9424590e0c16d196612f62b05"
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:c7fad5cb9bbc119ca2d5bbe58d666453c3fbcf439157c7e184a902ede1890941"
     },
     {
-      "bytes": 2756,
+      "bytes": 2879,
+      "card_id": "sqw.verify.gate-selection-and-execution",
+      "card_version": 2,
+      "decision_id": "sqw.select.verify.gate-selection-and-execution",
+      "kind": "procedure",
+      "max_bytes": 8192,
+      "path": "references/verify/gate-selection-and-execution.md",
+      "produced_artifact_ids": [
+        "verify-gate-selection-and-execution"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:a4dc0c6f807fc54269fb2418e90354517c9050feec1a9267b62e1f8c0aeb2d6a"
+    },
+    {
+      "bytes": 3747,
+      "card_id": "sqw.workspace.artifact-and-fixture-ownership",
+      "card_version": 2,
+      "decision_id": "sqw.select.workspace.artifact-and-fixture-ownership",
+      "kind": "procedure",
+      "max_bytes": 8192,
+      "path": "references/workspace/artifact-and-fixture-ownership.md",
+      "produced_artifact_ids": [
+        "workspace-artifact-and-fixture-ownership"
+      ],
+      "required_artifact_ids": [
+        "workflow-intake"
+      ],
+      "sha256": "sha256:75c53df05ad75e671b067e499cf1d2cf36ffc4d7a0d1a9e33e461062a87d9772"
+    },
+    {
+      "bytes": 2780,
       "card_id": "sqw.workspace.prototype-lifecycle",
-      "card_version": 1,
-      "consumes": [
-        "prototype_decision_question",
-        "experiment_authority_and_isolation",
-        "learning_oracle"
-      ],
+      "card_version": 2,
+      "decision_id": "sqw.select.workspace.prototype-lifecycle",
       "kind": "procedure",
-      "max_active_neighbors": 0,
       "max_bytes": 8192,
-      "neighbors": [],
       "path": "references/workspace/prototype-lifecycle.md",
-      "produces": [
-        "prototype_lifecycle_artifact"
+      "produced_artifact_ids": [
+        "workspace-prototype-lifecycle"
       ],
-      "sha256": "sha256:68bd6b471d98c8243e0cd8c85ab3845613a1487f19c2197ae193547ba7a62698"
-    },
-    {
-      "bytes": 2826,
-      "card_id": "sqw.workspace.task-artifact-ownership",
-      "card_version": 1,
-      "consumes": [
-        "workspace_artifact_inventory",
-        "ownership_and_consumer_evidence",
-        "move_delete_authority"
+      "required_artifact_ids": [
+        "workflow-intake"
       ],
-      "kind": "decision",
-      "max_active_neighbors": 0,
-      "max_bytes": 4096,
-      "neighbors": [],
-      "path": "references/workspace/task-artifact-ownership.md",
-      "produces": [
-        "task_artifact_ownership_and_relocation_contract"
-      ],
-      "sha256": "sha256:883d650a64a53cd475bc3995ff32e50f294d38dfbf2c70e7ec9472d72387b7fa"
+      "sha256": "sha256:d23432def7b46348acedb4a0d134ce558cffa5327645d997b254de80371ca619"
     }
   ],
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "skill_id": "software-quality-workflows",
-  "skill_version": "5.0.0"
+  "skill_version": "6.0.0"
 }

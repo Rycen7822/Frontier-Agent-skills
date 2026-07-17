@@ -1,19 +1,16 @@
 ---
 {
   "card_id": "sqw.test.patterns.public-adapter-migration-proof",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "recipe",
-  "consumes": [
-    "public_adapter_contract",
-    "migration_compatibility_decision",
-    "adapter_inventory"
+  "decision_id": "sqw.select.test.patterns.public-adapter-migration-proof",
+  "required_artifact_ids": [
+    "workflow-intake"
   ],
-  "produces": [
-    "public_adapter_migration_proof"
+  "produced_artifact_ids": [
+    "test-patterns-public-adapter-migration-proof"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 4096,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Public Adapter Migration Proof Pattern
@@ -28,7 +25,7 @@ Prove that every public adapter preserves the approved contract, identity, read/
 - The change is wholly internal and no public boundary, identity, schema, or compatibility behavior changes.
 
 ## Required inputs
-- Public contract/schema/docs, adapter inventory, state identity rules, approved legacy compatibility/rejection, old/new fixtures, and risk authority.
+- `workflow-intake`; public contract/schema/docs; adapter inventory; state identity rules; approved legacy compatibility/rejection; old/new fixtures; and risk authority.
 
 ## Procedure
 1. Inventory adapters translating arguments, identities, paths, schemas, errors, or versions, including dormant/generated surfaces.
@@ -38,7 +35,7 @@ Prove that every public adapter preserves the approved contract, identity, read/
 5. Keep rollback/migration artifacts until gates pass; cleanup only isolated state and task-owned configuration.
 
 ## Output contract
-- Adapter/consumer coverage matrix, old/new fixture identities, public-path command/status evidence, state/schema/error assertions, residual-name scan, rollback evidence, and cleanup status.
+- One `test-patterns-public-adapter-migration-proof` with adapter/consumer coverage matrix, old/new fixture identities, public-path command/status evidence, state/schema/error assertions, residual-name scan, rollback evidence, and cleanup status.
 
 ## Load next only if
 

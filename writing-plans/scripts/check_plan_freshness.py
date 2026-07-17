@@ -14,7 +14,6 @@ import subprocess
 import sys
 from typing import Any
 
-from _closure_contract import ContractInputError, canonical_contract_hash, load_contract
 from _plan_state import PlanInputError, VERIFIER_REF_SCHEMES, canonical_state_hash, capsule_source_hash, file_hash, load_json, validate_against_schema
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -166,7 +165,6 @@ def check_freshness(
     now_value: str | None = None,
     changed_refs: set[str] | None = None,
     changed_fields: dict[str, set[str]] | None = None,
-    closure_contract_path: Path | None = None,
     current_policy_bundle_hash: str | None = None,
     current_bundle_id: str | None = None,
     current_reference_manifest_hash: str | None = None,
@@ -186,7 +184,7 @@ def check_freshness(
     observed_now = _now(now_value)
     issues: list[dict[str, str]] = []
     global_stale = False
-    contract_global_stale = False
+    policy_root_stale = False
     declared_changed_refs = set(changed_refs or set()) | set((changed_fields or {}).keys())
 
     def add(object_id: str, kind: str, message: str, *, global_issue: bool = False) -> None:
@@ -194,18 +192,16 @@ def check_freshness(
         issues.append({"id": object_id, "kind": kind, "message": message})
         global_stale = global_stale or global_issue
 
-    def add_contract(kind: str, message: str) -> None:
-        nonlocal contract_global_stale
-        contract_global_stale = True
-        add("contract", kind, message, global_issue=True)
+    def add_policy_root(kind: str, message: str) -> None:
+        nonlocal policy_root_stale
+        policy_root_stale = True
+        add("policy", kind, message, global_issue=True)
 
-    policy = state.get("execution_policy")
-    contract_ref = state.get("closure_contract_ref") if isinstance(state.get("closure_contract_ref"), dict) else None
     source_identity = state.get("source", {})
     if current_bundle_id is not None and source_identity.get("bundle_id") != current_bundle_id:
         add("plan", "bundle_changed", "current bundle identity differs from the plan binding", global_issue=True)
     if current_policy_bundle_hash is not None and state.get("source", {}).get("policy_bundle_hash") != current_policy_bundle_hash:
-        add_contract("policy_bundle_changed", "current policy bundle differs from the plan binding")
+        add_policy_root("policy_bundle_changed", "current policy bundle differs from the plan binding")
     if current_reference_manifest_hash is not None and source_identity.get("reference_manifest_hash") != current_reference_manifest_hash:
         capsule_ids = [item.get("id") for item in state.get("snapshots", []) if item.get("kind") == "capsule" and item.get("id")]
         for capsule_id in capsule_ids or ["context"]:
@@ -220,39 +216,6 @@ def check_freshness(
                 continue
             if any(current_card_hashes.get(ref.get("card_id"), ref.get("card_hash")) != ref.get("card_hash") for ref in snapshot.get("card_refs", [])):
                 add(snapshot.get("id", "context"), "card_hash_changed", "card hash drift invalidates context projection only")
-    if policy == "autonomous_closure":
-        if contract_ref is None or closure_contract_path is None:
-            add_contract("contract_missing", "autonomous closure plan lacks a loadable frozen contract")
-        else:
-            try:
-                contract = load_contract(closure_contract_path)
-            except (ContractInputError, OSError, TypeError, ValueError) as exc:
-                add_contract("contract_unreadable", str(exc))
-            else:
-                actual_hash = canonical_contract_hash(contract)
-                if contract.get("status") != "frozen" or contract.get("content_hash") != actual_hash:
-                    add_contract("contract_hash_invalid", "loaded contract is not a self-consistent frozen artifact")
-                if contract_ref.get("content_hash") != contract.get("content_hash"):
-                    add_contract("contract_hash_changed", "loaded contract hash differs from the plan binding")
-                if contract_ref.get("epoch") != contract.get("epoch"):
-                    add_contract("contract_epoch_changed", "loaded contract epoch differs from the plan binding")
-                contract_source = contract.get("source") if isinstance(contract.get("source"), dict) else {}
-                for field in ("base_revision", "scope_hash", "policy_bundle_hash"):
-                    if state.get("source", {}).get(field) != contract_source.get(field):
-                        add_contract("contract_source_changed", f"contract {field} differs from plan source")
-                available = {
-                    "constraint_refs": {item.get("id") for item in contract.get("hard_constraints", []) if isinstance(item, dict)},
-                    "corner_refs": {item.get("id") for item in contract.get("corners", []) if isinstance(item, dict)},
-                    "verifier_requirement_refs": {item.get("id") for item in contract.get("verifier_requirements", []) if isinstance(item, dict)},
-                }
-                for node in state.get("nodes", []):
-                    for field, allowed in available.items():
-                        if any(ref not in allowed for ref in node.get(field, [])):
-                            add_contract("contract_ref_removed", f"{node.get('id')} references an ID absent from the loaded contract")
-    for decision in state.get("decisions", []):
-        if policy == "autonomous_closure" and decision.get("contract_effect") == "requires_new_epoch":
-            add_contract("contract_epoch_required", f"decision {decision.get('id')} requires a new closure epoch")
-
     for changed_ref in sorted(declared_changed_refs):
         add(changed_ref, "declared_changed", "caller declared this plan ref changed", global_issue=changed_ref in {"source", "scope", "plan"} or changed_ref.startswith("I-"))
 
@@ -361,12 +324,12 @@ def check_freshness(
 
     directly_stale = sorted({item["id"] for item in issues})
     impact = propagate_affected(state, set(directly_stale), changed_fields=changed_fields)
-    if contract_global_stale:
+    if policy_root_stale:
         all_nodes = sorted(node.get("id") for node in state.get("nodes", []) if isinstance(node.get("id"), str))
         impact["affected_ids"] = sorted(set(impact["affected_ids"]) | set(all_nodes))
         impact["preserved_ids"] = sorted(set(impact["preserved_ids"]) - set(all_nodes))
         impact["repair_type"] = "global_or_parent_replan"
-        impact["escalation_reasons"] = sorted(set(impact["escalation_reasons"] + ["contract_or_policy_root_changed"]))
+        impact["escalation_reasons"] = sorted(set(impact["escalation_reasons"] + ["policy_root_changed"]))
     if not issues:
         status = "fresh"
     elif global_stale:
@@ -408,7 +371,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
     parser.add_argument("--repository", type=Path)
     parser.add_argument("--scope-hash")
-    parser.add_argument("--closure-contract", type=Path)
     parser.add_argument("--policy-bundle-hash")
     parser.add_argument("--bundle-id")
     parser.add_argument("--reference-manifest-hash")
@@ -429,7 +391,6 @@ def main(argv: list[str] | None = None) -> int:
         now_value=args.now,
         changed_refs=set(args.changed_ref),
         changed_fields=changed_fields,
-        closure_contract_path=args.closure_contract,
         current_policy_bundle_hash=args.policy_bundle_hash,
         current_bundle_id=args.bundle_id,
         current_reference_manifest_hash=args.reference_manifest_hash,

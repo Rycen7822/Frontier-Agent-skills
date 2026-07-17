@@ -1,19 +1,16 @@
 ---
 {
   "card_id": "sqw.test.patterns.optional-postprocess-boundary",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "recipe",
-  "consumes": [
-    "primary_optional_workflow_contract",
-    "side_effect_authority",
-    "failure_semantics"
+  "decision_id": "sqw.select.test.patterns.optional-postprocess-boundary",
+  "required_artifact_ids": [
+    "workflow-intake"
   ],
-  "produces": [
-    "optional_postprocess_boundary_proof"
+  "produced_artifact_ids": [
+    "test-patterns-optional-postprocess-boundary"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 4096,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Optional Postprocess Boundary Pattern
@@ -28,7 +25,7 @@ Prove that optional post-processing cannot erase, replace, or misreport the requ
 - The downstream step is required for correctness, security, compliance, recoverability, or the requested artifact.
 
 ## Required inputs
-- Canonical primary artifact/status, optional output/status, job/state/event semantics, actor authority, retry/lock/crash behavior, consumers, and cleanup boundary.
+- `workflow-intake`; canonical primary artifact/status; optional output/status; job/state/event semantics; actor authority; retry/lock/crash behavior; consumers; and cleanup boundary.
 
 ## Procedure
 1. Define primary success artifact and failure independently of optional work.
@@ -38,7 +35,7 @@ Prove that optional post-processing cannot erase, replace, or misreport the requ
 5. Isolate side effects, locks, retries, and crash replay so optional cleanup never deletes/overwrites the primary result or makes duplicate required work.
 
 ## Output contract
-- Three-case behavior evidence, artifact/status/event identities, authority and side effects, retry/crash observations, cleanup proof, and unresolved contract gaps.
+- One `test-patterns-optional-postprocess-boundary` with three-case behavior evidence, artifact/status/event identities, authority and side effects, retry/crash observations, cleanup proof, and unresolved contract gaps.
 
 ## Load next only if
 

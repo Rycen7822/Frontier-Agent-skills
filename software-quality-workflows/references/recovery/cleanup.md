@@ -1,20 +1,16 @@
 ---
 {
   "card_id": "sqw.recovery.cleanup",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "procedure",
-  "consumes": [
-    "cleanup_authority",
-    "object_inventory",
-    "retention_requirements"
+  "decision_id": "sqw.select.recovery.cleanup",
+  "required_artifact_ids": [
+    "workflow-intake"
   ],
-  "produces": [
-    "cleanup_result",
-    "retention_proof"
+  "produced_artifact_ids": [
+    "recovery-cleanup"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 8192,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Authorized Cleanup
@@ -29,7 +25,7 @@ Remove only an explicitly authorized bounded set of task-owned artifacts or redu
 - Ownership or behavior is uncertain, evidence may still be valuable, repository/workspace recovery is needed, or cleanup is merely convenient.
 
 ## Required inputs
-- Exact object/change inventory, ownership and reachability evidence, preserved behavior contract, retention/archive requirements, focused proof, and cleanup authority.
+- `workflow-intake`; exact object/change inventory; ownership and reachability evidence; preserved behavior contract; retention/archive requirements; focused proof; and cleanup authority.
 
 ## Procedure
 1. Classify the bounded request as artifact cleanup, source simplification, or both; reject workspace reorganization and recovery work from this card.
@@ -41,7 +37,7 @@ Remove only an explicitly authorized bounded set of task-owned artifacts or redu
 7. Report uncertain candidates and residual duplication instead of escalating the cleanup scope.
 
 ## Output contract
-- `cleanup_mode`, `removed_objects_or_spans`, `retained_objects`, `preserved_behavior`, `archive_refs`, `semantic_diff`, `post_cleanup_proof`, and `unresolved_candidates`.
+- One `recovery-cleanup` with cleanup mode, removed objects or spans, retained objects, preserved behavior, archive refs, semantic diff, post-cleanup proof, and unresolved candidates.
 
 ## Load next only if
 

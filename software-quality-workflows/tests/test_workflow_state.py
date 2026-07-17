@@ -70,10 +70,6 @@ def _mutate(state: dict, name: str) -> dict:
             {"id": "LOCK-01", "resource": "working-tree", "owner": "session-a", "acquired_at": "2026-07-13T11:00:00+08:00", "lease_expires_at": "2026-07-13T12:00:00+08:00", "state_version": 3},
             {"id": "LOCK-02", "resource": "working-tree", "owner": "session-b", "acquired_at": "2026-07-13T11:01:00+08:00", "lease_expires_at": "2026-07-13T12:01:00+08:00", "state_version": 3}
         ]
-    elif name == "closure_premature":
-        state["status"] = "closed"
-        state["closure"]["status"] = "closed"
-        state["closure"]["epistemic_status"] = "verified_within_scope"
     elif name == "sensitive_unclassified":
         state["artifacts"][0]["claim"] = "access_token=RAW_TOKEN_1234567890"
     elif name == "io_schema_mismatch":
@@ -99,7 +95,7 @@ class WorkflowStateTests(unittest.TestCase):
 
     def test_every_stable_state_violation_has_a_fixture(self) -> None:
         catalog = load_json(STATE_FIXTURES / "invalid-cases.json")
-        self.assertEqual(16, len(catalog["cases"]))
+        self.assertEqual(15, len(catalog["cases"]))
         for case in catalog["cases"]:
             with self.subTest(case=case["id"]):
                 state = _base()
@@ -134,20 +130,14 @@ class WorkflowStateTests(unittest.TestCase):
         state["artifacts"][0]["claim"] = "api_key=RAW_SECRET_1234567890"
         self.assertIn("workflow.sensitive-unclassified", {item.code for item in validate_state(state, STATE_SCHEMA)})
 
-    def test_closure_rejects_pending_background_even_when_other_gates_pass(self) -> None:
+    def test_completion_rejects_pending_background_even_when_other_gates_pass(self) -> None:
         state = _base()
         _node(state, "N-02")["status"] = "skipped"
         state["frontier"] = []
-        state["status"] = "closed"
-        state["closure"].update({
-            "status": "closed",
-            "required_verifiers": ["VER-01"],
-            "evidence_refs": ["EV-01"],
-            "known_gaps": [],
-            "epistemic_status": "verified_within_scope",
-        })
+        state["status"] = "completed"
+        state["verifiers"][1]["status"] = "passed"
         state["pending_background"] = ["RUN-99"]
-        self.assertIn("workflow.closure-premature", {item.code for item in validate_state(state, STATE_SCHEMA)})
+        self.assertIn("workflow.completion-premature", {item.code for item in validate_state(state, STATE_SCHEMA)})
 
     def test_transition_validator_rejects_skip_and_version_drift(self) -> None:
         previous = _base()
@@ -161,9 +151,9 @@ class WorkflowStateTests(unittest.TestCase):
         codes = {item.code for item in validate_transition(previous, current)}
         self.assertIn("workflow.state-version", codes)
 
-    def test_worker_cannot_approve_or_close_workflow(self) -> None:
+    def test_worker_cannot_approve_or_complete_workflow(self) -> None:
         events = load_json_lines(EVENT_FIXTURES / "valid-events.jsonl")
-        for event_type in ("node_completed", "approval_granted", "closure_proposed", "workflow_closed"):
+        for event_type in ("node_completed", "approval_granted", "workflow_completed"):
             with self.subTest(event_type=event_type):
                 event = deepcopy(events[1])
                 event["event_id"] = "evt-000099"

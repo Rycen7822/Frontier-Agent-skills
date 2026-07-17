@@ -1,19 +1,16 @@
 ---
 {
   "card_id": "sqw.bridges.source-target-gap-audit",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "bridge",
-  "consumes": [
-    "primary_source_identity",
-    "target_identity",
-    "audit_scope"
+  "decision_id": "sqw.select.bridges.source-target-gap-audit",
+  "required_artifact_ids": [
+    "workflow-intake"
   ],
-  "produces": [
-    "source_target_gap_map"
+  "produced_artifact_ids": [
+    "bridges-source-target-gap-audit"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 4096,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Source-to-Target Gap Audit Bridge
@@ -28,7 +25,7 @@ Route or perform a bounded read-only comparison between primary-source claims an
 - The request authorizes implementation, asks for general synthesis, or lacks stable source and target identities.
 
 ## Required inputs
-- Primary-source revision and access, target revision/surface, audit question, coverage projection, exclusions, and available paper/research/document owner.
+- `workflow-intake`; primary-source revision and access; target revision/surface; audit question; coverage projection; exclusions; and available paper/research/document owner.
 
 ## Procedure
 1. Freeze source and target identities and keep paper/source claims distinct from target behavior and reviewer inference.
@@ -39,7 +36,7 @@ Route or perform a bounded read-only comparison between primary-source claims an
 6. Emit remediation recommendations separately from verified findings; do not edit the target.
 
 ## Output contract
-- `source_identity`, `target_identity`, `coverage`, `claim_target_matrix`, `findings`, `evidence_refs`, `not_reviewed`, and `ranked_recommendations`.
+- One `bridges-source-target-gap-audit` with source and target identity, coverage, claim-target matrix, findings, evidence refs, not-reviewed surfaces, and ranked recommendations.
 
 ## Load next only if
 

@@ -1,19 +1,16 @@
 ---
 {
   "card_id": "sqw.domain.source.external-authority",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "decision",
-  "consumes": [
-    "repository_dependency_versions",
-    "version_sensitive_question",
-    "authoritative_source_evidence"
+  "decision_id": "sqw.select.domain.source.external-authority",
+  "required_artifact_ids": [
+    "workflow-intake"
   ],
-  "produces": [
-    "external_source_authority_decision"
+  "produced_artifact_ids": [
+    "domain-source-external-authority"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 4096,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # External Source Authority
@@ -28,7 +25,7 @@ Select and bind narrow authoritative external/versioned evidence when upstream b
 - Local behavior is fully governed by repository contracts, or the task merely contains a URL without making external source/version authoritative.
 
 ## Required inputs
-- Exact dependency/runtime/protocol/generated-client/compatibility versions from repository declarations/lock state, one decision question, local wrapper/conventions/tests/support range, and candidate primary sources.
+- `workflow-intake`; exact dependency/runtime/protocol/generated-client/compatibility versions from repository declarations/lock state, one decision question, local wrapper/conventions/tests/support range, and candidate primary sources.
 
 ## Procedure
 1. Detect exact relevant versions locally and formulate the narrow question before research.

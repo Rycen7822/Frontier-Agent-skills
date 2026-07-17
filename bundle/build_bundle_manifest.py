@@ -21,24 +21,18 @@ if str(SCRIPTS) not in sys.path:
 from _bundle_hash import FORBIDDEN_PARTS, FORBIDDEN_SUFFIXES, inventory, tree_hash  # noqa: E402
 
 
-BUNDLE_ID = "frontier-engineering/5.0.0+4.0.0"
-SCHEMA_EPOCH = 1
+BUNDLE_ID = "frontier-engineering/6.0.0+5.0.0"
+SCHEMA_EPOCH = 2
 OUTPUT = ROOT / "frontier-engineering.bundle.json"
 SCHEMA = ROOT / "bundle" / "frontier-engineering-bundle.schema.json"
 SOURCE_MANIFEST = ROOT / "bundle-manifest.json"
 EXPECTED_SKILLS = {
-    "software-quality-workflows": "5.0.0",
-    "writing-plans": "4.0.0",
+    "software-quality-workflows": "6.0.0",
+    "writing-plans": "5.0.0",
 }
 POLICY_REGISTRY = Path("registries/policy-owners.json")
 CARD_MANIFEST = Path("registries/reference-cards.manifest.json")
 HANDOFF_OWNER = Path("writing-plans/schemas/plan-execution-handoff.schema.json")
-EDGE_GOLDENS = {
-    "software-quality-workflows": Path("tests/fixtures/reference-navigation-edges-v5.json"),
-    "writing-plans": Path("tests/fixtures/reference-navigation-edges-v4.json"),
-}
-
-
 def _canonical_bytes(value: Any) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
@@ -108,32 +102,6 @@ def _skill_record(skill_id: str, version: str) -> dict[str, Any]:
     }
 
 
-def _validate_edge_union() -> None:
-    combined: list[tuple[str, str, str, str]] = []
-    for skill_id, golden_relative in EDGE_GOLDENS.items():
-        manifest = _load_json(ROOT / skill_id / CARD_MANIFEST)
-        golden = _load_json(ROOT / skill_id / golden_relative)
-        observed = sorted(
-            (
-                card["card_id"],
-                edge["edge_id"],
-                edge["to_card_id"],
-                edge["edge_mode"],
-            )
-            for card in manifest["cards"]
-            for edge in card["neighbors"]
-        )
-        expected = sorted(
-            (edge["source"], edge["edge_id"], edge["target"], edge["mode"])
-            for edge in golden["edges"]
-        )
-        if observed != expected:
-            raise ValueError(f"{skill_id} card manifest differs from its exact edge golden")
-        combined.extend(observed)
-    if len(combined) != 46 or len(combined) != len(set(combined)):
-        raise ValueError("atomic bundle must contain exactly 46 unique navigation edges")
-
-
 def build_manifest() -> dict[str, Any]:
     source = _load_json(SOURCE_MANIFEST)
     skills = source.get("skills")
@@ -146,7 +114,16 @@ def build_manifest() -> dict[str, Any]:
     }
     if observed != EXPECTED_SKILLS or len(skills) != len(EXPECTED_SKILLS):
         raise ValueError(f"source bundle must bind the exact vNext skill pair: {observed}")
-    _validate_edge_union()
+    if source.get("bundle_schema_version") != "2.0" or source.get("bundle_version") != "2.0.0":
+        raise ValueError("source bundle must bind schema 2.0 and release 2.0.0")
+    if source.get("cross_skill_contracts") != ["plan-to-workflow", "workflow-plan-change-proposal"]:
+        raise ValueError("source bundle must declare the exact two cross-skill contracts")
+    if source.get("activation_policy") != {
+        "current_level": "shadow",
+        "implicit_routing_default": False,
+        "remote_writes": False,
+    }:
+        raise ValueError("source bundle must retain the exact three-field shadow policy")
 
     handoff = _load_json(ROOT / HANDOFF_OWNER)
     contract_id = handoff.get("$id")

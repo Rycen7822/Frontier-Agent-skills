@@ -1,20 +1,16 @@
 ---
 {
   "card_id": "sqw.review.rubrics.adversarial-decision",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "rubric",
-  "consumes": [
-    "high_consequence_claim",
-    "governing_contract",
-    "bounded_artifact",
-    "authority_projection"
+  "decision_id": "sqw.select.review.rubrics.adversarial-decision",
+  "required_artifact_ids": [
+    "review-tier"
   ],
-  "produces": [
-    "adversarial_review_findings"
+  "produced_artifact_ids": [
+    "review-rubrics-adversarial-decision"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 8192,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Adversarial Decision Rubric

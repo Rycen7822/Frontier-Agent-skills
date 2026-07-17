@@ -1,30 +1,26 @@
 {
-  "bundle_schema_version": "1.0",
-  "bundle_version": "1.0.0",
+  "bundle_schema_version": "2.0",
+  "bundle_version": "2.0.0",
   "skills": [
     {
       "id": "writing-plans",
       "path": "writing-plans",
-      "version": "4.0.0"
+      "version": "5.0.0"
     },
     {
       "id": "software-quality-workflows",
       "path": "software-quality-workflows",
-      "version": "5.0.0"
+      "version": "6.0.0"
     }
   ],
   "cross_skill_contracts": [
-    "closure-contract-to-plan",
     "plan-to-workflow",
     "workflow-plan-change-proposal"
   ],
   "activation_policy": {
     "current_level": "shadow",
-    "live_autonomous_closure_default": false,
-    "multi_candidate_enabled": false,
-    "remote_writes": false,
-    "p5_report": "evaluation/p5-shadow-report.json",
-    "p5_control_evidence": "evaluation/p5-control-evidence.json"
+    "implicit_routing_default": false,
+    "remote_writes": false
   },
   "optional_external_dependencies": [
     {

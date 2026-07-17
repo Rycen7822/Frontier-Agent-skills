@@ -1,20 +1,16 @@
 ---
 {
   "card_id": "sqw.review.rubrics.ml-ai",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "rubric",
-  "consumes": [
-    "ml_ai_change_projection",
-    "claim_and_baseline_projection",
-    "data_artifact_provenance",
-    "verification_evidence"
+  "decision_id": "sqw.select.review.rubrics.ml-ai",
+  "required_artifact_ids": [
+    "review-tier"
   ],
-  "produces": [
-    "ml_ai_review_findings"
+  "produced_artifact_ids": [
+    "review-rubrics-ml-ai"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 8192,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # ML and AI Rubric

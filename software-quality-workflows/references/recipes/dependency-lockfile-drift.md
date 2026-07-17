@@ -1,19 +1,16 @@
 ---
 {
   "card_id": "sqw.recipes.dependency-lockfile-drift",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "recipe",
-  "consumes": [
-    "dependency_constraints",
-    "lockfile_state",
-    "installed_runtime_provenance"
+  "decision_id": "sqw.select.recipes.dependency-lockfile-drift",
+  "required_artifact_ids": [
+    "workflow-intake"
   ],
-  "produces": [
-    "dependency_drift_classification"
+  "produced_artifact_ids": [
+    "recipes-dependency-lockfile-drift"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 4096,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Dependency and Lockfile Drift
@@ -28,7 +25,7 @@ Classify divergence among declared constraints, locked resolution, installed art
 - No lock or reproducibility contract exists, or dependency regeneration/change lacks authority.
 
 ## Required inputs
-- Direct constraints, lockfile and integrity metadata, installed package/runtime provenance, supported platform matrix, resolver/tool version, and change authority.
+- `workflow-intake`; direct constraints; lockfile and integrity metadata; installed package/runtime provenance; supported platform matrix; resolver/tool version; and change authority.
 
 ## Procedure
 1. Compare direct constraints with the locked graph, then compare the locked graph with the actually installed/runtime graph and provenance.
@@ -39,7 +36,7 @@ Classify divergence among declared constraints, locked resolution, installed art
 6. Re-run the smallest affected supported-matrix proof and record unresolved or unaddressable combinations.
 
 ## Output contract
-- `constraint_lock_installed_map`, `drift_classification`, `provenance`, `matrix_coverage`, `authorized_action|null`, `semantic_diff|null`, and `residual_limitations`.
+- One `recipes-dependency-lockfile-drift` with constraint/lock/installed map, drift classification, provenance, matrix coverage, authorized action, semantic diff, and residual limitations.
 
 ## Load next only if
 

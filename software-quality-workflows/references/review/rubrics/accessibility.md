@@ -1,19 +1,16 @@
 ---
 {
   "card_id": "sqw.review.rubrics.accessibility",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "rubric",
-  "consumes": [
-    "rubric_review_contract",
-    "bounded_change_material",
-    "affected_user_interface"
+  "decision_id": "sqw.select.review.rubrics.accessibility",
+  "required_artifact_ids": [
+    "review-tier"
   ],
-  "produces": [
-    "accessibility_findings"
+  "produced_artifact_ids": [
+    "review-rubrics-accessibility"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 8192,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Accessibility Rubric

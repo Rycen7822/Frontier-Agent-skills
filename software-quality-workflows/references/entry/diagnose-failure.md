@@ -1,66 +1,44 @@
 ---
 {
   "card_id": "sqw.entry.diagnose-failure",
-  "card_version": 1,
-  "kind": "entry",
-  "consumes": [
-    "failure_report",
-    "request_mode",
-    "authority_projection",
-    "source_projection",
-    "existing_patch_projection"
+  "card_version": 2,
+  "kind": "decision",
+  "decision_id": "sqw.select.entry.diagnose-failure",
+  "required_artifact_ids": [],
+  "produced_artifact_ids": [
+    "workflow-intake"
   ],
-  "produces": [
-    "diagnosis_contract",
-    "next_edge_id"
-  ],
-  "max_active_neighbors": 1,
-  "max_bytes": 4096,
-  "neighbors": [
-    {
-      "edge_id": "diagnose-to-reproduce",
-      "to_card_id": "sqw.diagnosis.reproduce-and-bound",
-      "edge_mode": "hard",
-      "hard_predicate_id": "fresh-reproduction-missing",
-      "missing_decision": "Fresh reproduction and bounded failure surface are absent",
-      "required_evidence": "Failure report and executable observation surface",
-      "evict_when": "Reproduction record and failure boundary are recorded"
-    }
-  ]
+  "max_bytes": 4096
 }
 ---
-# Diagnose Failure
+# Diagnose Failure Entry
 
 ## Decision this card owns
-Establish the bounded symptom-to-cause diagnosis contract without authorizing implementation before the cause is supported.
+Establish a bounded symptom-to-cause intake while implementation remains blocked.
 
 ## Use when
-- A failure, regression, unexpected behavior, integration break, or performance/runtime anomaly has an unknown root cause.
+- A failure, regression, integration break, or runtime/performance anomaly has no fresh supported cause.
 
 ## Do not use when
-- A fresh supported cause already exists, or the request authorizes only a static report with no diagnostic probe.
-- The task is a feature, refactor, or migration with no unexplained failure.
+- A supported cause already exists, or the task is a feature/refactor with no unexplained failure.
 
 ## Required inputs
-- Request mode, failure report, observable surface, source revision, authority ceiling, environment limits, and any existing patch or concurrent work.
+- Request mode, neutral failure report, observable surface, source/environment identity, authority ceiling, existing patch, and protected work.
 
 ## Procedure
-1. Restate the symptom without embedding a favored cause or speculative repair.
-2. Bind the stopping point to request mode: report findings only, diagnose to supported cause/`INCONCLUSIVE`, or prepare a repair only after cause and change authority exist.
-3. Preserve any existing patch and record what it currently changes; do not discard it to recreate a preferred workflow.
-4. Identify the smallest observable reproduction surface and separate product behavior from harness/environment prerequisites.
-5. Record current source, relevant state identity, protected work, probe side-effect ceiling, and cleanup boundary.
-6. Block production changes, persistent instrumentation, and repair attempts until discriminating evidence supports a cause.
-7. Request the reproduction card when a fresh bounded reproduction artifact is missing.
+1. Restate the symptom without embedding a favored cause or repair.
+2. Bind the stopping point to report-only, diagnosis-to-cause, or authorized repair-after-cause authority.
+3. Preserve and characterize existing or concurrent work; never discard it to recreate a preferred workflow.
+4. Identify the smallest real reproduction surface and separate product behavior from setup, fixture, harness, permission, and environment prerequisites.
+5. Bind task-owned probe resources, side-effect ceiling, sensitive-data policy, retry budget, and cleanup proof.
+6. Emit `workflow-intake` and request the mapped diagnosis decision; production edits and persistent instrumentation remain blocked until discriminating evidence supports a cause.
 
 ## Output contract
-- `request_mode`, `symptom`, `observation_surface`, `source_identity`, `existing_patch_projection`, `probe_boundary`, `implementation_blocked`, `next_edge_id`, and `blocker|null`.
+- One `workflow-intake` with symptom, observation surface, source/environment, authority, existing-work projection, probe boundary, implementation blocker, and typed diagnosis decision request.
 
 ## Load next only if
 
-| Edge ID | Missing decision | Required evidence | Next card | Evict when |
-|---|---|---|---|---|
-| `diagnose-to-reproduce` | Fresh reproduction and bounded failure surface are absent | Failure report and executable observation surface | `sqw.diagnosis.reproduce-and-bound` | Reproduction record and failure boundary are recorded |
+None. Return control to Router after producing the output contract.
 
 ## Stop
-Stop after emitting the diagnosis contract; reroute after the reproduction artifact boundary.
+Stop at the diagnosis intake; never turn a plausible cause or experimental patch into a repair.

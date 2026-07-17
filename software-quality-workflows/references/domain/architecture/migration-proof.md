@@ -1,19 +1,16 @@
 ---
 {
   "card_id": "sqw.domain.architecture.migration-proof",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "procedure",
-  "consumes": [
-    "selected_architecture_decision",
-    "consumer_and_surface_inventory",
-    "migration_and_rollback_constraints"
+  "decision_id": "sqw.select.domain.architecture.migration-proof",
+  "required_artifact_ids": [
+    "workflow-intake"
   ],
-  "produces": [
-    "architecture_migration_proof_contract"
+  "produced_artifact_ids": [
+    "domain-architecture-migration-proof"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 8192,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Architecture Migration Proof
@@ -28,7 +25,7 @@ Define and prove ownership migration, coexistence, rollback, temporary-path reti
 - No structural migration is required or architecture selection remains unresolved.
 
 ## Required inputs
-- Selected design/contracts, caller/consumer and generated/config/docs inventory, authoritative policy owner, coexistence needs, last compatible state, rollback constraints, and proof gates.
+- `workflow-intake`; selected design/contracts, caller/consumer and generated/config/docs inventory, authoritative policy owner, coexistence needs, last compatible state, rollback constraints, and proof gates.
 
 ## Procedure
 1. Characterize the highest stable owned interface, material errors/lifecycle, and existing locality before moving behavior.
