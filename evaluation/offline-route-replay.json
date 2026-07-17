@@ -1,11 +1,11 @@
 {
   "baseline": {
     "identity": "frontier-engineering/4.0.0+3.0.0",
-    "revision": "262090d40051afd6a5fc5d1f8be1606bb62f97c4",
     "skill_versions": {
       "software-quality-workflows": "4.0.0",
       "writing-plans": "3.0.0"
-    }
+    },
+    "source_archive_hash": "sha256:09d1ac63e98b2849c648c608baf9d0a4b4e332683d47b263543991be1f2b0166"
   },
   "case_count": 25,
   "decision": "deterministic_route_ready",
@@ -34,7 +34,7 @@
     "p95_active_reference_bytes": 4044,
     "unnecessary_card_load_rate": 0.0
   },
-  "report_hash": "sha256:4b897126d484ab91e2122ede37cda2f32ee27fa13956db77519fbf229065ae6a",
+  "report_hash": "sha256:fe23d362f0bc9d5119321e141d56a51e7158a39950a23c3dece0db38b423434f",
   "rows": [
     {
       "baseline_case_id": "three_disjoint_read_audits",
@@ -339,8 +339,9 @@
   ],
   "schema_version": "offline-route-replay/1.0",
   "vnext": {
-    "identity": "frontier-engineering/5.0.0+4.0.0/build-17c49c9177edb09581dc9ce5",
-    "revision": "262090d40051afd6a5fc5d1f8be1606bb62f97c4",
+    "bundle_build_id": "build-17c49c9177edb09581dc9ce5",
+    "bundle_manifest_hash": "sha256:4ce82dd7428c1a67db34424b2f4dbd2f5bcb1d6420a68b8e368d4becbb0846bd",
+    "identity": "frontier-engineering/5.0.0+4.0.0",
     "skill_versions": {
       "software-quality-workflows": "5.0.0",
       "writing-plans": "4.0.0"
