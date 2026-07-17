@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from hashlib import sha256
+import importlib.util
 import io
 import json
 import math
@@ -20,6 +21,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_REVISION = "262090d40051afd6a5fc5d1f8be1606bb62f97c4"
+BUNDLE_PATH = ROOT / "frontier-engineering.bundle.json"
+BUNDLE_BUILDER_PATH = ROOT / "bundle" / "build_bundle_manifest.py"
 OUTPUT = ROOT / "evaluation" / "offline-route-replay.json"
 SQW_PAIRS = {
     "routine_local_change": "routine_docs_typo",
@@ -64,6 +67,31 @@ def _canonical_hash(value: dict[str, Any]) -> str:
     return "sha256:" + sha256(payload).hexdigest()
 
 
+def _content_hash(path: Path) -> str:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"content identity input is missing or symlinked: {path}")
+    return "sha256:" + sha256(path.read_bytes()).hexdigest()
+
+
+def _build_current_bundle() -> dict[str, Any]:
+    spec = importlib.util.spec_from_file_location("offline_replay_bundle_builder", BUNDLE_BUILDER_PATH)
+    if spec is None or spec.loader is None:
+        raise ValueError("generated bundle builder is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    manifest = module.build_manifest()
+    if not isinstance(manifest, dict):
+        raise ValueError("generated bundle builder returned a non-object")
+    return manifest
+
+
+def _load_current_bundle() -> dict[str, Any]:
+    checked = _load_json(BUNDLE_PATH)
+    if checked != _build_current_bundle():
+        raise ValueError("generated bundle manifest is missing or stale")
+    return checked
+
+
 def _percentile(values: list[int], percentile: float) -> int:
     if not values:
         return 0
@@ -71,7 +99,7 @@ def _percentile(values: list[int], percentile: float) -> int:
     return ordered[max(0, math.ceil(percentile * len(ordered)) - 1)]
 
 
-def _extract_baseline(destination: Path) -> None:
+def _extract_baseline(destination: Path) -> str:
     completed = subprocess.run(
         ["git", "-C", str(ROOT), "archive", BASELINE_REVISION, "writing-plans", "software-quality-workflows"],
         capture_output=True,
@@ -82,6 +110,7 @@ def _extract_baseline(destination: Path) -> None:
         raise ValueError("frozen v4/v3 baseline revision is unavailable")
     with tarfile.open(fileobj=io.BytesIO(completed.stdout), mode="r:") as archive:
         archive.extractall(destination, filter="data")
+    return "sha256:" + sha256(completed.stdout).hexdigest()
 
 
 def _fixture_cases(path: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
@@ -187,19 +216,13 @@ def _row(
 
 
 def build_report() -> dict[str, Any]:
-    bundle = _load_json(ROOT / "frontier-engineering.bundle.json")
-    current_revision = subprocess.run(
-        ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
-        text=True,
-        capture_output=True,
-        check=True,
-        timeout=30,
-    ).stdout.strip()
+    bundle = _load_current_bundle()
+    bundle_manifest_hash = _content_hash(BUNDLE_PATH)
     with tempfile.TemporaryDirectory(prefix="frontier-route-replay-") as directory_name:
         directory = Path(directory_name)
         baseline_root = directory / "baseline"
         baseline_root.mkdir()
-        _extract_baseline(baseline_root)
+        baseline_archive_hash = _extract_baseline(baseline_root)
         rows: list[dict[str, Any]] = []
         for skill_id, pairs, fixture_name in (
             ("software-quality-workflows", SQW_PAIRS, "workflow-route-cases.json"),
@@ -264,12 +287,13 @@ def build_report() -> dict[str, Any]:
         "schema_version": "offline-route-replay/1.0",
         "baseline": {
             "identity": "frontier-engineering/4.0.0+3.0.0",
-            "revision": BASELINE_REVISION,
+            "source_archive_hash": baseline_archive_hash,
             "skill_versions": {"software-quality-workflows": "4.0.0", "writing-plans": "3.0.0"},
         },
         "vnext": {
-            "identity": bundle["bundle_id"] + "/" + bundle["release_build_id"],
-            "revision": current_revision,
+            "identity": bundle["bundle_id"],
+            "bundle_build_id": bundle["release_build_id"],
+            "bundle_manifest_hash": bundle_manifest_hash,
             "skill_versions": {
                 skill_id: item["version"]
                 for skill_id, item in bundle["skills"].items()
