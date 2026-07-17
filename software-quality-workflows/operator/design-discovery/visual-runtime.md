@@ -5,9 +5,10 @@ Use this optional companion only when the design question is inherently visual: 
 ## Safety and lifecycle
 
 - Ask before opening a local visual session unless the user already requested visual treatment.
-- Bind to `127.0.0.1` by default. A non-loopback bind is an external exposure and needs explicit scope plus an appropriate security review.
+- Bind only to loopback. The runtime accepts `127.0.0.1` or `localhost` and verifies the actual listener is `127.0.0.1` or `::1`; it has no remote-bind or authentication mode.
 - Use a task-owned `/tmp` session by default. Pass `--project-dir` only when persistent mockups are wanted; this creates `<project>/.agent-design-discovery/`, whose tracked/ignored status must be checked before closeout.
-- Keep one server per discovery session, record its process session ID and returned `screen_dir`/`state_dir`, and stop it when the visual question is resolved.
+- Keep one server per discovery session, record its process session ID and returned `screen_dir`/`state_dir`, and stop it when the visual question is resolved. Session, content, and state directories are mode `0700`; `owner.json`, `server.pid`, and `server.log` are mode `0600`.
+- Treat `<state_dir>/owner.json` as the shutdown identity marker. Its canonical session root, session class, server PID, canonical script path, and 32-byte random nonce must match the live process before the stop script may signal it.
 
 ## Start with the active host
 
@@ -21,7 +22,7 @@ startup match: server-started
 
 The script runs in the foreground by design; the active host owns and observes the background process. Read initial output through that same tracked-process capability. The `server-started` JSON provides `url`, `screen_dir`, and `state_dir`. Do not add shell-level `nohup`, `disown`, or `&` wrappers.
 
-If the user's browser cannot reach the loopback URL, diagnose the actual WSL/container/remote boundary before changing the bind host. Do not expose the server broadly as a first attempt.
+If the user's browser cannot reach the loopback URL, diagnose the WSL/container/remote boundary and continue in the normal conversation when loopback access is unavailable. Do not change the bind host or expose this unauthenticated companion.
 
 ## Per-question loop
 
@@ -33,6 +34,8 @@ If the user's browser cannot reach the loopback URL, diagnose the actual WSL/con
 6. When moving back to a text-only question, write a fresh waiting screen so stale choices are not presented as current.
 
 The server wraps HTML fragments in the shared frame and reloads the browser when a new `.html` file appears. A full `<!DOCTYPE html>` or `<html>` document is served as-is with the click helper injected.
+
+Each WebSocket frame and complete message is limited to 65,536 bytes; each connection buffer is limited to 131,072 bytes. Oversized input closes with code `1009` and releases its connection state immediately. Idle or ownerless sessions close all client sockets before the process exits.
 
 ## Minimal fragment
 
@@ -71,6 +74,6 @@ Run the stop script from a separate bounded terminal call:
 command: <skill-root>/operator/design-discovery/stop-server.sh <session_dir>
 ```
 
-Then verify the tracked process exited. The stop script removes task-owned `/tmp` sessions and preserves explicitly persistent project sessions. Delete persistent artifacts only when they are task-owned and the user or project workflow authorizes cleanup.
+The stop script fails closed when the session path, regular state files, owner marker, PID, nonce, or live command identity does not match; rejection never signals the recorded PID. After a validated `TERM`, it waits at most two seconds and never escalates to a broad kill. It recursively removes only the exact canonical temporary root created by the start script. Project-local session and content directories remain in place; delete those persistent artifacts only when the user or project workflow authorizes cleanup. Verify the tracked process exited after a successful stop.
 
 Runtime resources: [server](server.cjs), [start script](start-server.sh), [stop script](stop-server.sh), [frame](frame-template.html), and [click helper](helper.js). Upstream terms are preserved in [the bundled license](design-discovery-upstream-license.txt).

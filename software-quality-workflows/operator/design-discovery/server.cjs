@@ -5,8 +5,16 @@ const path = require('path');
 
 // ========== WebSocket Protocol (RFC 6455) ==========
 
-const OPCODES = { TEXT: 0x01, CLOSE: 0x08, PING: 0x09, PONG: 0x0A };
+const OPCODES = { CONTINUATION: 0x00, TEXT: 0x01, CLOSE: 0x08, PING: 0x09, PONG: 0x0A };
 const WS_MAGIC = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+const LIMITS = Object.freeze({ frame: 65536, message: 65536, connectionBuffer: 131072 });
+
+class ProtocolError extends Error {
+  constructor(message, closeCode) {
+    super(message);
+    this.closeCode = closeCode;
+  }
+}
 
 function computeAcceptKey(clientKey) {
   return crypto.createHash('sha1').update(clientKey + WS_MAGIC).digest('base64');
@@ -39,13 +47,16 @@ function encodeFrame(opcode, payload) {
 function decodeFrame(buffer) {
   if (buffer.length < 2) return null;
 
+  const firstByte = buffer[0];
   const secondByte = buffer[1];
-  const opcode = buffer[0] & 0x0F;
+  const final = (firstByte & 0x80) !== 0;
+  const opcode = firstByte & 0x0F;
   const masked = (secondByte & 0x80) !== 0;
   let payloadLen = secondByte & 0x7F;
   let offset = 2;
 
-  if (!masked) throw new Error('Client frames must be masked');
+  if ((firstByte & 0x70) !== 0) throw new ProtocolError('Reserved frame bits are unsupported', 1002);
+  if (!masked) throw new ProtocolError('Client frames must be masked', 1002);
 
   if (payloadLen === 126) {
     if (buffer.length < 4) return null;
@@ -53,8 +64,16 @@ function decodeFrame(buffer) {
     offset = 4;
   } else if (payloadLen === 127) {
     if (buffer.length < 10) return null;
-    payloadLen = Number(buffer.readBigUInt64BE(2));
+    const extendedLength = buffer.readBigUInt64BE(2);
+    if (extendedLength > BigInt(LIMITS.frame)) {
+      throw new ProtocolError('Frame exceeds the payload limit', 1009);
+    }
+    payloadLen = Number(extendedLength);
     offset = 10;
+  }
+  if (payloadLen > LIMITS.frame) throw new ProtocolError('Frame exceeds the payload limit', 1009);
+  if (opcode >= OPCODES.CLOSE && (!final || payloadLen > 125)) {
+    throw new ProtocolError('Invalid control frame', 1002);
   }
 
   const maskOffset = offset;
@@ -68,18 +87,33 @@ function decodeFrame(buffer) {
     data[i] = buffer[dataOffset + i] ^ mask[i % 4];
   }
 
-  return { opcode, payload: data, bytesConsumed: totalLen };
+  return { final, opcode, payload: data, bytesConsumed: totalLen };
+}
+
+function appendConnectionChunk(buffer, chunk) {
+  if (buffer.length + chunk.length > LIMITS.connectionBuffer) {
+    throw new ProtocolError('Connection buffer exceeds the limit', 1009);
+  }
+  return Buffer.concat([buffer, chunk]);
 }
 
 // ========== Configuration ==========
 
-const PORT = process.env.BRAINSTORM_PORT || (49152 + Math.floor(Math.random() * 16383));
+const PORT = process.env.BRAINSTORM_PORT === undefined ? 0 : Number(process.env.BRAINSTORM_PORT);
 const HOST = process.env.BRAINSTORM_HOST || '127.0.0.1';
 const URL_HOST = process.env.BRAINSTORM_URL_HOST || (HOST === '127.0.0.1' ? 'localhost' : HOST);
+const LISTEN_HOST = HOST === 'localhost' ? '127.0.0.1' : HOST;
 const SESSION_DIR = process.env.BRAINSTORM_DIR || '/tmp/brainstorm';
 const CONTENT_DIR = path.join(SESSION_DIR, 'content');
 const STATE_DIR = path.join(SESSION_DIR, 'state');
-let ownerPid = process.env.BRAINSTORM_OWNER_PID ? Number(process.env.BRAINSTORM_OWNER_PID) : null;
+const ownerPid = Number(process.env.BRAINSTORM_OWNER_PID);
+const allowedHosts = new Set(['127.0.0.1', 'localhost']);
+
+function validateSessionNonce(argv) {
+  if (argv.length !== 2 || argv[0] !== '--session-nonce' || !/^[0-9a-f]{64}$/.test(argv[1])) {
+    throw new Error('A valid --session-nonce is required');
+  }
+}
 
 const MIME_TYPES = {
   '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript',
@@ -177,29 +211,77 @@ function handleUpgrade(req, socket) {
   );
 
   let buffer = Buffer.alloc(0);
+  let fragmentedMessage = null;
+  let closed = false;
   clients.add(socket);
 
+  function release() {
+    buffer = Buffer.alloc(0);
+    fragmentedMessage = null;
+    clients.delete(socket);
+  }
+
+  function closeWithCode(closeCode) {
+    if (closed) return;
+    closed = true;
+    const payload = Buffer.alloc(2);
+    payload.writeUInt16BE(closeCode);
+    socket.end(encodeFrame(OPCODES.CLOSE, payload), () => socket.destroy());
+    release();
+  }
+
   socket.on('data', (chunk) => {
-    buffer = Buffer.concat([buffer, chunk]);
+    if (closed) return;
+    try {
+      buffer = appendConnectionChunk(buffer, chunk);
+    } catch (error) {
+      closeWithCode(error.closeCode || 1002);
+      return;
+    }
     while (buffer.length > 0) {
       let result;
       try {
         result = decodeFrame(buffer);
-      } catch (e) {
-        socket.end(encodeFrame(OPCODES.CLOSE, Buffer.alloc(0)));
-        clients.delete(socket);
+      } catch (error) {
+        closeWithCode(error.closeCode || 1002);
         return;
       }
       if (!result) break;
       buffer = buffer.slice(result.bytesConsumed);
 
       switch (result.opcode) {
-        case OPCODES.TEXT:
-          handleMessage(result.payload.toString());
+        case OPCODES.TEXT: {
+          if (fragmentedMessage !== null) {
+            closeWithCode(1002);
+            return;
+          }
+          if (result.final) {
+            handleMessage(result.payload.toString());
+          } else {
+            fragmentedMessage = result.payload;
+          }
+          break;
+        }
+        case OPCODES.CONTINUATION:
+          if (fragmentedMessage === null) {
+            closeWithCode(1002);
+            return;
+          }
+          if (fragmentedMessage.length + result.payload.length > LIMITS.message) {
+            closeWithCode(1009);
+            return;
+          }
+          fragmentedMessage = Buffer.concat(
+            [fragmentedMessage, result.payload],
+            fragmentedMessage.length + result.payload.length
+          );
+          if (result.final) {
+            handleMessage(fragmentedMessage.toString());
+            fragmentedMessage = null;
+          }
           break;
         case OPCODES.CLOSE:
-          socket.end(encodeFrame(OPCODES.CLOSE, Buffer.alloc(0)));
-          clients.delete(socket);
+          closeWithCode(1000);
           return;
         case OPCODES.PING:
           socket.write(encodeFrame(OPCODES.PONG, result.payload));
@@ -207,18 +289,15 @@ function handleUpgrade(req, socket) {
         case OPCODES.PONG:
           break;
         default: {
-          const closeBuf = Buffer.alloc(2);
-          closeBuf.writeUInt16BE(1003);
-          socket.end(encodeFrame(OPCODES.CLOSE, closeBuf));
-          clients.delete(socket);
+          closeWithCode(1003);
           return;
         }
       }
     }
   });
 
-  socket.on('close', () => clients.delete(socket));
-  socket.on('error', () => clients.delete(socket));
+  socket.on('close', release);
+  socket.on('error', release);
 }
 
 function handleMessage(text) {
@@ -246,7 +325,17 @@ function broadcast(msg) {
 
 // ========== Activity Tracking ==========
 
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+function boundedInterval(name, defaultValue) {
+  if (process.env[name] === undefined) return defaultValue;
+  const value = Number(process.env[name]);
+  if (!Number.isSafeInteger(value) || value <= 0 || value > defaultValue) {
+    throw new Error(`${name} must be a positive integer no greater than ${defaultValue}`);
+  }
+  return value;
+}
+
+const IDLE_TIMEOUT_MS = boundedInterval('BRAINSTORM_IDLE_TIMEOUT_MS', 30 * 60 * 1000);
+const LIFECYCLE_INTERVAL_MS = boundedInterval('BRAINSTORM_LIFECYCLE_INTERVAL_MS', 60 * 1000);
 let lastActivity = Date.now();
 
 function touchActivity() {
@@ -260,6 +349,22 @@ const debounceTimers = new Map();
 // ========== Server Startup ==========
 
 function startServer() {
+  validateSessionNonce(process.argv.slice(2));
+  if (!Number.isSafeInteger(PORT) || PORT < 0 || PORT > 65535) {
+    throw new Error('BRAINSTORM_PORT must be an integer from 0 through 65535');
+  }
+  if (!allowedHosts.has(HOST) || !allowedHosts.has(URL_HOST)) {
+    throw new Error('Design-discovery accepts loopback hosts only');
+  }
+  if (!Number.isSafeInteger(ownerPid) || ownerPid <= 1) {
+    throw new Error('BRAINSTORM_OWNER_PID must identify a live owner process');
+  }
+  try {
+    process.kill(ownerPid, 0);
+  } catch (error) {
+    if (error.code !== 'EPERM') throw new Error('BRAINSTORM_OWNER_PID is not live');
+  }
+
   if (!fs.existsSync(CONTENT_DIR)) fs.mkdirSync(CONTENT_DIR, { recursive: true });
   if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
 
@@ -298,7 +403,10 @@ function startServer() {
   });
   watcher.on('error', (err) => console.error('fs.watch error:', err.message));
 
+  let shuttingDown = false;
   function shutdown(reason) {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.log(JSON.stringify({ type: 'server-stopped', reason }));
     const infoFile = path.join(STATE_DIR, 'server-info');
     if (fs.existsSync(infoFile)) fs.unlinkSync(infoFile);
@@ -306,40 +414,38 @@ function startServer() {
       path.join(STATE_DIR, 'server-stopped'),
       JSON.stringify({ reason, timestamp: Date.now() }) + '\n'
     );
-    watcher.close();
     clearInterval(lifecycleCheck);
+    for (const timer of debounceTimers.values()) clearTimeout(timer);
+    debounceTimers.clear();
+    watcher.close();
+    for (const socket of clients) socket.destroy();
+    clients.clear();
     server.close(() => process.exit(0));
   }
 
   function ownerAlive() {
-    if (!ownerPid) return true;
     try { process.kill(ownerPid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
   }
 
-  // Check every 60s: exit if owner process died or idle for 30 minutes
+  // Exit if the owner process dies or the local companion becomes idle.
   const lifecycleCheck = setInterval(() => {
     if (!ownerAlive()) shutdown('owner process exited');
     else if (Date.now() - lastActivity > IDLE_TIMEOUT_MS) shutdown('idle timeout');
-  }, 60 * 1000);
+  }, LIFECYCLE_INTERVAL_MS);
   lifecycleCheck.unref();
 
-  // Validate owner PID at startup. If it's already dead, the PID resolution
-  // was wrong (common on WSL, Tailscale SSH, and cross-user scenarios).
-  // Disable monitoring and rely on the idle timeout instead.
-  if (ownerPid) {
-    try { process.kill(ownerPid, 0); }
-    catch (e) {
-      if (e.code !== 'EPERM') {
-        console.log(JSON.stringify({ type: 'owner-pid-invalid', pid: ownerPid, reason: 'dead at startup' }));
-        ownerPid = null;
-      }
-    }
-  }
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+  process.once('SIGINT', () => shutdown('SIGINT'));
 
-  server.listen(PORT, HOST, () => {
+  server.listen(PORT, LISTEN_HOST, () => {
+    const address = server.address();
+    if (!address || (address.address !== '127.0.0.1' && address.address !== '::1')) {
+      shutdown('non-loopback listen address');
+      return;
+    }
     const info = JSON.stringify({
-      type: 'server-started', port: Number(PORT), host: HOST,
-      url_host: URL_HOST, url: 'http://' + URL_HOST + ':' + PORT,
+      type: 'server-started', port: address.port, host: address.address,
+      url_host: URL_HOST, url: 'http://' + URL_HOST + ':' + address.port,
       screen_dir: CONTENT_DIR, state_dir: STATE_DIR
     });
     console.log(info);
@@ -351,4 +457,6 @@ if (require.main === module) {
   startServer();
 }
 
-module.exports = { computeAcceptKey, encodeFrame, decodeFrame, OPCODES };
+module.exports = {
+  computeAcceptKey, encodeFrame, decodeFrame, appendConnectionChunk, LIMITS, OPCODES
+};
