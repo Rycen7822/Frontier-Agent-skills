@@ -388,7 +388,7 @@ def _check_agent_metadata(root: Path, violations: list[Violation]) -> None:
             continue
         if len(text.encode("utf-8")) > 8192:
             violations.append(Violation("agent-metadata.size", relative, 0, "agent metadata exceeds 8192 bytes"))
-        for marker in ("hooks:", "mcp:", "apps:", "remote_writes_default: true", "live_autonomous_closure_default: true"):
+        for marker in ("hooks:", "mcp:", "apps:", "remote_writes_default: true"):
             if marker in text:
                 violations.append(Violation("agent-metadata.unsafe", relative, 1, f"agent metadata contains forbidden setting: {marker}"))
         for required in ("interface:", "display_name:", "short_description:", "default_prompt:", "allow_implicit_invocation:"):

@@ -1,19 +1,12 @@
 ---
 {
   "card_id": "wp.bridges.long-document-handoff",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "bridge",
-  "consumes": [
-    "large_source_corpus",
-    "planning_deliverable",
-    "external_owner_availability"
-  ],
-  "produces": [
-    "bounded_document_owner_handoff"
-  ],
-  "max_active_neighbors": 0,
-  "max_bytes": 4096,
-  "neighbors": []
+  "decision_id": "wp.select.bridges.long-document-handoff",
+  "required_artifact_ids": [],
+  "produced_artifact_ids": ["long-document-handoff"],
+  "max_bytes": 4096
 }
 ---
 # Long-Document Planning Handoff
@@ -38,7 +31,7 @@ Hand a large multi-source planning corpus to its segmented-writing owner without
 5. If the external owner is unavailable, stop with a typed handoff blocker unless the corpus is demonstrably bounded for local segmented handling.
 
 ## Output contract
-- External owner route, source/coverage/evidence projections, plan deliverable identity, unresolved software decisions, and `blocker|null`.
+- One `long-document-handoff` with external owner route, source/coverage/evidence projections, plan deliverable identity, unresolved software decisions, and `blocker|null`.
 
 ## Load next only if
 

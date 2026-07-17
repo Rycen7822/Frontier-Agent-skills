@@ -20,11 +20,11 @@ Every stable semantic code has a negative fixture:
 - `plan.invariant-unbound` — a required invariant is not applicable to its target.
 - `plan.fog-executed` — unresolved fog was treated as executable.
 - `plan.invalidated-dependent-live` — a dependent remains live after prerequisite invalidation.
-- `plan.closure-premature` — plan completion is asserted before closure conditions hold.
+- `plan.completion-premature` — plan completion is asserted before required evidence, blockers, and nodes are resolved.
 - `plan.profile-overbuilt` — a bounded profile includes disallowed state.
 - `plan.owner-duplicate` — one policy has multiple normative owners.
 - `plan.sensitive-unclassified` — sensitive context lacks classification.
 - `plan.verifier-unresolved` — a verifier target cannot be resolved.
 - `plan.evidence-unbound` — evidence is not bound to source, verifier, or node identity.
 
-Additional runtime or contract codes may be emitted by their owning validators. Do not add a stable `plan.*` code without a negative fixture and this generated-catalog parity check.
+Additional runtime codes may be emitted by their owning validators. Do not add a stable `plan.*` code without a negative fixture and this generated-catalog parity check.

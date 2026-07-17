@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://frontier-agent-skills.local/sqw/workflow-event-1.1.schema.json",
-  "title": "SQW Typed Workflow Event 1.1",
+  "$id": "https://frontier-agent.local/sqw/workflow-event-2.0.schema.json",
+  "title": "SQW Typed Workflow Event 2.0",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "event_id", "workflow_id", "sequence", "timestamp", "actor", "type", "state_version", "payload"],
   "properties": {
-    "schema_version": {"const": "1.1"},
+    "schema_version": {"const": "2.0"},
     "event_id": {"type": "string", "pattern": "^evt-[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
     "workflow_id": {"type": "string", "pattern": "^wf-[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
     "sequence": {"type": "integer", "minimum": 1},
@@ -35,17 +35,6 @@
     {"$ref": "#/$defs/lock_family"},
     {"$ref": "#/$defs/review_family"},
     {"$ref": "#/$defs/plan_change_family"},
-    {"$ref": "#/$defs/contract_binding_family"},
-    {"$ref": "#/$defs/baseline_family"},
-    {"$ref": "#/$defs/verifier_family"},
-    {"$ref": "#/$defs/candidate_family"},
-    {"$ref": "#/$defs/evaluation_family"},
-    {"$ref": "#/$defs/promotion_family"},
-    {"$ref": "#/$defs/counterexample_family"},
-    {"$ref": "#/$defs/budget_family"},
-    {"$ref": "#/$defs/signoff_start_family"},
-    {"$ref": "#/$defs/signoff_result_family"},
-    {"$ref": "#/$defs/terminal_family"},
     {"$ref": "#/$defs/publication_family"}
   ],
   "$defs": {
@@ -64,10 +53,8 @@
       "enum": [
         "workflow_opened", "route_selected", "node_refined", "node_started", "node_output_committed", "node_completed", "node_failed",
         "artifact_observed", "fact_invalidated", "dependency_invalidated", "repair_scoped", "retry_approved", "approval_granted", "approval_revoked",
-        "lock_acquired", "lock_released", "source_drift_detected", "review_submitted", "plan_change_proposed", "closure_proposed", "workflow_closed", "workflow_resumed",
-        "contract_superseded", "baseline_qualified", "baseline_rejected", "verifier_bundle_frozen", "verifier_qualified", "verifier_rejected",
-        "candidate_created", "candidate_evaluated", "candidate_pruned", "candidate_promoted", "counterexample_observed", "budget_consumed",
-        "signoff_started", "signoff_completed", "terminal_certificate_emitted", "publication_handoff_requested", "publication_handoff_completed"
+        "lock_acquired", "lock_released", "source_drift_detected", "review_submitted", "plan_change_proposed", "workflow_completed", "workflow_resumed",
+        "publication_handoff_requested", "publication_handoff_completed"
       ]
     },
     "changed_field": {
@@ -88,21 +75,6 @@
         "content_hash": {"$ref": "#/$defs/hash"}
       }
     },
-    "budget_delta": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["iterations", "candidate_evaluations", "review_rounds"],
-      "properties": {
-        "iterations": {"type": "integer", "minimum": 0},
-        "candidate_evaluations": {"type": "integer", "minimum": 0},
-        "review_rounds": {"type": "integer", "minimum": 0}
-      },
-      "anyOf": [
-        {"properties": {"iterations": {"minimum": 1}}},
-        {"properties": {"candidate_evaluations": {"minimum": 1}}},
-        {"properties": {"review_rounds": {"minimum": 1}}}
-      ]
-    },
     "payload": {
       "type": "object",
       "additionalProperties": false,
@@ -119,12 +91,10 @@
         "approval_ref": {"type": "string", "pattern": "^AP-"},
         "resource": {"type": "string", "minLength": 1, "maxLength": 1024},
         "lease_expires_at": {"type": "string", "format": "date-time"},
-        "plan_change_ref": {"type": "string", "minLength": 1, "maxLength": 1024},
-        "budget_delta": {"$ref": "#/$defs/budget_delta"},
-        "next_phase": {"const": "SEARCHING"}
+        "plan_change_ref": {"type": "string", "minLength": 1, "maxLength": 1024}
       }
     },
-    "workflow_family": {"properties": {"type": {"enum": ["workflow_opened", "route_selected", "closure_proposed", "workflow_closed", "workflow_resumed"]}}},
+    "workflow_family": {"properties": {"type": {"enum": ["workflow_opened", "route_selected", "workflow_completed", "workflow_resumed"]}}},
     "node_state_family": {"required": ["node_id"], "properties": {"type": {"enum": ["node_refined", "node_started", "node_failed"]}}},
     "node_artifact_family": {"required": ["node_id"], "properties": {"type": {"enum": ["node_output_committed", "node_completed"]}, "payload": {"properties": {"artifact_refs": {"minItems": 1}}}}},
     "artifact_family": {"properties": {"type": {"const": "artifact_observed"}, "payload": {"properties": {"artifact_refs": {"minItems": 1}}}}},
@@ -135,33 +105,6 @@
     "lock_family": {"properties": {"type": {"enum": ["lock_acquired", "lock_released"]}, "payload": {"required": ["resource"]}}},
     "review_family": {"properties": {"type": {"const": "review_submitted"}, "payload": {"properties": {"artifact_refs": {"minItems": 1}}}}},
     "plan_change_family": {"properties": {"type": {"const": "plan_change_proposed"}, "payload": {"required": ["plan_change_ref"]}}},
-    "contract_binding_family": {"properties": {"type": {"const": "contract_superseded"}, "payload": {"properties": {"artifact_refs": {"minItems": 4}}}}},
-    "baseline_family": {"properties": {"type": {"enum": ["baseline_qualified", "baseline_rejected"]}, "payload": {"properties": {"artifact_refs": {"minItems": 1}}}}},
-    "verifier_family": {"properties": {"type": {"enum": ["verifier_bundle_frozen", "verifier_qualified", "verifier_rejected"]}, "payload": {"properties": {"artifact_refs": {"minItems": 1}}}}},
-    "candidate_family": {"properties": {"type": {"enum": ["candidate_created", "candidate_pruned"]}, "payload": {"properties": {"artifact_refs": {"minItems": 1}}}}},
-    "evaluation_family": {"properties": {"type": {"const": "candidate_evaluated"}, "payload": {"properties": {"artifact_refs": {"minItems": 1}}}}},
-    "promotion_family": {"properties": {"type": {"const": "candidate_promoted"}, "payload": {"properties": {"artifact_refs": {"minItems": 2}}}}},
-    "counterexample_family": {"properties": {"type": {"const": "counterexample_observed"}, "payload": {"properties": {"artifact_refs": {"minItems": 1}}}}},
-    "budget_family": {
-      "properties": {
-        "type": {"const": "budget_consumed"},
-        "payload": {
-          "required": ["budget_delta"],
-          "properties": {
-            "budget_delta": {
-              "properties": {
-                "iterations": {"minimum": 1},
-                "candidate_evaluations": {"const": 0},
-                "review_rounds": {"const": 0}
-              }
-            }
-          }
-        }
-      }
-    },
-    "signoff_start_family": {"properties": {"type": {"const": "signoff_started"}}},
-    "signoff_result_family": {"properties": {"type": {"const": "signoff_completed"}, "payload": {"properties": {"artifact_refs": {"minItems": 1}}}}},
-    "terminal_family": {"properties": {"type": {"const": "terminal_certificate_emitted"}, "payload": {"properties": {"artifact_refs": {"minItems": 1}}}}},
     "publication_family": {"properties": {"type": {"enum": ["publication_handoff_requested", "publication_handoff_completed"]}, "payload": {"properties": {"artifact_refs": {"minItems": 1}}}}}
   }
 }

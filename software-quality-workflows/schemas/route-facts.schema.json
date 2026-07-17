@@ -1,65 +1,57 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://frontier-agent-skills.local/software-quality-workflows/route-facts.schema.json",
-  "title": "SQW Route Facts",
+  "title": "Software Quality Workflows decision route facts",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version",
-    "request_mode",
-    "intent_status",
-    "root_cause_status",
-    "implicated_surfaces",
-    "unknown_implicated_facts",
-    "surface_assessment",
-    "persistence_need",
-    "delegation_need",
-    "external_side_effect",
-    "explicit_autonomous_closure"
+    "schema_version", "request_mode", "intent_status", "root_cause_status", "implicated_surfaces",
+    "unknown_implicated_facts", "surface_assessment", "persistence_need", "delegation_need",
+    "external_side_effect", "pending_decision_ids", "available_artifact_ids", "completed_decision_ids",
+    "just_completed_card_id", "decision_request"
   ],
   "properties": {
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"const": "2.0"},
     "request_mode": {"enum": ["change", "report", "review", "recovery", "plan"]},
     "intent_status": {"enum": ["adequate", "materially_underdefined"]},
     "root_cause_status": {"enum": ["known", "unknown", "not_applicable"]},
-    "implicated_surfaces": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {"$ref": "#/$defs/surface_family"}
-    },
-    "unknown_implicated_facts": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {"type": "string", "minLength": 1}
-    },
-    "surface_assessment": {"$ref": "#/$defs/surface_assessment"},
+    "implicated_surfaces": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/surfaceFamily"}},
+    "unknown_implicated_facts": {"$ref": "#/$defs/uniqueIds"},
+    "surface_assessment": {"$ref": "#/$defs/surfaceAssessment"},
     "persistence_need": {"enum": ["none", "trace", "durable"]},
     "delegation_need": {"enum": ["none", "read", "write"]},
     "external_side_effect": {"enum": ["none", "authorized", "unauthorized", "irreversible"]},
-    "explicit_autonomous_closure": {"type": "boolean"},
-    "admission_decision": {"enum": ["NOT_ASSESSED", "DIRECT_SELECTED", "CLOSURE_ELIGIBLE", "TERMINAL"]},
-    "admission_ref": {"type": ["string", "null"], "minLength": 1}
+    "pending_decision_ids": {"$ref": "#/$defs/uniqueIds"},
+    "available_artifact_ids": {"$ref": "#/$defs/uniqueIds"},
+    "completed_decision_ids": {"$ref": "#/$defs/uniqueIds"},
+    "just_completed_card_id": {"type": ["string", "null"], "minLength": 1},
+    "decision_request": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["decision_id", "produced_by_card_id", "produced_artifact_id"],
+          "properties": {
+            "decision_id": {"type": "string", "minLength": 1},
+            "produced_by_card_id": {"type": "string", "minLength": 1},
+            "produced_artifact_id": {"type": "string", "minLength": 1}
+          }
+        }
+      ]
+    }
   },
   "$defs": {
-    "surface_family": {
+    "uniqueIds": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "surfaceFamily": {
       "enum": [
-        "public_contract",
-        "data_state",
-        "security_privacy",
-        "runtime_platform",
-        "dependency_supply_chain",
-        "browser_ui",
-        "performance_resource",
-        "plugin_installed_surface",
-        "migration_release",
-        "workspace_vcs",
-        "external_side_effect",
-        "test_fixture_benchmark",
-        "observability_operations",
-        "concurrency_shared_state"
+        "public_contract", "data_state", "security_privacy", "runtime_platform",
+        "dependency_supply_chain", "browser_ui", "performance_resource", "plugin_installed_surface",
+        "migration_release", "workspace_vcs", "external_side_effect", "test_fixture_benchmark",
+        "observability_operations", "concurrency_shared_state"
       ]
     },
-    "surface_assessment": {
+    "surfaceAssessment": {
       "type": "object",
       "additionalProperties": false,
       "required": ["taxonomy_version", "coverage", "assessed_families", "evidence_refs"],
@@ -71,28 +63,15 @@
           "minItems": 14,
           "maxItems": 14,
           "prefixItems": [
-            {"const": "public_contract"},
-            {"const": "data_state"},
-            {"const": "security_privacy"},
-            {"const": "runtime_platform"},
-            {"const": "dependency_supply_chain"},
-            {"const": "browser_ui"},
-            {"const": "performance_resource"},
-            {"const": "plugin_installed_surface"},
-            {"const": "migration_release"},
-            {"const": "workspace_vcs"},
-            {"const": "external_side_effect"},
-            {"const": "test_fixture_benchmark"},
-            {"const": "observability_operations"},
+            {"const": "public_contract"}, {"const": "data_state"}, {"const": "security_privacy"},
+            {"const": "runtime_platform"}, {"const": "dependency_supply_chain"}, {"const": "browser_ui"},
+            {"const": "performance_resource"}, {"const": "plugin_installed_surface"},
+            {"const": "migration_release"}, {"const": "workspace_vcs"}, {"const": "external_side_effect"},
+            {"const": "test_fixture_benchmark"}, {"const": "observability_operations"},
             {"const": "concurrency_shared_state"}
           ]
         },
-        "evidence_refs": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": {"type": "string", "minLength": 1}
-        }
+        "evidence_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
       }
     }
   }

@@ -1,20 +1,16 @@
 ---
 {
   "card_id": "sqw.recovery.repository-recovery",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "procedure",
-  "consumes": [
-    "repository_state",
-    "protected_state",
-    "recovery_authority"
+  "decision_id": "sqw.select.recovery.repository-recovery",
+  "required_artifact_ids": [
+    "workflow-intake"
   ],
-  "produces": [
-    "repository_recovery_result",
-    "preserved_state"
+  "produced_artifact_ids": [
+    "recovery-repository-recovery"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 8192,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Repository Recovery
@@ -29,7 +25,7 @@ Restore a bounded repository/index/ref/operation invariant while preserving unre
 - A normal merge conflict or optional cleanup is the only issue.
 
 ## Required inputs
-- Status, refs and reflogs, object/index/worktree evidence, active operation, repository configuration/remotes, artifact provenance, protected paths, and exact allowed recovery actions.
+- `workflow-intake`; status; refs and reflogs; object/index/worktree evidence; active operation; repository configuration/remotes; artifact provenance; protected paths; and exact allowed recovery actions.
 
 ## Procedure
 1. Snapshot refs, operation markers, index, worktree, status, configuration, and user-owned state without changing them.
@@ -41,7 +37,7 @@ Restore a bounded repository/index/ref/operation invariant while preserving unre
 7. Report unavailable content and blocked actions plainly; do not invent missing bytes or broaden into cleanup.
 
 ## Output contract
-- `artifact_classification`, `violated_invariant`, `restore_map`, `recovery_sources`, `repair_actions`, `preserved_paths`, `post_recovery_state`, `integrity_proof`, and `blocker|null`.
+- One `recovery-repository-recovery` with artifact classification, violated invariant, restore map and source identities, repair actions, preserved paths, post-recovery state, integrity proof, and blocker.
 
 ## Load next only if
 

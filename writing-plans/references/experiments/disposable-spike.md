@@ -1,19 +1,12 @@
 ---
 {
   "card_id": "wp.experiments.disposable-spike",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "procedure",
-  "consumes": [
-    "plan_route",
-    "feasibility_question",
-    "source_evidence"
-  ],
-  "produces": [
-    "spike_verdict"
-  ],
-  "max_active_neighbors": 0,
-  "max_bytes": 4096,
-  "neighbors": []
+  "decision_id": "wp.select.experiments.disposable-spike",
+  "required_artifact_ids": [],
+  "produced_artifact_ids": ["spike-evidence"],
+  "max_bytes": 4096
 }
 ---
 # Disposable Feasibility Spike
@@ -22,8 +15,7 @@
 Answer one source-bound feasibility question with a disposable experiment; never authorize production integration.
 
 ## Use when
-- Source inspection cannot settle one falsifiable fact that blocks profile selection or Closure Contract freeze.
-- Closure Admission identifies one bounded feasibility fact that must be resolved before contract compilation.
+- Source inspection cannot settle one falsifiable fact that blocks a planning decision.
 - The user explicitly asks to compare or de-risk an idea before committing to a production build.
 
 ## Do not use when
@@ -43,7 +35,7 @@ Answer one source-bound feasibility question with a disposable experiment; never
 7. Require a fresh production plan and SQW proof before any promotion.
 
 ## Output contract
-- One `spike_verdict` containing spike ID, decision unlocked, criterion, evidence refs, experiment boundary, verdict, constraints, and cleanup/promotion disposition.
+- One `spike-evidence` artifact containing spike ID, decision unlocked, criterion, evidence refs, experiment boundary, verdict, constraints, and cleanup/promotion disposition.
 - Silent promotion is forbidden: spike code, fixtures, mocks, candidate state, and inferred authority are never production inputs by default.
 
 ## Load next only if

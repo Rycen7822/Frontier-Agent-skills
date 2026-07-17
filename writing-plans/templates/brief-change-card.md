@@ -6,4 +6,4 @@
 - Approach: {{ smallest coherent approach }}
 - Proof: {{ falsifiable distinction, oracle, and affected gate }}
 - Risks/open facts: {{ material gaps only }}
-- Closure: {{ needs_repair | verified_within_scope | blocked | empirical_validation_required }}
+- Completion: {{ needs_repair | verified_within_scope | blocked | empirical_validation_required }}

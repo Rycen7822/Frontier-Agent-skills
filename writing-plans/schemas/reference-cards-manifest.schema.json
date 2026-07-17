@@ -1,29 +1,33 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "frontier://writing-plans/reference-cards-manifest/1.0",
+  "$id": "frontier://writing-plans/reference-cards-manifest/2.0",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "bundle_id", "skill_id", "skill_version", "cards"],
   "properties": {
-    "schema_version": {"const": "1.0"},
-    "bundle_id": {"const": "frontier-engineering/5.0.0+4.0.0"},
+    "schema_version": {"const": "2.0"},
+    "bundle_id": {"const": "frontier-engineering/6.0.0+5.0.0"},
     "skill_id": {"const": "writing-plans"},
-    "skill_version": {"const": "4.0.0"},
+    "skill_version": {"const": "5.0.0"},
     "cards": {
       "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["card_id", "card_version", "kind", "consumes", "produces", "max_active_neighbors", "max_bytes", "neighbors", "path", "sha256", "bytes"],
+        "required": [
+          "card_id", "card_version", "kind", "decision_id", "required_artifact_ids",
+          "produced_artifact_ids", "max_bytes", "path", "sha256", "bytes"
+        ],
         "properties": {
           "card_id": {"type": "string", "pattern": "^wp\\."},
-          "card_version": {"type": "integer", "minimum": 1},
+          "card_version": {"type": "integer", "minimum": 2},
           "kind": {"type": "string"},
-          "consumes": {"type": "array"},
-          "produces": {"type": "array"},
-          "max_active_neighbors": {"type": "integer"},
-          "max_bytes": {"type": "integer"},
-          "neighbors": {"type": "array"},
+          "decision_id": {"type": "string", "pattern": "^wp\\.select\\."},
+          "required_artifact_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "produced_artifact_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "max_bytes": {"type": "integer", "minimum": 512, "maximum": 8192},
           "path": {"type": "string", "pattern": "^references/.+\\.md$"},
           "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
           "bytes": {"type": "integer", "minimum": 1, "maximum": 8192}

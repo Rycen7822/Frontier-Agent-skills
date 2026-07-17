@@ -12,29 +12,22 @@ import re
 from typing import Any, Iterable
 
 
-SCHEMA_VERSION = "1.0"
-BUNDLE_ID = "frontier-engineering/5.0.0+4.0.0"
+SCHEMA_VERSION = "2.0"
+BUNDLE_ID = "frontier-engineering/6.0.0+5.0.0"
 SKILL_ID = "writing-plans"
-TARGET_SKILL_VERSION = "4.0.0"
+TARGET_SKILL_VERSION = "5.0.0"
 MAX_INPUT_BYTES = 2 * 1024 * 1024
 BODY_SECTIONS = (
     "Decision this card owns", "Use when", "Do not use when", "Required inputs",
     "Procedure", "Output contract", "Load next only if", "Stop",
 )
-KIND_LIMITS = {
-    "entry": (4096, 4), "decision": (4096, 3), "procedure": (8192, 3),
-    "rubric": (8192, 0), "recipe": (4096, 0), "phase": (8192, 0),
-    "safety": (6144, 0), "bridge": (4096, 0),
-}
-HARD_PREDICATES = {
-    "closure-contract-sections-complete",
-    "design-depth-needs-evidence",
-    "alternatives-compared",
-    "cross-context-slice",
-    "output-class-selected",
-}
+CARD_KINDS = {"decision", "procedure", "rubric", "recipe", "safety", "bridge"}
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 CARD_ID = re.compile(r"^wp(?:\.[a-z0-9][a-z0-9-]*)+$")
+MAPPING_KEYS = {
+    "decision_id", "card_id", "priority", "required_artifact_ids", "produced_artifact_ids",
+    "positive_fixture_id", "near_miss_fixture_id",
+}
 
 
 @dataclass(frozen=True)
@@ -141,22 +134,8 @@ def is_model_card(path: Path) -> bool:
         return False
 
 
-def _markdown_cell(value: str) -> str:
-    return value.replace("|", "\\|").replace("\n", " ").strip()
-
-
 def render_navigation(metadata: dict[str, Any]) -> str:
-    neighbors = metadata.get("neighbors", [])
-    if not neighbors:
-        return "None. Return control to Router after producing the output contract."
-    rows = ["| Edge ID | Missing decision | Required evidence | Next card | Evict when |", "|---|---|---|---|---|"]
-    for edge in neighbors:
-        rows.append("| `{}` | {} | {} | `{}` | {} |".format(
-            _markdown_cell(edge["edge_id"]), _markdown_cell(edge["missing_decision"]),
-            _markdown_cell(edge["required_evidence"]), _markdown_cell(edge["to_card_id"]),
-            _markdown_cell(edge["evict_when"]),
-        ))
-    return "\n".join(rows)
+    return "None. Return control to Router after producing the output contract."
 
 
 def replace_navigation(card: Card) -> bytes:
@@ -172,14 +151,22 @@ def replace_navigation(card: Card) -> bytes:
     return f"---\n{frontmatter}\n---\n{body}".encode()
 
 
-def _identifiers(value: Any) -> bool:
-    return isinstance(value, list) and bool(value) and len(value) == len(set(value)) and all(isinstance(item, str) and IDENTIFIER.fullmatch(item) for item in value)
+def _identifiers(value: Any, *, allow_empty: bool) -> bool:
+    return (
+        isinstance(value, list)
+        and (allow_empty or bool(value))
+        and len(value) == len(set(value))
+        and all(isinstance(item, str) and IDENTIFIER.fullmatch(item) for item in value)
+    )
 
 
 def validate_card(card: Card) -> list[ContractIssue]:
     issues: list[ContractIssue] = []
     metadata = card.metadata
-    required = {"card_id", "card_version", "kind", "consumes", "produces", "max_active_neighbors", "max_bytes", "neighbors"}
+    required = {
+        "card_id", "card_version", "kind", "decision_id",
+        "required_artifact_ids", "produced_artifact_ids", "max_bytes",
+    }
     if set(metadata) != required:
         issues.append(ContractIssue("card.frontmatter-keys", card.relative_path, "frontmatter keys differ"))
     card_id = metadata.get("card_id")
@@ -188,49 +175,20 @@ def validate_card(card: Card) -> list[ContractIssue]:
     if not isinstance(metadata.get("card_version"), int) or isinstance(metadata.get("card_version"), bool) or metadata.get("card_version", 0) < 1:
         issues.append(ContractIssue("card.version", card.relative_path, "card_version must be positive"))
     kind = metadata.get("kind")
-    kind_limit, edge_limit = KIND_LIMITS.get(kind, (0, 0))
-    if kind not in KIND_LIMITS:
+    if kind not in CARD_KINDS:
         issues.append(ContractIssue("card.kind", card.relative_path, "unknown kind"))
-    for field in ("consumes", "produces"):
-        if not _identifiers(metadata.get(field)):
-            issues.append(ContractIssue(f"card.{field}", card.relative_path, f"invalid {field}"))
+    decision_id = metadata.get("decision_id")
+    if not isinstance(decision_id, str) or not re.fullmatch(r"wp\.select\.[a-z0-9.-]+", decision_id):
+        issues.append(ContractIssue("card.decision", card.relative_path, "decision_id is not canonical"))
+    if not _identifiers(metadata.get("required_artifact_ids"), allow_empty=True):
+        issues.append(ContractIssue("card.required-artifacts", card.relative_path, "required artifacts are invalid"))
+    if not _identifiers(metadata.get("produced_artifact_ids"), allow_empty=False):
+        issues.append(ContractIssue("card.produced-artifacts", card.relative_path, "produced artifacts are invalid"))
     max_bytes = metadata.get("max_bytes")
-    if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or not 512 <= max_bytes <= kind_limit:
-        issues.append(ContractIssue("card.max-bytes", card.relative_path, f"max_bytes must not exceed {kind_limit}"))
+    if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or not 512 <= max_bytes <= 8192:
+        issues.append(ContractIssue("card.max-bytes", card.relative_path, "max_bytes must be between 512 and 8192"))
     elif len(card.raw) > max_bytes:
         issues.append(ContractIssue("card.bytes", card.relative_path, f"actual bytes {len(card.raw)} exceed {max_bytes}"))
-    neighbors = metadata.get("neighbors")
-    if not isinstance(neighbors, list):
-        issues.append(ContractIssue("card.neighbors", card.relative_path, "neighbors must be an array"))
-        neighbors = []
-    if len(neighbors) > edge_limit:
-        issues.append(ContractIssue("card.outdegree", card.relative_path, f"outdegree exceeds {edge_limit}"))
-    if metadata.get("max_active_neighbors") != (1 if neighbors else 0):
-        issues.append(ContractIssue("card.active-neighbors", card.relative_path, "active neighbor limit does not match edges"))
-    edge_ids: set[str] = set()
-    for index, edge in enumerate(neighbors):
-        pointer = f"{card.relative_path}#/neighbors/{index}"
-        if not isinstance(edge, dict):
-            issues.append(ContractIssue("edge.shape", pointer, "edge must be an object"))
-            continue
-        base = {"edge_id", "to_card_id", "edge_mode", "missing_decision", "required_evidence", "evict_when"}
-        expected = base | ({"hard_predicate_id"} if edge.get("edge_mode") == "hard" else set())
-        if set(edge) != expected:
-            issues.append(ContractIssue("edge.keys", pointer, "edge keys differ"))
-        edge_id = edge.get("edge_id")
-        if not isinstance(edge_id, str) or not IDENTIFIER.fullmatch(edge_id) or edge_id in edge_ids:
-            issues.append(ContractIssue("edge.id", pointer, "edge ID is invalid or duplicate"))
-        else:
-            edge_ids.add(edge_id)
-        if not isinstance(edge.get("to_card_id"), str) or not CARD_ID.fullmatch(edge["to_card_id"]):
-            issues.append(ContractIssue("edge.target", pointer, "target must be a local WP card"))
-        if edge.get("edge_mode") not in {"hard", "semantic"}:
-            issues.append(ContractIssue("edge.mode", pointer, "edge mode is invalid"))
-        if edge.get("edge_mode") == "hard" and edge.get("hard_predicate_id") not in HARD_PREDICATES:
-            issues.append(ContractIssue("edge.predicate", pointer, "hard predicate is not registered"))
-        for field in ("missing_decision", "required_evidence", "evict_when"):
-            if not isinstance(edge.get(field), str) or not edge[field].strip():
-                issues.append(ContractIssue(f"edge.{field}", pointer, f"{field} must be non-empty"))
     positions = [card.body.find(f"## {section}\n") for section in BODY_SECTIONS]
     if any(position < 0 for position in positions) or positions != sorted(positions):
         issues.append(ContractIssue("card.sections", card.relative_path, "fixed sections are absent or unordered"))
@@ -238,8 +196,8 @@ def validate_card(card: Card) -> list[ContractIssue]:
         issues.append(ContractIssue("card.title", card.relative_path, "H1 title is missing"))
     procedure = re.search(r"## Procedure\n(?P<body>.*?)(?=\n## Output contract\n)", card.body, re.DOTALL)
     steps = re.findall(r"^\d+\. ", procedure.group("body"), re.MULTILINE) if procedure else []
-    if not 5 <= len(steps) <= 9:
-        issues.append(ContractIssue("card.procedure", card.relative_path, "procedure must contain 5-9 steps"))
+    if not 3 <= len(steps) <= 20:
+        issues.append(ContractIssue("card.procedure", card.relative_path, "procedure must contain 3-20 steps"))
     navigation = re.search(r"## Load next only if\n\n?(?P<body>.*?)(?=\n## Stop\n)", card.body, re.DOTALL)
     if navigation is None or navigation.group("body").strip() != render_navigation(metadata):
         issues.append(ContractIssue("card.navigation-render", card.relative_path, "navigation is stale"))
@@ -252,31 +210,57 @@ def discover_cards(root: Path) -> list[Card]:
     return [parse_card(path, root) for path in sorted((root / "references").rglob("*.md")) if is_model_card(path)]
 
 
-def validate_navigation_graph(manifest: dict[str, Any]) -> list[ContractIssue]:
+def validate_decision_contract(root: Path, entries: list[dict[str, Any]]) -> list[ContractIssue]:
     issues: list[ContractIssue] = []
-    by_id = {item.get("card_id"): item for item in manifest.get("cards", []) if isinstance(item, dict)}
-    graph: dict[str, list[str]] = {}
-    for card_id, card in by_id.items():
-        graph[card_id] = []
-        for edge in card.get("neighbors", []):
-            target = edge.get("to_card_id")
-            if target not in by_id:
-                issues.append(ContractIssue("graph.target-missing", str(card_id), f"missing target: {target}"))
-            else:
-                graph[card_id].append(target)
-
-    def walk(card_id: str, path: tuple[str, ...]) -> None:
-        if card_id in path:
-            issues.append(ContractIssue("graph.cycle", card_id, "navigation cycle"))
-            return
-        if len(path) > 3:
-            issues.append(ContractIssue("graph.depth", card_id, "navigation exceeds three hops"))
-            return
-        for target in graph.get(card_id, []):
-            walk(target, path + (card_id,))
-
-    for card_id in sorted(graph):
-        walk(card_id, ())
+    map_path = root / "registries" / "decision-card-map.json"
+    fixture_path = root / "tests" / "fixtures" / "decision-route-cases-v5.json"
+    try:
+        decision_map = load_json(map_path)
+        fixtures = load_json(fixture_path)
+    except (OSError, ValueError) as exc:
+        return [ContractIssue("decision-map.invalid", "registries/decision-card-map.json", str(exc))]
+    if not isinstance(decision_map, dict) or set(decision_map) != {"schema_version", "skill_id", "skill_version", "decisions"}:
+        return [ContractIssue("decision-map.shape", "registries/decision-card-map.json", "map keys differ")]
+    if (decision_map.get("schema_version"), decision_map.get("skill_id"), decision_map.get("skill_version")) != (
+        "decision-card-map/1.0", SKILL_ID, TARGET_SKILL_VERSION,
+    ):
+        issues.append(ContractIssue("decision-map.identity", "registries/decision-card-map.json", "map identity differs"))
+    rows = decision_map.get("decisions")
+    if not isinstance(rows, list):
+        return issues + [ContractIssue("decision-map.shape", "registries/decision-card-map.json", "decisions must be an array")]
+    valid_rows: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict) or set(row) != MAPPING_KEYS:
+            issues.append(ContractIssue("decision-map.row", f"registries/decision-card-map.json#/decisions/{index}", "mapping keys differ"))
+        else:
+            valid_rows.append(row)
+    for field in ("decision_id", "card_id", "priority", "positive_fixture_id", "near_miss_fixture_id"):
+        values = [row[field] for row in valid_rows]
+        if len(values) != len(set(values)):
+            issues.append(ContractIssue("decision-map.duplicate", "registries/decision-card-map.json", f"{field} must be unique"))
+    by_card = {row["card_id"]: row for row in valid_rows}
+    if {entry["card_id"] for entry in entries} != set(by_card):
+        issues.append(ContractIssue("decision-map.coverage", "registries/decision-card-map.json", "map must own every card exactly once"))
+    for entry in entries:
+        row = by_card.get(entry["card_id"], {})
+        for field in ("decision_id", "required_artifact_ids", "produced_artifact_ids"):
+            if entry[field] != row.get(field):
+                issues.append(ContractIssue("decision-map.binding", entry["path"], f"{field} differs from decision map"))
+    if not isinstance(fixtures, dict):
+        return issues + [ContractIssue("decision-fixture.invalid", "tests/fixtures/decision-route-cases-v5.json", "fixture must be an object")]
+    positive = {case.get("id"): case for case in fixtures.get("positive_cases", []) if isinstance(case, dict)}
+    near_miss = {case.get("id"): case for case in fixtures.get("near_miss_cases", []) if isinstance(case, dict)}
+    if {row["positive_fixture_id"] for row in valid_rows} != set(positive):
+        issues.append(ContractIssue("decision-fixture.coverage", "tests/fixtures/decision-route-cases-v5.json", "positive fixture ownership differs"))
+    if {row["near_miss_fixture_id"] for row in valid_rows} != set(near_miss):
+        issues.append(ContractIssue("decision-fixture.coverage", "tests/fixtures/decision-route-cases-v5.json", "near-miss fixture ownership differs"))
+    for row in valid_rows:
+        positive_case = positive.get(row["positive_fixture_id"], {})
+        near_case = near_miss.get(row["near_miss_fixture_id"], {})
+        if (positive_case.get("decision_id"), positive_case.get("expected_card_id")) != (row["decision_id"], row["card_id"]):
+            issues.append(ContractIssue("decision-fixture.binding", row["positive_fixture_id"], "positive fixture differs from mapping"))
+        if near_case.get("excluded_card_id") != row["card_id"]:
+            issues.append(ContractIssue("decision-fixture.binding", row["near_miss_fixture_id"], "near-miss fixture does not exclude mapped card"))
     return issues
 
 
@@ -293,14 +277,14 @@ def build_manifest(root: Path) -> tuple[dict[str, Any], list[ContractIssue]]:
             seen.add(card_id)
         entries.append({
             "bytes": len(card.raw), "card_id": card_id, "card_version": card.metadata.get("card_version"),
-            "consumes": card.metadata.get("consumes"), "kind": card.metadata.get("kind"),
-            "max_active_neighbors": card.metadata.get("max_active_neighbors"), "max_bytes": card.metadata.get("max_bytes"),
-            "neighbors": card.metadata.get("neighbors"), "path": card.relative_path,
-            "produces": card.metadata.get("produces"), "sha256": card.sha256,
+            "decision_id": card.metadata.get("decision_id"), "kind": card.metadata.get("kind"),
+            "max_bytes": card.metadata.get("max_bytes"), "path": card.relative_path,
+            "required_artifact_ids": card.metadata.get("required_artifact_ids"),
+            "produced_artifact_ids": card.metadata.get("produced_artifact_ids"), "sha256": card.sha256,
         })
     entries.sort(key=lambda item: str(item.get("card_id")))
     manifest = {"bundle_id": BUNDLE_ID, "cards": entries, "schema_version": SCHEMA_VERSION, "skill_id": SKILL_ID, "skill_version": TARGET_SKILL_VERSION}
-    issues.extend(validate_navigation_graph(manifest))
+    issues.extend(validate_decision_contract(root, entries))
     return manifest, issues
 
 

@@ -36,7 +36,6 @@ def validate_bundle(
     bundle: Any,
     schema: dict[str, Any],
     *,
-    expected_closure_epoch: int | None = None,
     expected_contract_hash: str | None = None,
     expected_source_revision: str | None = None,
     expected_scope_hash: str | None = None,
@@ -55,10 +54,8 @@ def validate_bundle(
     if observed_hash is not None and bundle.get("content_hash") != observed_hash:
         violations.append(Violation("E_HASH_MISMATCH", "/content_hash", "content_hash does not match canonical verifier bundle", bundle_id))
 
-    if expected_closure_epoch is not None and bundle.get("closure_epoch") != expected_closure_epoch:
-        violations.append(Violation("E_EPOCH_MISMATCH", "/closure_epoch", "closure epoch differs from expected binding", bundle_id))
     if expected_contract_hash is not None and bundle.get("contract_hash") != expected_contract_hash:
-        violations.append(Violation("E_EPOCH_MISMATCH", "/contract_hash", "contract hash differs from expected binding", bundle_id))
+        violations.append(Violation("E_CONTRACT_MISMATCH", "/contract_hash", "contract hash differs from expected binding", bundle_id))
     if expected_source_revision is not None and bundle.get("source_revision") != expected_source_revision:
         violations.append(Violation("E_SOURCE_DRIFT", "/source_revision", "source revision differs from expected binding", bundle_id))
     if expected_scope_hash is not None and bundle.get("scope_hash") != expected_scope_hash:
@@ -118,7 +115,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("bundle", type=Path)
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
-    parser.add_argument("--closure-epoch", type=int)
     parser.add_argument("--contract-hash")
     parser.add_argument("--source-revision")
     parser.add_argument("--scope-hash")
@@ -130,7 +126,6 @@ def main(argv: list[str] | None = None) -> int:
         violations = validate_bundle(
             bundle,
             schema,
-            expected_closure_epoch=args.closure_epoch,
             expected_contract_hash=args.contract_hash,
             expected_source_revision=args.source_revision,
             expected_scope_hash=args.scope_hash,

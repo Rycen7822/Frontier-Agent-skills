@@ -1,21 +1,12 @@
 ---
 {
   "card_id": "wp.profiles.handoff",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "procedure",
-  "consumes": [
-    "plan_route",
-    "request_source",
-    "scope_projection",
-    "authority_projection"
-  ],
-  "produces": [
-    "executable_handoff",
-    "plan_execution_handoff"
-  ],
-  "max_active_neighbors": 0,
-  "max_bytes": 4096,
-  "neighbors": []
+  "decision_id": "wp.select.profiles.handoff",
+  "required_artifact_ids": [],
+  "produced_artifact_ids": ["plan-handoff"],
+  "max_bytes": 4096
 }
 ---
 # Executable Handoff
@@ -37,10 +28,10 @@ Freeze the minimum durable handoff needed for another turn, session, or authoriz
 2. Record goal/non-goals, global invariants/owner seams, requirement/constraint coverage, completed evidence, pending decisions, and blockers separately.
 3. Give ordered outcome slices stable dependencies, allowed writes/effects, one owner, acceptance/verifier distinction, false-green risk, and produced evidence.
 4. Record current frontier, rollback, fog, and only source-bound resume commands/anchors.
-5. Render the bounded [Handoff template](../../templates/executable-handoff.md) and emit the cross-skill envelope with no SQW internal card ID or Markdown path. For standard execution, Admission and contract identity fields are all null.
+5. Render the bounded [Handoff template](../../templates/executable-handoff.md) and emit the cross-skill envelope with no SQW internal card ID or Markdown path.
 
 ## Output contract
-- `executable_handoff` plus schema-valid `plan_execution_handoff` binding handoff/bundle/source/profile, plan/authority/scope/frontier/policy identities, explicit blockers, and no inferred authority.
+- One `plan-handoff` binding handoff/bundle/source/profile, plan/authority/scope/frontier/policy identities, explicit blockers, and no inferred authority.
 
 ## Load next only if
 

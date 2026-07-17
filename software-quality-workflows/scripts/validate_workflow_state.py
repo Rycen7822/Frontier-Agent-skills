@@ -41,24 +41,19 @@ EFFECT_ORDER = {
 SATISFIED_NODE_STATUSES = {"done", "skipped", "superseded"}
 LIVE_NODE_STATUSES = {"pending", "ready", "running", "blocked", "failed", "invalidated"}
 EXTERNAL_EFFECTS = {"external_reversible", "external_non_idempotent", "destructive"}
-WORKER_EVENT_TYPES = {"reference_loaded", "node_output_committed", "node_failed", "artifact_observed", "plan_change_proposed", "candidate_created", "counterexample_observed"}
-REVIEWER_EVENT_TYPES = {"review_submitted", "artifact_observed", "verifier_qualified", "verifier_rejected", "counterexample_observed", "signoff_completed"}
-TOOL_EVENT_TYPES = {"artifact_observed", "baseline_qualified", "baseline_rejected", "verifier_qualified", "verifier_rejected", "candidate_created", "candidate_evaluated", "counterexample_observed", "signoff_completed"}
-ADMISSION_EVENT_TYPES = {"closure_admission_started", "closure_admission_completed"}
+WORKER_EVENT_TYPES = {"node_output_committed", "node_failed", "artifact_observed", "plan_change_proposed"}
+REVIEWER_EVENT_TYPES = {"review_submitted", "artifact_observed"}
+TOOL_EVENT_TYPES = {"artifact_observed"}
 CONTROLLER_ONLY_EVENT_TYPES = {
-    "baseline_qualified", "verifier_bundle_frozen", "verifier_qualified", "candidate_created",
-    "candidate_evaluated", "candidate_pruned", "candidate_promoted", "counterexample_observed",
-    "budget_consumed", "signoff_started", "signoff_completed", "contract_superseded",
-    "terminal_certificate_emitted", "source_drift_detected", "workflow_closed",
+    "source_drift_detected", "workflow_completed",
 }
 NODE_EVENT_TYPES = {"node_refined", "node_started", "node_output_committed", "node_completed", "node_failed"}
 RUN_EVENT_TYPES = {"node_started", "node_output_committed", "node_completed", "node_failed"}
 WORKFLOW_TRANSITIONS = {
     "open": {"active", "aborted"},
-    "active": {"blocked", "closing", "aborted"},
-    "blocked": {"active", "aborted"},
-    "closing": {"active", "blocked", "closed", "aborted"},
-    "closed": set(),
+    "active": {"blocked", "completed", "aborted"},
+    "blocked": {"active", "completed", "aborted"},
+    "completed": set(),
     "aborted": set(),
 }
 NODE_TRANSITIONS = {
@@ -73,15 +68,6 @@ NODE_TRANSITIONS = {
     "skipped": set(),
     "cancelled": set(),
 }
-CLOSURE_PHASE_TRANSITIONS = {
-    "BASELINING": {"VERIFIER_QUALIFYING", "TERMINAL"},
-    "VERIFIER_QUALIFYING": {"SEARCHING", "BASELINING", "TERMINAL"},
-    "SEARCHING": {"SIGNING_OFF", "BASELINING", "TERMINAL"},
-    "SIGNING_OFF": {"SEARCHING", "BASELINING", "TERMINAL"},
-    "TERMINAL": set(),
-}
-
-
 def _objects(state: dict[str, Any]) -> Iterable[tuple[str, int, dict[str, Any]]]:
     for collection in ("global_invariants", "nodes", "verifiers", "edges", "locks", "artifacts", "recent_failures"):
         for index, item in enumerate(state.get(collection, [])):
@@ -165,69 +151,6 @@ def _reference_rows(state: dict[str, Any]) -> Iterable[tuple[str, str, str | Non
         yield artifact.get("producer", {}).get("node_id"), pointer(("artifacts", index, "producer", "node_id")), artifact.get("id")
     for index, failure in enumerate(state.get("recent_failures", [])):
         yield failure.get("node_id"), pointer(("recent_failures", index, "node_id")), failure.get("id")
-    closure = state.get("closure", {})
-    for field in ("required_verifiers", "evidence_refs"):
-        for index, ref in enumerate(closure.get(field, [])):
-            yield ref, pointer(("closure", field, index)), None
-
-
-def _validate_closure_run(state: dict[str, Any], run: dict[str, Any]) -> list[Violation]:
-    violations: list[Violation] = []
-    phase = run.get("phase")
-    if run.get("policy_bundle_hash") != state.get("policy_bundle_hash"):
-        violations.append(Violation("workflow.closure-policy", "/closure_run/policy_bundle_hash", "closure run policy hash differs from immutable workflow policy"))
-    budget = run.get("budget", {})
-    if not isinstance(budget, dict):
-        budget = {}
-    for used, limit in (
-        ("iterations_used", "iterations_limit"),
-        ("candidate_evaluations_used", "candidate_evaluations_limit"),
-        ("review_rounds_used", "review_rounds_limit"),
-    ):
-        if isinstance(budget.get(used), int) and isinstance(budget.get(limit), int) and budget[used] > budget[limit]:
-            violations.append(Violation("workflow.closure-budget", f"/closure_run/budget/{used}", f"{used} exceeds {limit}"))
-
-    required_by_phase = {
-        "BASELINING": {"contract_ref"},
-        "VERIFIER_QUALIFYING": {"contract_ref", "baseline_ref"},
-        "SEARCHING": {"contract_ref", "baseline_ref", "verifier_bundle_ref"},
-        "SIGNING_OFF": {"contract_ref", "baseline_ref", "verifier_bundle_ref", "incumbent_candidate_ref"},
-        "TERMINAL": {"terminal_certificate_ref"},
-    }
-    future_forbidden = {
-        "BASELINING": {"baseline_ref", "verifier_bundle_ref", "incumbent_candidate_ref", "signoff_result_ref"},
-        "VERIFIER_QUALIFYING": {"incumbent_candidate_ref", "signoff_result_ref"},
-        "SEARCHING": set(),
-        "SIGNING_OFF": set(),
-        "TERMINAL": set(),
-    }
-    for field in required_by_phase.get(phase, set()):
-        value = run.get(field)
-        if value is None or value == "":
-            violations.append(Violation("workflow.closure-phase", f"/closure_run/{field}", f"{phase} requires {field}"))
-    for field in future_forbidden.get(phase, set()):
-        if field in run:
-            violations.append(Violation("workflow.closure-phase", f"/closure_run/{field}", f"{phase} cannot bind future {field}"))
-    if phase not in {"SEARCHING", "SIGNING_OFF", "TERMINAL"} and (run.get("active_candidate_refs") or run.get("active_counterexample_refs")):
-        violations.append(Violation("workflow.closure-phase", "/closure_run/active_candidate_refs", f"{phase} cannot carry active candidate/counterexample refs"))
-    terminal_status = run.get("terminal_status")
-    terminal_ref = run.get("terminal_certificate_ref")
-    if phase == "TERMINAL":
-        if terminal_status is None or terminal_ref is None:
-            violations.append(Violation("workflow.closure-phase", "/closure_run/terminal_status", "TERMINAL requires status and certificate"))
-        if terminal_status == "CLOSED":
-            for field in ("contract_ref", "baseline_ref", "verifier_bundle_ref", "incumbent_candidate_ref", "signoff_result_ref"):
-                if run.get(field) is None:
-                    violations.append(Violation("workflow.closure-phase", f"/closure_run/{field}", f"CLOSED requires {field}"))
-    elif terminal_status is not None or terminal_ref is not None:
-        violations.append(Violation("workflow.closure-phase", "/closure_run/terminal_status", "non-terminal phase cannot carry terminal state"))
-    contract = run.get("contract_ref")
-    verifier = run.get("verifier_bundle_ref")
-    if isinstance(contract, dict) and isinstance(verifier, dict) and contract.get("epoch") != verifier.get("epoch"):
-        violations.append(Violation("workflow.closure-epoch", "/closure_run/verifier_bundle_ref/epoch", "verifier and contract epochs differ"))
-    return violations
-
-
 def validate_state(
     state: Any,
     schema: dict[str, Any],
@@ -241,19 +164,6 @@ def validate_state(
     if not isinstance(state, dict):
         return violations
 
-    execution_policy = state.get("execution_policy")
-    closure_run = state.get("closure_run")
-    if execution_policy == "standard" and closure_run is not None:
-        violations.append(Violation("workflow.closure-policy", "/closure_run", "standard workflow must not carry closure_run"))
-    if execution_policy == "autonomous_closure":
-        if state.get("mode") not in {"M2_SPARSE", "M3_FULL"}:
-            violations.append(Violation("workflow.closure-mode", "/mode", "autonomous closure requires M2 or M3"))
-        if state.get("request_mode") not in {"change", "recovery"}:
-            violations.append(Violation("workflow.closure-mode", "/request_mode", "autonomous closure requires change or recovery request mode"))
-        if not isinstance(closure_run, dict):
-            violations.append(Violation("workflow.closure-policy", "/closure_run", "autonomous closure requires closure_run"))
-        else:
-            violations.extend(_validate_closure_run(state, closure_run))
     if schema_failed:
         return violations
 
@@ -392,13 +302,11 @@ def validate_state(
     if current_plan_hash and state.get("plan_ref", {}).get("content_hash") != current_plan_hash:
         violations.append(Violation("workflow.plan-stale", "/plan_ref/content_hash", "workflow references a stale plan hash"))
 
-    closure = state.get("closure", {})
-    if closure.get("status") == "closed" or state.get("status") == "closed":
-        missing_verifiers = [ref for ref in closure.get("required_verifiers", []) if verifiers.get(ref, {}).get("status") != "passed"]
-        stale_evidence = [ref for ref in closure.get("evidence_refs", []) if artifacts.get(ref, {}).get("freshness") != "fresh"]
+    if state.get("status") == "completed":
+        failed_verifiers = [ref for ref, verifier in verifiers.items() if verifier.get("status") != "passed"]
         unfinished = [node.get("id") for node in state.get("nodes", []) if node.get("status") not in SATISFIED_NODE_STATUSES]
-        if missing_verifiers or stale_evidence or unfinished or state.get("pending_background") or state.get("locks") or closure.get("known_gaps"):
-            violations.append(Violation("workflow.closure-premature", "/closure/status", f"closure incomplete: verifiers={missing_verifiers}, evidence={stale_evidence}, nodes={unfinished}, background={state.get('pending_background')}, locks={len(state.get('locks', []))}"))
+        if failed_verifiers or unfinished or state.get("pending_background") or state.get("locks"):
+            violations.append(Violation("workflow.completion-premature", "/status", f"workflow incomplete: verifiers={failed_verifiers}, nodes={unfinished}, background={state.get('pending_background')}, locks={len(state.get('locks', []))}"))
     return violations
 
 
@@ -408,9 +316,9 @@ def validate_transition(previous: dict[str, Any], current: dict[str, Any], *, ac
         violations.append(Violation("workflow.controller-only", "", "only controller may mutate canonical workflow state"))
     if previous.get("workflow_id") != current.get("workflow_id"):
         violations.append(Violation("workflow.identity-change", "/workflow_id", "workflow_id is immutable"))
-    immutable_fields = ("mode", "request_mode", "execution_policy", "policy_bundle_hash")
+    immutable_fields = ("mode", "request_mode", "policy_bundle_hash")
     if any(previous.get(field) != current.get(field) for field in immutable_fields):
-        violations.append(Violation("workflow.identity-change", "/mode", "mode, request mode, execution policy, and policy bundle hash are immutable after open"))
+        violations.append(Violation("workflow.identity-change", "/mode", "mode, request mode, and policy bundle hash are immutable after open"))
     if current.get("state_version") != previous.get("state_version", 0) + 1:
         violations.append(Violation("workflow.state-version", "/state_version", "transition must increment state_version by exactly one"))
     before_status, after_status = previous.get("status"), current.get("status")
@@ -419,23 +327,9 @@ def validate_transition(previous: dict[str, Any], current: dict[str, Any], *, ac
 
     before_nodes = {item.get("id"): item for item in previous.get("nodes", [])}
     after_nodes = {item.get("id"): item for item in current.get("nodes", [])}
-    previous_run = previous.get("closure_run") if isinstance(previous.get("closure_run"), dict) else {}
-    current_run = current.get("closure_run") if isinstance(current.get("closure_run"), dict) else {}
-    previous_contract = previous_run.get("contract_ref") if isinstance(previous_run.get("contract_ref"), dict) else {}
-    current_contract = current_run.get("contract_ref") if isinstance(current_run.get("contract_ref"), dict) else {}
-    contract_superseded = (
-        isinstance(previous_contract.get("epoch"), int)
-        and isinstance(current_contract.get("epoch"), int)
-        and current_contract["epoch"] > previous_contract["epoch"]
-        and current_contract != previous_contract
-        and current_run.get("handoff_ref") != previous_run.get("handoff_ref")
-        and current.get("plan_ref") != previous.get("plan_ref")
-        and current_run.get("phase") == "BASELINING"
-    )
     for node_id, before in before_nodes.items():
         if node_id not in after_nodes:
-            if not contract_superseded:
-                violations.append(Violation("workflow.node-deleted", "/nodes", "canonical nodes cannot be deleted; supersede them", node_id))
+            violations.append(Violation("workflow.node-deleted", "/nodes", "canonical nodes cannot be deleted; supersede them", node_id))
             continue
         old, new = before.get("status"), after_nodes[node_id].get("status")
         if old != new and new not in NODE_TRANSITIONS.get(old, set()):
@@ -446,24 +340,6 @@ def validate_transition(previous: dict[str, Any], current: dict[str, Any], *, ac
     after_writes = set(current.get("scope", {}).get("allowed_writes", []))
     if not after_writes.issubset(before_writes):
         violations.append(Violation("workflow.authority-expanded", "/scope/allowed_writes", "state transition cannot silently expand write scope"))
-    before_run, after_run = previous.get("closure_run"), current.get("closure_run")
-    if isinstance(before_run, dict) and isinstance(after_run, dict):
-        before_phase, after_phase = before_run.get("phase"), after_run.get("phase")
-        if before_phase != after_phase and after_phase not in CLOSURE_PHASE_TRANSITIONS.get(before_phase, set()):
-            violations.append(Violation("workflow.closure-transition", "/closure_run/phase", f"invalid closure transition {before_phase} -> {after_phase}"))
-        before_budget, after_budget = before_run.get("budget", {}), after_run.get("budget", {})
-        if isinstance(before_budget, dict) and isinstance(after_budget, dict):
-            for field in ("iterations_used", "candidate_evaluations_used", "review_rounds_used"):
-                if isinstance(before_budget.get(field), int) and isinstance(after_budget.get(field), int) and after_budget[field] < before_budget[field]:
-                    violations.append(Violation("workflow.closure-budget-transition", f"/closure_run/budget/{field}", f"{field} cannot decrease"))
-            for field in ("iterations_limit", "candidate_evaluations_limit", "review_rounds_limit"):
-                if before_budget.get(field) != after_budget.get(field):
-                    violations.append(Violation("workflow.closure-budget-transition", f"/closure_run/budget/{field}", f"{field} is immutable"))
-        for field in ("contract_ref", "verifier_bundle_ref"):
-            before_ref, after_ref = before_run.get(field), after_run.get(field)
-            if isinstance(before_ref, dict) and isinstance(after_ref, dict):
-                if isinstance(before_ref.get("epoch"), int) and isinstance(after_ref.get("epoch"), int) and after_ref["epoch"] < before_ref["epoch"]:
-                    violations.append(Violation("workflow.closure-epoch-transition", f"/closure_run/{field}/epoch", f"{field} epoch cannot decrease"))
     return violations
 
 
@@ -474,16 +350,12 @@ def validate_event_stream(events: list[dict[str, Any]], schema: dict[str, Any], 
     previous_sequence: int | None = None
     previous_version: int | None = None
     previous_time: datetime | None = None
-    durable_seen = False
     for index, event in enumerate(events):
         schema_errors = validate_against_schema(event, schema, parts=(index,), code="workflow.event-schema")
         violations.extend(schema_errors)
         if isinstance(event, dict):
-            event_type_value = event.get("type")
             event_id_value = event.get("event_id") if isinstance(event.get("event_id"), str) else None
-            if event_type_value in ADMISSION_EVENT_TYPES and ("workflow_id" in event or "state_version" in event):
-                violations.append(Violation("workflow.admission-event-shape", pointer((index,)), "pre-workflow admission events must omit workflow_id and state_version", event_id_value))
-            elif isinstance(event_type_value, str) and event_type_value not in ADMISSION_EVENT_TYPES and ("workflow_id" not in event or "state_version" not in event):
+            if "workflow_id" not in event or "state_version" not in event:
                 violations.append(Violation("workflow.event-shape", pointer((index,)), "durable events require workflow_id and state_version", event_id_value))
         if schema_errors or not isinstance(event, dict):
             continue
@@ -492,24 +364,13 @@ def validate_event_stream(events: list[dict[str, Any]], schema: dict[str, Any], 
             violations.append(Violation("workflow.event-duplicate", pointer((index, "event_id")), "event_id must be append-only unique", event_id))
         seen_ids.add(event_id)
         event_type = event["type"]
-        is_admission = event_type in ADMISSION_EVENT_TYPES
-        if is_admission:
-            if "workflow_id" in event or "state_version" in event:
-                violations.append(Violation("workflow.admission-event-shape", pointer((index,)), "pre-workflow admission events must omit workflow_id and state_version", event_id))
-            if durable_seen:
-                violations.append(Violation("workflow.event-order", pointer((index, "type")), "admission events must precede durable workflow events", event_id))
-        else:
-            durable_seen = True
-            if "workflow_id" not in event or "state_version" not in event:
-                violations.append(Violation("workflow.event-shape", pointer((index,)), "durable events require workflow_id and state_version", event_id))
-            else:
-                if workflow_id is None:
-                    workflow_id = event["workflow_id"]
-                elif event["workflow_id"] != workflow_id:
-                    violations.append(Violation("workflow.event-workflow", pointer((index, "workflow_id")), "one event stream cannot mix workflow IDs", event_id))
-                if previous_version is not None and event["state_version"] < previous_version:
-                    violations.append(Violation("workflow.event-version", pointer((index, "state_version")), "event state_version cannot move backwards", event_id))
-                previous_version = event["state_version"]
+        if workflow_id is None:
+            workflow_id = event["workflow_id"]
+        elif event["workflow_id"] != workflow_id:
+            violations.append(Violation("workflow.event-workflow", pointer((index, "workflow_id")), "one event stream cannot mix workflow IDs", event_id))
+        if previous_version is not None and event["state_version"] < previous_version:
+            violations.append(Violation("workflow.event-version", pointer((index, "state_version")), "event state_version cannot move backwards", event_id))
+        previous_version = event["state_version"]
         if require_contiguous and previous_sequence is None and event["sequence"] != 1:
             violations.append(Violation("workflow.event-order", pointer((index, "sequence")), "complete event stream must start at sequence 1", event_id))
         if require_contiguous and previous_sequence is not None and event["sequence"] != previous_sequence + 1:
@@ -545,10 +406,6 @@ def validate_event_stream(events: list[dict[str, Any]], schema: dict[str, Any], 
             violations.append(Violation("workflow.event-shape", pointer((index, "payload", "artifact_refs")), "artifact_observed requires at least one artifact pointer", event_id))
         if event_type == "node_failed" and not payload.get("failure_ref"):
             violations.append(Violation("workflow.event-shape", pointer((index, "payload", "failure_ref")), "node_failed requires failure_ref", event_id))
-        if event_type == "budget_consumed" and not isinstance(payload.get("budget_delta"), dict):
-            violations.append(Violation("workflow.event-shape", pointer((index, "payload", "budget_delta")), "budget_consumed requires budget_delta", event_id))
-        if "next_phase" in payload and event_type != "signoff_completed":
-            violations.append(Violation("workflow.event-shape", pointer((index, "payload", "next_phase")), "next_phase is only valid on signoff_completed", event_id))
         if contains_secret_like(event):
             violations.append(Violation("workflow.sensitive-unclassified", pointer((index, "payload")), "events cannot contain raw credential-shaped values; store a controlled pointer", event_id))
     return violations

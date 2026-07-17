@@ -10,9 +10,8 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from _closure_contract import load_contract
 from _plan_state import capsule_source_hash, contains_secret_like, load_json, redact_secret_like
-from validate_plan_state import DEFAULT_SCHEMA, semantic_violations, validate_file
+from validate_plan_state import DEFAULT_SCHEMA, validate_file
 
 
 def _summary(item: dict[str, Any]) -> str:
@@ -38,7 +37,6 @@ def render(
     node_id: str,
     budget: int,
     *,
-    closure_contract: dict[str, Any] | None = None,
     runtime_projection: dict[str, Any] | None = None,
     card_refs: list[dict[str, str]] | None = None,
     projection_spec_id: str = "wp.slicing.context-capsules@1",
@@ -66,22 +64,6 @@ def render(
     if not projection_spec_id.startswith("wp.") or "@" not in projection_spec_id:
         raise ValueError("projection_spec_id must be a versioned WP policy ID")
     effective_budget = min(budget, 8192)
-    execution_policy = state.get("execution_policy", "standard")
-    contract_ref = state.get("closure_contract_ref")
-    if execution_policy == "autonomous_closure":
-        if not isinstance(contract_ref, dict) or not isinstance(closure_contract, dict):
-            raise ValueError("autonomous closure capsule requires the loaded frozen Closure Contract")
-        if closure_contract.get("status") != "frozen" or contract_ref.get("content_hash") != closure_contract.get("content_hash") or contract_ref.get("epoch") != closure_contract.get("epoch"):
-            raise ValueError("capsule Closure Contract does not match canonical plan binding")
-    elif closure_contract is not None or contract_ref is not None:
-        raise ValueError("standard plan capsule must not carry a Closure Contract")
-    binding_errors = [
-        item
-        for item in semantic_violations(state, closure_contract=closure_contract)
-        if item.code.startswith("plan.contract") or item.code.startswith("plan.node-contract")
-    ]
-    if binding_errors:
-        raise ValueError(f"capsule contract binding is invalid: {sorted({item.code for item in binding_errors})}")
     runtime = runtime_projection or {}
     unknown_runtime = sorted(set(runtime) - {"incumbent_artifact_ref", "hard_failure_refs", "remaining_budget"})
     if unknown_runtime:
@@ -105,7 +87,6 @@ def render(
         f"Source: revision={state['source']['base_revision']} scope={state['source']['scope_hash']}",
         f"Bundle: {state['source']['bundle_id']} policy={state['source']['policy_bundle_hash']} cards={state['source']['reference_manifest_hash']}",
         "Cards: " + ", ".join(f"{item['card_id']}@{item['card_hash']}" for item in card_refs),
-        f"Execution policy: {execution_policy}",
         "",
         "## Goal",
         state["goal"],
@@ -120,20 +101,12 @@ def render(
         f"Resources: {', '.join(node['resource_set']) or 'none'}",
         f"Effects: {', '.join(node['effect_set']) or 'none'}",
         f"Side effect: {node['side_effect_level']}",
-        f"Constraints: {', '.join(node.get('constraint_refs', [])) or 'none'}",
-        f"Corners: {', '.join(node.get('corner_refs', [])) or 'none'}",
-        f"Verifier requirements: {', '.join(node.get('verifier_requirement_refs', [])) or 'none'}",
         f"Active decisions: {', '.join(item.get('id') for item in state.get('decisions', []) if isinstance(item.get('id'), str)) or 'none'}",
         f"Blocking plan gaps: {', '.join(item.get('id') for item in blocking_gaps) or 'none'}",
         "Policies: " + (", ".join(f"{item['policy_id']}@{item['policy_hash']}" for item in state.get("policy_claims", [])) or "none"),
         "",
         "## Global invariants",
     ]
-    if execution_policy == "autonomous_closure":
-        mandatory[6:6] = [
-            f"Contract: {contract_ref['artifact_ref']} hash={contract_ref['content_hash']} epoch={contract_ref['epoch']}",
-            "Contract detail: load the immutable artifact by ID; full constraint text is intentionally not copied",
-        ]
     included: list[str] = [node_id]
     for invariant in state.get("global_invariants", []):
         mandatory.append(_summary(invariant))
@@ -222,9 +195,6 @@ def render(
         "node_id": node_id,
         "state_hash": state_hash,
         "state_version": state["state_version"],
-        "execution_policy": execution_policy,
-        "contract_hash": contract_ref.get("content_hash") if isinstance(contract_ref, dict) else None,
-        "contract_epoch": contract_ref.get("epoch") if isinstance(contract_ref, dict) else None,
         "requested_budget": budget,
         "budget_chars": effective_budget,
         "budget_bytes": effective_budget,
@@ -252,22 +222,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
     parser.add_argument("--budget-chars", type=int, default=6000)
-    parser.add_argument("--closure-contract", type=Path)
     parser.add_argument("--runtime-projection", type=Path)
     args = parser.parse_args(argv)
     if args.budget_chars < 500:
         print(json.dumps({"ok": False, "error": "budget must be at least 500 characters"}, indent=2))
         return 2
-    state, violations = validate_file(args.state, args.schema, closure_contract_path=args.closure_contract)
+    state, violations = validate_file(args.state, args.schema)
     if violations or state is None:
         print(json.dumps({"ok": False, "violations": [item.as_dict() for item in violations]}, indent=2))
         return 2
     try:
-        contract = load_contract(args.closure_contract) if args.closure_contract else None
         runtime = load_json(args.runtime_projection) if args.runtime_projection else None
         if runtime is not None and not isinstance(runtime, dict):
             raise ValueError("runtime projection must be a JSON object")
-        text, metadata = render(state, args.node_id, args.budget_chars, closure_contract=contract, runtime_projection=runtime)
+        text, metadata = render(state, args.node_id, args.budget_chars, runtime_projection=runtime)
     except (OSError, ValueError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, indent=2))
         return 2

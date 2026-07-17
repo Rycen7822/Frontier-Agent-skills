@@ -14,7 +14,7 @@ Plan statuses are `drafting`, `ready`, `active`, `blocked`, `completed`, and `su
 
 ## Graph and frontier
 
-Nodes are outcome slices. Each node declares inputs, outputs, `read_set`, `write_set`, `resource_set`, `effect_set`, applicable constraint/corner/verifier references, approval state, and a completion oracle. Edges are typed as `control`, `data`, `evidence`, `invariant`, `effect`, `resource`, or `approval` and may declare field sensitivity.
+Nodes are outcome slices. Each node declares inputs, outputs, `read_set`, `write_set`, `resource_set`, `effect_set`, approval state, and a completion oracle. Edges are typed as `control`, `data`, `evidence`, `invariant`, `effect`, `resource`, or `approval` and may declare field sensitivity.
 
 The stored frontier is an assertion checked against graph readiness; it is never trusted merely because the schema accepts it. A ready node has satisfied control dependencies, available required inputs, no unresolved blocker, all necessary approval, and no applicable invariant or resource/effect conflict. Hidden shared state, root assumptions, source/scope drift, or global invariant drift require parent/global replanning rather than local repair.
 
@@ -30,13 +30,11 @@ A high-risk node must have at least one applicable invariant. Read/write, write/
 
 `done` requires qualifying evidence bound to the node verifier and current source identity. Observed evidence records a usable freshness policy; command, schema, symbol, artifact, and external-version bindings are resolved rather than accepted as prose. A failed or invalidated prerequisite cannot leave a dependent live. Plan-level completion requires every required node terminal, no stale source binding, and no unresolved blocking evidence or approval.
 
-For autonomous closure, the plan binds a frozen Closure Contract by ID, epoch, content hash, source revision, scope, policy bundle, reference-card manifest, and authority boundary. Contract or policy-root drift invalidates the whole plan. The contract remains upstream of the plan and cannot refer to a future plan or candidate.
-
 ## Freshness and invalidation
 
 `check_plan_freshness.py` classifies drift by ownership:
 
-- source revision, scope, bundle, policy bundle, frozen contract, global invariant, or root assumption drift is global;
+- source revision, scope, bundle, policy bundle, global invariant, or root assumption drift is global;
 - typed node/input/evidence changes propagate only across relevant graph edges and declared field sensitivity;
 - reference-manifest or card-hash drift invalidates generated context capsules only;
 - capsule/state-version drift invalidates that projection, not canonical plan truth.

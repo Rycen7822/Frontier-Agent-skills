@@ -25,7 +25,7 @@ def validate(registry: Any, manifest: Any) -> list[dict[str, str]]:
         return [{"code": "policy.registry-shape", "path": "", "message": "registry has unexpected keys"}]
     expected_identity = {
         "bundle_id": BUNDLE_ID,
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "skill_id": SKILL_ID,
         "skill_version": TARGET_SKILL_VERSION,
     }

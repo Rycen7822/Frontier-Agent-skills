@@ -150,26 +150,26 @@ class SkillContractTests(unittest.TestCase):
         )
 
     def test_engineering_absorption_contracts(self) -> None:
-        conflict_resource = "references/recovery/merge-state-and-sides.md"
-        traceability_resource = "references/review/requirements-traceability.md"
-        architecture_resource = "references/domain/architecture/module-boundary-design.md"
+        conflict_resource = "references/recovery/conflict-recovery.md"
+        traceability_resource = "references/review/execution-and-requirements.md"
+        architecture_resource = "references/domain/architecture/boundaries-and-alternatives.md"
         manifest = json.loads((ROOT / "registries" / "reference-cards.manifest.json").read_text(encoding="utf-8"))
         card_paths = {item["path"] for item in manifest["cards"]}
         self.assertTrue({conflict_resource, traceability_resource, architecture_resource, "references/workspace/prototype-lifecycle.md"}.issubset(card_paths))
 
         architecture = (ROOT / architecture_resource).read_text(encoding="utf-8").lower()
-        alternatives = (ROOT / "references" / "domain" / "architecture" / "alternative-decision.md").read_text(encoding="utf-8").lower()
+        alternatives = architecture
         self.assertIn("caller knowledge", architecture)
-        self.assertIn("deletion/distribution tests", architecture)
-        self.assertIn("narrow seam", architecture)
+        self.assertIn("deletion, and distribution", architecture)
+        self.assertIn("smallest supported design", architecture)
         self.assertIn("materially different", alternatives)
-        self.assertIn("hard-to-reverse", alternatives)
+        self.assertIn("reversibility", alternatives)
 
         traceability = (ROOT / traceability_resource).read_text(encoding="utf-8").lower()
-        self.assertIn("requirement-to-implementation-to-proof matrix", traceability)
-        for status in ("full", "partial", "missing", "not_applicable"):
+        self.assertIn("requirement→implementation→proof matrix", traceability)
+        for status in ("full", "partial", "missing", "not-applicable"):
             self.assertIn(status, traceability)
-        self.assertIn("requirements would be inferred from implementation", traceability)
+        self.assertIn("trace stable requirements to implementation and proof", traceability)
         self.assertIn("never invent acceptance criteria", traceability)
 
         conflict = (ROOT / conflict_resource).read_text(encoding="utf-8").lower()
@@ -181,39 +181,39 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("generated", conflict)
 
         diagnose = (ROOT / "references" / "entry" / "diagnose-failure.md").read_text(encoding="utf-8").lower()
-        reproduce = (ROOT / "references" / "diagnosis" / "reproduce-and-bound.md").read_text(encoding="utf-8").lower()
-        hypothesis = (ROOT / "references" / "diagnosis" / "hypothesis-and-discrimination.md").read_text(encoding="utf-8").lower()
-        transition = (ROOT / "references" / "diagnosis" / "bugfix-transition.md").read_text(encoding="utf-8").lower()
-        debugger = (ROOT / "references" / "recipes" / "debugger-assisted-diagnosis.md").read_text(encoding="utf-8").lower()
-        self.assertIn("implementation_blocked", diagnose)
+        reproduce = (ROOT / "references" / "diagnosis" / "evidence-and-hypothesis.md").read_text(encoding="utf-8").lower()
+        hypothesis = reproduce
+        transition = reproduce
+        debugger = reproduce
+        self.assertIn("implementation remains blocked", diagnose)
         self.assertIn("original reproduction", reproduce)
-        self.assertIn("bounded trial/time budget", reproduce)
-        self.assertIn("ranked portfolio", hypothesis)
-        self.assertIn("one controlled variable", hypothesis)
+        self.assertIn("time/attempt budget", reproduce)
+        self.assertIn("rank a small set", hypothesis)
+        self.assertIn("one factor at a time", hypothesis)
         self.assertIn("existing patch", transition)
-        self.assertIn("meaningful regression distinction", transition)
+        self.assertIn("predicted causal boundary", transition)
         self.assertIn("task-owned", debugger)
 
-        red = (ROOT / "references" / "test" / "behavior-distinction-and-red.md").read_text(encoding="utf-8").lower()
-        green = (ROOT / "references" / "test" / "green-and-refactor.md").read_text(encoding="utf-8").lower()
-        oracle = (ROOT / "references" / "test" / "oracle-quality.md").read_text(encoding="utf-8").lower()
+        red = (ROOT / "references" / "test" / "behavior-cycle.md").read_text(encoding="utf-8").lower()
+        green = red
+        oracle = (ROOT / "references" / "test" / "oracle-and-lifecycle.md").read_text(encoding="utf-8").lower()
         self.assertIn("independent", red)
         self.assertIn("plausible wrong implementation", red)
         self.assertIn("vertical slice", red)
-        self.assertIn("smallest general change", green)
+        self.assertIn("smallest general implementation", green)
         self.assertIn("production helper", oracle)
 
         delegation_root = ROOT / "references" / "delegation"
-        admission = (delegation_root / "admission-and-slicing.md").read_text(encoding="utf-8").lower()
-        worker = (delegation_root / "candidate-worker-contract.md").read_text(encoding="utf-8").lower()
+        admission = (delegation_root / "admission-and-contract.md").read_text(encoding="utf-8").lower()
+        worker = admission
         fan_in = (delegation_root / "fan-in-and-integration.md").read_text(encoding="utf-8").lower()
-        self.assertIn("reliability/latency/separation benefit", admission)
+        self.assertIn("reliability, latency, and separation value", admission)
         self.assertIn("overlapping writes/resources", admission)
-        self.assertIn("never self-approve", worker)
+        self.assertIn("self-approving", worker)
         self.assertIn("worker summaries and reported tests are evidence proposals", fan_in)
         self.assertIn("return control to router", fan_in)
 
-        api = (ROOT / "references" / "domain" / "api" / "compatibility-migration.md").read_text(encoding="utf-8").lower()
+        api = (ROOT / "references" / "domain" / "api" / "contract-and-migration.md").read_text(encoding="utf-8").lower()
         self.assertIn("expand", api)
         self.assertIn("migrate", api)
         self.assertIn("contract", api)
@@ -227,16 +227,16 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("expiry/disposition", prototype)
         self.assertIn("production readiness", prototype)
 
-        review = (ROOT / "references" / "review" / "review-execution.md").read_text(encoding="utf-8").lower()
+        review = (ROOT / "references" / "review" / "execution-and-requirements.md").read_text(encoding="utf-8").lower()
         prompt = (
             ROOT
             / "templates"
             / "requesting-code-review"
             / "independent-reviewer-prompt.md"
         ).read_text(encoding="utf-8").lower()
-        self.assertIn("sqw.review.requirements-traceability", review)
-        self.assertIn("no reviewer traverses other rubrics", review)
-        self.assertIn("never give reviewer a fixer contract", review)
+        self.assertIn("requirement→implementation→proof matrix", review)
+        self.assertIn("no reviewer traverses siblings", review)
+        self.assertIn("reviewer/fixer separation is mandatory", review)
         self.assertIn("requirements traceability", prompt)
         self.assertIn("do not invent requirements", prompt)
 
@@ -244,25 +244,23 @@ class SkillContractTests(unittest.TestCase):
         owner_path = "references/entry/intent-discovery.md"
         manifest = json.loads((ROOT / "registries" / "reference-cards.manifest.json").read_text(encoding="utf-8"))
         self.assertIn(owner_path, {item["path"] for item in manifest["cards"]})
-        self.assertIn("material intent alternatives", (ROOT / "SKILL.md").read_text(encoding="utf-8").lower())
+        self.assertIn("materially different intent alternatives", (ROOT / "SKILL.md").read_text(encoding="utf-8").lower())
 
         owner = "\n".join(
             (ROOT / relative).read_text(encoding="utf-8").lower()
             for relative in (
                 owner_path,
-                "references/intent/material-intent-gaps.md",
-                "references/intent/design-alternative-selection.md",
-                "references/intent/spec-freeze-handoff.md",
+                "references/intent/discovery-and-freeze.md",
             )
         )
         for phrase in (
             "one material question at a time",
-            "materially different",
-            "project documentation convention",
-            "writing-plans",
-            "approval only when",
-            "visual_probe_needed",
-            "design-discovery-spec-reviewer-prompt.md",
+            "materially different outcomes",
+            "project convention",
+            "decompose if one plan",
+            "required external approval",
+            "visual probe is allowed only",
+            "authoritative spec",
         ):
             self.assertIn(phrase, owner)
 
@@ -306,7 +304,7 @@ class SkillContractTests(unittest.TestCase):
         for mode in ("m0 direct", "m1 trace", "m2 sparse", "m3 full"):
             self.assertIn(mode, skill_lower)
         self.assertIn(
-            "](references/test/behavior-distinction-and-red.md)",
+            "](references/test/behavior-cycle.md)",
             skill,
         )
         self.assertNotIn("external tdd skill", skill_lower)
@@ -318,7 +316,6 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("allow_implicit_invocation: true", agent_metadata)
         self.assertIn("default_prompt:", agent_metadata)
         self.assertIn("$software-quality-workflows", agent_metadata)
-        self.assertNotIn("live_autonomous_closure_default", agent_metadata)
         self.assertNotIn("remote_writes_default", agent_metadata)
         self.assertIn("Live host-agent execution and multi-candidate search are default-off", skill)
         self.assertNotIn("Live Codex execution and multi-candidate search are default-off", skill)
@@ -326,10 +323,9 @@ class SkillContractTests(unittest.TestCase):
             self.assertNotIn(retired_host_detail, skill_lower)
 
         shared_references = {
-            "references/delegation/admission-and-slicing.md": ("delegate_task", "hermes-swarm-coordination"),
+            "references/delegation/admission-and-contract.md": ("delegate_task", "hermes-swarm-coordination"),
             "operator/delegation/shared-ledger-runtime.md": ("delegate_task", "skill_view(", "skill_manage"),
             "operator/design-discovery/visual-runtime.md": ("Start under Hermes", "terminal(", "process(action=", "browser_navigate", "write_file", "read_file", ".hermes-design-discovery"),
-            "operator/closure/controller-events.md": ("Hermes live todos",),
         }
         for relative, markers in shared_references.items():
             text = (ROOT / relative).read_text(encoding="utf-8")
@@ -582,7 +578,6 @@ class SkillContractTests(unittest.TestCase):
                 "  default_prompt: Use $software-quality-workflows for this fixture.\n"
                 "policy:\n"
                 "  allow_implicit_invocation: true\n"
-                "  live_autonomous_closure_default: false\n"
                 "  remote_writes_default: false\n",
                 encoding="utf-8",
             )

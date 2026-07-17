@@ -1,37 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "frontier://writing-plans/reference-card-frontmatter/1.0",
+  "$id": "frontier://writing-plans/reference-card-frontmatter/2.0",
   "type": "object",
   "additionalProperties": false,
-  "required": ["card_id", "card_version", "kind", "consumes", "produces", "max_active_neighbors", "max_bytes", "neighbors"],
+  "required": ["card_id", "card_version", "kind", "decision_id", "required_artifact_ids", "produced_artifact_ids", "max_bytes"],
   "properties": {
     "card_id": {"type": "string", "pattern": "^wp(?:\\.[a-z0-9][a-z0-9-]*)+$"},
     "card_version": {"type": "integer", "minimum": 1},
-    "kind": {"enum": ["entry", "decision", "procedure", "rubric", "recipe", "phase", "safety", "bridge"]},
-    "consumes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
-    "produces": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
-    "max_active_neighbors": {"type": "integer", "minimum": 0, "maximum": 1},
-    "max_bytes": {"type": "integer", "minimum": 512, "maximum": 8192},
-    "neighbors": {
-      "type": "array",
-      "maxItems": 4,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["edge_id", "to_card_id", "edge_mode", "missing_decision", "required_evidence", "evict_when"],
-        "properties": {
-          "edge_id": {"type": "string"},
-          "to_card_id": {"type": "string", "pattern": "^wp\\."},
-          "edge_mode": {"enum": ["hard", "semantic"]},
-          "hard_predicate_id": {"type": "string"},
-          "missing_decision": {"type": "string", "minLength": 1},
-          "required_evidence": {"type": "string", "minLength": 1},
-          "evict_when": {"type": "string", "minLength": 1}
-        },
-        "allOf": [
-          {"if": {"properties": {"edge_mode": {"const": "hard"}}, "required": ["edge_mode"]}, "then": {"required": ["hard_predicate_id"]}, "else": {"not": {"required": ["hard_predicate_id"]}}}
-        ]
-      }
-    }
+    "kind": {"enum": ["decision", "procedure", "rubric", "recipe", "safety", "bridge"]},
+    "decision_id": {"type": "string", "pattern": "^wp\\.select\\.[a-z0-9.-]+$"},
+    "required_artifact_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}},
+    "produced_artifact_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}},
+    "max_bytes": {"type": "integer", "minimum": 512, "maximum": 8192}
   }
 }

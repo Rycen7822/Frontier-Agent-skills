@@ -10,7 +10,6 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from _closure import eligible_events
 from _workflow_state import InputError, canonical_hash, contains_secret_like, load_json, redact_secret_like
 
 
@@ -83,39 +82,6 @@ def project_context(
     if artifact_projections:
         mandatory.append("")
     included: set[str] = set()
-    closure_anchor_refs: list[str] = []
-    run = state.get("closure_run") if isinstance(state.get("closure_run"), dict) else None
-    if state.get("execution_policy") == "autonomous_closure" and run is not None:
-        def binding_line(label: str, field: str) -> str:
-            binding = run.get(field)
-            if not isinstance(binding, dict):
-                return f"{label}: not-bound"
-            artifact_ref = binding.get("artifact_ref", "not-bound")
-            if isinstance(artifact_ref, str):
-                closure_anchor_refs.append(artifact_ref)
-            suffix = f" epoch={binding.get('epoch')}" if "epoch" in binding else ""
-            return f"{label}: {artifact_ref} {binding.get('content_hash', 'no-hash')}{suffix}"
-
-        for field in ("active_candidate_refs", "active_counterexample_refs"):
-            closure_anchor_refs.extend(item for item in run.get(field, []) if isinstance(item, str))
-        for field in ("incumbent_candidate_ref", "terminal_certificate_ref"):
-            if isinstance(run.get(field), str):
-                closure_anchor_refs.append(run[field])
-        budget = run.get("budget") if isinstance(run.get("budget"), dict) else {}
-        mandatory.extend([
-            "## Autonomous closure",
-            f"phase: {run.get('phase')}",
-            "transition authority: controller",
-            f"eligible controller events: {', '.join(sorted(eligible_events(state))) or 'none'}",
-            binding_line("contract", "contract_ref"),
-            binding_line("baseline", "baseline_ref"),
-            binding_line("verifier", "verifier_bundle_ref"),
-            f"budget: iterations {budget.get('iterations_used')}/{budget.get('iterations_limit')}; evaluations {budget.get('candidate_evaluations_used')}/{budget.get('candidate_evaluations_limit')}; reviews {budget.get('review_rounds_used')}/{budget.get('review_rounds_limit')}",
-            f"active candidates: {', '.join(run.get('active_candidate_refs', [])[:16]) or 'none'}",
-            f"active counterexamples: {', '.join(run.get('active_counterexample_refs', [])[:16]) or 'none'}",
-            f"incumbent: {run.get('incumbent_candidate_ref', 'none')}",
-            "",
-        ])
     mandatory.append("## Global invariants")
 
     for invariant in state.get("global_invariants", []):
@@ -219,7 +185,6 @@ def project_context(
         "omitted_refs": sorted(set(omitted)),
         "requires_on_demand_read": bool(omitted),
         "omission_reason": "budget_or_non_frontier_state" if omitted else None,
-        "closure_anchor_refs": sorted(set(closure_anchor_refs)),
     }
     return text, metadata
 

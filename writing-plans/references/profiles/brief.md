@@ -1,19 +1,12 @@
 ---
 {
   "card_id": "wp.profiles.brief",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "procedure",
-  "consumes": [
-    "plan_route",
-    "request_source",
-    "scope_projection"
-  ],
-  "produces": [
-    "brief_plan"
-  ],
-  "max_active_neighbors": 0,
-  "max_bytes": 4096,
-  "neighbors": []
+  "decision_id": "wp.select.profiles.brief",
+  "required_artifact_ids": [],
+  "produced_artifact_ids": ["plan-brief"],
+  "max_bytes": 4096
 }
 ---
 # Brief Plan
@@ -25,7 +18,7 @@ Produce the smallest implementation-ready plan for one bounded outcome in the cu
 - Planning was explicitly requested and the change does not require a durable cross-context state or multi-stage rollout.
 
 ## Do not use when
-- The work needs a durable handoff, program frontier, migration map, or Closure Contract.
+- The work needs a durable handoff, program frontier, or migration map.
 
 ## Required inputs
 - Intended outcome, bounded scope, current evidence, acceptance proof, and authority limits.
@@ -35,10 +28,10 @@ Produce the smallest implementation-ready plan for one bounded outcome in the cu
 2. Record invariants/non-goals, the smallest coherent approach, and only evidence-backed files/symbols.
 3. Record the focused before/after distinction, proportional affected gate, and false-green risk.
 4. Preserve only material risks/open facts as blockers instead of inventing implementation detail.
-5. Render the bounded [Brief template](../../templates/brief-change-card.md), create no graph/state/Closure Contract, and return to SQW for a fresh Direct route.
+5. Render the bounded [Brief template](../../templates/brief-change-card.md), create no workflow state, and return the typed result to Router.
 
 ## Output contract
-- One `brief_plan` with outcome, scope/owner seam, invariants/non-goals, approach, proof/false-green, risks/open facts, and blockers.
+- One `plan-brief` with outcome, scope/owner seam, invariants/non-goals, approach, proof/false-green, risks/open facts, and blockers.
 
 ## Load next only if
 

@@ -1,0 +1,343 @@
+{
+  "schema_version": "writing-plans-decision-route-cases/1.0",
+  "defaults": {
+    "schema_version": "2.0",
+    "explicit_plan_request": false,
+    "root_cause_status": "not_applicable",
+    "intent_status": "defined",
+    "pending_decision_ids": [],
+    "available_artifact_ids": [],
+    "completed_decision_ids": [],
+    "just_completed_card_id": null,
+    "decision_request": null
+  },
+  "positive_cases": [
+    {
+      "id": "wp-positive-profiles-brief",
+      "decision_id": "wp.select.profiles.brief",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.profiles.brief"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_card_id": "wp.profiles.brief"
+    },
+    {
+      "id": "wp-positive-profiles-handoff",
+      "decision_id": "wp.select.profiles.handoff",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.profiles.handoff"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_card_id": "wp.profiles.handoff"
+    },
+    {
+      "id": "wp-positive-profiles-program",
+      "decision_id": "wp.select.profiles.program",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.profiles.program"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_card_id": "wp.profiles.program"
+    },
+    {
+      "id": "wp-positive-experiments-disposable-spike",
+      "decision_id": "wp.select.experiments.disposable-spike",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.experiments.disposable-spike"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_card_id": "wp.experiments.disposable-spike"
+    },
+    {
+      "id": "wp-positive-bridges-long-document-handoff",
+      "decision_id": "wp.select.bridges.long-document-handoff",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.bridges.long-document-handoff"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_card_id": "wp.bridges.long-document-handoff"
+    },
+    {
+      "id": "wp-positive-migration-deprecation-and-rollout",
+      "decision_id": "wp.select.migration.deprecation-and-rollout",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.migration.deprecation-and-rollout"
+        ],
+        "available_artifact_ids": [
+          "plan-program"
+        ]
+      },
+      "expected_card_id": "wp.migration.deprecation-and-rollout"
+    },
+    {
+      "id": "wp-positive-slicing-context-capsules",
+      "decision_id": "wp.select.slicing.context-capsules",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.slicing.context-capsules"
+        ],
+        "available_artifact_ids": [
+          "outcome-slices"
+        ]
+      },
+      "expected_card_id": "wp.slicing.context-capsules"
+    },
+    {
+      "id": "wp-positive-slicing-outcome-slices",
+      "decision_id": "wp.select.slicing.outcome-slices",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.slicing.outcome-slices"
+        ],
+        "available_artifact_ids": [
+          "plan-program"
+        ]
+      },
+      "expected_card_id": "wp.slicing.outcome-slices"
+    },
+    {
+      "id": "wp-positive-design-decision-resolution",
+      "decision_id": "wp.select.design.decision-resolution",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.design.decision-resolution"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_card_id": "wp.design.decision-resolution"
+    },
+    {
+      "id": "wp-positive-economy-output-projection",
+      "decision_id": "wp.select.economy.output-projection",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.economy.output-projection"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_card_id": "wp.economy.output-projection"
+    }
+  ],
+  "near_miss_cases": [
+    {
+      "id": "wp-near-miss-profiles-brief",
+      "excluded_card_id": "wp.profiles.brief",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.profiles.handoff"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_decision_id": "wp.select.profiles.handoff"
+    },
+    {
+      "id": "wp-near-miss-profiles-handoff",
+      "excluded_card_id": "wp.profiles.handoff",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.profiles.program"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_decision_id": "wp.select.profiles.program"
+    },
+    {
+      "id": "wp-near-miss-profiles-program",
+      "excluded_card_id": "wp.profiles.program",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.experiments.disposable-spike"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_decision_id": "wp.select.experiments.disposable-spike"
+    },
+    {
+      "id": "wp-near-miss-experiments-disposable-spike",
+      "excluded_card_id": "wp.experiments.disposable-spike",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.bridges.long-document-handoff"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_decision_id": "wp.select.bridges.long-document-handoff"
+    },
+    {
+      "id": "wp-near-miss-bridges-long-document-handoff",
+      "excluded_card_id": "wp.bridges.long-document-handoff",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.migration.deprecation-and-rollout"
+        ],
+        "available_artifact_ids": [
+          "plan-program"
+        ]
+      },
+      "expected_decision_id": "wp.select.migration.deprecation-and-rollout"
+    },
+    {
+      "id": "wp-near-miss-migration-deprecation-and-rollout",
+      "excluded_card_id": "wp.migration.deprecation-and-rollout",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.slicing.context-capsules"
+        ],
+        "available_artifact_ids": [
+          "outcome-slices"
+        ]
+      },
+      "expected_decision_id": "wp.select.slicing.context-capsules"
+    },
+    {
+      "id": "wp-near-miss-slicing-context-capsules",
+      "excluded_card_id": "wp.slicing.context-capsules",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.slicing.outcome-slices"
+        ],
+        "available_artifact_ids": [
+          "plan-program"
+        ]
+      },
+      "expected_decision_id": "wp.select.slicing.outcome-slices"
+    },
+    {
+      "id": "wp-near-miss-slicing-outcome-slices",
+      "excluded_card_id": "wp.slicing.outcome-slices",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.design.decision-resolution"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_decision_id": "wp.select.design.decision-resolution"
+    },
+    {
+      "id": "wp-near-miss-design-decision-resolution",
+      "excluded_card_id": "wp.design.decision-resolution",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.economy.output-projection"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_decision_id": "wp.select.economy.output-projection"
+    },
+    {
+      "id": "wp-near-miss-economy-output-projection",
+      "excluded_card_id": "wp.economy.output-projection",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.profiles.brief"
+        ],
+        "available_artifact_ids": []
+      },
+      "expected_decision_id": "wp.select.profiles.brief"
+    }
+  ],
+  "negative_cases": [
+    {
+      "id": "wp-negative-unknown-decision",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.unknown"
+        ]
+      },
+      "expected_reason": "DECISION_UNKNOWN"
+    },
+    {
+      "id": "wp-negative-duplicate-decision",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.profiles.brief",
+          "wp.select.profiles.brief"
+        ]
+      },
+      "expected_reason": "DECISION_DUPLICATE"
+    },
+    {
+      "id": "wp-negative-completed-decision",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.profiles.program"
+        ],
+        "completed_decision_ids": [
+          "wp.select.profiles.program"
+        ]
+      },
+      "expected_reason": "DECISION_COMPLETED"
+    },
+    {
+      "id": "wp-negative-unmet-artifact",
+      "facts": {
+        "pending_decision_ids": [
+          "wp.select.slicing.context-capsules"
+        ]
+      },
+      "expected_reason": "DECISION_ARTIFACT_UNMET"
+    },
+    {
+      "id": "wp-negative-wrong-producer",
+      "facts": {
+        "completed_decision_ids": [
+          "wp.select.profiles.program"
+        ],
+        "available_artifact_ids": [
+          "plan-program"
+        ],
+        "just_completed_card_id": "wp.profiles.handoff",
+        "decision_request": {
+          "decision_id": "wp.select.migration.deprecation-and-rollout",
+          "produced_by_card_id": "wp.profiles.program",
+          "produced_artifact_id": "plan-program"
+        }
+      },
+      "expected_reason": "DECISION_PRODUCER_INVALID"
+    }
+  ],
+  "sequence_cases": [
+    {
+      "id": "wp-sequence-program-to-migration",
+      "steps": [
+        {
+          "facts": {
+            "migration_or_rollback": true
+          },
+          "expected_decision_id": "wp.select.profiles.program",
+          "expected_card_id": "wp.profiles.program"
+        },
+        {
+          "facts": {
+            "completed_decision_ids": [
+              "wp.select.profiles.program"
+            ],
+            "available_artifact_ids": [
+              "plan-program"
+            ],
+            "just_completed_card_id": "wp.profiles.program",
+            "decision_request": {
+              "decision_id": "wp.select.migration.deprecation-and-rollout",
+              "produced_by_card_id": "wp.profiles.program",
+              "produced_artifact_id": "plan-program"
+            }
+          },
+          "expected_decision_id": "wp.select.migration.deprecation-and-rollout",
+          "expected_card_id": "wp.migration.deprecation-and-rollout"
+        }
+      ]
+    }
+  ]
+}
+

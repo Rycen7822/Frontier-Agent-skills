@@ -1,19 +1,16 @@
 ---
 {
   "card_id": "sqw.test.patterns.protocol-tool-stress",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "recipe",
-  "consumes": [
-    "protocol_tool_contract",
-    "capability_side_effect_matrix",
-    "probe_budget"
+  "decision_id": "sqw.select.test.patterns.protocol-tool-stress",
+  "required_artifact_ids": [
+    "workflow-intake"
   ],
-  "produces": [
-    "protocol_tool_stress_proof"
+  "produced_artifact_ids": [
+    "test-patterns-protocol-tool-stress"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 4096,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Protocol and Tool Stress Pattern
@@ -28,7 +25,7 @@ Exercise an agent-facing protocol/tool surface across positive, negative, bounda
 - The contract is undefined or a probe would invoke an unapproved stateful capability.
 
 ## Required inputs
-- Advertised capability list, handshake/spec/schemas, error/timeout/cancellation contracts, installed/public entrypoint, per-capability side effects/authority, isolated substitutes, and total budget.
+- `workflow-intake`; advertised capability list; handshake/spec/schemas; error/timeout/cancellation contracts; installed/public entrypoint; per-capability side effects/authority; isolated substitutes; and total budget.
 
 ## Procedure
 1. Capture baseline handshake/capability inventory and build a positive/negative/boundary/malformed/timeout/cancel/budget matrix.
@@ -39,7 +36,7 @@ Exercise an agent-facing protocol/tool surface across positive, negative, bounda
 6. Prove handshake/discovery, representative positive behavior, negative errors, timeout/cancel semantics, and installed routing; terminate only task-owned processes/state/ports.
 
 ## Output contract
-- Capability/probe matrix, authority and isolated-state refs, machine-readable outcomes/durations, classification, public/installed coverage, cleanup, and unresolved limits.
+- One `test-patterns-protocol-tool-stress` with capability/probe matrix, authority and isolated-state refs, machine-readable outcomes/durations, classification, public/installed coverage, cleanup, and unresolved limits.
 
 ## Load next only if
 

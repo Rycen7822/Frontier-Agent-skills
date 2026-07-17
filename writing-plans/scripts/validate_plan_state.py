@@ -10,7 +10,6 @@ from pathlib import Path
 import sys
 from typing import Any, Iterable
 
-from _closure_contract import ContractInputError, canonical_contract_hash, load_contract
 from _plan_state import (
     PlanInputError,
     Violation,
@@ -25,16 +24,13 @@ from _plan_state import (
     verifier_ref_is_structured,
     validate_against_schema,
 )
-from validate_closure_contract import validate_contract
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCHEMA = ROOT / "schemas" / "plan-state.schema.json"
-DEFAULT_CONTRACT_SCHEMA = ROOT / "schemas" / "closure-contract.schema.json"
 LIVE_NODE_STATUSES = {"ready", "in_progress", "done"}
 SATISFIED_NODE_STATUSES = {"done", "skipped", "superseded"}
 EXTERNAL_EFFECTS = {"external_reversible", "external_non_idempotent", "destructive"}
 HIGH_RISK_KINDS = {"migration", "approval", "release"}
-CONTRACT_BOUND_KINDS = {"implementation", "migration", "release", "verification"}
 
 
 def _objects(state: dict[str, Any]) -> list[tuple[str, int, dict[str, Any]]]:
@@ -95,7 +91,7 @@ def _references(state: dict[str, Any]) -> Iterable[tuple[str, str, str | None]]:
     for collection, field in (("risks", "mitigation_refs"), ("gaps", "blocks")):
         for i, item in enumerate(state.get(collection, [])):
             yield from emit(item.get(field, []), (collection, i, field), item.get("id"))
-    yield from emit(state.get("closure", {}).get("required_evidence", []), ("closure", "required_evidence"))
+    yield from emit(state.get("completion", {}).get("required_evidence", []), ("completion", "required_evidence"))
 
 
 def _node_graph(state: dict[str, Any]) -> dict[str, set[str]]:
@@ -175,75 +171,13 @@ def _unclassified_secret_violations(
         )
 
 
-def _contract_binding_violations(state: dict[str, Any], closure_contract: dict[str, Any] | None) -> list[Violation]:
-    violations: list[Violation] = []
-    policy = state.get("execution_policy")
-    contract_ref = state.get("closure_contract_ref")
-    if policy == "standard":
-        if contract_ref is not None:
-            violations.append(Violation("plan.contract-forbidden", "/closure_contract_ref", "standard plan must not carry a Closure Contract reference"))
-        return violations
-    if policy != "autonomous_closure":
-        return violations
-    if state.get("profile") != "program":
-        violations.append(Violation("plan.contract-profile", "/profile", "autonomous closure requires Program profile"))
-    if not isinstance(contract_ref, dict) or closure_contract is None:
-        violations.append(Violation("plan.contract-missing", "/closure_contract_ref", "autonomous closure requires a loaded frozen Closure Contract"))
-        return violations
-    if closure_contract.get("status") != "frozen" or closure_contract.get("content_hash") != canonical_contract_hash(closure_contract):
-        violations.append(Violation("plan.contract-stale", "/closure_contract_ref/content_hash", "loaded Closure Contract is not a self-consistent frozen artifact"))
-    if contract_ref.get("content_hash") != closure_contract.get("content_hash") or contract_ref.get("epoch") != closure_contract.get("epoch"):
-        violations.append(Violation("plan.contract-stale", "/closure_contract_ref", "plan contract hash or epoch differs from the loaded contract"))
-    artifact_ref = contract_ref.get("artifact_ref")
-    if not isinstance(artifact_ref, str) or artifact_ref.rsplit("/", 1)[-1] != closure_contract.get("contract_id"):
-        violations.append(Violation("plan.contract-stale", "/closure_contract_ref/artifact_ref", "artifact ref does not bind the loaded contract ID"))
-
-    plan_source = state.get("source") if isinstance(state.get("source"), dict) else {}
-    contract_source = closure_contract.get("source") if isinstance(closure_contract.get("source"), dict) else {}
-    for field in ("base_revision", "scope_hash", "policy_bundle_hash"):
-        if plan_source.get(field) != contract_source.get(field):
-            violations.append(Violation("plan.contract-source-mismatch", f"/source/{field}", f"plan {field} differs from frozen contract"))
-    if state.get("content_hash") != canonical_state_hash(state):
-        violations.append(Violation("plan.contract-plan-hash", "/content_hash", "autonomous closure plan requires a fresh canonical state hash"))
-
-    plan_scope = state.get("scope") if isinstance(state.get("scope"), dict) else {}
-    contract_scope = closure_contract.get("scope") if isinstance(closure_contract.get("scope"), dict) else {}
-    for plan_field, contract_field in (("allowed_reads", "allowed_read_paths"), ("allowed_writes", "allowed_write_paths")):
-        allowed = contract_scope.get(contract_field, []) if isinstance(contract_scope.get(contract_field), list) else []
-        for index, path in enumerate(plan_scope.get(plan_field, [])):
-            if isinstance(path, str) and not path_allowed(path, allowed):
-                violations.append(Violation("plan.contract-scope-mismatch", pointer(("scope", plan_field, index)), f"plan path {path!r} exceeds frozen contract scope"))
-
-    contract_ids = {
-        "constraint_refs": {item.get("id") for item in closure_contract.get("hard_constraints", []) if isinstance(item, dict)},
-        "corner_refs": {item.get("id") for item in closure_contract.get("corners", []) if isinstance(item, dict)},
-        "verifier_requirement_refs": {item.get("id") for item in closure_contract.get("verifier_requirements", []) if isinstance(item, dict)},
-    }
-    for node_index, node in enumerate(state.get("nodes", [])):
-        if not isinstance(node, dict):
-            continue
-        node_id = node.get("id") if isinstance(node.get("id"), str) else None
-        if node.get("kind") in CONTRACT_BOUND_KINDS and not (node.get("constraint_refs") or node.get("verifier_requirement_refs")):
-            violations.append(Violation("plan.node-contract-ref", pointer(("nodes", node_index)), "closure execution node requires a constraint or verifier requirement", node_id))
-        for field, allowed in contract_ids.items():
-            values = node.get(field, [])
-            if not isinstance(values, list):
-                continue
-            for ref_index, ref in enumerate(values):
-                if ref not in allowed:
-                    violations.append(Violation("plan.node-contract-ref", pointer(("nodes", node_index, field, ref_index)), f"{ref!r} does not resolve in the frozen contract", node_id))
-    return violations
-
-
 def semantic_violations(
     state: dict[str, Any],
     *,
     current_revision: str | None = None,
     current_scope_hash: str | None = None,
-    closure_contract: dict[str, Any] | None = None,
 ) -> list[Violation]:
     violations: list[Violation] = []
-    violations.extend(_contract_binding_violations(state, closure_contract))
     ids, duplicate_errors = _id_index(state)
     violations.extend(duplicate_errors)
 
@@ -266,8 +200,6 @@ def semantic_violations(
             decision.get("materiality") != "low" or decision.get("reversibility") != "local"
         ):
             violations.append(Violation("plan.default-unsafe", pointer(("decisions", decision_index)), "default policy decisions must be low-materiality and locally reversible", decision.get("id")))
-        if state.get("execution_policy") == "autonomous_closure" and decision.get("contract_effect") == "requires_new_epoch":
-            violations.append(Violation("plan.contract-epoch-required", pointer(("decisions", decision_index, "contract_effect")), "accepted contract-changing decision requires a new contract epoch before execution", decision.get("id")))
 
     invariant_by_id = {item.get("id"): item for item in state.get("global_invariants", []) if isinstance(item, dict)}
     for index, invariant in enumerate(state.get("global_invariants", [])):
@@ -443,13 +375,13 @@ def semantic_violations(
             if node_by_id.get(target_id, {}).get("status") in LIVE_NODE_STATUSES:
                 violations.append(Violation("plan.invalidated-dependent-live", "/nodes", f"{target_id} remains live after {source_id} was invalidated", target_id))
 
-    closure = state.get("closure", {})
-    if closure.get("status") == "complete":
-        missing = [ref for ref in closure.get("required_evidence", []) if evidence_by_id.get(ref, {}).get("status") != "observed"]
+    completion = state.get("completion", {})
+    if completion.get("status") == "complete":
+        missing = [ref for ref in completion.get("required_evidence", []) if evidence_by_id.get(ref, {}).get("status") != "observed"]
         blocking_gaps = [gap.get("id") for gap in state.get("gaps", []) if gap.get("status") != "closed" and gap.get("blocks")]
         unfinished = [node.get("id") for node in state.get("nodes", []) if node.get("status") not in SATISFIED_NODE_STATUSES]
         if missing or blocking_gaps or unfinished:
-            violations.append(Violation("plan.closure-premature", "/closure/status", f"closure has missing evidence={missing}, blocking gaps={blocking_gaps}, unfinished nodes={unfinished}"))
+            violations.append(Violation("plan.completion-premature", "/completion/status", f"completion has missing evidence={missing}, blocking gaps={blocking_gaps}, unfinished nodes={unfinished}"))
 
     if state.get("profile") == "brief" and (state.get("nodes") or state.get("edges") or state.get("current_frontier")):
         violations.append(Violation("plan.profile-overbuilt", "/profile", "Brief profile must not carry durable graph state"))
@@ -478,8 +410,6 @@ def validate_file(
     *,
     current_revision: str | None = None,
     current_scope_hash: str | None = None,
-    closure_contract_path: Path | None = None,
-    closure_contract_schema_path: Path = DEFAULT_CONTRACT_SCHEMA,
 ) -> tuple[dict[str, Any] | None, list[Violation]]:
     try:
         state = load_json(path)
@@ -489,20 +419,10 @@ def validate_file(
     schema_errors = validate_against_schema(state, schema)
     if schema_errors or not isinstance(state, dict):
         return state if isinstance(state, dict) else None, schema_errors
-    closure_contract: dict[str, Any] | None = None
-    contract_errors: list[Violation] = []
-    if closure_contract_path is not None:
-        try:
-            closure_contract = load_contract(closure_contract_path)
-            contract_schema = load_contract(closure_contract_schema_path)
-            contract_errors = [Violation("plan.contract-invalid", item.path, f"{item.code}: {item.message}", item.object_id) for item in validate_contract(closure_contract, contract_schema)]
-        except (ContractInputError, OSError, TypeError, ValueError) as exc:
-            contract_errors = [Violation("plan.contract-invalid", "/closure_contract_ref", str(exc))]
-    return state, contract_errors + semantic_violations(
+    return state, semantic_violations(
         state,
         current_revision=current_revision,
         current_scope_hash=current_scope_hash,
-        closure_contract=closure_contract,
     )
 
 
@@ -527,8 +447,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
     parser.add_argument("--current-revision")
     parser.add_argument("--scope-hash")
-    parser.add_argument("--closure-contract", type=Path)
-    parser.add_argument("--closure-contract-schema", type=Path, default=DEFAULT_CONTRACT_SCHEMA)
     parser.add_argument("--json", action="store_true", dest="as_json")
     return parser
 
@@ -540,8 +458,6 @@ def main(argv: list[str] | None = None) -> int:
         args.schema,
         current_revision=args.current_revision,
         current_scope_hash=args.scope_hash,
-        closure_contract_path=args.closure_contract,
-        closure_contract_schema_path=args.closure_contract_schema,
     )
     if args.as_json:
         print(json.dumps(json_output(not violations, violations, plan_id=(state or {}).get("plan_id")), ensure_ascii=False, indent=2))

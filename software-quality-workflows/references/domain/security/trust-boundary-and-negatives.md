@@ -1,19 +1,16 @@
 ---
 {
   "card_id": "sqw.domain.security.trust-boundary-and-negatives",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "safety",
-  "consumes": [
-    "implicated_trust_boundaries",
-    "assets_actors_and_privileges",
-    "abuse_and_control_evidence"
+  "decision_id": "sqw.select.domain.security.trust-boundary-and-negatives",
+  "required_artifact_ids": [
+    "workflow-intake"
   ],
-  "produces": [
-    "security_trust_boundary_and_negative_proof"
+  "produced_artifact_ids": [
+    "domain-security-trust-boundary-and-negatives"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 6144,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Security Trust Boundary and Negative Proof
@@ -28,7 +25,7 @@ Map an actually implicated trust boundary, select owner-placed controls, and pro
 - No trust boundary is implicated, or the concern is only general review/release/secret/dependency hygiene owned elsewhere.
 
 ## Required inputs
-- Data/identity/control/code boundary map, protected assets, actors/privileges/resources, normal cases, plausible abuse cases, existing controls/migrations, public failure surface, audit/privacy/resource constraints, and authority ceiling.
+- `workflow-intake`; data/identity/control/code boundary map, protected assets, actors/privileges/resources, normal cases, plausible abuse cases, existing controls/migrations, public failure surface, audit/privacy/resource constraints, and authority ceiling.
 
 ## Procedure
 1. Map every ownership crossing and name unacceptable outcomes; run a compact spoofing/tampering/repudiation/disclosure/denial/elevation pass beside normal use cases.

@@ -1,19 +1,16 @@
 ---
 {
   "card_id": "sqw.workspace.prototype-lifecycle",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "procedure",
-  "consumes": [
-    "prototype_decision_question",
-    "experiment_authority_and_isolation",
-    "learning_oracle"
+  "decision_id": "sqw.select.workspace.prototype-lifecycle",
+  "required_artifact_ids": [
+    "workflow-intake"
   ],
-  "produces": [
-    "prototype_lifecycle_artifact"
+  "produced_artifact_ids": [
+    "workspace-prototype-lifecycle"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 8192,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Prototype Lifecycle
@@ -28,7 +25,7 @@ Run and dispose/retain/reclassify one isolated falsifiable experiment without tr
 - The requested artifact is retained product/source/config, report-only mode forbids writes, or normal implementation proof already answers the question.
 
 ## Required inputs
-- One decision question, falsifiable learning criterion/oracle, cheapest artifact, diagnose/change mode and side-effect ceiling, isolation from production/user state, owner, expiry, disposition choices, evidence location, and cleanup/promotion authority.
+- `workflow-intake`; one decision question; falsifiable learning criterion/oracle; cheapest artifact; diagnose/change mode and side-effect ceiling; isolation from production/user state; owner; expiry; disposition choices; evidence location; and cleanup/promotion authority.
 
 ## Procedure
 1. Classify by outcome rather than the word prototype: disposable diagnostic probe may use authorized local reversible writes; retained/shipped/product-facing artifact is change; report-only creates neither.
@@ -40,7 +37,7 @@ Run and dispose/retain/reclassify one isolated falsifiable experiment without tr
 7. Treat branch/publication/deployment/collaboration as separate authority and report cleanup/retained artifacts explicitly.
 
 ## Output contract
-- Question/oracle/mode/authority, isolated artifact identity, bounded execution/evidence, learning verdict/limits, expiry/disposition, compacted evidence, cleanup or fixture reclassification, promotion handoff and blockers.
+- One `workspace-prototype-lifecycle` with question/oracle/mode/authority, isolated artifact identity, bounded execution/evidence, learning verdict/limits, expiry/disposition, compacted evidence, cleanup or fixture reclassification, promotion handoff, and blockers.
 
 ## Load next only if
 

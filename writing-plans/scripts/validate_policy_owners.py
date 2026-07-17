@@ -23,7 +23,7 @@ def validate(registry: Any, manifest: Any) -> list[dict[str, str]]:
     required_keys = {"bundle_id", "policies", "schema_version", "skill_id", "skill_version"}
     if not isinstance(registry, dict) or set(registry) != required_keys:
         return [{"code": "policy.registry-shape", "path": "", "message": "registry has unexpected keys"}]
-    expected_identity = {"bundle_id": BUNDLE_ID, "schema_version": "1.0", "skill_id": SKILL_ID, "skill_version": TARGET_SKILL_VERSION}
+    expected_identity = {"bundle_id": BUNDLE_ID, "schema_version": "2.0", "skill_id": SKILL_ID, "skill_version": TARGET_SKILL_VERSION}
     for field, expected in expected_identity.items():
         if registry.get(field) != expected:
             issues.append({"code": "policy.identity", "path": f"/{field}", "message": f"expected {expected}"})

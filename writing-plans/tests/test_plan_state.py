@@ -85,13 +85,13 @@ def _mutate(state: dict, name: str) -> None:
         _node(state, "P-02")["status"] = "fog"
     elif name == "invalidated_dependent":
         _node(state, "P-01")["status"] = "invalidated"
-    elif name == "closure_premature":
-        state["closure"]["status"] = "complete"
-        state["closure"]["epistemic_status"] = "verified_within_scope"
+    elif name == "completion_premature":
+        state["completion"]["status"] = "complete"
+        state["completion"]["epistemic_status"] = "verified_within_scope"
     elif name == "profile_overbuilt":
         state["profile"] = "brief"
     elif name == "owner_duplicate":
-        state["policy_claims"].append({"policy_id": "sqw.verify.completion-evidence", "bundle_version": "frontier-engineering/5.0.0+4.0.0", "policy_hash": "sha256:" + "5" * 64})
+        state["policy_claims"].append({"policy_id": "sqw.verify.completion-evidence", "bundle_version": "frontier-engineering/6.0.0+5.0.0", "policy_hash": "sha256:" + "5" * 64})
     elif name == "sensitive_unclassified":
         state["facts"][0]["statement"] = "api_key=SUPERSECRET_1234567890"
     elif name == "verifier_unresolved":
@@ -106,7 +106,7 @@ class PlanStateTests(unittest.TestCase):
     def test_valid_program_has_no_violations(self) -> None:
         self.assertEqual([], _validate(_base()))
 
-    def test_v4_policy_invariant_effect_and_bundle_identity_are_schema_owned(self) -> None:
+    def test_v5_policy_invariant_effect_and_bundle_identity_are_schema_owned(self) -> None:
         state = _base()
         self.assertEqual([], _validate(state))
         self.assertTrue({"bundle_id", "policy_bundle_hash", "reference_manifest_hash"} <= set(state["source"]))
@@ -579,7 +579,7 @@ class PlanStateTests(unittest.TestCase):
         self.assertEqual("local", unknown["repair_type"])
 
     def test_profile_renderer_binds_novice_projection(self) -> None:
-        brief = render_brief({"outcome": "Visible change", "scope": "Owner", "invariants": "Stable", "approach": "Patch owner", "proof": "Focused check", "closure": "needs_repair"})
+        brief = render_brief({"outcome": "Visible change", "scope": "Owner", "invariants": "Stable", "approach": "Patch owner", "proof": "Focused check", "completion": "needs_repair"})
         self.assertIn("# Change Card", brief)
         state = _base()
         projection_data = {
@@ -604,7 +604,6 @@ class PlanStateTests(unittest.TestCase):
                 "provenance": "source",
                 "materiality": "low",
                 "reversibility": "local",
-                "contract_effect": "none",
             }
         )
         program = render_program(state, state_ref="plan.json")

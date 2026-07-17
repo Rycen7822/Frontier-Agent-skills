@@ -1,19 +1,16 @@
 ---
 {
   "card_id": "sqw.bridges.multi-source-synthesis",
-  "card_version": 1,
+  "card_version": 2,
   "kind": "bridge",
-  "consumes": [
-    "source_corpus",
-    "synthesis_deliverable",
-    "external_owner_availability"
+  "decision_id": "sqw.select.bridges.multi-source-synthesis",
+  "required_artifact_ids": [
+    "workflow-intake"
   ],
-  "produces": [
-    "evidence_anchored_synthesis"
+  "produced_artifact_ids": [
+    "bridges-multi-source-synthesis"
   ],
-  "max_active_neighbors": 0,
-  "max_bytes": 4096,
-  "neighbors": []
+  "max_bytes": 8192
 }
 ---
 # Multi-Source Synthesis Bridge
@@ -28,7 +25,7 @@ Route a multi-source writing task to its document-synthesis owner, or admit only
 - The task is ordinary code inspection, one small document, or source-target implementation auditing.
 
 ## Required inputs
-- Source inventory and identities, requested deliverable and audience, authority boundaries, citation/evidence expectations, corpus size, and availability of a long-document synthesis owner.
+- `workflow-intake`; source inventory and identities; requested deliverable and audience; authority boundaries; citation/evidence expectations; corpus size; and availability of a long-document synthesis owner.
 
 ## Procedure
 1. Prefer the installed long-document segmented-writing/document-synthesis owner when corpus size, section count, or compaction risk justifies it; hand off source identities, deliverable, authority, and required evidence.
@@ -38,7 +35,7 @@ Route a multi-source writing task to its document-synthesis owner, or admit only
 5. Stop and escalate to the external owner when the fallback would exceed the active context or require repeated broad rereads.
 
 ## Output contract
-- `owner_route`, `source_ledger`, `coverage_by_section`, `synthesis_artifact`, `evidence_refs`, `conflicts`, and `unresolved_gaps`.
+- One `bridges-multi-source-synthesis` with owner route, source ledger, coverage by section, synthesis artifact, evidence refs, conflicts, and unresolved gaps.
 
 ## Load next only if
 

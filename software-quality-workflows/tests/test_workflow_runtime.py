@@ -17,7 +17,6 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from _workflow_state import load_json, load_json_lines  # noqa: E402
-from compute_frontier import compute_frontier  # noqa: E402
 from local_workflow_adapter import AdapterConflict, LocalWorkflowAdapter, append_trace  # noqa: E402
 from project_context import project_context  # noqa: E402
 from propagate_invalidation import propagate_invalidation  # noqa: E402
@@ -44,48 +43,6 @@ def _event(index: int = 0) -> dict:
 
 
 class WorkflowRuntimeTests(unittest.TestCase):
-    def test_frontier_computes_ready_and_parallel_conflict_batches(self) -> None:
-        state = _base()
-        base = compute_frontier(state, now_value=NOW, actor="session-main")
-        self.assertEqual(["N-02"], base["ready"])
-        self.assertEqual([["N-02"]], base["parallel_batches"])
-        clone = deepcopy(_node(state, "N-02"))
-        clone["id"] = "N-03"
-        clone["output_refs"] = ["EV-03"]
-        state["nodes"].append(clone)
-        result = compute_frontier(state, now_value=NOW, actor="session-main")
-        self.assertEqual(["N-02", "N-03"], result["ready"])
-        self.assertEqual([["N-02"], ["N-03"]], result["parallel_batches"])
-        self.assertTrue(any("conflict" in warning for warning in result["warnings"]))
-
-    def test_frontier_blocks_missing_input_approval_lock_and_unknown_invariant(self) -> None:
-        state = _base()
-        node = _node(state, "N-02")
-        node["input_refs"].append("EV-404")
-        node["side_effect"] = "external_reversible"
-        state["authority"]["risk_ceiling"] = "external_reversible"
-        state["authority"]["external_writes"] = "approved"
-        state["global_invariants"][0]["status"] = "unknown"
-        state["locks"] = [{
-            "id": "LOCK-01", "resource": "working-tree", "owner": "other-session",
-            "acquired_at": "2026-07-13T10:00:00+08:00", "lease_expires_at": "2026-07-13T12:00:00+08:00", "state_version": 3
-        }]
-        result = compute_frontier(state, now_value=NOW, actor="session-main")
-        reasons = result["blocked"]["N-02"]
-        self.assertTrue(any(item.startswith("missing:EV-404") for item in reasons))
-        self.assertTrue(any(item.startswith("approval:") for item in reasons))
-        self.assertIn("resource-lock:working-tree", reasons)
-        self.assertIn("invariant:I-01:unknown", reasons)
-        state["locks"][0]["lease_expires_at"] = "2026-07-13T11:00:00+08:00"
-        reasons = compute_frontier(state, now_value=NOW, actor="session-main")["blocked"]["N-02"]
-        self.assertIn("expired-lock:LOCK-01", reasons)
-
-    def test_frontier_blocks_artifact_schema_mismatch(self) -> None:
-        state = _base()
-        state["artifacts"][0]["schema_id"] = "sqw.other-result/1.0"
-        reasons = compute_frontier(state, now_value=NOW, actor="session-main")["blocked"]["N-02"]
-        self.assertIn("schema-mismatch:EV-01", reasons)
-
     def test_context_projection_is_bounded_state_versioned_and_secret_safe(self) -> None:
         state = _base()
         state["artifacts"][0]["sensitive"] = True
@@ -93,7 +50,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
         _node(state, "N-02")["sensitive"] = True
         _node(state, "N-02")["objective"] = "Repair private customer Alice record."
         _node(state, "N-02")["read_set"] = ["private/customer-alice.json"]
-        card_refs = [{"card_id": "sqw.verify.gate-selection", "card_hash": "sha256:2690d4f76f4022714710524656afd060ec7f6b747366b5e9f235362c582a7d22"}]
+        card_refs = [{"card_id": "sqw.verify.gate-selection-and-execution", "card_hash": "sha256:a4dc0c6f807fc54269fb2418e90354517c9050feec1a9267b62e1f8c0aeb2d6a"}]
         projections = {"runtime-test": {"purpose": "secret-safe frontier projection"}}
         with self.assertRaisesRegex(ValueError, "mandatory context exceeds budget"):
             project_context(state, budget_bytes=900, card_refs=card_refs, artifact_projections=projections)
@@ -216,7 +173,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
             adapter.acquire_lock("working-tree", "session-a", lease_expires_at=lease, expected_state_version=3)
             effective = adapter.load_effective_state()
             self.assertEqual("session-a", effective["locks"][0]["owner"])
-            self.assertIn("resource-lock:working-tree", compute_frontier(effective, actor="session-b")["blocked"]["N-02"])
+            self.assertEqual("working-tree", effective["locks"][0]["resource"])
             with self.assertRaises(AdapterConflict):
                 adapter.acquire_lock("working-tree", "session-b", lease_expires_at=lease, expected_state_version=3)
             adapter.release_lock("working-tree", "session-a")
@@ -272,7 +229,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
             self.assertEqual("fresh", result["status"])
             self.assertTrue(result["resume_allowed"])
 
-    def test_m1_trace_append_creates_no_state_or_graph(self) -> None:
+    def test_m1_trace_append_creates_no_durable_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             trace_path = Path(directory) / "trace" / "events.jsonl"
             event = _event(0)
@@ -282,7 +239,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
             self.assertFalse((trace_path.parent / "state.json").exists())
             self.assertFalse((trace_path.parent / "locks.json").exists())
 
-    def test_m1_trace_cli_uses_explicit_task_owned_path_without_graph_state(self) -> None:
+    def test_m1_trace_cli_uses_explicit_task_owned_path_without_durable_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             task_root = Path(directory) / "task"
             task_root.mkdir()

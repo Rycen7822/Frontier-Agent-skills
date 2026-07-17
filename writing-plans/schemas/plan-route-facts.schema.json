@@ -1,32 +1,55 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://frontier-agent-skills.local/writing-plans/plan-route-facts.schema.json",
-  "title": "Writing Plans Route Facts",
+  "title": "Writing Plans decision route facts",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version",
-    "explicit_plan_request",
-    "root_cause_status",
-    "intent_status",
-    "closure_admission_decision"
+    "schema_version", "explicit_plan_request", "root_cause_status", "intent_status",
+    "pending_decision_ids", "available_artifact_ids", "completed_decision_ids",
+    "just_completed_card_id", "decision_request"
   ],
   "properties": {
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"const": "2.0"},
     "explicit_plan_request": {"type": "boolean"},
     "root_cause_status": {"enum": ["known", "unknown", "not_applicable"]},
-    "intent_status": {"enum": ["defined", "materially_underdefined", "low_risk_defaults_available"]},
-    "closure_admission_decision": {"enum": ["NOT_REQUESTED", "DIRECT_SELECTED", "CLOSURE_ELIGIBLE", "TERMINAL"]},
-    "same_session_execution": {"type": "boolean"},
+    "intent_status": {"enum": ["defined", "materially_underdefined"]},
+    "copy_paste_projection_requested": {"type": "boolean"},
+    "disposable_spike": {"type": "boolean"},
     "durable_handoff": {"type": "boolean"},
-    "public_contract": {"type": "boolean"},
-    "migration_or_rollback": {"type": "boolean"},
-    "resume_required": {"type": "boolean"},
     "external_side_effect": {"type": "boolean"},
     "independent_write_slices": {"type": "integer", "minimum": 0},
-    "strategy_family_count": {"type": "integer", "minimum": 1},
     "long_corpus_only": {"type": "boolean"},
-    "copy_paste_projection_requested": {"type": "boolean"},
-    "disposable_spike": {"type": "boolean"}
+    "migration_or_rollback": {"type": "boolean"},
+    "public_contract": {"type": "boolean"},
+    "resume_required": {"type": "boolean"},
+    "same_session_execution": {"type": "boolean"},
+    "strategy_family_count": {"type": "integer", "minimum": 1},
+    "pending_decision_ids": {"$ref": "#/$defs/uniqueIds"},
+    "available_artifact_ids": {"$ref": "#/$defs/uniqueIds"},
+    "completed_decision_ids": {"$ref": "#/$defs/uniqueIds"},
+    "just_completed_card_id": {"type": ["string", "null"], "minLength": 1},
+    "decision_request": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["decision_id", "produced_by_card_id", "produced_artifact_id"],
+          "properties": {
+            "decision_id": {"type": "string", "minLength": 1},
+            "produced_by_card_id": {"type": "string", "minLength": 1},
+            "produced_artifact_id": {"type": "string", "minLength": 1}
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "uniqueIds": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    }
   }
 }

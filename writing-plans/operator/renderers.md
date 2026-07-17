@@ -19,9 +19,9 @@ Program output has an 8,192-byte hard ceiling. The renderer fails closed if mand
 - goal and node completion criterion;
 - bundle, policy-bundle, reference-manifest, source, scope, state version, and state hash;
 - exact card IDs/hashes and projection spec ID/hash;
-- applicable invariants, constraints, corners, decisions, blockers, authority, and protected boundaries;
+- applicable invariants, decisions, blockers, authority, and protected boundaries;
 - reads, writes, resources, effects, approvals, verifier, false-green risk, and qualifying evidence needs;
-- frozen Closure Contract identity and bounded runtime facts when autonomous closure is active.
+- bounded runtime facts supplied by the current controller.
 
 The effective output ceiling is 8,192 bytes even if a caller asks for more. Optional facts and evidence are admitted by relevance only after mandatory content. If mandatory content exceeds the ceiling, rendering raises `mandatory capsule exceeds budget`; mandatory content is never truncated. Metadata reports mandatory bytes/chars and must report zero mandatory truncations.
 

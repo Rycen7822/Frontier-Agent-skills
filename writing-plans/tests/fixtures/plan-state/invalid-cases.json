@@ -17,7 +17,7 @@
     {"id": "invariant-unbound", "expected_code": "plan.invariant-unbound", "mutation": "invariant_unbound"},
     {"id": "fog-executed", "expected_code": "plan.fog-executed", "mutation": "fog_executed"},
     {"id": "invalidated-dependent", "expected_code": "plan.invalidated-dependent-live", "mutation": "invalidated_dependent"},
-    {"id": "closure-premature", "expected_code": "plan.closure-premature", "mutation": "closure_premature"},
+    {"id": "completion-premature", "expected_code": "plan.completion-premature", "mutation": "completion_premature"},
     {"id": "profile-overbuilt", "expected_code": "plan.profile-overbuilt", "mutation": "profile_overbuilt"},
     {"id": "owner-duplicate", "expected_code": "plan.owner-duplicate", "mutation": "owner_duplicate"},
     {"id": "sensitive-unclassified", "expected_code": "plan.sensitive-unclassified", "mutation": "sensitive_unclassified"},

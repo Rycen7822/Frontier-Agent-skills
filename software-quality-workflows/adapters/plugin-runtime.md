@@ -7,7 +7,7 @@ The [local-filesystem](local-filesystem.md) adapter is the safe P1 fallback. Use
 A future on-demand plugin must pass all of these gates before canary activation:
 
 - P1 shows positive net success/context/recovery benefit on preregistered workloads;
-- source/scope/plan CAS, event transaction, lock lease, retry, approval, invalidation, resume, and closure fault injection passes;
+- source/scope/plan CAS, event transaction, lock lease, retry, approval, invalidation, resume, and recovery fault injection pass;
 - sensitive classification, redaction/encryption, retention, cleanup, and audit export have an engineering owner;
 - the tool namespace remains seven high-level calls or fewer and is not a default always-loaded burden;
 - plugin unavailable/corrupt state falls back to local-filesystem or reports an explicit blocked state;
