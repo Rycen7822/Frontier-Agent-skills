@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://local.invalid/software-engineering-closure/source-archive-evidence.schema.json",
+  "$id": "https://local.invalid/frontier-engineering/source-archive-evidence.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -9,12 +9,12 @@
     "source_revision_verified", "generated_artifacts_excluded", "files", "evidence_hash"
   ],
   "properties": {
-    "schema_version": {"const": "source-archive-evidence/1.0"},
+    "schema_version": {"const": "source-archive-evidence/2.0"},
     "layout": {"enum": ["bundle", "skills_only"]},
     "bundle_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
     "root_prefix": {
       "oneOf": [
-        {"const": "software-engineering-closure-bundle"},
+        {"const": "frontier-engineering-bundle"},
         {"type": "null"}
       ]
     },
@@ -43,7 +43,7 @@
   "allOf": [
     {
       "if": {"properties": {"layout": {"const": "bundle"}}, "required": ["layout"]},
-      "then": {"properties": {"root_prefix": {"const": "software-engineering-closure-bundle"}}}
+      "then": {"properties": {"root_prefix": {"const": "frontier-engineering-bundle"}}}
     },
     {
       "if": {"properties": {"layout": {"const": "skills_only"}}, "required": ["layout"]},

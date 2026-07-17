@@ -31,6 +31,7 @@ class SourceArchiveTests(unittest.TestCase):
         )
         Draft202012Validator.check_schema(schema)
         self.assertEqual([], list(Draft202012Validator(schema).iter_errors(evidence)))
+        self.assertEqual("source-archive-evidence/2.0", evidence["schema_version"])
         unhashed = deepcopy(evidence)
         observed_hash = unhashed.pop("evidence_hash")
         self.assertEqual(
@@ -59,7 +60,7 @@ class SourceArchiveTests(unittest.TestCase):
                 with zipfile.ZipFile(output) as archive:
                     names = archive.namelist()
                     self.assertEqual(evidence["archive_file_count"], len(names))
-                    self.assertTrue(all(name.startswith("software-engineering-closure-bundle/") for name in names))
+                    self.assertTrue(all(name.startswith("frontier-engineering-bundle/") for name in names))
                     self.assertFalse(any("__pycache__" in name or "/dist/" in name or "/.closure/" in name for name in names))
                     self.assertFalse(
                         any(
@@ -69,15 +70,15 @@ class SourceArchiveTests(unittest.TestCase):
                         )
                     )
                     self.assertIn(
-                        "software-engineering-closure-bundle/bundle-manifest.json",
+                        "frontier-engineering-bundle/bundle-manifest.json",
                         names,
                     )
                     self.assertIn(
-                        "software-engineering-closure-bundle/frontier-engineering.bundle.json",
+                        "frontier-engineering-bundle/frontier-engineering.bundle.json",
                         names,
                     )
                     self.assertIn(
-                        "software-engineering-closure-bundle/bundle/frontier-engineering-bundle.schema.json",
+                        "frontier-engineering-bundle/bundle/frontier-engineering-bundle.schema.json",
                         names,
                     )
             self.assertEqual(observed[0], observed[1])

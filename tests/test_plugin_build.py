@@ -36,25 +36,31 @@ PLUGIN_SCAFFOLDER = Path.home() / ".codex" / "skills" / ".system" / "plugin-crea
 
 
 class PluginBuildTests(unittest.TestCase):
+    @staticmethod
+    def _schema(name: str) -> dict[str, object]:
+        return json.loads((ROOT / "packaging" / "schemas" / name).read_text(encoding="utf-8"))
+
     def test_staging_build_is_deterministic_hashed_and_ingestion_valid(self) -> None:
         evidences = []
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
             for directory in (first, second):
                 parent = Path(directory)
-                output = parent / "software-engineering-closure-plugin"
+                output = parent / "frontier-engineering-plugin"
                 evidence = parent / "build-evidence.json"
                 observed = builder.build(ROOT, output, None, evidence)
                 self.assertEqual({".codex-plugin", "skills"}, {path.name for path in output.iterdir()})
                 manifest = json.loads((output / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
                 self.assertEqual(output.name, manifest["name"])
-                self.assertEqual("1.0.0", manifest["version"])
+                self.assertEqual("2.0.0", manifest["version"])
                 self.assertEqual("./skills/", manifest["skills"])
                 self.assertTrue({"author", "interface"} <= set(manifest))
                 self.assertEqual({"writing-plans", "software-quality-workflows"}, {path.name for path in (output / "skills").iterdir()})
                 self.assertEqual(observed, json.loads(evidence.read_text(encoding="utf-8")))
                 self.assertEqual(observed["plugin_file_count"], len(observed["files"]))
                 self.assertEqual(len(observed["files"]), len({item["path"] for item in observed["files"]}))
-                schema = json.loads((ROOT / "packaging" / "schemas" / "p6-plugin-build-evidence.schema.json").read_text(encoding="utf-8"))
+                self.assertEqual("plugin-build-evidence/2.0", observed["schema_version"])
+                self.assertEqual((None, "shadow"), (observed["release_evidence_hash"], observed["activation_ceiling"]))
+                schema = json.loads((ROOT / "packaging" / "schemas" / "plugin-build-evidence.schema.json").read_text(encoding="utf-8"))
                 Draft202012Validator.check_schema(schema)
                 self.assertEqual([], list(Draft202012Validator(schema).iter_errors(observed)))
                 unhashed = deepcopy(observed)
@@ -66,12 +72,54 @@ class PluginBuildTests(unittest.TestCase):
                 evidences.append(observed)
             self.assertEqual(evidences[0], evidences[1])
 
+    def test_build_and_release_evidence_conditions_are_closed(self) -> None:
+        build_schema = self._schema("plugin-build-evidence.schema.json")
+        release_schema = self._schema("release-evidence.schema.json")
+        Draft202012Validator.check_schema(build_schema)
+        Draft202012Validator.check_schema(release_schema)
+        valid_release = {
+            "schema_version": "release-evidence/2.0",
+            "bundle_id": "frontier-engineering/6.0.0+5.0.0",
+            "bundle_version": "2.0.0",
+            "source_tree_hash": "sha256:" + "1" * 64,
+            "source_revision": "a" * 40,
+            "source_revision_signed": True,
+            "source_clean": True,
+            "deterministic_report_hash": "sha256:" + "2" * 64,
+            "l2_scored_report_hash": "sha256:" + "3" * 64,
+            "activation_decision_hash": "sha256:" + "4" * 64,
+            "release_gate": "passed",
+            "approved_activation_level": "explicit_local_pilot",
+        }
+        self.assertEqual([], list(Draft202012Validator(release_schema).iter_errors(valid_release)))
+        for key in ("deterministic_report_hash", "l2_scored_report_hash", "activation_decision_hash"):
+            invalid = deepcopy(valid_release)
+            invalid.pop(key)
+            self.assertTrue(list(Draft202012Validator(release_schema).iter_errors(invalid)), key)
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            evidence_path = parent / "build.json"
+            staging = builder.build(ROOT, parent / "frontier-engineering-plugin", None, evidence_path)
+            release = deepcopy(staging)
+            release.update({
+                "output_class": "release",
+                "release_evidence_hash": "sha256:" + "5" * 64,
+                "activation_ceiling": "explicit_local_pilot",
+            })
+            self.assertEqual([], list(Draft202012Validator(build_schema).iter_errors(release)))
+            invalid_staging = deepcopy(staging)
+            invalid_staging["release_evidence_hash"] = "sha256:" + "6" * 64
+            self.assertTrue(list(Draft202012Validator(build_schema).iter_errors(invalid_staging)))
+            invalid_release = deepcopy(release)
+            invalid_release["activation_ceiling"] = "shadow"
+            self.assertTrue(list(Draft202012Validator(build_schema).iter_errors(invalid_release)))
+
     def test_staging_passes_installed_plugin_ingestion_validator_when_available(self) -> None:
         if not PLUGIN_VALIDATOR.is_file():
             self.skipTest("plugin-creator validator is not installed")
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
-            output = parent / "software-engineering-closure-plugin"
+            output = parent / "frontier-engineering-plugin"
             builder.build(ROOT, output, None, parent / "evidence.json")
             completed = subprocess.run(
                 [sys.executable, str(PLUGIN_VALIDATOR), str(output)],
@@ -84,7 +132,7 @@ class PluginBuildTests(unittest.TestCase):
     def test_output_and_evidence_are_both_no_overwrite(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
-            output = parent / "software-engineering-closure-plugin"
+            output = parent / "frontier-engineering-plugin"
             evidence = parent / "build-evidence.json"
             builder.build(ROOT, output, None, evidence)
             with self.assertRaises(ValueError):
@@ -92,26 +140,29 @@ class PluginBuildTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 builder.build(ROOT, parent / "second-plugin", None, evidence)
 
-    def test_dist_build_rejects_missing_or_forged_release_evidence_while_p5_is_shadow(self) -> None:
+    def test_release_build_rejects_missing_or_forged_external_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
-            output = parent / "dist" / "software-engineering-closure-plugin"
+            output = parent / "dist" / "frontier-engineering-plugin"
             evidence = parent / "build-evidence.json"
             with self.assertRaisesRegex(ValueError, "release evidence"):
                 builder.build(ROOT, output, None, evidence)
             forged = parent / "release.json"
             forged.write_text(json.dumps({
-                "schema_version": "p6-release-evidence/1.0",
-                "bundle_version": "1.0.0",
+                "schema_version": "release-evidence/2.0",
+                "bundle_id": "frontier-engineering/6.0.0+5.0.0",
+                "bundle_version": "2.0.0",
                 "source_tree_hash": "sha256:" + "1" * 64,
                 "source_revision": "a" * 40,
                 "source_revision_signed": True,
                 "source_clean": True,
-                "p5_report_content_hash": "sha256:" + "2" * 64,
+                "deterministic_report_hash": "sha256:" + "2" * 64,
+                "l2_scored_report_hash": "sha256:" + "3" * 64,
+                "activation_decision_hash": "sha256:" + "4" * 64,
                 "release_gate": "passed",
-                "approved_activation_level": "explicit_only",
+                "approved_activation_level": "explicit_local_pilot",
             }), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "P5|source tree"):
+            with self.assertRaisesRegex(ValueError, "source tree|deterministic report"):
                 builder.build(ROOT, output, forged, evidence)
             self.assertFalse(output.exists())
             self.assertFalse(evidence.exists())
@@ -124,7 +175,7 @@ class PluginBuildTests(unittest.TestCase):
             target = copied / "writing-plans" / "references" / "profiles" / "brief.md"
             target.unlink()
             target.symlink_to(copied / "README.md")
-            output = parent / "software-engineering-closure-plugin"
+            output = parent / "frontier-engineering-plugin"
             evidence = parent / "evidence.json"
             with self.assertRaisesRegex(ValueError, "symlink"):
                 builder.build(copied, output, None, evidence)
@@ -153,7 +204,7 @@ class PluginBuildTests(unittest.TestCase):
     def test_static_discovery_install_and_uninstall_smoke_is_hash_bound(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
-            output = parent / "software-engineering-closure-plugin"
+            output = parent / "frontier-engineering-plugin"
             evidence = parent / "evidence.json"
             builder.build(ROOT, output, None, evidence)
             result = smoke.isolated_smoke(output, evidence)
@@ -162,7 +213,8 @@ class PluginBuildTests(unittest.TestCase):
             self.assertTrue(result["uninstall_clean"])
             self.assertFalse(result["actual_codex_cli_install"])
             self.assertFalse(result["model_invoked"])
-            schema = json.loads((ROOT / "packaging" / "schemas" / "p6-static-smoke.schema.json").read_text(encoding="utf-8"))
+            self.assertEqual("shadow", result["activation_ceiling"])
+            schema = json.loads((ROOT / "packaging" / "schemas" / "static-plugin-smoke.schema.json").read_text(encoding="utf-8"))
             Draft202012Validator.check_schema(schema)
             self.assertEqual([], list(Draft202012Validator(schema).iter_errors(result)))
             target = output / "skills" / "writing-plans" / "SKILL.md"
@@ -182,7 +234,7 @@ class PluginBuildTests(unittest.TestCase):
                 [
                     sys.executable,
                     str(PLUGIN_SCAFFOLDER),
-                    "software-engineering-closure-plugin",
+                    "frontier-engineering-plugin",
                     "--path",
                     str(marketplace / "plugins"),
                     "--with-skills",
@@ -190,17 +242,22 @@ class PluginBuildTests(unittest.TestCase):
                     "--marketplace-path",
                     str(marketplace / ".agents" / "plugins" / "marketplace.json"),
                     "--marketplace-name",
-                    "closure-shadow-test",
+                    "frontier-engineering-shadow-local",
                     "--install-policy",
                     "AVAILABLE",
+                    "--auth-policy",
+                    "ON_INSTALL",
+                    "--category",
+                    "Developer Tools",
                 ],
                 text=True,
                 capture_output=True,
                 check=False,
             )
             self.assertEqual(0, scaffold.returncode, scaffold.stderr or scaffold.stdout)
-            plugin = marketplace / "plugins" / "software-engineering-closure-plugin"
-            shutil.rmtree(plugin)
+            plugin = marketplace / "plugins" / "frontier-engineering-plugin"
+            scaffold_backup = parent / "scaffold-backup"
+            plugin.rename(scaffold_backup)
             evidence = parent / "build-evidence.json"
             builder.build(ROOT, plugin, None, evidence)
             static_path = parent / "static-smoke.json"
@@ -216,13 +273,19 @@ class PluginBuildTests(unittest.TestCase):
                 work,
                 PLUGIN_VALIDATOR,
             )
-            schema = json.loads((ROOT / "packaging" / "schemas" / "p6-cli-smoke.schema.json").read_text(encoding="utf-8"))
+            schema = json.loads((ROOT / "packaging" / "schemas" / "cli-install-smoke.schema.json").read_text(encoding="utf-8"))
             Draft202012Validator.check_schema(schema)
             self.assertEqual([], list(Draft202012Validator(schema).iter_errors(result)))
             self.assertTrue(result["actual_codex_cli_install"])
             self.assertTrue(result["uninstall_clean"])
             self.assertTrue(result["marketplace_removed"])
-            self.assertEqual("not_run_gate_blocked", result["implicit_route_invocation"])
+            self.assertEqual("not_run_model_free", result["implicit_route_invocation"])
+            self.assertEqual("shadow", result["activation_ceiling"])
+            self.assertFalse(result["release_eligible"])
+            self.assertEqual(
+                ["scored_l2_gate", "activation_decision", "signed_clean_source_revision"],
+                result["blocking_prerequisites"],
+            )
             unhashed = deepcopy(result)
             observed_hash = unhashed.pop("evidence_hash")
             self.assertEqual(
@@ -287,7 +350,7 @@ class PluginBuildTests(unittest.TestCase):
             parent = Path(directory)
             copied = parent / "bundle"
             shutil.copytree(ROOT, copied, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
-            output = parent / "software-engineering-closure-plugin"
+            output = parent / "frontier-engineering-plugin"
             evidence = parent / "evidence.json"
             original_copytree = builder.shutil.copytree
             changed = False
@@ -306,6 +369,7 @@ class PluginBuildTests(unittest.TestCase):
                     builder.build(copied, output, None, evidence)
             self.assertFalse(output.exists())
             self.assertFalse(evidence.exists())
+            self.assertTrue((parent / "plugin-build-staging").is_dir())
 
 
 if __name__ == "__main__":

@@ -3,18 +3,13 @@
 /share/
 /.work/*.md
 /.work/tmp/
-/.work/p4-live-canary-evidence/
-/.work/p4-live-canary-retry-*/
-/.work/p6-readiness-evidence/
+/.work/frontier-engineering-*/
 
 # Defensive fallbacks if local artifacts are temporarily placed at repository root
 /note.md
 /implementation-completion-audit.md
 /gpt56-sol-codex-autonomous-development-closure-upgrade-plan.md
 /writing-plans_and_software-quality-workflows_improvement_review.md
-/p4-live-canary-evidence/
-/p4-live-canary-retry-*/
-/p6-readiness-evidence/
 /tmp/
 
 # Unreleased build and runtime outputs

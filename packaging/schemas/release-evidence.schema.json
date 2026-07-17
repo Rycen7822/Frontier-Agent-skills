@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/frontier-engineering/release-evidence.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "bundle_id", "bundle_version", "source_tree_hash", "source_revision",
+    "source_revision_signed", "source_clean", "deterministic_report_hash", "l2_scored_report_hash",
+    "activation_decision_hash", "release_gate", "approved_activation_level"
+  ],
+  "properties": {
+    "schema_version": {"const": "release-evidence/2.0"},
+    "bundle_id": {"const": "frontier-engineering/6.0.0+5.0.0"},
+    "bundle_version": {"const": "2.0.0"},
+    "source_tree_hash": {"$ref": "#/$defs/hash"},
+    "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "source_revision_signed": {"const": true},
+    "source_clean": {"const": true},
+    "deterministic_report_hash": {"$ref": "#/$defs/hash"},
+    "l2_scored_report_hash": {"$ref": "#/$defs/hash"},
+    "activation_decision_hash": {"$ref": "#/$defs/hash"},
+    "release_gate": {"const": "passed"},
+    "approved_activation_level": {"const": "explicit_local_pilot"}
+  },
+  "$defs": {"hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}
+}

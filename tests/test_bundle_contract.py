@@ -79,9 +79,10 @@ class BundleContractTests(unittest.TestCase):
         )
         Draft202012Validator.check_schema(schema)
         self.assertEqual([], list(Draft202012Validator(schema).iter_errors(checked_in)))
-        self.assertEqual("frontier-engineering/5.0.0+4.0.0", checked_in["bundle_id"])
+        self.assertEqual("frontier-engineering/6.0.0+5.0.0", checked_in["bundle_id"])
+        self.assertEqual(2, checked_in["compatible_schema_epoch"])
         self.assertEqual(
-            {"software-quality-workflows": "5.0.0", "writing-plans": "4.0.0"},
+            {"software-quality-workflows": "6.0.0", "writing-plans": "5.0.0"},
             {skill_id: item["version"] for skill_id, item in checked_in["skills"].items()},
         )
         for item in checked_in["skills"].values():
@@ -102,9 +103,7 @@ class BundleContractTests(unittest.TestCase):
             "/share/",
             "/.work/*.md",
             "/.work/tmp/",
-            "/.work/p4-live-canary-evidence/",
-            "/.work/p4-live-canary-retry-*/",
-            "/.work/p6-readiness-evidence/",
+            "/.work/frontier-engineering-*/",
             "/tmp/",
             "/dist/",
             "*.zip",
@@ -118,11 +117,12 @@ class BundleContractTests(unittest.TestCase):
         self.assertFalse(is_repository_local(ROOT / "README.md"))
 
     def test_manifest_declares_exact_skills_versions_and_profiles(self) -> None:
-        self.assertEqual("1.0", MANIFEST["bundle_schema_version"])
+        self.assertEqual("2.0", MANIFEST["bundle_schema_version"])
+        self.assertEqual("2.0.0", MANIFEST["bundle_version"])
         skills = MANIFEST["skills"]
         self.assertEqual({"writing-plans", "software-quality-workflows"}, {item["id"] for item in skills})
         self.assertEqual(
-            {"writing-plans": "4.0.0", "software-quality-workflows": "5.0.0"},
+            {"writing-plans": "5.0.0", "software-quality-workflows": "6.0.0"},
             {item["id"]: item["version"] for item in skills},
         )
         for item in skills:
@@ -146,26 +146,49 @@ class BundleContractTests(unittest.TestCase):
             self.assertGreaterEqual(len(interface["short_description"]), 25)
             self.assertLessEqual(len(interface["short_description"]), 64)
             self.assertIn(f"${item['id']}", interface["default_prompt"])
-            self.assertIs(agent_metadata["policy"]["allow_implicit_invocation"], True)
+            self.assertIs(agent_metadata["policy"]["allow_implicit_invocation"], False)
         for profile in ("standalone", "extended"):
             self.assertEqual(3, len(MANIFEST["test_profiles"][profile]))
         self.assertEqual("LONG_DOCUMENT_SKILL_ROOT", MANIFEST["optional_external_dependencies"][0]["environment_variable"])
         self.assertEqual(
             {
                 "current_level": "shadow",
-                "live_autonomous_closure_default": False,
-                "multi_candidate_enabled": False,
+                "implicit_routing_default": False,
                 "remote_writes": False,
-                "p5_report": "evaluation/p5-shadow-report.json",
-                "p5_control_evidence": "evaluation/p5-control-evidence.json",
             },
             MANIFEST["activation_policy"],
         )
-        report = json.loads((ROOT / MANIFEST["activation_policy"]["p5_report"]).read_text(encoding="utf-8"))
-        controls = json.loads((ROOT / MANIFEST["activation_policy"]["p5_control_evidence"]).read_text(encoding="utf-8"))
-        self.assertEqual("remain_shadow", report["decision"])
-        self.assertEqual("shadow", report["activation_ceiling"])
-        self.assertTrue(all(item["status"] == "not_run" for item in controls["ablations"]))
+        self.assertEqual(
+            ["plan-to-workflow", "workflow-plan-change-proposal"],
+            MANIFEST["cross_skill_contracts"],
+        )
+
+    def test_retired_candidate_evidence_and_schema_names_are_absent(self) -> None:
+        retired = [
+            "evaluation/p5-control-evidence.json",
+            "evaluation/p5-shadow-report.json",
+            "evaluation/corpus/p5-shadow-corpus.json",
+            "evaluation/schemas/p5-control-evidence.schema.json",
+            "evaluation/schemas/p5-eval-corpus.schema.json",
+            "evaluation/schemas/p5-eval-report.schema.json",
+            "evaluation/schemas/p5-eval-run.schema.json",
+            "packaging/schemas/p6-plugin-build-evidence.schema.json",
+            "packaging/schemas/p6-release-evidence.schema.json",
+            "packaging/schemas/p6-static-smoke.schema.json",
+            "packaging/schemas/p6-cli-smoke.schema.json",
+        ]
+        self.assertEqual([], [path for path in retired if (ROOT / path).exists()])
+        current = [
+            "packaging/schemas/plugin-build-evidence.schema.json",
+            "packaging/schemas/release-evidence.schema.json",
+            "packaging/schemas/static-plugin-smoke.schema.json",
+            "packaging/schemas/cli-install-smoke.schema.json",
+            "packaging/schemas/source-archive-evidence.schema.json",
+        ]
+        for relative in current:
+            schema = json.loads((ROOT / relative).read_text(encoding="utf-8"))
+            Draft202012Validator.check_schema(schema)
+            self.assertIn("/frontier-engineering/", schema["$id"])
 
     def test_removed_compatibility_and_generated_state_are_absent(self) -> None:
         writing = ROOT / "writing-plans"
@@ -179,6 +202,30 @@ class BundleContractTests(unittest.TestCase):
                 relative = path.relative_to(skill)
                 self.assertFalse(any(part in FORBIDDEN_PARTS for part in relative.parts), relative.as_posix())
                 self.assertNotIn(path.suffix, {".pyc", ".pyo"})
+
+    def test_release_candidate_has_no_retired_identity_or_implicit_default(self) -> None:
+        forbidden = (
+            "software-engineering-" + "closure",
+            "autonomous_" + "closure",
+            "autonomous-" + "closure",
+            "eligible_for_" + "p6" + "_" + "canary",
+            "p4_live_" + "success_canary",
+            "p5" + "_" + "real_" + "cohort",
+            "allow_implicit_invocation:" + " true",
+        )
+        allowed_historical = ROOT / "RELEASE_NOTES.md"
+        hits: list[str] = []
+        for path in ROOT.rglob("*"):
+            if is_repository_local(path) or path == allowed_historical or not path.is_file():
+                continue
+            if path.suffix not in {".md", ".json", ".yaml", ".py", ".template"}:
+                continue
+            relative = path.relative_to(ROOT).as_posix()
+            text = path.read_text(encoding="utf-8")
+            for token in forbidden:
+                if token in relative or token in text:
+                    hits.append(f"{relative}:{token}")
+        self.assertEqual([], hits)
 
     def test_all_local_markdown_links_resolve(self) -> None:
         markdown_files = [ROOT / "README.md", ROOT / "RELEASE_NOTES.md"]
@@ -213,7 +260,9 @@ class BundleContractTests(unittest.TestCase):
         self.assertEqual("${BUNDLE_VERSION}", template["version"])
         self.assertEqual("./skills/", template["skills"])
         self.assertTrue({"mcpServers", "apps", "hooks"}.isdisjoint(template))
-        self.assertEqual("software-engineering-closure-plugin", template["name"])
+        self.assertEqual("frontier-engineering-plugin", template["name"])
+        self.assertEqual("Frontier Engineering", template["interface"]["displayName"])
+        self.assertFalse({"closure", "autonomous"} & {item.lower() for item in template["keywords"]})
         self.assertIn("name", template["author"])
         self.assertTrue({"displayName", "shortDescription", "longDescription", "developerName", "category", "capabilities"} <= set(template["interface"]))
 
