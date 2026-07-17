@@ -25,7 +25,7 @@ from build_codex_plugin import _strict_json  # noqa: E402
 from smoke_codex_plugin import inspect_plugin, isolated_smoke  # noqa: E402
 
 
-EXPECTED_PLUGIN = "software-engineering-closure-plugin"
+EXPECTED_PLUGIN = "frontier-engineering-plugin"
 EXPECTED_SKILLS = ["software-quality-workflows", "writing-plans"]
 MAX_CLI_OUTPUT = 1024 * 1024
 SECRET_ENV_MARKERS = (
@@ -174,6 +174,10 @@ def _validate_marketplace(marketplace_root: Path, plugin_root: Path) -> tuple[st
     expected_source = {"source": "local", "path": f"./plugins/{EXPECTED_PLUGIN}"}
     if entry.get("name") != EXPECTED_PLUGIN or entry.get("source") != expected_source:
         raise ValueError("marketplace entry does not bind the expected local plugin")
+    if entry.get("policy") != {"installation": "AVAILABLE", "authentication": "ON_INSTALL"}:
+        raise ValueError("marketplace entry policy is not the fixed isolated contract")
+    if entry.get("category") != "Developer Tools":
+        raise ValueError("marketplace entry category is not Developer Tools")
     expected_root = (root_path / "plugins" / EXPECTED_PLUGIN).resolve(strict=True)
     if plugin != expected_root:
         raise ValueError("plugin root differs from the marketplace source path")
@@ -251,11 +255,11 @@ def _expect_single_plugin_list(
 def _verify_static_evidence(static_path: Path, build: dict[str, Any]) -> dict[str, Any]:
     static = _strict_json(static_path)
     expected = {
-        "schema_version": "p6-static-smoke/1.0",
+        "schema_version": "static-plugin-smoke/2.0",
         "plugin_name": EXPECTED_PLUGIN,
         "plugin_tree_hash": build.get("plugin_tree_hash"),
         "build_evidence_hash": build.get("evidence_hash"),
-        "p5_decision": "remain_shadow",
+        "activation_ceiling": "shadow",
         "actual_codex_cli_install": False,
         "model_invoked": False,
         "remote_writes": False,
@@ -289,8 +293,12 @@ def run_cli_smoke(
     if not work_root.is_dir():
         raise ValueError("work root must be a real directory")
     build = _strict_json(build_evidence_path)
-    if build.get("plugin_name") != EXPECTED_PLUGIN or build.get("p5_decision") != "remain_shadow":
-        raise ValueError("CLI smoke is limited to the current non-release shadow artifact")
+    if (
+        build.get("schema_version") != "plugin-build-evidence/2.0"
+        or build.get("plugin_name") != EXPECTED_PLUGIN
+        or build.get("activation_ceiling") not in {"shadow", "explicit_local_pilot"}
+    ):
+        raise ValueError("CLI smoke build evidence identity is invalid")
     unhashed_build = dict(build)
     observed_build_hash = unhashed_build.pop("evidence_hash", None)
     if observed_build_hash != _canonical_hash(unhashed_build):
@@ -310,7 +318,7 @@ def run_cli_smoke(
     marketplace_content_hash = _content_hash(marketplace_manifest)
 
     commands: dict[str, int] = {}
-    with tempfile.TemporaryDirectory(prefix="p6-codex-home-", dir=work_root) as directory:
+    with tempfile.TemporaryDirectory(prefix="frontier-codex-home-", dir=work_root) as directory:
         isolated_home = Path(directory).resolve(strict=True)
         (isolated_home / ".codex").mkdir(mode=0o700)
         environment = _safe_environment(isolated_home)
@@ -470,23 +478,24 @@ def run_cli_smoke(
         if not marketplace_source_unchanged:
             raise ValueError("CLI smoke modified the marketplace source manifest")
 
+        activation_ceiling = build["activation_ceiling"]
+        release_eligible = activation_ceiling == "explicit_local_pilot"
         result: dict[str, Any] = {
-            "schema_version": "p6-cli-smoke/1.0",
+            "schema_version": "cli-install-smoke/2.0",
             "plugin_name": EXPECTED_PLUGIN,
             "bundle_version": build["bundle_version"],
             "plugin_tree_hash": build["plugin_tree_hash"],
             "build_evidence_hash": build["evidence_hash"],
             "static_smoke_content_hash": _content_hash(static_smoke_path),
-            "p5_decision": "remain_shadow",
-            "activation_level": "shadow",
-            "release_gate": "blocked_prerequisites",
-            "blocking_prerequisites": [
-                "p4_live_success_canary",
-                "p5_real_cohort",
+            "activation_ceiling": activation_ceiling,
+            "release_gate": "passed" if release_eligible else "blocked_prerequisites",
+            "blocking_prerequisites": [] if release_eligible else [
+                "scored_l2_gate",
+                "activation_decision",
                 "signed_clean_source_revision",
             ],
-            "release_eligible": False,
-            "source_revision_verified": False,
+            "release_eligible": release_eligible,
+            "source_revision_verified": release_eligible,
             "marketplace_name": marketplace_name,
             "codex_cli_version": codex_version,
             "actual_codex_cli_install": True,
@@ -507,8 +516,8 @@ def run_cli_smoke(
             "marketplace_removed": True,
             "final_config_clean": final_config_clean,
             "discovered_skills": sorted(static["discovered_skills"]),
-            "explicit_skill_invocation": "not_run_gate_blocked",
-            "implicit_route_invocation": "not_run_gate_blocked",
+            "explicit_skill_invocation": "not_run_model_free",
+            "implicit_route_invocation": "not_run_model_free",
             "commands": commands,
         }
         result["evidence_hash"] = _canonical_hash(result)
@@ -549,7 +558,7 @@ def main(argv: list[str] | None = None) -> int:
                 "ok": True,
                 "plugin_tree_hash": result["plugin_tree_hash"],
                 "actual_codex_cli_install": True,
-                "activation_level": "shadow",
+                "activation_ceiling": result["activation_ceiling"],
             },
             ensure_ascii=False,
         )

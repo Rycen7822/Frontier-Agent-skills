@@ -1,29 +1,28 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://local.invalid/software-engineering-closure/p6-static-smoke.schema.json",
+  "$id": "https://local.invalid/frontier-engineering/static-plugin-smoke.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "plugin_name", "plugin_tree_hash", "build_evidence_hash",
-    "p5_decision", "actual_codex_cli_install", "model_invoked", "remote_writes",
-    "discovered_skills", "isolated_install_discovery", "uninstall_clean"
+    "schema_version", "plugin_name", "plugin_tree_hash", "build_evidence_hash", "activation_ceiling",
+    "actual_codex_cli_install", "model_invoked", "remote_writes", "discovered_skills",
+    "isolated_install_discovery", "uninstall_clean"
   ],
   "properties": {
-    "schema_version": {"const": "p6-static-smoke/1.0"},
-    "plugin_name": {"const": "software-engineering-closure-plugin"},
+    "schema_version": {"const": "static-plugin-smoke/2.0"},
+    "plugin_name": {"const": "frontier-engineering-plugin"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "build_evidence_hash": {"$ref": "#/$defs/hash"},
-    "p5_decision": {"enum": ["remain_shadow", "eligible_for_p6_canary"]},
+    "activation_ceiling": {"const": "shadow"},
     "actual_codex_cli_install": {"const": false},
     "model_invoked": {"const": false},
     "remote_writes": {"const": false},
     "discovered_skills": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["writing-plans", "software-quality-workflows"],
+      "type": "object", "additionalProperties": false,
+      "required": ["software-quality-workflows", "writing-plans"],
       "properties": {
-        "writing-plans": {"$ref": "#/$defs/skill"},
-        "software-quality-workflows": {"$ref": "#/$defs/skill"}
+        "software-quality-workflows": {"$ref": "#/$defs/skill"},
+        "writing-plans": {"$ref": "#/$defs/skill"}
       }
     },
     "isolated_install_discovery": {"const": true},
@@ -32,14 +31,13 @@
   "$defs": {
     "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "skill": {
-      "type": "object",
-      "additionalProperties": false,
+      "type": "object", "additionalProperties": false,
       "required": ["version", "description_hash", "explicit_invocation", "implicit_eligible"],
       "properties": {
         "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
         "description_hash": {"$ref": "#/$defs/hash"},
         "explicit_invocation": {"const": true},
-        "implicit_eligible": {"const": true}
+        "implicit_eligible": {"const": false}
       }
     }
   }

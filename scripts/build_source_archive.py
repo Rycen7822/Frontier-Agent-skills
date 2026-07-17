@@ -26,7 +26,7 @@ from build_codex_plugin import _strict_json, skill_version, validate_source  # n
 
 Layout = Literal["bundle", "skills_only"]
 EXPECTED_SKILLS = {"writing-plans", "software-quality-workflows"}
-BUNDLE_ROOT_PREFIX = "software-engineering-closure-bundle"
+BUNDLE_ROOT_PREFIX = "frontier-engineering-bundle"
 BUNDLE_DIRECTORIES = {"bundle", "evaluation", "packaging", "scripts", "tests"}
 BUNDLE_FILES = {"README.md", "RELEASE_NOTES.md", "bundle-manifest.json", "frontier-engineering.bundle.json"}
 IGNORED_TOP_LEVEL = {
@@ -281,7 +281,7 @@ def build_archive(
 
         os.chmod(archive_temp, 0o644)
         evidence: dict[str, Any] = {
-            "schema_version": "source-archive-evidence/1.0",
+            "schema_version": "source-archive-evidence/2.0",
             "layout": layout,
             "bundle_version": manifest["bundle_version"],
             "root_prefix": BUNDLE_ROOT_PREFIX if layout == "bundle" else None,

@@ -12,7 +12,8 @@ SKILL_TARGETS = {
     "software-quality-workflows": ("6.0.0", 52),
 }
 CORE_CLOSURE = re.compile(
-    r"autonomous_closure|wp\.closure\.|sqw\.closure\.|closure[-_ ](?:admission|contract|phase|artifact|state|event)",
+    r"autonomous_" + r"closure|wp\." + r"closure\.|sqw\." + r"closure\."
+    + r"|closure[-_ ](?:admission|contract|phase|artifact|state|event)",
     re.IGNORECASE,
 )
 

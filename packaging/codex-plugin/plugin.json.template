@@ -1,17 +1,17 @@
 {
-  "name": "software-engineering-closure-plugin",
+  "name": "frontier-engineering-plugin",
   "version": "${BUNDLE_VERSION}",
-  "description": "Bounded planning and software-quality closure skills with deterministic local contracts.",
+  "description": "Bounded planning and software-quality skills with deterministic local contracts.",
   "author": {
     "name": "Hermes Agent"
   },
   "license": "MIT",
-  "keywords": ["software-development", "planning", "verification", "autonomous-closure"],
+  "keywords": ["software-development", "planning", "verification"],
   "skills": "./skills/",
   "interface": {
-    "displayName": "Software Engineering Closure",
+    "displayName": "Frontier Engineering",
     "shortDescription": "Plan and verify bounded software changes",
-    "longDescription": "Writing Plans and Software Quality Workflows with deterministic local closure contracts and default-off live execution.",
+    "longDescription": "Writing Plans and Software Quality Workflows with deterministic local contracts and default-off live execution.",
     "developerName": "Hermes Agent",
     "category": "Developer Tools",
     "capabilities": ["Read", "Write"],
