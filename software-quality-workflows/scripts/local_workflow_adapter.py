@@ -535,8 +535,14 @@ def bootstrap_v3(
         "frontier": [],
         "active_frontier": next_step,
         "card_completions": [
-            {"storage": "inline", "operation_id": entry_completion["content_hash"], "completion": entry_completion},
-            {"storage": "inline", "operation_id": scope_completion["content_hash"], "completion": scope_completion},
+            {
+                "storage": "inline", "operation_id": entry_completion["content_hash"],
+                "prior_state_version": 0, "prior_state_hash": None, "completion": entry_completion,
+            },
+            {
+                "storage": "inline", "operation_id": bootstrap_operation_id,
+                "prior_state_version": 0, "prior_state_hash": None, "completion": scope_completion,
+            },
         ],
         "artifacts": [],
         "recent_failures": [],

@@ -13,7 +13,7 @@ SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from _workflow_state import InputError, load_json, load_json_lines  # noqa: E402
+from _workflow_state import InputError, canonical_hash, load_json, load_json_lines  # noqa: E402
 from validate_workflow_state import (  # noqa: E402
     validate_event_stream,
     validate_state,
@@ -106,6 +106,13 @@ class WorkflowStateTests(unittest.TestCase):
         plan_options = _mutate(plan, "plan_stale")
         self.assertIn("workflow.plan-stale", {item.code for item in validate_state(plan, STATE_SCHEMA, **plan_options)})
 
+    def test_scope_freshness_uses_v3_scope_binding_not_source_scope_hash(self) -> None:
+        state = _base()
+        binding_id = state["scope_binding"]["binding_id"]
+        state["source"]["scope_hash"] = "sha256:" + "9" * 64
+        self.assertNotIn("workflow.scope-stale", {item.code for item in validate_state(state, STATE_SCHEMA, current_scope_binding_id=binding_id)})
+        self.assertIn("workflow.scope-stale", {item.code for item in validate_state(state, STATE_SCHEMA, current_scope_binding_id="sha256:" + "8" * 64)})
+
     def test_m0_and_retired_m1_are_schema_forbidden(self) -> None:
         m0 = _base()
         m0["mode"] = "M0_DIRECT"
@@ -113,6 +120,40 @@ class WorkflowStateTests(unittest.TestCase):
         m1 = _base()
         m1["mode"] = "M1_TRACE"
         self.assertIn("workflow.schema", {item.code for item in validate_state(m1, STATE_SCHEMA)})
+
+    def test_materialized_completion_uses_locator_without_inline_payload(self) -> None:
+        state = _base()
+        state["card_completions"] = [{
+            "storage": "materialized",
+            "operation_id": "sha256:" + "1" * 64,
+            "prior_state_version": 2,
+            "prior_state_hash": "sha256:" + "2" * 64,
+            "completion_id": "sha256:" + "3" * 64,
+            "card_id": "sqw.test.behavior-cycle",
+            "artifact_id": "test-behavior-cycle",
+            "source_hash": "sha256:" + "4" * 64,
+            "scope_binding_id": state["scope_binding"]["binding_id"],
+            "content_locator": {
+                "schema_version": "content-locator/1",
+                "content_kind": "artifact",
+                "artifact_id": "test-behavior-cycle",
+                "content_hash": "sha256:" + "3" * 64,
+                "bytes": 128,
+            },
+            "outcome": {"blocker": None, "decision_request": "sqw.select.verify.gate-selection-and-execution"},
+        }]
+        state["last_transition"] = {
+            "transition_kind": "card",
+            "operation_id": "sha256:" + "1" * 64,
+            "prior_state_version": 2,
+            "prior_state_hash": "sha256:" + "2" * 64,
+            "completion_id": "sha256:" + "3" * 64,
+            "next_decision_id": state["active_frontier"]["decision_id"],
+        }
+        state["state_hash"] = canonical_hash(state)
+        self.assertEqual([], validate_state(state, STATE_SCHEMA))
+        state["card_completions"][0]["completion"] = {"forbidden": "duplicate payload"}
+        self.assertIn("workflow.schema", {item.code for item in validate_state(state, STATE_SCHEMA)})
 
     def test_baseline_failure_cannot_satisfy_done_node_evidence(self) -> None:
         state = _base()

@@ -21,7 +21,10 @@ DEFAULT_EVENT_SCHEMA = ROOT / "schemas" / "workflow-event.schema.json"
 
 
 def _now(value: str | None) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00")) if value else datetime.now(timezone.utc)
+    observed = datetime.fromisoformat(value.replace("Z", "+00:00")) if value else datetime.now(timezone.utc)
+    if observed.tzinfo is None:
+        raise ValueError("reconcile clock must be timezone-aware")
+    return observed
 
 
 def _artifact_path(workflow_root: Path, artifact_ref: str) -> Path | None:
@@ -39,7 +42,7 @@ def reconcile(
     state: dict[str, Any],
     *,
     current_revision: str | None = None,
-    current_scope_hash: str | None = None,
+    current_scope_binding_id: str | None = None,
     current_plan_hash: str | None = None,
     workflow_root: Path | None = None,
     verify_artifacts: bool = True,
@@ -62,8 +65,8 @@ def reconcile(
     source = state.get("source", {})
     if current_revision and source.get("observed_revision") != current_revision:
         add("source", "source_revision_drift", f"observed {source.get('observed_revision')} != current {current_revision}")
-    if current_scope_hash and source.get("scope_hash") != current_scope_hash:
-        add("scope", "scope_hash_drift", "current scope hash differs from workflow")
+    if current_scope_binding_id and state.get("scope_binding", {}).get("binding_id") != current_scope_binding_id:
+        add("scope", "scope_binding_drift", "current scope binding differs from workflow")
     if current_plan_hash and state.get("plan_ref", {}).get("content_hash") != current_plan_hash:
         add("plan", "plan_hash_drift", "current plan hash differs from workflow")
 
@@ -83,10 +86,38 @@ def reconcile(
                     add(ref, "artifact_content_changed", f"content hash differs for {path}")
 
     now = _now(now_value)
-    for lock in (locks or {}).get("leases", []):
-        expires = datetime.fromisoformat(lock["lease_expires_at"].replace("Z", "+00:00"))
-        if expires <= now:
-            add(lock["lease_id"], "lock_expired", f"lease expired for {lock['producer_id']}", escalation="expired_lock_requires_reconciliation")
+    if locks is not None:
+        expected_header = {
+            "schema_version": "sqw-locks/1",
+            "workflow_id": state.get("workflow_id"),
+            "bootstrap_operation_id": state.get("bootstrap", {}).get("operation_id"),
+            "scope_binding_id": state.get("scope_binding", {}).get("binding_id"),
+        }
+        leases = locks.get("leases") if isinstance(locks, dict) else None
+        observed_header = {key: value for key, value in locks.items() if key != "leases"} if isinstance(locks, dict) else {}
+        if observed_header != expected_header or not isinstance(leases, list) or len(leases) > 1:
+            add("locks", "locks_owner_invalid", "locks owner header or lease cardinality is invalid", escalation="foreign_lock_owner")
+            leases = []
+        frontier = state.get("active_frontier", {})
+        seen_lease_ids: set[str] = set()
+        for lease in leases:
+            required = {"lease_id", "producer_id", "decision_id", "lease_expires_at"}
+            if not isinstance(lease, dict) or set(lease) != required or not all(isinstance(lease.get(key), str) for key in required):
+                add("locks", "locks_owner_invalid", "lease shape is invalid", escalation="foreign_lock_owner")
+                continue
+            lease_id = lease["lease_id"]
+            if lease_id in seen_lease_ids or lease["producer_id"] != frontier.get("card_id") or lease["decision_id"] != frontier.get("decision_id"):
+                add(lease_id, "lease_owner_mismatch", "lease does not bind the active frontier", escalation="foreign_lock_owner")
+            seen_lease_ids.add(lease_id)
+            try:
+                expires = datetime.fromisoformat(lease["lease_expires_at"].replace("Z", "+00:00"))
+            except ValueError:
+                add(lease_id, "locks_owner_invalid", "lease expiry is invalid", escalation="foreign_lock_owner")
+                continue
+            if expires.tzinfo is None:
+                add(lease_id, "locks_owner_invalid", "lease expiry must be timezone-aware", escalation="foreign_lock_owner")
+            elif expires <= now:
+                add(lease_id, "lock_expired", f"lease expired for {lease['producer_id']}", escalation="expired_lock_requires_reconciliation")
     if state.get("pending_background"):
         add("workflow-background", "background_pending", f"pending runs: {state['pending_background']}", escalation="pending_background_work")
 
@@ -122,11 +153,11 @@ def reconcile(
 
     repair = propagate_invalidation(state, changed, escalation_flags=flags)
     blocking_kinds = {
-        "lock_expired", "background_pending", "workflow.event-schema", "workflow.event-order", "workflow.event-version", "event_owner_mismatch", "event_future_state",
-        "source_revision_drift", "scope_hash_drift", "plan_hash_drift", "artifact_pointer_unsafe",
+        "lock_expired", "locks_owner_invalid", "lease_owner_mismatch", "background_pending", "workflow.event-schema", "workflow.event-order", "workflow.event-version", "event_owner_mismatch", "event_future_state",
+        "source_revision_drift", "scope_binding_drift", "plan_hash_drift", "artifact_pointer_unsafe",
     }
     resume_allowed = not issues or (repair["repair_type"] == "local" and not any(item["kind"] in blocking_kinds for item in issues))
-    resume_actions = ["start_new_source_epoch"] if any(item["kind"] in {"source_revision_drift", "scope_hash_drift", "plan_hash_drift"} for item in issues) else []
+    resume_actions = ["start_new_source_epoch"] if any(item["kind"] in {"source_revision_drift", "scope_binding_drift", "plan_hash_drift"} for item in issues) else []
     return {
         "workflow_id": state.get("workflow_id"),
         "state_version": state.get("state_version"),
@@ -143,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("state", type=Path)
     parser.add_argument("--workflow-root", type=Path)
     parser.add_argument("--current-revision")
-    parser.add_argument("--current-scope-hash")
+    parser.add_argument("--current-scope-binding-id")
     parser.add_argument("--current-plan-hash")
     parser.add_argument("--events", type=Path)
     parser.add_argument("--locks", type=Path)
@@ -154,14 +185,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         state = load_json(args.state)
-        events = load_json_lines(args.events) if args.events else None
-        locks = load_json(args.locks) if args.locks else None
+        event_path = args.events or (args.workflow_root / "events.jsonl" if args.workflow_root and (args.workflow_root / "events.jsonl").exists() else None)
+        lock_path = args.locks or (args.workflow_root / "locks.json" if args.workflow_root else None)
+        events = load_json_lines(event_path) if event_path else ([] if args.workflow_root else None)
+        locks = load_json(lock_path) if lock_path else None
         event_schema = load_json(args.event_schema) if events is not None else None
         todo_snapshot = load_json(args.todo) if args.todo else None
         result = reconcile(
             state,
             current_revision=args.current_revision,
-            current_scope_hash=args.current_scope_hash,
+            current_scope_binding_id=args.current_scope_binding_id,
             current_plan_hash=args.current_plan_hash,
             workflow_root=args.workflow_root,
             verify_artifacts=not args.skip_artifacts,

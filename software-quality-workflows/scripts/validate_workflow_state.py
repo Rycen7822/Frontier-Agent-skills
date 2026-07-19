@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-from collections import defaultdict
 from copy import deepcopy
 from datetime import datetime
 import json
@@ -49,6 +48,12 @@ CONTROLLER_ONLY_EVENT_TYPES = {
 }
 NODE_EVENT_TYPES = {"node_refined", "node_started", "node_output_committed", "node_completed", "node_failed"}
 RUN_EVENT_TYPES = {"node_started", "node_output_committed", "node_completed", "node_failed"}
+
+
+def _is_hash(value: Any) -> bool:
+    return isinstance(value, str) and len(value) == 71 and value.startswith("sha256:") and all(character in "0123456789abcdef" for character in value[7:])
+
+
 WORKFLOW_TRANSITIONS = {
     "open": {"active", "aborted"},
     "active": {"blocked", "completed", "aborted"},
@@ -69,7 +74,7 @@ NODE_TRANSITIONS = {
     "cancelled": set(),
 }
 def _objects(state: dict[str, Any]) -> Iterable[tuple[str, int, dict[str, Any]]]:
-    for collection in ("global_invariants", "nodes", "verifiers", "edges", "locks", "artifacts", "recent_failures"):
+    for collection in ("global_invariants", "nodes", "verifiers", "edges", "artifacts", "recent_failures"):
         for index, item in enumerate(state.get(collection, [])):
             if isinstance(item, dict):
                 yield collection, index, item
@@ -156,7 +161,7 @@ def validate_state(
     schema: dict[str, Any],
     *,
     current_revision: str | None = None,
-    current_scope_hash: str | None = None,
+    current_scope_binding_id: str | None = None,
     current_plan_hash: str | None = None,
 ) -> list[Violation]:
     violations = validate_against_schema(state, schema, code="workflow.schema")
@@ -184,6 +189,43 @@ def validate_state(
         for field, ref in candidate_refs:
             if isinstance(ref, str) and ref.startswith("plan:") and (plan_prefix is None or not ref.startswith(plan_prefix)):
                 violations.append(Violation("workflow.plan-ref-mismatch", pointer(("nodes", node_index, field)), f"plan reference {ref} does not match workflow plan_ref namespace {plan_prefix}", node.get("id")))
+
+    completion_bindings: list[tuple[str, str, int, str | None]] = []
+    completion_ids: set[str] = set()
+    operation_ids: set[str] = set()
+    for index, entry in enumerate(state.get("card_completions", [])):
+        operation_id = entry["operation_id"]
+        prior_version = entry["prior_state_version"]
+        prior_hash = entry["prior_state_hash"]
+        completion_id = entry.get("completion_id") if entry["storage"] == "materialized" else entry.get("completion", {}).get("content_hash")
+        if not _is_hash(completion_id):
+            violations.append(Violation("workflow.completion-binding", pointer(("card_completions", index)), "completion entry lacks a canonical completion ID"))
+            continue
+        if operation_id in operation_ids or completion_id in completion_ids:
+            violations.append(Violation("workflow.completion-binding", pointer(("card_completions", index)), "completion and operation IDs must be exact-once", completion_id))
+        operation_ids.add(operation_id)
+        completion_ids.add(completion_id)
+        if prior_version >= state["state_version"] or (prior_version == 0) != (prior_hash is None):
+            violations.append(Violation("workflow.completion-binding", pointer(("card_completions", index)), "prior state version/hash binding is inconsistent", completion_id))
+        if entry["storage"] == "materialized":
+            locator = entry["content_locator"]
+            if (
+                locator["artifact_id"] != entry["artifact_id"]
+                or locator["content_hash"] != completion_id
+                or entry["scope_binding_id"] != state["scope_binding"]["binding_id"]
+            ):
+                violations.append(Violation("workflow.completion-binding", pointer(("card_completions", index)), "materialized completion locator, content, or scope binding differs", completion_id))
+        completion_bindings.append((operation_id, completion_id, prior_version, prior_hash))
+
+    transition = state["last_transition"]
+    current_binding = (
+        transition["operation_id"], transition["completion_id"],
+        transition["prior_state_version"], transition["prior_state_hash"],
+    )
+    if current_binding not in completion_bindings or transition["prior_state_version"] != state["state_version"] - 1:
+        violations.append(Violation("workflow.transition-binding", "/last_transition", "last transition must bind the current exact completion and prior state"))
+    if transition["transition_kind"] == "bootstrap" and state["state_version"] != 1:
+        violations.append(Violation("workflow.transition-binding", "/last_transition/transition_kind", "bootstrap transition is only valid for state version 1"))
 
     ids, duplicate_violations = _id_index(state)
     violations.extend(duplicate_violations)
@@ -273,16 +315,6 @@ def validate_state(
             if missing_verifiers or missing_evidence:
                 violations.append(Violation("workflow.done-without-evidence", pointer(("nodes", index, "status")), f"done node lacks passed verifiers={missing_verifiers} or fresh evidence={sorted(set(missing_evidence))}", node_id))
 
-    locks_by_resource: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for lock in state.get("locks", []):
-        locks_by_resource[lock.get("resource")].append(lock)
-        if lock.get("state_version", 0) > state["state_version"]:
-            violations.append(Violation("workflow.lock-conflict", "/locks", "lock references a future state version", lock.get("id")))
-    for resource, locks in locks_by_resource.items():
-        owners = {item.get("owner") for item in locks}
-        if len(locks) > 1 and len(owners) > 1:
-            violations.append(Violation("workflow.lock-conflict", "/locks", f"resource has concurrent owners: {resource} -> {sorted(owners)}"))
-
     for collection in ("global_invariants", "nodes", "artifacts", "recent_failures"):
         for index, item in enumerate(state.get(collection, [])):
             if isinstance(item, dict) and contains_secret_like(item):
@@ -291,22 +323,20 @@ def validate_state(
         if contains_secret_like(verifier):
             violations.append(Violation("workflow.sensitive-unclassified", pointer(("verifiers", index)), "verifier cannot contain raw credential-shaped values", verifier.get("id")))
 
-    if state.get("mode") == "M1_TRACE" and any(state.get(field) for field in ("nodes", "edges", "frontier", "locks")):
-        violations.append(Violation("workflow.m1-graph", "/mode", "M1 trace cannot carry a predeclared durable execution graph"))
     if state.get("state_hash") and state["state_hash"] != canonical_hash(state):
         violations.append(Violation("workflow.state-hash", "/state_hash", "state_hash does not match canonical state"))
     if current_revision and state["source"]["observed_revision"] != current_revision:
         violations.append(Violation("workflow.source-stale", "/source/observed_revision", "observed source revision differs from current revision"))
-    if current_scope_hash and state["source"]["scope_hash"] != current_scope_hash:
-        violations.append(Violation("workflow.source-stale", "/source/scope_hash", "scope hash differs from current scope"))
+    if current_scope_binding_id and state["scope_binding"]["binding_id"] != current_scope_binding_id:
+        violations.append(Violation("workflow.scope-stale", "/scope_binding/binding_id", "scope binding differs from current scope"))
     if current_plan_hash and state.get("plan_ref", {}).get("content_hash") != current_plan_hash:
         violations.append(Violation("workflow.plan-stale", "/plan_ref/content_hash", "workflow references a stale plan hash"))
 
     if state.get("status") == "completed":
         failed_verifiers = [ref for ref, verifier in verifiers.items() if verifier.get("status") != "passed"]
         unfinished = [node.get("id") for node in state.get("nodes", []) if node.get("status") not in SATISFIED_NODE_STATUSES]
-        if failed_verifiers or unfinished or state.get("pending_background") or state.get("locks"):
-            violations.append(Violation("workflow.completion-premature", "/status", f"workflow incomplete: verifiers={failed_verifiers}, nodes={unfinished}, background={state.get('pending_background')}, locks={len(state.get('locks', []))}"))
+        if failed_verifiers or unfinished or state.get("pending_background"):
+            violations.append(Violation("workflow.completion-premature", "/status", f"workflow incomplete: verifiers={failed_verifiers}, nodes={unfinished}, background={state.get('pending_background')}"))
     return violations
 
 
@@ -426,7 +456,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--event-schema", type=Path, default=DEFAULT_EVENT_SCHEMA)
     parser.add_argument("--previous", type=Path)
     parser.add_argument("--current-revision")
-    parser.add_argument("--current-scope-hash")
+    parser.add_argument("--current-scope-binding-id")
     parser.add_argument("--current-plan-hash")
     args = parser.parse_args(argv)
 
@@ -434,7 +464,7 @@ def main(argv: list[str] | None = None) -> int:
     schema, schema_violations = _load_or_violation(args.schema, "workflow.schema")
     violations.extend(schema_violations)
     if state is not None and schema is not None:
-        violations.extend(validate_state(state, schema, current_revision=args.current_revision, current_scope_hash=args.current_scope_hash, current_plan_hash=args.current_plan_hash))
+        violations.extend(validate_state(state, schema, current_revision=args.current_revision, current_scope_binding_id=args.current_scope_binding_id, current_plan_hash=args.current_plan_hash))
     if args.previous is not None and state is not None:
         previous, errors = _load_or_violation(args.previous, "workflow.schema")
         violations.extend(errors)

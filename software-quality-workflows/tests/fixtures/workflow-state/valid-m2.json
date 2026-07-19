@@ -8,7 +8,7 @@
   "card_manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
   "status": "active",
   "state_version": 3,
-  "state_hash": "sha256:9566c58e02eed1297112ebea9c3fbd9445f8a201fc361ee362998b79d4ce27b4",
+  "state_hash": "sha256:25b7e3603d976f4f4cbb062d8f9305ebc85c9377cc454bd72997d864534e6f18",
   "bootstrap": {
     "operation_id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
     "entry_completion_id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
@@ -163,7 +163,15 @@
     "card_path": "references/test/behavior-cycle.md",
     "card_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
   },
-  "card_completions": [],
+  "card_completions": [
+    {
+      "storage": "inline",
+      "operation_id": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "prior_state_version": 2,
+      "prior_state_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "completion": {"content_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888"}
+    }
+  ],
   "artifacts": [
     {
       "id": "EV-01",
@@ -194,10 +202,10 @@
   "recent_failures": [],
   "pending_background": [],
   "last_transition": {
-    "transition_kind": "bootstrap",
-    "operation_id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
-    "prior_state_version": 0,
-    "prior_state_hash": null,
+    "transition_kind": "card",
+    "operation_id": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "prior_state_version": 2,
+    "prior_state_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "completion_id": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
     "next_decision_id": "sqw.select.test.behavior-cycle"
   }

@@ -85,7 +85,7 @@ def propagate_invalidation(
                 queue.append(target)
 
     all_refs = {"source", "scope", "authority", "goal", "plan"}
-    for collection in ("global_invariants", "nodes", "verifiers", "edges", "locks", "artifacts", "recent_failures"):
+    for collection in ("global_invariants", "nodes", "verifiers", "edges", "artifacts", "recent_failures"):
         all_refs.update(item.get("id") for item in state.get(collection, []) if item.get("id"))
     all_refs.update(item.get("id") for item in state.get("authority", {}).get("approvals", []) if item.get("id"))
     for node in state.get("nodes", []):
@@ -105,13 +105,11 @@ def propagate_invalidation(
 
     nodes = {item["id"]: item for item in state.get("nodes", [])}
     repair_frontier = sorted(ref for ref in affected if ref in nodes and nodes[ref].get("status") not in {"superseded", "skipped", "cancelled"})
-    rechecks = sorted(({item["id"] for item in state.get("global_invariants", [])} | {"source.scope_hash"}) if affected else set())
+    rechecks = sorted(({item["id"] for item in state.get("global_invariants", [])} | {"scope_binding.binding_id"}) if affected else set())
     if any(nodes.get(ref, {}).get("side_effect") in {"external_reversible", "external_non_idempotent", "destructive"} for ref in affected):
         rechecks.append("authority.approvals")
     global_replan = bool(reasons)
 
-    nodes = {item["id"]: item for item in state.get("nodes", [])}
-    repair_frontier = sorted(ref for ref in affected if ref in nodes and nodes[ref].get("status") not in {"superseded", "skipped", "cancelled"})
     affected_sorted = sorted(affected)
     result = {
         "repair_type": "global_or_parent_replan" if global_replan else "local",
