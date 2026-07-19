@@ -8,7 +8,7 @@
       "normative_owner_path": "writing-plans/schemas/plan-execution-handoff.schema.json"
     }
   },
-  "release_build_id": "build-8d2441b2feccf4f152c11040",
+  "release_build_id": "build-2f1ea9613f2ecfd5a64f095d",
   "schema_version": "frontier-engineering-bundle/1.0",
   "skills": {
     "software-quality-workflows": {
@@ -20,7 +20,7 @@
         "content_hash": "sha256:961e9826940de52d007512a4860e66ff1b9328cc982ec8ac62474247b17d5f05",
         "path": "software-quality-workflows/registries/reference-cards.manifest.json"
       },
-      "root_hash": "sha256:83e8e3e8a3d0686e17364fc9f1e6d8fd105e84ee4f152a1571fd5ec943dd9491",
+      "root_hash": "sha256:e1546e618476e951fa116583ed5494c03a9be27e97abaa4a9c6779485f2e5222",
       "version": "6.0.0"
     },
     "writing-plans": {
