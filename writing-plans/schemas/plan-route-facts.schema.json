@@ -5,12 +5,13 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "explicit_plan_request", "root_cause_status", "intent_status",
+    "schema_version", "route_phase", "explicit_plan_request", "root_cause_status", "intent_status",
     "pending_decision_ids", "available_artifact_ids", "completed_decision_ids",
     "just_completed_card_id", "decision_request"
   ],
   "properties": {
     "schema_version": {"const": "2.0"},
+    "route_phase": {"enum": ["entry", "program_queue"]},
     "explicit_plan_request": {"type": "boolean"},
     "root_cause_status": {"enum": ["known", "unknown", "not_applicable"]},
     "intent_status": {"enum": ["defined", "materially_underdefined"]},

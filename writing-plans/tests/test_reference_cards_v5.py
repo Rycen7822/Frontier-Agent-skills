@@ -17,8 +17,6 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from _writing_reference_cards import build_manifest, canonical_json_bytes, discover_cards, load_json  # noqa: E402
-from assess_plan_mode import assess  # noqa: E402
-from resolve_reference_card import resolve  # noqa: E402
 
 
 class ReferenceCardsV5Tests(unittest.TestCase):
@@ -65,15 +63,17 @@ class ReferenceCardsV5Tests(unittest.TestCase):
             (target / "tests" / "fixtures" / "decision-route-cases-v5.json").write_text(json.dumps(fixtures), encoding="utf-8")
             self.assertIn("decision-fixture.coverage", {issue.code for issue in build_manifest(target)[1]})
 
-    def test_resolver_is_a_thin_view_of_the_single_selector(self) -> None:
-        fixture = load_json(ROOT / "tests" / "fixtures" / "decision-route-cases-v5.json")
-        facts = {**fixture["defaults"], **fixture["positive_cases"][0]["facts"]}
-        self.assertEqual(assess(facts), resolve(facts))
+    def test_card_cycle_is_the_only_public_route_surface(self) -> None:
+        self.assertTrue((SCRIPTS / "card_cycle.py").is_file())
+        self.assertFalse((SCRIPTS / "resolve_reference_card.py").exists())
+        policy = load_json(ROOT / "registries" / "policy-owners.json")
+        owner = next(item for item in policy["policies"] if item["policy_id"] == "wp.decision.resolve")
+        self.assertEqual("scripts/card_cycle.py", owner["owner_id"])
 
     def test_card_tools_do_not_read_sqw(self) -> None:
         for name in (
             "_writing_reference_cards.py", "build_reference_manifest.py", "validate_policy_owners.py",
-            "validate_reference_cards.py", "resolve_reference_card.py",
+            "validate_reference_cards.py", "card_cycle.py",
         ):
             text = (SCRIPTS / name).read_text(encoding="utf-8")
             self.assertNotIn("software-quality-workflows/", text)

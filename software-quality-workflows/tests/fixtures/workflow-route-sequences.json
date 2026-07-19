@@ -31,7 +31,7 @@
     {
       "id": "sqw-entry-review",
       "facts": {"request_mode": "review"},
-      "expected": {"route_action": "select_card", "route_owner": "software-quality-workflows", "selected_decision_id": "sqw.select.review.tier-selection", "card_id": "sqw.review.tier-selection"}
+      "expected": {"route_action": "select_card", "route_owner": "software-quality-workflows", "selected_decision_id": "sqw.select.entry.read-only-audit", "card_id": "sqw.entry.read-only-audit"}
     },
     {
       "id": "sqw-entry-plan-handoff",
@@ -67,16 +67,18 @@
       "id": "sqw-review-to-result",
       "entry_case_id": "sqw-entry-review",
       "steps": [
-        {"decision_id": "sqw.select.review.tier-selection", "card_id": "sqw.review.tier-selection", "produced_artifact_id": "review-tier"},
-        {"decision_id": "sqw.select.review.execution-and-requirements", "card_id": "sqw.review.execution-and-requirements", "produced_artifact_id": "review-execution", "requested_by_step": 0, "request_artifact_id": "review-tier"},
-        {"decision_id": "sqw.select.review.rubrics.engineering-integrity", "card_id": "sqw.review.rubrics.engineering-integrity", "produced_artifact_id": "review-rubrics-engineering-integrity", "requested_by_step": 1, "request_artifact_id": "review-execution"},
-        {"decision_id": "sqw.select.review.findings-and-result", "card_id": "sqw.review.findings-and-result", "produced_artifact_id": "review-result", "requested_by_step": 2, "request_artifact_id": "review-rubrics-engineering-integrity"}
+        {"decision_id": "sqw.select.entry.read-only-audit", "card_id": "sqw.entry.read-only-audit", "produced_artifact_id": "workflow-intake"},
+        {"decision_id": "sqw.select.control.scope-authority-and-effects", "card_id": "sqw.control.scope-authority-and-effects", "produced_artifact_id": "control-scope-authority-and-effects", "requested_by_step": 0, "request_artifact_id": "workflow-intake"},
+        {"decision_id": "sqw.select.review.tier-selection", "card_id": "sqw.review.tier-selection", "produced_artifact_id": "review-tier", "requested_by_step": 1, "request_artifact_id": "control-scope-authority-and-effects"},
+        {"decision_id": "sqw.select.review.execution-and-requirements", "card_id": "sqw.review.execution-and-requirements", "produced_artifact_id": "review-execution", "requested_by_step": 2, "request_artifact_id": "review-tier"},
+        {"decision_id": "sqw.select.review.rubrics.engineering-integrity", "card_id": "sqw.review.rubrics.engineering-integrity", "produced_artifact_id": "review-rubrics-engineering-integrity", "requested_by_step": 3, "request_artifact_id": "review-execution"},
+        {"decision_id": "sqw.select.review.findings-and-result", "card_id": "sqw.review.findings-and-result", "produced_artifact_id": "review-result", "requested_by_step": 4, "request_artifact_id": "review-rubrics-engineering-integrity"}
       ],
       "terminal_outcome": {
         "status": "completed",
         "owner": null,
-        "required_decision_ids": ["sqw.select.review.tier-selection", "sqw.select.review.execution-and-requirements", "sqw.select.review.rubrics.engineering-integrity", "sqw.select.review.findings-and-result"],
-        "required_artifact_ids": ["review-tier", "review-execution", "review-rubrics-engineering-integrity", "review-result"]
+        "required_decision_ids": ["sqw.select.entry.read-only-audit", "sqw.select.control.scope-authority-and-effects", "sqw.select.review.tier-selection", "sqw.select.review.execution-and-requirements", "sqw.select.review.rubrics.engineering-integrity", "sqw.select.review.findings-and-result"],
+        "required_artifact_ids": ["workflow-intake", "control-scope-authority-and-effects", "review-tier", "review-execution", "review-rubrics-engineering-integrity", "review-result"]
       }
     },
     {

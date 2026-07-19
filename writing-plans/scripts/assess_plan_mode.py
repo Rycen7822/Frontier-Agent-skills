@@ -20,7 +20,7 @@ RESULT_KEYS = {
     "primary_card", "required_artifact_ids", "reason_codes",
 }
 REQUIRED_FACT_KEYS = {
-    "schema_version", "explicit_plan_request", "root_cause_status", "intent_status",
+    "schema_version", "route_phase", "explicit_plan_request", "root_cause_status", "intent_status",
     "pending_decision_ids", "available_artifact_ids", "completed_decision_ids",
     "just_completed_card_id", "decision_request",
 }
@@ -76,6 +76,8 @@ def _validated_facts(raw: Any) -> dict[str, Any]:
     facts = {**OPTIONAL_DEFAULTS, **raw}
     if facts["schema_version"] != "2.0":
         raise PlanRouteError("PLAN_ROUTE_INPUT_INVALID", "schema_version must be 2.0")
+    if facts["route_phase"] not in {"entry", "program_queue"}:
+        raise PlanRouteError("PLAN_ROUTE_INPUT_INVALID", "route_phase must be entry or program_queue")
     for field in (
         "explicit_plan_request", "copy_paste_projection_requested", "disposable_spike", "durable_handoff",
         "external_side_effect", "long_corpus_only", "migration_or_rollback", "public_contract",
@@ -215,6 +217,10 @@ def _queue_result(facts: dict[str, Any], rows: list[dict[str, Any]], root: Path)
 def assess(raw: dict[str, Any], root: Path = ROOT) -> dict[str, Any]:
     facts = _validated_facts(raw)
     rows = _decision_rows(root)
+    if facts["route_phase"] == "program_queue":
+        return _queue_result(facts, rows, root) or _result(
+            "terminal", owner=None, reasons=["PROGRAM_QUEUE_EMPTY"]
+        )
     if facts["root_cause_status"] == "unknown":
         return _result("handoff", owner="software-quality-workflows", reasons=["ROOT_CAUSE_UNKNOWN"])
     if facts["intent_status"] == "materially_underdefined":

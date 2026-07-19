@@ -5,13 +5,14 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "request_mode", "intent_status", "root_cause_status", "implicated_surfaces",
+    "schema_version", "route_phase", "request_mode", "intent_status", "root_cause_status", "implicated_surfaces",
     "unknown_implicated_facts", "surface_assessment", "persistence_need", "delegation_need",
     "external_side_effect", "pending_decision_ids", "available_artifact_ids", "completed_decision_ids",
     "just_completed_card_id", "decision_request"
   ],
   "properties": {
     "schema_version": {"const": "2.0"},
+    "route_phase": {"enum": ["entry", "active_queue"]},
     "request_mode": {"enum": ["change", "report", "review", "recovery", "plan"]},
     "intent_status": {"enum": ["adequate", "materially_underdefined"]},
     "root_cause_status": {"enum": ["known", "unknown", "not_applicable"]},

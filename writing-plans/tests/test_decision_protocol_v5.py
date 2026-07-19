@@ -30,6 +30,7 @@ TARGET_CARDS = {
 }
 FACT_KEYS = {
     "schema_version",
+    "route_phase",
     "explicit_plan_request",
     "root_cause_status",
     "intent_status",

@@ -86,6 +86,51 @@ def canonical_json_bytes(value: Any) -> bytes:
     return (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
+def _cross_skill_projection(root: Path) -> dict[str, Any]:
+    source_path = root.parent / "bundle-manifest.json"
+    if source_path.is_file() and not source_path.is_symlink():
+        section = load_json(source_path).get("cross_skill_routes")
+    else:
+        existing = load_json(root / "registries" / "reference-cards.manifest.json").get("cross_skill_routes")
+        if not isinstance(existing, dict) or set(existing) != {"source_hash", "outbound", "inbound"}:
+            raise ValueError("cross-skill route source and local projection are both unavailable")
+        section = {
+            "schema_version": "frontier-cross-skill-routes/1",
+            "routes": sorted(existing["outbound"] + existing["inbound"], key=lambda row: row.get("route_id", "")),
+        }
+    if not isinstance(section, dict) or set(section) != {"schema_version", "routes"}:
+        raise ValueError("cross_skill_routes shape is invalid")
+    routes = section.get("routes")
+    route_keys = {
+        "route_id", "source_skill_id", "target_skill_id", "contract_id",
+        "copied_fields", "intent_status_map", "constants",
+    }
+    pairs = {
+        ("sqw-to-writing-plans", "software-quality-workflows", "writing-plans", "workflow-plan-change-proposal"),
+        ("writing-plans-to-sqw", "writing-plans", "software-quality-workflows", "plan-to-workflow"),
+    }
+    if (
+        section.get("schema_version") != "frontier-cross-skill-routes/1"
+        or not isinstance(routes, list)
+        or len(routes) != 2
+        or any(not isinstance(route, dict) or set(route) != route_keys for route in routes)
+    ):
+        raise ValueError("cross_skill_routes rows are invalid")
+    observed_pairs = {
+        (route["route_id"], route["source_skill_id"], route["target_skill_id"], route["contract_id"])
+        for route in routes
+    }
+    if observed_pairs != pairs or any(route["copied_fields"] != ["intent_status", "root_cause_status"] for route in routes):
+        raise ValueError("cross_skill_routes bindings are invalid")
+    normalized = {"schema_version": section["schema_version"], "routes": sorted(routes, key=lambda row: row["route_id"])}
+    encoded = json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return {
+        "source_hash": "sha256:" + sha256(encoded).hexdigest(),
+        "outbound": [route for route in normalized["routes"] if route["source_skill_id"] == SKILL_ID],
+        "inbound": [route for route in normalized["routes"] if route["target_skill_id"] == SKILL_ID],
+    }
+
+
 def atomic_write(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and path.is_symlink():
@@ -283,7 +328,14 @@ def build_manifest(root: Path) -> tuple[dict[str, Any], list[ContractIssue]]:
             "produced_artifact_ids": card.metadata.get("produced_artifact_ids"), "sha256": card.sha256,
         })
     entries.sort(key=lambda item: str(item.get("card_id")))
-    manifest = {"bundle_id": BUNDLE_ID, "cards": entries, "schema_version": SCHEMA_VERSION, "skill_id": SKILL_ID, "skill_version": TARGET_SKILL_VERSION}
+    manifest = {
+        "bundle_id": BUNDLE_ID,
+        "cards": entries,
+        "cross_skill_routes": _cross_skill_projection(root),
+        "schema_version": SCHEMA_VERSION,
+        "skill_id": SKILL_ID,
+        "skill_version": TARGET_SKILL_VERSION,
+    }
     issues.extend(validate_decision_contract(root, entries))
     return manifest, issues
 

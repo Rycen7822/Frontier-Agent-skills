@@ -97,8 +97,8 @@ class CardCycleM0Tests(unittest.TestCase):
         self.assertNotIn("previous_receipt", payload)
         return payload
 
-    def _initial_command(self) -> dict[str, object]:
-        return {
+    def _initial_command(self, **overrides: object) -> dict[str, object]:
+        command = {
             "contract_id": "sqw.route.initial/1",
             "invocation_phase": "initial",
             "previous_receipt": None,
@@ -112,8 +112,10 @@ class CardCycleM0Tests(unittest.TestCase):
                 "delegation_need": "none",
                 "external_side_effect": "none",
             },
-            "outcome": {"blocker": None, "decision_request": None},
+            "outcome": {"blocker": None},
         }
+        command["fields"].update(overrides)
+        return command
 
     def _entry_command(self, receipt: dict[str, object]) -> dict[str, object]:
         return {
@@ -128,10 +130,7 @@ class CardCycleM0Tests(unittest.TestCase):
                 "protected_paths": ["input.txt"],
                 "proof_requirements": ["m0-chain", "zero-runtime-files"],
             },
-            "outcome": {
-                "blocker": None,
-                "decision_request": "sqw.select.control.scope-authority-and-effects",
-            },
+            "outcome": {"blocker": None},
         }
 
     def _scope_command(self, receipt: dict[str, object]) -> dict[str, object]:
@@ -147,10 +146,7 @@ class CardCycleM0Tests(unittest.TestCase):
                 "approval_requirements": [],
                 "publication_ceiling": "none",
             },
-            "outcome": {
-                "blocker": None,
-                "decision_request": "sqw.select.test.behavior-cycle",
-            },
+            "outcome": {"blocker": None},
         }
 
     def test_direct_change_scope_m0_chain_is_flat_and_fileless(self) -> None:
@@ -217,6 +213,27 @@ class CardCycleM0Tests(unittest.TestCase):
             self.assertEqual("E_ROOT_ROLE", json.loads(rejected.stderr)["code"])
             self.assertEqual(["input.txt"], [path.name for path in source.iterdir()])
             self.assertEqual([], list(work.iterdir()))
+
+    def test_every_initial_entry_crosses_scope_once_before_its_first_work_card(self) -> None:
+        cases = [
+            ({}, "sqw.entry.direct-change", "sqw.test.behavior-cycle"),
+            ({"root_cause_status": "unknown"}, "sqw.entry.diagnose-failure", "sqw.diagnosis.evidence-and-hypothesis"),
+            ({"intent_status": "materially_underdefined"}, "sqw.entry.intent-discovery", "sqw.intent.discovery-and-freeze"),
+            ({"request_mode": "report"}, "sqw.entry.read-only-audit", "sqw.verify.classification-and-completion"),
+            ({"request_mode": "review"}, "sqw.entry.read-only-audit", "sqw.review.tier-selection"),
+            ({"request_mode": "recovery"}, "sqw.entry.recovery", "sqw.recovery.repository-recovery"),
+        ]
+        for overrides, entry_card, work_card in cases:
+            with self.subTest(entry=entry_card, work=work_card), tempfile.TemporaryDirectory() as temp_dir:
+                source = Path(temp_dir) / "source"
+                source.mkdir()
+                (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+                route = self._success_receipt(self._run("route", self._initial_command(**overrides), source))
+                self.assertEqual(entry_card, route["next_step"]["card_id"])
+                entry = self._success_receipt(self._run("complete", self._entry_command(route), source))
+                self.assertEqual("sqw.control.scope-authority-and-effects", entry["next_step"]["card_id"])
+                scope = self._success_receipt(self._run("complete", self._scope_command(entry), source))
+                self.assertEqual(work_card, scope["next_step"]["card_id"])
 
     def test_registry_covers_every_artifact_with_one_fixed_family_class(self) -> None:
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))

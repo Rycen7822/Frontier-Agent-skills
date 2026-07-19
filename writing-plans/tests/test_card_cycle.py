@@ -87,7 +87,7 @@ class BriefCardCycleTests(unittest.TestCase):
                 "same_session_execution": True,
                 "strategy_family_count": 1,
             },
-            "outcome": {"blocker": None, "decision_request": None},
+            "outcome": {"blocker": None},
         }
 
     @staticmethod
@@ -105,7 +105,7 @@ class BriefCardCycleTests(unittest.TestCase):
                 "risks_open_facts": "None",
                 "completion": "One content-addressed Markdown projection",
             },
-            "outcome": {"blocker": None, "decision_request": None},
+            "outcome": {"blocker": None},
         }
 
     def test_brief_route_complete_is_immutable_idempotent_and_fileless(self) -> None:

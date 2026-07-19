@@ -18,7 +18,7 @@ RESULT_KEYS = {
     "primary_card", "required_artifact_ids", "reason_codes",
 }
 FACT_KEYS = {
-    "schema_version", "request_mode", "intent_status", "root_cause_status", "implicated_surfaces",
+    "schema_version", "route_phase", "request_mode", "intent_status", "root_cause_status", "implicated_surfaces",
     "unknown_implicated_facts", "surface_assessment", "persistence_need", "delegation_need",
     "external_side_effect", "pending_decision_ids", "available_artifact_ids", "completed_decision_ids",
     "just_completed_card_id", "decision_request",
@@ -81,6 +81,8 @@ def _validated_facts(raw: Any) -> dict[str, Any]:
     facts = dict(raw)
     if facts["schema_version"] != "2.0":
         raise RouteError("ROUTE_INPUT_INVALID", "schema_version must be 2.0")
+    if facts["route_phase"] not in {"entry", "active_queue"}:
+        raise RouteError("ROUTE_INPUT_INVALID", "route_phase must be entry or active_queue")
     enums = {
         "request_mode": {"change", "report", "review", "recovery", "plan"},
         "intent_status": {"adequate", "materially_underdefined"},
@@ -231,6 +233,10 @@ def _queue_result(facts: dict[str, Any], rows: list[dict[str, Any]], root: Path)
 def assess(raw_facts: dict[str, Any], root: Path = ROOT) -> dict[str, Any]:
     facts = _validated_facts(raw_facts)
     rows = _decision_rows(root)
+    if facts["route_phase"] == "active_queue":
+        return _queue_result(facts, rows, root) or _result(
+            "terminal", owner=None, reasons=["ACTIVE_QUEUE_EMPTY"]
+        )
     if facts["external_side_effect"] in {"unauthorized", "irreversible"}:
         reason = (
             "EXTERNAL_SIDE_EFFECT_UNAUTHORIZED"
@@ -247,7 +253,7 @@ def assess(raw_facts: dict[str, Any], root: Path = ROOT) -> dict[str, Any]:
     if facts["request_mode"] == "report":
         return _select("sqw.select.entry.read-only-audit", "READ_ONLY_REQUEST", rows, root)
     if facts["request_mode"] == "review":
-        return _select("sqw.select.review.tier-selection", "REVIEW_REQUESTED", rows, root)
+        return _select("sqw.select.entry.read-only-audit", "REVIEW_ENTRY_REQUIRED", rows, root)
     if facts["request_mode"] == "plan":
         return _result("handoff", owner="writing-plans", reasons=["PLAN_ROUTE_REQUIRED"])
     queued = _queue_result(facts, rows, root)
