@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontier-agent-skills.local/software-quality-workflows/card-protocol.schema.json",
+  "$ref": "#/$defs/command",
+  "$defs": {
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blocker", "decision_request"],
+      "properties": {
+        "blocker": {"type": ["string", "null"]},
+        "decision_request": {"type": ["string", "null"]}
+      }
+    },
+    "routeFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_mode", "intent_status", "root_cause_status", "implicated_surfaces",
+        "unknown_implicated_facts", "persistence_need", "delegation_need", "external_side_effect"
+      ],
+      "properties": {
+        "request_mode": {"enum": ["change", "report", "review", "recovery", "plan"]},
+        "intent_status": {"enum": ["adequate", "materially_underdefined"]},
+        "root_cause_status": {"enum": ["known", "unknown", "not_applicable"]},
+        "implicated_surfaces": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "unknown_implicated_facts": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "persistence_need": {"enum": ["none", "trace", "durable"]},
+        "delegation_need": {"enum": ["none", "read", "write"]},
+        "external_side_effect": {"enum": ["none", "authorized", "unauthorized", "irreversible"]}
+      }
+    },
+    "entryFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent", "root_cause", "current_behavior", "expected_behavior",
+        "protected_paths", "proof_requirements"
+      ],
+      "properties": {
+        "intent": {"type": "string", "minLength": 1},
+        "root_cause": {"type": "string", "minLength": 1},
+        "current_behavior": {"type": "string", "minLength": 1},
+        "expected_behavior": {"type": "string", "minLength": 1},
+        "protected_paths": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "proof_requirements": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "scopeFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode", "allowed_reads", "allowed_writes", "effects",
+        "approval_requirements", "publication_ceiling"
+      ],
+      "properties": {
+        "mode": {"enum": ["M0", "M2", "M3"]},
+        "allowed_reads": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "allowed_writes": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "effects": {
+          "type": "array", "uniqueItems": true,
+          "items": {"enum": ["READ_ONLY", "LOCAL_REVERSIBLE", "EXTERNAL_STATE", "PRIVILEGED_DANGEROUS"]}
+        },
+        "approval_requirements": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "publication_ceiling": {"enum": ["none", "local-artifact", "publication-authorized"]}
+      }
+    },
+    "decisionFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "rationale", "alternatives", "evidence_refs"],
+      "properties": {
+        "decision": {"type": "string", "minLength": 1},
+        "rationale": {"type": "string", "minLength": 1},
+        "alternatives": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "evidence_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+      }
+    },
+    "evidenceFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "observations", "limitations", "verdict"],
+      "properties": {
+        "claim": {"type": "string", "minLength": 1},
+        "observations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "verdict": {"type": "string", "minLength": 1}
+      }
+    },
+    "gateFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gates", "results", "verdict", "false_green_checks"],
+      "properties": {
+        "gates": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "results": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "verdict": {"enum": ["pass", "fail", "blocked"]},
+        "false_green_checks": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "handoffFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objective", "requirements", "authority_requirements", "ordered_slices", "rollback"],
+      "properties": {
+        "objective": {"type": "string", "minLength": 1},
+        "requirements": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "authority_requirements": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "ordered_slices": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "rollback": {"type": "string", "minLength": 1}
+      }
+    },
+    "reviewResultFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["findings", "verdict", "blockers", "evidence_refs"],
+      "properties": {
+        "findings": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "verdict": {"enum": ["pass", "fail", "blocked"]},
+        "blockers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "evidence_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+      }
+    },
+    "sourceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "identity_hash"],
+      "properties": {
+        "kind": {"enum": ["repository", "unversioned"]},
+        "identity_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "nextCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "decision_id", "card_id", "card_path", "card_hash"],
+      "properties": {
+        "kind": {"const": "card"},
+        "decision_id": {"type": "string", "minLength": 1},
+        "card_id": {"type": "string", "minLength": 1},
+        "card_path": {"type": "string", "minLength": 1},
+        "card_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "completion": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["artifact_id", "content_hash", "fields", "outcome"],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1},
+        "content_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "fields": {"oneOf": [{"$ref": "#/$defs/entryFields"}, {"$ref": "#/$defs/scopeFields"}]},
+        "outcome": {"$ref": "#/$defs/outcome"}
+      }
+    },
+    "scopeBinding": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "binding_id", "mode", "allowed_reads", "allowed_writes", "effects",
+        "approval_requirements", "publication_ceiling"
+      ],
+      "properties": {
+        "binding_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "mode": {"enum": ["M0", "M2", "M3"]},
+        "allowed_reads": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "allowed_writes": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "effects": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "approval_requirements": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "publication_ceiling": {"type": "string"}
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "receipt_kind", "receipt_id", "bundle_id", "skill_id",
+        "source_identity", "next_step", "route_context", "completion", "scope_binding"
+      ],
+      "properties": {
+        "schema_version": {"const": "sqw-card-receipt/1"},
+        "receipt_kind": {"enum": ["route", "completion", "render"]},
+        "receipt_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "bundle_id": {"type": "string", "minLength": 1},
+        "skill_id": {"const": "software-quality-workflows"},
+        "source_identity": {"$ref": "#/$defs/sourceIdentity"},
+        "next_step": {"$ref": "#/$defs/nextCard"},
+        "route_context": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/routeFields"}]},
+        "completion": {"$ref": "#/$defs/completion"},
+        "scope_binding": {"$ref": "#/$defs/scopeBinding"}
+      }
+    },
+    "routeCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_id", "invocation_phase", "previous_receipt", "fields", "outcome"],
+      "properties": {
+        "contract_id": {"const": "sqw.route.initial/1"},
+        "invocation_phase": {"const": "initial"},
+        "previous_receipt": {"type": "null"},
+        "fields": {"$ref": "#/$defs/routeFields"},
+        "outcome": {"$ref": "#/$defs/outcome"}
+      }
+    },
+    "entryCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_id", "invocation_phase", "previous_receipt", "fields", "outcome"],
+      "properties": {
+        "contract_id": {"const": "sqw.complete.entry/1"},
+        "invocation_phase": {"const": "initial"},
+        "previous_receipt": {"$ref": "#/$defs/receipt"},
+        "fields": {"$ref": "#/$defs/entryFields"},
+        "outcome": {"$ref": "#/$defs/outcome"}
+      }
+    },
+    "scopeCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_id", "invocation_phase", "previous_receipt", "fields", "outcome"],
+      "properties": {
+        "contract_id": {"const": "sqw.complete.scope/1"},
+        "invocation_phase": {"const": "initial"},
+        "previous_receipt": {"$ref": "#/$defs/receipt"},
+        "fields": {"$ref": "#/$defs/scopeFields"},
+        "outcome": {"$ref": "#/$defs/outcome"}
+      }
+    },
+    "command": {
+      "oneOf": [
+        {"$ref": "#/$defs/routeCommand"},
+        {"$ref": "#/$defs/entryCommand"},
+        {"$ref": "#/$defs/scopeCommand"}
+      ]
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "retryable"],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "message": {"type": "string", "minLength": 1},
+        "retryable": {"type": "boolean"}
+      }
+    },
+    "artifactFamilyContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "human_def", "payload_def", "human_max_bytes", "payload_max_bytes",
+        "source_binding", "persistence_class"
+      ],
+      "properties": {
+        "human_def": {"type": "string", "pattern": "^#/\\$defs/[A-Za-z][A-Za-z0-9]*$"},
+        "payload_def": {"type": "string", "pattern": "^#/\\$defs/[A-Za-z][A-Za-z0-9]*$"},
+        "human_max_bytes": {"type": "integer", "minimum": 1},
+        "payload_max_bytes": {"type": "integer", "minimum": 1},
+        "source_binding": {"const": "required"},
+        "persistence_class": {
+          "enum": ["semantic_inline", "boundary_by_contract", "immutable_projection", "owner_disposable_projection"]
+        }
+      }
+    },
+    "artifactContractRegistry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "families", "artifacts"],
+      "properties": {
+        "schema_version": {"const": "sqw-artifact-family-contracts/1"},
+        "families": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/artifactFamilyContract"}
+        },
+        "artifacts": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

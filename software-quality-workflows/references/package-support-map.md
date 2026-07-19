@@ -69,12 +69,14 @@
 
 ## registries
 
+- [`registries/artifact-family-contracts.json` · `sha256:179e063678c77f233e46048237c0a213c1501dfde7e8b8354c3bfe40f7645b80`](../registries/artifact-family-contracts.json)
 - [`registries/decision-card-map.json` · `sha256:65166111b6e5eb9c80fdab90d7fd4ccaeaad1bafcad80547afb82a2cbe03de82`](../registries/decision-card-map.json)
 - [`registries/policy-owners.json` · `sha256:a79b4cd3d6ed85453e287d175ae2ccf4a2dbd30fc004fef9e1b902ab70ce7358`](../registries/policy-owners.json)
 - [`registries/reference-cards.manifest.json` · `sha256:60b7e0daab32d2fee2cb8a0c0c9cda94f8869d780dc1ba652d0d9ebcd1cfb4cb`](../registries/reference-cards.manifest.json)
 
 ## schemas
 
+- [`schemas/card-protocol.schema.json` · `sha256:2180a2c19bc606e50a381be1087f9b214c8f72cebcbb6852b4da86c38423a2f8`](../schemas/card-protocol.schema.json)
 - [`schemas/codex-task-result.schema.json` · `sha256:2c6962f6d13a70608ad21b8c49ca624fd6bb704b4ce2d744faebc12d61dfffaf`](../schemas/codex-task-result.schema.json)
 - [`schemas/decision-card-map.schema.json` · `sha256:601525817626dc9b2cf0f62e8bf334cc8f180d901a7ce9d2042d0b445137db39`](../schemas/decision-card-map.schema.json)
 - [`schemas/policy-owners.schema.json` · `sha256:c01d1e50cf1fbfa042967dd3863da6805de66de26e0db1eb6f95e76f73cb2247`](../schemas/policy-owners.schema.json)
@@ -93,6 +95,7 @@
 - [`scripts/_workflow_reference_cards.py` · `sha256:9dc93a9fd43e298582fc81aaa550b5abe18a645f3ca64a42cd99e0e292ad386a`](../scripts/_workflow_reference_cards.py)
 - [`scripts/_workflow_state.py` · `sha256:b21a5f54c5e974f73e9ef657beff52ebf69e4138871dd0423cdbb666db21fdd3`](../scripts/_workflow_state.py)
 - [`scripts/build_reference_manifest.py` · `sha256:c171091fef09e10cb2c299cfc1dd74a9aaad65fda44323afbab803e5d8fcd650`](../scripts/build_reference_manifest.py)
+- [`scripts/card_cycle.py` · `sha256:b702e87be8a8fbb3e1730c460de85a1673611b93f644f0e44304b8299a3acf17`](../scripts/card_cycle.py)
 - [`scripts/local_workflow_adapter.py` · `sha256:623f89da471797cda7c9f4aafeba9df466ac3cece8a4a9467f16c352ba502872`](../scripts/local_workflow_adapter.py)
 - [`scripts/project_context.py` · `sha256:cfb96424613f8169041c0e148b1c06fdde1034919ade68c21f9ad922c160d387`](../scripts/project_context.py)
 - [`scripts/propagate_invalidation.py` · `sha256:d13d4c25b16cd9f68d47e08e454aae53a3b72f6249482cef491dcd5d1ae0344e`](../scripts/propagate_invalidation.py)
@@ -135,6 +138,7 @@
 - [`tests/fixtures/workflow-route-sequences.json` · `sha256:e8a8097e7cd338eecd92ce6788e9d945b4e42f5de5eb49824c7358ccbc7613ce`](../tests/fixtures/workflow-route-sequences.json)
 - [`tests/fixtures/workflow-state/invalid-cases.json` · `sha256:b40972a8d1da1eb2f06579f3d88dacfbb5bcb1d16b7644026cf4d8ad5e569bb3`](../tests/fixtures/workflow-state/invalid-cases.json)
 - [`tests/fixtures/workflow-state/valid-m2.json` · `sha256:688caa12fa4cd422449998d5f19ab87fcd8855de76297fbfb19df4ca8d870093`](../tests/fixtures/workflow-state/valid-m2.json)
+- [`tests/test_card_cycle.py` · `sha256:92b29d29a9eec89dd4b3a9191cae7d1fdfe2cd30f038d3f14cd671cc5a66f6f5`](../tests/test_card_cycle.py)
 - [`tests/test_cross_skill_integration.py` · `sha256:44816fbed86eeba87c5fb1763a92ca51129c0a790ae689d3924bf0bb12432be3`](../tests/test_cross_skill_integration.py)
 - [`tests/test_decision_card_map.py` · `sha256:7a7de92cee7a660c823181e277de7063a09389f2d92aaaa063f9131149e9ff46`](../tests/test_decision_card_map.py)
 - [`tests/test_decision_protocol_v6.py` · `sha256:782e471b505636844e1d5b1b26dc38aeb12763428b8bed5a0614d7d9121000a6`](../tests/test_decision_protocol_v6.py)
