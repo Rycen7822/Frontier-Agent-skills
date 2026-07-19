@@ -135,6 +135,14 @@ class CardCycleM0Tests(unittest.TestCase):
             "outcome": {"blocker": None},
         }
 
+    def _resume_command(self, receipt: dict[str, object]) -> dict[str, object]:
+        return {
+            "contract_id": "sqw.route.resume/1",
+            "invocation_phase": "resume",
+            "previous_receipt": None,
+            "fields": {"owner_locator": receipt["owner_locator"]},
+        }
+
     def _scope_command(self, receipt: dict[str, object], *, mode: str = "M0") -> dict[str, object]:
         return {
             "contract_id": "sqw.complete.scope/1",
@@ -277,6 +285,66 @@ class CardCycleM0Tests(unittest.TestCase):
             self.assertEqual(identity, (state_path.stat().st_ino, state_path.stat().st_mtime_ns, state_path.read_bytes()))
             self.assertFalse((work / "events.jsonl").exists())
             self.assertFalse(any(path.name.endswith(".tmp") for path in work.iterdir()))
+
+            locks_path = work / "locks.json"
+            owner_identity = {
+                path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                for path in (state_path, locks_path)
+            }
+            resumed = self._success_receipt(
+                self._run("route", self._resume_command(first), source, "--work-root", str(work))
+            )
+            self.assertEqual(first["owner_locator"], resumed["owner_locator"])
+            self.assertEqual((state["state_version"], state["state_hash"]), (resumed["state_version"], resumed["state_hash"]))
+            self.assertEqual(first["next_step"], resumed["next_step"])
+            self.assertEqual(first["current_lease"], resumed["current_lease"])
+            self.assertEqual(
+                owner_identity,
+                {
+                    path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                    for path in (state_path, locks_path)
+                },
+            )
+
+            bad_resume = self._resume_command(first)
+            bad_resume["fields"]["owner_locator"] = dict(first["owner_locator"])
+            bad_resume["fields"]["owner_locator"]["bootstrap_operation_id"] = "sha256:" + "0" * 64
+            rejected_resume = self._run("route", bad_resume, source, "--work-root", str(work))
+            self.assertEqual(5, rejected_resume.returncode)
+            self.assertEqual("E_ORPHAN_CONFLICT", json.loads(rejected_resume.stderr)["code"])
+            self.assertEqual(
+                owner_identity,
+                {
+                    path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                    for path in (state_path, locks_path)
+                },
+            )
+
+            (source / "input.txt").write_text("changed input\n", encoding="utf-8")
+            drifted = self._run("route", self._resume_command(first), source, "--work-root", str(work))
+            self.assertEqual(5, drifted.returncode)
+            self.assertEqual("E_SOURCE_REVISION_CHANGED", json.loads(drifted.stderr)["code"])
+            self.assertEqual(
+                owner_identity,
+                {
+                    path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                    for path in (state_path, locks_path)
+                },
+            )
+            (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+
+            expired = json.loads(locks_path.read_text(encoding="utf-8"))
+            expired["leases"][0]["lease_expires_at"] = "2000-01-01T00:00:00Z"
+            locks_path.write_text(
+                json.dumps(expired, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+            replacement = self._success_receipt(
+                self._run("route", self._resume_command(first), source, "--work-root", str(work))
+            )
+            self.assertNotEqual(first["current_lease"]["lease_id"], replacement["current_lease"]["lease_id"])
+            self.assertEqual(identity, (state_path.stat().st_ino, state_path.stat().st_mtime_ns, state_path.read_bytes()))
+            self.assertFalse((work / ".locks.json.tmp").exists())
 
             foreign = root / "foreign"
             foreign.mkdir()

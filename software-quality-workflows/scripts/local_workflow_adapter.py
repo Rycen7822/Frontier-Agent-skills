@@ -27,6 +27,10 @@ class AdapterConflict(RuntimeError):
     pass
 
 
+class AdapterSourceDrift(AdapterConflict):
+    pass
+
+
 EVENT_MAX_BYTES = 262_144
 EVENT_MAX_LINE_BYTES = 4_096
 EVENT_MAX_RECORDS = 4_096
@@ -66,6 +70,10 @@ def _compact_bytes(value: Any) -> bytes:
 
 def _value_hash(value: Any) -> str:
     return "sha256:" + sha256(_compact_bytes(value)).hexdigest()
+
+
+def _is_hash(value: Any) -> bool:
+    return isinstance(value, str) and len(value) == 71 and value.startswith("sha256:") and all(character in "0123456789abcdef" for character in value[7:])
 
 
 def _optional_lstat(path: Path) -> os.stat_result | None:
@@ -230,7 +238,7 @@ def _validate_optional_event_file(path: Path, workflow_id: str) -> None:
         raise AdapterConflict("workflow event sidecar belongs to another owner")
 
 
-def _locks_kind(payload: bytes, empty_locks: dict[str, Any], lease_fields: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
+def _locks_kind(payload: bytes, empty_locks: dict[str, Any], lease_owner_fields: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
     try:
         value = json.loads(payload)
     except json.JSONDecodeError as exc:
@@ -245,8 +253,9 @@ def _locks_kind(payload: bytes, empty_locks: dict[str, Any], lease_fields: dict[
     lease = leases[0]
     if (
         not isinstance(lease, dict)
-        or set(lease) != {*lease_fields, "lease_expires_at"}
-        or {key: lease.get(key) for key in lease_fields} != lease_fields
+        or set(lease) != {*lease_owner_fields, "lease_id", "lease_expires_at"}
+        or {key: lease.get(key) for key in lease_owner_fields} != lease_owner_fields
+        or not _is_hash(lease.get("lease_id"))
         or not isinstance(lease.get("lease_expires_at"), str)
     ):
         raise AdapterConflict("workflow lease belongs to another bootstrap")
@@ -266,7 +275,7 @@ def _validate_bootstrap_prefix(
     state_bytes: bytes,
     empty_locks: dict[str, Any],
     empty_locks_bytes: bytes,
-    lease_fields: dict[str, Any],
+    lease_owner_fields: dict[str, Any],
     workflow_id: str,
 ) -> None:
     allowed = {
@@ -348,12 +357,12 @@ def _validate_bootstrap_prefix(
     elif state_info.st_nlink != 1:
         raise AdapterConflict("workflow state owner has an unsafe link count")
     final_locks_bytes, final_locks_info = _safe_regular_bytes(locks_final)
-    final_kind, _ = _locks_kind(final_locks_bytes, empty_locks, lease_fields)
+    final_kind, _ = _locks_kind(final_locks_bytes, empty_locks, lease_owner_fields)
     if stat.S_IMODE(final_locks_info.st_mode) != 0o600 or final_locks_info.st_nlink != 1:
         raise AdapterConflict("workflow locks owner is unsafe")
     if has_locks_temp:
         temp_locks_bytes, temp_locks_info = _safe_regular_bytes(locks_temp)
-        temp_kind, _ = _locks_kind(temp_locks_bytes, empty_locks, lease_fields)
+        temp_kind, _ = _locks_kind(temp_locks_bytes, empty_locks, lease_owner_fields)
         if stat.S_IMODE(temp_locks_info.st_mode) != 0o600 or temp_locks_info.st_nlink != 1 or temp_kind != "leased":
             raise AdapterConflict("workflow lease temp conflicts")
         if final_kind == "leased" and final_locks_bytes != temp_locks_bytes:
@@ -376,20 +385,20 @@ def _commit_initial_lease(
     root: Path,
     *,
     empty_locks: dict[str, Any],
-    lease_fields: dict[str, Any],
+    lease_owner_fields: dict[str, Any],
     proposed_lease: dict[str, Any],
 ) -> dict[str, Any]:
     final = root / "locks.json"
     temporary = root / ".locks.json.tmp"
     final_bytes, final_info = _safe_regular_bytes(final)
-    final_kind, final_lease = _locks_kind(final_bytes, empty_locks, lease_fields)
+    final_kind, final_lease = _locks_kind(final_bytes, empty_locks, lease_owner_fields)
     if stat.S_IMODE(final_info.st_mode) != 0o600 or final_info.st_nlink != 1:
         raise AdapterConflict("workflow locks owner is unsafe")
     temp_info = _optional_lstat(temporary)
     if final_kind == "leased":
         if temp_info is not None:
             temp_bytes, observed = _safe_regular_bytes(temporary)
-            temp_kind, _ = _locks_kind(temp_bytes, empty_locks, lease_fields)
+            temp_kind, _ = _locks_kind(temp_bytes, empty_locks, lease_owner_fields)
             if temp_kind != "leased" or temp_bytes != final_bytes or stat.S_IMODE(observed.st_mode) != 0o600 or observed.st_nlink != 1:
                 raise AdapterConflict("workflow lease temp conflicts")
             _sync_directory(root)
@@ -404,7 +413,7 @@ def _commit_initial_lease(
 
     if temp_info is not None:
         candidate_bytes, observed = _safe_regular_bytes(temporary)
-        candidate_kind, candidate_lease = _locks_kind(candidate_bytes, empty_locks, lease_fields)
+        candidate_kind, candidate_lease = _locks_kind(candidate_bytes, empty_locks, lease_owner_fields)
         if candidate_kind != "leased" or stat.S_IMODE(observed.st_mode) != 0o600 or observed.st_nlink != 1:
             raise AdapterConflict("workflow lease temp conflicts")
         if candidate_lease is None:  # defensive against future classifier changes
@@ -470,8 +479,7 @@ def bootstrap_v3(
         "scope_binding_id": scope_binding["binding_id"],
         "mode": mode,
     }
-    lease_fields = {
-        "lease_id": _value_hash({"workflow_id": workflow_id, "frontier": next_step}),
+    lease_owner_fields = {
         "producer_id": next_step["card_id"],
         "decision_id": next_step["decision_id"],
     }
@@ -482,7 +490,8 @@ def bootstrap_v3(
     if lease_now.tzinfo is None:
         raise AdapterConflict("workflow lease clock is invalid")
     proposed_lease = {
-        **lease_fields,
+        "lease_id": _value_hash({"workflow_id": workflow_id, "frontier": next_step}),
+        **lease_owner_fields,
         "lease_expires_at": (lease_now + timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
     }
     empty_locks = {
@@ -504,6 +513,7 @@ def bootstrap_v3(
         "bootstrap": {
             "operation_id": bootstrap_operation_id,
             "entry_completion_id": entry_completion["content_hash"],
+            "initial_source_identity_hash": source_identity["identity_hash"],
             "initial_root_binding": initial_root_binding,
             "established_root_identity": initial_root_binding,
         },
@@ -570,7 +580,7 @@ def bootstrap_v3(
         state_bytes=state_bytes,
         empty_locks=empty_locks,
         empty_locks_bytes=empty_locks_bytes,
-        lease_fields=lease_fields,
+        lease_owner_fields=lease_owner_fields,
         workflow_id=workflow_id,
     )
     _publish_bootstrap_file(
@@ -601,7 +611,7 @@ def bootstrap_v3(
             state_bytes=state_bytes,
             empty_locks=empty_locks,
             empty_locks_bytes=empty_locks_bytes,
-            lease_fields=lease_fields,
+            lease_owner_fields=lease_owner_fields,
             workflow_id=workflow_id,
         )
         if _optional_lstat(resolved / "state.json") is None:
@@ -625,7 +635,7 @@ def bootstrap_v3(
         lease = _commit_initial_lease(
             resolved,
             empty_locks=empty_locks,
-            lease_fields=lease_fields,
+            lease_owner_fields=lease_owner_fields,
             proposed_lease=proposed_lease,
         )
     finally:
@@ -671,6 +681,47 @@ def _write_fixed_temp(path: Path, payload: bytes) -> None:
             raise AdapterConflict("fixed event temp conflicts with requested append")
 
 
+def _replace_fixed_mutable(
+    root: Path,
+    final_name: str,
+    temp_name: str,
+    *,
+    expected_bytes: bytes,
+    candidate_bytes: bytes,
+    checkpoint_prefix: str,
+) -> bool:
+    final = root / final_name
+    temporary = root / temp_name
+    final_payload, final_info = _safe_regular_bytes(final)
+    if stat.S_IMODE(final_info.st_mode) != 0o600 or final_info.st_nlink != 1:
+        raise AdapterConflict("mutable owner final is unsafe")
+    temp_exists = _optional_lstat(temporary) is not None
+    if final_payload == candidate_bytes:
+        if temp_exists:
+            temp_payload, temp_info = _safe_regular_bytes(temporary)
+            if temp_payload != candidate_bytes or stat.S_IMODE(temp_info.st_mode) != 0o600 or temp_info.st_nlink != 1:
+                raise AdapterConflict("mutable owner temp conflicts")
+            _sync_directory(root)
+            temporary.unlink()
+            _sync_directory(root)
+        else:
+            _sync_directory(root)
+        return True
+    if final_payload != expected_bytes:
+        raise AdapterConflict("mutable owner final conflicts")
+    if temp_exists:
+        temp_payload, temp_info = _safe_regular_bytes(temporary)
+        if temp_payload != candidate_bytes or stat.S_IMODE(temp_info.st_mode) != 0o600 or temp_info.st_nlink != 1:
+            raise AdapterConflict("mutable owner temp conflicts")
+    else:
+        _write_and_fsync(temporary, candidate_bytes, f"{checkpoint_prefix}_temp_fsynced")
+    os.replace(temporary, final)
+    _checkpoint(f"{checkpoint_prefix}_replaced")
+    _sync_directory(root)
+    _checkpoint(f"{checkpoint_prefix}_parent_synced")
+    return False
+
+
 class LocalWorkflowAdapter:
     """Read an established v3 owner and expose only operator audit append."""
 
@@ -711,7 +762,7 @@ class LocalWorkflowAdapter:
         return state
 
     def _validate_inventory(self) -> None:
-        allowed = {".adapter.lock", "state.json", "locks.json", "artifacts", "projections", "events.jsonl", ".events.jsonl.tmp"}
+        allowed = {".adapter.lock", "state.json", "locks.json", ".locks.json.tmp", "artifacts", "projections", "events.jsonl", ".events.jsonl.tmp"}
         names = {path.name for path in self.root.iterdir()}
         if not {".adapter.lock", "state.json", "locks.json", "artifacts", "projections"}.issubset(names) or names - allowed:
             raise AdapterConflict("workflow owner inventory is invalid")
@@ -723,15 +774,16 @@ class LocalWorkflowAdapter:
         if stat.S_IMODE(locks_info.st_mode) != 0o600 or locks_info.st_nlink != 1:
             raise AdapterConflict("workflow locks owner is unsafe")
         optional: dict[str, os.stat_result] = {}
-        for name in ("events.jsonl", ".events.jsonl.tmp"):
+        for name in (".locks.json.tmp", "events.jsonl", ".events.jsonl.tmp"):
             path = self.root / name
             if _optional_lstat(path) is not None:
                 _, info = _safe_regular_bytes(path)
-                if stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink not in {1, 2}:
+                if stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink not in {1, 2} or (name == ".locks.json.tmp" and info.st_nlink != 1):
                     raise AdapterConflict("workflow event owner is unsafe")
                 optional[name] = info
-        linked_pair = len(optional) == 2 and len({(info.st_dev, info.st_ino) for info in optional.values()}) == 1
-        if any(info.st_nlink == 2 for info in optional.values()) and not linked_pair:
+        event_entries = {name: info for name, info in optional.items() if name in {"events.jsonl", ".events.jsonl.tmp"}}
+        linked_pair = len(event_entries) == 2 and len({(info.st_dev, info.st_ino) for info in event_entries.values()}) == 1
+        if any(info.st_nlink == 2 for info in event_entries.values()) and not linked_pair:
             raise AdapterConflict("workflow event hard-link prefix is unsafe")
 
     @contextmanager
@@ -827,6 +879,87 @@ class LocalWorkflowAdapter:
                 self.event_temp_path.unlink()
                 _sync_directory(self.root)
             return False
+
+    def resume(
+        self,
+        locator: dict[str, Any],
+        current_source_identity: dict[str, Any],
+        *,
+        expected_bundle_id: str,
+        expected_policy_bundle_hash: str,
+        expected_card_manifest_hash: str,
+        expected_cards: dict[str, tuple[str, str]],
+        now_value: str | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Return the committed frontier and reuse or replace its independent lease."""
+        with self._locked_state() as state:
+            expected_locator = {
+                "schema_version": "sqw-workflow-owner/1",
+                "workflow_id": state["workflow_id"],
+                "bootstrap_operation_id": state["bootstrap"]["operation_id"],
+                "bundle_id": state["bundle_id"],
+                "initial_source_identity_hash": state["bootstrap"]["initial_source_identity_hash"],
+                "scope_binding_id": state["scope_binding"]["binding_id"],
+                "mode": state["mode"],
+                "initial_root_binding_hash": _value_hash(state["bootstrap"]["initial_root_binding"]),
+            }
+            if locator != expected_locator:
+                raise AdapterConflict("workflow locator does not bind this owner")
+            if (
+                state["bundle_id"] != expected_bundle_id
+                or state["policy_bundle_hash"] != expected_policy_bundle_hash
+                or state["card_manifest_hash"] != expected_card_manifest_hash
+            ):
+                raise AdapterConflict("workflow owner contract is stale")
+            if current_source_identity != state["source_identity"]:
+                raise AdapterSourceDrift("current source identity differs from committed workflow state")
+            frontier = state.get("active_frontier")
+            if not isinstance(frontier, dict):
+                raise AdapterConflict("terminal workflow has no active frontier")
+            if expected_cards.get(frontier["card_id"]) != (frontier["card_path"], frontier["card_hash"]):
+                raise AdapterConflict("workflow frontier is stale")
+            empty_locks = {
+                "schema_version": "sqw-locks/1",
+                "workflow_id": state["workflow_id"],
+                "bootstrap_operation_id": state["bootstrap"]["operation_id"],
+                "scope_binding_id": state["scope_binding"]["binding_id"],
+                "leases": [],
+            }
+            lease_owner = {"producer_id": frontier["card_id"], "decision_id": frontier["decision_id"]}
+            final_path = self.root / "locks.json"
+            final_bytes, _ = _safe_regular_bytes(final_path)
+            final_kind, final_lease = _locks_kind(final_bytes, empty_locks, lease_owner)
+            try:
+                now = datetime.fromisoformat(now_value.replace("Z", "+00:00")) if now_value else datetime.now(timezone.utc)
+            except ValueError as exc:
+                raise AdapterConflict("workflow lease clock is invalid") from exc
+            if now.tzinfo is None:
+                raise AdapterConflict("workflow lease clock is invalid")
+            temp_path = self.root / ".locks.json.tmp"
+            if _optional_lstat(temp_path) is not None:
+                candidate_bytes, _ = _safe_regular_bytes(temp_path)
+                candidate_kind, candidate_lease = _locks_kind(candidate_bytes, empty_locks, lease_owner)
+                if candidate_kind != "leased" or candidate_lease is None:
+                    raise AdapterConflict("workflow replacement lease temp conflicts")
+            elif final_kind == "leased" and final_lease is not None and datetime.fromisoformat(final_lease["lease_expires_at"].replace("Z", "+00:00")) > now:
+                return state, final_lease
+            else:
+                issued_at = now.isoformat().replace("+00:00", "Z")
+                candidate_lease = {
+                    "lease_id": _value_hash({"workflow_id": state["workflow_id"], "state_hash": state["state_hash"], "frontier": frontier, "issued_at": issued_at}),
+                    **lease_owner,
+                    "lease_expires_at": (now + timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
+                }
+                candidate_bytes = _compact_bytes({**empty_locks, "leases": [candidate_lease]}) + b"\n"
+            _replace_fixed_mutable(
+                self.root,
+                "locks.json",
+                ".locks.json.tmp",
+                expected_bytes=final_bytes,
+                candidate_bytes=candidate_bytes,
+                checkpoint_prefix="route_lease",
+            )
+            return state, candidate_lease
 
 
 def main(argv: list[str] | None = None) -> int:

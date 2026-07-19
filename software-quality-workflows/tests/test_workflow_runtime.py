@@ -31,6 +31,7 @@ EVENT_SCHEMA = load_json(ROOT / "schemas" / "workflow-event.schema.json")
 STATE_FIXTURE = ROOT / "tests" / "fixtures" / "workflow-state" / "valid-m2.json"
 EVENT_FIXTURE = ROOT / "tests" / "fixtures" / "workflow-events" / "valid-events.jsonl"
 NOW = "2026-07-13T11:30:00+08:00"
+RESUME_NOW = "2026-07-13T13:30:00+08:00"
 
 
 def _base() -> dict:
@@ -106,6 +107,37 @@ def _bootstrap_worker(root: Path, source: Path, checkpoint_name: str, ready: Pat
 
     workflow_adapter._checkpoint = pause
     _bootstrap(root, source)
+
+
+def _resume_worker(root: Path, checkpoint_name: str, ready: Path) -> None:
+    def pause(name: str) -> None:
+        if name != checkpoint_name:
+            return
+        ready.write_text(name + "\n", encoding="utf-8")
+        while True:
+            signal.pause()
+
+    state = load_json(root / "state.json")
+    locator = {
+        "schema_version": "sqw-workflow-owner/1",
+        "workflow_id": state["workflow_id"],
+        "bootstrap_operation_id": state["bootstrap"]["operation_id"],
+        "bundle_id": state["bundle_id"],
+        "initial_source_identity_hash": state["bootstrap"]["initial_source_identity_hash"],
+        "scope_binding_id": state["scope_binding"]["binding_id"],
+        "mode": state["mode"],
+        "initial_root_binding_hash": workflow_adapter._value_hash(state["bootstrap"]["initial_root_binding"]),
+    }
+    workflow_adapter._checkpoint = pause
+    LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).resume(
+        locator,
+        state["source_identity"],
+        expected_bundle_id=state["bundle_id"],
+        expected_policy_bundle_hash=state["policy_bundle_hash"],
+        expected_card_manifest_hash=state["card_manifest_hash"],
+        expected_cards={state["active_frontier"]["card_id"]: (state["active_frontier"]["card_path"], state["active_frontier"]["card_hash"])},
+        now_value=RESUME_NOW,
+    )
 
 
 class WorkflowRuntimeTests(unittest.TestCase):
@@ -219,9 +251,10 @@ class WorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual("local", result["repair"]["repair_type"])
         self.assertIn("N-01", result["repair"]["affected"])
 
-    def test_adapter_exposes_only_operator_event_append(self) -> None:
-        removed = {"initialize", "commit_state", "acquire_lock", "release_lock", "store_artifact", "orphan_artifacts", "resume"}
+    def test_adapter_exposes_only_operator_event_append_and_internal_resume(self) -> None:
+        removed = {"initialize", "commit_state", "acquire_lock", "release_lock", "store_artifact", "orphan_artifacts"}
         self.assertTrue(all(not hasattr(LocalWorkflowAdapter, name) for name in removed))
+        self.assertTrue(callable(LocalWorkflowAdapter.resume))
         result = subprocess.run(
             [sys.executable, "-B", str(SCRIPTS / "local_workflow_adapter.py"), "/tmp/non-owner", "init"],
             capture_output=True,
@@ -342,6 +375,70 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     {name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes()) for name in identities},
                 )
 
+    def test_resume_replacement_lease_real_sigkill_prefixes_converge(self) -> None:
+        for checkpoint in ("route_lease_temp_fsynced", "route_lease_replaced", "route_lease_parent_synced"):
+            with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                root, state = _owner(parent)
+                ready = parent / "ready"
+                locator = {
+                    "schema_version": "sqw-workflow-owner/1",
+                    "workflow_id": state["workflow_id"],
+                    "bootstrap_operation_id": state["bootstrap"]["operation_id"],
+                    "bundle_id": state["bundle_id"],
+                    "initial_source_identity_hash": state["bootstrap"]["initial_source_identity_hash"],
+                    "scope_binding_id": state["scope_binding"]["binding_id"],
+                    "mode": state["mode"],
+                    "initial_root_binding_hash": workflow_adapter._value_hash(state["bootstrap"]["initial_root_binding"]),
+                }
+                state_identity = ((root / "state.json").stat().st_ino, (root / "state.json").stat().st_mtime_ns, (root / "state.json").read_bytes())
+                process = subprocess.Popen(
+                    [sys.executable, "-B", __file__, "--resume-worker", str(root), checkpoint, str(ready)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                deadline = time.monotonic() + 5
+                while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                if not ready.exists():
+                    if process.poll() is None:
+                        process.kill()
+                    stdout, stderr = process.communicate(timeout=1)
+                    self.fail(f"worker did not reach {checkpoint}: rc={process.returncode} stdout={stdout!r} stderr={stderr!r}")
+                process.kill()
+                stdout, stderr = process.communicate(timeout=5)
+                self.assertEqual(-signal.SIGKILL, process.returncode, stdout + stderr)
+                if checkpoint == "route_lease_temp_fsynced":
+                    self.assertTrue((root / ".locks.json.tmp").is_file())
+                else:
+                    self.assertFalse((root / ".locks.json.tmp").exists())
+
+                adapter = LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA)
+                resume_args = {
+                    "expected_bundle_id": state["bundle_id"],
+                    "expected_policy_bundle_hash": state["policy_bundle_hash"],
+                    "expected_card_manifest_hash": state["card_manifest_hash"],
+                    "expected_cards": {state["active_frontier"]["card_id"]: (state["active_frontier"]["card_path"], state["active_frontier"]["card_hash"])},
+                    "now_value": RESUME_NOW,
+                }
+                resumed_state, lease = adapter.resume(locator, state["source_identity"], **resume_args)
+                self.assertEqual(state, resumed_state)
+                self.assertEqual(state["active_frontier"]["card_id"], lease["producer_id"])
+                self.assertEqual(1, len(load_json(root / "locks.json")["leases"]))
+                self.assertFalse((root / ".locks.json.tmp").exists())
+                self.assertEqual(
+                    state_identity,
+                    ((root / "state.json").stat().st_ino, (root / "state.json").stat().st_mtime_ns, (root / "state.json").read_bytes()),
+                )
+                locks_identity = ((root / "locks.json").stat().st_ino, (root / "locks.json").stat().st_mtime_ns, (root / "locks.json").read_bytes())
+                replay_state, replay_lease = adapter.resume(locator, state["source_identity"], **resume_args)
+                self.assertEqual((resumed_state, lease), (replay_state, replay_lease))
+                self.assertEqual(
+                    locks_identity,
+                    ((root / "locks.json").stat().st_ino, (root / "locks.json").stat().st_mtime_ns, (root / "locks.json").read_bytes()),
+                )
+
     def test_bootstrap_rejects_skipped_or_foreign_prefix_before_mutation(self) -> None:
         for entry in ("projections", ".state.json.tmp"):
             with self.subTest(entry=entry), tempfile.TemporaryDirectory() as directory:
@@ -450,5 +547,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
 if __name__ == "__main__":
     if len(sys.argv) == 6 and sys.argv[1] == "--bootstrap-worker":
         _bootstrap_worker(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], Path(sys.argv[5]))
+    elif len(sys.argv) == 5 and sys.argv[1] == "--resume-worker":
+        _resume_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
     else:
         unittest.main()
