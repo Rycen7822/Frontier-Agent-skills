@@ -51,7 +51,7 @@ class PluginBuildTests(unittest.TestCase):
                 self.assertEqual({".codex-plugin", "skills"}, {path.name for path in output.iterdir()})
                 manifest = json.loads((output / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
                 self.assertEqual(output.name, manifest["name"])
-                self.assertEqual("2.0.0", manifest["version"])
+                self.assertEqual("2.0.1", manifest["version"])
                 self.assertEqual("./skills/", manifest["skills"])
                 self.assertTrue({"author", "interface"} <= set(manifest))
                 self.assertEqual({"writing-plans", "software-quality-workflows"}, {path.name for path in (output / "skills").iterdir()})
@@ -59,7 +59,10 @@ class PluginBuildTests(unittest.TestCase):
                 self.assertEqual(observed["plugin_file_count"], len(observed["files"]))
                 self.assertEqual(len(observed["files"]), len({item["path"] for item in observed["files"]}))
                 self.assertEqual("plugin-build-evidence/2.0", observed["schema_version"])
-                self.assertEqual((None, "shadow"), (observed["release_evidence_hash"], observed["activation_ceiling"]))
+                self.assertEqual(
+                    (None, "implicit_local_pilot"),
+                    (observed["release_evidence_hash"], observed["activation_ceiling"]),
+                )
                 schema = json.loads((ROOT / "packaging" / "schemas" / "plugin-build-evidence.schema.json").read_text(encoding="utf-8"))
                 Draft202012Validator.check_schema(schema)
                 self.assertEqual([], list(Draft202012Validator(schema).iter_errors(observed)))
@@ -80,7 +83,7 @@ class PluginBuildTests(unittest.TestCase):
         valid_release = {
             "schema_version": "release-evidence/2.0",
             "bundle_id": "frontier-engineering/6.0.0+5.0.0",
-            "bundle_version": "2.0.0",
+            "bundle_version": "2.0.1",
             "source_tree_hash": "sha256:" + "1" * 64,
             "source_revision": "a" * 40,
             "source_revision_signed": True,
@@ -89,7 +92,7 @@ class PluginBuildTests(unittest.TestCase):
             "l2_scored_report_hash": "sha256:" + "3" * 64,
             "activation_decision_hash": "sha256:" + "4" * 64,
             "release_gate": "passed",
-            "approved_activation_level": "explicit_local_pilot",
+            "approved_activation_level": "implicit_local_pilot",
         }
         self.assertEqual([], list(Draft202012Validator(release_schema).iter_errors(valid_release)))
         for key in ("deterministic_report_hash", "l2_scored_report_hash", "activation_decision_hash"):
@@ -104,7 +107,7 @@ class PluginBuildTests(unittest.TestCase):
             release.update({
                 "output_class": "release",
                 "release_evidence_hash": "sha256:" + "5" * 64,
-                "activation_ceiling": "explicit_local_pilot",
+                "activation_ceiling": "implicit_local_pilot",
             })
             self.assertEqual([], list(Draft202012Validator(build_schema).iter_errors(release)))
             invalid_staging = deepcopy(staging)
@@ -151,7 +154,7 @@ class PluginBuildTests(unittest.TestCase):
             forged.write_text(json.dumps({
                 "schema_version": "release-evidence/2.0",
                 "bundle_id": "frontier-engineering/6.0.0+5.0.0",
-                "bundle_version": "2.0.0",
+                "bundle_version": "2.0.1",
                 "source_tree_hash": "sha256:" + "1" * 64,
                 "source_revision": "a" * 40,
                 "source_revision_signed": True,
@@ -160,7 +163,7 @@ class PluginBuildTests(unittest.TestCase):
                 "l2_scored_report_hash": "sha256:" + "3" * 64,
                 "activation_decision_hash": "sha256:" + "4" * 64,
                 "release_gate": "passed",
-                "approved_activation_level": "explicit_local_pilot",
+                "approved_activation_level": "implicit_local_pilot",
             }), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "source tree|deterministic report"):
                 builder.build(ROOT, output, forged, evidence)
@@ -213,7 +216,8 @@ class PluginBuildTests(unittest.TestCase):
             self.assertTrue(result["uninstall_clean"])
             self.assertFalse(result["actual_codex_cli_install"])
             self.assertFalse(result["model_invoked"])
-            self.assertEqual("shadow", result["activation_ceiling"])
+            self.assertEqual("implicit_local_pilot", result["activation_ceiling"])
+            self.assertTrue(all(item["implicit_eligible"] for item in result["discovered_skills"].values()))
             schema = json.loads((ROOT / "packaging" / "schemas" / "static-plugin-smoke.schema.json").read_text(encoding="utf-8"))
             Draft202012Validator.check_schema(schema)
             self.assertEqual([], list(Draft202012Validator(schema).iter_errors(result)))
@@ -242,7 +246,7 @@ class PluginBuildTests(unittest.TestCase):
                     "--marketplace-path",
                     str(marketplace / ".agents" / "plugins" / "marketplace.json"),
                     "--marketplace-name",
-                    "frontier-engineering-shadow-local",
+                    "frontier-engineering-implicit-local",
                     "--install-policy",
                     "AVAILABLE",
                     "--auth-policy",
@@ -280,7 +284,7 @@ class PluginBuildTests(unittest.TestCase):
             self.assertTrue(result["uninstall_clean"])
             self.assertTrue(result["marketplace_removed"])
             self.assertEqual("not_run_model_free", result["implicit_route_invocation"])
-            self.assertEqual("shadow", result["activation_ceiling"])
+            self.assertEqual("implicit_local_pilot", result["activation_ceiling"])
             self.assertFalse(result["release_eligible"])
             self.assertEqual(
                 ["scored_l2_gate", "activation_decision", "signed_clean_source_revision"],

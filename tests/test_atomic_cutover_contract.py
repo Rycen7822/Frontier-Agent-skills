@@ -31,7 +31,7 @@ class AtomicCutoverContractTests(unittest.TestCase):
         manifest = self._load(ROOT / "bundle-manifest.json")
         generated = self._load(ROOT / "frontier-engineering.bundle.json")
         self.assertEqual("2.0", manifest["bundle_schema_version"])
-        self.assertEqual("2.0.0", manifest["bundle_version"])
+        self.assertEqual("2.0.1", manifest["bundle_version"])
         self.assertEqual(
             [("writing-plans", "5.0.0"), ("software-quality-workflows", "6.0.0")],
             [(skill["id"], skill["version"]) for skill in manifest["skills"]],
@@ -41,7 +41,11 @@ class AtomicCutoverContractTests(unittest.TestCase):
             manifest["cross_skill_contracts"],
         )
         self.assertEqual(
-            {"current_level": "shadow", "implicit_routing_default": False, "remote_writes": False},
+            {
+                "current_level": "implicit_local_pilot",
+                "implicit_routing_default": True,
+                "remote_writes": False,
+            },
             manifest["activation_policy"],
         )
         self.assertEqual("frontier-engineering-bundle/1.0", generated["schema_version"])

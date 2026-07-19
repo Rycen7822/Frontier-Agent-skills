@@ -32,7 +32,7 @@ class WritingDocsV5Tests(unittest.TestCase):
             "  short_description: \"Compile durable software plans and handoffs\"\n"
             "  default_prompt: \"Use $writing-plans to compile this software change into the lightest durable implementation plan and handoff.\"\n"
             "policy:\n"
-            "  allow_implicit_invocation: false\n",
+            "  allow_implicit_invocation: true\n",
             metadata,
         )
         self.assertNotIn("execute", metadata.lower())

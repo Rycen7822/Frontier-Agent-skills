@@ -4,19 +4,19 @@ This repository is the development source of truth for the dual-host `writing-pl
 
 ## Release identity
 
-The indivisible source pair is `frontier-engineering/6.0.0+5.0.0` in bundle version 2.0.0 and schema epoch 2. `bundle-manifest.json` contains exactly two cross-skill contracts: `plan-to-workflow` and `workflow-plan-change-proposal`.
+The indivisible source pair is `frontier-engineering/6.0.0+5.0.0` in bundle version 2.0.1 and schema epoch 2. `bundle-manifest.json` contains exactly two cross-skill contracts: `plan-to-workflow` and `workflow-plan-change-proposal`.
 
 The checked-in activation policy is exact and fail-closed:
 
 ```json
 {
-  "current_level": "shadow",
-  "implicit_routing_default": false,
+  "current_level": "implicit_local_pilot",
+  "implicit_routing_default": true,
   "remote_writes": false
 }
 ```
 
-Both `agents/openai.yaml` files require explicit skill invocation. Packaging, archive, static smoke, or CLI installation success does not authorize model execution, a pilot, publication, deployment, or remote writes.
+Both `agents/openai.yaml` files permit implicit selection while retaining explicit `$writing-plans` and `$software-quality-workflows` invocation. This activation authorizes local host routing only. Packaging, archive, static smoke, or CLI installation success does not satisfy the independent scored-L2, signed-source, release, publication, deployment, credential, or remote-write gates.
 
 ## Design boundary
 
@@ -56,21 +56,21 @@ Use absent outputs under a task-owned evidence root. The builder is no-overwrite
 scripts/build_source_archive.py \
   --source-root . \
   --layout bundle \
-  --output <evidence-root>/frontier-engineering-bundle-2.0.0.zip \
-  --evidence-output <evidence-root>/frontier-engineering-bundle-2.0.0.evidence.json
+  --output <evidence-root>/frontier-engineering-bundle-2.0.1.zip \
+  --evidence-output <evidence-root>/frontier-engineering-bundle-2.0.1.evidence.json
 
 scripts/build_source_archive.py \
   --source-root . \
   --layout skills_only \
-  --output <evidence-root>/frontier-engineering-skills-2.0.0.zip \
-  --evidence-output <evidence-root>/frontier-engineering-skills-2.0.0.evidence.json
+  --output <evidence-root>/frontier-engineering-skills-2.0.1.zip \
+  --evidence-output <evidence-root>/frontier-engineering-skills-2.0.1.evidence.json
 ```
 
 The bundle layout uses root `frontier-engineering-bundle`. The skills-only layout contains exactly the two skill roots.
 
 ## Isolated plugin staging
 
-The plugin identity is `frontier-engineering-plugin` version 2.0.0 with display name `Frontier Engineering`. Build only into an absent task-owned marketplace destination:
+The plugin identity is `frontier-engineering-plugin` version 2.0.1 with display name `Frontier Engineering`. Build only into an absent task-owned marketplace destination:
 
 ```bash
 scripts/build_codex_plugin.py \
@@ -84,7 +84,7 @@ scripts/smoke_codex_plugin.py \
   --output <evidence-root>/static-plugin-smoke.json
 ```
 
-The builder uses `<evidence-root>/plugin-build-staging` and atomically renames a validated tree to the absent destination on the same filesystem. A failed build leaves the staging directory intact and leaves the destination absent. Staging evidence records `activation_ceiling: shadow` and `release_evidence_hash: null`.
+The builder uses `<evidence-root>/plugin-build-staging` and atomically renames a validated tree to the absent destination on the same filesystem. A failed build leaves the staging directory intact and leaves the destination absent. Staging evidence records `activation_ceiling: implicit_local_pilot` and `release_evidence_hash: null`. The activation ceiling is identical for staging and release outputs; `output_class` plus the release-evidence hash alone determine release eligibility.
 
 The isolated CLI smoke requires a task-owned marketplace created by the installed `plugin-creator`, with source `./plugins/frontier-engineering-plugin`, installation policy `AVAILABLE`, authentication policy `ON_INSTALL`, and category `Developer Tools`. The smoke rehomes all Codex configuration under its work root, strips credential-bearing environment variables, validates staged and installed bytes, removes the plugin and marketplace from the isolated configuration, and never invokes a model.
 

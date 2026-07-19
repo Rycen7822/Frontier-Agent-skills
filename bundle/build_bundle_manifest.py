@@ -114,16 +114,16 @@ def build_manifest() -> dict[str, Any]:
     }
     if observed != EXPECTED_SKILLS or len(skills) != len(EXPECTED_SKILLS):
         raise ValueError(f"source bundle must bind the exact vNext skill pair: {observed}")
-    if source.get("bundle_schema_version") != "2.0" or source.get("bundle_version") != "2.0.0":
-        raise ValueError("source bundle must bind schema 2.0 and release 2.0.0")
+    if source.get("bundle_schema_version") != "2.0" or source.get("bundle_version") != "2.0.1":
+        raise ValueError("source bundle must bind schema 2.0 and release 2.0.1")
     if source.get("cross_skill_contracts") != ["plan-to-workflow", "workflow-plan-change-proposal"]:
         raise ValueError("source bundle must declare the exact two cross-skill contracts")
     if source.get("activation_policy") != {
-        "current_level": "shadow",
-        "implicit_routing_default": False,
+        "current_level": "implicit_local_pilot",
+        "implicit_routing_default": True,
         "remote_writes": False,
     }:
-        raise ValueError("source bundle must retain the exact three-field shadow policy")
+        raise ValueError("source bundle must retain the exact three-field implicit-local policy")
 
     handoff = _load_json(ROOT / HANDOFF_OWNER)
     contract_id = handoff.get("$id")

@@ -259,7 +259,7 @@ def _verify_static_evidence(static_path: Path, build: dict[str, Any]) -> dict[st
         "plugin_name": EXPECTED_PLUGIN,
         "plugin_tree_hash": build.get("plugin_tree_hash"),
         "build_evidence_hash": build.get("evidence_hash"),
-        "activation_ceiling": "shadow",
+        "activation_ceiling": build.get("activation_ceiling"),
         "actual_codex_cli_install": False,
         "model_invoked": False,
         "remote_writes": False,
@@ -272,6 +272,8 @@ def _verify_static_evidence(static_path: Path, build: dict[str, Any]) -> dict[st
     skills = static.get("discovered_skills")
     if not isinstance(skills, dict) or sorted(skills) != EXPECTED_SKILLS:
         raise ValueError("static smoke evidence does not discover exactly the expected skills")
+    if any(not isinstance(item, dict) or item.get("implicit_eligible") is not True for item in skills.values()):
+        raise ValueError("static smoke evidence does not prove implicit eligibility")
     return static
 
 
@@ -296,7 +298,7 @@ def run_cli_smoke(
     if (
         build.get("schema_version") != "plugin-build-evidence/2.0"
         or build.get("plugin_name") != EXPECTED_PLUGIN
-        or build.get("activation_ceiling") not in {"shadow", "explicit_local_pilot"}
+        or build.get("activation_ceiling") != "implicit_local_pilot"
     ):
         raise ValueError("CLI smoke build evidence identity is invalid")
     unhashed_build = dict(build)
@@ -479,7 +481,17 @@ def run_cli_smoke(
             raise ValueError("CLI smoke modified the marketplace source manifest")
 
         activation_ceiling = build["activation_ceiling"]
-        release_eligible = activation_ceiling == "explicit_local_pilot"
+        output_class = build.get("output_class")
+        release_binding = build.get("release_evidence_hash")
+        if output_class == "staging" and release_binding is not None:
+            raise ValueError("staging build must not bind release evidence")
+        if output_class == "release" and not (
+            isinstance(release_binding, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", release_binding)
+        ):
+            raise ValueError("release build must bind hashed release evidence")
+        if output_class not in {"staging", "release"}:
+            raise ValueError("build evidence output class is invalid")
+        release_eligible = output_class == "release"
         result: dict[str, Any] = {
             "schema_version": "cli-install-smoke/2.0",
             "plugin_name": EXPECTED_PLUGIN,

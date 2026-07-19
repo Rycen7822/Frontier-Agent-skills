@@ -11,7 +11,7 @@
   "properties": {
     "schema_version": {"const": "release-evidence/2.0"},
     "bundle_id": {"const": "frontier-engineering/6.0.0+5.0.0"},
-    "bundle_version": {"const": "2.0.0"},
+    "bundle_version": {"const": "2.0.1"},
     "source_tree_hash": {"$ref": "#/$defs/hash"},
     "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "source_revision_signed": {"const": true},
@@ -20,7 +20,7 @@
     "l2_scored_report_hash": {"$ref": "#/$defs/hash"},
     "activation_decision_hash": {"$ref": "#/$defs/hash"},
     "release_gate": {"const": "passed"},
-    "approved_activation_level": {"const": "explicit_local_pilot"}
+    "approved_activation_level": {"const": "implicit_local_pilot"}
   },
   "$defs": {"hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}
 }
