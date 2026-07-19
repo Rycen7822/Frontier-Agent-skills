@@ -65,11 +65,6 @@ def _mutate(state: dict, name: str) -> dict:
         node = _node(state, "N-02")
         node["side_effect"] = "external_non_idempotent"
         node["attempt_policy"] = {"max_attempts": 2, "attempts_used": 0, "idempotency": "inspect_before_retry"}
-    elif name == "lock_conflict":
-        state["locks"] = [
-            {"id": "LOCK-01", "resource": "working-tree", "owner": "session-a", "acquired_at": "2026-07-13T11:00:00+08:00", "lease_expires_at": "2026-07-13T12:00:00+08:00", "state_version": 3},
-            {"id": "LOCK-02", "resource": "working-tree", "owner": "session-b", "acquired_at": "2026-07-13T11:01:00+08:00", "lease_expires_at": "2026-07-13T12:01:00+08:00", "state_version": 3}
-        ]
     elif name == "sensitive_unclassified":
         state["artifacts"][0]["claim"] = "access_token=RAW_TOKEN_1234567890"
     elif name == "io_schema_mismatch":
@@ -95,7 +90,7 @@ class WorkflowStateTests(unittest.TestCase):
 
     def test_every_stable_state_violation_has_a_fixture(self) -> None:
         catalog = load_json(STATE_FIXTURES / "invalid-cases.json")
-        self.assertEqual(15, len(catalog["cases"]))
+        self.assertEqual(14, len(catalog["cases"]))
         for case in catalog["cases"]:
             with self.subTest(case=case["id"]):
                 state = _base()
@@ -111,13 +106,13 @@ class WorkflowStateTests(unittest.TestCase):
         plan_options = _mutate(plan, "plan_stale")
         self.assertIn("workflow.plan-stale", {item.code for item in validate_state(plan, STATE_SCHEMA, **plan_options)})
 
-    def test_m0_is_schema_forbidden_and_m1_cannot_carry_a_graph(self) -> None:
+    def test_m0_and_retired_m1_are_schema_forbidden(self) -> None:
         m0 = _base()
         m0["mode"] = "M0_DIRECT"
         self.assertIn("workflow.schema", {item.code for item in validate_state(m0, STATE_SCHEMA)})
         m1 = _base()
         m1["mode"] = "M1_TRACE"
-        self.assertIn("workflow.m1-graph", {item.code for item in validate_state(m1, STATE_SCHEMA)})
+        self.assertIn("workflow.schema", {item.code for item in validate_state(m1, STATE_SCHEMA)})
 
     def test_baseline_failure_cannot_satisfy_done_node_evidence(self) -> None:
         state = _base()
@@ -176,7 +171,7 @@ class WorkflowStateTests(unittest.TestCase):
         wrong_start[0]["sequence"] = 2
         self.assertIn("workflow.event-order", {item.code for item in validate_event_stream(wrong_start, EVENT_SCHEMA)})
         wrong_workflow = deepcopy(events)
-        wrong_workflow[-1]["workflow_id"] = "wf-other"
+        wrong_workflow[-1]["workflow_id"] = "sqw-workflow:" + "b" * 64
         self.assertIn("workflow.event-workflow", {item.code for item in validate_event_stream(wrong_workflow, EVENT_SCHEMA)})
         stale_version = deepcopy(events)
         stale_version[-1]["state_version"] = 1

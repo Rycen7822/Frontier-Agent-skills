@@ -22,7 +22,7 @@ WRITING_SCRIPTS = WRITING_ROOT / "scripts"
 if str(WRITING_SCRIPTS) not in sys.path:
     sys.path.append(str(WRITING_SCRIPTS))
 
-from _workflow_state import load_json, load_json_lines  # noqa: E402
+from _workflow_state import canonical_hash, load_json, load_json_lines  # noqa: E402
 from reconcile_workflow import reconcile  # noqa: E402
 from route_workflow import assess as assess_workflow  # noqa: E402
 from validate_policy_owners import validate as validate_policy_owners  # noqa: E402
@@ -132,6 +132,7 @@ class CrossSkillIntegrationTests(unittest.TestCase):
             if node.get("plan_node_ref"):
                 node["plan_node_ref"] = node["plan_node_ref"].replace(old_prefix, new_prefix)
             node["input_refs"] = [ref.replace(old_prefix, new_prefix) for ref in node["input_refs"]]
+        workflow["state_hash"] = canonical_hash(workflow)
         self.assertEqual([], validate_state(workflow, STATE_SCHEMA, current_plan_hash=plan_hash))
         self.assertEqual(
             "fresh", reconcile(workflow, current_plan_hash=plan_hash, verify_artifacts=False)["status"]

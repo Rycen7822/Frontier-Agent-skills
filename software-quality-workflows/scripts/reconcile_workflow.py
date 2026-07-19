@@ -45,6 +45,7 @@ def reconcile(
     verify_artifacts: bool = True,
     events: list[dict[str, Any]] | None = None,
     event_schema: dict[str, Any] | None = None,
+    locks: dict[str, Any] | None = None,
     todo_snapshot: dict[str, str] | None = None,
     now_value: str | None = None,
 ) -> dict[str, Any]:
@@ -82,10 +83,10 @@ def reconcile(
                     add(ref, "artifact_content_changed", f"content hash differs for {path}")
 
     now = _now(now_value)
-    for lock in state.get("locks", []):
+    for lock in (locks or {}).get("leases", []):
         expires = datetime.fromisoformat(lock["lease_expires_at"].replace("Z", "+00:00"))
         if expires <= now:
-            add(lock["id"], "lock_expired", f"lease expired for {lock['resource']}", escalation="expired_lock_requires_reconciliation")
+            add(lock["lease_id"], "lock_expired", f"lease expired for {lock['producer_id']}", escalation="expired_lock_requires_reconciliation")
     if state.get("pending_background"):
         add("workflow-background", "background_pending", f"pending runs: {state['pending_background']}", escalation="pending_background_work")
 
@@ -96,8 +97,10 @@ def reconcile(
             issues.append({"ref": violation.object_id or "events", "kind": violation.code, "message": violation.message})
             changed.add("events")
             flags.add("event_stream_invalid")
-        if events and events[-1].get("state_version") != state.get("state_version"):
-            add("events", "state_event_projection_drift", f"latest event state_version {events[-1].get('state_version')} != state {state.get('state_version')}", escalation="state_event_projection_drift")
+        if any(event.get("workflow_id") != state.get("workflow_id") for event in events):
+            add("events", "event_owner_mismatch", "event stream belongs to another workflow", escalation="event_stream_invalid")
+        if any(not isinstance(event.get("state_version"), int) or event["state_version"] > state.get("state_version", 0) for event in events):
+            add("events", "event_future_state", "event stream references an uncommitted state version", escalation="event_stream_invalid")
 
     if todo_snapshot is not None:
         if not isinstance(todo_snapshot, dict) or any(not isinstance(key, str) or not isinstance(value, str) for key, value in todo_snapshot.items()):
@@ -119,7 +122,7 @@ def reconcile(
 
     repair = propagate_invalidation(state, changed, escalation_flags=flags)
     blocking_kinds = {
-        "lock_expired", "background_pending", "workflow.event-schema", "workflow.event-order", "workflow.event-version",
+        "lock_expired", "background_pending", "workflow.event-schema", "workflow.event-order", "workflow.event-version", "event_owner_mismatch", "event_future_state",
         "source_revision_drift", "scope_hash_drift", "plan_hash_drift", "artifact_pointer_unsafe",
     }
     resume_allowed = not issues or (repair["repair_type"] == "local" and not any(item["kind"] in blocking_kinds for item in issues))
@@ -143,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--current-scope-hash")
     parser.add_argument("--current-plan-hash")
     parser.add_argument("--events", type=Path)
+    parser.add_argument("--locks", type=Path)
     parser.add_argument("--todo", type=Path, help="optional live todo node-status mapping")
     parser.add_argument("--event-schema", type=Path, default=DEFAULT_EVENT_SCHEMA)
     parser.add_argument("--now")
@@ -151,6 +155,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         state = load_json(args.state)
         events = load_json_lines(args.events) if args.events else None
+        locks = load_json(args.locks) if args.locks else None
         event_schema = load_json(args.event_schema) if events is not None else None
         todo_snapshot = load_json(args.todo) if args.todo else None
         result = reconcile(
@@ -162,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
             verify_artifacts=not args.skip_artifacts,
             events=events,
             event_schema=event_schema,
+            locks=locks,
             todo_snapshot=todo_snapshot,
             now_value=args.now,
         )

@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://frontier-agent.local/sqw/workflow-event-2.0.schema.json",
-  "title": "SQW Typed Workflow Event 2.0",
+  "$id": "https://frontier-agent.local/sqw/workflow-event-3.0.schema.json",
+  "title": "SQW Operator Audit Event 3.0",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "event_id", "workflow_id", "sequence", "timestamp", "actor", "type", "state_version", "payload"],
   "properties": {
-    "schema_version": {"const": "2.0"},
+    "schema_version": {"const": "3.0"},
     "event_id": {"type": "string", "pattern": "^evt-[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
-    "workflow_id": {"type": "string", "pattern": "^wf-[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
+    "workflow_id": {"type": "string", "pattern": "^sqw-workflow:[0-9a-f]{64}$"},
     "sequence": {"type": "integer", "minimum": 1},
     "timestamp": {"type": "string", "format": "date-time"},
     "actor": {"$ref": "#/$defs/actor"},

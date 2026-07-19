@@ -1,13 +1,33 @@
 {
-  "schema_version": "2.0",
-  "workflow_id": "wf-manifest-refresh",
+  "schema_version": "3.0",
+  "workflow_id": "sqw-workflow:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "bundle_id": "frontier-engineering/6.0.0+5.0.0",
-  "mode": "M2_SPARSE",
+  "mode": "M2",
   "request_mode": "change",
   "policy_bundle_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
   "card_manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
   "status": "active",
   "state_version": 3,
+  "state_hash": "sha256:9566c58e02eed1297112ebea9c3fbd9445f8a201fc361ee362998b79d4ce27b4",
+  "bootstrap": {
+    "operation_id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "entry_completion_id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "initial_root_binding": {"dev": 1, "ino": 2, "uid": 1000, "mode": 493},
+    "established_root_identity": {"dev": 1, "ino": 2, "uid": 1000, "mode": 493}
+  },
+  "scope_binding": {
+    "binding_id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "mode": "M2",
+    "allowed_reads": ["src/**", "tests/**"],
+    "allowed_writes": ["src/manifest/**", "tests/manifest/**"],
+    "effects": ["LOCAL_REVERSIBLE"],
+    "approval_requirements": [],
+    "publication_ceiling": "none"
+  },
+  "source_identity": {
+    "kind": "unversioned",
+    "identity_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+  },
   "source": {
     "repository": ".",
     "base_revision": "explicit-unversioned",
@@ -136,7 +156,14 @@
     {"id": "X-03", "kind": "invariant", "from": "I-01", "to": "N-02"}
   ],
   "frontier": ["N-02"],
-  "locks": [],
+  "active_frontier": {
+    "kind": "card",
+    "decision_id": "sqw.select.test.behavior-cycle",
+    "card_id": "sqw.test.behavior-cycle",
+    "card_path": "references/test/behavior-cycle.md",
+    "card_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+  },
+  "card_completions": [],
   "artifacts": [
     {
       "id": "EV-01",
@@ -165,6 +192,13 @@
     }
   ],
   "recent_failures": [],
-  "events_ref": ".workflow/events.jsonl",
-  "pending_background": []
+  "pending_background": [],
+  "last_transition": {
+    "transition_kind": "bootstrap",
+    "operation_id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "prior_state_version": 0,
+    "prior_state_hash": null,
+    "completion_id": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+    "next_decision_id": "sqw.select.test.behavior-cycle"
+  }
 }
