@@ -201,8 +201,8 @@
         "publication_ceiling": {"type": "string"}
       }
     },
-    "ownerLocator": {
-      "type": ["object", "null"],
+    "durableOwnerLocator": {
+      "type": "object",
       "additionalProperties": false,
       "required": ["schema_version", "workflow_id", "bootstrap_operation_id", "bundle_id", "initial_source_identity_hash", "scope_binding_id", "mode", "initial_root_binding_hash"],
       "properties": {
@@ -215,6 +215,9 @@
         "mode": {"enum": ["M2", "M3"]},
         "initial_root_binding_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
       }
+    },
+    "ownerLocator": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/durableOwnerLocator"}]
     },
     "lease": {
       "type": ["object", "null"],
@@ -233,7 +236,7 @@
       "required": [
         "schema_version", "receipt_kind", "receipt_id", "bundle_id", "skill_id",
         "source_identity", "next_step", "route_context", "completion", "scope_binding",
-        "owner_locator", "current_lease"
+        "owner_locator", "current_lease", "state_version", "state_hash", "source_fresh", "pending_source_transition"
       ],
       "properties": {
         "schema_version": {"const": "sqw-card-receipt/1"},
@@ -247,7 +250,11 @@
         "completion": {"$ref": "#/$defs/completion"},
         "scope_binding": {"$ref": "#/$defs/scopeBinding"},
         "owner_locator": {"$ref": "#/$defs/ownerLocator"},
-        "current_lease": {"$ref": "#/$defs/lease"}
+        "current_lease": {"$ref": "#/$defs/lease"},
+        "state_version": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]},
+        "state_hash": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}]},
+        "source_fresh": {"type": "boolean"},
+        "pending_source_transition": {"type": "null"}
       }
     },
     "routeCommand": {
@@ -286,9 +293,25 @@
         "outcome": {"$ref": "#/$defs/humanOutcome"}
       }
     },
+    "resumeCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_id", "invocation_phase", "previous_receipt", "fields"],
+      "properties": {
+        "contract_id": {"const": "sqw.route.resume/1"},
+        "invocation_phase": {"const": "resume"},
+        "previous_receipt": {"type": "null"},
+        "fields": {
+          "type": "object", "additionalProperties": false,
+          "required": ["owner_locator"],
+          "properties": {"owner_locator": {"$ref": "#/$defs/durableOwnerLocator"}}
+        }
+      }
+    },
     "command": {
       "oneOf": [
         {"$ref": "#/$defs/routeCommand"},
+        {"$ref": "#/$defs/resumeCommand"},
         {"$ref": "#/$defs/entryCommand"},
         {"$ref": "#/$defs/scopeCommand"}
       ]

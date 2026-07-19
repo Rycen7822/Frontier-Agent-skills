@@ -42,10 +42,11 @@
     "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "bootstrap": {
       "type": "object", "additionalProperties": false,
-      "required": ["operation_id", "entry_completion_id", "initial_root_binding", "established_root_identity"],
+      "required": ["operation_id", "entry_completion_id", "initial_source_identity_hash", "initial_root_binding", "established_root_identity"],
       "properties": {
         "operation_id": {"$ref": "#/$defs/hash"},
         "entry_completion_id": {"$ref": "#/$defs/hash"},
+        "initial_source_identity_hash": {"$ref": "#/$defs/hash"},
         "initial_root_binding": {"$ref": "#/$defs/root_binding"},
         "established_root_identity": {"$ref": "#/$defs/root_binding"}
       }
