@@ -45,6 +45,16 @@ def _event(index: int = 0) -> dict:
     return deepcopy(load_json_lines(EVENT_FIXTURE)[index])
 
 
+def _locks(state: dict, leases: list[dict]) -> dict:
+    return {
+        "schema_version": "sqw-locks/1",
+        "workflow_id": state["workflow_id"],
+        "bootstrap_operation_id": state["bootstrap"]["operation_id"],
+        "scope_binding_id": state["scope_binding"]["binding_id"],
+        "leases": leases,
+    }
+
+
 def _bootstrap(root: Path, source: Path) -> tuple[dict, dict, dict]:
     return bootstrap_v3(
         root,
@@ -147,6 +157,8 @@ class WorkflowRuntimeTests(unittest.TestCase):
         relevant = propagate_invalidation(state, {"EV-01"}, changed_fields={"EV-01": {"observation.exit_code"}})
         self.assertTrue({"EV-01", "N-02", "EV-02"}.issubset(relevant["affected"]))
         self.assertIn("N-99", relevant["preserved"])
+        self.assertIn("scope_binding.binding_id", relevant["required_rechecks"])
+        self.assertNotIn("source.scope_hash", relevant["required_rechecks"])
         self.assertEqual("local", relevant["repair_type"])
         global_result = propagate_invalidation(state, {"I-01"})
         self.assertEqual("global_or_parent_replan", global_result["repair_type"])
@@ -154,7 +166,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
 
     def test_reconcile_detects_source_plan_and_artifact_drift(self) -> None:
         state = _base()
-        drift = reconcile(state, current_revision="new-revision", current_scope_hash=state["source"]["scope_hash"], current_plan_hash="sha256:" + "9" * 64, verify_artifacts=False)
+        drift = reconcile(state, current_revision="new-revision", current_scope_binding_id=state["scope_binding"]["binding_id"], current_plan_hash="sha256:" + "9" * 64, verify_artifacts=False)
         self.assertFalse(drift["resume_allowed"])
         self.assertEqual("global_or_parent_replan", drift["repair"]["repair_type"])
         kinds = {item["kind"] for item in drift["issues"]}
@@ -183,15 +195,21 @@ class WorkflowRuntimeTests(unittest.TestCase):
 
     def test_reconcile_blocks_resume_when_a_resource_lease_expired_mid_run(self) -> None:
         state = _base()
-        locks = {"leases": [{
+        locks = _locks(state, [{
             "lease_id": "sha256:" + "8" * 64,
-            "producer_id": "sqw.execute.behavior-cycle",
-            "decision_id": "behavior-cycle",
+            "producer_id": state["active_frontier"]["card_id"],
+            "decision_id": state["active_frontier"]["decision_id"],
             "lease_expires_at": "2026-07-13T11:00:00+08:00",
-        }]}
+        }])
         result = reconcile(state, verify_artifacts=False, locks=locks, now_value=NOW)
         self.assertFalse(result["resume_allowed"])
         self.assertIn("lock_expired", {item["kind"] for item in result["issues"]})
+
+        foreign = deepcopy(locks)
+        foreign["workflow_id"] = "sqw-workflow:" + "b" * 64
+        foreign_result = reconcile(state, verify_artifacts=False, locks=foreign, now_value=NOW)
+        self.assertFalse(foreign_result["resume_allowed"])
+        self.assertIn("locks_owner_invalid", {item["kind"] for item in foreign_result["issues"]})
 
     def test_reconcile_reports_live_todo_drift_without_treating_todo_as_canonical(self) -> None:
         state = _base()

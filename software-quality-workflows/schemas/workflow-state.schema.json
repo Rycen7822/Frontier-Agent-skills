@@ -83,11 +83,50 @@
       }
     },
     "card_completion": {
+      "oneOf": [
+        {"$ref": "#/$defs/inline_card_completion"},
+        {"$ref": "#/$defs/materialized_card_completion"}
+      ]
+    },
+    "inline_card_completion": {
       "type": "object", "additionalProperties": false,
-      "required": ["storage", "operation_id", "completion"],
+      "required": ["storage", "operation_id", "prior_state_version", "prior_state_hash", "completion"],
       "properties": {
         "storage": {"const": "inline"}, "operation_id": {"$ref": "#/$defs/hash"},
+        "prior_state_version": {"type": "integer", "minimum": 0},
+        "prior_state_hash": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/hash"}]},
         "completion": {"type": "object"}
+      }
+    },
+    "materialized_card_completion": {
+      "type": "object", "additionalProperties": false,
+      "required": ["storage", "operation_id", "prior_state_version", "prior_state_hash", "completion_id", "card_id", "artifact_id", "source_hash", "scope_binding_id", "content_locator", "outcome"],
+      "properties": {
+        "storage": {"const": "materialized"}, "operation_id": {"$ref": "#/$defs/hash"},
+        "prior_state_version": {"type": "integer", "minimum": 0},
+        "prior_state_hash": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/hash"}]},
+        "completion_id": {"$ref": "#/$defs/hash"}, "card_id": {"type": "string", "pattern": "^sqw\\."},
+        "artifact_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "source_hash": {"$ref": "#/$defs/hash"}, "scope_binding_id": {"$ref": "#/$defs/hash"},
+        "content_locator": {"$ref": "#/$defs/artifact_content_locator"},
+        "outcome": {"$ref": "#/$defs/completion_outcome"}
+      }
+    },
+    "artifact_content_locator": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "content_kind", "artifact_id", "content_hash", "bytes"],
+      "properties": {
+        "schema_version": {"const": "content-locator/1"}, "content_kind": {"const": "artifact"},
+        "artifact_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "content_hash": {"$ref": "#/$defs/hash"}, "bytes": {"type": "integer", "minimum": 0, "maximum": 2097152}
+      }
+    },
+    "completion_outcome": {
+      "type": "object", "additionalProperties": false,
+      "required": ["blocker", "decision_request"],
+      "properties": {
+        "blocker": {"oneOf": [{"type": "null"}, {"type": "string", "minLength": 1}]},
+        "decision_request": {"oneOf": [{"type": "null"}, {"type": "string", "minLength": 1}]}
       }
     },
     "last_transition": {
@@ -265,18 +304,6 @@
         "from": {"$ref": "#/$defs/ref_id"},
         "to": {"$ref": "#/$defs/ref_id"},
         "sensitivity": {"$ref": "#/$defs/sensitivity"}
-      }
-    },
-    "lock": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "resource", "owner", "acquired_at", "lease_expires_at", "state_version"],
-      "properties": {
-        "id": {"type": "string", "pattern": "^LOCK-"},
-        "resource": {"$ref": "#/$defs/non_empty"},
-        "owner": {"$ref": "#/$defs/non_empty"},
-        "acquired_at": {"type": "string", "format": "date-time"},
-        "lease_expires_at": {"type": "string", "format": "date-time"},
-        "state_version": {"type": "integer", "minimum": 1}
       }
     },
     "producer": {
