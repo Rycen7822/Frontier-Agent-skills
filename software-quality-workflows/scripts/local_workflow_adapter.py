@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
 import os
@@ -159,6 +159,260 @@ def _write_once(directory: Path, name: str, data: bytes) -> None:
     finally:
         os.close(descriptor)
     _sync_directory(directory)
+
+
+def _compact_bytes(value: Any) -> bytes:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _value_hash(value: Any) -> str:
+    return "sha256:" + sha256(_compact_bytes(value)).hexdigest()
+
+
+def _optional_lstat(path: Path) -> os.stat_result | None:
+    try:
+        return path.lstat()
+    except FileNotFoundError:
+        return None
+
+
+def _safe_regular_bytes(path: Path) -> tuple[bytes, os.stat_result]:
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError as exc:
+        raise AdapterConflict("workflow owner contains an unsafe file") from exc
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_uid != os.geteuid() or before.st_nlink not in {1, 2}:
+            raise AdapterConflict("workflow owner contains an unsafe file")
+        payload = bytearray()
+        while len(payload) <= 2 * 1024 * 1024:
+            chunk = os.read(descriptor, min(65_536, 2 * 1024 * 1024 + 1 - len(payload)))
+            if not chunk:
+                break
+            payload.extend(chunk)
+        after = os.fstat(descriptor)
+        stable = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
+        if len(payload) > 2 * 1024 * 1024 or any(getattr(before, key) != getattr(after, key) for key in stable):
+            raise AdapterConflict("workflow owner file is unstable")
+        return bytes(payload), before
+    finally:
+        os.close(descriptor)
+
+
+def _publish_bootstrap_file(root: Path, final_name: str, temp_name: str, payload: bytes) -> None:
+    final = root / final_name
+    temporary = root / temp_name
+    final_info = _optional_lstat(final)
+    temp_info = _optional_lstat(temporary)
+    if final_info is not None:
+        final_bytes, final_stat = _safe_regular_bytes(final)
+        if final_bytes != payload or stat.S_IMODE(final_stat.st_mode) != 0o600:
+            raise AdapterConflict("workflow bootstrap final conflicts")
+        if temp_info is None:
+            return
+        temp_bytes, temp_stat = _safe_regular_bytes(temporary)
+        if temp_bytes != payload or (final_stat.st_dev, final_stat.st_ino) != (temp_stat.st_dev, temp_stat.st_ino):
+            raise AdapterConflict("workflow bootstrap temp conflicts")
+        temporary.unlink()
+        _sync_directory(root)
+        return
+    if temp_info is not None:
+        temp_bytes, temp_stat = _safe_regular_bytes(temporary)
+        if temp_bytes != payload or stat.S_IMODE(temp_stat.st_mode) != 0o600 or temp_stat.st_nlink != 1:
+            raise AdapterConflict("workflow bootstrap temp conflicts")
+    else:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            view = memoryview(payload)
+            while view:
+                written = os.write(descriptor, view)
+                view = view[written:]
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    os.link(temporary, final, follow_symlinks=False)
+    _sync_directory(root)
+    temporary.unlink()
+    _sync_directory(root)
+
+
+def _validate_v3_root(root: Path, source_root: Path) -> tuple[Path, dict[str, int]]:
+    try:
+        info = root.lstat()
+        resolved = root.resolve(strict=True)
+        source = source_root.resolve(strict=True)
+    except OSError as exc:
+        raise AdapterConflict("workflow root is unavailable") from exc
+    if (
+        root.is_symlink()
+        or not stat.S_ISDIR(info.st_mode)
+        or resolved != root.absolute()
+        or info.st_uid != os.geteuid()
+        or stat.S_IMODE(info.st_mode) & 0o022
+        or resolved == source
+        or resolved.is_relative_to(source)
+        or source.is_relative_to(resolved)
+    ):
+        raise AdapterConflict("workflow root is unsafe")
+    return resolved, {"dev": info.st_dev, "ino": info.st_ino, "uid": info.st_uid, "mode": stat.S_IMODE(info.st_mode)}
+
+
+def bootstrap_v3(
+    root: Path,
+    source_root: Path,
+    *,
+    bundle_id: str,
+    mode: str,
+    entry_completion: dict[str, Any],
+    scope_completion: dict[str, Any],
+    scope_binding: dict[str, Any],
+    source_identity: dict[str, Any],
+    next_step: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Create or replay the v3 M2/M3 owner bootstrap without creating the root."""
+    if mode not in {"M2", "M3"}:
+        raise AdapterConflict("durable workflow mode must be M2 or M3")
+    resolved, initial_root_binding = _validate_v3_root(root, source_root)
+    initial_root_binding_hash = _value_hash(initial_root_binding)
+    bootstrap_semantics = {
+        "bundle_id": bundle_id,
+        "mode": mode,
+        "entry_completion_id": entry_completion["content_hash"],
+        "scope_binding_id": scope_binding["binding_id"],
+        "source_identity": source_identity,
+        "initial_root_binding": initial_root_binding,
+    }
+    bootstrap_operation_id = _value_hash(bootstrap_semantics)
+    workflow_id = "sqw-workflow:" + bootstrap_operation_id.removeprefix("sha256:")
+    locator = {
+        "schema_version": "sqw-workflow-owner/1",
+        "workflow_id": workflow_id,
+        "bootstrap_operation_id": bootstrap_operation_id,
+        "bundle_id": bundle_id,
+        "initial_source_identity_hash": source_identity["identity_hash"],
+        "scope_binding_id": scope_binding["binding_id"],
+        "mode": mode,
+        "initial_root_binding_hash": initial_root_binding_hash,
+    }
+    lock_header = {
+        "schema_version": "sqw-lock/1",
+        "workflow_id": workflow_id,
+        "bootstrap_operation_id": bootstrap_operation_id,
+        "initial_root_binding_hash": initial_root_binding_hash,
+        "established_root_identity_hash": initial_root_binding_hash,
+        "scope_binding_id": scope_binding["binding_id"],
+        "mode": mode,
+    }
+    lease = {
+        "lease_id": _value_hash({"workflow_id": workflow_id, "frontier": next_step}),
+        "producer_id": next_step["card_id"],
+        "decision_id": next_step["decision_id"],
+        "lease_expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
+    }
+    locks = {
+        "schema_version": "sqw-locks/1",
+        "workflow_id": workflow_id,
+        "bootstrap_operation_id": bootstrap_operation_id,
+        "scope_binding_id": scope_binding["binding_id"],
+        "leases": [lease],
+    }
+    state_without_hash = {
+        "schema_version": "3.0",
+        "workflow_id": workflow_id,
+        "bundle_id": bundle_id,
+        "mode": mode,
+        "status": "active",
+        "bootstrap": {
+            "operation_id": bootstrap_operation_id,
+            "entry_completion_id": entry_completion["content_hash"],
+            "initial_root_binding": initial_root_binding,
+            "established_root_identity": initial_root_binding,
+        },
+        "scope_binding": scope_binding,
+        "source_identity": source_identity,
+        "active_frontier": next_step,
+        "card_completions": [
+            {"storage": "inline", "operation_id": entry_completion["content_hash"], "completion": entry_completion},
+            {"storage": "inline", "operation_id": scope_completion["content_hash"], "completion": scope_completion},
+        ],
+        "state_version": 1,
+        "last_transition": {
+            "transition_kind": "bootstrap",
+            "operation_id": bootstrap_operation_id,
+            "prior_state_version": 0,
+            "prior_state_hash": None,
+            "completion_id": scope_completion["content_hash"],
+            "next_decision_id": next_step["decision_id"],
+        },
+    }
+    state = {**state_without_hash, "state_hash": _value_hash(state_without_hash)}
+    lock_bytes = _compact_bytes(lock_header) + b"\n"
+    locks_bytes = _compact_bytes(locks) + b"\n"
+    state_bytes = _compact_bytes(state) + b"\n"
+
+    names = {path.name for path in resolved.iterdir()}
+    steady_names = {".adapter.lock", "state.json", "locks.json", "artifacts", "projections"}
+    if names:
+        if names != steady_names:
+            raise AdapterConflict("workflow root contains foreign or interrupted state")
+        observed_lock, _ = _safe_regular_bytes(resolved / ".adapter.lock")
+        observed_state, _ = _safe_regular_bytes(resolved / "state.json")
+        observed_locks_bytes, _ = _safe_regular_bytes(resolved / "locks.json")
+        try:
+            observed_locks = json.loads(observed_locks_bytes)
+        except json.JSONDecodeError as exc:
+            raise AdapterConflict("workflow locks are invalid") from exc
+        expected_lock_fields = {key: value for key, value in locks.items() if key != "leases"}
+        observed_lock_fields = {key: value for key, value in observed_locks.items() if key != "leases"}
+        observed_leases = observed_locks.get("leases")
+        if (
+            (observed_lock, observed_state) != (lock_bytes, state_bytes)
+            or observed_locks_bytes != _compact_bytes(observed_locks) + b"\n"
+            or set(observed_locks) != {"schema_version", "workflow_id", "bootstrap_operation_id", "scope_binding_id", "leases"}
+            or observed_lock_fields != expected_lock_fields
+            or not isinstance(observed_leases, list)
+            or len(observed_leases) != 1
+            or set(observed_leases[0]) != {"lease_id", "producer_id", "decision_id", "lease_expires_at"}
+            or {key: value for key, value in observed_leases[0].items() if key != "lease_expires_at"}
+            != {key: value for key, value in lease.items() if key != "lease_expires_at"}
+            or not isinstance(observed_leases[0].get("lease_expires_at"), str)
+        ):
+            raise AdapterConflict("workflow owner belongs to another bootstrap")
+        for name in ("artifacts", "projections"):
+            child = resolved / name
+            child_info = child.lstat()
+            if (
+                child.is_symlink()
+                or not stat.S_ISDIR(child_info.st_mode)
+                or child_info.st_uid != os.geteuid()
+                or stat.S_IMODE(child_info.st_mode) != 0o700
+                or any(child.iterdir())
+            ):
+                raise AdapterConflict("workflow owner directory is invalid")
+        return state, locator, observed_leases[0]
+
+    _publish_bootstrap_file(resolved, ".adapter.lock", ".adapter.lock.tmp", lock_bytes)
+    lock_descriptor = os.open(resolved / ".adapter.lock", os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        if fcntl is None:
+            raise AdapterConflict("host provides no supported workflow lock")
+        fcntl.flock(lock_descriptor, fcntl.LOCK_EX)
+        _publish_bootstrap_file(resolved, "locks.json", ".locks.json.tmp", locks_bytes)
+        (resolved / "artifacts").mkdir(mode=0o700)
+        _sync_directory(resolved)
+        (resolved / "projections").mkdir(mode=0o700)
+        _sync_directory(resolved)
+        _publish_bootstrap_file(resolved, "state.json", ".state.json.tmp", state_bytes)
+    finally:
+        if fcntl is not None:
+            fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
+        os.close(lock_descriptor)
+    return state, locator, lease
 
 
 class LocalWorkflowAdapter:

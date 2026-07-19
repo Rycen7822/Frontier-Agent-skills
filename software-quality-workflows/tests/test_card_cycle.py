@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 import os
 from pathlib import Path
 import subprocess
@@ -133,13 +134,13 @@ class CardCycleM0Tests(unittest.TestCase):
             "outcome": {"blocker": None},
         }
 
-    def _scope_command(self, receipt: dict[str, object]) -> dict[str, object]:
+    def _scope_command(self, receipt: dict[str, object], *, mode: str = "M0") -> dict[str, object]:
         return {
             "contract_id": "sqw.complete.scope/1",
             "invocation_phase": "initial",
             "previous_receipt": receipt,
             "fields": {
-                "mode": "M0",
+                "mode": mode,
                 "allowed_reads": ["input.txt"],
                 "allowed_writes": ["target.txt"],
                 "effects": ["LOCAL_REVERSIBLE"],
@@ -234,6 +235,57 @@ class CardCycleM0Tests(unittest.TestCase):
                 self.assertEqual("sqw.control.scope-authority-and-effects", entry["next_step"]["card_id"])
                 scope = self._success_receipt(self._run("complete", self._scope_command(entry), source))
                 self.assertEqual(work_card, scope["next_step"]["card_id"])
+
+    def test_m2_scope_bootstrap_is_exact_replayable_and_has_one_owner_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            work = root / "work"
+            source.mkdir()
+            work.mkdir()
+            (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+            route = self._success_receipt(self._run("route", self._initial_command(), source))
+            entry = self._success_receipt(self._run("complete", self._entry_command(route), source))
+            command = self._scope_command(entry, mode="M2")
+            first = self._success_receipt(
+                self._run("complete", command, source, "--work-root", str(work))
+            )
+            self.assertEqual("sqw-workflow-owner/1", first["owner_locator"]["schema_version"])
+            self.assertEqual(
+                [".adapter.lock", "artifacts", "locks.json", "projections", "state.json"],
+                sorted(path.name for path in work.iterdir()),
+            )
+            state_path = work / "state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(("3.0", "M2", 1), (state["schema_version"], state["mode"], state["state_version"]))
+            declared_hash = state.pop("state_hash")
+            canonical = json.dumps(state, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            self.assertEqual("sha256:" + sha256(canonical).hexdigest(), declared_hash)
+            state["state_hash"] = declared_hash
+            for filename in (".adapter.lock", "state.json", "locks.json"):
+                self.assertEqual(0o600, (work / filename).stat().st_mode & 0o777)
+            for dirname in ("artifacts", "projections"):
+                self.assertEqual(0o700, (work / dirname).stat().st_mode & 0o777)
+            identity = (state_path.stat().st_ino, state_path.stat().st_mtime_ns, state_path.read_bytes())
+            replay = self._success_receipt(
+                self._run("complete", command, source, "--work-root", str(work))
+            )
+            self.assertEqual(first, replay)
+            self.assertEqual(identity, (state_path.stat().st_ino, state_path.stat().st_mtime_ns, state_path.read_bytes()))
+            self.assertFalse((work / "events.jsonl").exists())
+            self.assertFalse(any(path.name.endswith(".tmp") for path in work.iterdir()))
+
+            foreign = root / "foreign"
+            foreign.mkdir()
+            sentinel = foreign / "sentinel.txt"
+            sentinel.write_text("owned elsewhere\n", encoding="utf-8")
+            before = (sentinel.read_bytes(), sentinel.stat().st_mtime_ns)
+            rejected = self._run("complete", command, source, "--work-root", str(foreign))
+            self.assertEqual(5, rejected.returncode)
+            self.assertEqual("", rejected.stdout)
+            self.assertEqual("E_ORPHAN_CONFLICT", json.loads(rejected.stderr)["code"])
+            self.assertEqual(before, (sentinel.read_bytes(), sentinel.stat().st_mtime_ns))
+            self.assertEqual(["sentinel.txt"], [path.name for path in foreign.iterdir()])
 
     def test_registry_covers_every_artifact_with_one_fixed_family_class(self) -> None:
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
