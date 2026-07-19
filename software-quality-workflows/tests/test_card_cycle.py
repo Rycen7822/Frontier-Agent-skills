@@ -17,6 +17,7 @@ CLI = ROOT / "scripts" / "card_cycle.py"
 SCHEMA = ROOT / "schemas" / "card-protocol.schema.json"
 REGISTRY = ROOT / "registries" / "artifact-family-contracts.json"
 MANIFEST = ROOT / "registries" / "reference-cards.manifest.json"
+STATE_SCHEMA = ROOT / "schemas" / "workflow-state.schema.json"
 
 
 class CardCycleM0Tests(unittest.TestCase):
@@ -257,6 +258,8 @@ class CardCycleM0Tests(unittest.TestCase):
             )
             state_path = work / "state.json"
             state = json.loads(state_path.read_text(encoding="utf-8"))
+            state_schema = json.loads(STATE_SCHEMA.read_text(encoding="utf-8"))
+            self.assertEqual([], list(Draft202012Validator(state_schema).iter_errors(state)))
             self.assertEqual(("3.0", "M2", 1), (state["schema_version"], state["mode"], state["state_version"]))
             declared_hash = state.pop("state_hash")
             canonical = json.dumps(state, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -17,7 +17,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from _workflow_state import load_json, load_json_lines  # noqa: E402
-from local_workflow_adapter import AdapterConflict, LocalWorkflowAdapter, append_trace  # noqa: E402
+from local_workflow_adapter import AdapterConflict, LocalWorkflowAdapter, bootstrap_v3  # noqa: E402
 from project_context import project_context  # noqa: E402
 from propagate_invalidation import propagate_invalidation  # noqa: E402
 from reconcile_workflow import reconcile  # noqa: E402
@@ -40,6 +40,42 @@ def _node(state: dict, node_id: str) -> dict:
 
 def _event(index: int = 0) -> dict:
     return deepcopy(load_json_lines(EVENT_FIXTURE)[index])
+
+
+def _owner(parent: Path) -> tuple[Path, dict]:
+    source = parent / "source"
+    root = parent / "workflow"
+    source.mkdir(mode=0o700)
+    root.mkdir(mode=0o700)
+    state, _, _ = bootstrap_v3(
+        root,
+        source,
+        bundle_id="frontier-engineering/6.0.0+5.0.0",
+        policy_bundle_hash="sha256:" + "2" * 64,
+        card_manifest_hash="sha256:" + "3" * 64,
+        mode="M2",
+        request_mode="change",
+        entry_completion={"content_hash": "sha256:" + "4" * 64},
+        scope_completion={"content_hash": "sha256:" + "5" * 64},
+        scope_binding={
+            "binding_id": "sha256:" + "6" * 64,
+            "mode": "M2",
+            "allowed_reads": ["src/**"],
+            "allowed_writes": ["src/**"],
+            "effects": ["LOCAL_REVERSIBLE"],
+            "approval_requirements": [],
+            "publication_ceiling": "none",
+        },
+        source_identity={"kind": "unversioned", "identity_hash": "sha256:" + "7" * 64},
+        next_step={
+            "kind": "card",
+            "decision_id": "sqw.select.behavior-cycle",
+            "card_id": "sqw.execute.behavior-cycle",
+            "card_path": "references/execution/behavior-cycle.md",
+            "card_hash": "sha256:" + "8" * 64,
+        },
+    )
+    return root, state
 
 
 class WorkflowRuntimeTests(unittest.TestCase):
@@ -116,22 +152,24 @@ class WorkflowRuntimeTests(unittest.TestCase):
             self.assertIn("artifact_content_changed", {item["kind"] for item in changed["issues"]})
             self.assertIn("N-02", changed["repair"]["affected"])
 
-    def test_reconcile_detects_event_state_projection_drift(self) -> None:
+    def test_reconcile_accepts_event_lag_and_rejects_future_state(self) -> None:
         state = _base()
         events = load_json_lines(EVENT_FIXTURE)
         self.assertEqual("fresh", reconcile(state, verify_artifacts=False, events=events, event_schema=EVENT_SCHEMA)["status"])
         events[-1]["state_version"] = 4
         result = reconcile(state, verify_artifacts=False, events=events, event_schema=EVENT_SCHEMA)
         self.assertFalse(result["resume_allowed"])
-        self.assertIn("state_event_projection_drift", {item["kind"] for item in result["issues"]})
+        self.assertIn("event_future_state", {item["kind"] for item in result["issues"]})
 
     def test_reconcile_blocks_resume_when_a_resource_lease_expired_mid_run(self) -> None:
         state = _base()
-        state["locks"] = [{
-            "id": "LOCK-01", "resource": "working-tree", "owner": "session-a",
-            "acquired_at": "2026-07-13T10:00:00+08:00", "lease_expires_at": "2026-07-13T11:00:00+08:00", "state_version": 3
-        }]
-        result = reconcile(state, verify_artifacts=False, now_value=NOW)
+        locks = {"leases": [{
+            "lease_id": "sha256:" + "8" * 64,
+            "producer_id": "sqw.execute.behavior-cycle",
+            "decision_id": "behavior-cycle",
+            "lease_expires_at": "2026-07-13T11:00:00+08:00",
+        }]}
+        result = reconcile(state, verify_artifacts=False, locks=locks, now_value=NOW)
         self.assertFalse(result["resume_allowed"])
         self.assertIn("lock_expired", {item["kind"] for item in result["issues"]})
 
@@ -143,143 +181,81 @@ class WorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual("local", result["repair"]["repair_type"])
         self.assertIn("N-01", result["repair"]["affected"])
 
-    def test_adapter_atomic_commit_crash_and_compare_and_swap(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            adapter = LocalWorkflowAdapter(Path(directory) / ".workflow", STATE_SCHEMA, EVENT_SCHEMA)
-            adapter.initialize(_base())
-            orphan = adapter.store_artifact(b"artifact-before-state-commit\n", sensitive=False)
-            proposed = _base()
-            proposed["state_version"] = 4
-            proposed["frontier"] = []
-            _node(proposed, "N-02")["status"] = "running"
-            with self.assertRaises(RuntimeError):
-                adapter.commit_state(proposed, expected_state_version=3, failpoint="after_fsync")
-            self.assertEqual(3, adapter.load_state()["state_version"])
-            self.assertIn(orphan["artifact_ref"], adapter.orphan_artifacts())
-            adapter.commit_state(proposed, expected_state_version=3)
-            self.assertEqual(4, adapter.load_state()["state_version"])
-            with self.assertRaises(AdapterConflict):
-                adapter.commit_state(proposed, expected_state_version=3)
+    def test_adapter_exposes_only_operator_event_append(self) -> None:
+        removed = {"initialize", "commit_state", "acquire_lock", "release_lock", "store_artifact", "orphan_artifacts", "resume"}
+        self.assertTrue(all(not hasattr(LocalWorkflowAdapter, name) for name in removed))
+        result = subprocess.run(
+            [sys.executable, "-B", str(SCRIPTS / "local_workflow_adapter.py"), "/tmp/non-owner", "init"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn("invalid choice", result.stderr)
 
-    def test_adapter_events_locks_artifacts_and_orphan_recovery(self) -> None:
+    def test_bootstrap_keeps_operator_event_stream_absent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            adapter = LocalWorkflowAdapter(Path(directory) / ".workflow", STATE_SCHEMA, EVENT_SCHEMA)
-            adapter.initialize(_base())
-            adapter.append_event(_event(0), expected_last_sequence=0)
-            adapter.append_event(_event(1), expected_last_sequence=1)
-            with self.assertRaises(AdapterConflict):
-                adapter.append_event(_event(2), expected_last_sequence=1)
-            lease = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-            adapter.acquire_lock("working-tree", "session-a", lease_expires_at=lease, expected_state_version=3)
-            effective = adapter.load_effective_state()
-            self.assertEqual("session-a", effective["locks"][0]["owner"])
-            self.assertEqual("working-tree", effective["locks"][0]["resource"])
-            with self.assertRaises(AdapterConflict):
-                adapter.acquire_lock("working-tree", "session-b", lease_expires_at=lease, expected_state_version=3)
-            adapter.release_lock("working-tree", "session-a")
-            with self.assertRaises(ValueError):
-                adapter.store_artifact(b"password=RAW_SECRET_1234567890", sensitive=False)
-            with self.assertRaises(ValueError):
-                adapter.store_artifact(b"private customer record\n", sensitive=True)
-            stored = adapter.store_artifact(b"bounded evidence\n", sensitive=False)
-            self.assertTrue((adapter.root / stored["artifact_ref"]).is_file())
-            self.assertIn(stored["artifact_ref"], adapter.orphan_artifacts())
+            root, _ = _owner(Path(directory))
+            self.assertEqual({".adapter.lock", "artifacts", "locks.json", "projections", "state.json"}, {path.name for path in root.iterdir()})
 
-    def test_adapter_refuses_to_claim_a_nonempty_unmanaged_root(self) -> None:
+    def test_operator_event_first_followup_and_exact_replay(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / ".workflow"
-            root.mkdir()
-            user_file = root / "user-owned.txt"
-            user_file.write_text("preserve me\n", encoding="utf-8")
+            root, state = _owner(Path(directory))
             adapter = LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA)
-            with self.assertRaises(AdapterConflict):
-                adapter.initialize(_base())
-            self.assertEqual("preserve me\n", user_file.read_text(encoding="utf-8"))
-
-    def test_adapter_recovers_interrupted_initialization_before_state_commit(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            adapter = LocalWorkflowAdapter(Path(directory) / ".workflow", STATE_SCHEMA, EVENT_SCHEMA)
-            with self.assertRaises(RuntimeError):
-                adapter.initialize(_base(), failpoint="before_state")
-            self.assertFalse(adapter.state_path.exists())
-            self.assertTrue((adapter.root / ".initializing.json").exists())
-            adapter.initialize(_base())
-            self.assertEqual(3, adapter.load_state()["state_version"])
-            self.assertFalse((adapter.root / ".initializing.json").exists())
-
-    def test_adapter_resume_revalidates_complete_local_projection(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            adapter = LocalWorkflowAdapter(Path(directory) / ".workflow", STATE_SCHEMA, EVENT_SCHEMA)
-            payload = b"focused expected-red evidence\n"
-            digest = sha256(payload).hexdigest()
-            state = _base()
-            state["artifacts"][0]["artifact_ref"] = f".workflow/artifacts/sha256-{digest}.bin"
-            state["artifacts"][0]["content_hash"] = f"sha256:{digest}"
-            adapter.initialize(state)
-            stored = adapter.store_artifact(payload, sensitive=False)
-            self.assertEqual(f"artifacts/sha256-{digest}.bin", stored["artifact_ref"])
-            for index, event in enumerate(load_json_lines(EVENT_FIXTURE)):
-                adapter.append_event(event, expected_last_sequence=index)
-            result = adapter.resume(
-                current_revision="explicit-unversioned",
-                current_scope_hash=state["source"]["scope_hash"],
-                current_plan_hash=state["plan_ref"]["content_hash"],
-                now_value=NOW,
-            )
-            self.assertEqual("fresh", result["status"])
-            self.assertTrue(result["resume_allowed"])
-
-    def test_m1_trace_append_creates_no_durable_state(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            trace_path = Path(directory) / "trace" / "events.jsonl"
             event = _event(0)
-            event["type"] = "route_selected"
-            append_trace(trace_path, event, EVENT_SCHEMA, expected_last_sequence=0)
-            self.assertEqual([event], load_json_lines(trace_path))
-            self.assertFalse((trace_path.parent / "state.json").exists())
-            self.assertFalse((trace_path.parent / "locks.json").exists())
+            event["workflow_id"] = state["workflow_id"]
+            state_before = (root / "state.json").read_bytes(), (root / "state.json").stat().st_mtime_ns
+            locks_before = (root / "locks.json").read_bytes(), (root / "locks.json").stat().st_mtime_ns
+            self.assertFalse(adapter.append_event(event, expected_last_sequence=0))
+            first_stat = (root / "events.jsonl").stat()
+            os.link(root / "events.jsonl", root / ".events.jsonl.tmp")
+            self.assertTrue(adapter.append_event(event, expected_last_sequence=0))
+            self.assertFalse((root / ".events.jsonl.tmp").exists())
+            self.assertEqual(first_stat.st_ino, (root / "events.jsonl").stat().st_ino)
+            self.assertEqual(first_stat.st_mtime_ns, (root / "events.jsonl").stat().st_mtime_ns)
+            followup = _event(1)
+            followup["workflow_id"] = state["workflow_id"]
+            followup["state_version"] = state["state_version"]
+            self.assertFalse(adapter.append_event(followup, expected_last_sequence=1))
+            self.assertEqual([event, followup], load_json_lines(root / "events.jsonl"))
+            self.assertFalse((root / ".events.jsonl.tmp").exists())
+            self.assertEqual(state_before, ((root / "state.json").read_bytes(), (root / "state.json").stat().st_mtime_ns))
+            self.assertEqual(locks_before, ((root / "locks.json").read_bytes(), (root / "locks.json").stat().st_mtime_ns))
 
-    def test_m1_trace_cli_uses_explicit_task_owned_path_without_durable_state(self) -> None:
+    def test_operator_event_recovers_matching_fixed_first_write_temp(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            task_root = Path(directory) / "task"
-            task_root.mkdir()
-            event_path = task_root / "event.json"
+            root, state = _owner(Path(directory))
             event = _event(0)
-            event["type"] = "route_selected"
-            event_path.write_text(json.dumps(event), encoding="utf-8")
-            command = [
-                sys.executable,
-                "-B",
-                str(SCRIPTS / "local_workflow_adapter.py"),
-                str(task_root),
-                "append-trace",
-                str(event_path),
-                "--trace-path",
-                "trace/events.jsonl",
-                "--expected-sequence",
-                "0",
-            ]
-            result = subprocess.run(command, capture_output=True, text=True, check=False)
-            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-            payload = json.loads(result.stdout)
-            trace_path = task_root / "trace" / "events.jsonl"
-            self.assertEqual("trace/events.jsonl", payload["trace_path"])
-            self.assertEqual([event], load_json_lines(trace_path))
-            self.assertFalse((task_root / ".workflow").exists())
-            self.assertFalse((task_root / "state.json").exists())
-            self.assertFalse((task_root / "locks.json").exists())
+            event["workflow_id"] = state["workflow_id"]
+            (root / ".events.jsonl.tmp").write_bytes((json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode())
+            os.chmod(root / ".events.jsonl.tmp", 0o600)
+            self.assertFalse(LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).append_event(event, expected_last_sequence=0))
+            self.assertEqual([event], load_json_lines(root / "events.jsonl"))
+            self.assertFalse((root / ".events.jsonl.tmp").exists())
 
-            stale = subprocess.run(command, capture_output=True, text=True, check=False)
-            self.assertEqual(1, stale.returncode)
-            self.assertIn("stale trace sequence", stale.stdout)
-            self.assertEqual([event], load_json_lines(trace_path))
+    def test_operator_event_rejects_future_owner_and_fork_without_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root, state = _owner(Path(directory))
+            adapter = LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA)
+            future = _event(0)
+            future["workflow_id"] = state["workflow_id"]
+            future["state_version"] = state["state_version"] + 1
+            with self.assertRaisesRegex(AdapterConflict, "current workflow owner"):
+                adapter.append_event(future, expected_last_sequence=0)
+            wrong_owner = _event(0)
+            with self.assertRaisesRegex(AdapterConflict, "current workflow owner"):
+                adapter.append_event(wrong_owner, expected_last_sequence=0)
+            self.assertFalse((root / "events.jsonl").exists())
+            self.assertFalse((root / ".events.jsonl.tmp").exists())
 
-            escaped_command = list(command)
-            escaped_command[escaped_command.index("trace/events.jsonl")] = "../outside.jsonl"
-            escaped = subprocess.run(escaped_command, capture_output=True, text=True, check=False)
-            self.assertEqual(1, escaped.returncode)
-            self.assertIn("inside the explicit task root", escaped.stdout)
-            self.assertFalse((Path(directory) / "outside.jsonl").exists())
+            event = _event(0)
+            event["workflow_id"] = state["workflow_id"]
+            adapter.append_event(event, expected_last_sequence=0)
+            fork = deepcopy(event)
+            fork["event_id"] = "evt-fork"
+            with self.assertRaisesRegex(AdapterConflict, "stale event sequence"):
+                adapter.append_event(fork, expected_last_sequence=0)
+            self.assertEqual([event], load_json_lines(root / "events.jsonl"))
 
     def test_plugin_adapter_is_documented_as_gated_fallback_only(self) -> None:
         local = (ROOT / "adapters" / "local-filesystem.md").read_text(encoding="utf-8")

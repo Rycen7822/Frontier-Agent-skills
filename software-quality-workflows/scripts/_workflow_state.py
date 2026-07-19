@@ -136,7 +136,6 @@ def pointer(parts: Iterable[str | int]) -> str:
 def canonical_hash(state: dict[str, Any]) -> str:
     clean = dict(state)
     clean.pop("state_hash", None)
-    clean.pop("context_trace_ref", None)
     _check_bounds(clean)
     payload = json.dumps(clean, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return "sha256:" + sha256(payload).hexdigest()

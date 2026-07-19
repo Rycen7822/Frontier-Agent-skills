@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "schemas" / "card-protocol.schema.json"
 REGISTRY_PATH = ROOT / "registries" / "artifact-family-contracts.json"
 MANIFEST_PATH = ROOT / "registries" / "reference-cards.manifest.json"
+POLICY_PATH = ROOT / "registries" / "policy-owners.json"
 COMMAND_MAX_BYTES = 65_536
 RECEIPT_MAX_BYTES = 12_288
 SOURCE_FILE_MAX_BYTES = 8 * 1024 * 1024
@@ -466,7 +467,10 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                         Path(args.work_root),
                         Path(args.source_root),
                         bundle_id=manifest["bundle_id"],
+                        policy_bundle_hash=_hash(load_json(POLICY_PATH)),
+                        card_manifest_hash=_hash(manifest),
                         mode=command["fields"]["mode"],
+                        request_mode=previous["route_context"]["request_mode"],
                         entry_completion=previous["completion"],
                         scope_completion=receipt["completion"],
                         scope_binding=receipt["scope_binding"],

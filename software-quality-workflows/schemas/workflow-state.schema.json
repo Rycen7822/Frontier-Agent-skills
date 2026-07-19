@@ -1,21 +1,24 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://frontier-agent.local/sqw/workflow-state-2.0.schema.json",
-  "title": "SQW Workflow State 2.0",
+  "$id": "https://frontier-agent.local/sqw/workflow-state-3.0.schema.json",
+  "title": "SQW Workflow State 3.0",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "workflow_id", "bundle_id", "policy_bundle_hash", "card_manifest_hash", "mode", "request_mode", "status", "state_version", "source", "authority", "scope", "global_invariants", "active_owners", "nodes", "verifiers", "edges", "frontier", "locks", "artifacts", "recent_failures", "events_ref", "pending_background"],
+  "required": ["schema_version", "workflow_id", "bundle_id", "policy_bundle_hash", "card_manifest_hash", "mode", "request_mode", "status", "state_version", "state_hash", "bootstrap", "scope_binding", "source_identity", "source", "authority", "scope", "global_invariants", "active_owners", "nodes", "verifiers", "edges", "frontier", "active_frontier", "card_completions", "artifacts", "recent_failures", "pending_background", "last_transition"],
   "properties": {
-    "schema_version": {"const": "2.0"},
-    "workflow_id": {"type": "string", "pattern": "^wf-[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
+    "schema_version": {"const": "3.0"},
+    "workflow_id": {"type": "string", "pattern": "^sqw-workflow:[0-9a-f]{64}$"},
     "bundle_id": {"const": "frontier-engineering/6.0.0+5.0.0"},
-    "mode": {"enum": ["M1_TRACE", "M2_SPARSE", "M3_FULL"]},
+    "mode": {"enum": ["M2", "M3"]},
     "request_mode": {"enum": ["report", "review", "diagnose", "change", "recovery"]},
     "policy_bundle_hash": {"$ref": "#/$defs/hash"},
     "card_manifest_hash": {"$ref": "#/$defs/hash"},
     "status": {"enum": ["open", "active", "blocked", "completed", "aborted"]},
     "state_version": {"type": "integer", "minimum": 1},
     "state_hash": {"$ref": "#/$defs/hash"},
+    "bootstrap": {"$ref": "#/$defs/bootstrap"},
+    "scope_binding": {"$ref": "#/$defs/scope_binding"},
+    "source_identity": {"$ref": "#/$defs/source_identity"},
     "source": {"$ref": "#/$defs/source"},
     "authority": {"$ref": "#/$defs/authority"},
     "scope": {"$ref": "#/$defs/scope"},
@@ -27,15 +30,77 @@
     "verifiers": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/verifier"}},
     "edges": {"type": "array", "maxItems": 2000, "items": {"$ref": "#/$defs/edge"}},
     "frontier": {"$ref": "#/$defs/id_array"},
-    "locks": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/lock"}},
+    "active_frontier": {"$ref": "#/$defs/card_frontier"},
+    "card_completions": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/card_completion"}},
     "artifacts": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/artifact"}},
     "recent_failures": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/failure"}},
-    "events_ref": {"type": "string", "minLength": 1, "maxLength": 1024},
-    "pending_background": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"type": "string", "pattern": "^RUN-"}}
+    "pending_background": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"type": "string", "pattern": "^RUN-"}},
+    "last_transition": {"$ref": "#/$defs/last_transition"}
   },
   "$defs": {
     "non_empty": {"type": "string", "minLength": 1, "maxLength": 4096},
     "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "bootstrap": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operation_id", "entry_completion_id", "initial_root_binding", "established_root_identity"],
+      "properties": {
+        "operation_id": {"$ref": "#/$defs/hash"},
+        "entry_completion_id": {"$ref": "#/$defs/hash"},
+        "initial_root_binding": {"$ref": "#/$defs/root_binding"},
+        "established_root_identity": {"$ref": "#/$defs/root_binding"}
+      }
+    },
+    "root_binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["dev", "ino", "uid", "mode"],
+      "properties": {
+        "dev": {"type": "integer", "minimum": 0}, "ino": {"type": "integer", "minimum": 1},
+        "uid": {"type": "integer", "minimum": 0}, "mode": {"type": "integer", "minimum": 0, "maximum": 511}
+      }
+    },
+    "scope_binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["binding_id", "mode", "allowed_reads", "allowed_writes", "effects", "approval_requirements", "publication_ceiling"],
+      "properties": {
+        "binding_id": {"$ref": "#/$defs/hash"}, "mode": {"enum": ["M2", "M3"]},
+        "allowed_reads": {"$ref": "#/$defs/string_array"}, "allowed_writes": {"$ref": "#/$defs/string_array"},
+        "effects": {"$ref": "#/$defs/string_array"}, "approval_requirements": {"$ref": "#/$defs/string_array"},
+        "publication_ceiling": {"enum": ["none", "local-artifact", "publication-authorized"]}
+      }
+    },
+    "source_identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "identity_hash"],
+      "properties": {"kind": {"enum": ["repository", "unversioned"]}, "identity_hash": {"$ref": "#/$defs/hash"}}
+    },
+    "card_frontier": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "decision_id", "card_id", "card_path", "card_hash"],
+      "properties": {
+        "kind": {"const": "card"}, "decision_id": {"type": "string", "pattern": "^sqw\\.select\\."},
+        "card_id": {"type": "string", "pattern": "^sqw\\."}, "card_path": {"type": "string", "pattern": "^references/"},
+        "card_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "card_completion": {
+      "type": "object", "additionalProperties": false,
+      "required": ["storage", "operation_id", "completion"],
+      "properties": {
+        "storage": {"const": "inline"}, "operation_id": {"$ref": "#/$defs/hash"},
+        "completion": {"type": "object"}
+      }
+    },
+    "last_transition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["transition_kind", "operation_id", "prior_state_version", "prior_state_hash", "completion_id", "next_decision_id"],
+      "properties": {
+        "transition_kind": {"enum": ["bootstrap", "card"]}, "operation_id": {"$ref": "#/$defs/hash"},
+        "prior_state_version": {"type": "integer", "minimum": 0},
+        "prior_state_hash": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/hash"}]},
+        "completion_id": {"$ref": "#/$defs/hash"},
+        "next_decision_id": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^sqw\\.select\\."}]}
+      }
+    },
     "local_id": {"type": "string", "pattern": "^(N|EV|VER|I|AP|LOCK|X|ERR|RUN)-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
     "external_ref": {"type": "string", "pattern": "^(plan|workflow|review|longdoc):[A-Za-z0-9._-]+#[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
     "ref_id": {"oneOf": [{"$ref": "#/$defs/local_id"}, {"$ref": "#/$defs/external_ref"}]},
