@@ -201,12 +201,39 @@
         "publication_ceiling": {"type": "string"}
       }
     },
+    "ownerLocator": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["schema_version", "workflow_id", "bootstrap_operation_id", "bundle_id", "initial_source_identity_hash", "scope_binding_id", "mode", "initial_root_binding_hash"],
+      "properties": {
+        "schema_version": {"const": "sqw-workflow-owner/1"},
+        "workflow_id": {"type": "string", "pattern": "^sqw-workflow:[0-9a-f]{64}$"},
+        "bootstrap_operation_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "bundle_id": {"type": "string", "minLength": 1},
+        "initial_source_identity_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "scope_binding_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "mode": {"enum": ["M2", "M3"]},
+        "initial_root_binding_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "lease": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["lease_id", "producer_id", "decision_id", "lease_expires_at"],
+      "properties": {
+        "lease_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "producer_id": {"type": "string", "pattern": "^sqw\\."},
+        "decision_id": {"type": "string", "pattern": "^sqw\\.select\\."},
+        "lease_expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
     "receipt": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "schema_version", "receipt_kind", "receipt_id", "bundle_id", "skill_id",
-        "source_identity", "next_step", "route_context", "completion", "scope_binding"
+        "source_identity", "next_step", "route_context", "completion", "scope_binding",
+        "owner_locator", "current_lease"
       ],
       "properties": {
         "schema_version": {"const": "sqw-card-receipt/1"},
@@ -218,7 +245,9 @@
         "next_step": {"$ref": "#/$defs/nextCard"},
         "route_context": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/routeFields"}]},
         "completion": {"$ref": "#/$defs/completion"},
-        "scope_binding": {"$ref": "#/$defs/scopeBinding"}
+        "scope_binding": {"$ref": "#/$defs/scopeBinding"},
+        "owner_locator": {"$ref": "#/$defs/ownerLocator"},
+        "current_lease": {"$ref": "#/$defs/lease"}
       }
     },
     "routeCommand": {

@@ -15,6 +15,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from _workflow_reference_cards import load_json, strict_json_bytes
+from local_workflow_adapter import AdapterConflict, bootstrap_v3
 from route_workflow import assess, validate_route_result
 
 
@@ -300,6 +301,8 @@ def _base_receipt(manifest: dict[str, Any], source_identity: dict[str, str], nex
         "route_context": None,
         "completion": None,
         "scope_binding": None,
+        "owner_locator": None,
+        "current_lease": None,
     }
 
 
@@ -441,8 +444,11 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
     expected_subcommand = "route" if command["contract_id"] == "sqw.route.initial/1" else "complete"
     if args.subcommand != expected_subcommand:
         raise CycleError("E_COMMAND_SCHEMA", "subcommand does not match contract")
-    if args.work_root is not None:
-        raise CycleError("E_ROOT_ROLE", "this M0 command does not accept a work root")
+    durable_scope = command["contract_id"] == "sqw.complete.scope/1" and command["fields"]["mode"] in {"M2", "M3"}
+    if durable_scope and args.work_root is None:
+        raise CycleError("E_ROOT_ROLE", "durable scope completion requires a work root")
+    if not durable_scope and args.work_root is not None:
+        raise CycleError("E_ROOT_ROLE", "this command does not accept a work root")
     source_identity = _capture_source(Path(args.source_root))
     if command["contract_id"] == "sqw.route.initial/1":
         receipt = _route_initial(command, manifest, source_identity)
@@ -453,9 +459,25 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
         if command["contract_id"] == "sqw.complete.entry/1":
             receipt = _complete_entry(command, manifest, registry, previous, source_identity)
         elif command["contract_id"] == "sqw.complete.scope/1":
-            if command["fields"]["mode"] != "M0":
-                raise CycleError("E_UNSUPPORTED_VARIANT", "durable modes are not active in this slice", exit_code=4)
             receipt = _complete_scope(command, manifest, registry, previous, source_identity)
+            if durable_scope:
+                try:
+                    _, locator, lease = bootstrap_v3(
+                        Path(args.work_root),
+                        Path(args.source_root),
+                        bundle_id=manifest["bundle_id"],
+                        mode=command["fields"]["mode"],
+                        entry_completion=previous["completion"],
+                        scope_completion=receipt["completion"],
+                        scope_binding=receipt["scope_binding"],
+                        source_identity=source_identity,
+                        next_step=receipt["next_step"],
+                    )
+                except AdapterConflict as exc:
+                    raise CycleError("E_ORPHAN_CONFLICT", str(exc), exit_code=5) from exc
+                receipt["owner_locator"] = locator
+                receipt["current_lease"] = lease
+                receipt["receipt_id"] = _receipt_id(receipt)
         else:
             raise CycleError("E_UNSUPPORTED_VARIANT", "command contract is not active", exit_code=4)
     receipt_validator = {
