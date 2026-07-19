@@ -1,6 +1,14 @@
 # Release Notes
 
-## Bundle 2.0.0 candidate
+## Bundle 2.0.1 implicit-local activation
+
+Bundle 2.0.1 changes the canonical pair's Codex invocation policy from explicit-only shadow operation to `implicit_local_pilot`. Both `agents/openai.yaml` files set `allow_implicit_invocation: true`; `bundle-manifest.json` sets `implicit_routing_default: true`; remote writes remain false.
+
+Activation is no longer overloaded as a release signal. Staging and release package evidence both report `activation_ceiling: implicit_local_pilot`. Only `output_class: release` with matching external `release-evidence/2.0` can satisfy the release gate. Scored L2 evidence, a clean signed source revision, an activation decision, publication, deployment, credentials, and remote writes remain independent prerequisites.
+
+The atomic install and rollback unit remains the exact `writing-plans` 5.0.0 plus `software-quality-workflows` 6.0.0 pair. The bundle and plugin patch version is 2.0.1; skill instruction versions do not change because their workflow contracts and schemas are unchanged.
+
+## Historical bundle 2.0.0 candidate
 
 This candidate atomically pairs `writing-plans` 5.0.0 with `software-quality-workflows` 6.0.0 as `frontier-engineering/6.0.0+5.0.0`. The generated bundle binds both complete skill roots, policy registries, reference-card manifests, and exact cross-skill contracts at schema epoch 2.
 
@@ -14,7 +22,7 @@ The checked-in activation level remains `shadow`. Implicit routing and remote wr
 
 - Plugin folder and manifest name: `frontier-engineering-plugin`
 - Plugin display name: `Frontier Engineering`
-- Plugin version: `2.0.0`
+- Plugin version: `2.0.1`
 - Bundle archive root: `frontier-engineering-bundle`
 - Skills-only archive roots: `writing-plans`, `software-quality-workflows`
 - Build evidence: `plugin-build-evidence/2.0`
@@ -50,4 +58,4 @@ The prior 1.0.0 candidate paired Writing Plans 4.0.0 with Software Quality Workf
 
 ## Rollback boundary
 
-Because activation remains shadow, rollback discards task-owned staging artifacts without changing active host state. Any later explicitly authorized pilot installs and rolls back the two skills atomically. Merge, release, deploy, credentials, publication, and remote writes retain independent authorization gates.
+Rollback restores both installed skill directories from the same pre-install backup; a one-skill rollback is invalid. Merge, release, deploy, credentials, publication, and remote writes retain independent authorization gates.

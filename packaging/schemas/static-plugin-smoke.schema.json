@@ -13,7 +13,7 @@
     "plugin_name": {"const": "frontier-engineering-plugin"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "build_evidence_hash": {"$ref": "#/$defs/hash"},
-    "activation_ceiling": {"const": "shadow"},
+    "activation_ceiling": {"const": "implicit_local_pilot"},
     "actual_codex_cli_install": {"const": false},
     "model_invoked": {"const": false},
     "remote_writes": {"const": false},
@@ -37,7 +37,7 @@
         "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
         "description_hash": {"$ref": "#/$defs/hash"},
         "explicit_invocation": {"const": true},
-        "implicit_eligible": {"const": false}
+        "implicit_eligible": {"const": true}
       }
     }
   }

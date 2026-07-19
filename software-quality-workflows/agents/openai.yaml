@@ -3,4 +3,4 @@ interface:
   short_description: "Route software work with proportional proof"
   default_prompt: "Use $software-quality-workflows to route and execute this software task with proportional safety and verification."
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

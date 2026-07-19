@@ -118,7 +118,7 @@ class BundleContractTests(unittest.TestCase):
 
     def test_manifest_declares_exact_skills_versions_and_profiles(self) -> None:
         self.assertEqual("2.0", MANIFEST["bundle_schema_version"])
-        self.assertEqual("2.0.0", MANIFEST["bundle_version"])
+        self.assertEqual("2.0.1", MANIFEST["bundle_version"])
         skills = MANIFEST["skills"]
         self.assertEqual({"writing-plans", "software-quality-workflows"}, {item["id"] for item in skills})
         self.assertEqual(
@@ -146,14 +146,14 @@ class BundleContractTests(unittest.TestCase):
             self.assertGreaterEqual(len(interface["short_description"]), 25)
             self.assertLessEqual(len(interface["short_description"]), 64)
             self.assertIn(f"${item['id']}", interface["default_prompt"])
-            self.assertIs(agent_metadata["policy"]["allow_implicit_invocation"], False)
+            self.assertIs(agent_metadata["policy"]["allow_implicit_invocation"], True)
         for profile in ("standalone", "extended"):
             self.assertEqual(3, len(MANIFEST["test_profiles"][profile]))
         self.assertEqual("LONG_DOCUMENT_SKILL_ROOT", MANIFEST["optional_external_dependencies"][0]["environment_variable"])
         self.assertEqual(
             {
-                "current_level": "shadow",
-                "implicit_routing_default": False,
+                "current_level": "implicit_local_pilot",
+                "implicit_routing_default": True,
                 "remote_writes": False,
             },
             MANIFEST["activation_policy"],
@@ -203,7 +203,7 @@ class BundleContractTests(unittest.TestCase):
                 self.assertFalse(any(part in FORBIDDEN_PARTS for part in relative.parts), relative.as_posix())
                 self.assertNotIn(path.suffix, {".pyc", ".pyo"})
 
-    def test_release_candidate_has_no_retired_identity_or_implicit_default(self) -> None:
+    def test_release_candidate_has_no_retired_identity_or_explicit_only_default(self) -> None:
         forbidden = (
             "software-engineering-" + "closure",
             "autonomous_" + "closure",
@@ -211,7 +211,7 @@ class BundleContractTests(unittest.TestCase):
             "eligible_for_" + "p6" + "_" + "canary",
             "p4_live_" + "success_canary",
             "p5" + "_" + "real_" + "cohort",
-            "allow_implicit_invocation:" + " true",
+            "allow_implicit_invocation:" + " false",
         )
         allowed_historical = ROOT / "RELEASE_NOTES.md"
         hits: list[str] = []

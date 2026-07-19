@@ -123,7 +123,7 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     skills = manifest.get("skills")
     if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != {"writing-plans", "software-quality-workflows"}:
         raise ValueError("manifest must declare exactly the two canonical skills")
-    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("2.0", "2.0.0"):
+    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("2.0", "2.0.1"):
         raise ValueError("manifest bundle schema/version is invalid")
     if {item.get("id"): item.get("version") for item in skills} != {
         "writing-plans": "5.0.0", "software-quality-workflows": "6.0.0",
@@ -139,7 +139,7 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     _validate_exact_bundle_identity(source_root)
     activation = manifest.get("activation_policy")
     required_activation = {
-        "current_level": "shadow", "implicit_routing_default": False, "remote_writes": False,
+        "current_level": "implicit_local_pilot", "implicit_routing_default": True, "remote_writes": False,
     }
     if activation != required_activation:
         raise ValueError("manifest activation policy fields are invalid")
@@ -220,14 +220,14 @@ def validate_release_evidence(
     revision = evidence.get("source_revision")
     if (
         evidence.get("release_gate") != "passed"
-        or evidence.get("approved_activation_level") != "explicit_local_pilot"
+        or evidence.get("approved_activation_level") != "implicit_local_pilot"
         or evidence.get("source_revision_signed") is not True
         or evidence.get("source_clean") is not True
         or not isinstance(revision, str)
         or not re.fullmatch(r"[0-9a-f]{40}", revision)
         or not _git_release_source_ok(source_root, revision)
     ):
-        raise ValueError("release evidence lacks a clean signed source revision and explicit local pilot approval")
+        raise ValueError("release evidence lacks a clean signed source revision and implicit local pilot approval")
     return evidence
 
 
@@ -364,7 +364,7 @@ def build(source_root: Path, output: Path, release_evidence: Path | None, eviden
             "plugin_name": template["name"],
             "output_class": "release" if is_release else "staging",
             "release_evidence_hash": release_evidence_hash,
-            "activation_ceiling": "explicit_local_pilot" if release_binding is not None else "shadow",
+            "activation_ceiling": manifest["activation_policy"]["current_level"],
             "files": plugin_records,
         }
         evidence["evidence_hash"] = "sha256:" + sha256(

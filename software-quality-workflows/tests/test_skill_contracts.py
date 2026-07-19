@@ -313,7 +313,7 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("Resolve bundled paths from this skill's root", skill)
         self.assertIn("capability rather than a product-specific tool name", skill)
         agent_metadata = (ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
-        self.assertIn("allow_implicit_invocation: false", agent_metadata)
+        self.assertIn("allow_implicit_invocation: true", agent_metadata)
         self.assertIn("default_prompt:", agent_metadata)
         self.assertIn("$software-quality-workflows", agent_metadata)
         self.assertNotIn("remote_writes_default", agent_metadata)
@@ -577,7 +577,7 @@ class SkillContractTests(unittest.TestCase):
                 "  short_description: Synthetic agent metadata\n"
                 "  default_prompt: Use $software-quality-workflows for this fixture.\n"
                 "policy:\n"
-                "  allow_implicit_invocation: false\n"
+                "  allow_implicit_invocation: true\n"
                 "  remote_writes_default: false\n",
                 encoding="utf-8",
             )

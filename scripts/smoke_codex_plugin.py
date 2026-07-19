@@ -73,7 +73,7 @@ def inspect_plugin(plugin_root: Path, evidence_path: Path) -> dict[str, Any]:
         if fields["name"] != name or evidence.get("skill_versions", {}).get(name) != fields["version"]:
             raise ValueError(f"explicit skill identity/version mismatch: {name}")
         metadata = (skill_root / "agents" / "openai.yaml").read_text(encoding="utf-8")
-        if "allow_implicit_invocation: false" not in metadata or "default_prompt:" not in metadata or f"${name}" not in metadata:
+        if "allow_implicit_invocation: true" not in metadata or "default_prompt:" not in metadata or f"${name}" not in metadata:
             raise ValueError(f"Codex invocation metadata is incomplete: {name}")
         if any(marker in metadata for marker in ("hooks:", "mcp:", "apps:", "remote_writes_default: true")):
             raise ValueError(f"skill metadata attempts to widen plugin authority: {name}")
@@ -81,14 +81,14 @@ def inspect_plugin(plugin_root: Path, evidence_path: Path) -> dict[str, Any]:
             "version": fields["version"],
             "description_hash": "sha256:" + sha256(fields["description"].encode("utf-8")).hexdigest(),
             "explicit_invocation": True,
-            "implicit_eligible": False,
+            "implicit_eligible": True,
         }
     return {
         "schema_version": "static-plugin-smoke/2.0",
         "plugin_name": manifest["name"],
         "plugin_tree_hash": evidence["plugin_tree_hash"],
         "build_evidence_hash": evidence["evidence_hash"],
-        "activation_ceiling": "shadow",
+        "activation_ceiling": evidence["activation_ceiling"],
         "actual_codex_cli_install": False,
         "model_invoked": False,
         "remote_writes": False,

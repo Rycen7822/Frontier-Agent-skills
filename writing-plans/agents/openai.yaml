@@ -3,4 +3,4 @@ interface:
   short_description: "Compile durable software plans and handoffs"
   default_prompt: "Use $writing-plans to compile this software change into the lightest durable implementation plan and handoff."
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

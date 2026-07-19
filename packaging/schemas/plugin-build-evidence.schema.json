@@ -11,7 +11,7 @@
   "properties": {
     "schema_version": {"const": "plugin-build-evidence/2.0"},
     "bundle_id": {"const": "frontier-engineering/6.0.0+5.0.0"},
-    "bundle_version": {"const": "2.0.0"},
+    "bundle_version": {"const": "2.0.1"},
     "skill_versions": {
       "type": "object", "additionalProperties": false,
       "required": ["software-quality-workflows", "writing-plans"],
@@ -28,15 +28,15 @@
     "plugin_name": {"const": "frontier-engineering-plugin"},
     "output_class": {"enum": ["staging", "release"]},
     "release_evidence_hash": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/hash"}]},
-    "activation_ceiling": {"enum": ["shadow", "explicit_local_pilot"]},
+    "activation_ceiling": {"const": "implicit_local_pilot"},
     "files": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/file"}},
     "evidence_hash": {"$ref": "#/$defs/hash"}
   },
   "allOf": [
     {
       "if": {"properties": {"output_class": {"const": "staging"}}, "required": ["output_class"]},
-      "then": {"properties": {"release_evidence_hash": {"type": "null"}, "activation_ceiling": {"const": "shadow"}}},
-      "else": {"properties": {"release_evidence_hash": {"$ref": "#/$defs/hash"}, "activation_ceiling": {"const": "explicit_local_pilot"}}}
+      "then": {"properties": {"release_evidence_hash": {"type": "null"}}},
+      "else": {"properties": {"release_evidence_hash": {"$ref": "#/$defs/hash"}}}
     }
   ],
   "$defs": {
