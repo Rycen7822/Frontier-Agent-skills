@@ -5,9 +5,11 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 
@@ -17,6 +19,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from _workflow_state import load_json, load_json_lines  # noqa: E402
+import local_workflow_adapter as workflow_adapter  # noqa: E402
 from local_workflow_adapter import AdapterConflict, LocalWorkflowAdapter, bootstrap_v3  # noqa: E402
 from project_context import project_context  # noqa: E402
 from propagate_invalidation import propagate_invalidation  # noqa: E402
@@ -42,12 +45,8 @@ def _event(index: int = 0) -> dict:
     return deepcopy(load_json_lines(EVENT_FIXTURE)[index])
 
 
-def _owner(parent: Path) -> tuple[Path, dict]:
-    source = parent / "source"
-    root = parent / "workflow"
-    source.mkdir(mode=0o700)
-    root.mkdir(mode=0o700)
-    state, _, _ = bootstrap_v3(
+def _bootstrap(root: Path, source: Path) -> tuple[dict, dict, dict]:
+    return bootstrap_v3(
         root,
         source,
         bundle_id="frontier-engineering/6.0.0+5.0.0",
@@ -74,8 +73,29 @@ def _owner(parent: Path) -> tuple[Path, dict]:
             "card_path": "references/execution/behavior-cycle.md",
             "card_hash": "sha256:" + "8" * 64,
         },
+        now_value=NOW,
     )
+
+
+def _owner(parent: Path) -> tuple[Path, dict]:
+    source = parent / "source"
+    root = parent / "workflow"
+    source.mkdir(mode=0o700)
+    root.mkdir(mode=0o700)
+    state, _, _ = _bootstrap(root, source)
     return root, state
+
+
+def _bootstrap_worker(root: Path, source: Path, checkpoint_name: str, ready: Path) -> None:
+    def pause(name: str) -> None:
+        if name != checkpoint_name:
+            return
+        ready.write_text(name + "\n", encoding="utf-8")
+        while True:
+            signal.pause()
+
+    workflow_adapter._checkpoint = pause
+    _bootstrap(root, source)
 
 
 class WorkflowRuntimeTests(unittest.TestCase):
@@ -195,8 +215,146 @@ class WorkflowRuntimeTests(unittest.TestCase):
 
     def test_bootstrap_keeps_operator_event_stream_absent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root, _ = _owner(Path(directory))
+            root, state = _owner(Path(directory))
             self.assertEqual({".adapter.lock", "artifacts", "locks.json", "projections", "state.json"}, {path.name for path in root.iterdir()})
+            info = root.stat()
+            semantics = {
+                "bundle_id": "frontier-engineering/6.0.0+5.0.0",
+                "mode": "M2",
+                "entry_completion_id": "sha256:" + "4" * 64,
+                "scope_binding_id": "sha256:" + "6" * 64,
+                "source_identity": {"kind": "unversioned", "identity_hash": "sha256:" + "7" * 64},
+                "initial_root_binding": {"dev": info.st_dev, "ino": info.st_ino, "uid": info.st_uid, "mode": info.st_mode & 0o777},
+            }
+            expected = "sha256:" + sha256(json.dumps(semantics, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            self.assertEqual(expected, state["bootstrap"]["operation_id"])
+
+    def test_bootstrap_real_sigkill_prefixes_converge_by_exact_retry(self) -> None:
+        checkpoints = (
+            "lock_temp_fsynced",
+            "lock_linked",
+            "lock_link_parent_synced",
+            "lock_cleaned",
+            "lock_cleanup_parent_synced",
+            "state_temp_fsynced",
+            "initial_locks_temp_fsynced",
+            "initial_locks_linked",
+            "initial_locks_link_parent_synced",
+            "initial_locks_cleaned",
+            "initial_locks_cleanup_parent_synced",
+            "artifacts_created",
+            "projections_created",
+            "state_linked",
+            "state_link_parent_synced",
+            "state_cleaned",
+            "state_cleanup_parent_synced",
+            "lease_temp_fsynced",
+            "lease_replaced",
+            "lease_parent_synced",
+        )
+        prefixes = {
+            "lock_temp_fsynced": {".adapter.lock.tmp"},
+            "lock_linked": {".adapter.lock", ".adapter.lock.tmp"},
+            "lock_link_parent_synced": {".adapter.lock", ".adapter.lock.tmp"},
+            "lock_cleaned": {".adapter.lock"},
+            "lock_cleanup_parent_synced": {".adapter.lock"},
+            "state_temp_fsynced": {".adapter.lock", ".state.json.tmp"},
+            "initial_locks_temp_fsynced": {".adapter.lock", ".state.json.tmp", ".locks.json.tmp"},
+            "initial_locks_linked": {".adapter.lock", ".state.json.tmp", ".locks.json.tmp", "locks.json"},
+            "initial_locks_link_parent_synced": {".adapter.lock", ".state.json.tmp", ".locks.json.tmp", "locks.json"},
+            "initial_locks_cleaned": {".adapter.lock", ".state.json.tmp", "locks.json"},
+            "initial_locks_cleanup_parent_synced": {".adapter.lock", ".state.json.tmp", "locks.json"},
+            "artifacts_created": {".adapter.lock", ".state.json.tmp", "locks.json", "artifacts"},
+            "projections_created": {".adapter.lock", ".state.json.tmp", "locks.json", "artifacts", "projections"},
+            "state_linked": {".adapter.lock", ".state.json.tmp", "state.json", "locks.json", "artifacts", "projections"},
+            "state_link_parent_synced": {".adapter.lock", ".state.json.tmp", "state.json", "locks.json", "artifacts", "projections"},
+            "state_cleaned": {".adapter.lock", "state.json", "locks.json", "artifacts", "projections"},
+            "state_cleanup_parent_synced": {".adapter.lock", "state.json", "locks.json", "artifacts", "projections"},
+            "lease_temp_fsynced": {".adapter.lock", "state.json", "locks.json", ".locks.json.tmp", "artifacts", "projections"},
+            "lease_replaced": {".adapter.lock", "state.json", "locks.json", "artifacts", "projections"},
+            "lease_parent_synced": {".adapter.lock", "state.json", "locks.json", "artifacts", "projections"},
+        }
+        for checkpoint in checkpoints:
+            with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                source = parent / "source"
+                root = parent / "workflow"
+                ready = parent / "ready"
+                source.mkdir(mode=0o700)
+                root.mkdir(mode=0o700)
+                process = subprocess.Popen(
+                    [sys.executable, "-B", __file__, "--bootstrap-worker", str(root), str(source), checkpoint, str(ready)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                deadline = time.monotonic() + 5
+                while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                if not ready.exists():
+                    if process.poll() is None:
+                        process.kill()
+                    stdout, stderr = process.communicate(timeout=1)
+                    self.fail(f"worker did not reach {checkpoint}: rc={process.returncode} stdout={stdout!r} stderr={stderr!r}")
+                process.kill()
+                stdout, stderr = process.communicate(timeout=5)
+                self.assertEqual(-signal.SIGKILL, process.returncode, stdout + stderr)
+                self.assertEqual(prefixes[checkpoint], {path.name for path in root.iterdir()})
+                self.assertFalse((root / "events.jsonl").exists())
+                if checkpoint == "state_cleaned":
+                    self.assertEqual([], json.loads((root / "locks.json").read_text(encoding="utf-8"))["leases"])
+                if checkpoint == "lease_temp_fsynced":
+                    self.assertEqual([], json.loads((root / "locks.json").read_text(encoding="utf-8"))["leases"])
+                    self.assertEqual(1, len(json.loads((root / ".locks.json.tmp").read_text(encoding="utf-8"))["leases"]))
+                if checkpoint in {"lease_replaced", "lease_parent_synced"}:
+                    self.assertEqual(1, len(json.loads((root / "locks.json").read_text(encoding="utf-8"))["leases"]))
+
+                state, locator, lease = _bootstrap(root, source)
+                self.assertEqual(state["workflow_id"], locator["workflow_id"])
+                self.assertEqual(state["active_frontier"]["card_id"], lease["producer_id"])
+                self.assertEqual({".adapter.lock", "artifacts", "locks.json", "projections", "state.json"}, {path.name for path in root.iterdir()})
+                identities = {
+                    name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes())
+                    for name in (".adapter.lock", "state.json", "locks.json")
+                }
+                replay = _bootstrap(root, source)
+                self.assertEqual((state, locator, lease), replay)
+                self.assertEqual(
+                    identities,
+                    {name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes()) for name in identities},
+                )
+
+    def test_bootstrap_rejects_skipped_or_foreign_prefix_before_mutation(self) -> None:
+        for entry in ("projections", ".state.json.tmp"):
+            with self.subTest(entry=entry), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                source = parent / "source"
+                root = parent / "workflow"
+                source.mkdir(mode=0o700)
+                root.mkdir(mode=0o700)
+                target = root / entry
+                if entry == "projections":
+                    target.mkdir(mode=0o700)
+                else:
+                    target.write_bytes(b"foreign-prepared-state\n")
+                    os.chmod(target, 0o600)
+                before = (sorted(path.name for path in root.iterdir()), target.stat().st_ino, target.stat().st_mtime_ns, target.read_bytes() if target.is_file() else None)
+                with self.assertRaises(AdapterConflict):
+                    _bootstrap(root, source)
+                after = (sorted(path.name for path in root.iterdir()), target.stat().st_ino, target.stat().st_mtime_ns, target.read_bytes() if target.is_file() else None)
+                self.assertEqual(before, after)
+
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root, _ = _owner(parent)
+            event = _event(0)
+            sidecar = root / "events.jsonl"
+            sidecar.write_bytes((json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode())
+            os.chmod(sidecar, 0o600)
+            before = {path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes() if path.is_file() else None) for path in root.iterdir()}
+            with self.assertRaisesRegex(AdapterConflict, "another owner"):
+                _bootstrap(root, parent / "source")
+            self.assertEqual(before, {path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes() if path.is_file() else None) for path in root.iterdir()})
 
     def test_operator_event_first_followup_and_exact_replay(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -219,6 +377,10 @@ class WorkflowRuntimeTests(unittest.TestCase):
             self.assertFalse(adapter.append_event(followup, expected_last_sequence=1))
             self.assertEqual([event, followup], load_json_lines(root / "events.jsonl"))
             self.assertFalse((root / ".events.jsonl.tmp").exists())
+            event_before = (root / "events.jsonl").read_bytes(), (root / "events.jsonl").stat().st_mtime_ns
+            replay_state, _, _ = _bootstrap(root, Path(directory) / "source")
+            self.assertEqual(state, replay_state)
+            self.assertEqual(event_before, ((root / "events.jsonl").read_bytes(), (root / "events.jsonl").stat().st_mtime_ns))
             self.assertEqual(state_before, ((root / "state.json").read_bytes(), (root / "state.json").stat().st_mtime_ns))
             self.assertEqual(locks_before, ((root / "locks.json").read_bytes(), (root / "locks.json").stat().st_mtime_ns))
 
@@ -268,4 +430,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if len(sys.argv) == 6 and sys.argv[1] == "--bootstrap-worker":
+        _bootstrap_worker(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], Path(sys.argv[5]))
+    else:
+        unittest.main()

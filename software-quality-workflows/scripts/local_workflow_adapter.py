@@ -18,10 +18,6 @@ try:
     import fcntl  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover - Windows host
     fcntl = None
-try:
-    import msvcrt  # type: ignore[import-not-found]
-except ImportError:  # pragma: no cover - POSIX host
-    msvcrt = None
 
 from _workflow_state import load_json
 from validate_workflow_state import validate_event_stream, validate_state
@@ -31,11 +27,33 @@ class AdapterConflict(RuntimeError):
     pass
 
 
-def _sync_directory(path: Path) -> None:
+EVENT_MAX_BYTES = 262_144
+EVENT_MAX_LINE_BYTES = 4_096
+EVENT_MAX_RECORDS = 4_096
+
+
+def _checkpoint(_name: str) -> None:
+    """No-op durability seam replaced only by real child-process kill tests."""
+
+
+def _write_and_fsync(path: Path, payload: bytes, checkpoint: str | None = None) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
-        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-    except OSError:
-        return
+        view = memoryview(payload)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise OSError("workflow owner write made no progress")
+            view = view[written:]
+        os.fsync(descriptor)
+        if checkpoint is not None:
+            _checkpoint(checkpoint)
+    finally:
+        os.close(descriptor)
+
+
+def _sync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
     try:
         os.fsync(descriptor)
     finally:
@@ -81,7 +99,25 @@ def _safe_regular_bytes(path: Path) -> tuple[bytes, os.stat_result]:
         os.close(descriptor)
 
 
-def _publish_bootstrap_file(root: Path, final_name: str, temp_name: str, payload: bytes) -> None:
+def _prepare_immutable_file(root: Path, temp_name: str, payload: bytes, checkpoint: str) -> None:
+    temporary = root / temp_name
+    temp_info = _optional_lstat(temporary)
+    if temp_info is not None:
+        temp_bytes, temp_stat = _safe_regular_bytes(temporary)
+        if temp_bytes != payload or stat.S_IMODE(temp_stat.st_mode) != 0o600 or temp_stat.st_nlink != 1:
+            raise AdapterConflict("workflow bootstrap temp conflicts")
+        return
+    _write_and_fsync(temporary, payload, checkpoint)
+
+
+def _publish_prepared_immutable(
+    root: Path,
+    final_name: str,
+    temp_name: str,
+    payload: bytes,
+    *,
+    checkpoint_prefix: str,
+) -> None:
     final = root / final_name
     temporary = root / temp_name
     final_info = _optional_lstat(final)
@@ -91,35 +127,58 @@ def _publish_bootstrap_file(root: Path, final_name: str, temp_name: str, payload
         if final_bytes != payload or stat.S_IMODE(final_stat.st_mode) != 0o600:
             raise AdapterConflict("workflow bootstrap final conflicts")
         if temp_info is None:
+            if final_stat.st_nlink != 1:
+                raise AdapterConflict("workflow bootstrap final conflicts")
+            _sync_directory(root)
+            _checkpoint(f"{checkpoint_prefix}_cleanup_parent_synced")
             return
         temp_bytes, temp_stat = _safe_regular_bytes(temporary)
-        if temp_bytes != payload or (final_stat.st_dev, final_stat.st_ino) != (temp_stat.st_dev, temp_stat.st_ino):
+        if (
+            temp_bytes != payload
+            or (final_stat.st_dev, final_stat.st_ino) != (temp_stat.st_dev, temp_stat.st_ino)
+            or final_stat.st_nlink != 2
+            or temp_stat.st_nlink != 2
+        ):
             raise AdapterConflict("workflow bootstrap temp conflicts")
-        temporary.unlink()
         _sync_directory(root)
+        _checkpoint(f"{checkpoint_prefix}_link_parent_synced")
+        temporary.unlink()
+        _checkpoint(f"{checkpoint_prefix}_cleaned")
+        _sync_directory(root)
+        _checkpoint(f"{checkpoint_prefix}_cleanup_parent_synced")
         return
-    if temp_info is not None:
-        temp_bytes, temp_stat = _safe_regular_bytes(temporary)
-        if temp_bytes != payload or stat.S_IMODE(temp_stat.st_mode) != 0o600 or temp_stat.st_nlink != 1:
-            raise AdapterConflict("workflow bootstrap temp conflicts")
-    else:
-        descriptor = os.open(
-            temporary,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
-        )
-        try:
-            view = memoryview(payload)
-            while view:
-                written = os.write(descriptor, view)
-                view = view[written:]
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
+    if temp_info is None:
+        raise AdapterConflict("workflow bootstrap prepared temp is absent")
+    temp_bytes, temp_stat = _safe_regular_bytes(temporary)
+    if temp_bytes != payload or stat.S_IMODE(temp_stat.st_mode) != 0o600 or temp_stat.st_nlink != 1:
+        raise AdapterConflict("workflow bootstrap temp conflicts")
     os.link(temporary, final, follow_symlinks=False)
+    _checkpoint(f"{checkpoint_prefix}_linked")
     _sync_directory(root)
+    _checkpoint(f"{checkpoint_prefix}_link_parent_synced")
     temporary.unlink()
+    _checkpoint(f"{checkpoint_prefix}_cleaned")
     _sync_directory(root)
+    _checkpoint(f"{checkpoint_prefix}_cleanup_parent_synced")
+
+
+def _publish_bootstrap_file(
+    root: Path,
+    final_name: str,
+    temp_name: str,
+    payload: bytes,
+    *,
+    checkpoint_prefix: str,
+) -> None:
+    if _optional_lstat(root / final_name) is None:
+        _prepare_immutable_file(root, temp_name, payload, f"{checkpoint_prefix}_temp_fsynced")
+    _publish_prepared_immutable(
+        root,
+        final_name,
+        temp_name,
+        payload,
+        checkpoint_prefix=checkpoint_prefix,
+    )
 
 
 def _validate_v3_root(root: Path, source_root: Path) -> tuple[Path, dict[str, int]]:
@@ -143,6 +202,224 @@ def _validate_v3_root(root: Path, source_root: Path) -> tuple[Path, dict[str, in
     return resolved, {"dev": info.st_dev, "ino": info.st_ino, "uid": info.st_uid, "mode": stat.S_IMODE(info.st_mode)}
 
 
+def _exact_bootstrap_file(path: Path, payload: bytes, *, links: set[int]) -> os.stat_result:
+    observed, info = _safe_regular_bytes(path)
+    if observed != payload or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink not in links:
+        raise AdapterConflict("workflow bootstrap file conflicts")
+    return info
+
+
+def _validate_empty_directory(path: Path) -> None:
+    info = path.lstat()
+    if path.is_symlink() or not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700 or any(path.iterdir()):
+        raise AdapterConflict("workflow bootstrap directory conflicts")
+
+
+def _validate_optional_event_file(path: Path, workflow_id: str) -> None:
+    payload, info = _safe_regular_bytes(path)
+    if stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or not payload or len(payload) > EVENT_MAX_BYTES:
+        raise AdapterConflict("workflow event sidecar is unsafe")
+    first_line = payload.split(b"\n", 1)[0]
+    if not first_line or len(first_line) + 1 > EVENT_MAX_LINE_BYTES:
+        raise AdapterConflict("workflow event sidecar is invalid")
+    try:
+        first_event = json.loads(first_line)
+    except json.JSONDecodeError as exc:
+        raise AdapterConflict("workflow event sidecar is invalid") from exc
+    if not isinstance(first_event, dict) or first_event.get("workflow_id") != workflow_id:
+        raise AdapterConflict("workflow event sidecar belongs to another owner")
+
+
+def _locks_kind(payload: bytes, empty_locks: dict[str, Any], lease_fields: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise AdapterConflict("workflow locks are invalid") from exc
+    if not isinstance(value, dict) or payload != _compact_bytes(value) + b"\n":
+        raise AdapterConflict("workflow locks are not canonical")
+    if value == empty_locks:
+        return "empty", None
+    leases = value.get("leases")
+    if {key: item for key, item in value.items() if key != "leases"} != {key: item for key, item in empty_locks.items() if key != "leases"} or not isinstance(leases, list) or len(leases) != 1:
+        raise AdapterConflict("workflow locks belong to another bootstrap")
+    lease = leases[0]
+    if (
+        not isinstance(lease, dict)
+        or set(lease) != {*lease_fields, "lease_expires_at"}
+        or {key: lease.get(key) for key in lease_fields} != lease_fields
+        or not isinstance(lease.get("lease_expires_at"), str)
+    ):
+        raise AdapterConflict("workflow lease belongs to another bootstrap")
+    try:
+        expiry = datetime.fromisoformat(lease["lease_expires_at"].replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise AdapterConflict("workflow lease expiry is invalid") from exc
+    if expiry.tzinfo is None:
+        raise AdapterConflict("workflow lease expiry is invalid")
+    return "leased", lease
+
+
+def _validate_bootstrap_prefix(
+    root: Path,
+    *,
+    lock_bytes: bytes,
+    state_bytes: bytes,
+    empty_locks: dict[str, Any],
+    empty_locks_bytes: bytes,
+    lease_fields: dict[str, Any],
+    workflow_id: str,
+) -> None:
+    allowed = {
+        ".adapter.lock", ".adapter.lock.tmp", ".state.json.tmp", "state.json",
+        ".locks.json.tmp", "locks.json", "artifacts", "projections", "events.jsonl", ".events.jsonl.tmp",
+    }
+    names = {path.name for path in root.iterdir()}
+    if names - allowed:
+        raise AdapterConflict("workflow root contains foreign or interrupted state")
+
+    lock_final = root / ".adapter.lock"
+    lock_temp = root / ".adapter.lock.tmp"
+    has_lock = _optional_lstat(lock_final) is not None
+    has_lock_temp = _optional_lstat(lock_temp) is not None
+    if not has_lock:
+        if names - ({".adapter.lock.tmp"} if has_lock_temp else set()):
+            raise AdapterConflict("workflow bootstrap skipped the lock owner")
+        if has_lock_temp:
+            _exact_bootstrap_file(lock_temp, lock_bytes, links={1})
+        return
+    lock_info = _exact_bootstrap_file(lock_final, lock_bytes, links={1, 2})
+    if has_lock_temp:
+        temp_info = _exact_bootstrap_file(lock_temp, lock_bytes, links={2})
+        if (lock_info.st_dev, lock_info.st_ino) != (temp_info.st_dev, temp_info.st_ino) or names != {".adapter.lock", ".adapter.lock.tmp"}:
+            raise AdapterConflict("workflow lock publication prefix conflicts")
+        return
+    if lock_info.st_nlink != 1:
+        raise AdapterConflict("workflow lock owner has an unsafe link count")
+
+    state_final = root / "state.json"
+    state_temp = root / ".state.json.tmp"
+    has_state = _optional_lstat(state_final) is not None
+    has_state_temp = _optional_lstat(state_temp) is not None
+    locks_final = root / "locks.json"
+    locks_temp = root / ".locks.json.tmp"
+    has_locks = _optional_lstat(locks_final) is not None
+    has_locks_temp = _optional_lstat(locks_temp) is not None
+    has_artifacts = _optional_lstat(root / "artifacts") is not None
+    has_projections = _optional_lstat(root / "projections") is not None
+    event_paths = [root / name for name in ("events.jsonl", ".events.jsonl.tmp") if _optional_lstat(root / name) is not None]
+
+    if has_state_temp:
+        _exact_bootstrap_file(state_temp, state_bytes, links={2} if has_state else {1})
+    if has_artifacts:
+        _validate_empty_directory(root / "artifacts")
+    if has_projections:
+        _validate_empty_directory(root / "projections")
+    if has_projections and not has_artifacts:
+        raise AdapterConflict("workflow bootstrap directory prefix is out of order")
+
+    if not has_state:
+        if event_paths:
+            raise AdapterConflict("workflow event sidecar precedes committed state")
+        if (has_locks or has_locks_temp or has_artifacts or has_projections) and not has_state_temp:
+            raise AdapterConflict("workflow bootstrap components lack prepared state")
+        if has_locks:
+            locks_info = _exact_bootstrap_file(locks_final, empty_locks_bytes, links={1, 2})
+            if has_locks_temp:
+                temp_info = _exact_bootstrap_file(locks_temp, empty_locks_bytes, links={2})
+                if (locks_info.st_dev, locks_info.st_ino) != (temp_info.st_dev, temp_info.st_ino) or has_artifacts or has_projections:
+                    raise AdapterConflict("workflow locks publication prefix conflicts")
+            elif locks_info.st_nlink != 1:
+                raise AdapterConflict("workflow locks owner has an unsafe link count")
+        elif has_locks_temp:
+            _exact_bootstrap_file(locks_temp, empty_locks_bytes, links={1})
+            if has_artifacts or has_projections:
+                raise AdapterConflict("workflow bootstrap skipped initial locks")
+        elif has_artifacts or has_projections:
+            raise AdapterConflict("workflow bootstrap skipped initial locks")
+        return
+
+    state_info = _exact_bootstrap_file(state_final, state_bytes, links={1, 2})
+    if not (has_locks and has_artifacts and has_projections):
+        raise AdapterConflict("committed workflow state lacks bootstrap components")
+    if has_state_temp:
+        temp_info = _exact_bootstrap_file(state_temp, state_bytes, links={2})
+        if (state_info.st_dev, state_info.st_ino) != (temp_info.st_dev, temp_info.st_ino):
+            raise AdapterConflict("workflow state publication prefix conflicts")
+    elif state_info.st_nlink != 1:
+        raise AdapterConflict("workflow state owner has an unsafe link count")
+    final_locks_bytes, final_locks_info = _safe_regular_bytes(locks_final)
+    final_kind, _ = _locks_kind(final_locks_bytes, empty_locks, lease_fields)
+    if stat.S_IMODE(final_locks_info.st_mode) != 0o600 or final_locks_info.st_nlink != 1:
+        raise AdapterConflict("workflow locks owner is unsafe")
+    if has_locks_temp:
+        temp_locks_bytes, temp_locks_info = _safe_regular_bytes(locks_temp)
+        temp_kind, _ = _locks_kind(temp_locks_bytes, empty_locks, lease_fields)
+        if stat.S_IMODE(temp_locks_info.st_mode) != 0o600 or temp_locks_info.st_nlink != 1 or temp_kind != "leased":
+            raise AdapterConflict("workflow lease temp conflicts")
+        if final_kind == "leased" and final_locks_bytes != temp_locks_bytes:
+            raise AdapterConflict("workflow lease temp forks committed locks")
+    for event_path in event_paths:
+        _validate_optional_event_file(event_path, workflow_id)
+
+
+def _ensure_bootstrap_directory(root: Path, name: str, checkpoint: str) -> None:
+    path = root / name
+    if _optional_lstat(path) is not None:
+        _validate_empty_directory(path)
+        return
+    path.mkdir(mode=0o700)
+    _sync_directory(root)
+    _checkpoint(checkpoint)
+
+
+def _commit_initial_lease(
+    root: Path,
+    *,
+    empty_locks: dict[str, Any],
+    lease_fields: dict[str, Any],
+    proposed_lease: dict[str, Any],
+) -> dict[str, Any]:
+    final = root / "locks.json"
+    temporary = root / ".locks.json.tmp"
+    final_bytes, final_info = _safe_regular_bytes(final)
+    final_kind, final_lease = _locks_kind(final_bytes, empty_locks, lease_fields)
+    if stat.S_IMODE(final_info.st_mode) != 0o600 or final_info.st_nlink != 1:
+        raise AdapterConflict("workflow locks owner is unsafe")
+    temp_info = _optional_lstat(temporary)
+    if final_kind == "leased":
+        if temp_info is not None:
+            temp_bytes, observed = _safe_regular_bytes(temporary)
+            temp_kind, _ = _locks_kind(temp_bytes, empty_locks, lease_fields)
+            if temp_kind != "leased" or temp_bytes != final_bytes or stat.S_IMODE(observed.st_mode) != 0o600 or observed.st_nlink != 1:
+                raise AdapterConflict("workflow lease temp conflicts")
+            _sync_directory(root)
+            temporary.unlink()
+            _sync_directory(root)
+        else:
+            _sync_directory(root)
+        _checkpoint("lease_parent_synced")
+        if final_lease is None:  # defensive against future classifier changes
+            raise AdapterConflict("workflow lease classification is inconsistent")
+        return final_lease
+
+    if temp_info is not None:
+        candidate_bytes, observed = _safe_regular_bytes(temporary)
+        candidate_kind, candidate_lease = _locks_kind(candidate_bytes, empty_locks, lease_fields)
+        if candidate_kind != "leased" or stat.S_IMODE(observed.st_mode) != 0o600 or observed.st_nlink != 1:
+            raise AdapterConflict("workflow lease temp conflicts")
+        if candidate_lease is None:  # defensive against future classifier changes
+            raise AdapterConflict("workflow lease classification is inconsistent")
+    else:
+        candidate_lease = proposed_lease
+        candidate_bytes = _compact_bytes({**empty_locks, "leases": [candidate_lease]}) + b"\n"
+        _write_and_fsync(temporary, candidate_bytes, "lease_temp_fsynced")
+    os.replace(temporary, final)
+    _checkpoint("lease_replaced")
+    _sync_directory(root)
+    _checkpoint("lease_parent_synced")
+    return candidate_lease
+
+
 def bootstrap_v3(
     root: Path,
     source_root: Path,
@@ -157,6 +434,7 @@ def bootstrap_v3(
     scope_binding: dict[str, Any],
     source_identity: dict[str, Any],
     next_step: dict[str, Any],
+    now_value: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Create or replay the v3 M2/M3 owner bootstrap without creating the root."""
     if mode not in {"M2", "M3"}:
@@ -165,10 +443,7 @@ def bootstrap_v3(
     initial_root_binding_hash = _value_hash(initial_root_binding)
     bootstrap_semantics = {
         "bundle_id": bundle_id,
-        "policy_bundle_hash": policy_bundle_hash,
-        "card_manifest_hash": card_manifest_hash,
         "mode": mode,
-        "request_mode": request_mode,
         "entry_completion_id": entry_completion["content_hash"],
         "scope_binding_id": scope_binding["binding_id"],
         "source_identity": source_identity,
@@ -195,18 +470,27 @@ def bootstrap_v3(
         "scope_binding_id": scope_binding["binding_id"],
         "mode": mode,
     }
-    lease = {
+    lease_fields = {
         "lease_id": _value_hash({"workflow_id": workflow_id, "frontier": next_step}),
         "producer_id": next_step["card_id"],
         "decision_id": next_step["decision_id"],
-        "lease_expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
     }
-    locks = {
+    try:
+        lease_now = datetime.fromisoformat(now_value.replace("Z", "+00:00")) if now_value else datetime.now(timezone.utc)
+    except ValueError as exc:
+        raise AdapterConflict("workflow lease clock is invalid") from exc
+    if lease_now.tzinfo is None:
+        raise AdapterConflict("workflow lease clock is invalid")
+    proposed_lease = {
+        **lease_fields,
+        "lease_expires_at": (lease_now + timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
+    }
+    empty_locks = {
         "schema_version": "sqw-locks/1",
         "workflow_id": workflow_id,
         "bootstrap_operation_id": bootstrap_operation_id,
         "scope_binding_id": scope_binding["binding_id"],
-        "leases": [lease],
+        "leases": [],
     }
     state_without_hash = {
         "schema_version": "3.0",
@@ -269,72 +553,80 @@ def bootstrap_v3(
     }
     state = {**state_without_hash, "state_hash": _value_hash(state_without_hash)}
     lock_bytes = _compact_bytes(lock_header) + b"\n"
-    locks_bytes = _compact_bytes(locks) + b"\n"
+    empty_locks_bytes = _compact_bytes(empty_locks) + b"\n"
     state_bytes = _compact_bytes(state) + b"\n"
 
-    names = {path.name for path in resolved.iterdir()}
-    steady_names = {".adapter.lock", "state.json", "locks.json", "artifacts", "projections"}
-    if names:
-        if names != steady_names:
-            raise AdapterConflict("workflow root contains foreign or interrupted state")
-        observed_lock, _ = _safe_regular_bytes(resolved / ".adapter.lock")
-        observed_state, _ = _safe_regular_bytes(resolved / "state.json")
-        observed_locks_bytes, _ = _safe_regular_bytes(resolved / "locks.json")
-        try:
-            observed_locks = json.loads(observed_locks_bytes)
-        except json.JSONDecodeError as exc:
-            raise AdapterConflict("workflow locks are invalid") from exc
-        expected_lock_fields = {key: value for key, value in locks.items() if key != "leases"}
-        observed_lock_fields = {key: value for key, value in observed_locks.items() if key != "leases"}
-        observed_leases = observed_locks.get("leases")
-        if (
-            (observed_lock, observed_state) != (lock_bytes, state_bytes)
-            or observed_locks_bytes != _compact_bytes(observed_locks) + b"\n"
-            or set(observed_locks) != {"schema_version", "workflow_id", "bootstrap_operation_id", "scope_binding_id", "leases"}
-            or observed_lock_fields != expected_lock_fields
-            or not isinstance(observed_leases, list)
-            or len(observed_leases) != 1
-            or set(observed_leases[0]) != {"lease_id", "producer_id", "decision_id", "lease_expires_at"}
-            or {key: value for key, value in observed_leases[0].items() if key != "lease_expires_at"}
-            != {key: value for key, value in lease.items() if key != "lease_expires_at"}
-            or not isinstance(observed_leases[0].get("lease_expires_at"), str)
-        ):
-            raise AdapterConflict("workflow owner belongs to another bootstrap")
-        for name in ("artifacts", "projections"):
-            child = resolved / name
-            child_info = child.lstat()
-            if (
-                child.is_symlink()
-                or not stat.S_ISDIR(child_info.st_mode)
-                or child_info.st_uid != os.geteuid()
-                or stat.S_IMODE(child_info.st_mode) != 0o700
-                or any(child.iterdir())
-            ):
-                raise AdapterConflict("workflow owner directory is invalid")
-        return state, locator, observed_leases[0]
-
-    _publish_bootstrap_file(resolved, ".adapter.lock", ".adapter.lock.tmp", lock_bytes)
+    if len(state_bytes) > 2 * 1024 * 1024:
+        raise AdapterConflict("workflow state exceeds the 2 MiB budget")
+    _validate_bootstrap_prefix(
+        resolved,
+        lock_bytes=lock_bytes,
+        state_bytes=state_bytes,
+        empty_locks=empty_locks,
+        empty_locks_bytes=empty_locks_bytes,
+        lease_fields=lease_fields,
+        workflow_id=workflow_id,
+    )
+    _publish_bootstrap_file(
+        resolved,
+        ".adapter.lock",
+        ".adapter.lock.tmp",
+        lock_bytes,
+        checkpoint_prefix="lock",
+    )
     lock_descriptor = os.open(resolved / ".adapter.lock", os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     try:
+        opened_lock = os.fstat(lock_descriptor)
+        observed_lock = (resolved / ".adapter.lock").lstat()
+        if (
+            not stat.S_ISREG(opened_lock.st_mode)
+            or opened_lock.st_uid != os.geteuid()
+            or stat.S_IMODE(opened_lock.st_mode) != 0o600
+            or opened_lock.st_nlink != 1
+            or (opened_lock.st_dev, opened_lock.st_ino) != (observed_lock.st_dev, observed_lock.st_ino)
+        ):
+            raise AdapterConflict("workflow adapter lock changed while opening")
         if fcntl is None:
             raise AdapterConflict("host provides no supported workflow lock")
         fcntl.flock(lock_descriptor, fcntl.LOCK_EX)
-        _publish_bootstrap_file(resolved, "locks.json", ".locks.json.tmp", locks_bytes)
-        (resolved / "artifacts").mkdir(mode=0o700)
-        _sync_directory(resolved)
-        (resolved / "projections").mkdir(mode=0o700)
-        _sync_directory(resolved)
-        _publish_bootstrap_file(resolved, "state.json", ".state.json.tmp", state_bytes)
+        _validate_bootstrap_prefix(
+            resolved,
+            lock_bytes=lock_bytes,
+            state_bytes=state_bytes,
+            empty_locks=empty_locks,
+            empty_locks_bytes=empty_locks_bytes,
+            lease_fields=lease_fields,
+            workflow_id=workflow_id,
+        )
+        if _optional_lstat(resolved / "state.json") is None:
+            _prepare_immutable_file(resolved, ".state.json.tmp", state_bytes, "state_temp_fsynced")
+            _publish_bootstrap_file(
+                resolved,
+                "locks.json",
+                ".locks.json.tmp",
+                empty_locks_bytes,
+                checkpoint_prefix="initial_locks",
+            )
+            _ensure_bootstrap_directory(resolved, "artifacts", "artifacts_created")
+            _ensure_bootstrap_directory(resolved, "projections", "projections_created")
+        _publish_prepared_immutable(
+            resolved,
+            "state.json",
+            ".state.json.tmp",
+            state_bytes,
+            checkpoint_prefix="state",
+        )
+        lease = _commit_initial_lease(
+            resolved,
+            empty_locks=empty_locks,
+            lease_fields=lease_fields,
+            proposed_lease=proposed_lease,
+        )
     finally:
         if fcntl is not None:
             fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
         os.close(lock_descriptor)
     return state, locator, lease
-
-
-EVENT_MAX_BYTES = 262_144
-EVENT_MAX_LINE_BYTES = 4_096
-EVENT_MAX_RECORDS = 4_096
 
 
 def _event_bytes(events: list[dict[str, Any]]) -> bytes:
@@ -366,20 +658,11 @@ def _parse_event_bytes(payload: bytes) -> list[dict[str, Any]]:
 
 def _write_fixed_temp(path: Path, payload: bytes) -> None:
     try:
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        _write_and_fsync(path, payload)
     except FileExistsError:
         observed, info = _safe_regular_bytes(path)
         if observed != payload or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1:
             raise AdapterConflict("fixed event temp conflicts with requested append")
-        return
-    try:
-        view = memoryview(payload)
-        while view:
-            written = os.write(descriptor, view)
-            view = view[written:]
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 class LocalWorkflowAdapter:
@@ -518,6 +801,7 @@ class LocalWorkflowAdapter:
                     temp_payload, _ = _safe_regular_bytes(self.event_temp_path)
                     if temp_payload != candidate_payload:
                         raise AdapterConflict("fixed event temp conflicts with committed append")
+                    _sync_directory(self.root)
                     self.event_temp_path.unlink()
                     _sync_directory(self.root)
                 return True
