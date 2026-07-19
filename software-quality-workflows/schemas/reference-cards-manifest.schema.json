@@ -3,12 +3,13 @@
   "$id": "frontier://software-quality-workflows/reference-cards-manifest/2.0",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "bundle_id", "skill_id", "skill_version", "cards"],
+  "required": ["schema_version", "bundle_id", "skill_id", "skill_version", "cross_skill_routes", "cards"],
   "properties": {
     "schema_version": {"const": "2.0"},
     "bundle_id": {"const": "frontier-engineering/6.0.0+5.0.0"},
     "skill_id": {"const": "software-quality-workflows"},
     "skill_version": {"const": "6.0.0"},
+    "cross_skill_routes": {"$ref": "#/$defs/crossSkillProjection"},
     "cards": {
       "type": "array",
       "minItems": 52,
@@ -32,6 +33,70 @@
           "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
           "bytes": {"type": "integer", "minimum": 1, "maximum": 8192}
         }
+      }
+    }
+  },
+  "$defs": {
+    "intentMap": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["adequate", "materially_underdefined"],
+          "properties": {"adequate": {"const": "defined"}, "materially_underdefined": {"const": "materially_underdefined"}}
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["defined", "materially_underdefined"],
+          "properties": {"defined": {"const": "adequate"}, "materially_underdefined": {"const": "materially_underdefined"}}
+        }
+      ]
+    },
+    "routeConstants": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["explicit_plan_request", "copy_paste_projection_requested", "disposable_spike", "durable_handoff", "external_side_effect", "independent_write_slices", "long_corpus_only", "migration_or_rollback", "public_contract", "resume_required", "same_session_execution", "strategy_family_count"],
+          "properties": {
+            "explicit_plan_request": {"const": true}, "copy_paste_projection_requested": {"const": false},
+            "disposable_spike": {"const": false}, "durable_handoff": {"const": false},
+            "external_side_effect": {"const": false}, "independent_write_slices": {"const": 1},
+            "long_corpus_only": {"const": false}, "migration_or_rollback": {"const": false},
+            "public_contract": {"const": false}, "resume_required": {"const": false},
+            "same_session_execution": {"const": true}, "strategy_family_count": {"const": 1}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["request_mode", "implicated_surfaces", "unknown_implicated_facts", "persistence_need", "delegation_need", "external_side_effect"],
+          "properties": {
+            "request_mode": {"const": "report"}, "implicated_surfaces": {"const": []},
+            "unknown_implicated_facts": {"const": ["cross-skill-handoff"]},
+            "persistence_need": {"const": "none"}, "delegation_need": {"const": "none"},
+            "external_side_effect": {"const": "none"}
+          }
+        }
+      ]
+    },
+    "crossSkillRoute": {
+      "type": "object", "additionalProperties": false,
+      "required": ["route_id", "source_skill_id", "target_skill_id", "contract_id", "copied_fields", "intent_status_map", "constants"],
+      "properties": {
+        "route_id": {"enum": ["sqw-to-writing-plans", "writing-plans-to-sqw"]},
+        "source_skill_id": {"enum": ["software-quality-workflows", "writing-plans"]},
+        "target_skill_id": {"enum": ["software-quality-workflows", "writing-plans"]},
+        "contract_id": {"enum": ["plan-to-workflow", "workflow-plan-change-proposal"]},
+        "copied_fields": {"const": ["intent_status", "root_cause_status"]},
+        "intent_status_map": {"$ref": "#/$defs/intentMap"},
+        "constants": {"$ref": "#/$defs/routeConstants"}
+      }
+    },
+    "crossSkillProjection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_hash", "outbound", "inbound"],
+      "properties": {
+        "source_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "outbound": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"$ref": "#/$defs/crossSkillRoute"}},
+        "inbound": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"$ref": "#/$defs/crossSkillRoute"}}
       }
     }
   }

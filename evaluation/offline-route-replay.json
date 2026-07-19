@@ -102,17 +102,17 @@
       "skill_id": "software-quality-workflows"
     },
     {
-      "active_bytes": 2220,
+      "active_bytes": 2074,
       "active_card_count": 1,
       "actual_action": "select_card",
-      "actual_card_id": "sqw.review.tier-selection",
-      "actual_decision_id": "sqw.select.review.tier-selection",
+      "actual_card_id": "sqw.entry.read-only-audit",
+      "actual_decision_id": "sqw.select.entry.read-only-audit",
       "actual_owner": "software-quality-workflows",
       "case_id": "sqw-entry-review",
       "entry_exact": true,
       "expected_action": "select_card",
-      "expected_card_id": "sqw.review.tier-selection",
-      "expected_decision_id": "sqw.select.review.tier-selection",
+      "expected_card_id": "sqw.entry.read-only-audit",
+      "expected_decision_id": "sqw.select.entry.read-only-audit",
       "expected_owner": "software-quality-workflows",
       "skill_id": "software-quality-workflows"
     },
@@ -266,18 +266,18 @@
   },
   "input_bindings": {
     "software-quality-workflows": {
-      "card_manifest_hash": "sha256:60b7e0daab32d2fee2cb8a0c0c9cda94f8869d780dc1ba652d0d9ebcd1cfb4cb",
-      "decision_case_fixture_hash": "sha256:6199e3cf42c87c896348de483a8decea8fd5b76b4064547286b5c5feef9cd8f5",
+      "card_manifest_hash": "sha256:961e9826940de52d007512a4860e66ff1b9328cc982ec8ac62474247b17d5f05",
+      "decision_case_fixture_hash": "sha256:e4d06558466f24414b1d8a8d0965129ceb61a8dacf76aef726e70f700b9e8226",
       "decision_map_hash": "sha256:65166111b6e5eb9c80fdab90d7fd4ccaeaad1bafcad80547afb82a2cbe03de82",
-      "router_hash": "sha256:01a6ae44ceab26b7a243cf8687008b8d094aeab02e6234ef2e448699fea0d53b",
-      "sequence_fixture_hash": "sha256:e8a8097e7cd338eecd92ce6788e9d945b4e42f5de5eb49824c7358ccbc7613ce",
+      "router_hash": "sha256:8b3f17ad621cfc20824e2594c95c71c532ba392024c53ea52843df9567bc26a0",
+      "sequence_fixture_hash": "sha256:43dec3aa9a6d9534dabb6e142e9ad2dc48ed2e01596253ff8d5f2ffcbd3f149b",
       "skill_version": "6.0.0"
     },
     "writing-plans": {
-      "card_manifest_hash": "sha256:5e9057364621f873e8bc7dda84180fbb7c7a61c414f31201635d97b3fc522f5c",
-      "decision_case_fixture_hash": "sha256:467ba88fc938636074adb6735a8e8582c4e6c0ae3e906416c7e74da5f164d796",
+      "card_manifest_hash": "sha256:457cd828962df29716780796cbf4cf9432fe347c504f046554b3304f0cca1d0f",
+      "decision_case_fixture_hash": "sha256:829e690dc1ebf20ea16fe0111a0bd60d58ff0bc86f05102820c29c827257badb",
       "decision_map_hash": "sha256:8cb1a9a558affffbe5e83f9c8b18616e416c07053382b6db502a6bd99a5761a9",
-      "router_hash": "sha256:757dca4427d49ead3f06817ce8428fe0bba2304c5ac1672718ea34131fec431a",
+      "router_hash": "sha256:65a2339381ce0ca9ef144c92882722b1ac02b525408a08583e987c2a86ddbe77",
       "sequence_fixture_hash": "sha256:16ecfa839f1307d9556dc5408048e907e09df594ca92125065c43afcc752eda3",
       "skill_version": "5.0.0"
     }
@@ -1394,7 +1394,7 @@
       "skill_id": "writing-plans"
     }
   ],
-  "report_hash": "sha256:356dd805aa18bb0128291b79a5400364b754fdd27b370042455abd5a095771f1",
+  "report_hash": "sha256:015cc928dc89b3e576e5a4ef8cd097bba07efe94cccf70da41d1873e44176e2f",
   "schema_version": "offline-route-replay/2.0",
   "selection_rows": [
     {
@@ -2191,12 +2191,16 @@
     },
     {
       "active_bytes_per_step": [
+        2074,
+        3349,
         2220,
         2929,
         3095,
         3045
       ],
       "selected_card_ids": [
+        "sqw.entry.read-only-audit",
+        "sqw.control.scope-authority-and-effects",
         "sqw.review.tier-selection",
         "sqw.review.execution-and-requirements",
         "sqw.review.rubrics.engineering-integrity",
@@ -2204,11 +2208,11 @@
       ],
       "sequence_id": "sqw-review-to-result",
       "skill_id": "software-quality-workflows",
-      "step_count": 4,
+      "step_count": 6,
       "terminal_complete": true,
       "terminal_owner": null,
       "terminal_status": "completed",
-      "total_active_bytes": 11289,
+      "total_active_bytes": 16712,
       "unnecessary_card_loads": 0
     },
     {
@@ -2255,8 +2259,8 @@
     }
   ],
   "vnext": {
-    "bundle_build_id": "build-36d61ae0c9b7826d67f87698",
-    "bundle_manifest_hash": "sha256:61ebec753dfedd9b281fa6897a2d0fa823451f3b05f6fec75690f7b085ebf271",
+    "bundle_build_id": "build-3ebca36d111959a924efca71",
+    "bundle_manifest_hash": "sha256:7c20006233c4172533f2d85f49132a154fd57fb86c5a2d994bcbd1f15247c4ee",
     "identity": "frontier-engineering/6.0.0+5.0.0",
     "skill_versions": {
       "software-quality-workflows": "6.0.0",

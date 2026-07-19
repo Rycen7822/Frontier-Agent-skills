@@ -14,7 +14,6 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from route_workflow import assess  # noqa: E402
-from resolve_reference_card import resolve  # noqa: E402
 
 
 TARGET_CARDS = {
@@ -45,7 +44,7 @@ TARGET_CARDS = {
     "sqw.bridges.source-target-gap-audit",
 }
 FACT_KEYS = {
-    "schema_version", "request_mode", "intent_status", "root_cause_status", "implicated_surfaces",
+    "schema_version", "route_phase", "request_mode", "intent_status", "root_cause_status", "implicated_surfaces",
     "unknown_implicated_facts", "surface_assessment", "persistence_need", "delegation_need",
     "external_side_effect", "pending_decision_ids", "available_artifact_ids", "completed_decision_ids",
     "just_completed_card_id", "decision_request",
@@ -144,9 +143,12 @@ class SoftwareDecisionProtocolV6Tests(unittest.TestCase):
                 self.assertEqual(case["expected_decision_id"], result["selected_decision_id"])
                 self.assertNotEqual(case["excluded_card_id"], result["primary_card"]["card_id"])
 
-    def test_resolver_is_a_thin_view_of_the_single_selector(self) -> None:
-        facts = {**self.fixture["defaults"], **self.fixture["positive_cases"][0]["facts"]}
-        self.assertEqual(assess(facts), resolve(facts))
+    def test_card_cycle_is_the_only_public_route_surface(self) -> None:
+        self.assertTrue((SCRIPTS / "card_cycle.py").is_file())
+        self.assertFalse((SCRIPTS / "resolve_reference_card.py").exists())
+        policy = self._load("registries/policy-owners.json")
+        owner = next(item for item in policy["policies"] if item["policy_id"] == "sqw.navigation.resolve")
+        self.assertEqual("scripts/card_cycle.py", owner["owner_id"])
 
     def test_multi_step_sequence_and_precedence_are_deterministic(self) -> None:
         for sequence in self.fixture["sequence_cases"]:

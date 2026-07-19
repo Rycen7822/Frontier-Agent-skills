@@ -118,6 +118,25 @@ def build_manifest() -> dict[str, Any]:
         raise ValueError("source bundle must bind schema 2.0 and release 2.0.1")
     if source.get("cross_skill_contracts") != ["plan-to-workflow", "workflow-plan-change-proposal"]:
         raise ValueError("source bundle must declare the exact two cross-skill contracts")
+    route_source = source.get("cross_skill_routes")
+    if not isinstance(route_source, dict) or set(route_source) != {"schema_version", "routes"}:
+        raise ValueError("source bundle cross-skill routes are invalid")
+    routes = route_source.get("routes")
+    if route_source.get("schema_version") != "frontier-cross-skill-routes/1" or not isinstance(routes, list):
+        raise ValueError("source bundle cross-skill route identity is invalid")
+    normalized_routes = sorted(routes, key=lambda row: row.get("route_id", "") if isinstance(row, dict) else "")
+    if routes != normalized_routes:
+        raise ValueError("source bundle cross-skill routes must be sorted")
+    source_hash = "sha256:" + sha256(_canonical_bytes(route_source)).hexdigest()
+    for skill_id in EXPECTED_SKILLS:
+        local = _load_json(ROOT / skill_id / CARD_MANIFEST).get("cross_skill_routes")
+        expected = {
+            "source_hash": source_hash,
+            "outbound": [route for route in routes if route.get("source_skill_id") == skill_id],
+            "inbound": [route for route in routes if route.get("target_skill_id") == skill_id],
+        }
+        if local != expected:
+            raise ValueError(f"{skill_id} cross-skill route projection is stale")
     if source.get("activation_policy") != {
         "current_level": "implicit_local_pilot",
         "implicit_routing_default": True,

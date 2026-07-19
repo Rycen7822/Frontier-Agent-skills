@@ -148,6 +148,65 @@
       "sha256": "sha256:495201d7a7c241e02af5ced5a7d9f52e8fe9df21b36a15f1988869d09f259196"
     }
   ],
+  "cross_skill_routes": {
+    "inbound": [
+      {
+        "constants": {
+          "copy_paste_projection_requested": false,
+          "disposable_spike": false,
+          "durable_handoff": false,
+          "explicit_plan_request": true,
+          "external_side_effect": false,
+          "independent_write_slices": 1,
+          "long_corpus_only": false,
+          "migration_or_rollback": false,
+          "public_contract": false,
+          "resume_required": false,
+          "same_session_execution": true,
+          "strategy_family_count": 1
+        },
+        "contract_id": "workflow-plan-change-proposal",
+        "copied_fields": [
+          "intent_status",
+          "root_cause_status"
+        ],
+        "intent_status_map": {
+          "adequate": "defined",
+          "materially_underdefined": "materially_underdefined"
+        },
+        "route_id": "sqw-to-writing-plans",
+        "source_skill_id": "software-quality-workflows",
+        "target_skill_id": "writing-plans"
+      }
+    ],
+    "outbound": [
+      {
+        "constants": {
+          "delegation_need": "none",
+          "external_side_effect": "none",
+          "implicated_surfaces": [],
+          "persistence_need": "none",
+          "request_mode": "report",
+          "unknown_implicated_facts": [
+            "cross-skill-handoff"
+          ]
+        },
+        "contract_id": "plan-to-workflow",
+        "copied_fields": [
+          "intent_status",
+          "root_cause_status"
+        ],
+        "intent_status_map": {
+          "defined": "adequate",
+          "materially_underdefined": "materially_underdefined"
+        },
+        "route_id": "writing-plans-to-sqw",
+        "source_skill_id": "writing-plans",
+        "target_skill_id": "software-quality-workflows"
+      }
+    ],
+    "source_hash": "sha256:300f8129abcc77969dc8e481969e0eb61d483d3371eeb2372585a0641daa89d6"
+  },
   "schema_version": "2.0",
   "skill_id": "writing-plans",
   "skill_version": "5.0.0"

@@ -2,6 +2,7 @@
   "schema_version": "software-quality-workflows-decision-route-cases/1.0",
   "defaults": {
     "schema_version": "2.0",
+    "route_phase": "entry",
     "request_mode": "change",
     "intent_status": "adequate",
     "root_cause_status": "not_applicable",
@@ -1463,4 +1464,3 @@
     }
   ]
 }
-

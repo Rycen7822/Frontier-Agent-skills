@@ -162,6 +162,9 @@ class BundleContractTests(unittest.TestCase):
             ["plan-to-workflow", "workflow-plan-change-proposal"],
             MANIFEST["cross_skill_contracts"],
         )
+        routes = MANIFEST["cross_skill_routes"]
+        self.assertEqual("frontier-cross-skill-routes/1", routes["schema_version"])
+        self.assertEqual(["sqw-to-writing-plans", "writing-plans-to-sqw"], [row["route_id"] for row in routes["routes"]])
 
     def test_retired_candidate_evidence_and_schema_names_are_absent(self) -> None:
         retired = [

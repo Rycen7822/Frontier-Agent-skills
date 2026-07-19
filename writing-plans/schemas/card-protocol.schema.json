@@ -3,7 +3,15 @@
   "$id": "https://frontier-agent-skills.local/writing-plans/card-protocol.schema.json",
   "$ref": "#/$defs/command",
   "$defs": {
-    "outcome": {
+    "humanOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blocker"],
+      "properties": {
+        "blocker": {"type": ["string", "null"]}
+      }
+    },
+    "completionOutcome": {
       "type": "object",
       "additionalProperties": false,
       "required": ["blocker", "decision_request"],
@@ -224,12 +232,14 @@
     "completion": {
       "type": ["object", "null"],
       "additionalProperties": false,
-      "required": ["completion_id", "artifact_id", "payload_hash", "outcome"],
+      "required": ["completion_id", "artifact_id", "producer_card_id", "decision_id", "payload_hash", "outcome"],
       "properties": {
         "completion_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
         "artifact_id": {"const": "plan-brief"},
+        "producer_card_id": {"const": "wp.profiles.brief"},
+        "decision_id": {"const": "wp.select.profiles.brief"},
         "payload_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-        "outcome": {"$ref": "#/$defs/outcome"}
+        "outcome": {"$ref": "#/$defs/completionOutcome"}
       }
     },
     "receipt": {
@@ -263,7 +273,7 @@
         "invocation_phase": {"const": "initial"},
         "previous_receipt": {"type": "null"},
         "fields": {"$ref": "#/$defs/routeFields"},
-        "outcome": {"$ref": "#/$defs/outcome"}
+        "outcome": {"$ref": "#/$defs/humanOutcome"}
       }
     },
     "briefCommand": {
@@ -275,7 +285,7 @@
         "invocation_phase": {"const": "initial"},
         "previous_receipt": {"$ref": "#/$defs/receipt"},
         "fields": {"$ref": "#/$defs/briefFields"},
-        "outcome": {"$ref": "#/$defs/outcome"}
+        "outcome": {"$ref": "#/$defs/humanOutcome"}
       }
     },
     "command": {

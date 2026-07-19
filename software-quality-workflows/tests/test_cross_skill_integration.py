@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from hashlib import sha256
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 import sys
+import tempfile
 import unittest
 
 from jsonschema import Draft202012Validator
@@ -57,6 +60,41 @@ def _workflow() -> dict:
 
 
 class CrossSkillIntegrationTests(unittest.TestCase):
+    def test_cross_skill_routes_are_exact_local_projections_of_one_source(self) -> None:
+        source = load_json(SQW_ROOT.parent / "bundle-manifest.json")["cross_skill_routes"]
+        source_hash = "sha256:" + sha256(
+            json.dumps(source, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        manifests = {
+            "software-quality-workflows": load_json(
+                SQW_ROOT / "registries" / "reference-cards.manifest.json"
+            ),
+            "writing-plans": load_json(
+                WRITING_ROOT / "registries" / "reference-cards.manifest.json"
+            ),
+        }
+        for skill_id, manifest in manifests.items():
+            projection = manifest["cross_skill_routes"]
+            self.assertEqual({"source_hash", "outbound", "inbound"}, set(projection))
+            self.assertEqual(source_hash, projection["source_hash"])
+            self.assertEqual(
+                source["routes"],
+                sorted(projection["outbound"] + projection["inbound"], key=lambda row: row["route_id"]),
+            )
+            self.assertEqual([skill_id], [row["source_skill_id"] for row in projection["outbound"]])
+            self.assertEqual([skill_id], [row["target_skill_id"] for row in projection["inbound"]])
+
+        with tempfile.TemporaryDirectory(prefix="cross-skill-local-") as temp_dir:
+            isolated = Path(temp_dir)
+            for skill_id, root in (("software-quality-workflows", SQW_ROOT), ("writing-plans", WRITING_ROOT)):
+                target = isolated / skill_id / "registries"
+                target.mkdir(parents=True)
+                shutil.copy2(root / "registries" / "reference-cards.manifest.json", target)
+            self.assertFalse((isolated / "bundle-manifest.json").exists())
+            for skill_id in manifests:
+                local = load_json(isolated / skill_id / "registries" / "reference-cards.manifest.json")
+                self.assertEqual(source_hash, local["cross_skill_routes"]["source_hash"])
+
     def test_plan_handoff_is_the_single_closed_execution_envelope(self) -> None:
         handoff = {
             "schema_version": "2.0",

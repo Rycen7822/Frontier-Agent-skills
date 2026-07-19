@@ -2,6 +2,7 @@
   "schema_version": "writing-plans-decision-route-cases/1.0",
   "defaults": {
     "schema_version": "2.0",
+    "route_phase": "entry",
     "explicit_plan_request": false,
     "root_cause_status": "not_applicable",
     "intent_status": "defined",
@@ -340,4 +341,3 @@
     }
   ]
 }
-

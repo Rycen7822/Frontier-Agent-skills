@@ -229,8 +229,16 @@ def _next_step(manifest: dict[str, Any], route: dict[str, Any]) -> dict[str, Any
 
 
 def _route_facts(fields: dict[str, Any], **queue: Any) -> dict[str, Any]:
+    is_continuation = bool(
+        queue.get("pending")
+        or queue.get("available")
+        or queue.get("completed")
+        or queue.get("just_completed")
+        or queue.get("decision_request")
+    )
     return {
         "schema_version": "2.0",
+        "route_phase": "active_queue" if is_continuation else "entry",
         **fields,
         "surface_assessment": {
             "taxonomy_version": "sqw-route-surfaces/1",
@@ -253,8 +261,21 @@ def _select(manifest: dict[str, Any], facts: dict[str, Any]) -> dict[str, Any]:
     return _next_step(manifest, route)
 
 
-def _completion(artifact_id: str, fields: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
-    payload = {"artifact_id": artifact_id, "fields": fields, "outcome": outcome}
+def _completion(
+    artifact_id: str,
+    producer_card_id: str,
+    decision_id: str,
+    fields: dict[str, Any],
+    blocker: str | None,
+    next_decision_id: str | None,
+) -> dict[str, Any]:
+    payload = {
+        "artifact_id": artifact_id,
+        "producer_card_id": producer_card_id,
+        "decision_id": decision_id,
+        "fields": fields,
+        "outcome": {"blocker": blocker, "decision_request": next_decision_id},
+    }
     return {**payload, "content_hash": _hash(payload)}
 
 
@@ -290,10 +311,7 @@ def _route_initial(command: dict[str, Any], manifest: dict[str, Any], source_ide
     return receipt
 
 
-def _producer_request(command: dict[str, Any], previous: dict[str, Any], artifact_id: str) -> dict[str, str]:
-    requested = command["outcome"]["decision_request"]
-    if not isinstance(requested, str) or not requested:
-        raise CycleError("E_DECISION_REQUEST", "completion must request one next decision", exit_code=4)
+def _producer_request(previous: dict[str, Any], artifact_id: str, requested: str) -> dict[str, str]:
     return {
         "decision_id": requested,
         "produced_by_card_id": previous["next_step"]["card_id"],
@@ -308,11 +326,15 @@ def _complete_entry(
     previous: dict[str, Any],
     source_identity: dict[str, str],
 ) -> dict[str, Any]:
-    if previous["next_step"]["card_id"] != "sqw.entry.direct-change" or previous["route_context"] is None:
+    entry_cards = {
+        "sqw.entry.diagnose-failure", "sqw.entry.direct-change", "sqw.entry.intent-discovery",
+        "sqw.entry.read-only-audit", "sqw.entry.recovery",
+    }
+    if previous["next_step"]["card_id"] not in entry_cards or previous["route_context"] is None:
         raise CycleError("E_RECEIPT_INVALID", "entry completion does not match the active card", exit_code=3)
     artifact_id = "workflow-intake"
     _enforce_human_budget(registry, artifact_id, command["fields"], command["outcome"])
-    request = _producer_request(command, previous, artifact_id)
+    request = _producer_request(previous, artifact_id, "sqw.select.control.scope-authority-and-effects")
     next_step = _select(
         manifest,
         _route_facts(
@@ -327,7 +349,14 @@ def _complete_entry(
     receipt.update({
         "receipt_kind": "completion",
         "route_context": previous["route_context"],
-        "completion": _completion(artifact_id, command["fields"], command["outcome"]),
+        "completion": _completion(
+            artifact_id,
+            previous["next_step"]["card_id"],
+            previous["next_step"]["decision_id"],
+            command["fields"],
+            command["outcome"]["blocker"],
+            request["decision_id"],
+        ),
     })
     receipt["receipt_id"] = _receipt_id(receipt)
     return receipt
@@ -359,8 +388,21 @@ def _complete_scope(
     fields["allowed_reads"] = _normalize_paths(fields["allowed_reads"])
     fields["allowed_writes"] = _normalize_paths(fields["allowed_writes"])
     _enforce_human_budget(registry, artifact_id, fields, command["outcome"])
-    request = _producer_request(command, previous, artifact_id)
-    prior_decision = "sqw.select.entry.direct-change"
+    context = previous["route_context"]
+    if context["root_cause_status"] == "unknown":
+        next_decision = "sqw.select.diagnosis.evidence-and-hypothesis"
+    elif context["intent_status"] == "materially_underdefined":
+        next_decision = "sqw.select.intent.discovery-and-freeze"
+    elif context["request_mode"] == "recovery":
+        next_decision = "sqw.select.recovery.repository-recovery"
+    elif context["request_mode"] == "review":
+        next_decision = "sqw.select.review.tier-selection"
+    elif context["request_mode"] == "report":
+        next_decision = "sqw.select.verify.classification-and-completion"
+    else:
+        next_decision = "sqw.select.test.behavior-cycle"
+    request = _producer_request(previous, artifact_id, next_decision)
+    prior_decision = previous["completion"]["decision_id"]
     next_step = _select(
         manifest,
         _route_facts(
@@ -376,7 +418,14 @@ def _complete_scope(
     receipt = _base_receipt(manifest, source_identity, next_step)
     receipt.update({
         "receipt_kind": "completion",
-        "completion": _completion(artifact_id, fields, command["outcome"]),
+        "completion": _completion(
+            artifact_id,
+            previous["next_step"]["card_id"],
+            previous["next_step"]["decision_id"],
+            fields,
+            command["outcome"]["blocker"],
+            request["decision_id"],
+        ),
         "scope_binding": scope_binding,
     })
     receipt["receipt_id"] = _receipt_id(receipt)

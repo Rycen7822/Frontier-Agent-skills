@@ -247,6 +247,7 @@ def _next_card(manifest: dict[str, Any], route: dict[str, Any]) -> dict[str, Any
 def _route_initial(command: dict[str, Any], manifest: dict[str, Any], source_identity: dict[str, str]) -> dict[str, Any]:
     facts = {
         "schema_version": "2.0",
+        "route_phase": "entry",
         **command["fields"],
         "pending_decision_ids": [],
         "available_artifact_ids": [],
@@ -385,8 +386,10 @@ def _complete_brief(
     scope_binding["binding_id"] = _hash_json(scope_payload)
     completion_payload = {
         "artifact_id": "plan-brief",
+        "producer_card_id": previous["next_step"]["card_id"],
+        "decision_id": previous["next_step"]["decision_id"],
         "payload_hash": payload_hash,
-        "outcome": command["outcome"],
+        "outcome": {"blocker": command["outcome"]["blocker"], "decision_request": None},
         "source_identity": source_identity,
         "scope_binding_id": scope_binding["binding_id"],
     }

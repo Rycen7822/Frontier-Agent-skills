@@ -8,31 +8,31 @@
       "normative_owner_path": "writing-plans/schemas/plan-execution-handoff.schema.json"
     }
   },
-  "release_build_id": "build-36d61ae0c9b7826d67f87698",
+  "release_build_id": "build-3ebca36d111959a924efca71",
   "schema_version": "frontier-engineering-bundle/1.0",
   "skills": {
     "software-quality-workflows": {
       "policy_registry": {
-        "content_hash": "sha256:a79b4cd3d6ed85453e287d175ae2ccf4a2dbd30fc004fef9e1b902ab70ce7358",
+        "content_hash": "sha256:9e33f36d3bb8f3336183497d373f0435b013852d412ffb8ea06a7215424be260",
         "path": "software-quality-workflows/registries/policy-owners.json"
       },
       "reference_card_manifest": {
-        "content_hash": "sha256:60b7e0daab32d2fee2cb8a0c0c9cda94f8869d780dc1ba652d0d9ebcd1cfb4cb",
+        "content_hash": "sha256:961e9826940de52d007512a4860e66ff1b9328cc982ec8ac62474247b17d5f05",
         "path": "software-quality-workflows/registries/reference-cards.manifest.json"
       },
-      "root_hash": "sha256:2868cbc532532399113cf374931e6b2405b4307358427d05c4107d043a8ba906",
+      "root_hash": "sha256:079f3ded6ff3cb1809063e6ef2714e591aa9c10922241a2b6a953a07dd1fd127",
       "version": "6.0.0"
     },
     "writing-plans": {
       "policy_registry": {
-        "content_hash": "sha256:8c09096593aecc920cd7131306f608160d16d0deed9351cc8a2cc5867e935413",
+        "content_hash": "sha256:a6c9eee94a03f88c2ae3e85d69f1f57de5e9fb7a198f8bfc5032510afe8821ba",
         "path": "writing-plans/registries/policy-owners.json"
       },
       "reference_card_manifest": {
-        "content_hash": "sha256:5e9057364621f873e8bc7dda84180fbb7c7a61c414f31201635d97b3fc522f5c",
+        "content_hash": "sha256:457cd828962df29716780796cbf4cf9432fe347c504f046554b3304f0cca1d0f",
         "path": "writing-plans/registries/reference-cards.manifest.json"
       },
-      "root_hash": "sha256:6c302e10acfc7b00cadbe5e32cee30fc640a98c8dd5468c9902fd2fff86b29aa",
+      "root_hash": "sha256:1681a1f9154a485ba329a69cb2dac5c2ae4cf3641e702ca9c3b17c120e185353",
       "version": "5.0.0"
     }
   }

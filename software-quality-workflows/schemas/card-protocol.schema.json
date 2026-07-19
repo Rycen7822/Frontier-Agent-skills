@@ -3,7 +3,15 @@
   "$id": "https://frontier-agent-skills.local/software-quality-workflows/card-protocol.schema.json",
   "$ref": "#/$defs/command",
   "$defs": {
-    "outcome": {
+    "humanOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blocker"],
+      "properties": {
+        "blocker": {"type": ["string", "null"]}
+      }
+    },
+    "completionOutcome": {
       "type": "object",
       "additionalProperties": false,
       "required": ["blocker", "decision_request"],
@@ -166,12 +174,14 @@
     "completion": {
       "type": ["object", "null"],
       "additionalProperties": false,
-      "required": ["artifact_id", "content_hash", "fields", "outcome"],
+      "required": ["artifact_id", "content_hash", "producer_card_id", "decision_id", "fields", "outcome"],
       "properties": {
         "artifact_id": {"type": "string", "minLength": 1},
         "content_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "producer_card_id": {"type": "string", "pattern": "^sqw\\."},
+        "decision_id": {"type": "string", "pattern": "^sqw\\.select\\."},
         "fields": {"oneOf": [{"$ref": "#/$defs/entryFields"}, {"$ref": "#/$defs/scopeFields"}]},
-        "outcome": {"$ref": "#/$defs/outcome"}
+        "outcome": {"$ref": "#/$defs/completionOutcome"}
       }
     },
     "scopeBinding": {
@@ -220,7 +230,7 @@
         "invocation_phase": {"const": "initial"},
         "previous_receipt": {"type": "null"},
         "fields": {"$ref": "#/$defs/routeFields"},
-        "outcome": {"$ref": "#/$defs/outcome"}
+        "outcome": {"$ref": "#/$defs/humanOutcome"}
       }
     },
     "entryCommand": {
@@ -232,7 +242,7 @@
         "invocation_phase": {"const": "initial"},
         "previous_receipt": {"$ref": "#/$defs/receipt"},
         "fields": {"$ref": "#/$defs/entryFields"},
-        "outcome": {"$ref": "#/$defs/outcome"}
+        "outcome": {"$ref": "#/$defs/humanOutcome"}
       }
     },
     "scopeCommand": {
@@ -244,7 +254,7 @@
         "invocation_phase": {"const": "initial"},
         "previous_receipt": {"$ref": "#/$defs/receipt"},
         "fields": {"$ref": "#/$defs/scopeFields"},
-        "outcome": {"$ref": "#/$defs/outcome"}
+        "outcome": {"$ref": "#/$defs/humanOutcome"}
       }
     },
     "command": {
