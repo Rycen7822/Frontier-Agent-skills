@@ -204,8 +204,8 @@ class AtomicCutoverContractTests(unittest.TestCase):
             12500,
         )
 
-    def test_model_entries_are_closed_over_the_card_cycle(self) -> None:
-        limits = {"writing-plans": 5200, "software-quality-workflows": 7200}
+    def test_model_entries_expose_only_direct_or_card_cycle(self) -> None:
+        limits = {"writing-plans": 5200, "software-quality-workflows": 7400}
         raw_selector_command = re.compile(
             r"`[^`]*(?:assess_plan_mode|route_workflow)\.py\s+(?:--|route|complete|render)[^`]*`"
         )
@@ -224,6 +224,25 @@ class AtomicCutoverContractTests(unittest.TestCase):
                     self.assertTrue(all("scripts/card_cycle.py" in span for span in command_spans))
                 self.assertIn("Replacement stops", text)
                 self.assertIn("physical context eviction", text)
+                if skill == "software-quality-workflows":
+                    self.assertIn("Use **M0 Direct** without `card_cycle.py`", text)
+                    self.assertIn("creates no receipt, work root, anchor, or protocol artifact", text)
+                    self.assertIn("Unknown cause blocks Direct implementation", text)
+
+    def test_sqw_m0_direct_is_bounded_and_artifact_free(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir)
+            subject = source / "subject.py"
+            subject.write_text("VALUE = 1\n", encoding="utf-8")
+            before = {path.relative_to(source) for path in source.rglob("*")}
+
+            entry = (ROOT / "software-quality-workflows" / "SKILL.md").read_text(encoding="utf-8")
+            observed = subject.read_text(encoding="utf-8")
+
+            self.assertIn("Use **M0 Direct** without `card_cycle.py`", entry)
+            self.assertEqual("VALUE = 1\n", observed)
+            self.assertEqual(before, {path.relative_to(source) for path in source.rglob("*")})
+            self.assertFalse(any(path.suffix in {".json", ".jsonl"} for path in source.rglob("*")))
 
     def test_core_closure_protocol_has_no_residual(self) -> None:
         residuals: list[str] = []
@@ -327,7 +346,7 @@ class BoundedCallerAndAnchorContractTests(unittest.TestCase):
             "outcome": {"blocker": None},
         }
 
-    def test_constrained_caller_completes_sqw_m0_and_wp_brief(self) -> None:
+    def test_constrained_card_cycle_caller_completes_sqw_m0_and_wp_brief(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             sqw_source = root / "sqw-source"
