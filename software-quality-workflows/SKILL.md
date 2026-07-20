@@ -52,7 +52,7 @@ First M2/M3 bootstrap uses explicit external root; else require the pending repl
 
 `scripts/route_workflow.py`, schemas, registries, manifests, tests, and support map are internal, not model commands or default reads. Mismatch fails closed; an unmanifested card is inactive.
 
-`semantic_inline` fields/results exist only in stdin/stdout or owner state. Except returned boundary/projection locators, write no protocol JSON, Markdown, ledger, worknote, card result, or receipt. Do not open raw state, locks, events, whole artifact/projection directories, full schemas/manifests, fixtures, history, or logs. Replacement stops propagation; it does not prove physical context eviction.
+`semantic_inline` fields use `--fields-json`; receipts/results stay in stdin/stdout or owner state. Except returned boundary/projection locators, write no protocol JSON, Markdown, ledger, worknote, card result, or receipt. Do not open raw state, locks, events, whole artifact/projection directories, full schemas/manifests, fixtures, history, or logs. Replacement stops propagation; it does not prove physical context eviction.
 
 ## Mode, review, and context
 

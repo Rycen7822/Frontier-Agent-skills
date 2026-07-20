@@ -35,7 +35,7 @@ First Program bootstrap uses explicit external root; else require the pending re
 
 `scripts/assess_plan_mode.py`, schemas, registries, manifests, tests, docs, templates, support map are internal, not model commands/default reads; mismatch fails closed.
 
-`semantic_inline` fields/results stay in stdin/stdout or owner state. Except returned boundary/projection locators, write no protocol file. Do not open raw state, locks, whole artifact/projection directories, schemas/manifests, fixtures, history, or logs. Replacement stops propagation, not physical context eviction.
+`semantic_inline` fields use `--fields-json`; receipts/results stay in stdin/stdout or owner state. Except returned boundary/projection locators, write no protocol file. Do not open raw state, locks, whole artifact/projection directories, schemas/manifests, fixtures, history, or logs. Replacement stops propagation, not physical context eviction.
 
 ## Selection and profiles
 
