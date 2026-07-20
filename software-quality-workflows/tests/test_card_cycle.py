@@ -157,6 +157,21 @@ class CardCycleM0Tests(unittest.TestCase):
             "outcome": {"blocker": None, "decision_request": decision_request},
         }
 
+    def _active_handoff_command(self, receipt: dict[str, object]) -> dict[str, object]:
+        return {
+            "contract_id": "sqw.complete.card/1",
+            "invocation_phase": "active",
+            "previous_receipt": receipt,
+            "fields": {
+                "objective": "Hand off the bounded implementation slice.",
+                "requirements": ["Preserve the verified contract."],
+                "authority_requirements": ["Local reversible writes only."],
+                "ordered_slices": ["Implement", "Verify"],
+                "rollback": "Revert the bounded patch.",
+            },
+            "outcome": {"blocker": None, "decision_request": None},
+        }
+
     def _scope_command(self, receipt: dict[str, object], *, mode: str = "M0") -> dict[str, object]:
         return {
             "contract_id": "sqw.complete.scope/1",
@@ -425,6 +440,72 @@ class CardCycleM0Tests(unittest.TestCase):
                 self._run("route", self._resume_command(terminal), source, "--work-root", str(work))
             )
             self.assertEqual(("terminal", None, 3), (terminal_resume["next_step"]["kind"], terminal_resume["current_lease"], terminal_resume["state_version"]))
+
+    def test_durable_handoff_is_materialized_once_without_payload_duplication(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            work = root / "work"
+            source.mkdir()
+            work.mkdir()
+            (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+            route = self._success_receipt(self._run("route", self._initial_command(), source))
+            entry = self._success_receipt(self._run("complete", self._entry_command(route), source))
+            scoped = self._success_receipt(
+                self._run("complete", self._scope_command(entry, mode="M2"), source, "--work-root", str(work))
+            )
+            behavior = self._success_receipt(
+                self._run(
+                    "complete",
+                    self._active_evidence_command(scoped, "sqw.select.delegation.admission-and-contract"),
+                    source,
+                    "--work-root",
+                    str(work),
+                )
+            )
+            command = self._active_handoff_command(behavior)
+            completed = self._success_receipt(self._run("complete", command, source, "--work-root", str(work)))
+            locator = completed["completion"]["content_locator"]
+            artifact_path = work / "artifacts" / f"{locator['artifact_id']}--{locator['content_hash'][7:]}.json"
+            self.assertTrue(artifact_path.is_file())
+            self.assertEqual(locator["bytes"], len(artifact_path.read_bytes()))
+            payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+            self.assertEqual(locator["content_hash"], "sha256:" + sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest())
+            state = json.loads((work / "state.json").read_text(encoding="utf-8"))
+            stored = state["card_completions"][-1]
+            self.assertEqual("materialized", stored["storage"])
+            self.assertEqual(locator, stored["content_locator"])
+            self.assertNotIn("completion", stored)
+            self.assertNotIn("fields", completed["completion"])
+            identity = {
+                path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                for path in (work / "state.json", work / "locks.json", artifact_path)
+            }
+            replay = self._success_receipt(self._run("complete", command, source, "--work-root", str(work)))
+            self.assertEqual(completed, replay)
+            self.assertEqual(
+                identity,
+                {
+                    path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                    for path in (work / "state.json", work / "locks.json", artifact_path)
+                },
+            )
+            self.assertEqual([artifact_path.name], sorted(path.name for path in (work / "artifacts").iterdir()))
+            control_identity = {
+                path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                for path in (work / "state.json", work / "locks.json")
+            }
+            artifact_path.write_text("{}\n", encoding="utf-8")
+            rejected = self._run("route", self._resume_command(completed), source, "--work-root", str(work))
+            self.assertEqual(5, rejected.returncode)
+            self.assertEqual("E_ORPHAN_CONFLICT", json.loads(rejected.stderr)["code"])
+            self.assertEqual(
+                control_identity,
+                {
+                    path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                    for path in (work / "state.json", work / "locks.json")
+                },
+            )
 
     def test_registry_covers_every_artifact_with_one_fixed_family_class(self) -> None:
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))

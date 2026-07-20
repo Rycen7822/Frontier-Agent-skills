@@ -56,7 +56,7 @@ def _locks(state: dict, leases: list[dict]) -> dict:
     }
 
 
-def _bootstrap(root: Path, source: Path) -> tuple[dict, dict, dict]:
+def _bootstrap(root: Path, source: Path, *, next_step: dict | None = None) -> tuple[dict, dict, dict]:
     return bootstrap_v3(
         root,
         source,
@@ -77,7 +77,7 @@ def _bootstrap(root: Path, source: Path) -> tuple[dict, dict, dict]:
             "publication_ceiling": "none",
         },
         source_identity={"kind": "unversioned", "identity_hash": "sha256:" + "7" * 64},
-        next_step={
+        next_step=next_step or {
             "kind": "card",
             "decision_id": "sqw.select.behavior-cycle",
             "card_id": "sqw.execute.behavior-cycle",
@@ -94,6 +94,25 @@ def _owner(parent: Path) -> tuple[Path, dict]:
     source.mkdir(mode=0o700)
     root.mkdir(mode=0o700)
     state, _, _ = _bootstrap(root, source)
+    return root, state
+
+
+def _handoff_owner(parent: Path) -> tuple[Path, dict]:
+    source = parent / "source"
+    root = parent / "workflow"
+    source.mkdir(mode=0o700)
+    root.mkdir(mode=0o700)
+    state, _, _ = _bootstrap(
+        root,
+        source,
+        next_step={
+            "kind": "card",
+            "decision_id": "sqw.select.delegation.admission-and-contract",
+            "card_id": "sqw.delegation.admission-and-contract",
+            "card_path": "references/delegation/admission-and-contract.md",
+            "card_hash": "sha256:" + "9" * 64,
+        },
+    )
     return root, state
 
 
@@ -196,7 +215,7 @@ def _complete_inline(root: Path) -> tuple[dict, dict | None]:
         "card_path": "references/test/oracle-and-lifecycle.md",
         "card_hash": "sha256:" + "9" * 64,
     }
-    return LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).complete_inline(
+    return LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).complete_card(
         locator,
         previous,
         state["source_identity"],
@@ -213,6 +232,77 @@ def _complete_inline(root: Path) -> tuple[dict, dict | None]:
     )
 
 
+def _complete_materialized(root: Path) -> tuple[dict, dict | None]:
+    state = load_json(root / "state.json")
+    frontier = {
+        "kind": "card",
+        "decision_id": "sqw.select.delegation.admission-and-contract",
+        "card_id": "sqw.delegation.admission-and-contract",
+        "card_path": "references/delegation/admission-and-contract.md",
+        "card_hash": "sha256:" + "9" * 64,
+    }
+    locator = {
+        "schema_version": "sqw-workflow-owner/1",
+        "workflow_id": state["workflow_id"],
+        "bootstrap_operation_id": state["bootstrap"]["operation_id"],
+        "bundle_id": state["bundle_id"],
+        "initial_source_identity_hash": state["bootstrap"]["initial_source_identity_hash"],
+        "scope_binding_id": state["scope_binding"]["binding_id"],
+        "mode": state["mode"],
+        "initial_root_binding_hash": workflow_adapter._value_hash(state["bootstrap"]["initial_root_binding"]),
+    }
+    old_lease = {
+        "lease_id": workflow_adapter._value_hash({"workflow_id": state["workflow_id"], "frontier": frontier}),
+        "producer_id": frontier["card_id"],
+        "decision_id": frontier["decision_id"],
+        "lease_expires_at": "2026-07-13T12:30:00+08:00",
+    }
+    previous = {
+        "owner_locator": locator,
+        "scope_binding": state["scope_binding"],
+        "state_version": 1,
+        "state_hash": state["state_hash"] if state["state_version"] == 1 else state["last_transition"]["prior_state_hash"],
+        "next_step": frontier,
+        "current_lease": old_lease,
+    }
+    payload = {
+        "artifact_id": "delegation-admission-and-contract",
+        "producer_card_id": frontier["card_id"],
+        "decision_id": frontier["decision_id"],
+        "fields": {
+            "objective": "bounded handoff",
+            "requirements": ["preserve contract"],
+            "authority_requirements": ["local only"],
+            "ordered_slices": ["implement", "verify"],
+            "rollback": "revert patch",
+        },
+        "outcome": {"blocker": None, "decision_request": None},
+    }
+    completion = {**payload, "content_hash": workflow_adapter._value_hash(payload)}
+    artifact_bytes = workflow_adapter._compact_bytes(payload) + b"\n"
+    content_locator = {
+        "schema_version": "content-locator/1",
+        "content_kind": "artifact",
+        "artifact_id": payload["artifact_id"],
+        "content_hash": completion["content_hash"],
+        "bytes": len(artifact_bytes),
+    }
+    return LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).complete_card(
+        locator,
+        previous,
+        state["source_identity"],
+        completion,
+        lambda _state, _completion: {"kind": "terminal", "decision_id": None, "reason_codes": ["ACTIVE_QUEUE_EMPTY"]},
+        materialized_payload=artifact_bytes,
+        content_locator=content_locator,
+        expected_bundle_id=state["bundle_id"],
+        expected_policy_bundle_hash=state["policy_bundle_hash"],
+        expected_card_manifest_hash=state["card_manifest_hash"],
+        expected_cards={frontier["card_id"]: (frontier["card_path"], frontier["card_hash"])},
+        now_value=NOW,
+    )
+
+
 def _complete_worker(root: Path, checkpoint_name: str, ready: Path) -> None:
     def pause(name: str) -> None:
         if name != checkpoint_name:
@@ -223,6 +313,18 @@ def _complete_worker(root: Path, checkpoint_name: str, ready: Path) -> None:
 
     workflow_adapter._checkpoint = pause
     _complete_inline(root)
+
+
+def _complete_materialized_worker(root: Path, checkpoint_name: str, ready: Path) -> None:
+    def pause(name: str) -> None:
+        if name != checkpoint_name:
+            return
+        ready.write_text(name + "\n", encoding="utf-8")
+        while True:
+            signal.pause()
+
+    workflow_adapter._checkpoint = pause
+    _complete_materialized(root)
 
 
 class WorkflowRuntimeTests(unittest.TestCase):
@@ -688,6 +790,109 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 self.assertFalse((root / ".state.json.tmp").exists())
                 self.assertFalse((root / ".locks.json.tmp").exists())
 
+    def test_materialized_completion_real_sigkill_prefixes_converge(self) -> None:
+        checkpoints = (
+            "card_state_temp_fsynced",
+            "card_artifact_temp_fsynced",
+            "card_artifact_linked",
+            "card_artifact_link_parent_synced",
+            "card_artifact_cleaned",
+            "card_artifact_cleanup_parent_synced",
+            "card_state_replaced",
+            "card_state_parent_synced",
+            "card_locks_temp_fsynced",
+            "card_locks_replaced",
+            "card_locks_parent_synced",
+        )
+        for checkpoint in checkpoints:
+            with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                root, _ = _handoff_owner(parent)
+                ready = parent / "ready"
+                process = subprocess.Popen(
+                    [sys.executable, "-B", __file__, "--complete-materialized-worker", str(root), checkpoint, str(ready)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                deadline = time.monotonic() + 5
+                while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(ready.exists(), f"worker did not reach {checkpoint}")
+                process.kill()
+                process.communicate(timeout=5)
+                committed, lease = _complete_materialized(root)
+                self.assertEqual((2, "completed", None), (committed["state_version"], committed["status"], lease))
+                entry = committed["card_completions"][-1]
+                final_name, temp_name = workflow_adapter._artifact_names(entry["content_locator"])
+                self.assertTrue((root / "artifacts" / final_name).is_file())
+                self.assertFalse((root / "artifacts" / temp_name).exists())
+                self.assertEqual([], load_json(root / "locks.json")["leases"])
+                self.assertFalse((root / ".state.json.tmp").exists())
+                identities = {
+                    str(path.relative_to(root)): (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                    for path in (root / "state.json", root / "locks.json", root / "artifacts" / final_name)
+                }
+                replay = _complete_materialized(root)
+                self.assertEqual((committed, lease), replay)
+                self.assertEqual(
+                    identities,
+                    {
+                        str(path.relative_to(root)): (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                        for path in (root / "state.json", root / "locks.json", root / "artifacts" / final_name)
+                    },
+                )
+
+    def test_resume_aborts_prepared_materialized_completion_and_preserves_final_orphan(self) -> None:
+        for checkpoint, final_expected in (
+            ("card_artifact_temp_fsynced", False),
+            ("card_artifact_linked", True),
+            ("card_artifact_cleaned", True),
+        ):
+            with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                root, state = _handoff_owner(parent)
+                ready = parent / "ready"
+                process = subprocess.Popen(
+                    [sys.executable, "-B", __file__, "--complete-materialized-worker", str(root), checkpoint, str(ready)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                deadline = time.monotonic() + 5
+                while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(ready.exists(), f"worker did not reach {checkpoint}")
+                process.kill()
+                process.communicate(timeout=5)
+                prepared = load_json(root / ".state.json.tmp")
+                artifact_entry = prepared["card_completions"][-1]
+                final_name, temp_name = workflow_adapter._artifact_names(artifact_entry["content_locator"])
+                locator = {
+                    "schema_version": "sqw-workflow-owner/1",
+                    "workflow_id": state["workflow_id"],
+                    "bootstrap_operation_id": state["bootstrap"]["operation_id"],
+                    "bundle_id": state["bundle_id"],
+                    "initial_source_identity_hash": state["bootstrap"]["initial_source_identity_hash"],
+                    "scope_binding_id": state["scope_binding"]["binding_id"],
+                    "mode": state["mode"],
+                    "initial_root_binding_hash": workflow_adapter._value_hash(state["bootstrap"]["initial_root_binding"]),
+                }
+                resumed, lease = LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).resume(
+                    locator,
+                    state["source_identity"],
+                    expected_bundle_id=state["bundle_id"],
+                    expected_policy_bundle_hash=state["policy_bundle_hash"],
+                    expected_card_manifest_hash=state["card_manifest_hash"],
+                    expected_cards={state["active_frontier"]["card_id"]: (state["active_frontier"]["card_path"], state["active_frontier"]["card_hash"])},
+                    now_value=NOW,
+                )
+                self.assertEqual(state, resumed)
+                self.assertEqual(state["active_frontier"]["card_id"], lease["producer_id"])
+                self.assertFalse((root / ".state.json.tmp").exists())
+                self.assertFalse((root / "artifacts" / temp_name).exists())
+                self.assertEqual(final_expected, (root / "artifacts" / final_name).exists())
+
     def test_bootstrap_rejects_skipped_or_foreign_prefix_before_mutation(self) -> None:
         for entry in ("projections", ".state.json.tmp"):
             with self.subTest(entry=entry), tempfile.TemporaryDirectory() as directory:
@@ -800,5 +1005,7 @@ if __name__ == "__main__":
         _resume_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
     elif len(sys.argv) == 5 and sys.argv[1] == "--complete-worker":
         _complete_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
+    elif len(sys.argv) == 5 and sys.argv[1] == "--complete-materialized-worker":
+        _complete_materialized_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
     else:
         unittest.main()
