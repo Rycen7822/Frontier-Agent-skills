@@ -141,17 +141,18 @@ class _ConstrainedCaller:
         if "sha256:" + hashlib.sha256(payload).hexdigest() != step["card_hash"]:
             raise AssertionError("returned card hash mismatch")
 
-    def completion(self, receipt: dict[str, object]) -> dict[str, object]:
+    def completion(self, receipt: dict[str, object], **overrides: object) -> dict[str, object]:
         contract = receipt["next_step"]["input_contract"]
         required = contract["required_fields"]
-        missing = [field for field in required if field not in self.VALUES]
+        values = {**self.VALUES, **overrides}
+        missing = [field for field in required if field not in values]
         if missing:
             raise AssertionError(f"no deterministic value for {missing}")
         return {
             "contract_id": contract["completion_contract_id"],
             "invocation_phase": "initial",
             "previous_receipt": receipt,
-            "fields": {field: self.VALUES[field] for field in required},
+            "fields": {field: values[field] for field in required},
             "outcome": {"blocker": None},
         }
 
@@ -235,6 +236,16 @@ class AtomicCutoverContractTests(unittest.TestCase):
                     self.assertIn("Use **M0 Direct** without `card_cycle.py`", text)
                     self.assertIn("creates no receipt, work root, anchor, or protocol artifact", text)
                     self.assertIn("Unknown cause blocks Direct implementation", text)
+                prefix = ".frontier-sqw-<full-hex>" if skill == "software-quality-workflows" else ".frontier-wp-<full-hex>"
+                self.assertIn("sha256:[0-9a-f]{64}", text)
+                self.assertIn(prefix, text)
+                self.assertIn("mkdir -m 700 -- <exact-root>", text)
+                self.assertIn("never `-p`", text)
+                self.assertIn("matching canonical active anchor", text)
+                self.assertIn("route resume, not bootstrap", text)
+                self.assertIn("block without scan/write", text)
+                self.assertIn("`E_ORPHAN_CONFLICT` is non-retryable", text)
+                self.assertIn("fallback Markdown/manual state", text)
 
     def test_sqw_m0_direct_is_bounded_and_artifact_free(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -353,6 +364,23 @@ class BoundedCallerAndAnchorContractTests(unittest.TestCase):
             "outcome": {"blocker": None},
         }
 
+    @staticmethod
+    def _receipt_root(skill: str, source: Path, receipt: dict[str, object]) -> Path:
+        receipt_id = receipt.get("receipt_id")
+        if not isinstance(receipt_id, str):
+            raise AssertionError("receipt_id is absent")
+        match = re.fullmatch(r"sha256:([0-9a-f]{64})", receipt_id)
+        if match is None:
+            raise AssertionError("receipt_id is not canonical")
+        prefix = ".frontier-sqw-" if skill == "software-quality-workflows" else ".frontier-wp-"
+        return source.parent / f"{prefix}{match.group(1)}"
+
+    @staticmethod
+    def _root_action(root: Path, active_root: Path | None) -> str:
+        if not root.exists():
+            return "create"
+        return "resume" if active_root == root else "block"
+
     def test_constrained_card_cycle_caller_completes_sqw_m0_and_wp_brief(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -394,6 +422,99 @@ class BoundedCallerAndAnchorContractTests(unittest.TestCase):
             self.assertFalse(any(path.suffix == ".json" or "receipt" in path.name or "worknote" in path.name for path in projection.iterdir()))
             wp.assert_read_surface()
 
+    def test_constrained_durable_callers_bootstrap_one_derived_sibling_then_resume(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            sqw_source = base / "sqw" / "source"
+            wp_source = base / "wp" / "source"
+            for source in (sqw_source, wp_source):
+                source.mkdir(parents=True)
+                (source / "input.txt").write_text("stable\n", encoding="utf-8")
+            for receipt_id in ("sha256:" + "0" * 63, "sha256:" + "A" * 64):
+                with self.assertRaisesRegex(AssertionError, "not canonical"):
+                    self._receipt_root("software-quality-workflows", sqw_source, {"receipt_id": receipt_id})
+
+            sqw = _ConstrainedCaller("software-quality-workflows", sqw_source)
+            route = sqw.invoke("route", self._route_command("sqw.route.initial/2", self.SQW_ROUTE_FIELDS))
+            sqw.read_returned_card(route)
+            scope = sqw.invoke("complete", sqw.completion(route))
+            sqw.read_returned_card(scope)
+            sqw_root = self._receipt_root(sqw.skill, sqw_source, scope)
+            self.assertEqual("create", self._root_action(sqw_root, None))
+            sqw_root.mkdir(mode=0o700)
+            initialized = sqw.invoke("complete", sqw.completion(scope, mode="M2"), "--work-root", str(sqw_root))
+            self.assertEqual(0o700, stat.S_IMODE(sqw_root.stat().st_mode))
+            self.assertFalse(sqw_root.is_relative_to(sqw_source))
+            before = {path.name: (path.stat().st_ino, path.stat().st_mtime_ns) for path in sqw_root.iterdir()}
+            resumed = sqw.invoke(
+                "route",
+                {
+                    "contract_id": "sqw.route.resume/2",
+                    "invocation_phase": "resume",
+                    "previous_receipt": None,
+                    "fields": {"owner_locator": initialized["owner_locator"]},
+                },
+                "--work-root",
+                str(sqw_root),
+            )
+            self.assertEqual(initialized["owner_locator"], resumed["owner_locator"])
+            self.assertEqual(before, {path.name: (path.stat().st_ino, path.stat().st_mtime_ns) for path in sqw_root.iterdir()})
+            self.assertEqual("resume", self._root_action(sqw_root, sqw_root))
+            sqw.assert_read_surface()
+
+            wp_fields = dict(self.WP_ROUTE_FIELDS)
+            wp_fields.update({"resume_required": True, "same_session_execution": False, "independent_write_slices": 2, "strategy_family_count": 2})
+            wp = _ConstrainedCaller("writing-plans", wp_source)
+            program = wp.invoke("route", self._route_command("wp.route.initial/2", wp_fields))
+            wp.read_returned_card(program)
+            wp_root = self._receipt_root(wp.skill, wp_source, program)
+            self.assertEqual("create", self._root_action(wp_root, None))
+            wp_root.mkdir(mode=0o700)
+            initialized = wp.invoke(
+                "complete",
+                wp.completion(
+                    program,
+                    goal="Keep one bounded durable owner",
+                    non_goals=["Mutate source files"],
+                    invariants=["One accepted card advances state once"],
+                    initial_nodes=[],
+                    initial_queue=[{"decision_id": "wp.select.economy.output-projection", "subject_ref": None}],
+                ),
+                "--work-root",
+                str(wp_root),
+            )
+            self.assertEqual(0o700, stat.S_IMODE(wp_root.stat().st_mode))
+            self.assertFalse(wp_root.is_relative_to(wp_source))
+            before = {path.name: (path.stat().st_ino, path.stat().st_mtime_ns) for path in wp_root.iterdir()}
+            resumed = wp.invoke(
+                "route",
+                {
+                    "contract_id": "wp.route.resume/2",
+                    "invocation_phase": "resume",
+                    "previous_receipt": None,
+                    "fields": {"owner_locator": initialized["owner_locator"]},
+                    "outcome": {"blocker": None},
+                },
+                "--work-root",
+                str(wp_root),
+            )
+            self.assertEqual(initialized["owner_locator"], resumed["owner_locator"])
+            self.assertEqual(before, {path.name: (path.stat().st_ino, path.stat().st_mtime_ns) for path in wp_root.iterdir()})
+            self.assertEqual("resume", self._root_action(wp_root, wp_root))
+            wp.assert_read_surface()
+
+            unowned = self._receipt_root(
+                sqw.skill,
+                sqw_source,
+                {"receipt_id": "sha256:" + hashlib.sha256(b"unowned").hexdigest()},
+            )
+            unowned.mkdir(mode=0o700)
+            sentinel = unowned / "sentinel.txt"
+            sentinel.write_text("foreign\n", encoding="utf-8")
+            before = (sentinel.read_bytes(), sentinel.stat().st_mtime_ns)
+            self.assertEqual("block", self._root_action(unowned, None))
+            self.assertEqual(before, (sentinel.read_bytes(), sentinel.stat().st_mtime_ns))
+
     def test_twenty_tasks_have_isolated_single_anchor_lifecycles(self) -> None:
         modes = ("M0", "M1", "Brief", "Handoff", "M2", "M3", "Program")
         anchors: dict[str, str] = {}
@@ -401,10 +522,8 @@ class BoundedCallerAndAnchorContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)
             source = base / "source"
-            owners = base / "owners"
             deliveries = base / "deliveries"
             source.mkdir()
-            owners.mkdir()
             deliveries.mkdir()
             for index in range(20):
                 task = f"task-{index:02d}"
@@ -420,19 +539,27 @@ class BoundedCallerAndAnchorContractTests(unittest.TestCase):
                     self.assertNotIn(task, anchors)
                     continue
 
-                owner_root = owners / task
-                owner_root.mkdir()
+                receipt = {"receipt_id": "sha256:" + hashlib.sha256(task.encode("utf-8")).hexdigest()}
+                skill = "writing-plans" if mode == "Program" else "software-quality-workflows"
+                owner_root = self._receipt_root(skill, task_source, receipt)
+                self.assertEqual("create", self._root_action(owner_root, None))
+                owner_root.mkdir(mode=0o700)
+                self.assertEqual(0o700, stat.S_IMODE(owner_root.stat().st_mode))
+                self.assertFalse(owner_root.is_relative_to(task_source))
+                self.assertEqual(receipt["receipt_id"].removeprefix("sha256:"), owner_root.name.rsplit("-", 1)[1])
                 owner_file = owner_root / "owner.state"
                 owner_file.write_text("immutable owner\n", encoding="utf-8")
                 owner_kind = "program" if mode == "Program" else "workflow"
                 anchors[task] = (
-                    f"owner={'writing-plans' if mode == 'Program' else 'software-quality-workflows'}/{owner_kind} | "
+                    f"owner={skill}/{owner_kind} | "
                     f"root={owner_root} | locator={owner_file} | source=source:{task} | bundle=bundle:test | "
                     "lifecycle=active | boundary=none"
                 )
                 self.assertNotIn(str(task_source), anchors[task])
                 self.assertEqual(1, sum(key == task for key in anchors))
                 self.assertFalse(any("receipt" in path.name for path in owner_root.iterdir()))
+                self.assertEqual(owner_root, self._receipt_root(skill, task_source, receipt))
+                self.assertEqual("resume", self._root_action(owner_root, owner_root))
 
                 if index % 2 == 0:
                     anchors[task] = anchors[task].replace("lifecycle=active", "lifecycle=terminal-disposable")

@@ -650,6 +650,21 @@ class BriefCardCycleTests(unittest.TestCase):
                 },
                 "outcome": {"blocker": None},
             }
+            missing = root / "missing"
+            with self.assertRaises(cycle.ProgramOwnerConflict) as missing_conflict:
+                cycle.initialize_program_owner(missing, source, {})
+            self.assertIn("non-retryable for this task", str(missing_conflict.exception))
+            self.assertNotIn(str(missing), str(missing_conflict.exception))
+            self.assertFalse(missing.exists())
+
+            nested = source / "program"
+            nested.mkdir(mode=0o700)
+            with self.assertRaises(cycle.ProgramOwnerConflict) as nested_conflict:
+                cycle.initialize_program_owner(nested, source, {})
+            self.assertIn("stop without probing, mutation, retry, alternate root, or fallback", str(nested_conflict.exception))
+            self.assertNotIn(str(nested), str(nested_conflict.exception))
+            self.assertEqual([], list(nested.iterdir()))
+
             schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
             manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
             source_identity = cycle._capture_program_source(source)

@@ -277,7 +277,9 @@ def _validate_v3_root(root: Path, source_root: Path) -> tuple[Path, dict[str, in
         resolved = root.resolve(strict=True)
         source = source_root.resolve(strict=True)
     except OSError as exc:
-        raise AdapterConflict("workflow root is unavailable") from exc
+        raise AdapterConflict(
+            "workflow root unavailable; non-retryable for this task; a new task requires one existing mode-0700 external root"
+        ) from exc
     if (
         root.is_symlink()
         or not stat.S_ISDIR(info.st_mode)
@@ -288,7 +290,9 @@ def _validate_v3_root(root: Path, source_root: Path) -> tuple[Path, dict[str, in
         or resolved.is_relative_to(source)
         or source.is_relative_to(resolved)
     ):
-        raise AdapterConflict("workflow root is unsafe")
+        raise AdapterConflict(
+            "workflow root unsafe; stop without probing, mutation, retry, alternate root, or fallback; a new task requires one mode-0700 root disjoint from source"
+        )
     return resolved, {"dev": info.st_dev, "ino": info.st_ino, "uid": info.st_uid, "mode": stat.S_IMODE(info.st_mode)}
 
 

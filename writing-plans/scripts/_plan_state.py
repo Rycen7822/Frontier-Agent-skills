@@ -460,7 +460,9 @@ def _program_validate_root(root: Path, source_root: Path) -> tuple[Path, dict[st
         resolved = root.resolve(strict=True)
         source = source_root.resolve(strict=True)
     except OSError as exc:
-        raise ProgramOwnerConflict("Program root is unavailable") from exc
+        raise ProgramOwnerConflict(
+            "Program root unavailable; non-retryable for this task; a new task requires one existing mode-0700 external root"
+        ) from exc
     if (
         root.is_symlink()
         or source_root.is_symlink()
@@ -474,7 +476,9 @@ def _program_validate_root(root: Path, source_root: Path) -> tuple[Path, dict[st
         or resolved.is_relative_to(source)
         or source.is_relative_to(resolved)
     ):
-        raise ProgramOwnerConflict("Program root is unsafe")
+        raise ProgramOwnerConflict(
+            "Program root unsafe; stop without probing, mutation, retry, alternate root, or fallback; a new task requires one mode-0700 root disjoint from source"
+        )
     root_binding = {"dev": info.st_dev, "ino": info.st_ino, "uid": info.st_uid, "mode": stat.S_IMODE(info.st_mode)}
     source_binding = {"dev": source_info.st_dev, "ino": source_info.st_ino}
     return resolved, root_binding, source_binding
