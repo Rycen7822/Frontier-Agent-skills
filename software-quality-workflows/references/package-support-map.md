@@ -130,6 +130,7 @@
 
 ## tests
 
+- [`tests/_adapter_crash_worker.py` · `sha256:72d94d20a181bccf4dcd4db5afe27d8bd745ae874db769096023adeda82312c2`](../tests/_adapter_crash_worker.py)
 - [`tests/fixtures/decision-cases.json` · `sha256:1d4ca64a4ca519ce1212f5847e3184dd4279b24a50ce29d3675c50be75b1f228`](../tests/fixtures/decision-cases.json)
 - [`tests/fixtures/decision-route-cases-v7.json` · `sha256:e4d06558466f24414b1d8a8d0965129ceb61a8dacf76aef726e70f700b9e8226`](../tests/fixtures/decision-route-cases-v7.json)
 - [`tests/fixtures/verifier-bundles/valid-qualified.json` · `sha256:73d86551397d323c6b92e227393967dd477aa249d100a66603b3cf5f9b6dccce`](../tests/fixtures/verifier-bundles/valid-qualified.json)
@@ -145,5 +146,5 @@
 - [`tests/test_package_support_map.py` · `sha256:524e6160f16ce749f5497dbf71ecb43204b9fb660073313f665439d780cd6a8a`](../tests/test_package_support_map.py)
 - [`tests/test_skill_contracts.py` · `sha256:2cc3940b10047b8a16b6e5fd6010e05942736c233f8f907db285d2a40e3a0a83`](../tests/test_skill_contracts.py)
 - [`tests/test_verifier_bundle.py` · `sha256:8b8c592887b70233d342d2babc0ed0c4f2c77f89d719bbeb0af7976342929a41`](../tests/test_verifier_bundle.py)
-- [`tests/test_workflow_runtime.py` · `sha256:5e1256b8d331386c60fa3a738e8bb8fc5106a1df779ea1b11722824b40d16367`](../tests/test_workflow_runtime.py)
+- [`tests/test_workflow_runtime.py` · `sha256:5d143016f302627292b5a6052da28fa86976c271f06b31ec9fab5c59664c6b5d`](../tests/test_workflow_runtime.py)
 - [`tests/test_workflow_state.py` · `sha256:24c911c2fa6794204ccefb0628181bfd2060a57146a4f6a8fc5b0da11a2bad3c`](../tests/test_workflow_state.py)

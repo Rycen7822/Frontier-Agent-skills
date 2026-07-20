@@ -72,6 +72,7 @@
 
 ## tests
 
+- [`tests/_plan_crash_worker.py` · `sha256:e55b8e6fb92e641ae5c54d3e401558121e4172dabaced110b06ec34188229941`](../tests/_plan_crash_worker.py)
 - [`tests/fixtures/decision-route-cases-v6.json` · `sha256:829e690dc1ebf20ea16fe0111a0bd60d58ff0bc86f05102820c29c827257badb`](../tests/fixtures/decision-route-cases-v6.json)
 - [`tests/fixtures/plan-route-sequences.json` · `sha256:c087e971b65da8a40d3c18f83e10154b437287f57f170e8cc83583d3d1175ee5`](../tests/fixtures/plan-route-sequences.json)
 - [`tests/fixtures/plan-state/invalid-cases.json` · `sha256:f512d958bdb5b3bf71ed9eb374abb3db5d8b4af4c05ac1a18593d5d85c925b70`](../tests/fixtures/plan-state/invalid-cases.json)
@@ -80,6 +81,6 @@
 - [`tests/test_decision_card_map.py` · `sha256:63684f796e761aa0c1ce12d50ce2a39d4e0a9beb7e0d396bec6272fb02fd3a36`](../tests/test_decision_card_map.py)
 - [`tests/test_decision_protocol_v6.py` · `sha256:7a51131ee29d6f045bfffef1948af56074a08662ca4432ecc15d69efecd387af`](../tests/test_decision_protocol_v6.py)
 - [`tests/test_package_support_map.py` · `sha256:ee5850a4bb51ed51d115f7bc420dc4c1beac4ba8dca6e407e3484af484bdf620`](../tests/test_package_support_map.py)
-- [`tests/test_plan_state.py` · `sha256:99f8a542c3f3e7f802d19a3e72fa4f1f1246a502094e914fcdca1c345509f89a`](../tests/test_plan_state.py)
+- [`tests/test_plan_state.py` · `sha256:14163db3516ae5c79cf6dc4a42e4873bf89c82c6f8f5a76b5521f57bcd9dff59`](../tests/test_plan_state.py)
 - [`tests/test_reference_cards_v6.py` · `sha256:40579a899ee0ce30f76e48cd710c65d061512f2ce7afa2d8fcf77333691e6c1a`](../tests/test_reference_cards_v6.py)
 - [`tests/test_writing_docs_v6.py` · `sha256:a1dd84381d5111120595fee7a78b43652aff9eb24bacb9bf361536e8309120a2`](../tests/test_writing_docs_v6.py)
