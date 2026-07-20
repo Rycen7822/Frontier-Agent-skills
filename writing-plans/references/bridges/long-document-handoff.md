@@ -23,17 +23,17 @@ Hand a large multi-source planning corpus to its segmented-writing owner without
 - The corpus is small enough for bounded repository evidence reads or the requested output is not a software plan/handoff.
 
 ## Required inputs
-- Source inventory/identities, requested plan/profile/audience, canonical output/worknote location, authority, software decision questions, evidence/coverage expectations, and installed owner availability.
+- Source/scope identities, requested plan/profile/audience, canonical final-output location, authority, software decision questions, requirements, unresolved decisions, and installed owner availability.
 
 ## Procedure
 1. Route corpus management, source ledger, segmented drafting, recovery packets, and whole-draft review to the installed long-document segmented-writing owner when available and justified.
-2. Pass only bounded planning requirements: profile, owner/contract questions, required evidence, source/scope identities, decision/gap ledger, and output path/authority.
-3. Receive stable source/evidence pointers, coverage matrix, draft sections, conflicts, and unresolved gaps; do not duplicate its private orchestration in WP cards.
-4. Reopen exact pointers only when a software owner, contract, freshness, proof, or rollback decision needs it.
+2. Pass only bounded planning requirements: profile, owner/contract questions, required evidence, source/scope identities, unresolved decisions, final output path, and authority.
+3. Receive only `scratch_retention`, the final locator and hash, source/scope identities, satisfied requirements, and unresolved decisions. Never copy sections, ledger, coverage, recovery, or confidence content into Writing Plans state.
+4. Reopen the final locator only when a software owner, contract, freshness, proof, or rollback decision needs it. The scratch root remains private to its owner.
 5. If the external owner is unavailable, stop with a typed handoff blocker unless the corpus is demonstrably bounded for local segmented handling.
 
 ## Output contract
-- One `long-document-handoff` with external owner route, source/coverage/evidence projections, plan deliverable identity, unresolved software decisions, and `blocker|null`.
+- One `long-document-handoff` containing the external owner route, `scratch_retention`, final locator/hash, source/scope identities, requirements status, unresolved software decisions, and `blocker|null`. It is a delivery boundary, not an owner anchor.
 
 ## Load next only if
 

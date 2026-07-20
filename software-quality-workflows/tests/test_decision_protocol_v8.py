@@ -57,10 +57,10 @@ MAPPING_KEYS = {
     "decision_id", "card_id", "priority", "required_artifact_ids", "produced_artifact_ids",
     "positive_fixture_id", "near_miss_fixture_id",
 }
-class SoftwareDecisionProtocolV7Tests(unittest.TestCase):
+class SoftwareDecisionProtocolV8Tests(unittest.TestCase):
     def setUp(self) -> None:
         self.fixture = json.loads(
-            (ROOT / "tests" / "fixtures" / "decision-route-cases-v7.json").read_text(encoding="utf-8")
+            (ROOT / "tests" / "fixtures" / "decision-route-cases-v8.json").read_text(encoding="utf-8")
         )
 
     def _load(self, relative: str) -> object:
@@ -100,7 +100,7 @@ class SoftwareDecisionProtocolV7Tests(unittest.TestCase):
         decision_map = self._load("registries/decision-card-map.json")
         cards = manifest["cards"]
         mappings = decision_map["decisions"]
-        self.assertEqual("7.0.0", manifest["skill_version"])
+        self.assertEqual("8.0.0", manifest["skill_version"])
         self.assertEqual(TARGET_CARDS, {card["card_id"] for card in cards})
         self.assertEqual(TARGET_CARDS, {mapping["card_id"] for mapping in mappings})
         self.assertEqual(len(mappings), len({mapping["decision_id"] for mapping in mappings}))

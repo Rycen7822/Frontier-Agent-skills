@@ -13,9 +13,9 @@ from typing import Any, Iterable
 
 
 SCHEMA_VERSION = "2.0"
-BUNDLE_ID = "frontier-engineering/7.0.0+6.0.0"
+BUNDLE_ID = "frontier-engineering/8.0.0+7.0.0"
 SKILL_ID = "writing-plans"
-TARGET_SKILL_VERSION = "6.0.0"
+TARGET_SKILL_VERSION = "7.0.0"
 MAX_INPUT_BYTES = 2 * 1024 * 1024
 BODY_SECTIONS = (
     "Decision this card owns", "Use when", "Do not use when", "Required inputs",
@@ -260,7 +260,7 @@ def discover_cards(root: Path) -> list[Card]:
 def validate_decision_contract(root: Path, entries: list[dict[str, Any]]) -> list[ContractIssue]:
     issues: list[ContractIssue] = []
     map_path = root / "registries" / "decision-card-map.json"
-    fixture_path = root / "tests" / "fixtures" / "decision-route-cases-v6.json"
+    fixture_path = root / "tests" / "fixtures" / "decision-route-cases-v7.json"
     try:
         decision_map = load_json(map_path)
         fixtures = load_json(fixture_path)
@@ -294,13 +294,13 @@ def validate_decision_contract(root: Path, entries: list[dict[str, Any]]) -> lis
             if entry[field] != row.get(field):
                 issues.append(ContractIssue("decision-map.binding", entry["path"], f"{field} differs from decision map"))
     if not isinstance(fixtures, dict):
-        return issues + [ContractIssue("decision-fixture.invalid", "tests/fixtures/decision-route-cases-v6.json", "fixture must be an object")]
+        return issues + [ContractIssue("decision-fixture.invalid", "tests/fixtures/decision-route-cases-v7.json", "fixture must be an object")]
     positive = {case.get("id"): case for case in fixtures.get("positive_cases", []) if isinstance(case, dict)}
     near_miss = {case.get("id"): case for case in fixtures.get("near_miss_cases", []) if isinstance(case, dict)}
     if {row["positive_fixture_id"] for row in valid_rows} != set(positive):
-        issues.append(ContractIssue("decision-fixture.coverage", "tests/fixtures/decision-route-cases-v6.json", "positive fixture ownership differs"))
+        issues.append(ContractIssue("decision-fixture.coverage", "tests/fixtures/decision-route-cases-v7.json", "positive fixture ownership differs"))
     if {row["near_miss_fixture_id"] for row in valid_rows} != set(near_miss):
-        issues.append(ContractIssue("decision-fixture.coverage", "tests/fixtures/decision-route-cases-v6.json", "near-miss fixture ownership differs"))
+        issues.append(ContractIssue("decision-fixture.coverage", "tests/fixtures/decision-route-cases-v7.json", "near-miss fixture ownership differs"))
     for row in valid_rows:
         positive_case = positive.get(row["positive_fixture_id"], {})
         near_case = near_miss.get(row["near_miss_fixture_id"], {})

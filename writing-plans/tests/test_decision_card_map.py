@@ -17,7 +17,7 @@ from assess_plan_mode import assess  # noqa: E402
 class WritingPlanRouteSequenceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.decision_map = self._load("registries/decision-card-map.json")
-        self.selector_fixture = self._load("tests/fixtures/decision-route-cases-v6.json")
+        self.selector_fixture = self._load("tests/fixtures/decision-route-cases-v7.json")
         self.sequence_fixture = self._load("tests/fixtures/plan-route-sequences.json")
 
     @staticmethod
@@ -34,7 +34,7 @@ class WritingPlanRouteSequenceTests(unittest.TestCase):
         self.assertEqual("outcome-linked-route-sequences/1.0", self.sequence_fixture["schema_version"])
         self.assertEqual("writing-plans", self.sequence_fixture["skill_id"])
         self.assertEqual(
-            "tests/fixtures/decision-route-cases-v6.json",
+            "tests/fixtures/decision-route-cases-v7.json",
             self.sequence_fixture["decision_case_fixture"],
         )
         mappings = self.decision_map["decisions"]

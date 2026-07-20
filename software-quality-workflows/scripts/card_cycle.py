@@ -32,6 +32,8 @@ STATE_SCHEMA_PATH = ROOT / "schemas" / "workflow-state.schema.json"
 EVENT_SCHEMA_PATH = ROOT / "schemas" / "workflow-event.schema.json"
 COMMAND_MAX_BYTES = 65_536
 RECEIPT_MAX_BYTES = 12_288
+INPUT_CONTRACT_MAX_BYTES = 544
+ROUTE_HELP_MAX_BYTES = 1_024
 SOURCE_FILE_MAX_BYTES = 8 * 1024 * 1024
 SOURCE_TOTAL_MAX_BYTES = 32 * 1024 * 1024
 SOURCE_MAX_FILES = 4_096
@@ -111,6 +113,8 @@ def _load_contracts() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         for field in ("human_def", "payload_def"):
             if family[field].split("/")[-1] not in schema["$defs"]:
                 raise CycleError("E_CONTRACT_INVALID", "artifact registry references an unknown definition", exit_code=5)
+    for card in manifest.get("cards", []):
+        _card_input_contract(schema, registry, card)
     return schema, registry, manifest
 
 
@@ -566,17 +570,127 @@ def _card(manifest: dict[str, Any], card_id: str) -> dict[str, Any]:
     return matches[0]
 
 
+def _definition(schema: dict[str, Any], reference: str) -> dict[str, Any]:
+    prefix = "#/$defs/"
+    if not reference.startswith(prefix) or "/" in reference[len(prefix):]:
+        raise CycleError("E_CONTRACT_INVALID", "human definition reference is not direct", exit_code=5)
+    definition = schema["$defs"].get(reference[len(prefix):])
+    if not isinstance(definition, dict) or definition.get("type") != "object" or not isinstance(definition.get("properties"), dict):
+        raise CycleError("E_CONTRACT_INVALID", "human definition is unavailable", exit_code=5)
+    return definition
+
+
+def _input_contract(
+    schema: dict[str, Any],
+    registry: dict[str, Any],
+    card: dict[str, Any],
+    completion_contract_id: str,
+    field_reference: str,
+    *,
+    always: list[str],
+    conditional: list[dict[str, Any]],
+) -> dict[str, Any]:
+    artifact_ids = card.get("produced_artifact_ids")
+    if not isinstance(artifact_ids, list) or len(artifact_ids) != 1:
+        raise CycleError("E_CONTRACT_INVALID", "selected card must produce exactly one artifact", exit_code=5)
+    artifact_id = artifact_ids[0]
+    family_name = registry.get("artifacts", {}).get(artifact_id)
+    family = registry.get("families", {}).get(family_name)
+    if not isinstance(family, dict) or family.get("persistence_class") not in {"semantic_inline", "boundary_by_contract"}:
+        raise CycleError("E_CONTRACT_INVALID", "selected artifact family is unavailable", exit_code=5)
+    fields = _definition(schema, field_reference)
+    required = sorted(fields.get("required", []))
+    properties = fields["properties"]
+    if any(name not in properties for name in required):
+        raise CycleError("E_CONTRACT_INVALID", "human definition required fields are inconsistent", exit_code=5)
+    if len(always) != len(set(always)) or set(always) - {"--source-root", "--work-root"}:
+        raise CycleError("E_CONTRACT_INVALID", "input contract has an unknown root role", exit_code=5)
+    for condition in conditional:
+        definition = properties.get(condition.get("field"), {})
+        if condition.get("arg") not in {"--work-root"} or not isinstance(definition.get("enum"), list) or not set(condition.get("in", [])) <= set(definition["enum"]):
+            raise CycleError("E_CONTRACT_INVALID", "input contract conditional root is invalid", exit_code=5)
+    contract = {
+        "completion_contract_id": completion_contract_id,
+        "artifact_id": artifact_id,
+        "persistence_class": family["persistence_class"],
+        "required_fields": required,
+        "optional_fields": sorted(set(properties) - set(required)),
+        "enum_values": {name: properties[name]["enum"] for name in sorted(properties) if isinstance(properties[name], dict) and "enum" in properties[name]},
+        "human_max_bytes": family["human_max_bytes"],
+        "required_root_args": {"always": always, "conditional": conditional},
+    }
+    if len(_canonical(contract)) > INPUT_CONTRACT_MAX_BYTES:
+        raise CycleError("E_CONTRACT_INVALID", "input contract exceeds the byte limit", exit_code=5)
+    return contract
+
+
+def _route_help_contract(schema: dict[str, Any]) -> dict[str, Any]:
+    fields = schema["$defs"]["routeFields"]
+    groups: dict[str, Any] = {"boolean": [], "string_array": [], "integer_min": {}, "enum": {}}
+    for name in sorted(fields["required"]):
+        definition = fields["properties"][name]
+        if definition.get("type") == "boolean":
+            groups["boolean"].append(name)
+        elif definition.get("type") == "array" and definition.get("items", {}).get("type") == "string":
+            groups["string_array"].append(name)
+        elif definition.get("type") == "integer" and isinstance(definition.get("minimum"), int):
+            groups["integer_min"][name] = definition["minimum"]
+        elif isinstance(definition.get("enum"), list):
+            groups["enum"][name] = definition["enum"]
+        else:
+            raise CycleError("E_CONTRACT_INVALID", "route field cannot be projected", exit_code=5)
+    if sum(len(value) for value in groups.values()) != len(fields["required"]):
+        raise CycleError("E_CONTRACT_INVALID", "route fields are not uniquely projected", exit_code=5)
+    return {"contract_id": "sqw.route.initial/2", "required_fields": groups, "required_root_args": ["--source-root"]}
+
+
+def _route_help() -> str:
+    output = (
+        "usage: card_cycle.py route --input - --source-root PATH [--work-root PATH]\n"
+        "initial_input_contract=" + _canonical(_route_help_contract(load_json(SCHEMA_PATH))).decode("utf-8") + "\n"
+    )
+    if len(output.encode("utf-8")) > ROUTE_HELP_MAX_BYTES:
+        raise CycleError("E_CONTRACT_INVALID", "route help exceeds the byte limit", exit_code=5)
+    return output
+
+
+class _RouteHelpAction(argparse.Action):
+    def __call__(self, parser: argparse.ArgumentParser, namespace: argparse.Namespace, values: Any, option_string: str | None = None) -> None:
+        parser._print_message(_route_help(), sys.stdout)
+        parser.exit()
+
+
+def _card_input_contract(schema: dict[str, Any], registry: dict[str, Any], card: dict[str, Any]) -> dict[str, Any]:
+    if card.get("card_id", "").startswith("sqw.entry."):
+        arguments = ("sqw.complete.entry/2", "#/$defs/entryFields", ["--source-root"], [])
+    elif card.get("card_id") == "sqw.control.scope-authority-and-effects":
+        arguments = (
+            "sqw.complete.scope/2", "#/$defs/scopeFields", ["--source-root"],
+            [{"arg": "--work-root", "field": "mode", "in": ["M2", "M3"]}],
+        )
+    else:
+        artifact_ids = card.get("produced_artifact_ids", [])
+        artifact_id = artifact_ids[0] if len(artifact_ids) == 1 else ""
+        family_name = registry.get("artifacts", {}).get(artifact_id)
+        field_reference = registry.get("families", {}).get(family_name, {}).get("human_def", "")
+        arguments = ("sqw.complete.card/2", field_reference, ["--source-root", "--work-root"], [])
+    return _input_contract(
+        schema, registry, card, arguments[0], arguments[1], always=arguments[2], conditional=arguments[3]
+    )
+
+
 def _next_step(manifest: dict[str, Any], route: dict[str, Any]) -> dict[str, Any]:
     if route.get("route_action") != "select_card" or route.get("primary_card") is None:
         raise CycleError("E_UNSUPPORTED_VARIANT", "this slice requires a card route", exit_code=4)
     card = _card(manifest, route["primary_card"]["card_id"])
-    return {
+    step = {
         "kind": "card",
         "decision_id": route["selected_decision_id"],
         "card_id": card["card_id"],
         "card_path": card["path"],
         "card_hash": card["sha256"],
     }
+    return step
 
 
 def _route_facts(fields: dict[str, Any], **queue: Any) -> dict[str, Any]:
@@ -642,8 +756,11 @@ def _enforce_human_budget(registry: dict[str, Any], artifact_id: str, fields: di
 
 
 def _base_receipt(manifest: dict[str, Any], source_identity: dict[str, str], next_step: dict[str, Any]) -> dict[str, Any]:
+    if next_step.get("kind") == "card":
+        card = _card(manifest, next_step.get("card_id", ""))
+        next_step = {**next_step, "input_contract": _card_input_contract(load_json(SCHEMA_PATH), load_json(REGISTRY_PATH), card)}
     return {
-        "schema_version": "sqw-card-receipt/1",
+        "schema_version": "sqw-card-receipt/2",
         "receipt_kind": "route",
         "receipt_id": "",
         "bundle_id": manifest["bundle_id"],
@@ -921,10 +1038,14 @@ def _complete_active(
         )
 
     adapter = LocalWorkflowAdapter(work_root, load_json(STATE_SCHEMA_PATH), load_json(EVENT_SCHEMA_PATH))
+    owner_receipt = {
+        **previous,
+        "next_step": {key: value for key, value in previous["next_step"].items() if key != "input_contract"},
+    }
     try:
         state, lease, completion_outcome = adapter.complete_card(
             previous["owner_locator"],
-            previous,
+            owner_receipt,
             source_identity,
             completion,
             select_next,
@@ -1016,20 +1137,31 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
     schema, registry, manifest = _load_contracts()
     command = _read_command()
     _validate_command(schema, command)
-    is_route = command["contract_id"] in {"sqw.route.initial/1", "sqw.route.resume/1"}
-    is_render = command["contract_id"] == "sqw.render.context/1"
+    is_route = command["contract_id"] in {"sqw.route.initial/2", "sqw.route.resume/2"}
+    is_render = command["contract_id"] == "sqw.render.context/2"
     expected_subcommand = "route" if is_route else "render" if is_render else "complete"
     if args.subcommand != expected_subcommand:
         raise CycleError("E_COMMAND_SCHEMA", "subcommand does not match contract")
-    durable_scope = command["contract_id"] == "sqw.complete.scope/1" and command["fields"]["mode"] in {"M2", "M3"}
-    durable_resume = command["contract_id"] == "sqw.route.resume/1"
-    durable_active = command["contract_id"] == "sqw.complete.card/1"
-    if (durable_scope or durable_resume or durable_active or is_render) and args.work_root is None:
+    durable_scope = command["contract_id"] == "sqw.complete.scope/2" and command["fields"]["mode"] in {"M2", "M3"}
+    durable_resume = command["contract_id"] == "sqw.route.resume/2"
+    durable_active = command["contract_id"] == "sqw.complete.card/2"
+    contract_roots: set[str] = set()
+    if command["contract_id"].startswith("sqw.complete."):
+        input_contract = command["previous_receipt"]["next_step"].get("input_contract")
+        if not isinstance(input_contract, dict) or input_contract.get("completion_contract_id") != command["contract_id"]:
+            raise CycleError("E_RECEIPT_INVALID", "completion does not match the projected input contract", exit_code=3)
+        root_contract = input_contract["required_root_args"]
+        contract_roots.update(root_contract["always"])
+        for condition in root_contract["conditional"]:
+            if command["fields"].get(condition["field"]) in condition["in"]:
+                contract_roots.add(condition["arg"])
+    requires_work = durable_resume or is_render or "--work-root" in contract_roots
+    if requires_work and args.work_root is None:
         raise CycleError("E_ROOT_ROLE", "durable command requires a work root")
-    if not (durable_scope or durable_resume or durable_active or is_render) and args.work_root is not None:
+    if not requires_work and args.work_root is not None:
         raise CycleError("E_ROOT_ROLE", "this command does not accept a work root")
     source_selectors: tuple[str, ...] = ()
-    if command["contract_id"] == "sqw.complete.scope/1":
+    if command["contract_id"] == "sqw.complete.scope/2":
         source_selectors = tuple(sorted(set(command["fields"]["allowed_reads"]) | set(command["fields"]["allowed_writes"])))
     elif command.get("previous_receipt") and command["previous_receipt"].get("scope_binding"):
         binding = command["previous_receipt"]["scope_binding"]
@@ -1044,7 +1176,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
         binding = established["scope_binding"]
         source_selectors = tuple(sorted(set(binding["allowed_reads"]) | set(binding["allowed_writes"])))
     source_identity, source_observation = _capture_source(Path(args.source_root), source_selectors)
-    if command["contract_id"] == "sqw.route.initial/1":
+    if command["contract_id"] == "sqw.route.initial/2":
         receipt = _route_initial(command, manifest, source_identity)
     elif durable_resume:
         receipt = _route_resume(command, manifest, source_identity, source_observation, Path(args.work_root))
@@ -1054,9 +1186,9 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
             raise CycleError("E_RECEIPT_INVALID", "previous receipt bundle is stale", exit_code=3)
         if is_render:
             receipt = _render_context(command, manifest, previous, source_identity, Path(args.work_root))
-        elif command["contract_id"] == "sqw.complete.entry/1":
+        elif command["contract_id"] == "sqw.complete.entry/2":
             receipt = _complete_entry(command, manifest, registry, previous, source_identity)
-        elif command["contract_id"] == "sqw.complete.scope/1":
+        elif command["contract_id"] == "sqw.complete.scope/2":
             receipt = _complete_scope(command, manifest, registry, previous, source_identity)
             if durable_scope:
                 try:
@@ -1073,7 +1205,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                         scope_binding=receipt["scope_binding"],
                         source_identity=source_identity,
                         source_snapshot=project_source_snapshot(source_observation, source_identity, receipt["scope_binding"]),
-                        next_step=receipt["next_step"],
+                        next_step={key: value for key, value in receipt["next_step"].items() if key != "input_contract"},
                     )
                 except AdapterConflict as exc:
                     raise CycleError("E_ORPHAN_CONFLICT", str(exc), exit_code=5) from exc
@@ -1103,7 +1235,9 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
     for name in ("route", "complete", "render"):
-        command = subparsers.add_parser(name)
+        command = subparsers.add_parser(name, add_help=name != "route")
+        if name == "route":
+            command.add_argument("-h", "--help", action=_RouteHelpAction, nargs=0)
         command.add_argument("--input", required=True)
         command.add_argument("--source-root", required=True)
         command.add_argument("--work-root")

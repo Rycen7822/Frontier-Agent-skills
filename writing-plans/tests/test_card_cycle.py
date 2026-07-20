@@ -263,7 +263,7 @@ class BriefCardCycleTests(unittest.TestCase):
     @staticmethod
     def _route_command() -> dict[str, object]:
         return {
-            "contract_id": "wp.route.initial/1",
+            "contract_id": "wp.route.initial/2",
             "invocation_phase": "initial",
             "previous_receipt": None,
             "fields": {
@@ -285,10 +285,125 @@ class BriefCardCycleTests(unittest.TestCase):
             "outcome": {"blocker": None},
         }
 
+    def test_route_help_and_all_card_input_contracts_are_compact_and_exact(self) -> None:
+        outputs = []
+        for columns in ("20", "200"):
+            env = {**os.environ, "LC_ALL": "C", "COLUMNS": columns, "PYTHONDONTWRITEBYTECODE": "1"}
+            completed = subprocess.run([sys.executable, str(CLI), "route", "--help"], text=True, capture_output=True, check=False, env=env)
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertEqual("", completed.stderr)
+            outputs.append(completed.stdout)
+        self.assertEqual(outputs[0], outputs[1])
+        self.assertEqual(637, len(outputs[0].encode("utf-8")))
+        lines = outputs[0].splitlines()
+        self.assertEqual("usage: card_cycle.py route --input - --source-root PATH [--work-root PATH]", lines[0])
+        initial = json.loads(lines[1].removeprefix("initial_input_contract="))
+        self.assertEqual("wp.route.initial/2", initial["contract_id"])
+        groups = initial["required_fields"]
+        projected = [name for group in (groups["boolean"], groups["string_array"], groups["integer_min"], groups["enum"]) for name in group]
+        schema, registry, manifest = cycle._load_contracts()
+        self.assertEqual(sorted(schema["$defs"]["routeFields"]["required"]), sorted(projected))
+        self.assertEqual(len(projected), len(set(projected)))
+
+        direct = {
+            "wp.profiles.brief", "wp.profiles.handoff", "wp.profiles.program",
+            "wp.experiments.disposable-spike", "wp.bridges.long-document-handoff",
+        }
+        observed = []
+        for card in manifest["cards"]:
+            for program in ([True, False] if card["card_id"] in direct else [True]):
+                contract = cycle._card_input_contract(schema, registry, card, program=program)
+                observed.append((len(cycle._canonical(contract)), card["card_id"], program))
+                self.assertFalse(set(contract["required_fields"]) & set(contract["optional_fields"]))
+                self.assertLessEqual(len(cycle._canonical(contract)), cycle.INPUT_CONTRACT_MAX_BYTES)
+        self.assertEqual(15, len(observed))
+        self.assertEqual((457, "wp.economy.output-projection", True), max(observed))
+        sample = json.loads(json.dumps(manifest["cards"][0]))
+        for artifact_ids in ([], ["one", "two"]):
+            sample["produced_artifact_ids"] = artifact_ids
+            with self.assertRaises(cycle.CycleError):
+                cycle._card_input_contract(schema, registry, sample, program=True)
+        sample = manifest["cards"][0]
+        missing_family = json.loads(json.dumps(registry))
+        missing_family["artifacts"].pop(sample["produced_artifact_ids"][0])
+        with self.assertRaises(cycle.CycleError):
+            cycle._card_input_contract(schema, missing_family, sample, program=True)
+        missing_definition = json.loads(json.dumps(registry))
+        family_name = missing_definition["artifacts"][sample["produced_artifact_ids"][0]]
+        missing_definition["families"][family_name]["human_def"] = "#/$defs/missing"
+        with self.assertRaises(cycle.CycleError):
+            cycle._card_input_contract(schema, missing_definition, sample, program=False)
+        with mock.patch.object(cycle, "INPUT_CONTRACT_MAX_BYTES", 1), self.assertRaises(cycle.CycleError):
+            cycle._card_input_contract(schema, registry, sample, program=True)
+        with self.assertRaisesRegex(cycle.CycleError, "unknown root role"):
+            cycle._input_contract(schema, registry, sample, "wp.complete.program-card/2", "#/$defs/programCardFields", always=["--source-root", "--unknown-root"], conditional=[])
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir)
+            (source / "input.txt").write_text("stable\n", encoding="utf-8")
+            stale = self._route_command()
+            stale["contract_id"] = "wp.route.initial/1"
+            rejected = self._run("route", stale, source)
+            self.assertNotEqual(0, rejected.returncode)
+            self.assertEqual("E_COMMAND_SCHEMA", json.loads(rejected.stderr)["code"])
+            route = self._receipt(self._run("route", self._route_command(), source))
+            route["schema_version"] = "wp-card-receipt/1"
+            route["receipt_id"] = cycle._receipt_id(route)
+            projection = source / "projection"
+            projection.mkdir(mode=0o700)
+            rejected_previous = self._run("complete", self._brief_command(route), source, "--projection-root", str(projection))
+            self.assertNotEqual(0, rejected_previous.returncode)
+            self.assertEqual("E_COMMAND_SCHEMA", json.loads(rejected_previous.stderr)["code"])
+            self.assertEqual([], list(projection.iterdir()))
+
+    def test_direct_spike_and_long_document_routes_have_one_completion_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            artifact = root / "artifact"
+            source.mkdir()
+            artifact.mkdir(mode=0o700)
+            (source / "input.txt").write_text("stable\n", encoding="utf-8")
+
+            spike_command = self._route_command()
+            spike_command["fields"].update({"disposable_spike": True, "explicit_plan_request": False})
+            spike_route = self._receipt(self._run("route", spike_command, source))
+            self.assertEqual("wp.complete.card/2", spike_route["next_step"]["input_contract"]["completion_contract_id"])
+            spike_complete = {
+                "contract_id": "wp.complete.card/2", "invocation_phase": "initial", "previous_receipt": spike_route,
+                "fields": {"claim": "One uncertainty is bounded", "observations": ["The probe is reproducible"], "limitations": [], "verdict": "proceed"},
+                "outcome": {"blocker": None},
+            }
+            spike = self._receipt(self._run("complete", spike_complete, source))
+            self.assertIsNone(spike["content_locator"])
+            self.assertEqual([], list(artifact.iterdir()))
+
+            long_command = self._route_command()
+            long_command["fields"].update({"long_corpus_only": True, "explicit_plan_request": False})
+            long_route = self._receipt(self._run("route", long_command, source))
+            self.assertEqual(["--source-root", "--artifact-root"], long_route["next_step"]["input_contract"]["required_root_args"]["always"])
+            long_complete = {
+                "contract_id": "wp.complete.card/2", "invocation_phase": "initial", "previous_receipt": long_route,
+                "fields": {
+                    "document_goal": "Produce the bounded final plan", "source_ledger": ["source/input.txt"],
+                    "coverage_matrix": ["all requirements mapped"], "recovery_packet": "resume from the final locator",
+                    "next_sections": ["implementation"],
+                },
+                "outcome": {"blocker": None},
+            }
+            completed = self._receipt(self._run("complete", long_complete, source, "--artifact-root", str(artifact)))
+            self.assertEqual("long-document-handoff", completed["content_locator"]["artifact_id"])
+            files = list(artifact.iterdir())
+            self.assertEqual(1, len(files))
+            identity = (files[0].stat().st_ino, files[0].stat().st_mtime_ns)
+            replay = self._receipt(self._run("complete", long_complete, source, "--artifact-root", str(artifact)))
+            self.assertEqual(completed["content_locator"], replay["content_locator"])
+            self.assertEqual(identity, (files[0].stat().st_ino, files[0].stat().st_mtime_ns))
+
     @staticmethod
     def _brief_command(receipt: dict[str, object]) -> dict[str, object]:
         return {
-            "contract_id": "wp.complete.brief/1",
+            "contract_id": "wp.complete.brief/2",
             "invocation_phase": "initial",
             "previous_receipt": receipt,
             "fields": {
@@ -306,7 +421,7 @@ class BriefCardCycleTests(unittest.TestCase):
     @staticmethod
     def _handoff_command(receipt: dict[str, object]) -> dict[str, object]:
         return {
-            "contract_id": "wp.complete.handoff/1",
+            "contract_id": "wp.complete.handoff/2",
             "invocation_phase": "initial",
             "previous_receipt": receipt,
             "fields": {
@@ -428,7 +543,7 @@ class BriefCardCycleTests(unittest.TestCase):
             self.assertIn("sqw.select.control.scope-authority-and-effects", artifact["target_entry"]["required_decision_ids"])
             self.assertNotIn("authority_granted", artifact)
             render_command = {
-                "contract_id": "wp.render.handoff/1", "invocation_phase": "resume",
+                "contract_id": "wp.render.handoff/2", "invocation_phase": "resume",
                 "previous_receipt": None, "fields": {"content_locator": first["content_locator"]},
                 "outcome": {"blocker": None},
             }
@@ -444,6 +559,115 @@ class BriefCardCycleTests(unittest.TestCase):
             replay = self._receipt(self._run("complete", command, source, "--artifact-root", str(artifacts)))
             self.assertEqual(first, replay)
             self.assertEqual(identity, (output.stat().st_ino, output.stat().st_mtime_ns))
+
+    def test_content_locator_limits_match_program_state_constant(self) -> None:
+        schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+        locator_schema = schema["$defs"]["contentLocator"]
+        self.assertEqual(cycle.PROGRAM_STATE_MAX_BYTES, locator_schema["allOf"][0]["then"]["properties"]["bytes"]["maximum"])
+        validator = Draft202012Validator({"$schema": schema["$schema"], "$defs": schema["$defs"], "$ref": "#/$defs/contentLocator"})
+
+        def locator(kind: str, size: int) -> dict[str, object]:
+            return {
+                "schema_version": "content-locator/1", "content_kind": kind,
+                "artifact_id": "bounded-output", "content_hash": "sha256:" + "0" * 64, "bytes": size,
+            }
+
+        self.assertFalse(list(validator.iter_errors(locator("owner", cycle.PROGRAM_STATE_MAX_BYTES))))
+        self.assertTrue(list(validator.iter_errors(locator("owner", cycle.PROGRAM_STATE_MAX_BYTES + 1))))
+        for kind in ("projection", "artifact"):
+            self.assertFalse(list(validator.iter_errors(locator(kind, 32_768))))
+            self.assertTrue(list(validator.iter_errors(locator(kind, 32_769))))
+
+    def test_large_program_owner_is_valid_and_replays_without_growth(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            work = root / "program"
+            source.mkdir()
+            work.mkdir(mode=0o700)
+            (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+            route_command = self._route_command()
+            route_command["fields"].update({
+                "resume_required": True, "same_session_execution": False,
+                "independent_write_slices": 2, "strategy_family_count": 2,
+            })
+            route = self._receipt(self._run("route", route_command, source))
+            init_command = {
+                "contract_id": "wp.complete.program/2", "invocation_phase": "initial", "previous_receipt": route,
+                "fields": {
+                    "goal": "Prove the Program owner locator budget", "non_goals": ["Mutate source files"],
+                    "invariants": ["a" * 16_000, "b" * 16_000], "initial_nodes": [],
+                    "initial_queue": [{"decision_id": "wp.select.economy.output-projection", "subject_ref": None}],
+                },
+                "outcome": {"blocker": None},
+            }
+            initialized = self._receipt(self._run("complete", init_command, source, "--work-root", str(work)))
+            self.assertGreater(initialized["content_locator"]["bytes"], 32_768)
+            self.assertLessEqual(initialized["content_locator"]["bytes"], 57_344)
+            self.assertEqual({".plan-state.lock", "plan-state.json", "artifacts", "projections"}, {path.name for path in work.iterdir()})
+            resume_command = {
+                "contract_id": "wp.route.resume/2", "invocation_phase": "resume", "previous_receipt": None,
+                "fields": {"owner_locator": initialized["owner_locator"]}, "outcome": {"blocker": None},
+            }
+            resumed = self._receipt(self._run("route", resume_command, source, "--work-root", str(work)))
+            self.assertEqual(initialized["state_hash"], resumed["state_hash"])
+            identity = {
+                path.relative_to(work).as_posix(): (path.stat().st_ino, path.stat().st_mtime_ns, path.stat().st_size)
+                for path in work.rglob("*")
+            }
+            for _ in range(20):
+                replay = self._receipt(self._run("complete", init_command, source, "--work-root", str(work)))
+                self.assertTrue(replay["already_completed"])
+                self.assertEqual(initialized["state_hash"], replay["state_hash"])
+            self.assertEqual(identity, {
+                path.relative_to(work).as_posix(): (path.stat().st_ino, path.stat().st_mtime_ns, path.stat().st_size)
+                for path in work.rglob("*")
+            })
+
+    def test_program_preflight_failures_leave_work_root_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            source.mkdir()
+            (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+            route_command = self._route_command()
+            route_command["fields"].update({"resume_required": True, "same_session_execution": False})
+            route = self._receipt(self._run("route", route_command, source))
+            command = {
+                "contract_id": "wp.complete.program/2", "invocation_phase": "initial", "previous_receipt": route,
+                "fields": {
+                    "goal": "Reject invalid output before publication", "non_goals": ["Mutate source files"],
+                    "invariants": ["Preserve the owner boundary"], "initial_nodes": [],
+                    "initial_queue": [{"decision_id": "wp.select.economy.output-projection", "subject_ref": None}],
+                },
+                "outcome": {"blocker": None},
+            }
+            schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+            manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+            source_identity = cycle._capture_program_source(source)
+            oversized = json.loads(json.dumps(command))
+            oversized["fields"]["invariants"] = [character * 16_000 for character in "abcd"]
+            oversized_work = root / "oversized"
+            oversized_work.mkdir(mode=0o700)
+            candidate = cycle._build_program_candidate(oversized["fields"], manifest, source_identity, oversized_work)
+            self.assertGreater(len(cycle._canonical(candidate)) + 1, cycle.PROGRAM_STATE_MAX_BYTES)
+            with self.assertRaisesRegex(cycle.CycleError, "Program owner exceeds the byte limit"):
+                cycle._complete_program_init(schema, oversized, manifest, route, source, source_identity, oversized_work)
+            self.assertEqual([], list(oversized_work.iterdir()))
+
+            receipt_work = root / "receipt"
+            receipt_work.mkdir(mode=0o700)
+            with mock.patch.object(cycle, "RECEIPT_MAX_BYTES", 1), self.assertRaisesRegex(cycle.CycleError, "receipt exceeds the byte limit"):
+                cycle._complete_program_init(schema, command, manifest, route, source, source_identity, receipt_work)
+            self.assertEqual([], list(receipt_work.iterdir()))
+
+            mismatched_schema = json.loads(json.dumps(schema))
+            mismatched_schema["$defs"]["contentLocator"]["allOf"][0]["then"]["properties"]["bytes"]["maximum"] = 1
+            schema_work = root / "schema"
+            schema_work.mkdir(mode=0o700)
+            with self.assertRaisesRegex(cycle.CycleError, "content_locator/bytes"):
+                cycle._complete_program_init(mismatched_schema, command, manifest, route, source, source_identity, schema_work)
+            self.assertEqual([], list(schema_work.iterdir()))
 
     def test_program_init_resume_output_completion_and_exact_replay(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -463,7 +687,7 @@ class BriefCardCycleTests(unittest.TestCase):
             route = self._receipt(self._run("route", route_command, source))
             self.assertEqual("wp.profiles.program", route["next_step"]["card_id"])
             init_command = {
-                "contract_id": "wp.complete.program/1",
+                "contract_id": "wp.complete.program/2",
                 "invocation_phase": "initial",
                 "previous_receipt": route,
                 "fields": {
@@ -480,7 +704,7 @@ class BriefCardCycleTests(unittest.TestCase):
             self.assertEqual("wp.economy.output-projection", initialized["next_step"]["card_id"])
             self.assertEqual({".plan-state.lock", "plan-state.json", "artifacts", "projections"}, {path.name for path in work.iterdir()})
             resume_command = {
-                "contract_id": "wp.route.resume/1", "invocation_phase": "resume",
+                "contract_id": "wp.route.resume/2", "invocation_phase": "resume",
                 "previous_receipt": None, "fields": {"owner_locator": initialized["owner_locator"]},
                 "outcome": {"blocker": None},
             }
@@ -490,7 +714,7 @@ class BriefCardCycleTests(unittest.TestCase):
             self.assertTrue(resumed["source_rebind_required"])
             self.assertFalse(resumed["source_fresh"])
             complete_command = {
-                "contract_id": "wp.complete.program-card/1", "invocation_phase": "resume",
+                "contract_id": "wp.complete.program-card/2", "invocation_phase": "resume",
                 "previous_receipt": resumed,
                 "fields": {
                     "owner_locator": resumed["owner_locator"],
@@ -537,7 +761,7 @@ class BriefCardCycleTests(unittest.TestCase):
             context_route = self._receipt(self._run("route", resume_command, source, "--work-root", str(work)))
             self.assertEqual("P-01", context_route["next_step"]["subject_ref"])
             context_command = {
-                "contract_id": "wp.complete.program-card/1", "invocation_phase": "resume",
+                "contract_id": "wp.complete.program-card/2", "invocation_phase": "resume",
                 "previous_receipt": context_route,
                 "fields": {
                     "owner_locator": context_route["owner_locator"],
@@ -571,7 +795,7 @@ class BriefCardCycleTests(unittest.TestCase):
             capsule_bytes = capsule.read_bytes()
             capsule.unlink()
             render_command = {
-                "contract_id": "wp.render.program/1", "invocation_phase": "resume",
+                "contract_id": "wp.render.program/2", "invocation_phase": "resume",
                 "previous_receipt": None,
                 "fields": {"owner_locator": context_completion["owner_locator"], "projection_kind": "context-capsule"},
                 "outcome": {"blocker": None},
@@ -584,7 +808,7 @@ class BriefCardCycleTests(unittest.TestCase):
             handoff_route = self._receipt(self._run("route", resume_command, source, "--work-root", str(work)))
             self.assertEqual("wp.profiles.handoff", handoff_route["next_step"]["card_id"])
             handoff_command = {
-                "contract_id": "wp.complete.program-card/1", "invocation_phase": "resume",
+                "contract_id": "wp.complete.program-card/2", "invocation_phase": "resume",
                 "previous_receipt": handoff_route,
                 "fields": {
                     "owner_locator": handoff_route["owner_locator"],
@@ -752,7 +976,7 @@ class BriefCardCycleTests(unittest.TestCase):
             replay = self._receipt(self._run("complete", command, source, "--artifact-root", str(artifacts)))
             self.assertEqual(first, replay)
             render_command = {
-                "contract_id": "wp.render.handoff/1", "invocation_phase": "resume",
+                "contract_id": "wp.render.handoff/2", "invocation_phase": "resume",
                 "previous_receipt": None, "fields": {"content_locator": first["content_locator"]},
                 "outcome": {"blocker": None},
             }

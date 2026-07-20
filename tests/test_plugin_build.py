@@ -51,7 +51,7 @@ class PluginBuildTests(unittest.TestCase):
                 self.assertEqual({".codex-plugin", "skills"}, {path.name for path in output.iterdir()})
                 manifest = json.loads((output / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
                 self.assertEqual(output.name, manifest["name"])
-                self.assertEqual("3.0.0", manifest["version"])
+                self.assertEqual("4.0.0", manifest["version"])
                 self.assertEqual("./skills/", manifest["skills"])
                 self.assertTrue({"author", "interface"} <= set(manifest))
                 self.assertEqual({"writing-plans", "software-quality-workflows"}, {path.name for path in (output / "skills").iterdir()})
@@ -82,8 +82,8 @@ class PluginBuildTests(unittest.TestCase):
         Draft202012Validator.check_schema(release_schema)
         valid_release = {
             "schema_version": "release-evidence/2.0",
-            "bundle_id": "frontier-engineering/7.0.0+6.0.0",
-            "bundle_version": "3.0.0",
+            "bundle_id": "frontier-engineering/8.0.0+7.0.0",
+            "bundle_version": "4.0.0",
             "source_tree_hash": "sha256:" + "1" * 64,
             "source_revision": "a" * 40,
             "source_revision_signed": True,
@@ -153,8 +153,8 @@ class PluginBuildTests(unittest.TestCase):
             forged = parent / "release.json"
             forged.write_text(json.dumps({
                 "schema_version": "release-evidence/2.0",
-                "bundle_id": "frontier-engineering/7.0.0+6.0.0",
-                "bundle_version": "3.0.0",
+                "bundle_id": "frontier-engineering/8.0.0+7.0.0",
+                "bundle_version": "4.0.0",
                 "source_tree_hash": "sha256:" + "1" * 64,
                 "source_revision": "a" * 40,
                 "source_revision_signed": True,

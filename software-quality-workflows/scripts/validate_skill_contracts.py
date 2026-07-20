@@ -285,7 +285,7 @@ def _check_skill_entry(root: Path, violations: list[Violation]) -> set[str]:
                     "Hermes category must be software-development",
                 )
             )
-    if "## Policy ownership" not in text:
+    if "## Owner contract" not in text:
         violations.append(Violation("entry.owners", "SKILL.md", 1, "missing policy ownership section"))
     direct = extract_local_resources(text)
     missing_core = sorted(REQUIRED_CORE - direct)
@@ -360,7 +360,8 @@ def _check_active_set(
                         )
                     )
     direct_markdown = {item for item in direct if item.endswith(".md") and item.startswith("references/")}
-    for relative in sorted(actual - direct_markdown - registered_reference_cards):
+    generated_internal = {"references/package-support-map.md"}
+    for relative in sorted(actual - direct_markdown - registered_reference_cards - generated_internal):
         violations.append(
             Violation("active.orphan", relative, 1, "Markdown resource is not linked directly from SKILL.md")
         )

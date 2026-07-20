@@ -123,12 +123,12 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     skills = manifest.get("skills")
     if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != {"writing-plans", "software-quality-workflows"}:
         raise ValueError("manifest must declare exactly the two canonical skills")
-    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("2.0", "3.0.0"):
+    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("2.0", "4.0.0"):
         raise ValueError("manifest bundle schema/version is invalid")
     if {item.get("id"): item.get("version") for item in skills} != {
-        "writing-plans": "6.0.0", "software-quality-workflows": "7.0.0",
+        "writing-plans": "7.0.0", "software-quality-workflows": "8.0.0",
     }:
-        raise ValueError("version mismatch: manifest skill versions do not match the 7+6 release identity")
+        raise ValueError("version mismatch: manifest skill versions do not match the 8+7 release identity")
     for item in skills:
         if not isinstance(item, dict) or set(item) != {"id", "path", "version"}:
             raise ValueError("manifest skill entries must contain only id, path, and version")
@@ -144,7 +144,7 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     if activation != required_activation:
         raise ValueError("manifest activation policy fields are invalid")
     if manifest.get("cross_skill_contracts") != ["plan-to-workflow", "workflow-plan-change-proposal"]:
-        raise ValueError("manifest cross-skill contracts do not match the 7+6 release identity")
+        raise ValueError("manifest cross-skill contracts do not match the 8+7 release identity")
     records = bundle_inventory(source_root, manifest)
     for record in records:
         path = source_root / record["path"]

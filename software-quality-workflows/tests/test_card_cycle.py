@@ -274,7 +274,7 @@ class CardCycleM0Tests(unittest.TestCase):
 
     def _initial_command(self, **overrides: object) -> dict[str, object]:
         command = {
-            "contract_id": "sqw.route.initial/1",
+            "contract_id": "sqw.route.initial/2",
             "invocation_phase": "initial",
             "previous_receipt": None,
             "fields": {
@@ -292,9 +292,79 @@ class CardCycleM0Tests(unittest.TestCase):
         command["fields"].update(overrides)
         return command
 
+    def test_route_help_and_all_card_input_contracts_are_compact_and_exact(self) -> None:
+        outputs = []
+        for columns in ("20", "200"):
+            env = {**os.environ, "LC_ALL": "C", "COLUMNS": columns, "PYTHONDONTWRITEBYTECODE": "1"}
+            completed = subprocess.run([sys.executable, str(CLI), "route", "--help"], text=True, capture_output=True, check=False, env=env)
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertEqual("", completed.stderr)
+            outputs.append(completed.stdout)
+        self.assertEqual(outputs[0], outputs[1])
+        self.assertEqual(637, len(outputs[0].encode("utf-8")))
+        lines = outputs[0].splitlines()
+        self.assertEqual("usage: card_cycle.py route --input - --source-root PATH [--work-root PATH]", lines[0])
+        initial = json.loads(lines[1].removeprefix("initial_input_contract="))
+        self.assertEqual("sqw.route.initial/2", initial["contract_id"])
+        groups = initial["required_fields"]
+        projected = [name for group in (groups["boolean"], groups["string_array"], groups["integer_min"], groups["enum"]) for name in group]
+        schema, registry, manifest = cycle._load_contracts()
+        self.assertEqual(sorted(schema["$defs"]["routeFields"]["required"]), sorted(projected))
+        self.assertEqual(len(projected), len(set(projected)))
+
+        observed = []
+        for card in manifest["cards"]:
+            contract = cycle._card_input_contract(schema, registry, card)
+            observed.append((len(cycle._canonical(contract)), card["card_id"]))
+            self.assertEqual({
+                "completion_contract_id", "artifact_id", "persistence_class", "required_fields",
+                "optional_fields", "enum_values", "human_max_bytes", "required_root_args",
+            }, set(contract))
+            self.assertFalse(set(contract["required_fields"]) & set(contract["optional_fields"]))
+            self.assertLessEqual(len(cycle._canonical(contract)), cycle.INPUT_CONTRACT_MAX_BYTES)
+        self.assertEqual(52, len(observed))
+        self.assertEqual((532, "sqw.control.scope-authority-and-effects"), max(observed))
+        scope = cycle._card_input_contract(schema, registry, next(card for card in manifest["cards"] if card["card_id"] == "sqw.control.scope-authority-and-effects"))
+        self.assertEqual([{"arg": "--work-root", "field": "mode", "in": ["M2", "M3"]}], scope["required_root_args"]["conditional"])
+        sample = json.loads(json.dumps(manifest["cards"][0]))
+        for artifact_ids in ([], ["one", "two"]):
+            sample["produced_artifact_ids"] = artifact_ids
+            with self.assertRaises(cycle.CycleError):
+                cycle._card_input_contract(schema, registry, sample)
+        sample = manifest["cards"][0]
+        missing_family = json.loads(json.dumps(registry))
+        missing_family["artifacts"].pop(sample["produced_artifact_ids"][0])
+        with self.assertRaises(cycle.CycleError):
+            cycle._card_input_contract(schema, missing_family, sample)
+        missing_definition = json.loads(json.dumps(registry))
+        family_name = missing_definition["artifacts"][sample["produced_artifact_ids"][0]]
+        missing_definition["families"][family_name]["human_def"] = "#/$defs/missing"
+        with self.assertRaises(cycle.CycleError):
+            cycle._card_input_contract(schema, missing_definition, sample)
+        with mock.patch.object(cycle, "INPUT_CONTRACT_MAX_BYTES", 1), self.assertRaises(cycle.CycleError):
+            cycle._card_input_contract(schema, registry, sample)
+        with self.assertRaisesRegex(cycle.CycleError, "unknown root role"):
+            cycle._input_contract(schema, registry, sample, "sqw.complete.entry/2", "#/$defs/entryFields", always=["--source-root", "--unknown-root"], conditional=[])
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir)
+            (source / "input.txt").write_text("stable\n", encoding="utf-8")
+            stale = self._initial_command()
+            stale["contract_id"] = "sqw.route.initial/1"
+            rejected = self._run("route", stale, source)
+            self.assertNotEqual(0, rejected.returncode)
+            self.assertEqual("E_COMMAND_SCHEMA", json.loads(rejected.stderr)["code"])
+            route = self._success_receipt(self._run("route", self._initial_command(), source))
+            route["schema_version"] = "sqw-card-receipt/1"
+            route["receipt_id"] = cycle._receipt_id(route)
+            rejected_previous = self._run("complete", self._entry_command(route), source)
+            self.assertNotEqual(0, rejected_previous.returncode)
+            self.assertEqual("E_COMMAND_SCHEMA", json.loads(rejected_previous.stderr)["code"])
+            self.assertEqual(["input.txt"], sorted(path.name for path in source.iterdir()))
+
     def _entry_command(self, receipt: dict[str, object]) -> dict[str, object]:
         return {
-            "contract_id": "sqw.complete.entry/1",
+            "contract_id": "sqw.complete.entry/2",
             "invocation_phase": "initial",
             "previous_receipt": receipt,
             "fields": {
@@ -310,7 +380,7 @@ class CardCycleM0Tests(unittest.TestCase):
 
     def _resume_command(self, receipt: dict[str, object]) -> dict[str, object]:
         return {
-            "contract_id": "sqw.route.resume/1",
+            "contract_id": "sqw.route.resume/2",
             "invocation_phase": "resume",
             "previous_receipt": None,
             "fields": {"owner_locator": receipt["owner_locator"]},
@@ -318,7 +388,7 @@ class CardCycleM0Tests(unittest.TestCase):
 
     def _active_evidence_command(self, receipt: dict[str, object], decision_request: str | None) -> dict[str, object]:
         return {
-            "contract_id": "sqw.complete.card/1",
+            "contract_id": "sqw.complete.card/2",
             "invocation_phase": "active",
             "previous_receipt": receipt,
             "fields": {
@@ -332,7 +402,7 @@ class CardCycleM0Tests(unittest.TestCase):
 
     def _active_handoff_command(self, receipt: dict[str, object]) -> dict[str, object]:
         return {
-            "contract_id": "sqw.complete.card/1",
+            "contract_id": "sqw.complete.card/2",
             "invocation_phase": "active",
             "previous_receipt": receipt,
             "fields": {
@@ -347,7 +417,7 @@ class CardCycleM0Tests(unittest.TestCase):
 
     def _render_command(self, receipt: dict[str, object], budget_bytes: int = 8192) -> dict[str, object]:
         return {
-            "contract_id": "sqw.render.context/1",
+            "contract_id": "sqw.render.context/2",
             "invocation_phase": "render",
             "previous_receipt": receipt,
             "fields": {"budget_bytes": budget_bytes},
@@ -355,7 +425,7 @@ class CardCycleM0Tests(unittest.TestCase):
 
     def _scope_command(self, receipt: dict[str, object], *, mode: str = "M0") -> dict[str, object]:
         return {
-            "contract_id": "sqw.complete.scope/1",
+            "contract_id": "sqw.complete.scope/2",
             "invocation_phase": "initial",
             "previous_receipt": receipt,
             "fields": {

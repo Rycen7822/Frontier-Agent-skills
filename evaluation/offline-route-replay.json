@@ -177,7 +177,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2196,
+      "active_bytes": 2403,
       "active_card_count": 1,
       "actual_action": "select_card",
       "actual_card_id": "wp.bridges.long-document-handoff",
@@ -266,20 +266,20 @@
   },
   "input_bindings": {
     "software-quality-workflows": {
-      "card_manifest_hash": "sha256:714ca6d884d6eabb99df9c0ebd7e4986ea903838513dd650ea951a8bcd8ae9d7",
+      "card_manifest_hash": "sha256:f4af90212af21a22a843ac916399ef1a1870c1a01ff220aaeac8e40bec1150ac",
       "decision_case_fixture_hash": "sha256:e4d06558466f24414b1d8a8d0965129ceb61a8dacf76aef726e70f700b9e8226",
-      "decision_map_hash": "sha256:4358300e1718badcb53cee987472e864e3f5422c51cce2b36064e2c0fc7172a1",
-      "router_hash": "sha256:57b17da2f69e368de57062245d8fa520f48cc1347a685b58f60e413137fe6513",
-      "sequence_fixture_hash": "sha256:579cabdef6231aeeec51cce5186a15ea06eb79e91650dd54a8f6c1a8c26f4ecf",
-      "skill_version": "7.0.0"
+      "decision_map_hash": "sha256:7c839bb4c79af958bfcac9e00e1c977e404a8e2c357fcd5800422fd7243467f0",
+      "router_hash": "sha256:f5483ad2d5ea279052bbd5917a5a09f94830e29910b3aba12f044ef0e63773a2",
+      "sequence_fixture_hash": "sha256:df7cb981f32efa30540b5d03bfb75dd0f3f6197a382063e3d66848ff5ccf437a",
+      "skill_version": "8.0.0"
     },
     "writing-plans": {
-      "card_manifest_hash": "sha256:a115c94b6dd2fbf29a957e94f4838990573a37a1f76ddda824ef261972303ca3",
+      "card_manifest_hash": "sha256:bb856adf9fbd829c1f3366e037a9feaef44fafad669e6a87a3a6881179c7e3c4",
       "decision_case_fixture_hash": "sha256:829e690dc1ebf20ea16fe0111a0bd60d58ff0bc86f05102820c29c827257badb",
-      "decision_map_hash": "sha256:9a6c65c65e1c5db87305a7108baa5af9eeaf8bc6f0a33fa1b380041cbba79594",
-      "router_hash": "sha256:036af4ec2121586b00f43b63cb9633282e23929efe30eb58b46836fcd027d699",
-      "sequence_fixture_hash": "sha256:c087e971b65da8a40d3c18f83e10154b437287f57f170e8cc83583d3d1175ee5",
-      "skill_version": "6.0.0"
+      "decision_map_hash": "sha256:ea5c88d757eeb48897742ea84a7b7e155490b9afcbd3a985701ce1ea53208a47",
+      "router_hash": "sha256:7dd865b121a8e77e686d7c8276765d4f4951550852e9b3be066ec2bb1fa75a51",
+      "sequence_fixture_hash": "sha256:f41cbb453c8fee0d608308b786ad6bcc85a5fe1627bdb8826aabd380f25aea66",
+      "skill_version": "7.0.0"
     }
   },
   "limitations": [
@@ -1214,7 +1214,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2196,
+      "active_bytes": 2403,
       "active_card_count": 1,
       "actual_card_id": "wp.bridges.long-document-handoff",
       "actual_decision_id": "wp.select.bridges.long-document-handoff",
@@ -1394,7 +1394,7 @@
       "skill_id": "writing-plans"
     }
   ],
-  "report_hash": "sha256:883f8e0868c27fc09a62ae3c285a5a582d46307f29f1ce4676eaf21de0a12050",
+  "report_hash": "sha256:9e4623fa4cb48b7db1d42930ec1968426dab690ce7f55115030bd4d3e093eb8b",
   "schema_version": "offline-route-replay/2.0",
   "selection_rows": [
     {
@@ -2022,7 +2022,7 @@
       "skill_id": "software-quality-workflows"
     },
     {
-      "active_bytes": 2196,
+      "active_bytes": 2403,
       "active_card_count": 1,
       "actual_card_id": "wp.bridges.long-document-handoff",
       "actual_decision_id": "wp.select.bridges.long-document-handoff",
@@ -2259,12 +2259,12 @@
     }
   ],
   "vnext": {
-    "bundle_build_id": "build-a38667057bdd39876be1f679",
-    "bundle_manifest_hash": "sha256:7061ff4917893e638f4c1cd7f0c9862e4e156210f12618fdf4cae2afafe711c9",
-    "identity": "frontier-engineering/7.0.0+6.0.0",
+    "bundle_build_id": "build-6be01d8e0c4ee5f90676127e",
+    "bundle_manifest_hash": "sha256:f0cfd026ddfd36e26f868e6099a612a8c1c49685d85322fb98757cc3004070db",
+    "identity": "frontier-engineering/8.0.0+7.0.0",
     "skill_versions": {
-      "software-quality-workflows": "7.0.0",
-      "writing-plans": "6.0.0"
+      "software-quality-workflows": "8.0.0",
+      "writing-plans": "7.0.0"
     }
   }
 }

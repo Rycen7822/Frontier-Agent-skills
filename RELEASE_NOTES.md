@@ -1,5 +1,13 @@
 # Release Notes
 
+## Bundle 4.0.0 card-cycle v2 major cut
+
+Bundle 4.0.0 atomically pairs `writing-plans` 7.0.0 with `software-quality-workflows` 8.0.0 as `frontier-engineering/8.0.0+7.0.0`, while compatible durable-state schema epoch remains 2. Route, complete, render, and receipt wire identities are v2: each nonterminal receipt carries its schema-derived `input_contract`, and no v1 reader or compatibility adapter remains. Existing 3.0.0 owners must finish under 3.0.0 or be explicitly retired; 4.0.0 never adopts them.
+
+The model entrypoints now use only the local `card_cycle.py`, one hash-verified returned card, stdin/stdout or owner state, and one replacement receipt. Raw state, receipt chains, protocol worknotes, directory walks, and per-step sibling artifacts are outside the model read/write surface. M2/M3/Program recovery uses one task anchor with explicit retain/dispose evidence. Writing Plans also fixes Program owner locators up to the existing 65,536-byte state ceiling without increasing the 32,768-byte artifact/projection limit.
+
+This remains a local deterministic candidate. Isolated packaging and installation, scoped L2 usefulness, activation, publication, deployment, credentials, and remote writes are independent gates; no empirical model claim is made by this source cut.
+
 ## Bundle 3.0.0 bounded card-cycle runtimes
 
 Bundle 3.0.0 atomically pairs `writing-plans` 6.0.0 with `software-quality-workflows` 7.0.0 as `frontier-engineering/7.0.0+6.0.0`. Both skills now expose one strict route/complete/render card-cycle surface, flat bounded receipts, content-bound source and scope identity, and fixed crash-safe owner protocols without per-card JSON sidecars.
@@ -30,7 +38,7 @@ The checked-in activation level remains `shadow`. Implicit routing and remote wr
 
 - Plugin folder and manifest name: `frontier-engineering-plugin`
 - Plugin display name: `Frontier Engineering`
-- Plugin version: `3.0.0`
+- Plugin version: `4.0.0`
 - Bundle archive root: `frontier-engineering-bundle`
 - Skills-only archive roots: `writing-plans`, `software-quality-workflows`
 - Build evidence: `plugin-build-evidence/2.0`

@@ -256,15 +256,46 @@
     "nextCard": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "decision_id", "card_id", "card_path", "card_hash"],
+      "required": ["kind", "decision_id", "card_id", "card_path", "card_hash", "input_contract"],
       "properties": {
         "kind": {"const": "card"},
         "decision_id": {"type": "string", "minLength": 1},
         "card_id": {"type": "string", "minLength": 1},
         "card_path": {"type": "string", "minLength": 1},
         "card_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "input_contract": {"$ref": "#/$defs/inputContract"},
         "card_instance_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
         "subject_ref": {"type": ["string", "null"]}
+      }
+    },
+    "inputContract": {
+      "type": "object", "additionalProperties": false,
+      "required": ["completion_contract_id", "artifact_id", "persistence_class", "required_fields", "optional_fields", "enum_values", "human_max_bytes", "required_root_args"],
+      "properties": {
+        "completion_contract_id": {"type": "string", "minLength": 1},
+        "artifact_id": {"type": "string", "minLength": 1},
+        "persistence_class": {"enum": ["semantic_inline", "immutable_projection", "boundary_by_contract", "owner_disposable_projection"]},
+        "required_fields": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "optional_fields": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "enum_values": {"type": "object", "additionalProperties": {"type": "array", "minItems": 1, "items": {"type": ["string", "integer", "boolean", "null"]}}},
+        "human_max_bytes": {"type": "integer", "minimum": 1},
+        "required_root_args": {
+          "type": "object", "additionalProperties": false, "required": ["always", "conditional"],
+          "properties": {
+            "always": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^--"}},
+            "conditional": {
+              "type": "array",
+              "items": {
+                "type": "object", "additionalProperties": false, "required": ["arg", "field", "in"],
+                "properties": {
+                  "arg": {"type": "string", "pattern": "^--"},
+                  "field": {"type": "string", "minLength": 1},
+                  "in": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": ["string", "integer", "boolean"]}}
+                }
+              }
+            }
+          }
+        }
       }
     },
     "terminalStep": {
@@ -285,8 +316,15 @@
         "content_kind": {"enum": ["projection", "artifact", "owner"]},
         "artifact_id": {"type": "string", "minLength": 1},
         "content_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-        "bytes": {"type": "integer", "minimum": 1, "maximum": 32768}
-      }
+        "bytes": {"type": "integer", "minimum": 1}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"content_kind": {"const": "owner"}}, "required": ["content_kind"]},
+          "then": {"properties": {"bytes": {"maximum": 65536}}},
+          "else": {"properties": {"bytes": {"maximum": 32768}}}
+        }
+      ]
     },
     "planningScopeBinding": {
       "type": ["object", "null"],
@@ -322,7 +360,7 @@
         "source_fresh", "source_rebind_required", "source_transition", "state_version", "state_hash"
       ],
       "properties": {
-        "schema_version": {"const": "wp-card-receipt/1"},
+        "schema_version": {"const": "wp-card-receipt/2"},
         "receipt_kind": {"enum": ["route", "completion"]},
         "receipt_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
         "bundle_id": {"type": "string", "minLength": 1},
@@ -347,7 +385,7 @@
       "additionalProperties": false,
       "required": ["contract_id", "invocation_phase", "previous_receipt", "fields", "outcome"],
       "properties": {
-        "contract_id": {"const": "wp.route.initial/1"},
+        "contract_id": {"const": "wp.route.initial/2"},
         "invocation_phase": {"const": "initial"},
         "previous_receipt": {"type": "null"},
         "fields": {"$ref": "#/$defs/routeFields"},
@@ -359,10 +397,21 @@
       "additionalProperties": false,
       "required": ["contract_id", "invocation_phase", "previous_receipt", "fields", "outcome"],
       "properties": {
-        "contract_id": {"const": "wp.complete.brief/1"},
+        "contract_id": {"const": "wp.complete.brief/2"},
         "invocation_phase": {"const": "initial"},
         "previous_receipt": {"$ref": "#/$defs/receipt"},
         "fields": {"$ref": "#/$defs/briefFields"},
+        "outcome": {"$ref": "#/$defs/humanOutcome"}
+      }
+    },
+    "standaloneCardCommand": {
+      "type": "object", "additionalProperties": false,
+      "required": ["contract_id", "invocation_phase", "previous_receipt", "fields", "outcome"],
+      "properties": {
+        "contract_id": {"const": "wp.complete.card/2"},
+        "invocation_phase": {"const": "initial"},
+        "previous_receipt": {"$ref": "#/$defs/receipt"},
+        "fields": {"oneOf": [{"$ref": "#/$defs/evidenceFields"}, {"$ref": "#/$defs/longDocumentHandoffFields"}]},
         "outcome": {"$ref": "#/$defs/humanOutcome"}
       }
     },
@@ -382,7 +431,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["contract_id", "invocation_phase", "previous_receipt", "fields", "outcome"],
       "properties": {
-        "contract_id": {"const": "wp.route.resume/1"},
+        "contract_id": {"const": "wp.route.resume/2"},
         "invocation_phase": {"const": "resume"},
         "previous_receipt": {"type": "null"},
         "fields": {"type": "object", "additionalProperties": false, "required": ["owner_locator"], "properties": {"owner_locator": {"$ref": "#/$defs/ownerLocator"}}},
@@ -393,7 +442,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["contract_id", "invocation_phase", "previous_receipt", "fields", "outcome"],
       "properties": {
-        "contract_id": {"const": "wp.complete.handoff/1"},
+        "contract_id": {"const": "wp.complete.handoff/2"},
         "invocation_phase": {"const": "initial"},
         "previous_receipt": {"$ref": "#/$defs/receipt"},
         "fields": {"$ref": "#/$defs/handoffFields"},
@@ -404,7 +453,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["contract_id", "invocation_phase", "previous_receipt", "fields", "outcome"],
       "properties": {
-        "contract_id": {"const": "wp.complete.program/1"},
+        "contract_id": {"const": "wp.complete.program/2"},
         "invocation_phase": {"const": "initial"},
         "previous_receipt": {"$ref": "#/$defs/receipt"},
         "fields": {"$ref": "#/$defs/programFields"},
@@ -435,7 +484,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["contract_id", "invocation_phase", "previous_receipt", "fields", "outcome"],
       "properties": {
-        "contract_id": {"const": "wp.complete.program-card/1"},
+        "contract_id": {"const": "wp.complete.program-card/2"},
         "invocation_phase": {"const": "resume"},
         "previous_receipt": {"$ref": "#/$defs/receipt"},
         "fields": {"$ref": "#/$defs/programCardFields"},
@@ -446,7 +495,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["contract_id", "invocation_phase", "previous_receipt", "fields", "outcome"],
       "properties": {
-        "contract_id": {"const": "wp.render.program/1"},
+        "contract_id": {"const": "wp.render.program/2"},
         "invocation_phase": {"const": "resume"},
         "previous_receipt": {"type": "null"},
         "fields": {
@@ -461,7 +510,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["contract_id", "invocation_phase", "previous_receipt", "fields", "outcome"],
       "properties": {
-        "contract_id": {"const": "wp.render.handoff/1"},
+        "contract_id": {"const": "wp.render.handoff/2"},
         "invocation_phase": {"const": "resume"},
         "previous_receipt": {"type": "null"},
         "fields": {
@@ -475,7 +524,7 @@
     "command": {
       "oneOf": [
         {"$ref": "#/$defs/routeCommand"}, {"$ref": "#/$defs/routeResumeCommand"},
-        {"$ref": "#/$defs/briefCommand"}, {"$ref": "#/$defs/handoffCommand"},
+        {"$ref": "#/$defs/briefCommand"}, {"$ref": "#/$defs/standaloneCardCommand"}, {"$ref": "#/$defs/handoffCommand"},
         {"$ref": "#/$defs/programInitCommand"}, {"$ref": "#/$defs/programCardCommand"},
         {"$ref": "#/$defs/renderCommand"}, {"$ref": "#/$defs/handoffRenderCommand"}
       ]

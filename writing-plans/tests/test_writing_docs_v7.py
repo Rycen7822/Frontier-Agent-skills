@@ -8,19 +8,19 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class WritingDocsV6Tests(unittest.TestCase):
+class WritingDocsV7Tests(unittest.TestCase):
     def test_entry_version_structure_budget_and_router_boundary(self) -> None:
         text = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-        self.assertRegex(text, r"(?m)^  version: 6\.0\.0$")
+        self.assertRegex(text, r"(?m)^  version: 7\.0\.0$")
         headings = [
-            "## Owner boundary", "## Route", "## Profile selection", "## One-card protocol",
-            "## SQW handoff", "## Completion",
+            "## Owner boundary", "## Card-cycle entry", "## Selection and profiles", "## One-card context",
+            "## Program anchor lifecycle", "## Completion",
         ]
         self.assertEqual(headings, re.findall(r"(?m)^## .+$", text))
-        self.assertLessEqual(len(text.encode("utf-8")), 6144)
+        self.assertLessEqual(len(text.encode("utf-8")), 4850)
         for anchor in (
-            "zero or one `primary_card`", "registries/decision-card-map.json", "just-completed mapped card",
-            "references/package-support-map.md", "Codex and Hermes Agent",
+            "LC_ALL=C scripts/card_cycle.py route --help", "replacement receipt", "one needed projection/boundary",
+            "terminal-disposable", "Codex and Hermes Agent",
         ):
             self.assertIn(anchor, text)
 
@@ -51,7 +51,7 @@ class WritingDocsV6Tests(unittest.TestCase):
             "economy/output-projection.md": ("always-visible anchor", "tiny budgets", "parity"),
             "migration/deprecation-and-rollout.md": ("consumer oracle", "rollback/removal constraints"),
             "experiments/disposable-spike.md": ("silent promotion", "falsification criterion"),
-            "bridges/long-document-handoff.md": ("long-document segmented-writing", "source/coverage/evidence"),
+            "bridges/long-document-handoff.md": ("long-document segmented-writing", "scratch_retention", "final locator/hash"),
             "slicing/outcome-slices.md": ("topologically ready current frontier", "schema-valid decision request"),
             "slicing/context-capsules.md": ("mandatory truncation is always zero", "on-demand"),
         }

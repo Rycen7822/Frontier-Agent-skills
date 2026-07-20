@@ -39,7 +39,7 @@ def make_minimal_skill(root: Path) -> None:
         "    related_skills: [writing-plans]\n"
         "---\n\n"
         "# Fixture Skill\n\n"
-        "## Policy ownership\n\n"
+        "## Owner contract\n\n"
         "Each policy has one owner.\n\n"
         "## Active resources\n\n"
         f"{links}\n",
@@ -244,7 +244,7 @@ class SkillContractTests(unittest.TestCase):
         owner_path = "references/entry/intent-discovery.md"
         manifest = json.loads((ROOT / "registries" / "reference-cards.manifest.json").read_text(encoding="utf-8"))
         self.assertIn(owner_path, {item["path"] for item in manifest["cards"]})
-        self.assertIn("materially different intent alternatives", (ROOT / "SKILL.md").read_text(encoding="utf-8").lower())
+        self.assertIn("materially underdefined intent requires one focused decision", (ROOT / "SKILL.md").read_text(encoding="utf-8").lower())
 
         owner = "\n".join(
             (ROOT / relative).read_text(encoding="utf-8").lower()
@@ -298,7 +298,7 @@ class SkillContractTests(unittest.TestCase):
         skill_lower = skill.lower()
 
         self.assertIn("routine low-risk same-session edits use the direct path", skill_lower)
-        self.assertIn("all software work obeys the short kernel", skill_lower)
+        self.assertIn("## safety kernel", skill_lower)
         self.assertNotIn("default umbrella for all software development work", skill_lower)
         self.assertNotIn("all software development tasks enter through this skill", skill_lower)
         for mode in ("m0 direct", "m1 trace", "m2 sparse", "m3 full"):
@@ -308,17 +308,16 @@ class SkillContractTests(unittest.TestCase):
             skill,
         )
         self.assertNotIn("external tdd skill", skill_lower)
-        self.assertIn("## Host compatibility", skill)
+        self.assertIn("## Owner contract", skill)
         self.assertIn("Codex and Hermes Agent", skill)
-        self.assertIn("Resolve bundled paths from this skill's root", skill)
-        self.assertIn("capability rather than a product-specific tool name", skill)
+        self.assertIn("Resolve paths from this skill root", skill)
         agent_metadata = (ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
         self.assertIn("allow_implicit_invocation: true", agent_metadata)
         self.assertIn("default_prompt:", agent_metadata)
         self.assertIn("$software-quality-workflows", agent_metadata)
         self.assertNotIn("remote_writes_default", agent_metadata)
-        self.assertIn("Live host-agent execution and multi-candidate search are default-off", skill)
-        self.assertNotIn("Live Codex execution and multi-candidate search are default-off", skill)
+        self.assertIn("Optional host features are not prerequisites", skill)
+        self.assertIn("live agents, remote/destructive work, release, and publication require explicit authority", skill)
         for retired_host_detail in ("skill_view", "delegate_task", "runtime/session-dependent", "status=dispatched"):
             self.assertNotIn(retired_host_detail, skill_lower)
 
@@ -356,14 +355,6 @@ class SkillContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "skill"
             shutil.copytree(ROOT, root)
-            entry = (root / "SKILL.md").read_text(encoding="utf-8")
-            compact_entry = "\n".join(
-                line
-                for line in entry.splitlines()
-                if "](references/" not in line
-                or "](references/package-support-map.md)" in line
-            ) + "\n"
-            (root / "SKILL.md").write_text(compact_entry, encoding="utf-8")
             violations = validator.validate_skill(root)
             self.assertEqual([], violations, validator.compact_violations(violations))
 

@@ -21,9 +21,11 @@ from jsonschema import Draft202012Validator
 from _writing_reference_cards import load_json, strict_json_bytes
 from assess_plan_mode import assess, validate_plan_route_result
 from _plan_state import (
+    PROGRAM_STATE_MAX_BYTES,
     ProgramOwnerConflict,
     ProgramStateAdvanced,
     PlanInputError,
+    _program_locator,
     apply_program_owner_transition,
     canonical_completion_id,
     canonical_object_hash,
@@ -45,6 +47,8 @@ MANIFEST_PATH = ROOT / "registries" / "reference-cards.manifest.json"
 HANDOFF_SCHEMA_PATH = ROOT / "schemas" / "plan-execution-handoff.schema.json"
 COMMAND_MAX_BYTES = 65_536
 RECEIPT_MAX_BYTES = 12_288
+INPUT_CONTRACT_MAX_BYTES = 544
+ROUTE_HELP_MAX_BYTES = 1_024
 SOURCE_FILE_MAX_BYTES = 8 * 1024 * 1024
 SOURCE_TOTAL_MAX_BYTES = 32 * 1024 * 1024
 SOURCE_MAX_FILES = 4_096
@@ -125,6 +129,14 @@ def _load_contracts() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         for field in ("human_def", "payload_def"):
             if family[field].split("/")[-1] not in schema["$defs"]:
                 raise CycleError("E_CONTRACT_INVALID", "artifact registry references an unknown definition", exit_code=5)
+    direct_cards = {
+        "wp.profiles.brief", "wp.profiles.handoff", "wp.profiles.program",
+        "wp.experiments.disposable-spike", "wp.bridges.long-document-handoff",
+    }
+    for card in manifest.get("cards", []):
+        _card_input_contract(schema, registry, card, program=True)
+        if card.get("card_id") in direct_cards:
+            _card_input_contract(schema, registry, card, program=False)
     return schema, registry, manifest
 
 
@@ -644,11 +656,13 @@ def _relative_to_source(source_root: Path, path: Path) -> str:
 
 def _publication_filename(contract_id: str, locator: dict[str, Any]) -> str:
     digest = locator["content_hash"][7:]
-    if contract_id == "wp.complete.brief/1":
+    if contract_id == "wp.complete.brief/2":
         return f"plan-brief--{digest}.md"
-    if contract_id == "wp.complete.handoff/1":
+    if contract_id == "wp.complete.handoff/2":
         return f"plan-handoff--{digest}.json"
-    if contract_id == "wp.render.handoff/1":
+    if contract_id == "wp.complete.card/2":
+        return f"{locator['artifact_id']}--{digest}.json"
+    if contract_id == "wp.render.handoff/2":
         return f"plan-handoff--{digest}.md"
     raise CycleError("E_UNSUPPORTED_VARIANT", "source-contained output is not active for this contract", exit_code=4)
 
@@ -675,8 +689,16 @@ def _receipt_id(receipt: dict[str, Any]) -> str:
 
 
 def _base_receipt(manifest: dict[str, Any], source_identity: dict[str, str], next_step: dict[str, Any]) -> dict[str, Any]:
+    if next_step.get("kind") == "card":
+        card = _card(manifest, next_step.get("card_id", ""))
+        next_step = {
+            **next_step,
+            "input_contract": _card_input_contract(
+                load_json(SCHEMA_PATH), load_json(REGISTRY_PATH), card, program=next_step.get("card_instance_id") is not None
+            ),
+        }
     return {
-        "schema_version": "wp-card-receipt/1",
+        "schema_version": "wp-card-receipt/2",
         "receipt_kind": "route",
         "receipt_id": "",
         "bundle_id": manifest["bundle_id"],
@@ -704,17 +726,132 @@ def _card(manifest: dict[str, Any], card_id: str) -> dict[str, Any]:
     return matches[0]
 
 
+def _definition(schema: dict[str, Any], reference: str) -> dict[str, Any]:
+    prefix = "#/$defs/"
+    if not reference.startswith(prefix) or "/" in reference[len(prefix):]:
+        raise CycleError("E_CONTRACT_INVALID", "human definition reference is not direct", exit_code=5)
+    definition = schema["$defs"].get(reference[len(prefix):])
+    if not isinstance(definition, dict) or definition.get("type") != "object" or not isinstance(definition.get("properties"), dict):
+        raise CycleError("E_CONTRACT_INVALID", "human definition is unavailable", exit_code=5)
+    return definition
+
+
+def _input_contract(
+    schema: dict[str, Any],
+    registry: dict[str, Any],
+    card: dict[str, Any],
+    completion_contract_id: str,
+    field_reference: str,
+    *,
+    always: list[str],
+    conditional: list[dict[str, Any]],
+) -> dict[str, Any]:
+    artifact_ids = card.get("produced_artifact_ids")
+    if not isinstance(artifact_ids, list) or len(artifact_ids) != 1:
+        raise CycleError("E_CONTRACT_INVALID", "selected card must produce exactly one artifact", exit_code=5)
+    artifact_id = artifact_ids[0]
+    family_name = registry.get("artifacts", {}).get(artifact_id)
+    family = registry.get("families", {}).get(family_name)
+    allowed_persistence = {"semantic_inline", "immutable_projection", "boundary_by_contract", "owner_disposable_projection"}
+    if not isinstance(family, dict) or family.get("persistence_class") not in allowed_persistence:
+        raise CycleError("E_CONTRACT_INVALID", "selected artifact family is unavailable", exit_code=5)
+    fields = _definition(schema, field_reference)
+    required = sorted(fields.get("required", []))
+    properties = fields["properties"]
+    if any(name not in properties for name in required):
+        raise CycleError("E_CONTRACT_INVALID", "human definition required fields are inconsistent", exit_code=5)
+    known_roots = {"--source-root", "--work-root", "--artifact-root", "--projection-root"}
+    if len(always) != len(set(always)) or set(always) - known_roots:
+        raise CycleError("E_CONTRACT_INVALID", "input contract has an unknown root role", exit_code=5)
+    for condition in conditional:
+        definition = properties.get(condition.get("field"), {})
+        if condition.get("arg") not in known_roots or not isinstance(definition.get("enum"), list) or not set(condition.get("in", [])) <= set(definition["enum"]):
+            raise CycleError("E_CONTRACT_INVALID", "input contract conditional root is invalid", exit_code=5)
+    contract = {
+        "completion_contract_id": completion_contract_id,
+        "artifact_id": artifact_id,
+        "persistence_class": family["persistence_class"],
+        "required_fields": required,
+        "optional_fields": sorted(set(properties) - set(required)),
+        "enum_values": {name: properties[name]["enum"] for name in sorted(properties) if isinstance(properties[name], dict) and "enum" in properties[name]},
+        "human_max_bytes": family["human_max_bytes"],
+        "required_root_args": {"always": always, "conditional": conditional},
+    }
+    if len(_canonical(contract)) > INPUT_CONTRACT_MAX_BYTES:
+        raise CycleError("E_CONTRACT_INVALID", "input contract exceeds the byte limit", exit_code=5)
+    return contract
+
+
+def _card_input_contract(schema: dict[str, Any], registry: dict[str, Any], card: dict[str, Any], *, program: bool) -> dict[str, Any]:
+    card_id = card.get("card_id")
+    family_name = registry.get("artifacts", {}).get(card.get("produced_artifact_ids", [None])[0]) if len(card.get("produced_artifact_ids", [])) == 1 else None
+    family = registry.get("families", {}).get(family_name, {})
+    if program:
+        arguments = ("wp.complete.program-card/2", "#/$defs/programCardFields", ["--source-root", "--work-root"], [])
+    elif card_id == "wp.profiles.brief":
+        arguments = ("wp.complete.brief/2", family.get("human_def", ""), ["--source-root", "--projection-root"], [])
+    elif card_id == "wp.profiles.handoff":
+        arguments = ("wp.complete.handoff/2", family.get("human_def", ""), ["--source-root", "--artifact-root"], [])
+    elif card_id == "wp.profiles.program":
+        arguments = ("wp.complete.program/2", family.get("human_def", ""), ["--source-root", "--work-root"], [])
+    elif card_id in {"wp.experiments.disposable-spike", "wp.bridges.long-document-handoff"}:
+        roots = ["--source-root", "--artifact-root"] if family.get("persistence_class") == "boundary_by_contract" else ["--source-root"]
+        arguments = ("wp.complete.card/2", family.get("human_def", ""), roots, [])
+    else:
+        raise CycleError("E_CONTRACT_INVALID", "card has no direct completion route", exit_code=5)
+    return _input_contract(
+        schema, registry, card, arguments[0], arguments[1], always=arguments[2], conditional=arguments[3]
+    )
+
+
+def _route_help_contract(schema: dict[str, Any]) -> dict[str, Any]:
+    fields = schema["$defs"]["routeFields"]
+    groups: dict[str, Any] = {"boolean": [], "string_array": [], "integer_min": {}, "enum": {}}
+    for name in sorted(fields["required"]):
+        definition = fields["properties"][name]
+        if definition.get("type") == "boolean":
+            groups["boolean"].append(name)
+        elif definition.get("type") == "array" and definition.get("items", {}).get("type") == "string":
+            groups["string_array"].append(name)
+        elif definition.get("type") == "integer" and isinstance(definition.get("minimum"), int):
+            groups["integer_min"][name] = definition["minimum"]
+        elif isinstance(definition.get("enum"), list):
+            groups["enum"][name] = definition["enum"]
+        else:
+            raise CycleError("E_CONTRACT_INVALID", "route field cannot be projected", exit_code=5)
+    if sum(len(value) for value in groups.values()) != len(fields["required"]):
+        raise CycleError("E_CONTRACT_INVALID", "route fields are not uniquely projected", exit_code=5)
+    return {"contract_id": "wp.route.initial/2", "required_fields": groups, "required_root_args": ["--source-root"]}
+
+
+def _route_help() -> str:
+    output = (
+        "usage: card_cycle.py route --input - --source-root PATH [--work-root PATH]\n"
+        "initial_input_contract=" + _canonical(_route_help_contract(load_json(SCHEMA_PATH))).decode("utf-8") + "\n"
+    )
+    if len(output.encode("utf-8")) > ROUTE_HELP_MAX_BYTES:
+        raise CycleError("E_CONTRACT_INVALID", "route help exceeds the byte limit", exit_code=5)
+    return output
+
+
+class _RouteHelpAction(argparse.Action):
+    def __call__(self, parser: argparse.ArgumentParser, namespace: argparse.Namespace, values: Any, option_string: str | None = None) -> None:
+        parser._print_message(_route_help(), sys.stdout)
+        parser.exit()
+
+
 def _next_card(manifest: dict[str, Any], route: dict[str, Any]) -> dict[str, Any]:
     if route.get("route_action") != "select_card" or route.get("primary_card") is None:
         raise CycleError("E_UNSUPPORTED_VARIANT", "this slice requires a card route", exit_code=4)
     card = _card(manifest, route["primary_card"]["card_id"])
-    return {
+    step = {
         "kind": "card",
         "decision_id": route["selected_decision_id"],
         "card_id": card["card_id"],
         "card_path": card["path"],
         "card_hash": card["sha256"],
     }
+    return step
 
 
 def _program_next_step(manifest: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
@@ -725,11 +862,12 @@ def _program_next_step(manifest: dict[str, Any], state: dict[str, Any]) -> dict[
         if len(matches) != 1:
             raise CycleError("E_CONTRACT_INVALID", "Program queue decision has no unique card", exit_code=5)
         card = matches[0]
-        return {
+        step = {
             "kind": "card", "decision_id": head["decision_id"], "card_id": card["card_id"],
             "card_path": card["path"], "card_hash": card["sha256"],
             "card_instance_id": head["card_instance_id"], "subject_ref": head["subject_ref"],
         }
+        return step
     statuses = {
         "drafting": "program_ready", "ready": "program_ready", "active": "program_ready",
         "blocked": "program_blocked", "completed": "program_complete", "superseded": "program_superseded",
@@ -1030,6 +1168,60 @@ def _complete_brief(
     return receipt
 
 
+def _complete_standalone_card(
+    command: dict[str, Any],
+    schema: dict[str, Any],
+    manifest: dict[str, Any],
+    registry: dict[str, Any],
+    previous: dict[str, Any],
+    source_identity: dict[str, str],
+    artifact_root: Path | None,
+) -> dict[str, Any]:
+    card = _card(manifest, previous["next_step"].get("card_id", ""))
+    if card["card_id"] not in {"wp.experiments.disposable-spike", "wp.bridges.long-document-handoff"}:
+        raise CycleError("E_RECEIPT_INVALID", "standalone completion does not match the active card", exit_code=3)
+    artifact_ids = card["produced_artifact_ids"]
+    if len(artifact_ids) != 1:
+        raise CycleError("E_CONTRACT_INVALID", "standalone card must produce exactly one artifact", exit_code=5)
+    artifact_id = artifact_ids[0]
+    family_name = registry["artifacts"].get(artifact_id)
+    family = registry["families"].get(family_name)
+    if not isinstance(family, dict):
+        raise CycleError("E_CONTRACT_INVALID", "standalone artifact family is unavailable", exit_code=5)
+    human_schema = {"$schema": schema["$schema"], "$defs": schema["$defs"], "$ref": family["human_def"]}
+    if list(Draft202012Validator(human_schema).iter_errors(command["fields"])):
+        raise CycleError("E_COMMAND_SCHEMA", "human fields do not match the routed artifact family", exit_code=4)
+    if len(_canonical({"fields": command["fields"], "outcome": command["outcome"]})) > family["human_max_bytes"]:
+        raise CycleError("E_COMMAND_BUDGET", "human input exceeds its family budget", exit_code=4)
+    outcome = {"blocker": command["outcome"]["blocker"], "decision_request": None}
+    body = {
+        "artifact_id": artifact_id, "producer_card_id": card["card_id"],
+        "decision_id": card["decision_id"], "fields": command["fields"], "outcome": outcome,
+    }
+    payload = _canonical(body) + b"\n"
+    content_locator = None
+    if family["persistence_class"] == "boundary_by_contract":
+        if artifact_root is None:
+            raise CycleError("E_ROOT_ROLE", "boundary completion requires an artifact root", exit_code=2)
+        content_locator = {
+            "schema_version": "content-locator/1", "content_kind": "artifact", "artifact_id": artifact_id,
+            "content_hash": _hash_bytes(payload), "bytes": len(payload),
+        }
+        _publish_immutable(artifact_root, f"{artifact_id}--{content_locator['content_hash'][7:]}.json", payload)
+    elif family["persistence_class"] != "semantic_inline":
+        raise CycleError("E_CONTRACT_INVALID", "standalone persistence class is not active", exit_code=5)
+    completion = {
+        "completion_id": _hash_json(body), "artifact_id": artifact_id,
+        "producer_card_id": card["card_id"], "decision_id": card["decision_id"],
+        "payload_hash": _hash_json(command["fields"]), "outcome": outcome,
+    }
+    terminal_status = "handoff_complete" if family["persistence_class"] == "boundary_by_contract" else "brief_complete"
+    receipt = _base_receipt(manifest, source_identity, {"kind": "terminal", "status": terminal_status})
+    receipt.update({"receipt_kind": "completion", "completion": completion, "content_locator": content_locator})
+    receipt["receipt_id"] = _receipt_id(receipt)
+    return receipt
+
+
 def _complete_handoff(
     command: dict[str, Any],
     manifest: dict[str, Any],
@@ -1131,6 +1323,7 @@ def _complete_handoff(
 
 
 def _complete_program_init(
+    schema: dict[str, Any],
     command: dict[str, Any],
     manifest: dict[str, Any],
     previous: dict[str, Any],
@@ -1144,28 +1337,42 @@ def _complete_program_init(
         candidate = _build_program_candidate(command["fields"], manifest, source_identity, work_root)
     except PlanInputError as exc:
         raise CycleError("E_COMMAND_SCHEMA", str(exc), exit_code=4) from exc
+    completion_payload = {
+        "artifact_id": "plan-program", "producer_card_id": previous["next_step"]["card_id"],
+        "decision_id": previous["next_step"]["decision_id"], "payload_hash": _hash_json(command["fields"]),
+        "outcome": {"blocker": command["outcome"]["blocker"], "decision_request": None},
+        "initial_completion_id": candidate["initial_completion_id"],
+    }
+    completion = {key: value for key, value in completion_payload.items() if key != "initial_completion_id"}
+    completion["completion_id"] = candidate["initial_completion_id"]
+    owner_content = _canonical(candidate) + b"\n"
+    if len(owner_content) > PROGRAM_STATE_MAX_BYTES:
+        raise CycleError("E_COMMAND_BUDGET", "Program owner exceeds the byte limit", exit_code=4)
+    content_locator = {
+        "schema_version": "content-locator/1", "content_kind": "owner", "artifact_id": "plan-program",
+        "content_hash": _hash_bytes(owner_content), "bytes": len(owner_content),
+    }
+    expected_locator = _program_locator(candidate)
+    preflight = _program_receipt(
+        manifest, candidate, expected_locator, completion=completion, content_locator=content_locator,
+        already_completed=False,
+    )
+    _validate(schema, "receipt", preflight, "E_CONTRACT_INVALID", exit_code=5)
+    if len(_canonical(preflight)) + 1 > RECEIPT_MAX_BYTES:
+        raise CycleError("E_COMMAND_BUDGET", "receipt exceeds the byte limit", exit_code=4)
     try:
         state, locator, replayed = initialize_program_owner(work_root, source_root, candidate)
     except ProgramOwnerConflict as exc:
         raise CycleError("E_ORPHAN_CONFLICT", str(exc), exit_code=5) from exc
     except PlanInputError as exc:
         raise CycleError("E_ROOT_ROLE", str(exc), exit_code=2) from exc
-    completion_payload = {
-        "artifact_id": "plan-program", "producer_card_id": previous["next_step"]["card_id"],
-        "decision_id": previous["next_step"]["decision_id"], "payload_hash": _hash_json(command["fields"]),
-        "outcome": {"blocker": command["outcome"]["blocker"], "decision_request": None},
-        "initial_completion_id": state["initial_completion_id"],
-    }
-    completion = {key: value for key, value in completion_payload.items() if key != "initial_completion_id"}
-    completion["completion_id"] = state["initial_completion_id"]
-    owner_content = _canonical(state) + b"\n"
-    content_locator = {
-        "schema_version": "content-locator/1", "content_kind": "owner", "artifact_id": "plan-program",
-        "content_hash": _hash_bytes(owner_content), "bytes": len(owner_content),
-    }
+    if state != candidate or locator != expected_locator:
+        raise CycleError("E_ORPHAN_CONFLICT", "Program initialization identity drifted", exit_code=5)
+    if not replayed:
+        return preflight
     return _program_receipt(
         manifest, state, locator, completion=completion, content_locator=content_locator,
-        already_completed=replayed,
+        already_completed=True,
     )
 
 
@@ -1480,15 +1687,33 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
     if args.subcommand != expected_subcommand:
         raise CycleError("E_COMMAND_SCHEMA", "subcommand does not match contract")
     root_roles = {
-        "wp.route.initial/1": (None, None, None),
-        "wp.route.resume/1": ("work", None, None),
-        "wp.complete.brief/1": (None, None, "projection"),
-        "wp.complete.handoff/1": (None, "artifact", None),
-        "wp.complete.program/1": ("work", None, None),
-        "wp.complete.program-card/1": ("work", None, None),
-        "wp.render.program/1": ("work", None, None),
-        "wp.render.handoff/1": (None, "artifact", "projection"),
+        "wp.route.initial/2": (None, None, None),
+        "wp.route.resume/2": ("work", None, None),
+        "wp.complete.brief/2": (None, None, "projection"),
+        "wp.complete.card/2": (None, None, None),
+        "wp.complete.handoff/2": (None, "artifact", None),
+        "wp.complete.program/2": ("work", None, None),
+        "wp.complete.program-card/2": ("work", None, None),
+        "wp.render.program/2": ("work", None, None),
+        "wp.render.handoff/2": (None, "artifact", "projection"),
     }
+    if contract_id.startswith("wp.complete."):
+        input_contract = command["previous_receipt"]["next_step"].get("input_contract")
+        if not isinstance(input_contract, dict) or input_contract.get("completion_contract_id") != contract_id:
+            raise CycleError("E_RECEIPT_INVALID", "completion does not match the projected input contract", exit_code=3)
+        root_contract = input_contract["required_root_args"]
+        projected_roots = set(root_contract["always"])
+        for condition in root_contract["conditional"]:
+            if command["fields"].get(condition["field"]) in condition["in"]:
+                projected_roots.add(condition["arg"])
+        unknown_roots = projected_roots - {"--source-root", "--work-root", "--artifact-root", "--projection-root"}
+        if unknown_roots:
+            raise CycleError("E_CONTRACT_INVALID", "projected input contract has an unknown root role", exit_code=5)
+        root_roles[contract_id] = (
+            "work" if "--work-root" in projected_roots else None,
+            "artifact" if "--artifact-root" in projected_roots else None,
+            "projection" if "--projection-root" in projected_roots else None,
+        )
     required_work, required_artifact, required_projection = root_roles[contract_id]
     supplied = {"work": args.work_root, "artifact": args.artifact_root, "projection": args.projection_root}
     required = {name for name, marker in (("work", required_work), ("artifact", required_artifact), ("projection", required_projection)) if marker}
@@ -1507,16 +1732,18 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
         if work_resolved == source_resolved or work_resolved.is_relative_to(source_resolved):
             raise CycleError("E_ROOT_ROLE", "Program work root must remain outside the source", exit_code=4)
     output_role = {
-        "wp.complete.brief/1": "projection",
-        "wp.complete.handoff/1": "artifact",
-        "wp.render.handoff/1": "projection",
+        "wp.complete.brief/2": "projection",
+        "wp.complete.handoff/2": "artifact",
+        "wp.render.handoff/2": "projection",
     }.get(contract_id)
+    if contract_id == "wp.complete.card/2" and required_artifact:
+        output_role = "artifact"
     output_root = roots.get(output_role, (None, None))[0] if output_role is not None else None
     source_publication = bool(
         output_root is not None
         and (output_root == source_resolved or output_root.is_relative_to(source_resolved))
     )
-    program_contract = contract_id in {"wp.route.resume/1", "wp.complete.program/1", "wp.complete.program-card/1", "wp.render.program/1"}
+    program_contract = contract_id in {"wp.route.resume/2", "wp.complete.program/2", "wp.complete.program-card/2", "wp.render.program/2"}
     publication_capture: tuple[str, Any, dict[str, Any]] | None = None
     recovery_target: str | None = None
     if source_publication:
@@ -1525,14 +1752,18 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
         source_identity = _observation_identity(publication_before)
         output_relative = _relative_to_source(source_resolved, output_root)
         output_prefix = "" if output_relative == "." else output_relative + "/"
-        candidate_pattern = {
-            "wp.complete.brief/1": ("plan-brief--", ".md"),
-            "wp.complete.handoff/1": ("plan-handoff--", ".json"),
-            "wp.render.handoff/1": ("plan-handoff--", ".md"),
-        }[contract_id]
+        candidate_patterns = {
+            "wp.complete.brief/2": ("plan-brief--", ".md"),
+            "wp.complete.handoff/2": ("plan-handoff--", ".json"),
+            "wp.render.handoff/2": ("plan-handoff--", ".md"),
+        }
+        if contract_id == "wp.complete.card/2":
+            artifact_id = command["previous_receipt"]["next_step"]["input_contract"]["artifact_id"]
+            candidate_patterns[contract_id] = (artifact_id + "--", ".json")
+        candidate_pattern = candidate_patterns[contract_id]
         base_exclusions: set[str] = set()
         expected_identity = command.get("previous_receipt", {}).get("source_identity") if command.get("previous_receipt") else None
-        if contract_id == "wp.render.handoff/1":
+        if contract_id == "wp.render.handoff/2":
             artifact_root = roots["artifact"][0]
             locator = command["fields"]["content_locator"]
             artifact_path = artifact_root / f"plan-handoff--{locator['content_hash'][7:]}.json"
@@ -1572,9 +1803,9 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
             if full_source_identity is not None
             else _capture_source(source_root)
         )
-    if contract_id == "wp.route.initial/1":
+    if contract_id == "wp.route.initial/2":
         receipt = _route_initial(command, manifest, source_identity)
-    elif contract_id == "wp.route.resume/1":
+    elif contract_id == "wp.route.resume/2":
         work, _ = roots["work"]
         assert full_source_identity is not None
         receipt = _route_program_resume(command, manifest, source_root, full_source_identity, work)
@@ -1585,31 +1816,35 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                 schema,
                 command["previous_receipt"],
                 source_identity,
-                allow_source_drift=contract_id == "wp.complete.program-card/1",
+                allow_source_drift=contract_id == "wp.complete.program-card/2",
             )
             if previous["bundle_id"] != manifest["bundle_id"]:
                 raise CycleError("E_RECEIPT_INVALID", "previous receipt bundle is stale", exit_code=3)
-        if contract_id == "wp.complete.brief/1":
+        if contract_id == "wp.complete.brief/2":
             projection, root_binding = roots["projection"]
             assert previous is not None
             receipt = _complete_brief(command, manifest, registry, previous, source_identity, projection, root_binding)
-        elif contract_id == "wp.complete.handoff/1":
+        elif contract_id == "wp.complete.card/2":
+            artifact = roots.get("artifact", (None, None))[0]
+            assert previous is not None
+            receipt = _complete_standalone_card(command, schema, manifest, registry, previous, source_identity, artifact)
+        elif contract_id == "wp.complete.handoff/2":
             artifact, root_binding = roots["artifact"]
             assert previous is not None
             receipt = _complete_handoff(command, manifest, previous, source_identity, artifact, root_binding)
-        elif contract_id == "wp.complete.program/1":
+        elif contract_id == "wp.complete.program/2":
             work, _ = roots["work"]
             assert previous is not None and full_source_identity is not None
-            receipt = _complete_program_init(command, manifest, previous, source_root, full_source_identity, work)
-        elif contract_id == "wp.complete.program-card/1":
+            receipt = _complete_program_init(schema, command, manifest, previous, source_root, full_source_identity, work)
+        elif contract_id == "wp.complete.program-card/2":
             work, _ = roots["work"]
             assert previous is not None and full_source_identity is not None
             receipt = _complete_program_card(command, manifest, previous, source_root, full_source_identity, work)
-        elif contract_id == "wp.render.program/1":
+        elif contract_id == "wp.render.program/2":
             work, _ = roots["work"]
             assert full_source_identity is not None
             receipt = _render_program_projection(command, manifest, source_root, full_source_identity, work)
-        elif contract_id == "wp.render.handoff/1":
+        elif contract_id == "wp.render.handoff/2":
             artifact, _ = roots["artifact"]
             projection, _ = roots["projection"]
             receipt = _render_handoff_projection(command, manifest, source_identity, artifact, projection)
@@ -1637,7 +1872,9 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
     for name in ("route", "complete", "render"):
-        command = subparsers.add_parser(name)
+        command = subparsers.add_parser(name, add_help=name != "route")
+        if name == "route":
+            command.add_argument("-h", "--help", action=_RouteHelpAction, nargs=0)
         command.add_argument("--input", required=True)
         command.add_argument("--source-root", required=True)
         command.add_argument("--work-root")
