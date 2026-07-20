@@ -49,6 +49,7 @@ ENTRY_REQUIRED_TEXT = (
     "receipt/command files",
     "Keep only the replacement",
     "semantic_inline",
+    "fields use `--fields-json`",
     "raw state",
     "whole artifact/projection directories",
 )
