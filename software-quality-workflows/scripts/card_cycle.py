@@ -262,6 +262,8 @@ def _select(manifest: dict[str, Any], facts: dict[str, Any]) -> dict[str, Any]:
     route = assess(facts)
     if validate_route_result(route):
         raise CycleError("E_CONTRACT_INVALID", "route result is invalid", exit_code=5)
+    if route["route_action"] == "terminal":
+        return {"kind": "terminal", "decision_id": None, "reason_codes": route["reason_codes"]}
     return _next_step(manifest, route)
 
 
@@ -343,7 +345,8 @@ def _route_resume(
     except AdapterConflict as exc:
         raise CycleError("E_ORPHAN_CONFLICT", str(exc), exit_code=5) from exc
     frontier = state["active_frontier"]
-    receipt = _base_receipt(manifest, source_identity, frontier)
+    next_step = frontier or {"kind": "terminal", "decision_id": None, "reason_codes": ["ACTIVE_QUEUE_EMPTY"]}
+    receipt = _base_receipt(manifest, source_identity, next_step)
     receipt.update({
         "owner_locator": command["fields"]["owner_locator"],
         "current_lease": lease,
@@ -476,6 +479,106 @@ def _complete_scope(
     return receipt
 
 
+def _complete_active(
+    command: dict[str, Any],
+    schema: dict[str, Any],
+    manifest: dict[str, Any],
+    registry: dict[str, Any],
+    previous: dict[str, Any],
+    source_identity: dict[str, str],
+    work_root: Path,
+) -> dict[str, Any]:
+    card = _card(manifest, previous["next_step"]["card_id"])
+    artifact_ids = card["produced_artifact_ids"]
+    if len(artifact_ids) != 1:
+        raise CycleError("E_CONTRACT_INVALID", "active card must produce exactly one artifact", exit_code=5)
+    artifact_id = artifact_ids[0]
+    family_name = registry["artifacts"][artifact_id]
+    family = registry["families"][family_name]
+    if family["persistence_class"] != "semantic_inline":
+        raise CycleError("E_UNSUPPORTED_VARIANT", "materialized card completion is not active", exit_code=4)
+    human_schema = {"$schema": schema["$schema"], "$defs": schema["$defs"], "$ref": family["human_def"]}
+    if list(Draft202012Validator(human_schema).iter_errors(command["fields"])):
+        raise CycleError("E_COMMAND_SCHEMA", "human fields do not match the routed artifact family")
+    _enforce_human_budget(registry, artifact_id, command["fields"], command["outcome"])
+    if command["outcome"]["blocker"] is not None:
+        raise CycleError("E_UNSUPPORTED_VARIANT", "blocked durable completion requires the blocked route slice", exit_code=4)
+    completion = _completion(
+        artifact_id,
+        previous["next_step"]["card_id"],
+        previous["next_step"]["decision_id"],
+        command["fields"],
+        None,
+        command["outcome"]["decision_request"],
+    )
+    if len(_canonical(completion)) > family["payload_max_bytes"]:
+        raise CycleError("E_COMMAND_BUDGET", "completion payload exceeds its family budget", exit_code=4)
+
+    def select_next(state: dict[str, Any], current_completion: dict[str, Any]) -> dict[str, Any]:
+        inline = [entry.get("completion", {}) for entry in state["card_completions"] if entry["storage"] == "inline"]
+        available = [item["artifact_id"] for item in inline if isinstance(item.get("artifact_id"), str)]
+        completed = [item["decision_id"] for item in inline if isinstance(item.get("decision_id"), str)]
+        available.append(current_completion["artifact_id"])
+        completed.append(current_completion["decision_id"])
+        requested = current_completion["outcome"]["decision_request"]
+        decision_request = None if requested is None else {
+            "decision_id": requested,
+            "produced_by_card_id": current_completion["producer_card_id"],
+            "produced_artifact_id": current_completion["artifact_id"],
+        }
+        context = {
+            "request_mode": state["request_mode"],
+            "intent_status": "adequate",
+            "root_cause_status": "known",
+            "implicated_surfaces": [],
+            "unknown_implicated_facts": [],
+            "persistence_need": "durable",
+            "delegation_need": "none",
+            "external_side_effect": "none",
+        }
+        return _select(
+            manifest,
+            _route_facts(
+                context,
+                available=available,
+                completed=completed,
+                just_completed=current_completion["producer_card_id"],
+                decision_request=decision_request,
+            ),
+        )
+
+    adapter = LocalWorkflowAdapter(work_root, load_json(STATE_SCHEMA_PATH), load_json(EVENT_SCHEMA_PATH))
+    try:
+        state, lease = adapter.complete_inline(
+            previous["owner_locator"],
+            previous,
+            source_identity,
+            completion,
+            select_next,
+            expected_bundle_id=manifest["bundle_id"],
+            expected_policy_bundle_hash=_hash(load_json(POLICY_PATH)),
+            expected_card_manifest_hash=_hash(manifest),
+            expected_cards={item["card_id"]: (item["path"], item["sha256"]) for item in manifest["cards"]},
+        )
+    except AdapterSourceDrift as exc:
+        raise CycleError("E_SOURCE_REVISION_CHANGED", str(exc), exit_code=5) from exc
+    except AdapterConflict as exc:
+        raise CycleError("E_ORPHAN_CONFLICT", str(exc), exit_code=5) from exc
+    next_step = state["active_frontier"] or {"kind": "terminal", "decision_id": None, "reason_codes": ["ACTIVE_QUEUE_EMPTY"]}
+    receipt = _base_receipt(manifest, source_identity, next_step)
+    receipt.update({
+        "receipt_kind": "completion",
+        "completion": completion,
+        "scope_binding": state["scope_binding"],
+        "owner_locator": previous["owner_locator"],
+        "current_lease": lease,
+        "state_version": state["state_version"],
+        "state_hash": state["state_hash"],
+    })
+    receipt["receipt_id"] = _receipt_id(receipt)
+    return receipt
+
+
 def _execute(args: argparse.Namespace) -> dict[str, Any]:
     if args.input != "-":
         raise CycleError("E_COMMAND_SCHEMA", "--input must be stdin")
@@ -488,9 +591,10 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
         raise CycleError("E_COMMAND_SCHEMA", "subcommand does not match contract")
     durable_scope = command["contract_id"] == "sqw.complete.scope/1" and command["fields"]["mode"] in {"M2", "M3"}
     durable_resume = command["contract_id"] == "sqw.route.resume/1"
-    if (durable_scope or durable_resume) and args.work_root is None:
+    durable_active = command["contract_id"] == "sqw.complete.card/1"
+    if (durable_scope or durable_resume or durable_active) and args.work_root is None:
         raise CycleError("E_ROOT_ROLE", "durable command requires a work root")
-    if not (durable_scope or durable_resume) and args.work_root is not None:
+    if not (durable_scope or durable_resume or durable_active) and args.work_root is not None:
         raise CycleError("E_ROOT_ROLE", "this command does not accept a work root")
     source_identity = _capture_source(Path(args.source_root))
     if command["contract_id"] == "sqw.route.initial/1":
@@ -507,7 +611,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
             receipt = _complete_scope(command, manifest, registry, previous, source_identity)
             if durable_scope:
                 try:
-                    _, locator, lease = bootstrap_v3(
+                    state, locator, lease = bootstrap_v3(
                         Path(args.work_root),
                         Path(args.source_root),
                         bundle_id=manifest["bundle_id"],
@@ -525,7 +629,11 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                     raise CycleError("E_ORPHAN_CONFLICT", str(exc), exit_code=5) from exc
                 receipt["owner_locator"] = locator
                 receipt["current_lease"] = lease
+                receipt["state_version"] = state["state_version"]
+                receipt["state_hash"] = state["state_hash"]
                 receipt["receipt_id"] = _receipt_id(receipt)
+        elif durable_active:
+            receipt = _complete_active(command, schema, manifest, registry, previous, source_identity, Path(args.work_root))
         else:
             raise CycleError("E_UNSUPPORTED_VARIANT", "command contract is not active", exit_code=4)
     receipt_validator = {

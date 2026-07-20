@@ -143,6 +143,20 @@ class CardCycleM0Tests(unittest.TestCase):
             "fields": {"owner_locator": receipt["owner_locator"]},
         }
 
+    def _active_evidence_command(self, receipt: dict[str, object], decision_request: str | None) -> dict[str, object]:
+        return {
+            "contract_id": "sqw.complete.card/1",
+            "invocation_phase": "active",
+            "previous_receipt": receipt,
+            "fields": {
+                "claim": "The routed behavior is proven.",
+                "observations": ["The focused contract test passed."],
+                "limitations": [],
+                "verdict": "pass",
+            },
+            "outcome": {"blocker": None, "decision_request": decision_request},
+        }
+
     def _scope_command(self, receipt: dict[str, object], *, mode: str = "M0") -> dict[str, object]:
         return {
             "contract_id": "sqw.complete.scope/1",
@@ -357,6 +371,60 @@ class CardCycleM0Tests(unittest.TestCase):
             self.assertEqual("E_ORPHAN_CONFLICT", json.loads(rejected.stderr)["code"])
             self.assertEqual(before, (sentinel.read_bytes(), sentinel.stat().st_mtime_ns))
             self.assertEqual(["sentinel.txt"], [path.name for path in foreign.iterdir()])
+
+    def test_durable_inline_completion_advances_once_and_terminal_clears_lease(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            work = root / "work"
+            source.mkdir()
+            work.mkdir()
+            (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+            route = self._success_receipt(self._run("route", self._initial_command(), source))
+            entry = self._success_receipt(self._run("complete", self._entry_command(route), source))
+            scoped = self._success_receipt(
+                self._run("complete", self._scope_command(entry, mode="M2"), source, "--work-root", str(work))
+            )
+
+            behavior_command = self._active_evidence_command(scoped, "sqw.select.test.oracle-and-lifecycle")
+            behavior = self._success_receipt(
+                self._run("complete", behavior_command, source, "--work-root", str(work))
+            )
+            self.assertEqual((2, "sqw.test.oracle-and-lifecycle"), (behavior["state_version"], behavior["next_step"]["card_id"]))
+            state_path = work / "state.json"
+            locks_path = work / "locks.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(behavior["state_hash"], state["state_hash"])
+            self.assertEqual(behavior["completion"]["content_hash"], state["last_transition"]["completion_id"])
+            self.assertEqual(behavior["current_lease"], json.loads(locks_path.read_text(encoding="utf-8"))["leases"][0])
+            committed_identity = {
+                path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                for path in (state_path, locks_path)
+            }
+            replay = self._success_receipt(
+                self._run("complete", behavior_command, source, "--work-root", str(work))
+            )
+            self.assertEqual(behavior, replay)
+            self.assertEqual(
+                committed_identity,
+                {
+                    path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                    for path in (state_path, locks_path)
+                },
+            )
+
+            terminal_command = self._active_evidence_command(behavior, None)
+            terminal = self._success_receipt(
+                self._run("complete", terminal_command, source, "--work-root", str(work))
+            )
+            self.assertEqual((3, "terminal", None), (terminal["state_version"], terminal["next_step"]["kind"], terminal["current_lease"]))
+            terminal_state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(("completed", None), (terminal_state["status"], terminal_state["active_frontier"]))
+            self.assertEqual([], json.loads(locks_path.read_text(encoding="utf-8"))["leases"])
+            terminal_resume = self._success_receipt(
+                self._run("route", self._resume_command(terminal), source, "--work-root", str(work))
+            )
+            self.assertEqual(("terminal", None, 3), (terminal_resume["next_step"]["kind"], terminal_resume["current_lease"], terminal_resume["state_version"]))
 
     def test_registry_covers_every_artifact_with_one_fixed_family_class(self) -> None:
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
