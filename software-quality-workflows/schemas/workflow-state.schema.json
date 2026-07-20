@@ -30,7 +30,7 @@
     "verifiers": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/verifier"}},
     "edges": {"type": "array", "maxItems": 2000, "items": {"$ref": "#/$defs/edge"}},
     "frontier": {"$ref": "#/$defs/id_array"},
-    "active_frontier": {"$ref": "#/$defs/card_frontier"},
+    "active_frontier": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/card_frontier"}]},
     "card_completions": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/card_completion"}},
     "artifacts": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/artifact"}},
     "recent_failures": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/failure"}},

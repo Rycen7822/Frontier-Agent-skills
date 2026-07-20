@@ -180,7 +180,7 @@
         "content_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
         "producer_card_id": {"type": "string", "pattern": "^sqw\\."},
         "decision_id": {"type": "string", "pattern": "^sqw\\.select\\."},
-        "fields": {"oneOf": [{"$ref": "#/$defs/entryFields"}, {"$ref": "#/$defs/scopeFields"}]},
+        "fields": {"oneOf": [{"$ref": "#/$defs/entryFields"}, {"$ref": "#/$defs/scopeFields"}, {"$ref": "#/$defs/decisionFields"}, {"$ref": "#/$defs/evidenceFields"}, {"$ref": "#/$defs/gateFields"}, {"$ref": "#/$defs/handoffFields"}, {"$ref": "#/$defs/reviewResultFields"}]},
         "outcome": {"$ref": "#/$defs/completionOutcome"}
       }
     },
@@ -219,6 +219,19 @@
     "ownerLocator": {
       "oneOf": [{"type": "null"}, {"$ref": "#/$defs/durableOwnerLocator"}]
     },
+    "nextTerminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "decision_id", "reason_codes"],
+      "properties": {
+        "kind": {"const": "terminal"},
+        "decision_id": {"type": "null"},
+        "reason_codes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "nextStep": {
+      "oneOf": [{"$ref": "#/$defs/nextCard"}, {"$ref": "#/$defs/nextTerminal"}]
+    },
     "lease": {
       "type": ["object", "null"],
       "additionalProperties": false,
@@ -245,7 +258,7 @@
         "bundle_id": {"type": "string", "minLength": 1},
         "skill_id": {"const": "software-quality-workflows"},
         "source_identity": {"$ref": "#/$defs/sourceIdentity"},
-        "next_step": {"$ref": "#/$defs/nextCard"},
+        "next_step": {"$ref": "#/$defs/nextStep"},
         "route_context": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/routeFields"}]},
         "completion": {"$ref": "#/$defs/completion"},
         "scope_binding": {"$ref": "#/$defs/scopeBinding"},
@@ -308,12 +321,25 @@
         }
       }
     },
+    "activeCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_id", "invocation_phase", "previous_receipt", "fields", "outcome"],
+      "properties": {
+        "contract_id": {"const": "sqw.complete.card/1"},
+        "invocation_phase": {"const": "active"},
+        "previous_receipt": {"$ref": "#/$defs/receipt"},
+        "fields": {"oneOf": [{"$ref": "#/$defs/decisionFields"}, {"$ref": "#/$defs/evidenceFields"}, {"$ref": "#/$defs/gateFields"}, {"$ref": "#/$defs/handoffFields"}, {"$ref": "#/$defs/reviewResultFields"}]},
+        "outcome": {"$ref": "#/$defs/completionOutcome"}
+      }
+    },
     "command": {
       "oneOf": [
         {"$ref": "#/$defs/routeCommand"},
         {"$ref": "#/$defs/resumeCommand"},
         {"$ref": "#/$defs/entryCommand"},
-        {"$ref": "#/$defs/scopeCommand"}
+        {"$ref": "#/$defs/scopeCommand"},
+        {"$ref": "#/$defs/activeCommand"}
       ]
     },
     "error": {

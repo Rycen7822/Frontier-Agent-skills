@@ -140,6 +140,91 @@ def _resume_worker(root: Path, checkpoint_name: str, ready: Path) -> None:
     )
 
 
+def _complete_inline(root: Path) -> tuple[dict, dict | None]:
+    state = load_json(root / "state.json")
+    locator = {
+        "schema_version": "sqw-workflow-owner/1",
+        "workflow_id": state["workflow_id"],
+        "bootstrap_operation_id": state["bootstrap"]["operation_id"],
+        "bundle_id": state["bundle_id"],
+        "initial_source_identity_hash": state["bootstrap"]["initial_source_identity_hash"],
+        "scope_binding_id": state["scope_binding"]["binding_id"],
+        "mode": state["mode"],
+        "initial_root_binding_hash": workflow_adapter._value_hash(state["bootstrap"]["initial_root_binding"]),
+    }
+    locks = load_json(root / "locks.json")
+    if state["state_version"] == 1:
+        previous_frontier = state["active_frontier"]
+        previous_hash = state["state_hash"]
+        previous_lease = locks["leases"][0]
+    else:
+        completion_entry = state["card_completions"][-1]
+        previous_frontier = {
+            "kind": "card",
+            "decision_id": completion_entry["completion"]["decision_id"],
+            "card_id": completion_entry["completion"]["producer_card_id"],
+            "card_path": "references/execution/behavior-cycle.md",
+            "card_hash": "sha256:" + "8" * 64,
+        }
+        previous_hash = state["last_transition"]["prior_state_hash"]
+        previous_lease = {
+            "lease_id": workflow_adapter._value_hash({"workflow_id": state["workflow_id"], "frontier": previous_frontier}),
+            "producer_id": previous_frontier["card_id"],
+            "decision_id": previous_frontier["decision_id"],
+            "lease_expires_at": "2026-07-13T12:30:00+08:00",
+        }
+    previous = {
+        "owner_locator": locator,
+        "scope_binding": state["scope_binding"],
+        "state_version": 1,
+        "state_hash": previous_hash,
+        "next_step": previous_frontier,
+        "current_lease": previous_lease,
+    }
+    payload = {
+        "artifact_id": "test-behavior-cycle",
+        "producer_card_id": previous_frontier["card_id"],
+        "decision_id": previous_frontier["decision_id"],
+        "fields": {"claim": "proved", "observations": ["focused pass"], "limitations": [], "verdict": "pass"},
+        "outcome": {"blocker": None, "decision_request": "sqw.select.test.oracle-and-lifecycle"},
+    }
+    completion = {**payload, "content_hash": workflow_adapter._value_hash(payload)}
+    next_step = {
+        "kind": "card",
+        "decision_id": "sqw.select.test.oracle-and-lifecycle",
+        "card_id": "sqw.test.oracle-and-lifecycle",
+        "card_path": "references/test/oracle-and-lifecycle.md",
+        "card_hash": "sha256:" + "9" * 64,
+    }
+    return LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).complete_inline(
+        locator,
+        previous,
+        state["source_identity"],
+        completion,
+        lambda _state, _completion: next_step,
+        expected_bundle_id=state["bundle_id"],
+        expected_policy_bundle_hash=state["policy_bundle_hash"],
+        expected_card_manifest_hash=state["card_manifest_hash"],
+        expected_cards={
+            previous_frontier["card_id"]: (previous_frontier["card_path"], previous_frontier["card_hash"]),
+            next_step["card_id"]: (next_step["card_path"], next_step["card_hash"]),
+        },
+        now_value=NOW,
+    )
+
+
+def _complete_worker(root: Path, checkpoint_name: str, ready: Path) -> None:
+    def pause(name: str) -> None:
+        if name != checkpoint_name:
+            return
+        ready.write_text(name + "\n", encoding="utf-8")
+        while True:
+            signal.pause()
+
+    workflow_adapter._checkpoint = pause
+    _complete_inline(root)
+
+
 class WorkflowRuntimeTests(unittest.TestCase):
     def test_context_projection_is_bounded_state_versioned_and_secret_safe(self) -> None:
         state = _base()
@@ -439,6 +524,54 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     ((root / "locks.json").stat().st_ino, (root / "locks.json").stat().st_mtime_ns, (root / "locks.json").read_bytes()),
                 )
 
+    def test_inline_completion_real_sigkill_prefixes_converge(self) -> None:
+        checkpoints = (
+            "card_state_temp_fsynced",
+            "card_state_replaced",
+            "card_state_parent_synced",
+            "card_locks_temp_fsynced",
+            "card_locks_replaced",
+            "card_locks_parent_synced",
+        )
+        for checkpoint in checkpoints:
+            with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                root, _ = _owner(parent)
+                ready = parent / "ready"
+                process = subprocess.Popen(
+                    [sys.executable, "-B", __file__, "--complete-worker", str(root), checkpoint, str(ready)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                deadline = time.monotonic() + 5
+                while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                if not ready.exists():
+                    if process.poll() is None:
+                        process.kill()
+                    stdout, stderr = process.communicate(timeout=1)
+                    self.fail(f"worker did not reach {checkpoint}: rc={process.returncode} stdout={stdout!r} stderr={stderr!r}")
+                process.kill()
+                stdout, stderr = process.communicate(timeout=5)
+                self.assertEqual(-signal.SIGKILL, process.returncode, stdout + stderr)
+
+                committed, lease = _complete_inline(root)
+                self.assertEqual((2, "sqw.test.oracle-and-lifecycle"), (committed["state_version"], committed["active_frontier"]["card_id"]))
+                self.assertEqual(lease, load_json(root / "locks.json")["leases"][0])
+                self.assertFalse((root / ".state.json.tmp").exists())
+                self.assertFalse((root / ".locks.json.tmp").exists())
+                identities = {
+                    name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes())
+                    for name in ("state.json", "locks.json")
+                }
+                replay = _complete_inline(root)
+                self.assertEqual((committed, lease), replay)
+                self.assertEqual(
+                    identities,
+                    {name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes()) for name in identities},
+                )
+
     def test_bootstrap_rejects_skipped_or_foreign_prefix_before_mutation(self) -> None:
         for entry in ("projections", ".state.json.tmp"):
             with self.subTest(entry=entry), tempfile.TemporaryDirectory() as directory:
@@ -549,5 +682,7 @@ if __name__ == "__main__":
         _bootstrap_worker(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], Path(sys.argv[5]))
     elif len(sys.argv) == 5 and sys.argv[1] == "--resume-worker":
         _resume_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
+    elif len(sys.argv) == 5 and sys.argv[1] == "--complete-worker":
+        _complete_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
     else:
         unittest.main()
