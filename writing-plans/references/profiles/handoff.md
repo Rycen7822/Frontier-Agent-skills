@@ -24,14 +24,14 @@ Freeze the minimum durable handoff needed for another turn, session, or authoriz
 - Source revision, scope and authority identities, intended outcome, current frontier, evidence anchors, dependencies, and verification gates.
 
 ## Procedure
-1. Bind the handoff to source, scope, authority, and bundle identity.
+1. Bind the typed v3 handoff to producer completion, source, planning scope, and bundle identity; record authority requirements without claiming actual authority.
 2. Record goal/non-goals, global invariants/owner seams, requirement/constraint coverage, completed evidence, pending decisions, and blockers separately.
 3. Give ordered outcome slices stable dependencies, allowed writes/effects, one owner, acceptance/verifier distinction, false-green risk, and produced evidence.
 4. Record current frontier, rollback, fog, and only source-bound resume commands/anchors.
-5. Render the bounded [Handoff template](../../templates/executable-handoff.md) and emit the cross-skill envelope with no SQW internal card ID or Markdown path.
+5. Complete to one immutable JSON artifact under the explicit artifact root. A later `render` command validates that exact locator and emits Markdown under the explicit projection root; neither artifact contains local owner or output paths.
 
 ## Output contract
-- One `plan-handoff` binding handoff/bundle/source/profile, plan/authority/scope/frontier/policy identities, explicit blockers, and no inferred authority.
+- One `plan-handoff` artifact binding producer/bundle/source/scope, typed owner seams and requirement refs, ordered slices, rollback, explicit blockers, and the required SQW entry decisions. The receiver reroutes and re-establishes authority.
 
 ## Load next only if
 

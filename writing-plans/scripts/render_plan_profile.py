@@ -13,6 +13,7 @@ from validate_plan_state import semantic_violations
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_SCHEMA = ROOT / "schemas" / "plan-state.schema.json"
+HANDOFF_SCHEMA = ROOT / "schemas" / "plan-execution-handoff.schema.json"
 
 
 def _items(value: Any) -> str:
@@ -44,14 +45,33 @@ def render_brief(data: dict[str, Any]) -> str:
 
 
 def render_handoff(data: dict[str, Any]) -> str:
-    _require(data, ("plan_id", "source_revision", "scope_hash", "goal", "invariants", "owner_seams", "slices"))
+    if validate_against_schema(data, load_json(HANDOFF_SCHEMA)):
+        raise ValueError("handoff rendering requires a valid typed handoff 3.0")
+    producer = data["producer"]
+    scope = data["scope_binding"]
+    requirement_rows = [
+        f"- {name}: {', '.join(values) or 'none'}"
+        for name, values in data["requirements"].items()
+    ]
+    seam_rows = [
+        f"- {item['owner']}: paths={item['paths']}; resources={item['resources']}; effects={item['effects']}"
+        for item in data["owner_seams"]
+    ]
+    slice_rows = [
+        f"- {item['slice_id']} ({item['node_ref'] or 'standalone'}): {item['objective']}; depends={item['depends_on']}; reads={item['read_set']}; writes={item['write_set']}; effects={item['effect_set']}; done={item['completion_criterion']}"
+        for item in data["ordered_slices"]
+    ]
     return f"""# Executable Handoff: {data['goal']}
 
-- Plan ID: {data['plan_id']}
-- Profile: handoff
-- Source revision: {data['source_revision']}
-- Scope hash: {data['scope_hash']}
-- State hash: {data.get('state_hash', 'none')}
+- Handoff ID: {data['handoff_id']}
+- Producer: {producer['profile']} / {producer['card_id']} / {producer['completion_id']}
+- Plan ID: {producer['plan_id'] or 'standalone'}
+- State hash: {producer['state_hash'] or 'none'}
+- Source identity: {data['source_identity']['kind']} / {data['source_identity']['identity_hash']}
+- Scope binding: {scope['binding_id']}
+- Effect/publication ceilings: {scope['effect_ceiling']} / {scope['publication_ceiling']}
+
+This handoff records execution-authority requirements. It does not grant or claim actual authority.
 
 ## Non-goals
 
@@ -59,27 +79,34 @@ def render_handoff(data: dict[str, Any]) -> str:
 
 ## Global invariants
 
-{_items(data['invariants'])}
+{_items([f"{item['ref']}: {item['statement']}" for item in data['global_invariants']])}
 
 ## Owner seams/contracts
 
-{_items(data['owner_seams'])}
+{chr(10).join(seam_rows)}
 
 ## Ordered outcome slices
 
-{_items(data['slices'])}
+{chr(10).join(slice_rows)}
 
-## Current frontier
+## Required typed references
 
-{_items(data.get('current_frontier'))}
+{chr(10).join(requirement_rows)}
 
-## Gaps/fog
+## Rollback
 
-{_items(data.get('gaps'))}
+- Strategy: {data['rollback']['strategy']}
+{_items(data['rollback']['steps'])}
 
-## Required evidence
+## Receiver entry
 
-{_items(data.get('required_evidence'))}
+- Skill: {data['target_entry']['skill_id']}
+- Route phase: {data['target_entry']['route_phase']}
+- Required decisions: {', '.join(data['target_entry']['required_decision_ids'])}
+
+## Unresolved blockers
+
+{_items(data['unresolved_blockers'])}
 """
 
 
@@ -185,4 +212,3 @@ Bound to source `{data['source_revision']}`, scope `{data['scope_hash']}`, and s
 
 {_items(data['novice_steps'])}
 """
-

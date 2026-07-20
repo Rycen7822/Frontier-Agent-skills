@@ -8,7 +8,9 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 import stat
+import subprocess
 import sys
 from typing import Any
 
@@ -16,18 +18,35 @@ from jsonschema import Draft202012Validator
 
 from _writing_reference_cards import load_json, strict_json_bytes
 from assess_plan_mode import assess, validate_plan_route_result
-from render_plan_profile import render_brief
+from _plan_state import (
+    ProgramOwnerConflict,
+    ProgramStateAdvanced,
+    PlanInputError,
+    apply_program_owner_transition,
+    canonical_completion_id,
+    canonical_object_hash,
+    canonical_state_hash,
+    initialize_program_owner,
+    normalize_enqueue_requests,
+    render_program_owner_projection,
+    resume_program_owner,
+)
+from render_context_capsule import render as render_context_capsule
+from render_plan_profile import render_brief, render_handoff
+from render_plan_profile import render_program
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "schemas" / "card-protocol.schema.json"
 REGISTRY_PATH = ROOT / "registries" / "artifact-family-contracts.json"
 MANIFEST_PATH = ROOT / "registries" / "reference-cards.manifest.json"
+HANDOFF_SCHEMA_PATH = ROOT / "schemas" / "plan-execution-handoff.schema.json"
 COMMAND_MAX_BYTES = 65_536
 RECEIPT_MAX_BYTES = 12_288
 SOURCE_FILE_MAX_BYTES = 8 * 1024 * 1024
 SOURCE_TOTAL_MAX_BYTES = 32 * 1024 * 1024
 SOURCE_MAX_FILES = 4_096
+SUPPORT_MAP_PATH = ROOT / "references" / "package-support-map.md"
 
 
 class CycleError(ValueError):
@@ -48,6 +67,18 @@ def _hash_json(value: Any) -> str:
 
 def _hash_bytes(value: bytes) -> str:
     return "sha256:" + sha256(value).hexdigest()
+
+
+def _renderer_contract_hash(paths: tuple[str, ...]) -> str:
+    support_map = SUPPORT_MAP_PATH.read_text(encoding="utf-8")
+    records = []
+    for relative in sorted(paths):
+        content_hash = _hash_bytes((ROOT / relative).read_bytes())
+        pattern = rf"^- \[`{re.escape(relative)}` · `{re.escape(content_hash)}`\]"
+        if re.search(pattern, support_map, re.MULTILINE) is None:
+            raise CycleError("E_CONTRACT_INVALID", "renderer support-map binding is stale", exit_code=5)
+        records.append({"path": relative, "content_hash": content_hash})
+    return _hash_json(records)
 
 
 def _load_contracts() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
@@ -154,7 +185,7 @@ def _source_observation(source_root: Path) -> dict[str, Any]:
     if source_root.is_symlink() or not stat.S_ISDIR(info.st_mode) or resolved != source_root.absolute():
         raise CycleError("E_SOURCE_UNAVAILABLE", "source root is not canonical", exit_code=5)
     if (resolved / ".git").exists():
-        raise CycleError("E_SOURCE_UNAVAILABLE", "repository source support is not active in this slice", exit_code=5)
+        raise CycleError("E_SOURCE_UNAVAILABLE", "repository source requires the repository observer", exit_code=5)
 
     records: list[dict[str, Any]] = []
     total = 0
@@ -179,12 +210,101 @@ def _source_observation(source_root: Path) -> dict[str, Any]:
     return {"kind": "unversioned", "root_binding": {"dev": info.st_dev, "ino": info.st_ino}, "records": records}
 
 
+def _git(source_root: Path, *arguments: str) -> bytes:
+    env = dict(os.environ)
+    env.update({"GIT_OPTIONAL_LOCKS": "0", "GIT_PAGER": "cat", "LC_ALL": "C"})
+    completed = subprocess.run(
+        ["git", "-C", str(source_root), *arguments],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        env=env,
+        timeout=15,
+    )
+    if completed.returncode != 0:
+        raise CycleError("E_SOURCE_UNAVAILABLE", "repository source cannot be observed", exit_code=5)
+    return completed.stdout
+
+
+def _repository_observation(source_root: Path) -> dict[str, Any]:
+    try:
+        info = source_root.lstat()
+        resolved = source_root.resolve(strict=True)
+    except OSError as exc:
+        raise CycleError("E_SOURCE_UNAVAILABLE", "repository source root is unavailable", exit_code=5) from exc
+    if source_root.is_symlink() or not stat.S_ISDIR(info.st_mode) or resolved != source_root.absolute():
+        raise CycleError("E_SOURCE_UNAVAILABLE", "repository source root is not canonical", exit_code=5)
+    top = Path(_git(resolved, "rev-parse", "--show-toplevel").decode("utf-8").strip()).resolve(strict=True)
+    if top != resolved:
+        raise CycleError("E_SOURCE_UNAVAILABLE", "source root must be the repository top level", exit_code=5)
+    head_commit = _git(resolved, "rev-parse", "HEAD").decode("ascii").strip()
+    head_tree = _git(resolved, "rev-parse", "HEAD^{tree}").decode("ascii").strip()
+    status_fields = _git(resolved, "-c", "status.renames=false", "status", "--porcelain=v1", "-z", "--untracked-files=all").split(b"\0")
+    statuses: dict[str, str] = {}
+    for field in status_fields:
+        if not field:
+            continue
+        text = field.decode("utf-8", errors="strict")
+        code, path = text[:2], text[3:]
+        statuses[path] = "added" if code == "??" or "A" in code else "deleted" if "D" in code else "modified"
+    paths = [item.decode("utf-8", errors="strict") for item in _git(resolved, "ls-files", "-co", "--exclude-standard", "-z").split(b"\0") if item]
+    if len(paths) > SOURCE_MAX_FILES:
+        raise CycleError("E_SOURCE_UNAVAILABLE", "repository source exceeds its file bound", exit_code=5)
+    records: list[dict[str, Any]] = []
+    total = 0
+    for relative in sorted(set(paths)):
+        content_hash, size, mode = _read_source_file(resolved / relative)
+        total += size
+        if total > SOURCE_TOTAL_MAX_BYTES:
+            raise CycleError("E_SOURCE_UNAVAILABLE", "repository source exceeds its byte bound", exit_code=5)
+        records.append({
+            "path": relative, "status": statuses.get(relative, "unchanged"),
+            "content_hash": content_hash, "bytes": size, "mode": mode,
+        })
+    for relative, status_value in sorted(statuses.items()):
+        if status_value == "deleted" and relative not in paths:
+            records.append({"path": relative, "status": "deleted", "content_hash": None, "bytes": 0, "mode": "0000"})
+    root_binding = {"dev": info.st_dev, "ino": info.st_ino}
+    semantic = {
+        "kind": "repository", "root_binding": root_binding,
+        "head_commit": head_commit, "head_tree": head_tree, "scoped_records": records,
+        "exterior_guard_hash": _hash_json({"root_binding": root_binding, "outside_allowed_reads": []}),
+    }
+    return {**semantic, "identity_hash": _hash_json(semantic)}
+
+
 def _capture_source(source_root: Path) -> dict[str, str]:
+    if (source_root / ".git").exists():
+        current = _capture_program_source(source_root)
+        return {key: current[key] for key in ("kind", "identity_hash")}
     opening = _source_observation(source_root)
     closing = _source_observation(source_root)
     if opening != closing:
         raise CycleError("E_SOURCE_DRIFT", "source changed during the stability fence", exit_code=3, retryable=True)
     return {"kind": "unversioned", "identity_hash": _hash_json(opening)}
+
+
+def _capture_program_source(source_root: Path) -> dict[str, Any]:
+    if (source_root / ".git").exists():
+        opening = _repository_observation(source_root)
+        closing = _repository_observation(source_root)
+        if opening != closing:
+            raise CycleError("E_SOURCE_DRIFT", "repository changed during the stability fence", exit_code=3, retryable=True)
+        return opening
+    opening = _source_observation(source_root)
+    closing = _source_observation(source_root)
+    if opening != closing:
+        raise CycleError("E_SOURCE_DRIFT", "source changed during the stability fence", exit_code=3, retryable=True)
+    identity_hash = _hash_json(opening)
+    return {
+        "kind": "unversioned",
+        "identity_hash": identity_hash,
+        "root_binding": opening["root_binding"],
+        "head_commit": None,
+        "head_tree": None,
+        "scoped_records": [{**record, "status": "unchanged"} for record in opening["records"]],
+        "exterior_guard_hash": _hash_json({"source_root": opening["root_binding"], "outside": []}),
+    }
 
 
 def _validate_delivery_root(path: Path) -> tuple[Path, dict[str, int]]:
@@ -221,6 +341,12 @@ def _base_receipt(manifest: dict[str, Any], source_identity: dict[str, str], nex
         "completion": None,
         "planning_scope_binding": None,
         "content_locator": None,
+        "owner_locator": None,
+        "already_completed": False,
+        "source_fresh": None,
+        "source_rebind_required": False,
+        "state_version": None,
+        "state_hash": None,
     }
 
 
@@ -244,6 +370,141 @@ def _next_card(manifest: dict[str, Any], route: dict[str, Any]) -> dict[str, Any
     }
 
 
+def _program_next_step(manifest: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    queue = state["pending_card_instances"]
+    if queue:
+        head = queue[0]
+        matches = [card for card in manifest["cards"] if card.get("decision_id") == head["decision_id"]]
+        if len(matches) != 1:
+            raise CycleError("E_CONTRACT_INVALID", "Program queue decision has no unique card", exit_code=5)
+        card = matches[0]
+        return {
+            "kind": "card", "decision_id": head["decision_id"], "card_id": card["card_id"],
+            "card_path": card["path"], "card_hash": card["sha256"],
+            "card_instance_id": head["card_instance_id"], "subject_ref": head["subject_ref"],
+        }
+    statuses = {
+        "drafting": "program_ready", "ready": "program_ready", "active": "program_ready",
+        "blocked": "program_blocked", "completed": "program_complete", "superseded": "program_superseded",
+    }
+    return {"kind": "terminal", "status": statuses[state["status"]]}
+
+
+def _program_scope_receipt(state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "binding_id": state["scope_binding"]["binding_id"],
+        "profile": "program",
+        "allowed_plan_outputs": state["scope_binding"]["allowed_plan_outputs"],
+        "delivery_root_binding_hash": _hash_json(state["initial_root_binding"]),
+    }
+
+
+def _program_receipt(
+    manifest: dict[str, Any],
+    state: dict[str, Any],
+    locator: dict[str, Any],
+    *,
+    completion: dict[str, Any] | None,
+    content_locator: dict[str, Any] | None,
+    already_completed: bool,
+    source_status: str = "fresh",
+) -> dict[str, Any]:
+    source_identity = {key: state["source_identity"][key] for key in ("kind", "identity_hash")}
+    next_step = _program_next_step(manifest, state)
+    if source_status == "blocked":
+        next_step = {"kind": "terminal", "status": "source_blocked"}
+    receipt = _base_receipt(manifest, source_identity, next_step)
+    receipt.update({
+        "receipt_kind": "completion" if completion is not None else "route",
+        "completion": completion,
+        "planning_scope_binding": _program_scope_receipt(state),
+        "content_locator": content_locator,
+        "owner_locator": locator,
+        "already_completed": already_completed,
+        "source_fresh": source_status == "fresh",
+        "source_rebind_required": source_status == "source_rebind_required",
+        "state_version": state["state_version"],
+        "state_hash": state["content_hash"],
+    })
+    receipt["receipt_id"] = _receipt_id(receipt)
+    return receipt
+
+
+def _build_program_candidate(
+    fields: dict[str, Any],
+    manifest: dict[str, Any],
+    source_identity: dict[str, Any],
+    work_root: Path,
+) -> dict[str, Any]:
+    node_ids = [node["id"] for node in fields["initial_nodes"]]
+    if len(node_ids) != len(set(node_ids)) or any(item["subject_ref"] is not None and item["subject_ref"] not in node_ids for item in fields["initial_queue"]):
+        raise CycleError("E_COMMAND_SCHEMA", "initial Program queue has an invalid local node binding", exit_code=4)
+    root_info = work_root.stat()
+    initial_root_binding = {
+        "dev": root_info.st_dev, "ino": root_info.st_ino, "uid": root_info.st_uid,
+        "mode": stat.S_IMODE(root_info.st_mode),
+    }
+    scope_body = {
+        "binding_kind": "wp-planning",
+        "producer_card_id": "wp.profiles.program",
+        "initial_source_identity_hash": source_identity["identity_hash"],
+        "allowed_reads": ["**"],
+        "allowed_plan_outputs": ["artifacts/**", "projections/**"],
+        "effect_ceiling": "local-plan-artifact",
+        "approval_requirements": [],
+        "publication_ceiling": "none",
+    }
+    scope_binding = {**scope_body, "binding_id": _hash_json(scope_body)}
+    placeholder = "sha256:" + "0" * 64
+    initial_specs, _ = normalize_enqueue_requests(fields["initial_queue"], domain="initial", initialization_id=placeholder)
+    program_payload_hash = _hash_json(fields)
+    init_semantics = {
+        "bundle_id": manifest["bundle_id"], "profile": "program", "goal": fields["goal"],
+        "non_goals": fields["non_goals"], "source_identity": source_identity,
+        "planning_scope_binding_id": scope_binding["binding_id"], "initial_root_binding": initial_root_binding,
+        "initial_queue_specs": initial_specs, "program_payload_hash": program_payload_hash,
+    }
+    initialization_id = _hash_json(init_semantics)
+    initial_specs, instances = normalize_enqueue_requests(fields["initial_queue"], domain="initial", initialization_id=initialization_id)
+    initial_queue_hash = _hash_json(initial_specs)
+    plan_id = "wp-plan:" + initialization_id[7:]
+    initial_completion_payload = {
+        "initialization_id": initialization_id, "plan_id": plan_id,
+        "program_payload_hash": program_payload_hash, "initial_queue_hash": initial_queue_hash,
+    }
+    initial_completion_id = _hash_json(initial_completion_payload)
+    state = {
+        "schema_version": "3.0", "bundle_id": manifest["bundle_id"],
+        "manifest_hash": _hash_bytes(MANIFEST_PATH.read_bytes()), "plan_id": plan_id, "profile": "program",
+        "goal": fields["goal"], "non_goals": fields["non_goals"],
+        "status": "active" if instances else "ready",
+        "current_frontier": [node["id"] for node in fields["initial_nodes"] if node["status"] in {"ready", "in_progress"}],
+        "completion": {"status": "open", "epistemic_status": "needs_repair", "required_evidence": [], "residual_uncertainty": []},
+        "scope_binding": scope_binding,
+        "initialization": {"initialization_id": initialization_id, "program_payload_hash": program_payload_hash, "initial_queue_hash": initial_queue_hash},
+        "initial_completion_id": initial_completion_id,
+        "initial_root_binding": initial_root_binding, "established_root_identity": initial_root_binding,
+        "source_root_binding": source_identity["root_binding"], "source_identity": source_identity,
+        "approvals": [], "facts": [], "decisions": [], "evidence": [], "nodes": fields["initial_nodes"], "edges": [], "risks": [], "gaps": [], "snapshots": [],
+        "rollback": {"strategy": "not_applicable", "steps": [], "verifier_refs": []},
+        "global_invariants": [
+            {"id": f"I-{index:02d}", "statement": statement, "locality": "global", "applicability": "always", "targets": []}
+            for index, statement in enumerate(fields["invariants"], 1)
+        ],
+        "policy_claims": [], "artifacts": [], "pending_card_instances": instances,
+        "state_version": 1, "content_hash": placeholder,
+        "last_transition": {
+            "transition_kind": "init",
+            "operation_id": canonical_object_hash({"domain": "wp-init/1", "initialization_id": initialization_id, "completion_id": initial_completion_id}),
+            "prior_state_version": 0, "prior_content_hash": None, "scope_binding_id": scope_binding["binding_id"],
+            "completion_id": initial_completion_id, "completed_card_instance_id": None,
+            "enqueued_card_instance_ids": [item["card_instance_id"] for item in instances], "inline_render_completion": None,
+        },
+    }
+    state["content_hash"] = canonical_state_hash(state)
+    return state
+
+
 def _route_initial(command: dict[str, Any], manifest: dict[str, Any], source_identity: dict[str, str]) -> dict[str, Any]:
     facts = {
         "schema_version": "2.0",
@@ -264,11 +525,17 @@ def _route_initial(command: dict[str, Any], manifest: dict[str, Any], source_ide
     return receipt
 
 
-def _validate_previous(schema: dict[str, Any], previous: Any, source_identity: dict[str, str]) -> dict[str, Any]:
+def _validate_previous(
+    schema: dict[str, Any],
+    previous: Any,
+    source_identity: dict[str, str],
+    *,
+    allow_source_drift: bool = False,
+) -> dict[str, Any]:
     _validate(schema, "receipt", previous, "E_RECEIPT_INVALID", exit_code=3)
     if previous["receipt_id"] != _receipt_id(previous):
         raise CycleError("E_RECEIPT_INVALID", "previous receipt hash is invalid", exit_code=3)
-    if previous["source_identity"] != source_identity:
+    if not allow_source_drift and previous["source_identity"] != source_identity:
         raise CycleError("E_SOURCE_REVISION_CHANGED", "source identity changed", exit_code=3)
     return previous
 
@@ -416,42 +683,531 @@ def _complete_brief(
     return receipt
 
 
+def _complete_handoff(
+    command: dict[str, Any],
+    manifest: dict[str, Any],
+    previous: dict[str, Any],
+    source_identity: dict[str, str],
+    artifact_root: Path,
+    root_binding: dict[str, int],
+) -> dict[str, Any]:
+    if previous["next_step"].get("card_id") != "wp.profiles.handoff" or previous["route_context"] is None:
+        raise CycleError("E_RECEIPT_INVALID", "handoff completion does not match the active card", exit_code=3)
+    fields = command["fields"]
+    scope_payload = {
+        "profile": "handoff",
+        "allowed_plan_outputs": ["plan-handoff"],
+        "delivery_root_binding_hash": _hash_json(root_binding),
+        "source_identity": source_identity,
+    }
+    scope_binding = {key: value for key, value in scope_payload.items() if key != "source_identity"}
+    scope_binding["binding_id"] = _hash_json(scope_payload)
+    completion_payload = {
+        "artifact_id": "plan-handoff",
+        "producer_card_id": previous["next_step"]["card_id"],
+        "decision_id": previous["next_step"]["decision_id"],
+        "payload_hash": _hash_json(fields),
+        "outcome": {"blocker": command["outcome"]["blocker"], "decision_request": None},
+        "source_identity": source_identity,
+        "scope_binding_id": scope_binding["binding_id"],
+    }
+    completion = {key: value for key, value in completion_payload.items() if key not in {"source_identity", "scope_binding_id"}}
+    completion["completion_id"] = _hash_json(completion_payload)
+    unsigned = {
+        "schema_version": "3.0",
+        "bundle_id": manifest["bundle_id"],
+        "producer": {
+            "profile": "handoff",
+            "card_id": previous["next_step"]["card_id"],
+            "decision_id": previous["next_step"]["decision_id"],
+            "completion_id": completion["completion_id"],
+            "plan_id": None,
+            "state_hash": None,
+        },
+        "source_identity": source_identity,
+        "scope_binding": {
+            "binding_id": scope_binding["binding_id"],
+            "allowed_reads": ["**"],
+            "allowed_writes": [],
+            "effect_ceiling": "local-plan-artifact",
+            "approval_requirements": [],
+            "publication_ceiling": "none",
+        },
+        "goal": fields["goal"],
+        "non_goals": fields["non_goals"],
+        "global_invariants": [
+            {"ref": f"I-{index:02d}", "statement": statement}
+            for index, statement in enumerate(fields["invariants"], 1)
+        ],
+        "owner_seams": [
+            {"owner": owner, "paths": [], "resources": [], "effects": []}
+            for owner in fields["owner_seams"]
+        ],
+        "requirements": {
+            "fact_refs": [], "decision_refs": [], "evidence_refs": fields["required_evidence"],
+            "approval_refs": [], "policy_refs": [],
+        },
+        "ordered_slices": [
+            {
+                "slice_id": f"S-{index:02d}", "node_ref": None, "objective": objective,
+                "depends_on": [] if index == 1 else [f"S-{index - 1:02d}"],
+                "read_set": ["**"], "write_set": [], "effect_set": [],
+                "completion_criterion": "Required evidence is recorded for this slice.",
+            }
+            for index, objective in enumerate(fields["ordered_slices"], 1)
+        ],
+        "rollback": {"strategy": "manual_recovery", "steps": [fields["rollback"]], "verifier_refs": []},
+        "target_entry": {
+            "skill_id": "software-quality-workflows", "route_phase": "entry",
+            "required_decision_ids": ["sqw.select.control.scope-authority-and-effects"],
+        },
+        "unresolved_blockers": [command["outcome"]["blocker"]] if command["outcome"]["blocker"] else [],
+    }
+    artifact = {"handoff_id": "wp-handoff:" + sha256(_canonical(unsigned)).hexdigest(), **unsigned}
+    handoff_schema = load_json(HANDOFF_SCHEMA_PATH)
+    errors = list(Draft202012Validator(handoff_schema).iter_errors(artifact))
+    if errors:
+        raise CycleError("E_CONTRACT_INVALID", "typed handoff builder produced an invalid artifact", exit_code=5)
+    payload = _canonical(artifact) + b"\n"
+    locator = {
+        "schema_version": "content-locator/1", "content_kind": "artifact", "artifact_id": "plan-handoff",
+        "content_hash": _hash_bytes(payload), "bytes": len(payload),
+    }
+    _publish_immutable(artifact_root, f"plan-handoff--{locator['content_hash'][7:]}.json", payload)
+    receipt = _base_receipt(manifest, source_identity, {"kind": "terminal", "status": "handoff_complete"})
+    receipt.update({
+        "receipt_kind": "completion", "completion": completion,
+        "planning_scope_binding": scope_binding, "content_locator": locator,
+    })
+    receipt["receipt_id"] = _receipt_id(receipt)
+    return receipt
+
+
+def _complete_program_init(
+    command: dict[str, Any],
+    manifest: dict[str, Any],
+    previous: dict[str, Any],
+    source_root: Path,
+    source_identity: dict[str, Any],
+    work_root: Path,
+) -> dict[str, Any]:
+    if previous["next_step"].get("card_id") != "wp.profiles.program" or previous["route_context"] is None:
+        raise CycleError("E_RECEIPT_INVALID", "Program completion does not match the active profile card", exit_code=3)
+    try:
+        candidate = _build_program_candidate(command["fields"], manifest, source_identity, work_root)
+    except PlanInputError as exc:
+        raise CycleError("E_COMMAND_SCHEMA", str(exc), exit_code=4) from exc
+    try:
+        state, locator, replayed = initialize_program_owner(work_root, source_root, candidate)
+    except ProgramOwnerConflict as exc:
+        raise CycleError("E_ORPHAN_CONFLICT", str(exc), exit_code=5) from exc
+    except PlanInputError as exc:
+        raise CycleError("E_ROOT_ROLE", str(exc), exit_code=2) from exc
+    completion_payload = {
+        "artifact_id": "plan-program", "producer_card_id": previous["next_step"]["card_id"],
+        "decision_id": previous["next_step"]["decision_id"], "payload_hash": _hash_json(command["fields"]),
+        "outcome": {"blocker": command["outcome"]["blocker"], "decision_request": None},
+        "initial_completion_id": state["initial_completion_id"],
+    }
+    completion = {key: value for key, value in completion_payload.items() if key != "initial_completion_id"}
+    completion["completion_id"] = state["initial_completion_id"]
+    owner_content = _canonical(state) + b"\n"
+    content_locator = {
+        "schema_version": "content-locator/1", "content_kind": "owner", "artifact_id": "plan-program",
+        "content_hash": _hash_bytes(owner_content), "bytes": len(owner_content),
+    }
+    return _program_receipt(
+        manifest, state, locator, completion=completion, content_locator=content_locator,
+        already_completed=replayed,
+    )
+
+
+def _build_program_handoff_artifact(
+    state: dict[str, Any],
+    completion_id: str,
+    next_step: dict[str, Any],
+    artifact_id: str,
+    source_identity_override: dict[str, Any] | None = None,
+) -> tuple[str, bytes]:
+    node_ids = [next_step["subject_ref"]] if next_step.get("subject_ref") is not None else list(state["current_frontier"])
+    node_by_id = {node["id"]: node for node in state["nodes"]}
+    if not node_ids or any(node_id not in node_by_id for node_id in node_ids):
+        raise ProgramOwnerConflict("Program handoff requires a complete current node binding")
+    nodes = [node_by_id[node_id] for node_id in node_ids]
+
+    def unique(values: list[str]) -> list[str]:
+        return list(dict.fromkeys(values))
+
+    refs = unique([ref for node in nodes for ref in node["inputs"] + node["verifier"]["required_evidence"]])
+    producer_state_hash = (
+        state["last_transition"]["prior_content_hash"]
+        if state["last_transition"]["completion_id"] == completion_id and state["last_transition"]["transition_kind"] == "card"
+        else state["content_hash"]
+    )
+    bound_source = source_identity_override or state["source_identity"]
+    unsigned = {
+        "schema_version": "3.0", "bundle_id": state["bundle_id"],
+        "producer": {
+            "profile": "program", "card_id": next_step["card_id"], "decision_id": next_step["decision_id"],
+            "completion_id": completion_id, "plan_id": state["plan_id"], "state_hash": producer_state_hash,
+        },
+        "source_identity": {key: bound_source[key] for key in ("kind", "identity_hash")},
+        "scope_binding": {
+            "binding_id": state["scope_binding"]["binding_id"],
+            "allowed_reads": state["scope_binding"]["allowed_reads"],
+            "allowed_writes": state["scope_binding"]["allowed_plan_outputs"],
+            "effect_ceiling": state["scope_binding"]["effect_ceiling"],
+            "approval_requirements": state["scope_binding"]["approval_requirements"],
+            "publication_ceiling": state["scope_binding"]["publication_ceiling"],
+        },
+        "goal": state["goal"], "non_goals": state["non_goals"],
+        "global_invariants": [{"ref": item["id"], "statement": item["statement"]} for item in state["global_invariants"]],
+        "owner_seams": [
+            {"owner": node["id"], "paths": unique(node["read_set"] + node["write_set"]), "resources": node["resource_set"], "effects": node["effect_set"]}
+            for node in nodes
+        ],
+        "requirements": {
+            "fact_refs": [ref for ref in refs if ref.startswith("F-")],
+            "decision_refs": [ref for ref in refs if ref.startswith("D-")],
+            "evidence_refs": [ref for ref in refs if ref.startswith("E-")],
+            "approval_refs": [ref for ref in refs if ref.startswith("A-")],
+            "policy_refs": [item["policy_id"] for item in state["policy_claims"]],
+        },
+        "ordered_slices": [
+            {
+                "slice_id": f"S-{index:02d}", "node_ref": node["id"], "objective": node["objective"],
+                "depends_on": node["depends_on"], "read_set": node["read_set"], "write_set": node["write_set"],
+                "effect_set": node["effect_set"], "completion_criterion": node.get("completion_criterion", node["verifier"]["completion_criterion"]),
+            }
+            for index, node in enumerate(nodes, 1)
+        ],
+        "rollback": state["rollback"],
+        "target_entry": {
+            "skill_id": "software-quality-workflows", "route_phase": "entry",
+            "required_decision_ids": ["sqw.select.control.scope-authority-and-effects"],
+        },
+        "unresolved_blockers": [
+            gap["question"] for gap in state["gaps"]
+            if gap["status"] != "closed" and set(gap["blocks"]) & set(node_ids)
+        ],
+    }
+    artifact = {"handoff_id": "wp-handoff:" + sha256(_canonical(unsigned)).hexdigest(), **unsigned}
+    errors = list(Draft202012Validator(load_json(HANDOFF_SCHEMA_PATH)).iter_errors(artifact))
+    if errors:
+        raise ProgramOwnerConflict("Program handoff builder produced an invalid typed artifact")
+    return artifact_id, _canonical(artifact) + b"\n"
+
+
+def _route_program_resume(
+    command: dict[str, Any],
+    manifest: dict[str, Any],
+    source_root: Path,
+    current_source: dict[str, Any],
+    work_root: Path,
+) -> dict[str, Any]:
+    try:
+        state, _, source_status = resume_program_owner(
+            work_root, source_root, command["fields"]["owner_locator"], current_source_identity=current_source
+        )
+    except ProgramOwnerConflict as exc:
+        code = "E_SOURCE_REVISION_CHANGED" if any(anchor in str(exc) for anchor in ("source identity drift", "root binding changed")) else "E_ORPHAN_CONFLICT"
+        raise CycleError(code, str(exc), exit_code=3 if code == "E_SOURCE_REVISION_CHANGED" else 5) from exc
+    return _program_receipt(
+        manifest, state, command["fields"]["owner_locator"], completion=None,
+        content_locator=None, already_completed=False, source_status=source_status,
+    )
+
+
+def _complete_program_card(
+    command: dict[str, Any],
+    manifest: dict[str, Any],
+    previous: dict[str, Any],
+    source_root: Path,
+    current_source: dict[str, Any],
+    work_root: Path,
+) -> dict[str, Any]:
+    fields = command["fields"]
+    next_step = previous["next_step"]
+    if next_step.get("kind") != "card" or next_step.get("card_instance_id") is None:
+        raise CycleError("E_RECEIPT_INVALID", "Program completion has no active queue head", exit_code=3)
+    if (fields["expected_state_version"], fields["expected_content_hash"]) != (previous["state_version"], previous["state_hash"]):
+        raise CycleError("E_RECEIPT_INVALID", "Program expected state does not match the route receipt", exit_code=3)
+    if fields["owner_locator"] != previous["owner_locator"]:
+        raise CycleError("E_RECEIPT_INVALID", "Program owner locator does not match the route receipt", exit_code=3)
+    if any(operation["operation"] == "rebind_source" for operation in fields["operations"]):
+        raise CycleError("E_COMMAND_SCHEMA", "rebind_source is CLI-derived", exit_code=4)
+    source_rebind = current_source if previous["source_rebind_required"] else None
+    completion = {
+        "outcome": command["outcome"], "rationale": fields["rationale"],
+        "evidence_refs": fields["evidence_refs"], "card_id": next_step["card_id"],
+        "decision_id": next_step["decision_id"],
+    }
+    artifact_id = None
+    artifact_payload = None
+    artifact_builder = None
+    produced_artifact_id = None
+    projection_kind = None
+    projection_builder = None
+    renderer_contract_hash = None
+    inline_completion = None
+    if next_step["card_id"] == "wp.economy.output-projection":
+        if fields["context"] is not None or fields["runtime_projection"] is not None:
+            raise CycleError("E_COMMAND_SCHEMA", "output projection does not accept context fields", exit_code=4)
+        projection_kind = "program"
+        projection_builder = lambda state: render_program(state).encode("utf-8")
+        renderer_contract_hash = _renderer_contract_hash(("schemas/plan-state.schema.json", "scripts/render_plan_profile.py"))
+    elif next_step["card_id"] == "wp.slicing.context-capsules":
+        context = fields["context"]
+        runtime_projection = fields["runtime_projection"]
+        if context is None or runtime_projection is None or context["node_id"] != next_step["subject_ref"]:
+            raise CycleError("E_COMMAND_SCHEMA", "context completion does not bind the queue subject", exit_code=4)
+        renderer_contract_hash = _renderer_contract_hash(("schemas/plan-state.schema.json", "scripts/render_context_capsule.py"))
+        inline_completion = {
+            "node_id": context["node_id"], "consumer_profile": context["consumer_profile"],
+            "budget_bytes": context["budget_bytes"], "runtime_projection": runtime_projection,
+            "manifest_hash": _hash_bytes(MANIFEST_PATH.read_bytes()), "card_hash": next_step["card_hash"],
+            "renderer_contract_hash": renderer_contract_hash,
+        }
+        projection_kind = "context-capsule"
+        projection_builder = lambda state: render_context_capsule(
+            state, context["node_id"], context["budget_bytes"], runtime_projection
+        )[0].encode("utf-8")
+    elif next_step["card_id"] in {"wp.profiles.handoff", "wp.bridges.long-document-handoff"}:
+        if fields["context"] is not None or fields["runtime_projection"] is not None:
+            raise CycleError("E_COMMAND_SCHEMA", "handoff completion does not accept context fields", exit_code=4)
+        if fields["operations"] or fields["enqueue_requests"]:
+            raise CycleError("E_COMMAND_SCHEMA", "handoff completion is mechanically derived from current state", exit_code=4)
+        handoff_artifact_id = "long-document-handoff" if next_step["card_id"] == "wp.bridges.long-document-handoff" else "plan-handoff"
+        produced_artifact_id = handoff_artifact_id
+        artifact_builder = lambda state, completion_id: _build_program_handoff_artifact(
+            state, completion_id, next_step, handoff_artifact_id, source_rebind
+        )
+    elif fields["context"] is not None or fields["runtime_projection"] is not None:
+        raise CycleError("E_COMMAND_SCHEMA", "non-context Program card received context fields", exit_code=4)
+    try:
+        state, replayed, output_locator, blocked_after_commit = apply_program_owner_transition(
+            work_root,
+            source_root,
+            fields["owner_locator"],
+            expected_state_version=fields["expected_state_version"],
+            expected_content_hash=fields["expected_content_hash"],
+            scope_binding_id=previous["planning_scope_binding"]["binding_id"],
+            completed_card_instance_id=next_step["card_instance_id"],
+            completion=completion,
+            operations=fields["operations"],
+            enqueue_requests=fields["enqueue_requests"],
+            current_source_identity=current_source,
+            source_rebind=source_rebind,
+            artifact_id=artifact_id,
+            artifact_payload=artifact_payload,
+            artifact_builder=artifact_builder,
+            inline_render_completion=inline_completion,
+            projection_kind=projection_kind,
+            projection_builder=projection_builder,
+            renderer_contract_hash=renderer_contract_hash,
+        )
+    except ProgramStateAdvanced as exc:
+        raise CycleError("E_STATE_ADVANCED", str(exc), exit_code=3) from exc
+    except ProgramOwnerConflict as exc:
+        message = str(exc)
+        code = "E_PROJECTION_BUDGET" if "exceeds 8192" in message else "E_STATE_STALE" if "receipt is stale" in message else "E_HANDOFF_INVALID" if "handoff" in message.lower() else "E_SOURCE_REVISION_CHANGED" if "source status" in message else "E_ORPHAN_CONFLICT"
+        exit_code = 4 if code in {"E_PROJECTION_BUDGET", "E_HANDOFF_INVALID"} else 3 if code in {"E_STATE_STALE", "E_SOURCE_REVISION_CHANGED"} else 5
+        raise CycleError(code, str(exc), exit_code=exit_code) from exc
+    except PlanInputError as exc:
+        code = "E_STATE_BUDGET" if "budget" in str(exc) else "E_COMMAND_SCHEMA"
+        raise CycleError(code, str(exc), exit_code=4) from exc
+    except ValueError as exc:
+        if "budget" in str(exc):
+            raise CycleError("E_PROJECTION_BUDGET", str(exc), exit_code=4) from exc
+        raise CycleError("E_CONTRACT_INVALID", "Program renderer rejected canonical state", exit_code=5) from exc
+    completion_receipt = {
+        "completion_id": canonical_completion_id(completion), "artifact_id": produced_artifact_id or ("context-capsule" if projection_kind == "context-capsule" else "output-projection" if projection_kind else "plan-program"),
+        "producer_card_id": next_step["card_id"], "decision_id": next_step["decision_id"],
+        "payload_hash": _hash_json(fields),
+        "outcome": {"blocker": command["outcome"]["blocker"], "decision_request": None},
+    }
+    return _program_receipt(
+        manifest, state, fields["owner_locator"], completion=completion_receipt,
+        content_locator=output_locator, already_completed=replayed,
+        source_status="blocked" if blocked_after_commit else "fresh",
+    )
+
+
+def _render_program_projection(
+    command: dict[str, Any],
+    manifest: dict[str, Any],
+    source_root: Path,
+    current_source: dict[str, Any],
+    work_root: Path,
+) -> dict[str, Any]:
+    fields = command["fields"]
+    kind = fields["projection_kind"]
+    if kind == "program":
+        renderer_hash = _renderer_contract_hash(("schemas/plan-state.schema.json", "scripts/render_plan_profile.py"))
+        builder = lambda state: render_program(state).encode("utf-8")
+        completion_id = None
+    else:
+        renderer_hash = _renderer_contract_hash(("schemas/plan-state.schema.json", "scripts/render_context_capsule.py"))
+
+        def builder(state: dict[str, Any]) -> bytes:
+            inline = state["last_transition"]["inline_render_completion"]
+            if inline is None:
+                raise CycleError("E_CONTEXT_NOT_CURRENT", "current Program state has no context completion", exit_code=3)
+            card = _card(manifest, "wp.slicing.context-capsules")
+            if (
+                inline["manifest_hash"] != _hash_bytes(MANIFEST_PATH.read_bytes())
+                or inline["card_hash"] != card["sha256"]
+                or inline["renderer_contract_hash"] != renderer_hash
+            ):
+                raise CycleError("E_CONTEXT_NOT_CURRENT", "context renderer binding is stale", exit_code=3)
+            return render_context_capsule(
+                state, inline["node_id"], inline["budget_bytes"], inline["runtime_projection"]
+            )[0].encode("utf-8")
+
+        completion_id = None
+    try:
+        state, content_locator, replayed = render_program_owner_projection(
+            work_root,
+            source_root,
+            fields["owner_locator"],
+            current_source_identity=current_source,
+            projection_kind=kind,
+            projection_builder=builder,
+            renderer_contract_hash=renderer_hash,
+            completion_id=completion_id,
+        )
+    except CycleError:
+        raise
+    except ProgramOwnerConflict as exc:
+        code = "E_PROJECTION_BUDGET" if "exceeds 8192" in str(exc) else "E_ORPHAN_CONFLICT"
+        raise CycleError(code, str(exc), exit_code=4 if code == "E_PROJECTION_BUDGET" else 5) from exc
+    return _program_receipt(
+        manifest, state, fields["owner_locator"], completion=None,
+        content_locator=content_locator, already_completed=replayed,
+    )
+
+
+def _render_handoff_projection(
+    command: dict[str, Any],
+    manifest: dict[str, Any],
+    source_identity: dict[str, str],
+    artifact_root: Path,
+    projection_root: Path,
+) -> dict[str, Any]:
+    locator = command["fields"]["content_locator"]
+    if locator["content_kind"] != "artifact" or locator["artifact_id"] != "plan-handoff":
+        raise CycleError("E_COMMAND_SCHEMA", "handoff render requires a plan-handoff artifact locator", exit_code=4)
+    artifact_path = artifact_root / f"plan-handoff--{locator['content_hash'][7:]}.json"
+    payload, _ = _read_regular(artifact_path)
+    if len(payload) != locator["bytes"] or _hash_bytes(payload) != locator["content_hash"]:
+        raise CycleError("E_ORPHAN_CONFLICT", "handoff artifact locator is stale", exit_code=5)
+    try:
+        artifact = strict_json_bytes(payload, source=str(artifact_path))
+    except ValueError as exc:
+        raise CycleError("E_ORPHAN_CONFLICT", "handoff artifact is invalid", exit_code=5) from exc
+    errors = list(Draft202012Validator(load_json(HANDOFF_SCHEMA_PATH)).iter_errors(artifact))
+    if errors:
+        raise CycleError("E_HANDOFF_INVALID", "handoff artifact violates its typed contract", exit_code=4)
+    if artifact["source_identity"] != source_identity:
+        raise CycleError("E_SOURCE_REVISION_CHANGED", "handoff artifact source binding is stale", exit_code=3)
+    rendered = render_handoff(artifact).encode("utf-8")
+    content_locator = {
+        "schema_version": "content-locator/1", "content_kind": "projection", "artifact_id": "plan-handoff",
+        "content_hash": _hash_bytes(rendered), "bytes": len(rendered),
+    }
+    _publish_immutable(projection_root, f"plan-handoff--{content_locator['content_hash'][7:]}.md", rendered)
+    receipt = _base_receipt(manifest, source_identity, {"kind": "terminal", "status": "handoff_complete"})
+    receipt.update({"receipt_kind": "completion", "content_locator": content_locator, "already_completed": False})
+    receipt["receipt_id"] = _receipt_id(receipt)
+    return receipt
+
+
 def _execute(args: argparse.Namespace) -> dict[str, Any]:
     if args.input != "-":
         raise CycleError("E_COMMAND_SCHEMA", "--input must be stdin")
     schema, registry, manifest = _load_contracts()
     command = _read_command()
     _validate(schema, "command", command, "E_COMMAND_SCHEMA")
-    is_route = command["contract_id"] == "wp.route.initial/1"
-    if args.subcommand != ("route" if is_route else "complete"):
+    contract_id = command["contract_id"]
+    expected_subcommand = "route" if contract_id.startswith("wp.route.") else "render" if contract_id.startswith("wp.render.") else "complete"
+    if args.subcommand != expected_subcommand:
         raise CycleError("E_COMMAND_SCHEMA", "subcommand does not match contract")
-    if args.work_root is not None or args.artifact_root is not None:
-        raise CycleError("E_ROOT_ROLE", "command received an unsupported root")
-    if is_route and args.projection_root is not None:
-        raise CycleError("E_ROOT_ROLE", "route does not accept a projection root")
-    if not is_route and args.projection_root is None:
-        raise CycleError("E_ROOT_ROLE", "brief completion requires a projection root")
+    root_roles = {
+        "wp.route.initial/1": (None, None, None),
+        "wp.route.resume/1": ("work", None, None),
+        "wp.complete.brief/1": (None, None, "projection"),
+        "wp.complete.handoff/1": (None, "artifact", None),
+        "wp.complete.program/1": ("work", None, None),
+        "wp.complete.program-card/1": ("work", None, None),
+        "wp.render.program/1": ("work", None, None),
+        "wp.render.handoff/1": (None, "artifact", "projection"),
+    }
+    required_work, required_artifact, required_projection = root_roles[contract_id]
+    supplied = {"work": args.work_root, "artifact": args.artifact_root, "projection": args.projection_root}
+    required = {name for name, marker in (("work", required_work), ("artifact", required_artifact), ("projection", required_projection)) if marker}
+    if {name for name, value in supplied.items() if value is not None} != required:
+        raise CycleError("E_ROOT_ROLE", "command root roles do not match the contract")
 
-    projection: Path | None = None
-    root_binding: dict[str, int] | None = None
-    if args.projection_root is not None:
-        projection, root_binding = _validate_delivery_root(Path(args.projection_root))
+    roots: dict[str, tuple[Path, dict[str, int]]] = {
+        name: _validate_delivery_root(Path(value))
+        for name, value in supplied.items()
+        if value is not None
+    }
     source_root = Path(args.source_root)
-    if projection is not None:
-        source_resolved = source_root.resolve(strict=True)
-        if projection == source_resolved or projection.is_relative_to(source_resolved):
+    source_resolved = source_root.resolve(strict=True)
+    for resolved, _ in roots.values():
+        if resolved == source_resolved or resolved.is_relative_to(source_resolved):
             raise CycleError("E_UNSUPPORTED_VARIANT", "source-contained projection is not active in this slice", exit_code=4)
-    source_identity = _capture_source(source_root)
-    if is_route:
+    program_contract = contract_id in {"wp.route.resume/1", "wp.complete.program/1", "wp.complete.program-card/1", "wp.render.program/1"}
+    full_source_identity = _capture_program_source(source_root) if program_contract else None
+    source_identity = (
+        {key: full_source_identity[key] for key in ("kind", "identity_hash")}
+        if full_source_identity is not None
+        else _capture_source(source_root)
+    )
+    if contract_id == "wp.route.initial/1":
         receipt = _route_initial(command, manifest, source_identity)
+    elif contract_id == "wp.route.resume/1":
+        work, _ = roots["work"]
+        assert full_source_identity is not None
+        receipt = _route_program_resume(command, manifest, source_root, full_source_identity, work)
     else:
-        previous = _validate_previous(schema, command["previous_receipt"], source_identity)
-        if previous["bundle_id"] != manifest["bundle_id"]:
-            raise CycleError("E_RECEIPT_INVALID", "previous receipt bundle is stale", exit_code=3)
-        if command["contract_id"] != "wp.complete.brief/1":
+        previous = None
+        if command["previous_receipt"] is not None:
+            previous = _validate_previous(
+                schema,
+                command["previous_receipt"],
+                source_identity,
+                allow_source_drift=contract_id == "wp.complete.program-card/1",
+            )
+            if previous["bundle_id"] != manifest["bundle_id"]:
+                raise CycleError("E_RECEIPT_INVALID", "previous receipt bundle is stale", exit_code=3)
+        if contract_id == "wp.complete.brief/1":
+            projection, root_binding = roots["projection"]
+            assert previous is not None
+            receipt = _complete_brief(command, manifest, registry, previous, source_identity, projection, root_binding)
+        elif contract_id == "wp.complete.handoff/1":
+            artifact, root_binding = roots["artifact"]
+            assert previous is not None
+            receipt = _complete_handoff(command, manifest, previous, source_identity, artifact, root_binding)
+        elif contract_id == "wp.complete.program/1":
+            work, _ = roots["work"]
+            assert previous is not None and full_source_identity is not None
+            receipt = _complete_program_init(command, manifest, previous, source_root, full_source_identity, work)
+        elif contract_id == "wp.complete.program-card/1":
+            work, _ = roots["work"]
+            assert previous is not None and full_source_identity is not None
+            receipt = _complete_program_card(command, manifest, previous, source_root, full_source_identity, work)
+        elif contract_id == "wp.render.program/1":
+            work, _ = roots["work"]
+            assert full_source_identity is not None
+            receipt = _render_program_projection(command, manifest, source_root, full_source_identity, work)
+        elif contract_id == "wp.render.handoff/1":
+            artifact, _ = roots["artifact"]
+            projection, _ = roots["projection"]
+            receipt = _render_handoff_projection(command, manifest, source_identity, artifact, projection)
+        else:
             raise CycleError("E_UNSUPPORTED_VARIANT", "command contract is not active", exit_code=4)
-        assert projection is not None and root_binding is not None
-        receipt = _complete_brief(command, manifest, registry, previous, source_identity, projection, root_binding)
     _validate(schema, "receipt", receipt, "E_CONTRACT_INVALID")
     if len(_canonical(receipt)) + 1 > RECEIPT_MAX_BYTES:
         raise CycleError("E_COMMAND_BUDGET", "receipt exceeds the byte limit", exit_code=4)

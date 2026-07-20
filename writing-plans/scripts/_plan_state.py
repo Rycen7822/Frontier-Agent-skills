@@ -316,6 +316,19 @@ def apply_card_transition(
     if source_identity is not None:
         if not isinstance(source_identity, dict):
             raise PlanInputError("CLI source identity is invalid")
+        previous_records = {item["path"]: item for item in state["source_identity"]["scoped_records"]}
+        current_records = {item["path"]: item for item in source_identity.get("scoped_records", []) if isinstance(item, dict) and isinstance(item.get("path"), str)}
+        changed_paths = {
+            path for path in previous_records.keys() | current_records.keys()
+            if previous_records.get(path) != current_records.get(path)
+        }
+        for evidence in candidate["evidence"]:
+            artifact_ref = evidence.get("artifact_ref", "")
+            if evidence.get("freshness_policy", {}).get("kind") != "source_bound" or not artifact_ref.startswith("source:"):
+                continue
+            source_path = artifact_ref.removeprefix("source:").rstrip("/")
+            if any(path == source_path or path.startswith(source_path + "/") or source_path.startswith(path.rstrip("/") + "/") for path in changed_paths):
+                evidence["status"] = "stale"
         candidate["source_identity"] = deepcopy(source_identity)
     existing_ids = {item["card_instance_id"] for item in candidate["pending_card_instances"]}
     if any(item["card_instance_id"] in existing_ids for item in derived):
@@ -776,48 +789,55 @@ def apply_program_owner_transition(
     source_rebind: dict[str, Any] | None = None,
     artifact_id: str | None = None,
     artifact_payload: bytes | None = None,
+    artifact_builder: Callable[[dict[str, Any], str], tuple[str, bytes]] | None = None,
     inline_render_completion: dict[str, Any] | None = None,
     projection_kind: str | None = None,
     projection_builder: Callable[[dict[str, Any]], bytes] | None = None,
     renderer_contract_hash: str | None = None,
 ) -> tuple[dict[str, Any], bool, dict[str, Any] | None, bool]:
     completion_id = canonical_completion_id(completion)
+    if artifact_builder is not None and (artifact_id is not None or artifact_payload is not None):
+        raise ProgramOwnerConflict("Program artifact has multiple builders")
     if (artifact_id is None) != (artifact_payload is None):
         raise ProgramOwnerConflict("Program artifact destination is incomplete")
-    artifact_entry = None
-    artifact_locator = None
-    if artifact_payload is not None and artifact_id is not None:
-        artifact_locator = {
-            "schema_version": "content-locator/1",
-            "content_kind": "artifact",
-            "artifact_id": artifact_id,
-            "content_hash": "sha256:" + sha256(artifact_payload).hexdigest(),
-            "bytes": len(artifact_payload),
-        }
-        artifact_entry = {
-            "completion_id": completion_id,
-            "artifact_id": artifact_id,
-            "scope_binding_id": scope_binding_id,
-            "content_locator": artifact_locator,
-        }
     if (projection_kind is None) != (projection_builder is None) or (projection_kind is None) != (renderer_contract_hash is None):
         raise ProgramOwnerConflict("Program projection destination is incomplete")
-    _, _, _, operation_id = card_transition_identity(
-        plan_id=locator.get("plan_id", ""),
-        prior_state_version=expected_state_version,
-        prior_content_hash=expected_content_hash,
-        scope_binding_id=scope_binding_id,
-        completed_card_instance_id=completed_card_instance_id,
-        completion=completion,
-        operations=operations,
-        enqueue_requests=enqueue_requests,
-        source_identity=source_rebind,
-        artifact_entry=artifact_entry,
-        inline_render_completion=inline_render_completion,
-    )
     with _locked_program_owner(root, source_root, locator) as (resolved, state):
         artifacts_root = resolved / "artifacts"
         projections_root = resolved / "projections"
+        if artifact_builder is not None:
+            artifact_id, artifact_payload = artifact_builder(state, completion_id)
+            if not isinstance(artifact_id, str) or not isinstance(artifact_payload, bytes):
+                raise ProgramOwnerConflict("Program artifact builder returned an invalid payload")
+        artifact_entry = None
+        artifact_locator = None
+        if artifact_payload is not None and artifact_id is not None:
+            artifact_locator = {
+                "schema_version": "content-locator/1",
+                "content_kind": "artifact",
+                "artifact_id": artifact_id,
+                "content_hash": "sha256:" + sha256(artifact_payload).hexdigest(),
+                "bytes": len(artifact_payload),
+            }
+            artifact_entry = {
+                "completion_id": completion_id,
+                "artifact_id": artifact_id,
+                "scope_binding_id": scope_binding_id,
+                "content_locator": artifact_locator,
+            }
+        _, _, _, operation_id = card_transition_identity(
+            plan_id=locator.get("plan_id", ""),
+            prior_state_version=expected_state_version,
+            prior_content_hash=expected_content_hash,
+            scope_binding_id=scope_binding_id,
+            completed_card_instance_id=completed_card_instance_id,
+            completion=completion,
+            operations=operations,
+            enqueue_requests=enqueue_requests,
+            source_identity=source_rebind,
+            artifact_entry=artifact_entry,
+            inline_render_completion=inline_render_completion,
+        )
         replayed = False
         if state["state_version"] == expected_state_version:
             if state["content_hash"] != expected_content_hash:
@@ -1010,6 +1030,47 @@ def resume_program_owner(
         queue_head = state["pending_card_instances"][0] if state["pending_card_instances"] else None
         _checkpoint("program_resume_before_return")
         return state, queue_head, source_status
+
+
+def render_program_owner_projection(
+    root: Path,
+    source_root: Path,
+    locator: dict[str, Any],
+    *,
+    current_source_identity: dict[str, Any],
+    projection_kind: str,
+    projection_builder: Callable[[dict[str, Any]], bytes],
+    renderer_contract_hash: str,
+    completion_id: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], bool]:
+    with _locked_program_owner(root, source_root, locator) as (resolved, state):
+        source_status = _source_identity_status(state, current_source_identity)
+        if source_status != "fresh":
+            raise ProgramOwnerConflict(f"Program render source status is {source_status}")
+        body = projection_builder(state)
+        if not isinstance(body, bytes):
+            raise ProgramOwnerConflict("Program projection renderer must return bytes")
+        payload = _program_projection_payload(
+            state,
+            kind=projection_kind,
+            body=body,
+            renderer_contract_hash=renderer_contract_hash,
+            completion_id=completion_id or state["last_transition"]["completion_id"],
+        )
+        projections_root = resolved / "projections"
+        _program_validate_projection_directory(
+            projections_root,
+            state["plan_id"],
+            allow_matching_temp=(f"{projection_kind}.md.tmp", payload),
+        )
+        replayed = _program_publish_projection(projections_root, projection_kind, payload)
+        content_locator = {
+            "schema_version": "content-locator/1", "content_kind": "projection",
+            "artifact_id": projection_kind, "content_hash": "sha256:" + sha256(payload).hexdigest(),
+            "bytes": len(payload),
+        }
+        _checkpoint("program_render_before_return")
+        return state, content_locator, replayed
 
 
 def capsule_source_hash(state: dict[str, Any]) -> str:

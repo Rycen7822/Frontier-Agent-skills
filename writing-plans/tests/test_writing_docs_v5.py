@@ -61,14 +61,17 @@ class WritingDocsV5Tests(unittest.TestCase):
                 with self.subTest(card=relative, anchor=anchor):
                     self.assertIn(anchor.lower(), text)
 
-    def test_templates_match_state_2_contract(self) -> None:
+    def test_templates_match_typed_state_3_contract(self) -> None:
         brief = (ROOT / "templates" / "brief-change-card.md").read_text(encoding="utf-8")
         handoff = (ROOT / "templates" / "executable-handoff.md").read_text(encoding="utf-8")
         program = (ROOT / "templates" / "program-migration-map.md").read_text(encoding="utf-8")
         self.assertIn("Completion:", brief)
-        self.assertIn("Requirement anchors", handoff)
-        self.assertIn("## Strategy families", program)
-        self.assertIn("## Verification and completion", program)
+        self.assertIn("Typed Executable Handoff v3", handoff)
+        self.assertIn("does not grant or claim actual authority", handoff)
+        self.assertNotIn("state path", handoff.lower().replace("no filesystem state path", ""))
+        self.assertIn("State binding:", program)
+        self.assertIn("disposable projection", program)
+        self.assertNotIn("State ref:", program)
 
 
 if __name__ == "__main__":

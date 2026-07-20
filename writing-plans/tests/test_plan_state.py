@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
@@ -32,6 +33,7 @@ from _plan_state import (  # noqa: E402
 import _plan_state as plan_state_runtime  # noqa: E402
 from check_plan_freshness import check_freshness, propagate_affected  # noqa: E402
 from render_context_capsule import render  # noqa: E402
+import render_context_capsule as context_renderer  # noqa: E402
 from render_plan_profile import add_novice_projection, render_brief, render_program  # noqa: E402
 from validate_plan_state import validate_file  # noqa: E402
 
@@ -311,6 +313,27 @@ class PlanStateTests(unittest.TestCase):
                 operations=[{"operation": "replace_field", "target": "pending_card_instances", "value": []}],
                 **common,
             )
+
+    def test_cli_source_rebind_marks_matching_source_bound_evidence_stale(self) -> None:
+        state = _base()
+        state["source_identity"]["scoped_records"] = [{
+            "path": "tests/manifest/legacy-fixture", "status": "unchanged",
+            "content_hash": "sha256:" + "1" * 64, "bytes": 1, "mode": "0644",
+        }]
+        _rehash(state)
+        rebound = deepcopy(state["source_identity"])
+        rebound["identity_hash"] = "sha256:" + "2" * 64
+        rebound["scoped_records"][0]["content_hash"] = "sha256:" + "3" * 64
+        candidate = apply_card_transition(
+            state,
+            expected_state_version=state["state_version"],
+            expected_content_hash=state["content_hash"],
+            scope_binding_id=state["scope_binding"]["binding_id"],
+            completed_card_instance_id=state["pending_card_instances"][0]["card_instance_id"],
+            completion={"outcome": "accepted"}, operations=[], enqueue_requests=[],
+            source_identity=rebound,
+        )
+        self.assertEqual("stale", next(item for item in candidate["evidence"] if item["id"] == "E-01")["status"])
 
     def test_card_transition_enforces_live_terminal_and_growth_byte_budgets(self) -> None:
         state = _base()
@@ -708,9 +731,23 @@ class PlanStateTests(unittest.TestCase):
         text, metadata = render(state, "P-02", full_metadata["mandatory_bytes"] + 20, _runtime_projection())
         self.assertNotIn("SECRET_DO_NOT_RENDER", text)
         self.assertEqual(0, metadata["mandatory_truncation_count"])
-        self.assertIn("P-03", metadata["omitted_refs"])
+        self.assertNotIn("P-03", metadata["omitted_refs"])
         self.assertIn("State: version=", text)
         self.assertIn("Global invariants", text)
+
+    def test_context_render_calls_the_single_selector_once_and_preserves_group_order(self) -> None:
+        state = _base()
+        with mock.patch.object(
+            context_renderer,
+            "select_context_items",
+            wraps=context_renderer.select_context_items,
+        ) as selector:
+            _, metadata = context_renderer.render(state, "P-02", 8192, _runtime_projection())
+        selector.assert_called_once()
+        included = metadata["included_refs"]
+        self.assertLess(included.index("P-02"), included.index("D-01"))
+        self.assertEqual(len(included), len(set(included)))
+        self.assertEqual([], metadata["on_demand_refs"])
 
     def test_frontier_detects_read_write_effect_and_invariant_applicability_conflicts(self) -> None:
         state = _base()

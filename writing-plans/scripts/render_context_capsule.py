@@ -23,14 +23,14 @@ def _summary(item: dict[str, Any]) -> str:
 
 def _index(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
-    for collection in ("global_invariants", "facts", "decisions", "evidence", "nodes", "risks", "gaps", "approvals", "snapshots"):
+    for collection in ("global_invariants", "facts", "decisions", "evidence", "nodes", "risks", "gaps", "approvals", "edges", "snapshots"):
         for item in state.get(collection, []):
             if isinstance(item, dict) and isinstance(item.get("id"), str):
                 result[item["id"]] = item
     return result
 
 
-def render(
+def select_context_items(
     state: dict[str, Any],
     node_id: str,
     budget: int,
@@ -99,13 +99,16 @@ def render(
         f"Resources: {', '.join(node['resource_set']) or 'none'}",
         f"Effects: {', '.join(node['effect_set']) or 'none'}",
         f"Side effect: {node['side_effect_level']}",
-        f"Active decisions: {', '.join(item.get('id') for item in state.get('decisions', []) if isinstance(item.get('id'), str)) or 'none'}",
-        f"Blocking plan gaps: {', '.join(item.get('id') for item in blocking_gaps) or 'none'}",
         "Policies: " + (", ".join(f"{item['policy_id']}@{item['policy_hash']}" for item in state.get("policy_claims", [])) or "none"),
-        "",
-        "## Global invariants",
     ]
+    mandatory.extend(["", "## Active decisions"])
+    mandatory.extend(_summary(item) for item in state.get("decisions", []))
+    mandatory.extend(["", "## Blocking plan gaps"])
+    mandatory.extend(_summary(item) for item in blocking_gaps)
+    mandatory.extend(["", "## Global invariants"])
     included: list[str] = [node_id]
+    included.extend(item["id"] for item in state.get("decisions", []))
+    included.extend(item["id"] for item in blocking_gaps)
     for invariant in state.get("global_invariants", []):
         mandatory.append(_summary(invariant))
         included.append(invariant["id"])
@@ -117,6 +120,7 @@ def render(
         for edge in approval_edges:
             approval = objects.get(edge["from"], {})
             approval_text.append(f"{edge['from']}={approval.get('status', 'missing')}")
+            included.append(edge["id"])
             included.append(edge["from"])
         mandatory.append("Approvals: " + ", ".join(approval_text))
     else:
@@ -154,17 +158,22 @@ def render(
         if ref not in relevant_refs:
             relevant_refs.append(ref)
     for dependency in node.get("depends_on", []):
+        if dependency not in relevant_refs:
+            relevant_refs.append(dependency)
         dep = objects.get(dependency)
         if dep:
             relevant_refs.extend(ref for ref in dep.get("outputs", []) if ref not in relevant_refs)
-    for gap in state.get("gaps", []):
-        if node_id in gap.get("blocks", []) and gap["id"] not in relevant_refs:
-            relevant_refs.append(gap["id"])
 
+    on_demand: list[str] = []
     for ref in relevant_refs:
         item = objects.get(ref)
-        if not item or ref in included:
+        if ref in included:
             continue
+        if not item:
+            if ref.startswith("artifact:") or "://" in ref:
+                on_demand.append(ref)
+                continue
+            raise ValueError(f"unresolved local context reference: {ref}")
         optional_blocks.append((ref, _summary(item)))
 
     text = mandatory_text
@@ -184,8 +193,6 @@ def render(
         else:
             omitted.append(ref)
 
-    all_future = [item["id"] for item in state.get("nodes", []) if item["id"] != node_id and item["id"] not in node.get("depends_on", [])]
-    omitted.extend(ref for ref in all_future if ref not in omitted)
     text = redact_secret_like(text)
     projection_hash = "sha256:" + sha256(text.encode("utf-8")).hexdigest()
     metadata = {
@@ -205,10 +212,19 @@ def render(
         "card_refs": card_refs,
         "renderer_contract_hash": "sha256:" + sha256(Path(__file__).read_bytes()).hexdigest(),
         "projection_hash": projection_hash,
-        "included_refs": sorted(set(included)),
-        "omitted_refs": sorted(set(omitted)),
-        "omission_reason": "budget_or_unrelated_future_state" if omitted else None,
-        "requires_on_demand_read": bool(omitted),
+        "included_refs": list(dict.fromkeys(included)),
+        "omitted_refs": list(dict.fromkeys(omitted)),
+        "on_demand_refs": list(dict.fromkeys(on_demand)),
+        "omission_reason": "budget" if omitted else None,
+        "requires_on_demand_read": bool(omitted or on_demand),
     }
     return text, metadata
 
+
+def render(
+    state: dict[str, Any],
+    node_id: str,
+    budget: int,
+    runtime_projection: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    return select_context_items(state, node_id, budget, runtime_projection)

@@ -147,7 +147,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 1797,
+      "active_bytes": 2058,
       "active_card_count": 1,
       "actual_action": "select_card",
       "actual_card_id": "wp.profiles.handoff",
@@ -192,7 +192,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2341,
+      "active_bytes": 2346,
       "active_card_count": 1,
       "actual_action": "select_card",
       "actual_card_id": "wp.profiles.program",
@@ -274,7 +274,7 @@
       "skill_version": "6.0.0"
     },
     "writing-plans": {
-      "card_manifest_hash": "sha256:457cd828962df29716780796cbf4cf9432fe347c504f046554b3304f0cca1d0f",
+      "card_manifest_hash": "sha256:2b8fe973107440f1dc872088fe5cdb19e55e1ffabbc379be461954f37d49c0b3",
       "decision_case_fixture_hash": "sha256:829e690dc1ebf20ea16fe0111a0bd60d58ff0bc86f05102820c29c827257badb",
       "decision_map_hash": "sha256:8cb1a9a558affffbe5e83f9c8b18616e416c07053382b6db502a6bd99a5761a9",
       "router_hash": "sha256:65a2339381ce0ca9ef144c92882722b1ac02b525408a08583e987c2a86ddbe77",
@@ -299,13 +299,13 @@
       "maximum": 4526,
       "median": 2482.0,
       "minimum": 0,
-      "p95": 3747
+      "p95": 3825
     },
     "protected_negative_count": 72,
     "protected_negative_pass_rate": 1.0,
     "sequence_total_active_bytes": {
       "maximum": 17563,
-      "median": 9414,
+      "median": 9733,
       "minimum": 6827,
       "p95": 17563
     },
@@ -1184,7 +1184,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 3518,
+      "active_bytes": 3837,
       "active_card_count": 1,
       "actual_card_id": "wp.economy.output-projection",
       "actual_decision_id": "wp.select.economy.output-projection",
@@ -1229,7 +1229,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2248,
+      "active_bytes": 2396,
       "active_card_count": 1,
       "actual_card_id": "wp.slicing.context-capsules",
       "actual_decision_id": "wp.select.slicing.context-capsules",
@@ -1244,7 +1244,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 1797,
+      "active_bytes": 2058,
       "active_card_count": 1,
       "actual_card_id": "wp.profiles.handoff",
       "actual_decision_id": "wp.select.profiles.handoff",
@@ -1259,7 +1259,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2341,
+      "active_bytes": 2346,
       "active_card_count": 1,
       "actual_card_id": "wp.profiles.program",
       "actual_decision_id": "wp.select.profiles.program",
@@ -1394,7 +1394,7 @@
       "skill_id": "writing-plans"
     }
   ],
-  "report_hash": "sha256:c305662ff93b6dd10dfddd02f2c196acb6254c02cf2e5dc87ec2584cacb3ffe6",
+  "report_hash": "sha256:1a6fe62d8d42fd63b95671e7211e3686f616f4302be43c34c60e89756970d969",
   "schema_version": "offline-route-replay/2.0",
   "selection_rows": [
     {
@@ -2046,7 +2046,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 3518,
+      "active_bytes": 3837,
       "active_card_count": 1,
       "actual_card_id": "wp.economy.output-projection",
       "actual_decision_id": "wp.select.economy.output-projection",
@@ -2094,7 +2094,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 1797,
+      "active_bytes": 2058,
       "active_card_count": 1,
       "actual_card_id": "wp.profiles.handoff",
       "actual_decision_id": "wp.select.profiles.handoff",
@@ -2106,7 +2106,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2341,
+      "active_bytes": 2346,
       "active_card_count": 1,
       "actual_card_id": "wp.profiles.program",
       "actual_decision_id": "wp.select.profiles.program",
@@ -2118,7 +2118,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2248,
+      "active_bytes": 2396,
       "active_card_count": 1,
       "actual_card_id": "wp.slicing.context-capsules",
       "actual_decision_id": "wp.select.slicing.context-capsules",
@@ -2219,7 +2219,7 @@
       "active_bytes_per_step": [
         1599,
         4297,
-        3518
+        3837
       ],
       "selected_card_ids": [
         "wp.profiles.brief",
@@ -2232,15 +2232,15 @@
       "terminal_complete": true,
       "terminal_owner": "software-quality-workflows",
       "terminal_status": "completed",
-      "total_active_bytes": 9414,
+      "total_active_bytes": 9733,
       "unnecessary_card_loads": 0
     },
     {
       "active_bytes_per_step": [
-        2341,
+        2346,
         2339,
         2274,
-        2248
+        2396
       ],
       "selected_card_ids": [
         "wp.profiles.program",
@@ -2254,13 +2254,13 @@
       "terminal_complete": true,
       "terminal_owner": "software-quality-workflows",
       "terminal_status": "completed",
-      "total_active_bytes": 9202,
+      "total_active_bytes": 9355,
       "unnecessary_card_loads": 0
     }
   ],
   "vnext": {
-    "bundle_build_id": "build-d1585db8ab2ffc6a07b45ac8",
-    "bundle_manifest_hash": "sha256:2d6f2eae164632854e5ceaf12de9710c6bf6935094c8d715bb848f62abcbe717",
+    "bundle_build_id": "build-c8b7543e3b35b45ea1092812",
+    "bundle_manifest_hash": "sha256:b70a5a30b9516c7456af159f1350e61733a2f383717aee00af51897817a9a51c",
     "identity": "frontier-engineering/6.0.0+5.0.0",
     "skill_versions": {
       "software-quality-workflows": "6.0.0",
