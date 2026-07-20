@@ -10,7 +10,7 @@ Keep these three axes separate:
 - `usefulness_status`: whether comparative evidence supports incremental benefit without a guardrail or protected-outcome failure;
 - `final_authority_status`: whether the evidence is eligible for the declared external decision path.
 
-Use the analyzer's exact values. `supported` usefulness is not a promotion, and `eligible` authority is not an approval. A required manual-review receipt with `hold` or `reject` keeps final authority blocked without changing empirical results.
+Use the analyzer's exact values. `supported` usefulness is not a promotion, and `eligible` authority is not an approval. Final authority is `eligible` only when usefulness is `supported`, every required manual gate passes, the candidate has zero required hard-grader failures, and `blocking_observations` is empty. Every other state is `blocked`.
 
 ## Applicability by level
 

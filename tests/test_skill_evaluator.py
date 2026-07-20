@@ -1324,6 +1324,74 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             'hard_gate_failures': ['unsafe'],
         })
 
+    def test_candidate_required_hard_failures_block_usefulness_and_authority(self) -> None:
+        analyzer = load_analyzer_module()
+        graders = {'g': {'hard_gate': True}}
+
+        def hard_failure_state(dimension: str, required: bool) -> tuple[list[str], list[str]]:
+            case = {'requirements': [
+                {'id': 'outcome', 'dimension': 'outcome', 'required': True, 'grader_id': 'g', 'check_id': 'outcome'},
+                {'id': dimension, 'dimension': dimension, 'required': required, 'grader_id': 'g', 'check_id': dimension},
+            ]}
+            derived = analyzer.derive_run_fields(
+                case,
+                graders,
+                {'g': {'checks': {'outcome': True, dimension: False}}},
+            )
+            self.assertTrue(derived['task_pass'])
+            _, blockers = analyzer.summarize_candidate_hard_failures(
+                {'candidate': len(derived['hard_gate_failures'])}, {'candidate'},
+            )
+            return derived['hard_gate_failures'], blockers
+
+        scenarios = (
+            ('required-process', 'process', True, 'complete', [], ['process'], 'not_supported', 'blocked'),
+            ('required-quality', 'quality', True, 'complete', [], ['quality'], 'not_supported', 'blocked'),
+            ('optional-quality', 'quality', False, 'complete', [], [], 'supported', 'eligible'),
+            ('external-blocker', 'quality', False, 'complete', ['unresolved evidence owner'], [], 'supported', 'blocked'),
+            ('incomplete-process', 'process', True, 'incomplete', ['run matrix evidence is incomplete'], ['process'], 'inconclusive', 'blocked'),
+        )
+        for name, dimension, required, evidence, extra_blockers, expected_failures, expected_usefulness, expected_authority in scenarios:
+            with self.subTest(name=name):
+                hard_failures, candidate_blockers = hard_failure_state(dimension, required)
+                blockers = [*candidate_blockers, *extra_blockers]
+                usefulness = analyzer.derive_usefulness_status(
+                    level='L2', evidence_status=evidence, benefit_gate_status='pass',
+                    guardrail_statuses=['pass'], protected_outcome_failures=0,
+                    material_harm=False, candidate_hard_failures=len(hard_failures),
+                )
+                authority = analyzer.derive_final_authority_status(
+                    usefulness_status=usefulness,
+                    manual_gate_passed=True,
+                    candidate_hard_failures=len(hard_failures),
+                    blocking_observations=blockers,
+                )
+                decision_signal = analyzer.derive_decision_signal('L2', usefulness)
+                report = {
+                    'evidence_status': evidence,
+                    'usefulness_status': usefulness,
+                    'final_authority_status': authority,
+                    'decision_signal': decision_signal,
+                }
+                self.assertEqual(expected_failures, hard_failures)
+                self.assertEqual(
+                    [] if not expected_failures else ['candidate: 1 case-level hard grader failure(s)'],
+                    candidate_blockers,
+                )
+                self.assertEqual((expected_usefulness, expected_authority), (usefulness, authority))
+                self.assertEqual(
+                    f'evidence_status={evidence} usefulness_status={expected_usefulness} '
+                    f'final_authority_status={expected_authority} decision_signal={decision_signal}',
+                    analyzer.decision_status_text(report),
+                )
+        self.assertEqual(
+            'blocked',
+            analyzer.derive_final_authority_status(
+                usefulness_status='supported', manual_gate_passed=False,
+                candidate_hard_failures=0, blocking_observations=[],
+            ),
+        )
+
     def test_grader_failure_invalidates_treatment_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             bundle = write_receipt_bundle(Path(tmp))
@@ -1456,7 +1524,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
         status = analyzer.derive_usefulness_status(
             level='L2', evidence_status='complete', benefit_gate_status=gate['status'],
             guardrail_statuses=['pass', 'pass'], protected_outcome_failures=0,
-            material_harm=False,
+            material_harm=False, candidate_hard_failures=0,
         )
         self.assertEqual(status, 'not_supported')
 
@@ -1527,7 +1595,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             analyzer.derive_usefulness_status(
                 level='L2', evidence_status='complete', benefit_gate_status=gate['status'],
                 guardrail_statuses=['pass'], protected_outcome_failures=0,
-                material_harm=False,
+                material_harm=False, candidate_hard_failures=0,
             ),
             'inconclusive',
         )
@@ -1802,7 +1870,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             analyzer.derive_usefulness_status(
                 level='L2', evidence_status='complete', benefit_gate_status='fail',
                 guardrail_statuses=['pass', 'pass'], protected_outcome_failures=0,
-                material_harm=False,
+                material_harm=False, candidate_hard_failures=0,
             ),
             'not_supported',
         )
@@ -2353,16 +2421,30 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
     def test_analyzer_json_stdout_is_not_polluted_by_human_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             bundle = write_receipt_bundle(Path(tmp))
+            markdown_path = Path(tmp) / 'summary.md'
             result = self.run_cmd(
                 'scripts/analyze_runs.py', str(bundle['index']),
-                '--spec', str(bundle['spec']), '--json', '-', '--report-only',
+                '--spec', str(bundle['spec']), '--json', '-', '--markdown', str(markdown_path), '--report-only',
             )
+            markdown = markdown_path.read_text(encoding='utf-8')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         report = json.loads(result.stdout)
         self.assertEqual(report['record_count'], 1)
         self.assertEqual(report['evidence_status'], 'complete')
+        decision = (
+            'evidence_status=complete usefulness_status=not_applicable '
+            'final_authority_status=blocked decision_signal=diagnostic_complete'
+        )
+        self.assertEqual(
+            decision,
+            ' '.join(f'{key}={report[key]}' for key in (
+                'evidence_status', 'usefulness_status', 'final_authority_status', 'decision_signal',
+            )),
+        )
         self.assertNotIn('Analyzed', result.stdout)
         self.assertIn('Analyzed 1 records', result.stderr)
+        self.assertIn(f'Decision status: {decision}', result.stderr)
+        self.assertIn(f'Decision status: `{decision}`', markdown)
 
     def test_broken_local_link_fails_audit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
