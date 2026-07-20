@@ -1613,6 +1613,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
                 }],
                 {'case-a': {
                     'should_trigger': True,
+                    'attribution_evaluable': True,
                     'applicable_variant_profiles': ['candidate/natural_routing'],
                 }},
                 {'variants': [{
@@ -1628,6 +1629,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
         cases = {
             case_id: {
                 'should_trigger': True,
+                'attribution_evaluable': True,
                 'applicable_variant_profiles': [
                     'candidate/natural_routing', 'prior/natural_routing',
                 ],
@@ -1707,6 +1709,52 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
         )
         self.assertIsNone(duplicate_prior['prior_skill_context'])
         self.assertIsNone(duplicate_prior['candidate_minus_prior_bytes_p95'])
+
+    def test_context_summaries_exclude_non_attribution_cases_for_candidate_and_prior(self) -> None:
+        analyzer = load_analyzer_module()
+        cases = {
+            'eligible': {
+                'should_trigger': True,
+                'attribution_evaluable': True,
+                'applicable_variant_profiles': [
+                    'candidate/natural_routing', 'prior/natural_routing',
+                ],
+            },
+            'protected': {
+                'should_trigger': True,
+                'attribution_evaluable': False,
+                'applicable_variant_profiles': [
+                    'candidate/natural_routing', 'prior/natural_routing',
+                ],
+            },
+        }
+        spec = {'variants': [
+            {'id': 'candidate', 'role': 'candidate', 'mode': 'natural_routing'},
+            {'id': 'prior', 'role': 'prior', 'mode': 'natural_routing'},
+        ]}
+
+        def row(variant: str, case_id: str, size: int) -> dict:
+            return {
+                'variant': variant, 'case_id': case_id, 'repeat': 1,
+                'valid': True, 'task_pass': True,
+                'context_usage': {
+                    'attributed': True, 'bytes': size, 'tokens': None,
+                    'measurement_source': 'replay_manifest', 'components': [],
+                },
+            }
+
+        rows = [
+            row('candidate', 'eligible', 100), row('candidate', 'protected', 10_000),
+            row('prior', 'eligible', 150), row('prior', 'protected', 20_000),
+        ]
+        candidate = analyzer.summarize_skill_context(rows, cases, spec, 1)
+        self.assertEqual(candidate['planned_rows'], 1)
+        self.assertEqual(candidate['attributed_rows'], 1)
+        self.assertEqual(candidate['bytes_p95'], 100)
+        comparison = analyzer.summarize_prior_skill_context(rows, cases, spec, 1, candidate)
+        self.assertEqual(comparison['prior_skill_context']['planned_rows'], 1)
+        self.assertEqual(comparison['prior_skill_context']['bytes_p95'], 150)
+        self.assertEqual(comparison['candidate_minus_prior_bytes_p95'], -50)
 
     def test_context_budget_requires_external_authority_and_exact_gate_id(self) -> None:
         analyzer = load_analyzer_module()

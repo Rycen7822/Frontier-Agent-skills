@@ -1395,6 +1395,7 @@ def summarize_skill_context(
         for variant_id, profile in selected_profiles.items()
         for case_id, case in cases_by_id.items()
         if case.get("should_trigger") is True
+        and case.get("attribution_evaluable") is True
         and profile in case.get("applicable_variant_profiles", [])
         for repeat in range(1, repeats + 1)
     }
@@ -1477,6 +1478,7 @@ def summarize_prior_skill_context(
     comparable_cases = {
         case_id for case_id, case in cases_by_id.items()
         if case.get("should_trigger") is True
+        and case.get("attribution_evaluable") is True
         and candidate_profile in case.get("applicable_variant_profiles", [])
         and prior_profile in case.get("applicable_variant_profiles", [])
     }
