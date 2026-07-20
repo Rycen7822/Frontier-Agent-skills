@@ -34,6 +34,13 @@ RELEASE_FIELDS = {
     "l2_scored_report_hash", "activation_decision_hash", "release_gate",
     "approved_activation_level",
 }
+EXPECTED_SKILLS = {
+    "brainstorming": "1.0.0",
+    "long-document-segmented-writing": "1.0.0",
+    "skill-evaluator": "1.0.0",
+    "software-quality-workflows": "8.0.0",
+    "writing-plans": "7.0.0",
+}
 
 
 def _strict_json(path: Path, maximum: int = 4 * 1024 * 1024) -> dict[str, Any]:
@@ -113,7 +120,7 @@ def _validate_exact_bundle_identity(source_root: Path) -> None:
     expected = namespace["build_manifest"]()
     observed = _strict_json(output_path)
     if observed != expected:
-        raise ValueError("frontier-engineering.bundle.json does not match the exact two-skill source")
+        raise ValueError("frontier-engineering.bundle.json does not match the exact five-skill source")
     rendered = (json.dumps(expected, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
     if output_path.is_symlink() or output_path.read_bytes() != rendered:
         raise ValueError("frontier-engineering.bundle.json is not the canonical generated artifact")
@@ -121,17 +128,17 @@ def _validate_exact_bundle_identity(source_root: Path) -> None:
 
 def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
     skills = manifest.get("skills")
-    if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != {"writing-plans", "software-quality-workflows"}:
-        raise ValueError("manifest must declare exactly the two canonical skills")
+    if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != set(EXPECTED_SKILLS):
+        raise ValueError("manifest must declare exactly the five canonical skills")
     if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("2.0", "4.0.0"):
         raise ValueError("manifest bundle schema/version is invalid")
-    if {item.get("id"): item.get("version") for item in skills} != {
-        "writing-plans": "7.0.0", "software-quality-workflows": "8.0.0",
-    }:
-        raise ValueError("version mismatch: manifest skill versions do not match the 8+7 release identity")
+    if {item.get("id"): item.get("version") for item in skills} != EXPECTED_SKILLS:
+        raise ValueError("version mismatch: manifest skill versions do not match the five-skill release identity")
     for item in skills:
         if not isinstance(item, dict) or set(item) != {"id", "path", "version"}:
             raise ValueError("manifest skill entries must contain only id, path, and version")
+        if item["path"] != item["id"]:
+            raise ValueError(f"manifest skill path must equal its canonical id: {item['id']}")
         path = source_root / item["path"]
         observed = skill_version(path)
         if observed != item["version"]:
@@ -144,7 +151,7 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     if activation != required_activation:
         raise ValueError("manifest activation policy fields are invalid")
     if manifest.get("cross_skill_contracts") != ["plan-to-workflow", "workflow-plan-change-proposal"]:
-        raise ValueError("manifest cross-skill contracts do not match the 8+7 release identity")
+        raise ValueError("manifest cross-skill contracts do not match the five-skill release identity")
     records = bundle_inventory(source_root, manifest)
     for record in records:
         path = source_root / record["path"]
@@ -241,8 +248,8 @@ def _validate_staging(staging: Path, plugin_name: str) -> list[dict[str, Any]]:
     if manifest.get("name") != plugin_name or FORBIDDEN_PLUGIN_KEYS & set(manifest):
         raise ValueError("rendered plugin manifest identity or runtime surface is invalid")
     skill_names = {path.name for path in (staging / "skills").iterdir() if path.is_dir()}
-    if skill_names != {"writing-plans", "software-quality-workflows"}:
-        raise ValueError("staging must contain exactly the two canonical skills")
+    if skill_names != set(EXPECTED_SKILLS):
+        raise ValueError("staging must contain exactly the five canonical skills")
     candidates = [path for path in staging.rglob("*") if path.is_file() or path.is_symlink()]
     if any(path.name in FORBIDDEN_PLUGIN_NAMES for path in candidates):
         raise ValueError("staging contains a forbidden MCP/app/hook file")

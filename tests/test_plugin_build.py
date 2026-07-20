@@ -33,6 +33,13 @@ cli_smoke = importlib.util.module_from_spec(CLI_SMOKE_SPEC)
 CLI_SMOKE_SPEC.loader.exec_module(cli_smoke)
 PLUGIN_VALIDATOR = Path.home() / ".codex" / "skills" / ".system" / "plugin-creator" / "scripts" / "validate_plugin.py"
 PLUGIN_SCAFFOLDER = Path.home() / ".codex" / "skills" / ".system" / "plugin-creator" / "scripts" / "create_basic_plugin.py"
+EXPECTED_SKILLS = {
+    "brainstorming": "1.0.0",
+    "long-document-segmented-writing": "1.0.0",
+    "skill-evaluator": "1.0.0",
+    "software-quality-workflows": "8.0.0",
+    "writing-plans": "7.0.0",
+}
 
 
 class PluginBuildTests(unittest.TestCase):
@@ -54,7 +61,7 @@ class PluginBuildTests(unittest.TestCase):
                 self.assertEqual("4.0.0", manifest["version"])
                 self.assertEqual("./skills/", manifest["skills"])
                 self.assertTrue({"author", "interface"} <= set(manifest))
-                self.assertEqual({"writing-plans", "software-quality-workflows"}, {path.name for path in (output / "skills").iterdir()})
+                self.assertEqual(set(EXPECTED_SKILLS), {path.name for path in (output / "skills").iterdir()})
                 self.assertEqual(observed, json.loads(evidence.read_text(encoding="utf-8")))
                 self.assertEqual(observed["plugin_file_count"], len(observed["files"]))
                 self.assertEqual(len(observed["files"]), len({item["path"] for item in observed["files"]}))
@@ -82,7 +89,7 @@ class PluginBuildTests(unittest.TestCase):
         Draft202012Validator.check_schema(release_schema)
         valid_release = {
             "schema_version": "release-evidence/2.0",
-            "bundle_id": "frontier-engineering/8.0.0+7.0.0",
+            "bundle_id": "frontier-engineering/4.0.0",
             "bundle_version": "4.0.0",
             "source_tree_hash": "sha256:" + "1" * 64,
             "source_revision": "a" * 40,
@@ -153,7 +160,7 @@ class PluginBuildTests(unittest.TestCase):
             forged = parent / "release.json"
             forged.write_text(json.dumps({
                 "schema_version": "release-evidence/2.0",
-                "bundle_id": "frontier-engineering/8.0.0+7.0.0",
+                "bundle_id": "frontier-engineering/4.0.0",
                 "bundle_version": "4.0.0",
                 "source_tree_hash": "sha256:" + "1" * 64,
                 "source_revision": "a" * 40,
@@ -189,7 +196,7 @@ class PluginBuildTests(unittest.TestCase):
             policy = json.loads(policy_path.read_text(encoding="utf-8"))
             policy["policies"][0]["owner_id"] = "scripts/tampered-owner.py"
             policy_path.write_text(json.dumps(policy), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "exact two-skill source"):
+            with self.assertRaisesRegex(ValueError, "exact five-skill source"):
                 builder.build(copied, output, None, evidence)
             self.assertFalse(output.exists())
             shutil.copy2(
@@ -211,7 +218,7 @@ class PluginBuildTests(unittest.TestCase):
             evidence = parent / "evidence.json"
             builder.build(ROOT, output, None, evidence)
             result = smoke.isolated_smoke(output, evidence)
-            self.assertEqual({"writing-plans", "software-quality-workflows"}, set(result["discovered_skills"]))
+            self.assertEqual(set(EXPECTED_SKILLS), set(result["discovered_skills"]))
             self.assertTrue(result["isolated_install_discovery"])
             self.assertTrue(result["uninstall_clean"])
             self.assertFalse(result["actual_codex_cli_install"])

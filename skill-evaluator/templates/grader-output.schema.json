@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/grader-output.schema.json",
+  "title": "Skill evaluator grader output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "overall_pass",
+    "score",
+    "checks",
+    "missing_evidence",
+    "grader_failure",
+    "grader_failure_reason"
+  ],
+  "properties": {
+    "overall_pass": {"type": "boolean"},
+    "score": {"type": "integer", "minimum": 0, "maximum": 100},
+    "checks": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/check"}
+    },
+    "missing_evidence": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/missingEvidence"}
+    },
+    "grader_failure": {"type": "boolean"},
+    "grader_failure_reason": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "lineLocator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_line", "end_line"],
+      "properties": {
+        "start_line": {"type": "integer", "minimum": 1},
+        "end_line": {"type": "integer", "minimum": 1}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact", "locator", "observation"],
+      "properties": {
+        "artifact": {"type": "string", "minLength": 1},
+        "locator": {"$ref": "#/$defs/lineLocator"},
+        "observation": {"type": "string", "minLength": 1}
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "pass", "evidence", "notes", "uncertainty"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "pass": {"type": "boolean"},
+        "evidence": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/evidence"}
+        },
+        "notes": {"type": "string"},
+        "uncertainty": {"type": "string"}
+      }
+    },
+    "missingEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_id", "item"],
+      "properties": {
+        "check_id": {"type": ["string", "null"]},
+        "item": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "grader_failure": {"const": false},
+        "grader_failure_reason": {"type": "null"},
+        "checks": {"minItems": 1}
+      }
+    },
+    {
+      "properties": {
+        "overall_pass": {"const": false},
+        "score": {"const": 0},
+        "checks": {"maxItems": 0},
+        "missing_evidence": {"minItems": 1},
+        "grader_failure": {"const": true},
+        "grader_failure_reason": {"type": "string", "minLength": 1}
+      }
+    }
+  ]
+}

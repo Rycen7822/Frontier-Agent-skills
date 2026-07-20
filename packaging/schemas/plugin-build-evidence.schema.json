@@ -10,12 +10,15 @@
   ],
   "properties": {
     "schema_version": {"const": "plugin-build-evidence/2.0"},
-    "bundle_id": {"const": "frontier-engineering/8.0.0+7.0.0"},
+    "bundle_id": {"const": "frontier-engineering/4.0.0"},
     "bundle_version": {"const": "4.0.0"},
     "skill_versions": {
       "type": "object", "additionalProperties": false,
-      "required": ["software-quality-workflows", "writing-plans"],
+      "required": ["brainstorming", "long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
+        "brainstorming": {"const": "1.0.0"},
+        "long-document-segmented-writing": {"const": "1.0.0"},
+        "skill-evaluator": {"const": "1.0.0"},
         "software-quality-workflows": {"const": "8.0.0"},
         "writing-plans": {"const": "7.0.0"}
       }

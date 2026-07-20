@@ -1,0 +1,23 @@
+{
+  "schema_version": 3,
+  "evaluation_id": "package-audit-v1",
+  "decision": "audit the package without making runtime claims",
+  "claim_scope": "static package structure, provenance, links, and review findings",
+  "level": "L0",
+  "risk_tier": "standard",
+  "target": {
+    "name": "example-skill",
+    "candidate_path": "./path-to-example-skill"
+  },
+  "authority": {
+    "allow_file_writes": false,
+    "allow_network_read": false,
+    "allow_process_execution": false
+  },
+  "artifacts": {
+    "root": "artifacts/package-audit-v1",
+    "retain_raw_traces": false,
+    "redact_secrets": true,
+    "manifest_required": true
+  }
+}

@@ -1,14 +1,16 @@
 # Release Notes
 
-## Bundle 4.0.0 card-cycle v2 major cut
+## Bundle 4.0.0 five-skill major cut
 
-Bundle 4.0.0 atomically pairs `writing-plans` 7.0.0 with `software-quality-workflows` 8.0.0 as `frontier-engineering/8.0.0+7.0.0`, while compatible durable-state schema epoch remains 2. Route, complete, render, and receipt wire identities are v2: each nonterminal receipt carries its schema-derived `input_contract`, and no v1 reader or compatibility adapter remains. Existing 3.0.0 owners must finish under 3.0.0 or be explicitly retired; 4.0.0 never adopts them.
+Bundle 4.0.0 publishes `brainstorming` 1.0.0, `long-document-segmented-writing` 1.0.0, `skill-evaluator` 1.0.0, `software-quality-workflows` 8.0.0, and `writing-plans` 7.0.0 as the indivisible `frontier-engineering/4.0.0` release unit. Compatible schema epoch advances to 3: every skill record binds its version and root hash, while only the two card-driven skills carry policy-registry and reference-card components. No epoch-2 bundle reader is retained.
 
-The model entrypoints now use only the local `card_cycle.py`, one hash-verified returned card, stdin/stdout or owner state, and one replacement receipt. Raw state, receipt chains, protocol worknotes, directory walks, and per-step sibling artifacts are outside the model read/write surface. M2/M3/Program recovery uses one task anchor with explicit retain/dispose evidence. Writing Plans also fixes Program owner locators up to the existing 65,536-byte state ceiling without increasing the 32,768-byte artifact/projection limit.
+The two card-driven model entrypoints use the local `card_cycle.py`, at most one hash-verified returned card, stdin/stdout or owner state, and one replacement receipt. Route, complete, render, and receipt wire identities are v2: each nonterminal receipt carries its schema-derived `input_contract`, and no v1 reader or compatibility adapter remains. Raw state, receipt chains, protocol worknotes, directory walks, and per-step sibling artifacts are outside the model read/write surface. M2/M3/Program recovery uses one task anchor with explicit retain/dispose evidence. Writing Plans also fixes Program owner locators up to the existing 65,536-byte state ceiling without increasing the 32,768-byte artifact/projection limit.
 
 Initial route help now projects the fixed command envelope, target-repository root role, and SQW surface constraints. Every completion contract projects schema-derived field types and array enum values within an 800-byte ceiling, while the entry contract requires the entire current replacement receipt instead of flattened IDs. These are single-path v2 contract clarifications; no compatibility reader or parallel state format is added.
 
-This remains a local deterministic candidate. Isolated packaging and installation, scoped L2 usefulness, activation, publication, deployment, credentials, and remote writes are independent gates; no empirical model claim is made by this source cut.
+Brainstorming preserves its visual companion, local browser-server helpers, and delegated reviewer prompt as explicit optional resources; ordinary text work neither preloads nor starts them. Long Document Segmented Writing defaults to one compact scratch root and deterministic Markdown assembly, escalating to full recovery state only on explicit scale or continuity facts. Skill Evaluator keeps immutable receipt evidence while replacing default JSON proliferation with bounded L0 terminal triage and portable package-owned tests; static findings remain review locators and never authorize resource deletion by themselves.
+
+Existing 3.0.0 durable owners must finish under 3.0.0 or be explicitly retired; 4.0.0 never adopts them. This remains a local deterministic candidate. Authorization to run the scoped F9 evaluation permits that evaluation only; its observed result still determines whether release can advance. Isolated packaging and installation, scored usefulness, signed-source release, activation, publication, deployment, credentials, and remote writes remain independent gates, and no empirical model claim is made by this source cut.
 
 ## Bundle 3.0.0 bounded card-cycle runtimes
 

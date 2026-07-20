@@ -38,6 +38,14 @@ LOCAL_ONLY_ROOTS = {".git", ".work", "share"}
 LOCAL_ONLY_FILES = {"CODEX_STATE.md"}
 CODEX_SKILL_KEYS = {"name", "description", "license", "metadata", "allowed-tools"}
 SUPPORTED_HOSTS = ["codex", "hermes-agent"]
+EXPECTED_SKILLS = {
+    "brainstorming": "1.0.0",
+    "long-document-segmented-writing": "1.0.0",
+    "skill-evaluator": "1.0.0",
+    "software-quality-workflows": "8.0.0",
+    "writing-plans": "7.0.0",
+}
+CARD_SKILLS = {"software-quality-workflows", "writing-plans"}
 
 
 def is_repository_local(path: Path) -> bool:
@@ -79,16 +87,19 @@ class BundleContractTests(unittest.TestCase):
         )
         Draft202012Validator.check_schema(schema)
         self.assertEqual([], list(Draft202012Validator(schema).iter_errors(checked_in)))
-        self.assertEqual("frontier-engineering/8.0.0+7.0.0", checked_in["bundle_id"])
-        self.assertEqual(2, checked_in["compatible_schema_epoch"])
-        self.assertEqual(
-            {"software-quality-workflows": "8.0.0", "writing-plans": "7.0.0"},
-            {skill_id: item["version"] for skill_id, item in checked_in["skills"].items()},
-        )
-        for item in checked_in["skills"].values():
+        self.assertEqual("frontier-engineering/4.0.0", checked_in["bundle_id"])
+        self.assertEqual(3, checked_in["compatible_schema_epoch"])
+        self.assertEqual(EXPECTED_SKILLS, {
+            skill_id: item["version"] for skill_id, item in checked_in["skills"].items()
+        })
+        for skill_id, item in checked_in["skills"].items():
             self.assertRegex(item["root_hash"], r"^sha256:[0-9a-f]{64}$")
-            self.assertRegex(item["policy_registry"]["content_hash"], r"^sha256:[0-9a-f]{64}$")
-            self.assertRegex(item["reference_card_manifest"]["content_hash"], r"^sha256:[0-9a-f]{64}$")
+            expected_keys = {"version", "root_hash"}
+            if skill_id in CARD_SKILLS:
+                expected_keys |= {"policy_registry", "reference_card_manifest"}
+                self.assertRegex(item["policy_registry"]["content_hash"], r"^sha256:[0-9a-f]{64}$")
+                self.assertRegex(item["reference_card_manifest"]["content_hash"], r"^sha256:[0-9a-f]{64}$")
+            self.assertEqual(expected_keys, set(item))
 
     def test_repository_local_artifacts_are_ignored(self) -> None:
         ignore_path = ROOT / ".gitignore"
@@ -120,11 +131,8 @@ class BundleContractTests(unittest.TestCase):
         self.assertEqual("2.0", MANIFEST["bundle_schema_version"])
         self.assertEqual("4.0.0", MANIFEST["bundle_version"])
         skills = MANIFEST["skills"]
-        self.assertEqual({"writing-plans", "software-quality-workflows"}, {item["id"] for item in skills})
-        self.assertEqual(
-            {"writing-plans": "7.0.0", "software-quality-workflows": "8.0.0"},
-            {item["id"]: item["version"] for item in skills},
-        )
+        self.assertEqual(list(EXPECTED_SKILLS), [item["id"] for item in skills])
+        self.assertEqual(EXPECTED_SKILLS, {item["id"]: item["version"] for item in skills})
         for item in skills:
             skill_root = ROOT / item["path"]
             self.assertTrue(skill_root.is_dir(), f"missing bundled skill: {item['path']}")
@@ -148,8 +156,11 @@ class BundleContractTests(unittest.TestCase):
             self.assertIn(f"${item['id']}", interface["default_prompt"])
             self.assertIs(agent_metadata["policy"]["allow_implicit_invocation"], True)
         for profile in ("standalone", "extended"):
-            self.assertEqual(3, len(MANIFEST["test_profiles"][profile]))
-        self.assertEqual("LONG_DOCUMENT_SKILL_ROOT", MANIFEST["optional_external_dependencies"][0]["environment_variable"])
+            commands = MANIFEST["test_profiles"][profile]
+            self.assertEqual(4, len(commands))
+            self.assertTrue(any("long-document-segmented-writing/tests" in command for command in commands))
+            self.assertTrue(all("LONG_DOCUMENT_SKILL_ROOT" not in command for command in commands))
+        self.assertNotIn("optional_external_dependencies", MANIFEST)
         self.assertEqual(
             {
                 "current_level": "implicit_local_pilot",
@@ -165,6 +176,13 @@ class BundleContractTests(unittest.TestCase):
         routes = MANIFEST["cross_skill_routes"]
         self.assertEqual("frontier-cross-skill-routes/1", routes["schema_version"])
         self.assertEqual(["sqw-to-writing-plans", "writing-plans-to-sqw"], [row["route_id"] for row in routes["routes"]])
+
+    def test_skill_evaluator_public_contract_is_bundle_owned(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("schema v3", readme)
+        self.assertIn("receipt index", readme)
+        self.assertIn("exit 3", readme)
+        self.assertIn("public placeholders are not live evidence", readme)
 
     def test_retired_candidate_evidence_and_schema_names_are_absent(self) -> None:
         retired = [
@@ -200,7 +218,7 @@ class BundleContractTests(unittest.TestCase):
             self.assertFalse((writing / relative).exists(), relative)
             self.assertIn(f"writing-plans/{relative}", release_notes)
         self.assertIn("No redirect or permanent compatibility stub is provided", release_notes)
-        for skill in (writing, ROOT / "software-quality-workflows"):
+        for skill in (ROOT / skill_id for skill_id in EXPECTED_SKILLS):
             for path in skill.rglob("*"):
                 relative = path.relative_to(skill)
                 self.assertFalse(any(part in FORBIDDEN_PARTS for part in relative.parts), relative.as_posix())
@@ -232,7 +250,7 @@ class BundleContractTests(unittest.TestCase):
 
     def test_all_local_markdown_links_resolve(self) -> None:
         markdown_files = [ROOT / "README.md", ROOT / "RELEASE_NOTES.md"]
-        for skill in (ROOT / "writing-plans", ROOT / "software-quality-workflows"):
+        for skill in (ROOT / skill_id for skill_id in EXPECTED_SKILLS):
             self.assertTrue(skill.is_dir())
             markdown_files.extend(skill.rglob("*.md"))
         for path in markdown_files:

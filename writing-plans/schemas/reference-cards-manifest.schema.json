@@ -6,7 +6,7 @@
   "required": ["schema_version", "bundle_id", "skill_id", "skill_version", "cross_skill_routes", "cards"],
   "properties": {
     "schema_version": {"const": "2.0"},
-    "bundle_id": {"const": "frontier-engineering/8.0.0+7.0.0"},
+    "bundle_id": {"const": "frontier-engineering/4.0.0"},
     "skill_id": {"const": "writing-plans"},
     "skill_version": {"const": "7.0.0"},
     "cross_skill_routes": {"$ref": "#/$defs/crossSkillProjection"},

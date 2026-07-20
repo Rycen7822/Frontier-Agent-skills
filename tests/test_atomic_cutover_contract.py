@@ -20,6 +20,13 @@ SKILL_TARGETS = {
     "writing-plans": ("7.0.0", 10),
     "software-quality-workflows": ("8.0.0", 52),
 }
+BUNDLE_SKILLS = {
+    "brainstorming": "1.0.0",
+    "long-document-segmented-writing": "1.0.0",
+    "skill-evaluator": "1.0.0",
+    "software-quality-workflows": "8.0.0",
+    "writing-plans": "7.0.0",
+}
 CORE_CLOSURE = re.compile(
     r"autonomous_" + r"closure|wp\." + r"closure\.|sqw\." + r"closure\."
     + r"|closure[-_ ](?:admission|contract|phase|artifact|state|event)",
@@ -83,7 +90,7 @@ class _ConstrainedCaller:
 
     def __init__(self, skill: str, source: Path) -> None:
         self.skill = skill
-        execution_root = os.environ.get("FRONTIER_V8V7_EXECUTION_SKILLS_ROOT")
+        execution_root = os.environ.get("FRONTIER_V4_EXECUTION_SKILLS_ROOT")
         self.skill_root = (Path(execution_root) if execution_root else ROOT) / skill
         self.cli = self.skill_root / "scripts" / "card_cycle.py"
         self.source = source
@@ -169,7 +176,7 @@ class AtomicCutoverContractTests(unittest.TestCase):
         self.assertEqual("2.0", manifest["bundle_schema_version"])
         self.assertEqual("4.0.0", manifest["bundle_version"])
         self.assertEqual(
-            [("writing-plans", "7.0.0"), ("software-quality-workflows", "8.0.0")],
+            list(BUNDLE_SKILLS.items()),
             [(skill["id"], skill["version"]) for skill in manifest["skills"]],
         )
         self.assertEqual(
@@ -185,8 +192,8 @@ class AtomicCutoverContractTests(unittest.TestCase):
             manifest["activation_policy"],
         )
         self.assertEqual("frontier-engineering-bundle/1.0", generated["schema_version"])
-        self.assertEqual("frontier-engineering/8.0.0+7.0.0", generated["bundle_id"])
-        self.assertEqual(2, generated["compatible_schema_epoch"])
+        self.assertEqual("frontier-engineering/4.0.0", generated["bundle_id"])
+        self.assertEqual(3, generated["compatible_schema_epoch"])
 
     def test_active_card_inventory_and_static_economy_are_exact(self) -> None:
         total_card_bytes = 0
@@ -468,8 +475,8 @@ class PromptInputContractTest(unittest.TestCase):
         return payload
 
     def test_isolated_prompt_input(self) -> None:
-        prompt_value = os.environ.get("FRONTIER_V8V7_PROMPT_INPUT")
-        skills_value = os.environ.get("FRONTIER_V8V7_DISCOVERY_SKILLS_ROOT")
+        prompt_value = os.environ.get("FRONTIER_V4_PROMPT_INPUT")
+        skills_value = os.environ.get("FRONTIER_V4_DISCOVERY_SKILLS_ROOT")
         if prompt_value is None and skills_value is None:
             self.skipTest("isolated prompt-input evidence was not requested")
         self.assertIsNotNone(prompt_value)
@@ -496,9 +503,9 @@ class PromptInputContractTest(unittest.TestCase):
         self.assertTrue(stat.S_ISDIR(root_info.st_mode))
         self.assertEqual(os.geteuid(), root_info.st_uid)
         skill_entries = {path.name for path in skills_root.iterdir()}
-        self.assertEqual(set(SKILL_TARGETS), skill_entries - {".system"})
+        self.assertEqual(set(BUNDLE_SKILLS), skill_entries - {".system"})
         locator_text = "\n".join(prompt_texts)
-        for skill, (version, card_count) in SKILL_TARGETS.items():
+        for skill, version in BUNDLE_SKILLS.items():
             skill_root = skills_root / skill
             for path in skill_root.rglob("*"):
                 info = path.lstat()
@@ -514,12 +521,6 @@ class PromptInputContractTest(unittest.TestCase):
                 self._regular_bytes(skill_root / "agents" / "openai.yaml", 16_384).decode("utf-8", errors="strict")
             )
             self.assertTrue(agent_metadata["policy"]["allow_implicit_invocation"])
-            manifest = json.loads(
-                self._regular_bytes(skill_root / "registries" / "reference-cards.manifest.json", 262_144).decode(
-                    "utf-8", errors="strict"
-                )
-            )
-            self.assertEqual(card_count, len(manifest["cards"]))
             matches = re.findall(
                 rf"^- (?:frontier-engineering-plugin:)?{re.escape(skill)}:.*?\(file: ([^)]+)\)$",
                 locator_text,
@@ -529,11 +530,19 @@ class PromptInputContractTest(unittest.TestCase):
             locator = Path(matches[0])
             self.assertNotIn("references", locator.parts)
             self.assertEqual(skill_path.resolve(strict=True), locator.resolve(strict=True))
-            for card in manifest["cards"]:
-                card_text = self._regular_bytes(skill_root / card["path"], 16_384).decode(
-                    "utf-8", errors="strict"
-                ).replace("\r\n", "\n")
-                self.assertFalse(any(card_text in text for text in prompt_texts), card["path"])
+            if skill in SKILL_TARGETS:
+                card_count = SKILL_TARGETS[skill][1]
+                manifest = json.loads(
+                    self._regular_bytes(
+                        skill_root / "registries" / "reference-cards.manifest.json", 262_144,
+                    ).decode("utf-8", errors="strict")
+                )
+                self.assertEqual(card_count, len(manifest["cards"]))
+                for card in manifest["cards"]:
+                    card_text = self._regular_bytes(skill_root / card["path"], 16_384).decode(
+                        "utf-8", errors="strict"
+                    ).replace("\r\n", "\n")
+                    self.assertFalse(any(card_text in text for text in prompt_texts), card["path"])
 
 
 if __name__ == "__main__":

@@ -190,7 +190,7 @@ def _mutate(state: dict, name: str) -> None:
     elif name == "terminal_queue":
         state["status"] = "completed"
     elif name == "owner_duplicate":
-        state["policy_claims"].append({"policy_id": "sqw.verify.completion-evidence", "bundle_version": "frontier-engineering/8.0.0+7.0.0", "policy_hash": "sha256:" + "5" * 64})
+        state["policy_claims"].append({"policy_id": "sqw.verify.completion-evidence", "bundle_version": "frontier-engineering/4.0.0", "policy_hash": "sha256:" + "5" * 64})
     elif name == "sensitive_unclassified":
         state["facts"][0]["statement"] = "api_key=SUPERSECRET_1234567890"
     elif name == "verifier_unresolved":
@@ -208,7 +208,7 @@ class PlanStateTests(unittest.TestCase):
     def test_v3_policy_invariant_effect_and_bundle_identity_are_schema_owned(self) -> None:
         state = _base()
         self.assertEqual([], _validate(state))
-        self.assertEqual("frontier-engineering/8.0.0+7.0.0", state["bundle_id"])
+        self.assertEqual("frontier-engineering/4.0.0", state["bundle_id"])
         self.assertRegex(state["manifest_hash"], r"^sha256:[0-9a-f]{64}$")
         self.assertEqual({"binding_kind", "binding_id", "producer_card_id", "initial_source_identity_hash", "allowed_reads", "allowed_plan_outputs", "effect_ceiling", "approval_requirements", "publication_ceiling"}, set(state["scope_binding"]))
         self.assertEqual({"policy_id", "bundle_version", "policy_hash"}, set(state["policy_claims"][0]))

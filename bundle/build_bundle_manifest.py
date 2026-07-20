@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build or verify the exact two-skill release identity manifest."""
+"""Build or verify the exact five-skill release identity manifest."""
 
 from __future__ import annotations
 
@@ -21,15 +21,19 @@ if str(SCRIPTS) not in sys.path:
 from _bundle_hash import FORBIDDEN_PARTS, FORBIDDEN_SUFFIXES, inventory, tree_hash  # noqa: E402
 
 
-BUNDLE_ID = "frontier-engineering/8.0.0+7.0.0"
-SCHEMA_EPOCH = 2
+BUNDLE_ID = "frontier-engineering/4.0.0"
+SCHEMA_EPOCH = 3
 OUTPUT = ROOT / "frontier-engineering.bundle.json"
 SCHEMA = ROOT / "bundle" / "frontier-engineering-bundle.schema.json"
 SOURCE_MANIFEST = ROOT / "bundle-manifest.json"
 EXPECTED_SKILLS = {
+    "brainstorming": "1.0.0",
+    "long-document-segmented-writing": "1.0.0",
+    "skill-evaluator": "1.0.0",
     "software-quality-workflows": "8.0.0",
     "writing-plans": "7.0.0",
 }
+CARD_SKILLS = {"software-quality-workflows", "writing-plans"}
 POLICY_REGISTRY = Path("registries/policy-owners.json")
 CARD_MANIFEST = Path("registries/reference-cards.manifest.json")
 HANDOFF_OWNER = Path("writing-plans/schemas/plan-execution-handoff.schema.json")
@@ -73,24 +77,25 @@ def _skill_record(skill_id: str, version: str) -> dict[str, Any]:
         raise ValueError(f"canonical skill root is missing or symlinked: {skill_id}")
 
     components: dict[str, dict[str, str]] = {}
-    for key, relative in (
-        ("policy_registry", POLICY_REGISTRY),
-        ("reference_card_manifest", CARD_MANIFEST),
-    ):
-        path = skill_root / relative
-        value = _load_json(path)
-        expected_identity = {
-            "bundle_id": BUNDLE_ID,
-            "skill_id": skill_id,
-            "skill_version": version,
-        }
-        observed = {field: value.get(field) for field in expected_identity}
-        if observed != expected_identity:
-            raise ValueError(f"{skill_id}/{relative} identity mismatch: {observed}")
-        components[key] = {
-            "path": f"{skill_id}/{relative.as_posix()}",
-            "content_hash": _content_hash(path),
-        }
+    if skill_id in CARD_SKILLS:
+        for key, relative in (
+            ("policy_registry", POLICY_REGISTRY),
+            ("reference_card_manifest", CARD_MANIFEST),
+        ):
+            path = skill_root / relative
+            value = _load_json(path)
+            expected_identity = {
+                "bundle_id": BUNDLE_ID,
+                "skill_id": skill_id,
+                "skill_version": version,
+            }
+            observed = {field: value.get(field) for field in expected_identity}
+            if observed != expected_identity:
+                raise ValueError(f"{skill_id}/{relative} identity mismatch: {observed}")
+            components[key] = {
+                "path": f"{skill_id}/{relative.as_posix()}",
+                "content_hash": _content_hash(path),
+            }
 
     records = inventory(skill_root, _skill_paths(skill_root))
     if not records:
@@ -113,7 +118,9 @@ def build_manifest() -> dict[str, Any]:
         if isinstance(item, dict)
     }
     if observed != EXPECTED_SKILLS or len(skills) != len(EXPECTED_SKILLS):
-        raise ValueError(f"source bundle must bind the exact vNext skill pair: {observed}")
+        raise ValueError(f"source bundle must bind the exact vNext five-skill set: {observed}")
+    if [item.get("id") for item in skills if isinstance(item, dict)] != sorted(EXPECTED_SKILLS):
+        raise ValueError("source bundle skills must be sorted by id")
     if source.get("bundle_schema_version") != "2.0" or source.get("bundle_version") != "4.0.0":
         raise ValueError("source bundle must bind schema 2.0 and release 4.0.0")
     if source.get("cross_skill_contracts") != ["plan-to-workflow", "workflow-plan-change-proposal"]:
@@ -128,7 +135,9 @@ def build_manifest() -> dict[str, Any]:
     if routes != normalized_routes:
         raise ValueError("source bundle cross-skill routes must be sorted")
     source_hash = "sha256:" + sha256(_canonical_bytes(route_source)).hexdigest()
-    for skill_id in EXPECTED_SKILLS:
+    if "optional_external_dependencies" in source:
+        raise ValueError("bundled skills must not remain external dependencies")
+    for skill_id in CARD_SKILLS:
         local = _load_json(ROOT / skill_id / CARD_MANIFEST).get("cross_skill_routes")
         expected = {
             "source_hash": source_hash,

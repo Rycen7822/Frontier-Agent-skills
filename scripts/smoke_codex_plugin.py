@@ -22,7 +22,13 @@ from _bundle_hash import inventory, tree_hash  # noqa: E402
 from build_codex_plugin import _strict_json  # noqa: E402
 
 
-EXPECTED_SKILLS = {"writing-plans", "software-quality-workflows"}
+EXPECTED_SKILLS = {
+    "brainstorming",
+    "long-document-segmented-writing",
+    "skill-evaluator",
+    "software-quality-workflows",
+    "writing-plans",
+}
 
 
 def _frontmatter(path: Path) -> dict[str, str]:
@@ -66,7 +72,7 @@ def inspect_plugin(plugin_root: Path, evidence_path: Path) -> dict[str, Any]:
     discovered: dict[str, dict[str, Any]] = {}
     skills_root = plugin_root / "skills"
     if {path.name for path in skills_root.iterdir() if path.is_dir()} != EXPECTED_SKILLS:
-        raise ValueError("static discovery did not find exactly the two canonical skills")
+        raise ValueError("static discovery did not find exactly the five canonical skills")
     for name in sorted(EXPECTED_SKILLS):
         skill_root = skills_root / name
         fields = _frontmatter(skill_root / "SKILL.md")

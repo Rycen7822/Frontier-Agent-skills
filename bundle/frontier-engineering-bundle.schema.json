@@ -14,16 +14,19 @@
   ],
   "properties": {
     "schema_version": {"const": "frontier-engineering-bundle/1.0"},
-    "bundle_id": {"const": "frontier-engineering/8.0.0+7.0.0"},
-    "compatible_schema_epoch": {"const": 2},
+    "bundle_id": {"const": "frontier-engineering/4.0.0"},
+    "compatible_schema_epoch": {"const": 3},
     "release_build_id": {"type": "string", "pattern": "^build-[0-9a-f]{24}$"},
     "skills": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["software-quality-workflows", "writing-plans"],
+      "required": ["brainstorming", "long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
-        "software-quality-workflows": {"$ref": "#/$defs/skill"},
-        "writing-plans": {"$ref": "#/$defs/skill"}
+        "brainstorming": {"$ref": "#/$defs/base_skill"},
+        "long-document-segmented-writing": {"$ref": "#/$defs/base_skill"},
+        "skill-evaluator": {"$ref": "#/$defs/base_skill"},
+        "software-quality-workflows": {"$ref": "#/$defs/card_skill"},
+        "writing-plans": {"$ref": "#/$defs/card_skill"}
       }
     },
     "contracts": {
@@ -59,7 +62,16 @@
         "content_hash": {"$ref": "#/$defs/hash"}
       }
     },
-    "skill": {
+    "base_skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "root_hash"],
+      "properties": {
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "root_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "card_skill": {
       "type": "object",
       "additionalProperties": false,
       "required": ["version", "root_hash", "policy_registry", "reference_card_manifest"],

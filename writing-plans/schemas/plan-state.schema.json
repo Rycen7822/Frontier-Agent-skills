@@ -42,7 +42,7 @@
   ],
   "properties": {
     "schema_version": {"const": "3.0"},
-    "bundle_id": {"const": "frontier-engineering/8.0.0+7.0.0"},
+    "bundle_id": {"const": "frontier-engineering/4.0.0"},
     "manifest_hash": {"$ref": "#/$defs/hash"},
     "plan_id": {"type": "string", "pattern": "^wp-plan:[0-9a-f]{64}$"},
     "profile": {"const": "program"},

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Skill Evaluator"
+  short_description: "Evaluate Agent Skills with bounded evidence"
+  default_prompt: "Use $skill-evaluator to evaluate this Agent Skill with the lightest evidence level that supports the requested decision."
+
+policy:
+  allow_implicit_invocation: true

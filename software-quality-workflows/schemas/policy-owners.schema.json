@@ -6,7 +6,7 @@
   "required": ["schema_version", "bundle_id", "skill_id", "skill_version", "policies"],
   "properties": {
     "schema_version": {"const": "2.0"},
-    "bundle_id": {"const": "frontier-engineering/8.0.0+7.0.0"},
+    "bundle_id": {"const": "frontier-engineering/4.0.0"},
     "skill_id": {"const": "software-quality-workflows"},
     "skill_version": {"const": "8.0.0"},
     "policies": {
