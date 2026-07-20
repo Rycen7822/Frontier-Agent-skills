@@ -103,6 +103,12 @@ The JSON Schema owns transport shape only. The analyzer also enforces:
 
 Prefer executable outcome/state checks, then deterministic trace/artifact checks, then calibrated read-only model rubrics. Human/domain review is a separate authority receipt. A weaker grader never erases a deterministic or safety failure.
 
+## Process evidence levels
+
+- Skill retrieval proves retrieval only; entry reading proves body loading only; a CLI or card reference proves an attempt only.
+- A behavioral process check passes only when bound evidence proves exit 0, a successfully parsed receipt, the expected state transition, and every required owner, delivery, anchor, or cleanup fact. Final prose and task-code success cannot replace these facts.
+- A pure routing case may use the exact owner load set as its final process oracle because no workflow transition is required.
+
 ## Validity and failure ownership
 
 `valid=false` is reserved for evaluation apparatus failure: provider/controller unavailable before attributable execution, broken fixture/capture, corrupt receipt, or grader failure. It requires `error_type="evaluation_apparatus"` and an invalid reason.

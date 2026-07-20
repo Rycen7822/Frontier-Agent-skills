@@ -1519,21 +1519,78 @@ def summarize_prior_skill_context(
 
 
 def derive_usefulness_status(
-    *, level: str, evidence_status: str, benefit_gate_status: str,
-    guardrail_statuses: list[str], protected_outcome_failures: int,
+    *,
+    level: str,
+    evidence_status: str,
+    benefit_gate_status: str,
+    guardrail_statuses: list[str],
+    protected_outcome_failures: int,
     material_harm: bool,
+    candidate_hard_failures: int,
 ) -> str:
     if level in {"L0", "L1"}:
         return "not_applicable"
     if evidence_status != "complete":
         return "inconclusive"
-    if material_harm or protected_outcome_failures > 0 or "fail" in guardrail_statuses:
+    if (
+        candidate_hard_failures > 0
+        or material_harm
+        or protected_outcome_failures > 0
+        or "fail" in guardrail_statuses
+    ):
         return "not_supported"
     if benefit_gate_status == "fail":
         return "not_supported"
     if benefit_gate_status == "pass" and all(status == "pass" for status in guardrail_statuses):
         return "supported"
     return "inconclusive"
+
+
+def derive_final_authority_status(
+    *,
+    usefulness_status: str,
+    manual_gate_passed: bool,
+    candidate_hard_failures: int,
+    blocking_observations: list[str],
+) -> str:
+    if (
+        usefulness_status == "supported"
+        and manual_gate_passed
+        and candidate_hard_failures == 0
+        and not blocking_observations
+    ):
+        return "eligible"
+    return "blocked"
+
+
+def summarize_candidate_hard_failures(
+    hard_failures_by_variant: dict[str, int],
+    candidate_variant_ids: set[str],
+) -> tuple[int, list[str]]:
+    counts = {
+        variant_id: hard_failures_by_variant.get(variant_id, 0)
+        for variant_id in sorted(candidate_variant_ids)
+        if hard_failures_by_variant.get(variant_id, 0)
+    }
+    total = sum(counts.values())
+    blocking = [
+        f"{variant_id}: {count} case-level hard grader failure(s)"
+        for variant_id, count in counts.items()
+    ]
+    return total, blocking
+
+
+def derive_decision_signal(level: str, usefulness_status: str) -> str:
+    return "diagnostic_complete" if level == "L1" else f"usefulness_{usefulness_status}"
+
+
+def decision_status_text(report: dict[str, Any]) -> str:
+    return (
+        f"evidence_status={report['evidence_status']} "
+        f"usefulness_status={report['usefulness_status']} "
+        f"final_authority_status={report['final_authority_status']} "
+        f"decision_signal={report['decision_signal']}"
+    )
 
 
 def resolve_gate_metric(
@@ -1729,7 +1786,7 @@ def markdown_report(report: dict[str, Any]) -> str:
         "",
         f"- Records: {report['record_count']}",
         f"- Variants: {', '.join(report['variants'])}",
-        f"- Decision signal: `{report['decision_signal']}`",
+        f"- Decision status: `{decision_status_text(report)}`",
         "- This analyzer summary does not replace the frozen evaluation contract or manual evidence review.",
         "",
         "## Variant scorecard",
@@ -2303,14 +2360,10 @@ def main() -> int:
         blocking.append(f"hard gate {gate['id']} failed: observed={gate['observed']} rule {gate['operator']} {gate['threshold']}")
     for gate in unknown_gates:
         blocking.append(f"hard gate {gate['id']} is not evaluable: {gate.get('reason')}")
-    candidate_case_failures_by_variant = {
-        variant_id: case_gate_evidence["hard_failures_by_variant"].get(variant_id, 0)
-        for variant_id in sorted(candidate_variant_ids)
-        if case_gate_evidence and case_gate_evidence["hard_failures_by_variant"].get(variant_id, 0)
-    }
-    candidate_case_failures = sum(candidate_case_failures_by_variant.values())
-    for variant_id, count in candidate_case_failures_by_variant.items():
-        blocking.append(f"{variant_id}: {count} case-level hard grader failure(s)")
+    candidate_case_failures, candidate_failure_blockers = summarize_candidate_hard_failures(
+        case_gate_evidence["hard_failures_by_variant"], candidate_variant_ids
+    )
+    blocking.extend(candidate_failure_blockers)
     spec_ready = spec.get("ready_for_scored_run") is True if spec and comparative else None
     if spec and comparative and not spec_ready:
         blocking.append("evaluation spec is not marked ready_for_scored_run=true")
@@ -2358,15 +2411,18 @@ def main() -> int:
         guardrail_statuses=[gate["status"] for gate in guardrail_gates],
         protected_outcome_failures=protected_failures,
         material_harm=observed_safety_block,
+        candidate_hard_failures=candidate_case_failures,
     )
-    if level == "L1":
-        decision_signal = "diagnostic_complete"
-    else:
-        decision_signal = f"usefulness_{usefulness_status}"
-    final_authority_status = "blocked"
-    if usefulness_status == "supported" and not manual_decision_blocks:
-        if not manual_required or manual_review_result.get("decision") == "approve":
-            final_authority_status = "eligible"
+    decision_signal = derive_decision_signal(level, usefulness_status)
+    manual_gate_passed = not manual_required or bool(
+        manual_review_result and manual_review_result.get("decision") == "approve"
+    )
+    final_authority_status = derive_final_authority_status(
+        usefulness_status=usefulness_status,
+        manual_gate_passed=manual_gate_passed,
+        candidate_hard_failures=candidate_case_failures,
+        blocking_observations=blocking,
+    )
 
     report: dict[str, Any] = {
         "schema_version": 1,
@@ -2454,7 +2510,7 @@ def main() -> int:
             "hard_gates: " + ", ".join(f"{key}={statuses.get(key, 0)}" for key in ("pass", "fail", "not_evaluable")),
             file=status_stream,
         )
-    print(f"Decision signal: {decision_signal}", file=status_stream)
+    print(f"Decision status: {decision_status_text(report)}", file=status_stream)
     if args.report_only:
         return 0
     if level == "L1" or (usefulness_status == "supported" and final_authority_status == "eligible"):
