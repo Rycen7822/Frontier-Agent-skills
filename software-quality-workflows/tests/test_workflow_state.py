@@ -72,7 +72,7 @@ def _mutate(state: dict, name: str) -> dict:
     elif name == "owner_duplicate":
         state["active_owners"]["companions"] = [state["active_owners"]["primary"]]
     elif name == "plan_ref_mismatch":
-        _node(state, "N-02")["plan_node_ref"] = "plan:another-plan#P-02"
+        _node(state, "N-02")["plan_node_ref"] = "plan:wp-plan:" + "b" * 64 + "#P-02"
     elif name == "source_stale":
         options["current_revision"] = "different-revision"
     elif name == "plan_stale":

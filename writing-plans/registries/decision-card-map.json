@@ -1,7 +1,7 @@
 {
   "schema_version": "decision-card-map/1.0",
   "skill_id": "writing-plans",
-  "skill_version": "5.0.0",
+  "skill_version": "6.0.0",
   "decisions": [
     {"decision_id": "wp.select.profiles.brief", "card_id": "wp.profiles.brief", "priority": 10, "required_artifact_ids": [], "produced_artifact_ids": ["plan-brief"], "positive_fixture_id": "wp-positive-profiles-brief", "near_miss_fixture_id": "wp-near-miss-profiles-brief"},
     {"decision_id": "wp.select.profiles.handoff", "card_id": "wp.profiles.handoff", "priority": 20, "required_artifact_ids": [], "produced_artifact_ids": ["plan-handoff"], "positive_fixture_id": "wp-positive-profiles-handoff", "near_miss_fixture_id": "wp-near-miss-profiles-handoff"},

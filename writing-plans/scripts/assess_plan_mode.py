@@ -109,7 +109,7 @@ def _decision_rows(root: Path = ROOT) -> list[dict[str, Any]]:
     if not isinstance(value, dict) or set(value) != {"schema_version", "skill_id", "skill_version", "decisions"}:
         raise PlanRouteError("PLAN_ROUTE_MAP_INVALID", "decision-card map shape is invalid")
     if (value["schema_version"], value["skill_id"], value["skill_version"]) != (
-        "decision-card-map/1.0", "writing-plans", "5.0.0",
+        "decision-card-map/1.0", "writing-plans", "6.0.0",
     ) or not isinstance(value["decisions"], list):
         raise PlanRouteError("PLAN_ROUTE_MAP_INVALID", "decision-card map identity is invalid")
     rows = value["decisions"]

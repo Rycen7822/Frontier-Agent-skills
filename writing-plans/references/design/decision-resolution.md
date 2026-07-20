@@ -5,7 +5,9 @@
   "kind": "decision",
   "decision_id": "wp.select.design.decision-resolution",
   "required_artifact_ids": [],
-  "produced_artifact_ids": ["design-decision"],
+  "produced_artifact_ids": [
+    "design-decision"
+  ],
   "max_bytes": 8192
 }
 ---

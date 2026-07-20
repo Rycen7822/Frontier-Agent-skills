@@ -8,7 +8,7 @@
   "properties": {
     "schema_version": {"const": "3.0"},
     "workflow_id": {"type": "string", "pattern": "^sqw-workflow:[0-9a-f]{64}$"},
-    "bundle_id": {"const": "frontier-engineering/6.0.0+5.0.0"},
+    "bundle_id": {"const": "frontier-engineering/7.0.0+6.0.0"},
     "mode": {"enum": ["M2", "M3"]},
     "request_mode": {"enum": ["report", "review", "diagnose", "change", "recovery"]},
     "policy_bundle_hash": {"$ref": "#/$defs/hash"},
@@ -169,7 +169,7 @@
       }
     },
     "local_id": {"type": "string", "pattern": "^(N|EV|VER|I|AP|LOCK|X|ERR|RUN)-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
-    "external_ref": {"type": "string", "pattern": "^(plan|workflow|review|longdoc):[A-Za-z0-9._-]+#[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+    "external_ref": {"type": "string", "pattern": "^(?:plan:wp-plan:[0-9a-f]{64}|(?:workflow|review|longdoc):[A-Za-z0-9._-]+)#[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
     "ref_id": {"oneOf": [{"$ref": "#/$defs/local_id"}, {"$ref": "#/$defs/external_ref"}]},
     "id_array": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"$ref": "#/$defs/ref_id"}},
     "string_array": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 1024}},
@@ -248,8 +248,8 @@
       "type": "object", "additionalProperties": false,
       "required": ["plan_id", "artifact_ref", "state_ref", "content_hash"],
       "properties": {
-        "plan_id": {"type": "string", "pattern": "^plan-[A-Za-z0-9._-]+$"},
-        "artifact_ref": {"type": "string", "pattern": "^artifact:plan/[A-Za-z0-9._-]+$"},
+        "plan_id": {"type": "string", "pattern": "^wp-plan:[0-9a-f]{64}$"},
+        "artifact_ref": {"type": "string", "pattern": "^artifact:plan/wp-plan:[0-9a-f]{64}$"},
         "state_ref": {"type": "string", "minLength": 1, "maxLength": 1024},
         "content_hash": {"$ref": "#/$defs/hash"}
       }
@@ -272,7 +272,7 @@
         "operation_type": {"enum": ["model", "tool", "manual", "background", "approval", "verification"]},
         "status": {"enum": ["pending", "ready", "running", "blocked", "done", "failed", "invalidated", "superseded", "skipped", "cancelled"]},
         "objective": {"$ref": "#/$defs/non_empty"},
-        "plan_node_ref": {"type": "string", "pattern": "^plan:[A-Za-z0-9._-]+#P-[A-Za-z0-9._-]+$"},
+        "plan_node_ref": {"type": "string", "pattern": "^plan:wp-plan:[0-9a-f]{64}#P-[A-Za-z0-9._-]+$"},
         "depends_on": {"$ref": "#/$defs/id_array"},
         "input_refs": {"$ref": "#/$defs/id_array"},
         "output_refs": {"$ref": "#/$defs/id_array"},

@@ -51,8 +51,8 @@ HANDOFF_SCHEMA = load_json(WRITING_ROOT / "schemas" / "plan-execution-handoff.sc
 WORKFLOW_FIXTURE = SQW_ROOT / "tests" / "fixtures" / "workflow-state" / "valid-m2.json"
 PLAN_FIXTURE = WRITING_ROOT / "tests" / "fixtures" / "plan-state" / "valid-program.json"
 EVENT_FIXTURE = SQW_ROOT / "tests" / "fixtures" / "workflow-events" / "valid-events.jsonl"
-WP_ROUTE_FIXTURE = WRITING_ROOT / "tests" / "fixtures" / "decision-route-cases-v5.json"
-SQW_ROUTE_FIXTURE = SQW_ROOT / "tests" / "fixtures" / "decision-route-cases-v6.json"
+WP_ROUTE_FIXTURE = WRITING_ROOT / "tests" / "fixtures" / "decision-route-cases-v6.json"
+SQW_ROUTE_FIXTURE = SQW_ROOT / "tests" / "fixtures" / "decision-route-cases-v7.json"
 
 
 def _workflow() -> dict:
@@ -97,17 +97,37 @@ class CrossSkillIntegrationTests(unittest.TestCase):
 
     def test_plan_handoff_is_the_single_closed_execution_envelope(self) -> None:
         handoff = {
-            "schema_version": "2.0",
-            "handoff_id": "handoff-0123456789abcdefabcd",
-            "bundle_id": "frontier-engineering/6.0.0+5.0.0",
-            "source_revision": "explicit-unversioned",
-            "profile": "program",
-            "plan_ref": "artifact:plan/plan-manifest-refresh",
-            "plan_hash": "sha256:" + "1" * 64,
-            "authority_manifest_ref": "artifact:authority/auth-0123456789abcdefabcd",
-            "scope_hash": "sha256:" + "2" * 64,
-            "frontier_node_ids": ["N-01"],
-            "required_execution_policy_ids": ["sqw.control.scope-authority-effects"],
+            "schema_version": "3.0",
+            "handoff_id": "wp-handoff:" + "0" * 64,
+            "bundle_id": "frontier-engineering/7.0.0+6.0.0",
+            "producer": {
+                "profile": "program", "card_id": "wp.profiles.handoff",
+                "decision_id": "wp.select.profiles.handoff", "completion_id": "sha256:" + "1" * 64,
+                "plan_id": "wp-plan:" + "a" * 64, "state_hash": "sha256:" + "2" * 64,
+            },
+            "source_identity": {"kind": "unversioned", "identity_hash": "sha256:" + "3" * 64},
+            "scope_binding": {
+                "binding_id": "sha256:" + "4" * 64, "allowed_reads": ["src/**"],
+                "allowed_writes": ["src/**"], "effect_ceiling": "workspace-mutation",
+                "approval_requirements": [], "publication_ceiling": "none",
+            },
+            "goal": "Refresh the manifest owner", "non_goals": ["Publish externally"],
+            "global_invariants": [{"ref": "I-01", "statement": "Preserve manifest identity"}],
+            "owner_seams": [{"owner": "P-01", "paths": ["src/**"], "resources": [], "effects": ["workspace:write"]}],
+            "requirements": {
+                "fact_refs": [], "decision_refs": [], "evidence_refs": ["E-01"],
+                "approval_refs": [], "policy_refs": [],
+            },
+            "ordered_slices": [{
+                "slice_id": "S-01", "node_ref": "P-01", "objective": "Refresh the owner",
+                "depends_on": [], "read_set": ["src/**"], "write_set": ["src/**"],
+                "effect_set": ["workspace:write"], "completion_criterion": "Focused verifier passes",
+            }],
+            "rollback": {"strategy": "restore_previous_state", "steps": ["Restore the prior owner"], "verifier_refs": []},
+            "target_entry": {
+                "skill_id": "software-quality-workflows", "route_phase": "entry",
+                "required_decision_ids": ["sqw.select.control.scope-authority-and-effects"],
+            },
             "unresolved_blockers": [],
         }
         validator = Draft202012Validator(HANDOFF_SCHEMA)
@@ -120,7 +140,7 @@ class CrossSkillIntegrationTests(unittest.TestCase):
         plan = load_json(PLAN_FIXTURE)
         plan_hash = writing_plan_state.canonical_state_hash(plan)
         workflow = _workflow()
-        old_prefix = "plan:plan-manifest-refresh#"
+        old_prefix = "plan:wp-plan:" + "a" * 64 + "#"
         new_prefix = f"plan:{plan['plan_id']}#"
         workflow["plan_ref"] = {
             "plan_id": plan["plan_id"],

@@ -5,7 +5,9 @@
   "kind": "bridge",
   "decision_id": "wp.select.bridges.long-document-handoff",
   "required_artifact_ids": [],
-  "produced_artifact_ids": ["long-document-handoff"],
+  "produced_artifact_ids": [
+    "long-document-handoff"
+  ],
   "max_bytes": 4096
 }
 ---

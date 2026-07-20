@@ -5,7 +5,9 @@
   "kind": "procedure",
   "decision_id": "wp.select.profiles.brief",
   "required_artifact_ids": [],
-  "produced_artifact_ids": ["plan-brief"],
+  "produced_artifact_ids": [
+    "plan-brief"
+  ],
   "max_bytes": 4096
 }
 ---

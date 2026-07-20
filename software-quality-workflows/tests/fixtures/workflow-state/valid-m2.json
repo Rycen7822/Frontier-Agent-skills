@@ -1,14 +1,14 @@
 {
   "schema_version": "3.0",
   "workflow_id": "sqw-workflow:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "bundle_id": "frontier-engineering/6.0.0+5.0.0",
+  "bundle_id": "frontier-engineering/7.0.0+6.0.0",
   "mode": "M2",
   "request_mode": "change",
   "policy_bundle_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
   "card_manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
   "status": "active",
   "state_version": 3,
-  "state_hash": "sha256:8d4c5dbdfbfdd56711dcc594401c705c23cff13d3ed0050fdec0c3aa7545143b",
+  "state_hash": "sha256:af22e61ea2c5412e65d6e927f29b00a11656f2aae43b5acc02a402e59ca42396",
   "bootstrap": {
     "operation_id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
     "entry_completion_id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
@@ -72,8 +72,8 @@
     "companions": []
   },
   "plan_ref": {
-    "plan_id": "plan-manifest-refresh",
-    "artifact_ref": "artifact:plan/plan-manifest-refresh",
+    "plan_id": "wp-plan:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifact_ref": "artifact:plan/wp-plan:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "state_ref": "worknotes/plan-state.json",
     "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
   },
@@ -83,7 +83,7 @@
       "operation_type": "tool",
       "status": "done",
       "objective": "Run the focused legacy fixture.",
-      "plan_node_ref": "plan:plan-manifest-refresh#P-01",
+      "plan_node_ref": "plan:wp-plan:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#P-01",
       "depends_on": [],
       "input_refs": ["I-01"],
       "output_refs": ["EV-01"],
@@ -108,9 +108,9 @@
       "operation_type": "model",
       "status": "ready",
       "objective": "Patch the comparison owner without changing current behavior.",
-      "plan_node_ref": "plan:plan-manifest-refresh#P-02",
+      "plan_node_ref": "plan:wp-plan:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#P-02",
       "depends_on": ["N-01"],
-      "input_refs": ["EV-01", "I-01", "plan:plan-manifest-refresh#D-01"],
+      "input_refs": ["EV-01", "I-01", "plan:wp-plan:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#D-01"],
       "output_refs": ["EV-02"],
       "input_contracts": [{"ref": "EV-01", "schema_id": "sqw.test-result/1.0"}],
       "output_contracts": [{"ref": "EV-02", "schema_id": "sqw.test-result/1.0"}],

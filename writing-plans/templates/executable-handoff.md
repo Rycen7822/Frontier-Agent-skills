@@ -5,7 +5,7 @@
 - Plan/state binding: `{{ plan_id or standalone }} / {{ state_hash or null }}`
 - Source identity: `{{ kind }} / {{ identity_hash }}`
 - Planning scope binding: `{{ binding_id }}`
-- Bundle: `frontier-engineering/6.0.0+5.0.0`
+- Bundle: `frontier-engineering/7.0.0+6.0.0`
 
 This artifact records execution-authority requirements. It does not grant or claim actual authority. The receiver must route through Software Quality Workflows and re-establish scope and effect authority.
 

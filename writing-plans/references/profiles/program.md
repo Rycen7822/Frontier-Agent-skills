@@ -5,7 +5,9 @@
   "kind": "procedure",
   "decision_id": "wp.select.profiles.program",
   "required_artifact_ids": [],
-  "produced_artifact_ids": ["plan-program"],
+  "produced_artifact_ids": [
+    "plan-program"
+  ],
   "max_bytes": 8192
 }
 ---

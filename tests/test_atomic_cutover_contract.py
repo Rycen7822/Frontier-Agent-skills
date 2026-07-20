@@ -8,8 +8,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL_TARGETS = {
-    "writing-plans": ("5.0.0", 10),
-    "software-quality-workflows": ("6.0.0", 52),
+    "writing-plans": ("6.0.0", 10),
+    "software-quality-workflows": ("7.0.0", 52),
 }
 CORE_CLOSURE = re.compile(
     r"autonomous_" + r"closure|wp\." + r"closure\.|sqw\." + r"closure\."
@@ -31,9 +31,9 @@ class AtomicCutoverContractTests(unittest.TestCase):
         manifest = self._load(ROOT / "bundle-manifest.json")
         generated = self._load(ROOT / "frontier-engineering.bundle.json")
         self.assertEqual("2.0", manifest["bundle_schema_version"])
-        self.assertEqual("2.0.1", manifest["bundle_version"])
+        self.assertEqual("3.0.0", manifest["bundle_version"])
         self.assertEqual(
-            [("writing-plans", "5.0.0"), ("software-quality-workflows", "6.0.0")],
+            [("writing-plans", "6.0.0"), ("software-quality-workflows", "7.0.0")],
             [(skill["id"], skill["version"]) for skill in manifest["skills"]],
         )
         self.assertEqual(
@@ -49,7 +49,7 @@ class AtomicCutoverContractTests(unittest.TestCase):
             manifest["activation_policy"],
         )
         self.assertEqual("frontier-engineering-bundle/1.0", generated["schema_version"])
-        self.assertEqual("frontier-engineering/6.0.0+5.0.0", generated["bundle_id"])
+        self.assertEqual("frontier-engineering/7.0.0+6.0.0", generated["bundle_id"])
         self.assertEqual(2, generated["compatible_schema_epoch"])
 
     def test_active_card_inventory_and_static_economy_are_exact(self) -> None:

@@ -14,7 +14,7 @@
   ],
   "properties": {
     "schema_version": {"const": "frontier-engineering-bundle/1.0"},
-    "bundle_id": {"const": "frontier-engineering/6.0.0+5.0.0"},
+    "bundle_id": {"const": "frontier-engineering/7.0.0+6.0.0"},
     "compatible_schema_epoch": {"const": 2},
     "release_build_id": {"type": "string", "pattern": "^build-[0-9a-f]{24}$"},
     "skills": {
