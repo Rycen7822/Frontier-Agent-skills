@@ -16,9 +16,9 @@ metadata:
 
 ## Owner contract
 
-Own software execution truth: authority, scope, diagnosis, edits, tests, accepted evidence, review, recovery, and completion. Routine work stays Direct; durable machinery requires recovery or proof value.
+Own software execution truth: authority, scope, diagnosis, changes, evidence, review, recovery, and completion. Routine work stays Direct; durable machinery needs recovery or proof value.
 
-Never invent intent, expand authority, treat context as state, trust worker self-verdicts, or equate local proof with publication readiness. `writing-plans` owns durable intended state; `long-document-segmented-writing` owns large-corpus drafting; hosted-platform owners control live remote state. A missing owner does not remove a gate.
+Never invent intent, expand authority, treat context as state, trust worker self-verdicts, or equate local proof with publication readiness. `writing-plans` owns durable plans; `long-document-segmented-writing` owns large-corpus drafts; hosted-platform owners control live remote state. Missing owners do not remove gates.
 
 Codex and Hermes Agent share this contract. Resolve paths from this skill root. Optional host features are not prerequisites; live agents, remote/destructive work, release, and publication require explicit authority.
 
@@ -33,9 +33,13 @@ Before changing anything:
 5. Treat worker output and evidence as proposals; the controller verifies identity, freshness, scope, and independence.
 6. Inspect final diff/evidence and name every not-run, blocked, flaky, stale, sampled, or environment-limited gate. High-risk implementers do not self-approve.
 
+## Direct path
+
+Use **M0 Direct** without `card_cycle.py` only for same-session local reversible work with adequate authority, a known seam, and no durable, recovery, delegation, public-contract, or external-effect boundary. It creates no receipt, work root, anchor, or protocol artifact. Inspect source and dirty state, make or report the smallest distinction, and verify proportionally. Unknown cause blocks Direct implementation, not bounded read-only diagnosis.
+
 ## Card-cycle entry
 
-Use only this skill root's `scripts/card_cycle.py` as the model-facing protocol:
+All other work uses only this skill root's `scripts/card_cycle.py` as the model-facing protocol:
 
 1. Read the compact initial contract with `LC_ALL=C scripts/card_cycle.py route --help`.
 2. Send one v2 route command through stdin with `scripts/card_cycle.py route --input - --source-root <source>`; `--source-root` is the target repository root, never this skill root. Add `--work-root` only for a durable resume required by that command.
@@ -50,12 +54,12 @@ Use only this skill root's `scripts/card_cycle.py` as the model-facing protocol:
 
 ## Mode, review, and context
 
-- **M0 Direct:** same-session, local, reversible, known seam, focused proof; no durable state or anchor.
+- **M0 Direct:** admission and procedure above; no durable state or anchor.
 - **M1 Trace:** bounded observed summaries and controlled pointers; no durable state or anchor.
 - **M2 Sparse:** one durable owner at costly, delegated, approval, public-contract, or recovery boundaries.
 - **M3 Full:** one durable owner for multi-session migration, release, destructive recovery, or shared state.
 
-Mode never expands authority. Upgrade on observed authority, source, shared state, conflict, failure-locality, or proof risk; downgrade when that boundary ends. Review depth is independent: R0 self-diff plus verifier, R1 requirements plus engineering axes, R2 independent/adversarial evidence for high-risk work.
+Mode never expands authority. Upgrade on observed authority, source, shared state, conflict, failure-locality, or proof risk; downgrade when it ends. Review depth is independent: R0 self-diff plus verifier, R1 requirements plus engineering axes, R2 independent/adversarial high-risk evidence.
 
 Model context is limited to this entry, current help/replacement receipt, one card, short stdout, and one needed projection/boundary artifact. `scripts/project_context.py` may render exact inputs within 8,192 bytes; overflow blocks, and projections never enter state hashing.
 
