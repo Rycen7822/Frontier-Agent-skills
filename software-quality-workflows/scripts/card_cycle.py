@@ -9,13 +9,14 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import stat
+import subprocess
 import sys
 from typing import Any
 
 from jsonschema import Draft202012Validator
 
 from _workflow_reference_cards import load_json, strict_json_bytes
-from local_workflow_adapter import AdapterConflict, AdapterSourceDrift, LocalWorkflowAdapter, bootstrap_v3
+from local_workflow_adapter import AdapterConflict, AdapterSourceDrift, LocalWorkflowAdapter, bootstrap_v3, project_source_snapshot
 from route_workflow import assess, validate_route_result
 
 
@@ -153,12 +154,44 @@ def _source_observation(source_root: Path) -> dict[str, Any]:
         raise CycleError("E_SOURCE_UNAVAILABLE", "source root is unavailable", exit_code=5) from exc
     if source_root.is_symlink() or not stat.S_ISDIR(info.st_mode) or resolved != source_root.absolute():
         raise CycleError("E_SOURCE_UNAVAILABLE", "source root is not canonical", exit_code=5)
-    if (resolved / ".git").exists():
-        raise CycleError("E_SOURCE_UNAVAILABLE", "repository source support is not active in this slice", exit_code=5)
+    repository = (resolved / ".git").exists()
+    head_commit = None
+    head_tree = None
+    if repository:
+        environment = {**os.environ, "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C"}
+
+        def git_value(*arguments: str) -> str:
+            try:
+                completed = subprocess.run(
+                    ["git", "-C", str(resolved), *arguments],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=10,
+                    env=environment,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise CycleError("E_SOURCE_UNAVAILABLE", "repository identity cannot be observed", exit_code=5) from exc
+            value = completed.stdout.strip()
+            if completed.returncode != 0 or "\n" in value:
+                raise CycleError("E_SOURCE_UNAVAILABLE", "repository identity cannot be observed", exit_code=5)
+            return value
+
+        try:
+            if Path(git_value("rev-parse", "--show-toplevel")).resolve(strict=True) != resolved:
+                raise CycleError("E_SOURCE_UNAVAILABLE", "source root is not the repository root", exit_code=5)
+        except OSError as exc:
+            raise CycleError("E_SOURCE_UNAVAILABLE", "repository root is unavailable", exit_code=5) from exc
+        head_commit = git_value("rev-parse", "--verify", "HEAD")
+        head_tree = git_value("rev-parse", "--verify", "HEAD^{tree}")
+        if len(head_commit) not in {40, 64} or len(head_tree) not in {40, 64} or any(character not in "0123456789abcdef" for character in head_commit + head_tree):
+            raise CycleError("E_SOURCE_UNAVAILABLE", "repository revision identity is invalid", exit_code=5)
 
     records: list[dict[str, Any]] = []
     total = 0
     for current, directories, filenames in os.walk(resolved, followlinks=False):
+        directories[:] = [name for name in directories if name != ".git"]
+        filenames[:] = [name for name in filenames if name != ".git"]
         directories.sort()
         filenames.sort()
         current_path = Path(current)
@@ -178,25 +211,27 @@ def _source_observation(source_root: Path) -> dict[str, Any]:
                 raise CycleError("E_SOURCE_UNAVAILABLE", "source observation exceeds its bound", exit_code=5)
             records.append({"path": relative, "content_hash": content_hash, "bytes": size, "mode": mode})
     return {
-        "kind": "unversioned",
+        "kind": "repository" if repository else "unversioned",
         "root_binding": {"dev": info.st_dev, "ino": info.st_ino},
+        "head_commit": head_commit,
+        "head_tree": head_tree,
         "records": records,
     }
 
 
-def _capture_source(source_root: Path) -> dict[str, str]:
+def _capture_source(source_root: Path) -> tuple[dict[str, str], dict[str, Any]]:
     opening = _source_observation(source_root)
     closing = _source_observation(source_root)
     if opening != closing:
         raise CycleError("E_SOURCE_DRIFT", "source changed during the stability fence", exit_code=3, retryable=True)
-    return {"kind": "unversioned", "identity_hash": _hash(opening)}
+    return {"kind": opening["kind"], "identity_hash": _hash(opening)}, opening
 
 
 def _receipt_id(receipt: dict[str, Any]) -> str:
     return _hash({key: value for key, value in receipt.items() if key != "receipt_id"})
 
 
-def _validate_receipt(schema: dict[str, Any], receipt: Any, source_identity: dict[str, str]) -> dict[str, Any]:
+def _validate_receipt(schema: dict[str, Any], receipt: Any, source_identity: dict[str, str], *, enforce_source: bool = True) -> dict[str, Any]:
     validator_schema = {
         "$schema": schema["$schema"],
         "$defs": schema["$defs"],
@@ -207,7 +242,7 @@ def _validate_receipt(schema: dict[str, Any], receipt: Any, source_identity: dic
         raise CycleError("E_RECEIPT_INVALID", "previous receipt is invalid", exit_code=3)
     if receipt["receipt_id"] != _receipt_id(receipt):
         raise CycleError("E_RECEIPT_INVALID", "previous receipt hash is invalid", exit_code=3)
-    if receipt["source_identity"] != source_identity:
+    if enforce_source and receipt["source_identity"] != source_identity:
         raise CycleError("E_SOURCE_REVISION_CHANGED", "source identity changed", exit_code=3)
     return receipt
 
@@ -312,6 +347,7 @@ def _base_receipt(manifest: dict[str, Any], source_identity: dict[str, str], nex
         "state_hash": None,
         "source_fresh": True,
         "pending_source_transition": None,
+        "already_completed": False,
     }
 
 
@@ -327,14 +363,16 @@ def _route_resume(
     command: dict[str, Any],
     manifest: dict[str, Any],
     source_identity: dict[str, str],
+    source_observation: dict[str, Any],
     work_root: Path,
 ) -> dict[str, Any]:
     adapter = LocalWorkflowAdapter(work_root, load_json(STATE_SCHEMA_PATH), load_json(EVENT_SCHEMA_PATH))
     expected_cards = {card["card_id"]: (card["path"], card["sha256"]) for card in manifest["cards"]}
     try:
-        state, lease = adapter.resume(
+        state, lease, pending_transition, source_fresh, blocked_reason = adapter.resume(
             command["fields"]["owner_locator"],
             source_identity,
+            current_source_observation=source_observation,
             expected_bundle_id=manifest["bundle_id"],
             expected_policy_bundle_hash=_hash(load_json(POLICY_PATH)),
             expected_card_manifest_hash=_hash(manifest),
@@ -345,7 +383,11 @@ def _route_resume(
     except AdapterConflict as exc:
         raise CycleError("E_ORPHAN_CONFLICT", str(exc), exit_code=5) from exc
     frontier = state["active_frontier"]
-    next_step = frontier or {"kind": "terminal", "decision_id": None, "reason_codes": ["ACTIVE_QUEUE_EMPTY"]}
+    next_step = (
+        {"kind": "blocked", "decision_id": None, "reason_code": blocked_reason}
+        if blocked_reason is not None
+        else frontier or {"kind": "terminal", "decision_id": None, "reason_codes": ["ACTIVE_QUEUE_EMPTY"]}
+    )
     receipt = _base_receipt(manifest, source_identity, next_step)
     receipt.update({
         "owner_locator": command["fields"]["owner_locator"],
@@ -353,6 +395,8 @@ def _route_resume(
         "scope_binding": state["scope_binding"],
         "state_version": state["state_version"],
         "state_hash": state["state_hash"],
+        "source_fresh": source_fresh,
+        "pending_source_transition": pending_transition,
     })
     receipt["receipt_id"] = _receipt_id(receipt)
     return receipt
@@ -486,6 +530,7 @@ def _complete_active(
     registry: dict[str, Any],
     previous: dict[str, Any],
     source_identity: dict[str, str],
+    source_snapshot: dict[str, Any],
     work_root: Path,
 ) -> dict[str, Any]:
     card = _card(manifest, previous["next_step"]["card_id"])
@@ -511,6 +556,8 @@ def _complete_active(
         None,
         command["outcome"]["decision_request"],
     )
+    completion["source_transition"] = previous["pending_source_transition"]
+    completion["content_hash"] = _hash({key: value for key, value in completion.items() if key != "content_hash"})
     if len(_canonical(completion)) > family["payload_max_bytes"]:
         raise CycleError("E_COMMAND_BUDGET", "completion payload exceeds its family budget", exit_code=4)
     materialized = family["persistence_class"] == "boundary_by_contract"
@@ -562,12 +609,13 @@ def _complete_active(
 
     adapter = LocalWorkflowAdapter(work_root, load_json(STATE_SCHEMA_PATH), load_json(EVENT_SCHEMA_PATH))
     try:
-        state, lease = adapter.complete_card(
+        state, lease, completion_outcome = adapter.complete_card(
             previous["owner_locator"],
             previous,
             source_identity,
             completion,
             select_next,
+            current_source_snapshot=source_snapshot,
             materialized_payload=artifact_payload,
             content_locator=content_locator,
             expected_bundle_id=manifest["bundle_id"],
@@ -579,7 +627,12 @@ def _complete_active(
         raise CycleError("E_SOURCE_REVISION_CHANGED", str(exc), exit_code=5) from exc
     except AdapterConflict as exc:
         raise CycleError("E_ORPHAN_CONFLICT", str(exc), exit_code=5) from exc
-    next_step = state["active_frontier"] or {"kind": "terminal", "decision_id": None, "reason_codes": ["ACTIVE_QUEUE_EMPTY"]}
+    blocked_reason = completion_outcome.split(":", 1)[1] if completion_outcome.startswith("replayed_blocked:") else None
+    next_step = (
+        {"kind": "blocked", "decision_id": None, "reason_code": blocked_reason}
+        if blocked_reason is not None
+        else state["active_frontier"] or {"kind": "terminal", "decision_id": None, "reason_codes": ["ACTIVE_QUEUE_EMPTY"]}
+    )
     receipt = _base_receipt(manifest, source_identity, next_step)
     receipt.update({
         "receipt_kind": "completion",
@@ -596,6 +649,8 @@ def _complete_active(
         "current_lease": lease,
         "state_version": state["state_version"],
         "state_hash": state["state_hash"],
+        "source_fresh": blocked_reason is None,
+        "already_completed": completion_outcome != "committed",
     })
     receipt["receipt_id"] = _receipt_id(receipt)
     return receipt
@@ -618,13 +673,13 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
         raise CycleError("E_ROOT_ROLE", "durable command requires a work root")
     if not (durable_scope or durable_resume or durable_active) and args.work_root is not None:
         raise CycleError("E_ROOT_ROLE", "this command does not accept a work root")
-    source_identity = _capture_source(Path(args.source_root))
+    source_identity, source_observation = _capture_source(Path(args.source_root))
     if command["contract_id"] == "sqw.route.initial/1":
         receipt = _route_initial(command, manifest, source_identity)
     elif durable_resume:
-        receipt = _route_resume(command, manifest, source_identity, Path(args.work_root))
+        receipt = _route_resume(command, manifest, source_identity, source_observation, Path(args.work_root))
     else:
-        previous = _validate_receipt(schema, command["previous_receipt"], source_identity)
+        previous = _validate_receipt(schema, command["previous_receipt"], source_identity, enforce_source=not durable_active)
         if previous["bundle_id"] != manifest["bundle_id"]:
             raise CycleError("E_RECEIPT_INVALID", "previous receipt bundle is stale", exit_code=3)
         if command["contract_id"] == "sqw.complete.entry/1":
@@ -645,6 +700,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                         scope_completion=receipt["completion"],
                         scope_binding=receipt["scope_binding"],
                         source_identity=source_identity,
+                        source_snapshot=project_source_snapshot(source_observation, source_identity, receipt["scope_binding"]),
                         next_step=receipt["next_step"],
                     )
                 except AdapterConflict as exc:
@@ -655,7 +711,8 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                 receipt["state_hash"] = state["state_hash"]
                 receipt["receipt_id"] = _receipt_id(receipt)
         elif durable_active:
-            receipt = _complete_active(command, schema, manifest, registry, previous, source_identity, Path(args.work_root))
+            source_snapshot = project_source_snapshot(source_observation, source_identity, previous["scope_binding"])
+            receipt = _complete_active(command, schema, manifest, registry, previous, source_identity, source_snapshot, Path(args.work_root))
         else:
             raise CycleError("E_UNSUPPORTED_VARIANT", "command contract is not active", exit_code=4)
     receipt_validator = {

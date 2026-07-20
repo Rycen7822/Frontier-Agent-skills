@@ -4,7 +4,7 @@
   "title": "SQW Workflow State 3.0",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "workflow_id", "bundle_id", "policy_bundle_hash", "card_manifest_hash", "mode", "request_mode", "status", "state_version", "state_hash", "bootstrap", "scope_binding", "source_identity", "source", "authority", "scope", "global_invariants", "active_owners", "nodes", "verifiers", "edges", "frontier", "active_frontier", "card_completions", "artifacts", "recent_failures", "pending_background", "last_transition"],
+  "required": ["schema_version", "workflow_id", "bundle_id", "policy_bundle_hash", "card_manifest_hash", "mode", "request_mode", "status", "state_version", "state_hash", "bootstrap", "scope_binding", "source_identity", "source_snapshot", "source", "authority", "scope", "global_invariants", "active_owners", "nodes", "verifiers", "edges", "frontier", "active_frontier", "card_completions", "artifacts", "recent_failures", "pending_background", "last_transition"],
   "properties": {
     "schema_version": {"const": "3.0"},
     "workflow_id": {"type": "string", "pattern": "^sqw-workflow:[0-9a-f]{64}$"},
@@ -19,6 +19,7 @@
     "bootstrap": {"$ref": "#/$defs/bootstrap"},
     "scope_binding": {"$ref": "#/$defs/scope_binding"},
     "source_identity": {"$ref": "#/$defs/source_identity"},
+    "source_snapshot": {"$ref": "#/$defs/source_snapshot"},
     "source": {"$ref": "#/$defs/source"},
     "authority": {"$ref": "#/$defs/authority"},
     "scope": {"$ref": "#/$defs/scope"},
@@ -73,6 +74,33 @@
       "type": "object", "additionalProperties": false,
       "required": ["kind", "identity_hash"],
       "properties": {"kind": {"enum": ["repository", "unversioned"]}, "identity_hash": {"$ref": "#/$defs/hash"}}
+    },
+    "source_record": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "content_hash", "bytes", "mode"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "content_hash": {"$ref": "#/$defs/hash"},
+        "bytes": {"type": "integer", "minimum": 0, "maximum": 8388608},
+        "mode": {"type": "string", "pattern": "^[0-7]{4}$"}
+      }
+    },
+    "source_snapshot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "identity_hash", "root_binding", "head_commit", "head_tree", "scoped_records", "exterior_guard_hash"],
+      "properties": {
+        "kind": {"enum": ["repository", "unversioned"]},
+        "identity_hash": {"$ref": "#/$defs/hash"},
+        "root_binding": {
+          "type": "object", "additionalProperties": false,
+          "required": ["dev", "ino"],
+          "properties": {"dev": {"type": "integer", "minimum": 0}, "ino": {"type": "integer", "minimum": 1}}
+        },
+        "head_commit": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"}]},
+        "head_tree": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"}]},
+        "scoped_records": {"type": "array", "maxItems": 4096, "items": {"$ref": "#/$defs/source_record"}},
+        "exterior_guard_hash": {"$ref": "#/$defs/hash"}
+      }
     },
     "card_frontier": {
       "type": "object", "additionalProperties": false,

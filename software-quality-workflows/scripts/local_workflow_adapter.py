@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from fnmatch import fnmatchcase
 from hashlib import sha256
 import json
 import os
@@ -105,6 +106,56 @@ def _validate_artifact_bytes(payload: bytes, locator: dict[str, Any]) -> None:
         or locator.get("artifact_id") != value.get("artifact_id")
     ):
         raise AdapterConflict("materialized completion does not match its locator")
+
+
+def project_source_snapshot(observation: dict[str, Any], identity: dict[str, Any], scope_binding: dict[str, Any]) -> dict[str, Any]:
+    patterns = sorted(set(scope_binding["allowed_reads"]) | set(scope_binding["allowed_writes"]))
+    scoped = [record for record in observation["records"] if any(fnmatchcase(record["path"], pattern) for pattern in patterns)]
+    scoped_paths = {record["path"] for record in scoped}
+    exterior = [record for record in observation["records"] if record["path"] not in scoped_paths]
+    return {
+        "kind": identity["kind"],
+        "identity_hash": identity["identity_hash"],
+        "root_binding": observation["root_binding"],
+        "head_commit": observation.get("head_commit"),
+        "head_tree": observation.get("head_tree"),
+        "scoped_records": scoped,
+        "exterior_guard_hash": _value_hash(exterior),
+    }
+
+
+def _eligible_source_transition(before: dict[str, Any], after: dict[str, Any], allowed_writes: list[str]) -> dict[str, Any] | None:
+    if before["identity_hash"] == after["identity_hash"]:
+        return None
+    if before["kind"] != after["kind"] or before["root_binding"] != after["root_binding"]:
+        raise AdapterSourceDrift("source kind or root identity changed")
+    if before.get("head_commit") != after.get("head_commit") or before.get("head_tree") != after.get("head_tree"):
+        raise AdapterSourceDrift("repository HEAD or tree changed")
+    if before["exterior_guard_hash"] != after["exterior_guard_hash"]:
+        raise AdapterSourceDrift("source changed outside the immutable scope binding")
+    before_records = {item["path"]: item for item in before["scoped_records"]}
+    after_records = {item["path"]: item for item in after["scoped_records"]}
+    changed: list[dict[str, str]] = []
+    for path in sorted(set(before_records) | set(after_records)):
+        if path not in before_records:
+            status = "added"
+        elif path not in after_records:
+            status = "deleted"
+        elif before_records[path] != after_records[path]:
+            status = "modified"
+        else:
+            continue
+        if not any(fnmatchcase(path, pattern) for pattern in allowed_writes):
+            raise AdapterSourceDrift("source changed outside allowed_writes")
+        changed.append({"path": path, "status": status})
+    if not changed:
+        raise AdapterSourceDrift("source identity changed without a scoped path transition")
+    return {
+        "before_identity_hash": before["identity_hash"],
+        "after_identity_hash": after["identity_hash"],
+        "changed_paths": changed,
+        "changed_paths_hash": _value_hash(changed),
+    }
 
 
 def _optional_lstat(path: Path) -> os.stat_result | None:
@@ -473,6 +524,7 @@ def bootstrap_v3(
     scope_completion: dict[str, Any],
     scope_binding: dict[str, Any],
     source_identity: dict[str, Any],
+    source_snapshot: dict[str, Any] | None = None,
     next_step: dict[str, Any],
     now_value: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
@@ -480,6 +532,19 @@ def bootstrap_v3(
     if mode not in {"M2", "M3"}:
         raise AdapterConflict("durable workflow mode must be M2 or M3")
     resolved, initial_root_binding = _validate_v3_root(root, source_root)
+    if source_snapshot is None:
+        source_info = source_root.lstat()
+        source_snapshot = {
+            "kind": source_identity["kind"],
+            "identity_hash": source_identity["identity_hash"],
+            "root_binding": {"dev": source_info.st_dev, "ino": source_info.st_ino},
+            "head_commit": None,
+            "head_tree": None,
+            "scoped_records": [],
+            "exterior_guard_hash": _value_hash([]),
+        }
+    if source_snapshot["identity_hash"] != source_identity["identity_hash"]:
+        raise AdapterConflict("source snapshot does not bind source identity")
     initial_root_binding_hash = _value_hash(initial_root_binding)
     bootstrap_semantics = {
         "bundle_id": bundle_id,
@@ -550,6 +615,7 @@ def bootstrap_v3(
         },
         "scope_binding": scope_binding,
         "source_identity": source_identity,
+        "source_snapshot": source_snapshot,
         "source": {
             "repository": "unversioned",
             "base_revision": source_identity["identity_hash"],
@@ -1024,13 +1090,15 @@ class LocalWorkflowAdapter:
         self,
         locator: dict[str, Any],
         current_source_identity: dict[str, Any],
+        current_source_snapshot: dict[str, Any] | None = None,
         *,
+        current_source_observation: dict[str, Any] | None = None,
         expected_bundle_id: str,
         expected_policy_bundle_hash: str,
         expected_card_manifest_hash: str,
         expected_cards: dict[str, tuple[str, str]],
         now_value: str | None = None,
-    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    ) -> tuple[dict[str, Any], dict[str, Any] | None, dict[str, Any] | None, bool, str | None]:
         """Return the committed frontier and reuse or replace its independent lease."""
         with self._locked_state() as state:
             expected_locator = {
@@ -1052,8 +1120,26 @@ class LocalWorkflowAdapter:
             ):
                 raise AdapterConflict("workflow owner contract is stale")
             self._abort_prepared_completion(state, expected_cards)
-            if current_source_identity != state["source_identity"]:
-                raise AdapterSourceDrift("current source identity differs from committed workflow state")
+            if current_source_observation is not None:
+                current_source_snapshot = project_source_snapshot(current_source_observation, current_source_identity, state["scope_binding"])
+            if current_source_snapshot is None:
+                if current_source_identity != state["source_identity"]:
+                    raise AdapterSourceDrift("current source identity lacks a verifiable scoped snapshot")
+                current_source_snapshot = state["source_snapshot"]
+            blocked_reason = None
+            try:
+                if current_source_snapshot["identity_hash"] != current_source_identity["identity_hash"]:
+                    raise AdapterSourceDrift("source transition is unverifiable")
+                pending_transition = _eligible_source_transition(
+                    state["source_snapshot"],
+                    current_source_snapshot,
+                    state["scope_binding"]["allowed_writes"],
+                )
+            except AdapterSourceDrift as exc:
+                pending_transition = None
+                message = str(exc)
+                blocked_reason = "source-kind-or-root-changed" if "kind or root" in message else "source-revision-changed" if "HEAD or tree" in message else "source-transition-unverifiable" if "unverifiable" in message or "without a scoped" in message else "source-out-of-scope"
+            source_fresh = pending_transition is None and blocked_reason is None
             frontier = state.get("active_frontier")
             empty_locks = {
                 "schema_version": "sqw-locks/1",
@@ -1077,8 +1163,41 @@ class LocalWorkflowAdapter:
                 if len(matches) == 1 and matches[0]["storage"] == "inline":
                     old_completion = matches[0]["completion"]
                     old_owner = {"producer_id": old_completion.get("producer_card_id"), "decision_id": old_completion.get("decision_id")}
+                elif len(matches) == 1 and matches[0]["storage"] == "materialized":
+                    final_name, _ = _artifact_names(matches[0]["content_locator"])
+                    old_completion = json.loads(_safe_regular_bytes(self.root / "artifacts" / final_name)[0])
+                    old_owner = {"producer_id": old_completion.get("producer_card_id"), "decision_id": old_completion.get("decision_id")}
 
             empty_bytes = _compact_bytes(empty_locks) + b"\n"
+            if blocked_reason is not None:
+                current_owner = {"producer_id": frontier["card_id"], "decision_id": frontier["decision_id"]} if isinstance(frontier, dict) else old_owner
+                if final_bytes != empty_bytes:
+                    try:
+                        final_kind, final_lease = _locks_kind(final_bytes, empty_locks, current_owner or {})
+                    except AdapterConflict:
+                        if old_owner is None:
+                            raise
+                        final_kind, final_lease = _locks_kind(final_bytes, empty_locks, old_owner)
+                    if final_kind != "leased" or final_lease is None:
+                        raise AdapterConflict("blocked workflow locks are foreign")
+                if _optional_lstat(temp_path) is not None:
+                    temp_bytes, _ = _safe_regular_bytes(temp_path)
+                    if temp_bytes != empty_bytes:
+                        temp_kind, temp_lease = _locks_kind(temp_bytes, empty_locks, current_owner or {})
+                        if temp_kind != "leased" or temp_lease is None:
+                            raise AdapterConflict("blocked workflow locks temp conflicts")
+                        _sync_directory(self.root)
+                        temp_path.unlink()
+                        _sync_directory(self.root)
+                _replace_fixed_mutable(
+                    self.root,
+                    "locks.json",
+                    ".locks.json.tmp",
+                    expected_bytes=final_bytes,
+                    candidate_bytes=empty_bytes,
+                    checkpoint_prefix="route_lease",
+                )
+                return state, None, None, False, blocked_reason
             if frontier is None:
                 if state["status"] != "completed":
                     raise AdapterConflict("terminal workflow status is invalid")
@@ -1100,10 +1219,15 @@ class LocalWorkflowAdapter:
                     candidate_bytes=empty_bytes,
                     checkpoint_prefix="route_lease",
                 )
-                return state, None
+                return state, None, None, source_fresh, None
             if not isinstance(frontier, dict) or expected_cards.get(frontier["card_id"]) != (frontier["card_path"], frontier["card_hash"]):
                 raise AdapterConflict("workflow frontier is stale")
             lease_owner = {"producer_id": frontier["card_id"], "decision_id": frontier["decision_id"]}
+            pending_lease_id = _value_hash({"workflow_id": state["workflow_id"], "state_hash": state["state_hash"], "frontier": frontier, "source_transition": pending_transition}) if pending_transition is not None else None
+            if _optional_lstat(temp_path) is not None and _safe_regular_bytes(temp_path)[0] == empty_bytes:
+                _sync_directory(self.root)
+                temp_path.unlink()
+                _sync_directory(self.root)
             try:
                 final_kind, final_lease = _locks_kind(final_bytes, empty_locks, lease_owner)
             except AdapterConflict:
@@ -1118,12 +1242,17 @@ class LocalWorkflowAdapter:
                 candidate_kind, candidate_lease = _locks_kind(candidate_bytes, empty_locks, lease_owner)
                 if candidate_kind != "leased" or candidate_lease is None:
                     raise AdapterConflict("workflow replacement lease temp conflicts")
-            elif final_kind == "leased" and final_lease is not None and datetime.fromisoformat(final_lease["lease_expires_at"].replace("Z", "+00:00")) > now:
-                return state, final_lease
+                if pending_lease_id is not None and candidate_lease["lease_id"] != pending_lease_id:
+                    raise AdapterConflict("workflow pending-transition lease temp conflicts")
+            elif final_kind == "leased" and final_lease is not None and datetime.fromisoformat(final_lease["lease_expires_at"].replace("Z", "+00:00")) > now and (
+                pending_transition is None
+                or final_lease["lease_id"] == pending_lease_id
+            ):
+                return state, final_lease, pending_transition, source_fresh, None
             else:
                 issued_at = now.isoformat().replace("+00:00", "Z")
                 candidate_lease = {
-                    "lease_id": _value_hash({"workflow_id": state["workflow_id"], "state_hash": state["state_hash"], "frontier": frontier, "issued_at": issued_at}),
+                    "lease_id": pending_lease_id or _value_hash({"workflow_id": state["workflow_id"], "state_hash": state["state_hash"], "frontier": frontier, "issued_at": issued_at}),
                     **lease_owner,
                     "lease_expires_at": (now + timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
                 }
@@ -1136,7 +1265,7 @@ class LocalWorkflowAdapter:
                 candidate_bytes=candidate_bytes,
                 checkpoint_prefix="route_lease",
             )
-            return state, candidate_lease
+            return state, candidate_lease, pending_transition, source_fresh, None
 
     def complete_card(
         self,
@@ -1146,6 +1275,7 @@ class LocalWorkflowAdapter:
         completion: dict[str, Any],
         select_next: Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]],
         *,
+        current_source_snapshot: dict[str, Any] | None = None,
         materialized_payload: bytes | None = None,
         content_locator: dict[str, Any] | None = None,
         expected_bundle_id: str,
@@ -1153,7 +1283,7 @@ class LocalWorkflowAdapter:
         expected_card_manifest_hash: str,
         expected_cards: dict[str, tuple[str, str]],
         now_value: str | None = None,
-    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    ) -> tuple[dict[str, Any], dict[str, Any] | None, str]:
         """Commit one inline or materialized card completion and its derived lease."""
         materialized = materialized_payload is not None or content_locator is not None
         if materialized != (materialized_payload is not None and content_locator is not None):
@@ -1182,8 +1312,6 @@ class LocalWorkflowAdapter:
                 or state["card_manifest_hash"] != expected_card_manifest_hash
             ):
                 raise AdapterConflict("workflow owner contract is stale")
-            if current_source_identity != state["source_identity"]:
-                raise AdapterSourceDrift("current source identity differs from committed workflow state")
             if previous_receipt.get("owner_locator") != locator or previous_receipt.get("scope_binding") != state["scope_binding"]:
                 raise AdapterConflict("card receipt does not bind this workflow owner")
 
@@ -1196,6 +1324,34 @@ class LocalWorkflowAdapter:
                 raise AdapterConflict("card receipt frontier is stale")
             if completion.get("producer_card_id") != previous_frontier["card_id"] or completion.get("decision_id") != previous_frontier["decision_id"]:
                 raise AdapterConflict("completion does not bind the routed card")
+            if current_source_snapshot is None:
+                if current_source_identity != state["source_identity"]:
+                    raise AdapterSourceDrift("current source identity lacks a verifiable scoped snapshot")
+                current_source_snapshot = state["source_snapshot"]
+            if current_source_snapshot["identity_hash"] != current_source_identity["identity_hash"]:
+                raise AdapterSourceDrift("current source snapshot does not bind its identity")
+            pending_transition = previous_receipt.get("pending_source_transition")
+            if completion.get("source_transition") != pending_transition:
+                raise AdapterConflict("completion does not bind the routed source transition")
+            precommit = state["state_version"] == prior_version and state["state_hash"] == prior_hash
+            postcommit = state["state_version"] == prior_version + 1 and state["last_transition"]["prior_state_hash"] == prior_hash and state["last_transition"]["completion_id"] == completion["content_hash"]
+            delivery_blocked_reason = None
+            if precommit:
+                calculated_transition = _eligible_source_transition(
+                    state["source_snapshot"],
+                    current_source_snapshot,
+                    state["scope_binding"]["allowed_writes"],
+                )
+                if calculated_transition != pending_transition:
+                    raise AdapterSourceDrift("card receipt source transition is stale")
+            elif postcommit:
+                if current_source_identity != state["source_identity"]:
+                    try:
+                        _eligible_source_transition(state["source_snapshot"], current_source_snapshot, state["scope_binding"]["allowed_writes"])
+                        delivery_blocked_reason = "source-transition-unverifiable"
+                    except AdapterSourceDrift as exc:
+                        message = str(exc)
+                        delivery_blocked_reason = "source-kind-or-root-changed" if "kind or root" in message else "source-revision-changed" if "HEAD or tree" in message else "source-out-of-scope"
 
             now = datetime.fromisoformat(now_value.replace("Z", "+00:00")) if now_value else datetime.now(timezone.utc)
             if now.tzinfo is None:
@@ -1212,7 +1368,7 @@ class LocalWorkflowAdapter:
                 raise AdapterConflict("card receipt lacks its current lease")
             old_locks_bytes = _compact_bytes({**empty_locks, "leases": [old_lease]}) + b"\n"
 
-            if state["state_version"] == prior_version and state["state_hash"] == prior_hash:
+            if precommit:
                 if state.get("active_frontier") != previous_frontier:
                     raise AdapterConflict("card receipt does not bind the active frontier")
                 final_locks, _ = _safe_regular_bytes(self.root / "locks.json")
@@ -1259,6 +1415,10 @@ class LocalWorkflowAdapter:
                     }
                 candidate["card_completions"].append(completion_entry)
                 candidate["state_version"] = prior_version + 1
+                if pending_transition is not None:
+                    candidate["source_identity"] = current_source_identity
+                    candidate["source_snapshot"] = current_source_snapshot
+                    candidate["source"]["observed_revision"] = current_source_identity["identity_hash"]
                 candidate["status"] = "completed" if next_step["kind"] == "terminal" else "active"
                 candidate["active_frontier"] = None if next_step["kind"] == "terminal" else next_step
                 candidate["last_transition"] = {
@@ -1300,7 +1460,7 @@ class LocalWorkflowAdapter:
                     checkpoint_prefix="card_state",
                 )
                 state = candidate
-            elif state["state_version"] == prior_version + 1 and state["last_transition"]["prior_state_hash"] == prior_hash and state["last_transition"]["completion_id"] == completion["content_hash"]:
+            elif postcommit:
                 expected_operation = _value_hash({
                     "contract_id": "sqw.complete.card/1",
                     "workflow_id": state["workflow_id"],
@@ -1340,22 +1500,55 @@ class LocalWorkflowAdapter:
             final_locks, _ = _safe_regular_bytes(self.root / "locks.json")
             temp_path = self.root / ".locks.json.tmp"
             temp_exists = _optional_lstat(temp_path) is not None
+            outcome = "committed" if precommit else "replayed"
+            empty_bytes = _compact_bytes(empty_locks) + b"\n"
+            if delivery_blocked_reason is not None:
+                new_owner = {"producer_id": frontier["card_id"], "decision_id": frontier["decision_id"]} if isinstance(frontier, dict) else None
+                if final_locks not in {old_locks_bytes, empty_bytes}:
+                    if new_owner is None:
+                        raise AdapterConflict("postcommit blocked locks are foreign")
+                    final_kind, final_lease = _locks_kind(final_locks, empty_locks, new_owner)
+                    if final_kind != "leased" or final_lease is None:
+                        raise AdapterConflict("postcommit blocked locks are foreign")
+                if temp_exists:
+                    temp_bytes, _ = _safe_regular_bytes(temp_path)
+                    if temp_bytes != empty_bytes:
+                        if new_owner is None:
+                            raise AdapterConflict("postcommit blocked locks temp conflicts")
+                        temp_kind, temp_lease = _locks_kind(temp_bytes, empty_locks, new_owner)
+                        if temp_kind != "leased" or temp_lease is None:
+                            raise AdapterConflict("postcommit blocked locks temp conflicts")
+                        _sync_directory(self.root)
+                        temp_path.unlink()
+                        _sync_directory(self.root)
+                _replace_fixed_mutable(
+                    self.root,
+                    "locks.json",
+                    ".locks.json.tmp",
+                    expected_bytes=final_locks,
+                    candidate_bytes=empty_bytes,
+                    checkpoint_prefix="card_locks",
+                )
+                return state, None, f"replayed_blocked:{delivery_blocked_reason}"
             if frontier is None:
                 candidate_lease = None
-                candidate_locks = _compact_bytes(empty_locks) + b"\n"
+                candidate_locks = empty_bytes
             else:
                 new_owner = {"producer_id": frontier["card_id"], "decision_id": frontier["decision_id"]}
                 candidate_lease = None
+                if temp_exists and _safe_regular_bytes(temp_path)[0] == empty_bytes:
+                    _sync_directory(self.root)
+                    temp_path.unlink()
+                    _sync_directory(self.root)
+                    temp_exists = False
                 if temp_exists:
                     candidate_locks, _ = _safe_regular_bytes(temp_path)
                     _, candidate_lease = _locks_kind(candidate_locks, empty_locks, new_owner)
                 elif final_locks != old_locks_bytes:
-                    try:
+                    if final_locks != empty_bytes:
                         _, candidate_lease = _locks_kind(final_locks, empty_locks, new_owner)
-                    except AdapterConflict:
-                        candidate_lease = None
-                    if candidate_lease is not None:
-                        return state, candidate_lease
+                    if candidate_lease is not None and datetime.fromisoformat(candidate_lease["lease_expires_at"].replace("Z", "+00:00")) > now:
+                        return state, candidate_lease, outcome
                 if candidate_lease is None:
                     issued_at = now.isoformat().replace("+00:00", "Z")
                     candidate_lease = {
@@ -1368,11 +1561,11 @@ class LocalWorkflowAdapter:
                 self.root,
                 "locks.json",
                 ".locks.json.tmp",
-                expected_bytes=old_locks_bytes,
+                expected_bytes=final_locks,
                 candidate_bytes=candidate_locks,
                 checkpoint_prefix="card_locks",
             )
-            return state, candidate_lease
+            return state, candidate_lease, outcome
 
 
 def main(argv: list[str] | None = None) -> int:
