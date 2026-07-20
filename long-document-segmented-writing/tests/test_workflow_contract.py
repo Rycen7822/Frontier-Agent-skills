@@ -47,6 +47,14 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn(threshold, full_row)
         self.assertEqual(1, len(re.findall(r"one confidence review", full_row, flags=re.IGNORECASE)))
 
+    def test_source_style_status_has_a_dedicated_command_boundary(self) -> None:
+        section = SKILL_TEXT.split("## Source style", 1)[1].split(
+            "## Deterministic segmented assembly", 1
+        )[0]
+        self.assertIn("dedicated command", section)
+        self.assertIn("stdout contains only the canonical status line", section)
+        self.assertIn("perform the bounded final reread separately", section)
+
 
 if __name__ == "__main__":
     unittest.main()

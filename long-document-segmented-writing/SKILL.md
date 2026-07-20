@@ -91,6 +91,8 @@ Outside fenced code, one prose paragraph, list item, or blockquote paragraph occ
 
 Run the assembler's source-style check against the Direct final file or every segmented ledger, draft shard, confidence review, and final prose source before promotion:
 
+Run each source-style invocation as a dedicated command whose stdout contains only the canonical status line. Do not chain `wc`, readers, assembly, or any other command; perform the bounded final reread separately after the status is captured.
+
 ```bash
 python3 "$LONG_DOCUMENT_SKILL_ROOT/scripts/assemble_markdown.py" \
   --check-source-style path/to/scratch-ledger.md \
