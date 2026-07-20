@@ -192,7 +192,7 @@
     },
     "inputContract": {
       "type": "object", "additionalProperties": false,
-      "required": ["completion_contract_id", "artifact_id", "persistence_class", "required_fields", "optional_fields", "enum_values", "human_max_bytes", "required_root_args"],
+      "required": ["completion_contract_id", "artifact_id", "persistence_class", "required_fields", "optional_fields", "enum_values", "field_types", "human_max_bytes", "required_root_args"],
       "properties": {
         "completion_contract_id": {"type": "string", "minLength": 1},
         "artifact_id": {"type": "string", "minLength": 1},
@@ -200,6 +200,7 @@
         "required_fields": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "optional_fields": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "enum_values": {"type": "object", "additionalProperties": {"type": "array", "minItems": 1, "items": {"type": ["string", "integer", "boolean", "null"]}}},
+        "field_types": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^(string|integer|boolean|object|null|enum)(\\[\\])?(\\|(string|integer|boolean|object|null|enum)(\\[\\])?)*$"}},
         "human_max_bytes": {"type": "integer", "minimum": 1},
         "required_root_args": {
           "type": "object", "additionalProperties": false, "required": ["always", "conditional"],
