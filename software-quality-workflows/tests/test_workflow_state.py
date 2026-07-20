@@ -131,7 +131,7 @@ class WorkflowStateTests(unittest.TestCase):
             "completion_id": "sha256:" + "3" * 64,
             "card_id": "sqw.test.behavior-cycle",
             "artifact_id": "test-behavior-cycle",
-            "source_hash": "sha256:" + "4" * 64,
+            "source_hash": state["source_identity"]["identity_hash"],
             "scope_binding_id": state["scope_binding"]["binding_id"],
             "content_locator": {
                 "schema_version": "content-locator/1",

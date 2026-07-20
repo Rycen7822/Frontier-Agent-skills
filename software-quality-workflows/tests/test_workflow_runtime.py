@@ -159,7 +159,55 @@ def _resume_worker(root: Path, checkpoint_name: str, ready: Path) -> None:
     )
 
 
-def _complete_inline(root: Path) -> tuple[dict, dict | None]:
+def _resume_outcome(root: Path, outcome: str) -> tuple[dict, dict | None, dict | None, bool, str | None]:
+    state = load_json(root / "state.json")
+    locator = {
+        "schema_version": "sqw-workflow-owner/1",
+        "workflow_id": state["workflow_id"],
+        "bootstrap_operation_id": state["bootstrap"]["operation_id"],
+        "bundle_id": state["bundle_id"],
+        "initial_source_identity_hash": state["bootstrap"]["initial_source_identity_hash"],
+        "scope_binding_id": state["scope_binding"]["binding_id"],
+        "mode": state["mode"],
+        "initial_root_binding_hash": workflow_adapter._value_hash(state["bootstrap"]["initial_root_binding"]),
+    }
+    identity = {"kind": "unversioned", "identity_hash": "sha256:" + "9" * 64}
+    snapshot = {
+        **state["source_snapshot"],
+        "identity_hash": identity["identity_hash"],
+        "scoped_records": ([{
+            "path": "src/new.txt",
+            "content_hash": "sha256:" + "a" * 64,
+            "bytes": 1,
+            "mode": "0644",
+        }] if outcome == "pending" else []),
+        "exterior_guard_hash": state["source_snapshot"]["exterior_guard_hash"] if outcome == "pending" else "sha256:" + "b" * 64,
+    }
+    return LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).resume(
+        locator,
+        identity,
+        snapshot,
+        expected_bundle_id=state["bundle_id"],
+        expected_policy_bundle_hash=state["policy_bundle_hash"],
+        expected_card_manifest_hash=state["card_manifest_hash"],
+        expected_cards={state["active_frontier"]["card_id"]: (state["active_frontier"]["card_path"], state["active_frontier"]["card_hash"])},
+        now_value=RESUME_NOW,
+    )
+
+
+def _resume_outcome_worker(root: Path, outcome: str, checkpoint_name: str, ready: Path) -> None:
+    def pause(name: str) -> None:
+        if name != checkpoint_name:
+            return
+        ready.write_text(name + "\n", encoding="utf-8")
+        while True:
+            signal.pause()
+
+    workflow_adapter._checkpoint = pause
+    _resume_outcome(root, outcome)
+
+
+def _complete_inline(root: Path, *, postcommit_source_outcome: str = "fresh") -> tuple[dict, dict | None, str]:
     state = load_json(root / "state.json")
     locator = {
         "schema_version": "sqw-workflow-owner/1",
@@ -215,12 +263,28 @@ def _complete_inline(root: Path) -> tuple[dict, dict | None]:
         "card_path": "references/test/oracle-and-lifecycle.md",
         "card_hash": "sha256:" + "9" * 64,
     }
+    current_identity = state["source_identity"]
+    current_snapshot = state["source_snapshot"]
+    if postcommit_source_outcome != "fresh":
+        current_identity = {"kind": "unversioned", "identity_hash": "sha256:" + "0" * 64}
+        current_snapshot = {
+            **state["source_snapshot"],
+            "identity_hash": current_identity["identity_hash"],
+            "scoped_records": ([{
+                "path": "src/postcommit.txt",
+                "content_hash": "sha256:" + "b" * 64,
+                "bytes": 1,
+                "mode": "0644",
+            }] if postcommit_source_outcome == "eligible" else state["source_snapshot"]["scoped_records"]),
+            "exterior_guard_hash": state["source_snapshot"]["exterior_guard_hash"] if postcommit_source_outcome == "eligible" else "sha256:" + "c" * 64,
+        }
     return LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).complete_card(
         locator,
         previous,
-        state["source_identity"],
+        current_identity,
         completion,
         lambda _state, _completion: next_step,
+        current_source_snapshot=current_snapshot,
         expected_bundle_id=state["bundle_id"],
         expected_policy_bundle_hash=state["policy_bundle_hash"],
         expected_card_manifest_hash=state["card_manifest_hash"],
@@ -232,7 +296,7 @@ def _complete_inline(root: Path) -> tuple[dict, dict | None]:
     )
 
 
-def _complete_materialized(root: Path) -> tuple[dict, dict | None]:
+def _complete_materialized(root: Path) -> tuple[dict, dict | None, str]:
     state = load_json(root / "state.json")
     frontier = {
         "kind": "card",
@@ -609,7 +673,8 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     "expected_cards": {state["active_frontier"]["card_id"]: (state["active_frontier"]["card_path"], state["active_frontier"]["card_hash"])},
                     "now_value": RESUME_NOW,
                 }
-                resumed_state, lease = adapter.resume(locator, state["source_identity"], **resume_args)
+                resumed_state, lease, pending, fresh, blocked = adapter.resume(locator, state["source_identity"], **resume_args)
+                self.assertEqual((None, True, None), (pending, fresh, blocked))
                 self.assertEqual(state, resumed_state)
                 self.assertEqual(state["active_frontier"]["card_id"], lease["producer_id"])
                 self.assertEqual(1, len(load_json(root / "locks.json")["leases"]))
@@ -619,12 +684,48 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     ((root / "state.json").stat().st_ino, (root / "state.json").stat().st_mtime_ns, (root / "state.json").read_bytes()),
                 )
                 locks_identity = ((root / "locks.json").stat().st_ino, (root / "locks.json").stat().st_mtime_ns, (root / "locks.json").read_bytes())
-                replay_state, replay_lease = adapter.resume(locator, state["source_identity"], **resume_args)
+                replay_state, replay_lease, replay_pending, replay_fresh, replay_blocked = adapter.resume(locator, state["source_identity"], **resume_args)
                 self.assertEqual((resumed_state, lease), (replay_state, replay_lease))
+                self.assertEqual((pending, fresh), (replay_pending, replay_fresh))
+                self.assertEqual(blocked, replay_blocked)
                 self.assertEqual(
                     locks_identity,
                     ((root / "locks.json").stat().st_ino, (root / "locks.json").stat().st_mtime_ns, (root / "locks.json").read_bytes()),
                 )
+
+    def test_resume_source_outcome_flips_converge_across_lease_prefixes(self) -> None:
+        for first, second in (("pending", "blocked"), ("blocked", "pending")):
+            for checkpoint in ("route_lease_temp_fsynced", "route_lease_replaced"):
+                with self.subTest(first=first, second=second, checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
+                    parent = Path(directory)
+                    root, _ = _owner(parent)
+                    ready = parent / "ready"
+                    process = subprocess.Popen(
+                        [sys.executable, "-B", __file__, "--resume-outcome-worker", str(root), first, checkpoint, str(ready)],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                    )
+                    deadline = time.monotonic() + 5
+                    while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    self.assertTrue(ready.exists(), f"worker did not reach {checkpoint}")
+                    process.kill()
+                    process.communicate(timeout=5)
+                    state, lease, pending, fresh, blocked = _resume_outcome(root, second)
+                    self.assertEqual(1, state["state_version"])
+                    self.assertFalse(fresh)
+                    if second == "pending":
+                        self.assertIsNotNone(lease)
+                        self.assertIsNotNone(pending)
+                        self.assertIsNone(blocked)
+                        self.assertEqual([lease], load_json(root / "locks.json")["leases"])
+                    else:
+                        self.assertIsNone(lease)
+                        self.assertIsNone(pending)
+                        self.assertEqual("source-out-of-scope", blocked)
+                        self.assertEqual([], load_json(root / "locks.json")["leases"])
+                    self.assertFalse((root / ".locks.json.tmp").exists())
 
     def test_inline_completion_real_sigkill_prefixes_converge(self) -> None:
         checkpoints = (
@@ -658,7 +759,8 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 stdout, stderr = process.communicate(timeout=5)
                 self.assertEqual(-signal.SIGKILL, process.returncode, stdout + stderr)
 
-                committed, lease = _complete_inline(root)
+                committed, lease, outcome = _complete_inline(root)
+                self.assertIn(outcome, {"committed", "replayed"})
                 self.assertEqual((2, "sqw.test.oracle-and-lifecycle"), (committed["state_version"], committed["active_frontier"]["card_id"]))
                 self.assertEqual(lease, load_json(root / "locks.json")["leases"][0])
                 self.assertFalse((root / ".state.json.tmp").exists())
@@ -667,12 +769,38 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes())
                     for name in ("state.json", "locks.json")
                 }
-                replay = _complete_inline(root)
-                self.assertEqual((committed, lease), replay)
+                replay_state, replay_lease, replay_outcome = _complete_inline(root)
+                self.assertEqual((committed, lease, "replayed"), (replay_state, replay_lease, replay_outcome))
                 self.assertEqual(
                     identities,
                     {name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes()) for name in identities},
                 )
+
+    def test_exact_complete_with_changed_postcommit_source_withholds_next_lease(self) -> None:
+        for source_outcome in ("eligible", "blocked"):
+            for checkpoint in ("card_state_replaced", "card_locks_temp_fsynced", "card_locks_replaced"):
+                with self.subTest(source_outcome=source_outcome, checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
+                    parent = Path(directory)
+                    root, _ = _owner(parent)
+                    ready = parent / "ready"
+                    process = subprocess.Popen(
+                        [sys.executable, "-B", __file__, "--complete-worker", str(root), checkpoint, str(ready)],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                    )
+                    deadline = time.monotonic() + 5
+                    while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    self.assertTrue(ready.exists(), f"worker did not reach {checkpoint}")
+                    process.kill()
+                    process.communicate(timeout=5)
+                    state, lease, outcome = _complete_inline(root, postcommit_source_outcome=source_outcome)
+                    self.assertEqual(2, state["state_version"])
+                    self.assertIsNone(lease)
+                    self.assertTrue(outcome.startswith("replayed_blocked:"))
+                    self.assertEqual([], load_json(root / "locks.json")["leases"])
+                    self.assertFalse((root / ".locks.json.tmp").exists())
 
     def test_resume_aborts_prepared_inline_completion_without_human_input(self) -> None:
         for drifted in (False, True):
@@ -723,8 +851,9 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     with self.assertRaises(workflow_adapter.AdapterSourceDrift):
                         adapter.resume(locator, source_identity, **arguments)
                 else:
-                    resumed, lease = adapter.resume(locator, source_identity, **arguments)
+                    resumed, lease, pending, fresh, blocked = adapter.resume(locator, source_identity, **arguments)
                     self.assertEqual((state, load_json(root / "locks.json")["leases"][0]), (resumed, lease))
+                    self.assertEqual((None, True, None), (pending, fresh, blocked))
                 self.assertFalse((root / ".state.json.tmp").exists())
                 self.assertEqual(
                     control_identity,
@@ -772,7 +901,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     "initial_root_binding_hash": workflow_adapter._value_hash(committed["bootstrap"]["initial_root_binding"]),
                 }
                 adapter = LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA)
-                resumed, lease = adapter.resume(
+                resumed, lease, pending, fresh, blocked = adapter.resume(
                     locator,
                     committed["source_identity"],
                     expected_bundle_id=committed["bundle_id"],
@@ -785,6 +914,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     now_value=NOW,
                 )
                 self.assertEqual(committed, resumed)
+                self.assertEqual((None, True, None), (pending, fresh, blocked))
                 self.assertEqual(committed["active_frontier"]["card_id"], lease["producer_id"])
                 self.assertEqual([lease], load_json(root / "locks.json")["leases"])
                 self.assertFalse((root / ".state.json.tmp").exists())
@@ -821,7 +951,8 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 self.assertTrue(ready.exists(), f"worker did not reach {checkpoint}")
                 process.kill()
                 process.communicate(timeout=5)
-                committed, lease = _complete_materialized(root)
+                committed, lease, outcome = _complete_materialized(root)
+                self.assertIn(outcome, {"committed", "replayed"})
                 self.assertEqual((2, "completed", None), (committed["state_version"], committed["status"], lease))
                 entry = committed["card_completions"][-1]
                 final_name, temp_name = workflow_adapter._artifact_names(entry["content_locator"])
@@ -833,8 +964,8 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     str(path.relative_to(root)): (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
                     for path in (root / "state.json", root / "locks.json", root / "artifacts" / final_name)
                 }
-                replay = _complete_materialized(root)
-                self.assertEqual((committed, lease), replay)
+                replay_state, replay_lease, replay_outcome = _complete_materialized(root)
+                self.assertEqual((committed, lease, "replayed"), (replay_state, replay_lease, replay_outcome))
                 self.assertEqual(
                     identities,
                     {
@@ -878,7 +1009,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     "mode": state["mode"],
                     "initial_root_binding_hash": workflow_adapter._value_hash(state["bootstrap"]["initial_root_binding"]),
                 }
-                resumed, lease = LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).resume(
+                resumed, lease, pending, fresh, blocked = LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).resume(
                     locator,
                     state["source_identity"],
                     expected_bundle_id=state["bundle_id"],
@@ -888,6 +1019,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     now_value=NOW,
                 )
                 self.assertEqual(state, resumed)
+                self.assertEqual((None, True, None), (pending, fresh, blocked))
                 self.assertEqual(state["active_frontier"]["card_id"], lease["producer_id"])
                 self.assertFalse((root / ".state.json.tmp").exists())
                 self.assertFalse((root / "artifacts" / temp_name).exists())
@@ -1001,6 +1133,8 @@ class WorkflowRuntimeTests(unittest.TestCase):
 if __name__ == "__main__":
     if len(sys.argv) == 6 and sys.argv[1] == "--bootstrap-worker":
         _bootstrap_worker(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], Path(sys.argv[5]))
+    elif len(sys.argv) == 6 and sys.argv[1] == "--resume-outcome-worker":
+        _resume_outcome_worker(Path(sys.argv[2]), sys.argv[3], sys.argv[4], Path(sys.argv[5]))
     elif len(sys.argv) == 5 and sys.argv[1] == "--resume-worker":
         _resume_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
     elif len(sys.argv) == 5 and sys.argv[1] == "--complete-worker":

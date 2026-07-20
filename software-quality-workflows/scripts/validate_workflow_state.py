@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from copy import deepcopy
 from datetime import datetime
+from hashlib import sha256
 import json
 from pathlib import Path
 import sys
@@ -181,6 +182,17 @@ def validate_state(
     if len(active_ids) != len(set(active_ids)):
         violations.append(Violation("workflow.owner-stack", "/active_owners", "active owner IDs must be unique"))
 
+    snapshot = state["source_snapshot"]
+    records = snapshot["scoped_records"]
+    record_paths = [item["path"] for item in records]
+    scope_patterns = sorted(set(state["scope_binding"]["allowed_reads"]) | set(state["scope_binding"]["allowed_writes"]))
+    if snapshot["identity_hash"] != state["source_identity"]["identity_hash"] or snapshot["kind"] != state["source_identity"]["kind"]:
+        violations.append(Violation("workflow.source-snapshot", "/source_snapshot", "source snapshot must bind current source identity"))
+    if (snapshot["kind"] == "repository" and (snapshot["head_commit"] is None or snapshot["head_tree"] is None)) or (snapshot["kind"] == "unversioned" and (snapshot["head_commit"] is not None or snapshot["head_tree"] is not None)):
+        violations.append(Violation("workflow.source-snapshot", "/source_snapshot/head_commit", "repository snapshots require HEAD and tree; unversioned snapshots forbid them"))
+    if record_paths != sorted(set(record_paths)) or any(not path_allowed(path, scope_patterns) for path in record_paths):
+        violations.append(Violation("workflow.source-snapshot", "/source_snapshot/scoped_records", "scoped source records must be sorted, unique, and inside the immutable scope binding"))
+
     plan_id = state.get("plan_ref", {}).get("plan_id")
     plan_prefix = f"plan:{plan_id}#" if isinstance(plan_id, str) else None
     for node_index, node in enumerate(state.get("nodes", [])):
@@ -193,6 +205,7 @@ def validate_state(
     completion_bindings: list[tuple[str, str, int, str | None]] = []
     completion_ids: set[str] = set()
     operation_ids: set[str] = set()
+    source_cursor = state["bootstrap"]["initial_source_identity_hash"]
     for index, entry in enumerate(state.get("card_completions", [])):
         operation_id = entry["operation_id"]
         prior_version = entry["prior_state_version"]
@@ -215,7 +228,25 @@ def validate_state(
                 or entry["scope_binding_id"] != state["scope_binding"]["binding_id"]
             ):
                 violations.append(Violation("workflow.completion-binding", pointer(("card_completions", index)), "materialized completion locator, content, or scope binding differs", completion_id))
+            source_cursor = entry["source_hash"]
+        else:
+            source_transition = entry.get("completion", {}).get("source_transition")
+            if source_transition is not None:
+                changed_paths = source_transition["changed_paths"]
+                expected_changed_hash = "sha256:" + sha256(json.dumps(changed_paths, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+                if source_transition["changed_paths_hash"] != expected_changed_hash:
+                    violations.append(Violation("workflow.source-transition", pointer(("card_completions", index, "completion", "source_transition")), "changed paths hash is invalid", completion_id))
+                if source_transition["before_identity_hash"] != source_cursor:
+                    violations.append(Violation("workflow.source-transition", pointer(("card_completions", index, "completion", "source_transition", "before_identity_hash")), "source transition does not continue the committed identity chain", completion_id))
+                if any(not path_allowed(item["path"], state["scope_binding"]["allowed_writes"]) for item in changed_paths):
+                    violations.append(Violation("workflow.source-transition", pointer(("card_completions", index, "completion", "source_transition", "changed_paths")), "source transition exceeds allowed_writes", completion_id))
+                if source_transition["after_identity_hash"] != state["source_identity"]["identity_hash"] and entry["operation_id"] == state["last_transition"]["operation_id"]:
+                    violations.append(Violation("workflow.source-transition", pointer(("card_completions", index, "completion", "source_transition", "after_identity_hash")), "current transition must bind current source identity", completion_id))
+                source_cursor = source_transition["after_identity_hash"]
         completion_bindings.append((operation_id, completion_id, prior_version, prior_hash))
+
+    if source_cursor != state["source_identity"]["identity_hash"]:
+        violations.append(Violation("workflow.source-transition", "/source_identity/identity_hash", "completion source chain does not reach current source identity"))
 
     transition = state["last_transition"]
     current_binding = (

@@ -350,17 +350,16 @@ class CardCycleM0Tests(unittest.TestCase):
             )
 
             (source / "input.txt").write_text("changed input\n", encoding="utf-8")
-            drifted = self._run("route", self._resume_command(first), source, "--work-root", str(work))
-            self.assertEqual(5, drifted.returncode)
-            self.assertEqual("E_SOURCE_REVISION_CHANGED", json.loads(drifted.stderr)["code"])
-            self.assertEqual(
-                owner_identity,
-                {
-                    path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
-                    for path in (state_path, locks_path)
-                },
+            drifted = self._success_receipt(
+                self._run("route", self._resume_command(first), source, "--work-root", str(work))
             )
+            self.assertEqual(("blocked", "source-out-of-scope", None), (drifted["next_step"]["kind"], drifted["next_step"]["reason_code"], drifted["current_lease"]))
+            self.assertEqual(owner_identity["state.json"], (state_path.stat().st_ino, state_path.stat().st_mtime_ns, state_path.read_bytes()))
+            self.assertEqual([], json.loads(locks_path.read_text(encoding="utf-8"))["leases"])
             (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+            first = self._success_receipt(
+                self._run("route", self._resume_command(first), source, "--work-root", str(work))
+            )
 
             expired = json.loads(locks_path.read_text(encoding="utf-8"))
             expired["leases"][0]["lease_expires_at"] = "2000-01-01T00:00:00Z"
@@ -419,7 +418,10 @@ class CardCycleM0Tests(unittest.TestCase):
             replay = self._success_receipt(
                 self._run("complete", behavior_command, source, "--work-root", str(work))
             )
-            self.assertEqual(behavior, replay)
+            self.assertFalse(behavior["already_completed"])
+            self.assertTrue(replay["already_completed"])
+            for key in ("completion", "next_step", "current_lease", "state_version", "state_hash"):
+                self.assertEqual(behavior[key], replay[key])
             self.assertEqual(
                 committed_identity,
                 {
@@ -482,7 +484,10 @@ class CardCycleM0Tests(unittest.TestCase):
                 for path in (work / "state.json", work / "locks.json", artifact_path)
             }
             replay = self._success_receipt(self._run("complete", command, source, "--work-root", str(work)))
-            self.assertEqual(completed, replay)
+            self.assertFalse(completed["already_completed"])
+            self.assertTrue(replay["already_completed"])
+            for key in ("completion", "next_step", "current_lease", "state_version", "state_hash"):
+                self.assertEqual(completed[key], replay[key])
             self.assertEqual(
                 identity,
                 {
@@ -506,6 +511,95 @@ class CardCycleM0Tests(unittest.TestCase):
                     for path in (work / "state.json", work / "locks.json")
                 },
             )
+
+    def test_in_scope_source_drift_is_bound_once_and_accepted_by_completion(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            work = root / "work"
+            source.mkdir()
+            work.mkdir()
+            (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+            route = self._success_receipt(self._run("route", self._initial_command(), source))
+            entry = self._success_receipt(self._run("complete", self._entry_command(route), source))
+            scoped = self._success_receipt(
+                self._run("complete", self._scope_command(entry, mode="M2"), source, "--work-root", str(work))
+            )
+            (source / "target.txt").write_text("authorized change\n", encoding="utf-8")
+            resume_command = self._resume_command(scoped)
+            drifted = self._success_receipt(self._run("route", resume_command, source, "--work-root", str(work)))
+            self.assertFalse(drifted["source_fresh"])
+            transition = drifted["pending_source_transition"]
+            self.assertEqual([{"path": "target.txt", "status": "added"}], transition["changed_paths"])
+            self.assertEqual(scoped["source_identity"]["identity_hash"], transition["before_identity_hash"])
+            self.assertEqual(drifted["source_identity"]["identity_hash"], transition["after_identity_hash"])
+            self.assertNotEqual(scoped["current_lease"]["lease_id"], drifted["current_lease"]["lease_id"])
+            replay = self._success_receipt(self._run("route", resume_command, source, "--work-root", str(work)))
+            self.assertEqual(drifted, replay)
+
+            completed = self._success_receipt(
+                self._run(
+                    "complete",
+                    self._active_evidence_command(drifted, "sqw.select.test.oracle-and-lifecycle"),
+                    source,
+                    "--work-root",
+                    str(work),
+                )
+            )
+            state = json.loads((work / "state.json").read_text(encoding="utf-8"))
+            self.assertEqual(drifted["source_identity"], state["source_identity"])
+            self.assertEqual(transition, state["card_completions"][-1]["completion"]["source_transition"])
+            self.assertTrue(completed["source_fresh"])
+            self.assertIsNone(completed["pending_source_transition"])
+            state_path = work / "state.json"
+            state_identity = (state_path.stat().st_ino, state_path.stat().st_mtime_ns, state_path.read_bytes())
+            (source / "input.txt").write_text("out of scope change\n", encoding="utf-8")
+            blocked = self._success_receipt(
+                self._run("route", self._resume_command(completed), source, "--work-root", str(work))
+            )
+            self.assertEqual(("blocked", "source-out-of-scope"), (blocked["next_step"]["kind"], blocked["next_step"]["reason_code"]))
+            self.assertEqual((False, None, None), (blocked["source_fresh"], blocked["pending_source_transition"], blocked["current_lease"]))
+            self.assertEqual([], json.loads((work / "locks.json").read_text(encoding="utf-8"))["leases"])
+            self.assertEqual(state_identity, (state_path.stat().st_ino, state_path.stat().st_mtime_ns, state_path.read_bytes()))
+            (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+            recovered = self._success_receipt(
+                self._run("route", self._resume_command(completed), source, "--work-root", str(work))
+            )
+            self.assertEqual(("card", True), (recovered["next_step"]["kind"], recovered["source_fresh"]))
+            self.assertIsNotNone(recovered["current_lease"])
+
+    def test_repository_dirty_write_is_pending_but_head_change_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            work = root / "work"
+            source.mkdir()
+            work.mkdir()
+            subprocess.run(["git", "init", "-q", str(source)], check=True)
+            subprocess.run(["git", "-C", str(source), "config", "user.name", "SQW Test"], check=True)
+            subprocess.run(["git", "-C", str(source), "config", "user.email", "sqw@example.invalid"], check=True)
+            (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+            (source / "target.txt").write_text("baseline\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(source), "add", "input.txt", "target.txt"], check=True)
+            subprocess.run(["git", "-C", str(source), "commit", "-q", "-m", "baseline"], check=True)
+            route = self._success_receipt(self._run("route", self._initial_command(), source))
+            self.assertEqual("repository", route["source_identity"]["kind"])
+            entry = self._success_receipt(self._run("complete", self._entry_command(route), source))
+            scoped = self._success_receipt(
+                self._run("complete", self._scope_command(entry, mode="M2"), source, "--work-root", str(work))
+            )
+            (source / "target.txt").write_text("dirty allowed write\n", encoding="utf-8")
+            dirty = self._success_receipt(
+                self._run("route", self._resume_command(scoped), source, "--work-root", str(work))
+            )
+            self.assertEqual([{"path": "target.txt", "status": "modified"}], dirty["pending_source_transition"]["changed_paths"])
+            subprocess.run(["git", "-C", str(source), "add", "target.txt"], check=True)
+            subprocess.run(["git", "-C", str(source), "commit", "-q", "-m", "advance head"], check=True)
+            blocked = self._success_receipt(
+                self._run("route", self._resume_command(scoped), source, "--work-root", str(work))
+            )
+            self.assertEqual(("blocked", "source-revision-changed", None), (blocked["next_step"]["kind"], blocked["next_step"]["reason_code"], blocked["current_lease"]))
+            self.assertEqual([], json.loads((work / "locks.json").read_text(encoding="utf-8"))["leases"])
 
     def test_registry_covers_every_artifact_with_one_fixed_family_class(self) -> None:
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
