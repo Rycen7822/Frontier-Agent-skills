@@ -495,8 +495,8 @@ def _complete_active(
     artifact_id = artifact_ids[0]
     family_name = registry["artifacts"][artifact_id]
     family = registry["families"][family_name]
-    if family["persistence_class"] != "semantic_inline":
-        raise CycleError("E_UNSUPPORTED_VARIANT", "materialized card completion is not active", exit_code=4)
+    if family["persistence_class"] not in {"semantic_inline", "boundary_by_contract"}:
+        raise CycleError("E_UNSUPPORTED_VARIANT", "artifact persistence class is not active", exit_code=4)
     human_schema = {"$schema": schema["$schema"], "$defs": schema["$defs"], "$ref": family["human_def"]}
     if list(Draft202012Validator(human_schema).iter_errors(command["fields"])):
         raise CycleError("E_COMMAND_SCHEMA", "human fields do not match the routed artifact family")
@@ -513,11 +513,24 @@ def _complete_active(
     )
     if len(_canonical(completion)) > family["payload_max_bytes"]:
         raise CycleError("E_COMMAND_BUDGET", "completion payload exceeds its family budget", exit_code=4)
+    materialized = family["persistence_class"] == "boundary_by_contract"
+    artifact_payload = _canonical({key: value for key, value in completion.items() if key != "content_hash"}) + b"\n" if materialized else None
+    content_locator = {
+        "schema_version": "content-locator/1",
+        "content_kind": "artifact",
+        "artifact_id": artifact_id,
+        "content_hash": completion["content_hash"],
+        "bytes": len(artifact_payload),
+    } if materialized else None
 
     def select_next(state: dict[str, Any], current_completion: dict[str, Any]) -> dict[str, Any]:
+        decision_by_card = {item["card_id"]: item["decision_id"] for item in manifest["cards"]}
         inline = [entry.get("completion", {}) for entry in state["card_completions"] if entry["storage"] == "inline"]
+        materialized_entries = [entry for entry in state["card_completions"] if entry["storage"] == "materialized"]
         available = [item["artifact_id"] for item in inline if isinstance(item.get("artifact_id"), str)]
+        available.extend(item["artifact_id"] for item in materialized_entries)
         completed = [item["decision_id"] for item in inline if isinstance(item.get("decision_id"), str)]
+        completed.extend(decision_by_card[item["card_id"]] for item in materialized_entries)
         available.append(current_completion["artifact_id"])
         completed.append(current_completion["decision_id"])
         requested = current_completion["outcome"]["decision_request"]
@@ -549,12 +562,14 @@ def _complete_active(
 
     adapter = LocalWorkflowAdapter(work_root, load_json(STATE_SCHEMA_PATH), load_json(EVENT_SCHEMA_PATH))
     try:
-        state, lease = adapter.complete_inline(
+        state, lease = adapter.complete_card(
             previous["owner_locator"],
             previous,
             source_identity,
             completion,
             select_next,
+            materialized_payload=artifact_payload,
+            content_locator=content_locator,
             expected_bundle_id=manifest["bundle_id"],
             expected_policy_bundle_hash=_hash(load_json(POLICY_PATH)),
             expected_card_manifest_hash=_hash(manifest),
@@ -568,7 +583,14 @@ def _complete_active(
     receipt = _base_receipt(manifest, source_identity, next_step)
     receipt.update({
         "receipt_kind": "completion",
-        "completion": completion,
+        "completion": ({
+            "artifact_id": completion["artifact_id"],
+            "content_hash": completion["content_hash"],
+            "producer_card_id": completion["producer_card_id"],
+            "decision_id": completion["decision_id"],
+            "outcome": completion["outcome"],
+            "content_locator": content_locator,
+        } if materialized else completion),
         "scope_binding": state["scope_binding"],
         "owner_locator": previous["owner_locator"],
         "current_lease": lease,

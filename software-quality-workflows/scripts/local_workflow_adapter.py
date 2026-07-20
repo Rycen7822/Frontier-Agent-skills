@@ -76,6 +76,37 @@ def _is_hash(value: Any) -> bool:
     return isinstance(value, str) and len(value) == 71 and value.startswith("sha256:") and all(character in "0123456789abcdef" for character in value[7:])
 
 
+def _artifact_names(locator: dict[str, Any]) -> tuple[str, str]:
+    artifact_id = locator.get("artifact_id")
+    content_hash = locator.get("content_hash")
+    if (
+        locator.get("schema_version") != "content-locator/1"
+        or locator.get("content_kind") != "artifact"
+        or not isinstance(artifact_id, str)
+        or not artifact_id
+        or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789-" for character in artifact_id)
+        or not _is_hash(content_hash)
+    ):
+        raise AdapterConflict("artifact locator is invalid")
+    final_name = f"{artifact_id}--{content_hash[7:]}.json"
+    return final_name, f".{final_name}.tmp"
+
+
+def _validate_artifact_bytes(payload: bytes, locator: dict[str, Any]) -> None:
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise AdapterConflict("materialized completion is invalid") from exc
+    if (
+        not isinstance(value, dict)
+        or payload != _compact_bytes(value) + b"\n"
+        or locator.get("bytes") != len(payload)
+        or locator.get("content_hash") != _value_hash(value)
+        or locator.get("artifact_id") != value.get("artifact_id")
+    ):
+        raise AdapterConflict("materialized completion does not match its locator")
+
+
 def _optional_lstat(path: Path) -> os.stat_result | None:
     try:
         return path.lstat()
@@ -759,6 +790,17 @@ class LocalWorkflowAdapter:
         expected_root = {"dev": root_info.st_dev, "ino": root_info.st_ino, "uid": root_info.st_uid, "mode": stat.S_IMODE(root_info.st_mode)}
         if state.get("bootstrap", {}).get("established_root_identity") != expected_root:
             raise AdapterConflict("workflow root identity does not match state owner")
+        artifact_root = self.root / "artifacts"
+        for entry in state.get("card_completions", []):
+            if entry.get("storage") != "materialized":
+                continue
+            final_name, temp_name = _artifact_names(entry["content_locator"])
+            if _optional_lstat(artifact_root / temp_name) is not None:
+                raise AdapterConflict("committed materialized completion has a prepared temp")
+            artifact_bytes, artifact_info = _safe_regular_bytes(artifact_root / final_name)
+            if stat.S_IMODE(artifact_info.st_mode) != 0o600 or artifact_info.st_nlink != 1:
+                raise AdapterConflict("committed materialized completion is unsafe")
+            _validate_artifact_bytes(artifact_bytes, entry["content_locator"])
         return state
 
     def _validate_inventory(self) -> None:
@@ -882,7 +924,7 @@ class LocalWorkflowAdapter:
                 _sync_directory(self.root)
             return False
 
-    def _abort_prepared_inline(self, state: dict[str, Any], expected_cards: dict[str, tuple[str, str]]) -> None:
+    def _abort_prepared_completion(self, state: dict[str, Any], expected_cards: dict[str, tuple[str, str]]) -> None:
         temporary = self.root / ".state.json.tmp"
         if _optional_lstat(temporary) is None:
             return
@@ -905,19 +947,22 @@ class LocalWorkflowAdapter:
             raise AdapterConflict("prepared card state does not append exactly one completion")
         entry = candidate["card_completions"][-1]
         completion = entry.get("completion") if entry.get("storage") == "inline" else None
+        completion_id = completion.get("content_hash") if isinstance(completion, dict) else entry.get("completion_id")
+        producer_card_id = completion.get("producer_card_id") if isinstance(completion, dict) else entry.get("card_id")
         transition = candidate["last_transition"]
         frontier = state.get("active_frontier")
+        producer_decision_id = completion.get("decision_id") if isinstance(completion, dict) else frontier.get("decision_id") if isinstance(frontier, dict) else None
         if (
-            not isinstance(completion, dict)
+            entry.get("storage") not in {"inline", "materialized"}
             or not isinstance(frontier, dict)
             or entry.get("prior_state_version") != state["state_version"]
             or entry.get("prior_state_hash") != state["state_hash"]
-            or completion.get("producer_card_id") != frontier.get("card_id")
-            or completion.get("decision_id") != frontier.get("decision_id")
+            or producer_card_id != frontier.get("card_id")
+            or producer_decision_id != frontier.get("decision_id")
             or transition.get("transition_kind") != "card"
             or transition.get("prior_state_version") != state["state_version"]
             or transition.get("prior_state_hash") != state["state_hash"]
-            or transition.get("completion_id") != completion.get("content_hash")
+            or transition.get("completion_id") != completion_id
             or transition.get("operation_id") != entry.get("operation_id")
         ):
             raise AdapterConflict("prepared card state does not bind the current frontier")
@@ -927,7 +972,7 @@ class LocalWorkflowAdapter:
             "workflow_id": state["workflow_id"],
             "prior_state_version": state["state_version"],
             "prior_state_hash": state["state_hash"],
-            "completion_id": completion["content_hash"],
+            "completion_id": completion_id,
             "next_decision_id": next_decision,
         })
         next_frontier = candidate["active_frontier"]
@@ -944,6 +989,33 @@ class LocalWorkflowAdapter:
             or expected_cards.get(next_frontier.get("card_id")) != (next_frontier.get("card_path"), next_frontier.get("card_hash"))
         ):
             raise AdapterConflict("prepared next frontier is invalid")
+        if entry["storage"] == "materialized":
+            artifact_root = self.root / "artifacts"
+            final_name, temp_name = _artifact_names(entry["content_locator"])
+            final_path, temp_path = artifact_root / final_name, artifact_root / temp_name
+            final_info, temp_info = _optional_lstat(final_path), _optional_lstat(temp_path)
+            if final_info is not None:
+                final_bytes, final_stat = _safe_regular_bytes(final_path)
+                _validate_artifact_bytes(final_bytes, entry["content_locator"])
+                if temp_info is None:
+                    if final_stat.st_nlink != 1:
+                        raise AdapterConflict("prepared artifact final is unsafe")
+                else:
+                    temp_bytes, temp_stat = _safe_regular_bytes(temp_path)
+                    _validate_artifact_bytes(temp_bytes, entry["content_locator"])
+                    if (final_stat.st_dev, final_stat.st_ino) != (temp_stat.st_dev, temp_stat.st_ino) or final_stat.st_nlink != 2 or temp_stat.st_nlink != 2:
+                        raise AdapterConflict("prepared artifact pair conflicts")
+                    _sync_directory(artifact_root)
+                    temp_path.unlink()
+                    _sync_directory(artifact_root)
+            elif temp_info is not None:
+                temp_bytes, temp_stat = _safe_regular_bytes(temp_path)
+                _validate_artifact_bytes(temp_bytes, entry["content_locator"])
+                if temp_stat.st_nlink != 1:
+                    raise AdapterConflict("prepared artifact temp is unsafe")
+                _sync_directory(artifact_root)
+                temp_path.unlink()
+                _sync_directory(artifact_root)
         _sync_directory(self.root)
         temporary.unlink()
         _sync_directory(self.root)
@@ -979,7 +1051,7 @@ class LocalWorkflowAdapter:
                 or state["card_manifest_hash"] != expected_card_manifest_hash
             ):
                 raise AdapterConflict("workflow owner contract is stale")
-            self._abort_prepared_inline(state, expected_cards)
+            self._abort_prepared_completion(state, expected_cards)
             if current_source_identity != state["source_identity"]:
                 raise AdapterSourceDrift("current source identity differs from committed workflow state")
             frontier = state.get("active_frontier")
@@ -1066,7 +1138,7 @@ class LocalWorkflowAdapter:
             )
             return state, candidate_lease
 
-    def complete_inline(
+    def complete_card(
         self,
         locator: dict[str, Any],
         previous_receipt: dict[str, Any],
@@ -1074,13 +1146,23 @@ class LocalWorkflowAdapter:
         completion: dict[str, Any],
         select_next: Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]],
         *,
+        materialized_payload: bytes | None = None,
+        content_locator: dict[str, Any] | None = None,
         expected_bundle_id: str,
         expected_policy_bundle_hash: str,
         expected_card_manifest_hash: str,
         expected_cards: dict[str, tuple[str, str]],
         now_value: str | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any] | None]:
-        """Commit one inline card completion and its derived next lease."""
+        """Commit one inline or materialized card completion and its derived lease."""
+        materialized = materialized_payload is not None or content_locator is not None
+        if materialized != (materialized_payload is not None and content_locator is not None):
+            raise AdapterConflict("materialized completion inputs are incomplete")
+        if materialized:
+            _validate_artifact_bytes(materialized_payload, content_locator)
+            if content_locator["content_hash"] != completion.get("content_hash"):
+                raise AdapterConflict("materialized completion hash is inconsistent")
+        artifact_ready = False
         with self._locked_state() as state:
             expected_locator = {
                 "schema_version": "sqw-workflow-owner/1",
@@ -1153,13 +1235,29 @@ class LocalWorkflowAdapter:
                     "next_decision_id": next_decision_id,
                 })
                 candidate = json.loads(json.dumps(state))
-                candidate["card_completions"].append({
-                    "storage": "inline",
-                    "operation_id": operation_id,
-                    "prior_state_version": prior_version,
-                    "prior_state_hash": prior_hash,
-                    "completion": completion,
-                })
+                if materialized:
+                    completion_entry = {
+                        "storage": "materialized",
+                        "operation_id": operation_id,
+                        "prior_state_version": prior_version,
+                        "prior_state_hash": prior_hash,
+                        "completion_id": completion["content_hash"],
+                        "card_id": completion["producer_card_id"],
+                        "artifact_id": completion["artifact_id"],
+                        "source_hash": current_source_identity["identity_hash"],
+                        "scope_binding_id": state["scope_binding"]["binding_id"],
+                        "content_locator": content_locator,
+                        "outcome": completion["outcome"],
+                    }
+                else:
+                    completion_entry = {
+                        "storage": "inline",
+                        "operation_id": operation_id,
+                        "prior_state_version": prior_version,
+                        "prior_state_hash": prior_hash,
+                        "completion": completion,
+                    }
+                candidate["card_completions"].append(completion_entry)
                 candidate["state_version"] = prior_version + 1
                 candidate["status"] = "completed" if next_step["kind"] == "terminal" else "active"
                 candidate["active_frontier"] = None if next_step["kind"] == "terminal" else next_step
@@ -1176,6 +1274,23 @@ class LocalWorkflowAdapter:
                 if violations:
                     raise AdapterConflict("candidate workflow state is invalid: " + "; ".join(f"{item.code}@{item.path}" for item in violations[:8]))
                 state_bytes, candidate_bytes = _safe_regular_bytes(self.state_path)[0], _compact_bytes(candidate) + b"\n"
+                if materialized:
+                    state_temp = self.root / ".state.json.tmp"
+                    if _optional_lstat(state_temp) is None:
+                        _write_and_fsync(state_temp, candidate_bytes, "card_state_temp_fsynced")
+                    else:
+                        prepared_bytes, prepared_info = _safe_regular_bytes(state_temp)
+                        if prepared_bytes != candidate_bytes or stat.S_IMODE(prepared_info.st_mode) != 0o600 or prepared_info.st_nlink != 1:
+                            raise AdapterConflict("prepared card state conflicts")
+                    final_name, temp_name = _artifact_names(content_locator)
+                    _publish_bootstrap_file(
+                        self.root / "artifacts",
+                        final_name,
+                        temp_name,
+                        materialized_payload,
+                        checkpoint_prefix="card_artifact",
+                    )
+                    artifact_ready = True
                 _replace_fixed_mutable(
                     self.root,
                     "state.json",
@@ -1196,6 +1311,11 @@ class LocalWorkflowAdapter:
                 })
                 if state["last_transition"]["operation_id"] != expected_operation:
                     raise AdapterConflict("committed card transition is a fork")
+                matches = [entry for entry in state["card_completions"] if entry["operation_id"] == expected_operation]
+                if len(matches) != 1 or (matches[0]["storage"] == "materialized") != materialized:
+                    raise AdapterConflict("committed completion persistence is a fork")
+                if materialized and matches[0]["content_locator"] != content_locator:
+                    raise AdapterConflict("committed materialized completion is a fork")
                 if _optional_lstat(self.root / ".state.json.tmp") is not None:
                     temp_bytes, _ = _safe_regular_bytes(self.root / ".state.json.tmp")
                     if temp_bytes != _compact_bytes(state) + b"\n":
@@ -1205,6 +1325,16 @@ class LocalWorkflowAdapter:
                     _sync_directory(self.root)
             else:
                 raise AdapterConflict("workflow state advanced beyond the card receipt")
+
+            if materialized and not artifact_ready:
+                final_name, temp_name = _artifact_names(content_locator)
+                _publish_bootstrap_file(
+                    self.root / "artifacts",
+                    final_name,
+                    temp_name,
+                    materialized_payload,
+                    checkpoint_prefix="card_artifact",
+                )
 
             frontier = state.get("active_frontier")
             final_locks, _ = _safe_regular_bytes(self.root / "locks.json")
