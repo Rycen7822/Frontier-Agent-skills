@@ -17,6 +17,7 @@ from jsonschema import Draft202012Validator
 
 from _workflow_reference_cards import load_json, strict_json_bytes
 from local_workflow_adapter import AdapterConflict, AdapterSourceDrift, LocalWorkflowAdapter, bootstrap_v3, project_source_snapshot
+from project_context import render_owner_context
 from route_workflow import assess, validate_route_result
 
 
@@ -348,6 +349,7 @@ def _base_receipt(manifest: dict[str, Any], source_identity: dict[str, str], nex
         "source_fresh": True,
         "pending_source_transition": None,
         "already_completed": False,
+        "projection_locator": None,
     }
 
 
@@ -656,6 +658,47 @@ def _complete_active(
     return receipt
 
 
+def _render_context(
+    command: dict[str, Any],
+    manifest: dict[str, Any],
+    previous: dict[str, Any],
+    source_identity: dict[str, str],
+    work_root: Path,
+) -> dict[str, Any]:
+    adapter = LocalWorkflowAdapter(work_root, load_json(STATE_SCHEMA_PATH), load_json(EVENT_SCHEMA_PATH))
+    try:
+        state, metadata, projection_locator, replayed = adapter.render_context(
+            previous["owner_locator"],
+            source_identity,
+            lambda current: render_owner_context(current, budget_bytes=command["fields"]["budget_bytes"]),
+            expected_state_version=previous["state_version"],
+            expected_state_hash=previous["state_hash"],
+            expected_bundle_id=manifest["bundle_id"],
+            expected_policy_bundle_hash=_hash(load_json(POLICY_PATH)),
+            expected_card_manifest_hash=_hash(manifest),
+        )
+    except AdapterSourceDrift as exc:
+        raise CycleError("E_SOURCE_REVISION_CHANGED", str(exc), exit_code=5) from exc
+    except (AdapterConflict, ValueError) as exc:
+        raise CycleError("E_ORPHAN_CONFLICT", str(exc), exit_code=5) from exc
+    receipt = _base_receipt(
+        manifest,
+        source_identity,
+        {"kind": "terminal", "decision_id": None, "reason_codes": ["CONTEXT_RENDERED"]},
+    )
+    receipt.update({
+        "receipt_kind": "render",
+        "scope_binding": state["scope_binding"],
+        "owner_locator": previous["owner_locator"],
+        "state_version": state["state_version"],
+        "state_hash": state["state_hash"],
+        "already_completed": replayed,
+        "projection_locator": projection_locator,
+    })
+    receipt["receipt_id"] = _receipt_id(receipt)
+    return receipt
+
+
 def _execute(args: argparse.Namespace) -> dict[str, Any]:
     if args.input != "-":
         raise CycleError("E_COMMAND_SCHEMA", "--input must be stdin")
@@ -663,15 +706,16 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
     command = _read_command()
     _validate_command(schema, command)
     is_route = command["contract_id"] in {"sqw.route.initial/1", "sqw.route.resume/1"}
-    expected_subcommand = "route" if is_route else "complete"
+    is_render = command["contract_id"] == "sqw.render.context/1"
+    expected_subcommand = "route" if is_route else "render" if is_render else "complete"
     if args.subcommand != expected_subcommand:
         raise CycleError("E_COMMAND_SCHEMA", "subcommand does not match contract")
     durable_scope = command["contract_id"] == "sqw.complete.scope/1" and command["fields"]["mode"] in {"M2", "M3"}
     durable_resume = command["contract_id"] == "sqw.route.resume/1"
     durable_active = command["contract_id"] == "sqw.complete.card/1"
-    if (durable_scope or durable_resume or durable_active) and args.work_root is None:
+    if (durable_scope or durable_resume or durable_active or is_render) and args.work_root is None:
         raise CycleError("E_ROOT_ROLE", "durable command requires a work root")
-    if not (durable_scope or durable_resume or durable_active) and args.work_root is not None:
+    if not (durable_scope or durable_resume or durable_active or is_render) and args.work_root is not None:
         raise CycleError("E_ROOT_ROLE", "this command does not accept a work root")
     source_identity, source_observation = _capture_source(Path(args.source_root))
     if command["contract_id"] == "sqw.route.initial/1":
@@ -682,7 +726,9 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
         previous = _validate_receipt(schema, command["previous_receipt"], source_identity, enforce_source=not durable_active)
         if previous["bundle_id"] != manifest["bundle_id"]:
             raise CycleError("E_RECEIPT_INVALID", "previous receipt bundle is stale", exit_code=3)
-        if command["contract_id"] == "sqw.complete.entry/1":
+        if is_render:
+            receipt = _render_context(command, manifest, previous, source_identity, Path(args.work_root))
+        elif command["contract_id"] == "sqw.complete.entry/1":
             receipt = _complete_entry(command, manifest, registry, previous, source_identity)
         elif command["contract_id"] == "sqw.complete.scope/1":
             receipt = _complete_scope(command, manifest, registry, previous, source_identity)
@@ -730,7 +776,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
-    for name in ("route", "complete"):
+    for name in ("route", "complete", "render"):
         command = subparsers.add_parser(name)
         command.add_argument("--input", required=True)
         command.add_argument("--source-root", required=True)

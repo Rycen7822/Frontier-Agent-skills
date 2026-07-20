@@ -21,7 +21,7 @@ if str(SCRIPTS) not in sys.path:
 from _workflow_state import load_json, load_json_lines  # noqa: E402
 import local_workflow_adapter as workflow_adapter  # noqa: E402
 from local_workflow_adapter import AdapterConflict, LocalWorkflowAdapter, bootstrap_v3  # noqa: E402
-from project_context import project_context  # noqa: E402
+from project_context import project_context, render_owner_context  # noqa: E402
 from propagate_invalidation import propagate_invalidation  # noqa: E402
 from reconcile_workflow import reconcile  # noqa: E402
 
@@ -111,6 +111,27 @@ def _handoff_owner(parent: Path) -> tuple[Path, dict]:
             "card_id": "sqw.delegation.admission-and-contract",
             "card_path": "references/delegation/admission-and-contract.md",
             "card_hash": "sha256:" + "9" * 64,
+        },
+    )
+    return root, state
+
+
+def _projection_owner(parent: Path) -> tuple[Path, dict]:
+    source = parent / "source"
+    root = parent / "workflow"
+    source.mkdir(mode=0o700)
+    root.mkdir(mode=0o700)
+    manifest = load_json(ROOT / "registries" / "reference-cards.manifest.json")
+    card = next(item for item in manifest["cards"] if item["card_id"] == "sqw.test.behavior-cycle")
+    state, _, _ = _bootstrap(
+        root,
+        source,
+        next_step={
+            "kind": "card",
+            "decision_id": card["decision_id"],
+            "card_id": card["card_id"],
+            "card_path": card["path"],
+            "card_hash": card["sha256"],
         },
     )
     return root, state
@@ -207,7 +228,12 @@ def _resume_outcome_worker(root: Path, outcome: str, checkpoint_name: str, ready
     _resume_outcome(root, outcome)
 
 
-def _complete_inline(root: Path, *, postcommit_source_outcome: str = "fresh") -> tuple[dict, dict | None, str]:
+def _complete_inline(
+    root: Path,
+    *,
+    postcommit_source_outcome: str = "fresh",
+    next_step_override: dict | None = None,
+) -> tuple[dict, dict | None, str]:
     state = load_json(root / "state.json")
     locator = {
         "schema_version": "sqw-workflow-owner/1",
@@ -256,7 +282,7 @@ def _complete_inline(root: Path, *, postcommit_source_outcome: str = "fresh") ->
         "outcome": {"blocker": None, "decision_request": "sqw.select.test.oracle-and-lifecycle"},
     }
     completion = {**payload, "content_hash": workflow_adapter._value_hash(payload)}
-    next_step = {
+    next_step = next_step_override or {
         "kind": "card",
         "decision_id": "sqw.select.test.oracle-and-lifecycle",
         "card_id": "sqw.test.oracle-and-lifecycle",
@@ -391,6 +417,43 @@ def _complete_materialized_worker(root: Path, checkpoint_name: str, ready: Path)
     _complete_materialized(root)
 
 
+def _render_context(root: Path, *, expected_state: dict | None = None) -> tuple[dict, dict, dict, bool]:
+    state = load_json(root / "state.json")
+    expected = expected_state or state
+    locator = {
+        "schema_version": "sqw-workflow-owner/1",
+        "workflow_id": state["workflow_id"],
+        "bootstrap_operation_id": state["bootstrap"]["operation_id"],
+        "bundle_id": state["bundle_id"],
+        "initial_source_identity_hash": state["bootstrap"]["initial_source_identity_hash"],
+        "scope_binding_id": state["scope_binding"]["binding_id"],
+        "mode": state["mode"],
+        "initial_root_binding_hash": workflow_adapter._value_hash(state["bootstrap"]["initial_root_binding"]),
+    }
+    return LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).render_context(
+        locator,
+        state["source_identity"],
+        lambda current: render_owner_context(current, budget_bytes=8192),
+        expected_state_version=expected["state_version"],
+        expected_state_hash=expected["state_hash"],
+        expected_bundle_id=state["bundle_id"],
+        expected_policy_bundle_hash=state["policy_bundle_hash"],
+        expected_card_manifest_hash=state["card_manifest_hash"],
+    )
+
+
+def _render_worker(root: Path, checkpoint_name: str, ready: Path) -> None:
+    def pause(name: str) -> None:
+        if name != checkpoint_name:
+            return
+        ready.write_text(name + "\n", encoding="utf-8")
+        while True:
+            signal.pause()
+
+    workflow_adapter._checkpoint = pause
+    _render_context(root)
+
+
 class WorkflowRuntimeTests(unittest.TestCase):
     def test_context_projection_is_bounded_state_versioned_and_secret_safe(self) -> None:
         state = _base()
@@ -422,6 +485,140 @@ class WorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual(["runtime-test"], metadata["artifact_projection_ids"])
         self.assertEqual(0, metadata["mandatory_truncation_count"])
         self.assertTrue(metadata["requires_on_demand_read"])
+
+    def test_context_projection_real_sigkill_prefixes_converge(self) -> None:
+        for checkpoint in ("projection_temp_fsynced", "projection_replaced", "projection_parent_synced"):
+            with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                root, state = _projection_owner(parent)
+                ready = parent / "ready"
+                owner_identity = {
+                    name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes())
+                    for name in ("state.json", "locks.json")
+                }
+                process = subprocess.Popen(
+                    [sys.executable, "-B", __file__, "--render-worker", str(root), checkpoint, str(ready)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                deadline = time.monotonic() + 5
+                while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(ready.exists(), f"worker did not reach {checkpoint}")
+                process.kill()
+                process.communicate(timeout=5)
+                rendered_state, _, locator, _ = _render_context(root)
+                self.assertEqual(state, rendered_state)
+                projection = root / "projections" / "workflow-context.md"
+                self.assertEqual(locator["bytes"], len(projection.read_bytes()))
+                self.assertFalse((root / "projections" / "workflow-context.md.tmp").exists())
+                self.assertEqual(
+                    owner_identity,
+                    {
+                        name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes())
+                        for name in ("state.json", "locks.json")
+                    },
+                )
+                identity = (projection.stat().st_ino, projection.stat().st_mtime_ns, projection.read_bytes())
+                replay_state, _, replay_locator, replayed = _render_context(root)
+                self.assertEqual((state, locator, True), (replay_state, replay_locator, replayed))
+                self.assertEqual(identity, (projection.stat().st_ino, projection.stat().st_mtime_ns, projection.read_bytes()))
+
+    def test_resume_discards_only_current_matching_projection_temp(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root, state = _projection_owner(parent)
+            ready = parent / "ready"
+            process = subprocess.Popen(
+                [sys.executable, "-B", __file__, "--render-worker", str(root), "projection_temp_fsynced", str(ready)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            deadline = time.monotonic() + 5
+            while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(ready.exists())
+            process.kill()
+            process.communicate(timeout=5)
+            locator = {
+                "schema_version": "sqw-workflow-owner/1",
+                "workflow_id": state["workflow_id"],
+                "bootstrap_operation_id": state["bootstrap"]["operation_id"],
+                "bundle_id": state["bundle_id"],
+                "initial_source_identity_hash": state["bootstrap"]["initial_source_identity_hash"],
+                "scope_binding_id": state["scope_binding"]["binding_id"],
+                "mode": state["mode"],
+                "initial_root_binding_hash": workflow_adapter._value_hash(state["bootstrap"]["initial_root_binding"]),
+            }
+            resumed, lease, pending, fresh, blocked = LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).resume(
+                locator,
+                state["source_identity"],
+                expected_bundle_id=state["bundle_id"],
+                expected_policy_bundle_hash=state["policy_bundle_hash"],
+                expected_card_manifest_hash=state["card_manifest_hash"],
+                expected_cards={state["active_frontier"]["card_id"]: (state["active_frontier"]["card_path"], state["active_frontier"]["card_hash"])},
+                now_value=NOW,
+            )
+            self.assertEqual((state, None, True, None), (resumed, pending, fresh, blocked))
+            self.assertIsNotNone(lease)
+            self.assertEqual([], list((root / "projections").iterdir()))
+
+    def test_stale_owned_projection_is_replaced_after_state_advance(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root, initial = _projection_owner(Path(directory))
+            _render_context(root)
+            projection = root / "projections" / "workflow-context.md"
+            first_payload = projection.read_bytes()
+            manifest = load_json(ROOT / "registries" / "reference-cards.manifest.json")
+            card = next(item for item in manifest["cards"] if item["card_id"] == "sqw.test.oracle-and-lifecycle")
+            next_step = {
+                "kind": "card",
+                "decision_id": card["decision_id"],
+                "card_id": card["card_id"],
+                "card_path": card["path"],
+                "card_hash": card["sha256"],
+            }
+            advanced, _, outcome = _complete_inline(root, next_step_override=next_step)
+            self.assertEqual("committed", outcome)
+            self.assertEqual(first_payload, projection.read_bytes())
+            with self.assertRaises(AdapterConflict):
+                _render_context(root, expected_state=initial)
+            self.assertEqual(first_payload, projection.read_bytes())
+            owner_identity = {
+                name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes())
+                for name in ("state.json", "locks.json")
+            }
+            rendered_state, _, _, replayed = _render_context(root)
+            self.assertEqual(advanced, rendered_state)
+            self.assertFalse(replayed)
+            self.assertNotEqual(first_payload, projection.read_bytes())
+            self.assertEqual(
+                owner_identity,
+                {
+                    name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes())
+                    for name in ("state.json", "locks.json")
+                },
+            )
+
+    def test_foreign_projection_files_are_rejected_and_preserved(self) -> None:
+        for name in ("workflow-context.md", "workflow-context.md.tmp"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                root, _ = _projection_owner(Path(directory))
+                _render_context(root)
+                projection_root = root / "projections"
+                valid = (projection_root / "workflow-context.md").read_bytes()
+                header_line, body = valid.split(b"\n", 1)
+                header = json.loads(header_line[5:-4])
+                header["workflow_id"] = "wf-foreign"
+                foreign = b"<!-- " + json.dumps(header, sort_keys=True, separators=(",", ":")).encode("utf-8") + b" -->\n" + body
+                target = projection_root / name
+                target.write_bytes(foreign)
+                target.chmod(0o600)
+                with self.assertRaises(AdapterConflict):
+                    _render_context(root)
+                self.assertEqual(foreign, target.read_bytes())
 
     def test_invalidation_is_field_precise_and_preserves_unrelated_branch(self) -> None:
         state = _base()
@@ -1141,5 +1338,7 @@ if __name__ == "__main__":
         _complete_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
     elif len(sys.argv) == 5 and sys.argv[1] == "--complete-materialized-worker":
         _complete_materialized_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
+    elif len(sys.argv) == 5 and sys.argv[1] == "--render-worker":
+        _render_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
     else:
         unittest.main()

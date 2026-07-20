@@ -819,6 +819,65 @@ def _replace_fixed_mutable(
     return False
 
 
+def _projection_header(payload: bytes) -> dict[str, Any]:
+    first_line = payload.split(b"\n", 1)[0]
+    if not first_line.startswith(b"<!-- ") or not first_line.endswith(b" -->"):
+        raise AdapterConflict("workflow context projection header is invalid")
+    try:
+        header = json.loads(first_line[5:-4])
+    except json.JSONDecodeError as exc:
+        raise AdapterConflict("workflow context projection header is invalid") from exc
+    required = {
+        "schema_version",
+        "workflow_id",
+        "state_version",
+        "state_hash",
+        "frontier_decision_id",
+        "frontier_card_id",
+        "frontier_card_hash",
+        "renderer_hash",
+    }
+    if not isinstance(header, dict) or set(header) != required or header.get("schema_version") != "sqw-workflow-context/1":
+        raise AdapterConflict("workflow context projection header is invalid")
+    return header
+
+
+def _publish_disposable_projection(root: Path, payload: bytes) -> bool:
+    final = root / "workflow-context.md"
+    temporary = root / "workflow-context.md.tmp"
+    names = {path.name for path in root.iterdir()}
+    if names - {final.name, temporary.name}:
+        raise AdapterConflict("workflow projection directory contains foreign entries")
+    final_exists = _optional_lstat(final) is not None
+    temp_exists = _optional_lstat(temporary) is not None
+    final_bytes = None
+    if final_exists:
+        final_bytes, final_info = _safe_regular_bytes(final)
+        _projection_header(final_bytes)
+        if stat.S_IMODE(final_info.st_mode) != 0o600 or final_info.st_nlink != 1:
+            raise AdapterConflict("workflow context projection final is unsafe")
+    if temp_exists:
+        temp_bytes, temp_info = _safe_regular_bytes(temporary)
+        _projection_header(temp_bytes)
+        if temp_bytes != payload or stat.S_IMODE(temp_info.st_mode) != 0o600 or temp_info.st_nlink != 1:
+            raise AdapterConflict("workflow context projection temp conflicts")
+    if final_bytes == payload:
+        if temp_exists:
+            _sync_directory(root)
+            temporary.unlink()
+            _sync_directory(root)
+        else:
+            _sync_directory(root)
+        return True
+    if not temp_exists:
+        _write_and_fsync(temporary, payload, "projection_temp_fsynced")
+    os.replace(temporary, final)
+    _checkpoint("projection_replaced")
+    _sync_directory(root)
+    _checkpoint("projection_parent_synced")
+    return False
+
+
 class LocalWorkflowAdapter:
     """Read an established v3 owner and expose only operator audit append."""
 
@@ -935,9 +994,43 @@ class LocalWorkflowAdapter:
                 fcntl.flock(descriptor, fcntl.LOCK_UN)
             os.close(descriptor)
 
+    def _validate_projection_surface(self, state: dict[str, Any], *, cleanup_matching_temp: bool) -> None:
+        projection_root = self.root / "projections"
+        names = {path.name for path in projection_root.iterdir()}
+        if names - {"workflow-context.md", "workflow-context.md.tmp"}:
+            raise AdapterConflict("workflow projection directory contains foreign entries")
+        renderer_hash = "sha256:" + sha256((Path(__file__).parent / "project_context.py").read_bytes()).hexdigest()
+        frontier = state.get("active_frontier")
+        expected = {
+            "schema_version": "sqw-workflow-context/1",
+            "workflow_id": state["workflow_id"],
+            "state_version": state["state_version"],
+            "state_hash": state["state_hash"],
+            "frontier_decision_id": frontier["decision_id"] if isinstance(frontier, dict) else None,
+            "frontier_card_id": frontier["card_id"] if isinstance(frontier, dict) else None,
+            "frontier_card_hash": frontier["card_hash"] if isinstance(frontier, dict) else None,
+            "renderer_hash": renderer_hash,
+        }
+        final = projection_root / "workflow-context.md"
+        if _optional_lstat(final) is not None:
+            final_bytes, final_info = _safe_regular_bytes(final)
+            final_header = _projection_header(final_bytes)
+            if final_header["workflow_id"] != state["workflow_id"] or final_header["renderer_hash"] != renderer_hash or stat.S_IMODE(final_info.st_mode) != 0o600 or final_info.st_nlink != 1:
+                raise AdapterConflict("workflow context projection final is foreign")
+        temporary = projection_root / "workflow-context.md.tmp"
+        if _optional_lstat(temporary) is not None:
+            temp_bytes, temp_info = _safe_regular_bytes(temporary)
+            if _projection_header(temp_bytes) != expected or stat.S_IMODE(temp_info.st_mode) != 0o600 or temp_info.st_nlink != 1:
+                raise AdapterConflict("workflow context projection temp is stale or foreign")
+            if cleanup_matching_temp:
+                _sync_directory(projection_root)
+                temporary.unlink()
+                _sync_directory(projection_root)
+
     def append_event(self, event: dict[str, Any], *, expected_last_sequence: int) -> bool:
         """Append one operator audit event; return True for exact replay."""
         with self._locked_state() as state:
+            self._validate_projection_surface(state, cleanup_matching_temp=False)
             if _optional_lstat(self.root / ".state.json.tmp") is not None:
                 raise AdapterConflict("prepared card state blocks operator event append")
             final_exists = _optional_lstat(self.events_path) is not None
@@ -1120,6 +1213,7 @@ class LocalWorkflowAdapter:
             ):
                 raise AdapterConflict("workflow owner contract is stale")
             self._abort_prepared_completion(state, expected_cards)
+            self._validate_projection_surface(state, cleanup_matching_temp=True)
             if current_source_observation is not None:
                 current_source_snapshot = project_source_snapshot(current_source_observation, current_source_identity, state["scope_binding"])
             if current_source_snapshot is None:
@@ -1267,6 +1361,69 @@ class LocalWorkflowAdapter:
             )
             return state, candidate_lease, pending_transition, source_fresh, None
 
+    def render_context(
+        self,
+        locator: dict[str, Any],
+        current_source_identity: dict[str, Any],
+        render: Callable[[dict[str, Any]], tuple[bytes, dict[str, Any], dict[str, Any]]],
+        *,
+        expected_state_version: int,
+        expected_state_hash: str,
+        expected_bundle_id: str,
+        expected_policy_bundle_hash: str,
+        expected_card_manifest_hash: str,
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], bool]:
+        """Render the one fixed owner-disposable context projection without changing state."""
+        with self._locked_state() as state:
+            expected_locator = {
+                "schema_version": "sqw-workflow-owner/1",
+                "workflow_id": state["workflow_id"],
+                "bootstrap_operation_id": state["bootstrap"]["operation_id"],
+                "bundle_id": state["bundle_id"],
+                "initial_source_identity_hash": state["bootstrap"]["initial_source_identity_hash"],
+                "scope_binding_id": state["scope_binding"]["binding_id"],
+                "mode": state["mode"],
+                "initial_root_binding_hash": _value_hash(state["bootstrap"]["initial_root_binding"]),
+            }
+            if locator != expected_locator:
+                raise AdapterConflict("workflow locator does not bind this owner")
+            if (
+                state["bundle_id"] != expected_bundle_id
+                or state["policy_bundle_hash"] != expected_policy_bundle_hash
+                or state["card_manifest_hash"] != expected_card_manifest_hash
+            ):
+                raise AdapterConflict("workflow owner contract is stale")
+            if current_source_identity != state["source_identity"]:
+                raise AdapterSourceDrift("context render requires fresh source identity")
+            if state["state_version"] != expected_state_version or state["state_hash"] != expected_state_hash:
+                raise AdapterConflict("context render receipt is stale")
+            if _optional_lstat(self.root / ".state.json.tmp") is not None:
+                raise AdapterConflict("prepared card state blocks context render")
+            self._validate_projection_surface(state, cleanup_matching_temp=False)
+            payload, metadata, projection_locator = render(state)
+            header = _projection_header(payload)
+            frontier = state.get("active_frontier")
+            if (
+                not isinstance(frontier, dict)
+                or header["workflow_id"] != state["workflow_id"]
+                or header["state_version"] != state["state_version"]
+                or header["state_hash"] != state["state_hash"]
+                or header["frontier_decision_id"] != frontier["decision_id"]
+                or header["frontier_card_id"] != frontier["card_id"]
+                or header["frontier_card_hash"] != frontier["card_hash"]
+                or header["renderer_hash"] != "sha256:" + sha256((Path(__file__).parent / "project_context.py").read_bytes()).hexdigest()
+                or projection_locator != {
+                    "schema_version": "content-locator/1",
+                    "content_kind": "projection",
+                    "artifact_id": "workflow-context",
+                    "content_hash": "sha256:" + sha256(payload).hexdigest(),
+                    "bytes": len(payload),
+                }
+            ):
+                raise AdapterConflict("rendered workflow context does not bind current owner")
+            replayed = _publish_disposable_projection(self.root / "projections", payload)
+            return state, metadata, projection_locator, replayed
+
     def complete_card(
         self,
         locator: dict[str, Any],
@@ -1312,6 +1469,7 @@ class LocalWorkflowAdapter:
                 or state["card_manifest_hash"] != expected_card_manifest_hash
             ):
                 raise AdapterConflict("workflow owner contract is stale")
+            self._validate_projection_surface(state, cleanup_matching_temp=False)
             if previous_receipt.get("owner_locator") != locator or previous_receipt.get("scope_binding") != state["scope_binding"]:
                 raise AdapterConflict("card receipt does not bind this workflow owner")
 

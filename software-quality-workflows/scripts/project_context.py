@@ -3,14 +3,12 @@
 
 from __future__ import annotations
 
-import argparse
 from hashlib import sha256
 import json
 from pathlib import Path
-import sys
 from typing import Any
 
-from _workflow_state import InputError, canonical_hash, contains_secret_like, load_json, redact_secret_like
+from _workflow_state import canonical_hash, contains_secret_like, load_json, redact_secret_like
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -189,42 +187,37 @@ def project_context(
     return text, metadata
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("state", type=Path)
-    parser.add_argument("--budget-bytes", type=int, default=8192)
-    parser.add_argument("--card-ref", action="append", required=True, metavar="CARD_ID=SHA256")
-    parser.add_argument("--artifact-projection", action="append", default=[], metavar="PROJECTION_ID=JSON_PATH")
-    parser.add_argument("--metadata", type=Path)
-    args = parser.parse_args(argv)
-    try:
-        state = load_json(args.state)
-        card_refs = []
-        for raw in args.card_ref:
-            card_id, separator, card_hash = raw.partition("=")
-            if not separator:
-                raise ValueError("card refs must use CARD_ID=SHA256")
-            card_refs.append({"card_id": card_id, "card_hash": card_hash})
-        projections: dict[str, dict[str, Any]] = {}
-        for raw in args.artifact_projection:
-            projection_id, separator, path = raw.partition("=")
-            if not separator or projection_id in projections:
-                raise ValueError("artifact projections must use unique PROJECTION_ID=JSON_PATH")
-            value = load_json(path)
-            if not isinstance(value, dict):
-                raise ValueError("artifact projection JSON must be an object")
-            projections[projection_id] = value
-        text, metadata = project_context(state, budget_bytes=args.budget_bytes, card_refs=card_refs, artifact_projections=projections)
-    except (InputError, ValueError) as exc:
-        print(json.dumps({"ok": False, "error": str(exc)}, indent=2))
-        return 2
-    print(text, end="")
-    if args.metadata:
-        args.metadata.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    else:
-        print(json.dumps(metadata, ensure_ascii=False))
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+def render_owner_context(state: dict[str, Any], *, budget_bytes: int) -> tuple[bytes, dict[str, Any], dict[str, Any]]:
+    frontier = state.get("active_frontier")
+    if not isinstance(frontier, dict):
+        raise ValueError("terminal workflow has no context frontier")
+    renderer_hash = "sha256:" + sha256(Path(__file__).read_bytes()).hexdigest()
+    header = {
+        "schema_version": "sqw-workflow-context/1",
+        "workflow_id": state["workflow_id"],
+        "state_version": state["state_version"],
+        "state_hash": state["state_hash"],
+        "frontier_decision_id": frontier["decision_id"],
+        "frontier_card_id": frontier["card_id"],
+        "frontier_card_hash": frontier["card_hash"],
+        "renderer_hash": renderer_hash,
+    }
+    header_line = "<!-- " + json.dumps(header, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + " -->\n"
+    body_budget = budget_bytes - len(header_line.encode("utf-8"))
+    text, metadata = project_context(
+        state,
+        budget_bytes=body_budget,
+        card_refs=[{"card_id": frontier["card_id"], "card_hash": frontier["card_hash"]}],
+        artifact_projections={},
+    )
+    payload = (header_line + text).encode("utf-8")
+    if len(payload) > budget_bytes:
+        raise ValueError("rendered workflow context exceeds budget")
+    locator = {
+        "schema_version": "content-locator/1",
+        "content_kind": "projection",
+        "artifact_id": "workflow-context",
+        "content_hash": "sha256:" + sha256(payload).hexdigest(),
+        "bytes": len(payload),
+    }
+    return payload, {**metadata, "renderer_hash": renderer_hash}, locator
