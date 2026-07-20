@@ -209,7 +209,7 @@
       "required": ["schema_version", "content_kind", "artifact_id", "content_hash", "bytes"],
       "properties": {
         "schema_version": {"const": "content-locator/1"},
-        "content_kind": {"const": "artifact"},
+        "content_kind": {"enum": ["artifact", "projection"]},
         "artifact_id": {"type": "string", "minLength": 1, "maxLength": 256},
         "content_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
         "bytes": {"type": "integer", "minimum": 1, "maximum": 2097152}
@@ -310,7 +310,7 @@
       "required": [
         "schema_version", "receipt_kind", "receipt_id", "bundle_id", "skill_id",
         "source_identity", "next_step", "route_context", "completion", "scope_binding",
-        "owner_locator", "current_lease", "state_version", "state_hash", "source_fresh", "pending_source_transition", "already_completed"
+        "owner_locator", "current_lease", "state_version", "state_hash", "source_fresh", "pending_source_transition", "already_completed", "projection_locator"
       ],
       "properties": {
         "schema_version": {"const": "sqw-card-receipt/1"},
@@ -329,7 +329,8 @@
         "state_hash": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}]},
         "source_fresh": {"type": "boolean"},
         "pending_source_transition": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/sourceTransition"}]},
-        "already_completed": {"type": "boolean"}
+        "already_completed": {"type": "boolean"},
+        "projection_locator": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/contentLocator"}]}
       }
     },
     "routeCommand": {
@@ -395,13 +396,29 @@
         "outcome": {"$ref": "#/$defs/completionOutcome"}
       }
     },
+    "renderCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_id", "invocation_phase", "previous_receipt", "fields"],
+      "properties": {
+        "contract_id": {"const": "sqw.render.context/1"},
+        "invocation_phase": {"const": "render"},
+        "previous_receipt": {"$ref": "#/$defs/receipt"},
+        "fields": {
+          "type": "object", "additionalProperties": false,
+          "required": ["budget_bytes"],
+          "properties": {"budget_bytes": {"type": "integer", "minimum": 1024, "maximum": 8192}}
+        }
+      }
+    },
     "command": {
       "oneOf": [
         {"$ref": "#/$defs/routeCommand"},
         {"$ref": "#/$defs/resumeCommand"},
         {"$ref": "#/$defs/entryCommand"},
         {"$ref": "#/$defs/scopeCommand"},
-        {"$ref": "#/$defs/activeCommand"}
+        {"$ref": "#/$defs/activeCommand"},
+        {"$ref": "#/$defs/renderCommand"}
       ]
     },
     "error": {

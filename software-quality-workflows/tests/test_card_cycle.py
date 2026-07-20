@@ -172,6 +172,14 @@ class CardCycleM0Tests(unittest.TestCase):
             "outcome": {"blocker": None, "decision_request": None},
         }
 
+    def _render_command(self, receipt: dict[str, object], budget_bytes: int = 8192) -> dict[str, object]:
+        return {
+            "contract_id": "sqw.render.context/1",
+            "invocation_phase": "render",
+            "previous_receipt": receipt,
+            "fields": {"budget_bytes": budget_bytes},
+        }
+
     def _scope_command(self, receipt: dict[str, object], *, mode: str = "M0") -> dict[str, object]:
         return {
             "contract_id": "sqw.complete.scope/1",
@@ -385,6 +393,47 @@ class CardCycleM0Tests(unittest.TestCase):
             self.assertEqual("E_ORPHAN_CONFLICT", json.loads(rejected.stderr)["code"])
             self.assertEqual(before, (sentinel.read_bytes(), sentinel.stat().st_mtime_ns))
             self.assertEqual(["sentinel.txt"], [path.name for path in foreign.iterdir()])
+
+    def test_context_render_uses_fixed_owner_projection_and_exact_replay(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            work = root / "work"
+            source.mkdir()
+            work.mkdir()
+            (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+            route = self._success_receipt(self._run("route", self._initial_command(), source))
+            entry = self._success_receipt(self._run("complete", self._entry_command(route), source))
+            scoped = self._success_receipt(
+                self._run("complete", self._scope_command(entry, mode="M2"), source, "--work-root", str(work))
+            )
+            state_path = work / "state.json"
+            locks_path = work / "locks.json"
+            owner_identity = {
+                path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                for path in (state_path, locks_path)
+            }
+            command = self._render_command(scoped)
+            rendered = self._success_receipt(self._run("render", command, source, "--work-root", str(work)))
+            projection_path = work / "projections" / "workflow-context.md"
+            self.assertTrue(projection_path.is_file())
+            self.assertEqual(0o600, projection_path.stat().st_mode & 0o777)
+            self.assertEqual(rendered["projection_locator"]["bytes"], len(projection_path.read_bytes()))
+            self.assertIn(b"sqw-workflow-context/1", projection_path.read_bytes().splitlines()[0])
+            self.assertEqual(
+                owner_identity,
+                {
+                    path.name: (path.stat().st_ino, path.stat().st_mtime_ns, path.read_bytes())
+                    for path in (state_path, locks_path)
+                },
+            )
+            projection_identity = (projection_path.stat().st_ino, projection_path.stat().st_mtime_ns, projection_path.read_bytes())
+            replay = self._success_receipt(self._run("render", command, source, "--work-root", str(work)))
+            self.assertFalse(rendered["already_completed"])
+            self.assertTrue(replay["already_completed"])
+            self.assertEqual(rendered["projection_locator"], replay["projection_locator"])
+            self.assertEqual(projection_identity, (projection_path.stat().st_ino, projection_path.stat().st_mtime_ns, projection_path.read_bytes()))
+            self.assertFalse((work / "projections" / "workflow-context.md.tmp").exists())
 
     def test_durable_inline_completion_advances_once_and_terminal_clears_lease(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
