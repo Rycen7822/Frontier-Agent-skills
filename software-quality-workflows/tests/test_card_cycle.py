@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import json
 from hashlib import sha256
+import importlib.util
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
+from unittest import mock
 
 from jsonschema import Draft202012Validator
 
@@ -18,6 +22,175 @@ SCHEMA = ROOT / "schemas" / "card-protocol.schema.json"
 REGISTRY = ROOT / "registries" / "artifact-family-contracts.json"
 MANIFEST = ROOT / "registries" / "reference-cards.manifest.json"
 STATE_SCHEMA = ROOT / "schemas" / "workflow-state.schema.json"
+SCRIPT_DIRECTORY = ROOT / "scripts"
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+SPEC = importlib.util.spec_from_file_location("sqw_card_cycle_under_test", CLI)
+assert SPEC is not None and SPEC.loader is not None
+cycle = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(cycle)
+
+
+def _run_private_child_mode() -> None:
+    if len(sys.argv) != 3 or sys.argv[1] != "--bounded-git-child":
+        return
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    if sys.argv[2] == "flood":
+        chunk = b"x" * 65_536
+        while True:
+            os.write(1, chunk)
+            os.write(2, chunk)
+    if sys.argv[2] == "close":
+        os.close(1)
+        os.close(2)
+        while True:
+            time.sleep(60)
+    if sys.argv[2] == "stderr":
+        os.write(2, b"unexpected stderr")
+        raise SystemExit(0)
+    raise SystemExit(2)
+
+
+_run_private_child_mode()
+
+
+class BoundedGitObserverTests(unittest.TestCase):
+    @staticmethod
+    def _repository(parent: Path) -> Path:
+        source = parent / "repo"
+        source.mkdir()
+        subprocess.run(["git", "init", "-q", str(source)], check=True)
+        subprocess.run(["git", "-C", str(source), "config", "user.email", "sqw@example.invalid"], check=True)
+        subprocess.run(["git", "-C", str(source), "config", "user.name", "SQW"], check=True)
+        (source / "input.txt").write_text("tracked\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(source), "add", "input.txt"], check=True)
+        subprocess.run(["git", "-C", str(source), "commit", "-q", "-m", "fixture"], check=True)
+        return source
+
+    def test_repository_fence_uses_exact_eight_sanitized_git_children(self) -> None:
+        real_popen = subprocess.Popen
+        calls: list[list[str]] = []
+
+        def spy(argv: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+            calls.append(argv)
+            self.assertEqual(cycle.GIT_ENV, kwargs["env"])
+            self.assertEqual(subprocess.DEVNULL, kwargs["stdin"])
+            self.assertEqual(["git", "--no-pager"], argv[:2])
+            self.assertEqual(["-c", "core.fsmonitor=false", "-c", "diff.external="], argv[4:8])
+            return real_popen(argv, **kwargs)
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = self._repository(Path(directory))
+            with mock.patch.object(cycle.subprocess, "Popen", side_effect=spy):
+                identity, observation = cycle._capture_source(source)
+        self.assertEqual("repository", identity["kind"])
+        self.assertEqual("repository", observation["kind"])
+        self.assertEqual(8, len(calls))
+        self.assertEqual(2, sum(argv[8:10] == ["rev-parse", "HEAD^{commit}"] for argv in calls))
+        self.assertEqual(2, sum(argv[8:10] == ["ls-files", "-v"] for argv in calls))
+        self.assertEqual(2, sum(argv[8:10] == ["status", "--porcelain=v2"] for argv in calls))
+
+    def test_unversioned_capture_uses_two_python_observations_and_no_git(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            source.mkdir()
+            (source / "input.txt").write_text("stable\n", encoding="utf-8")
+            with mock.patch.object(cycle, "_unversioned_observation", wraps=cycle._unversioned_observation) as observer:
+                with mock.patch.object(cycle.subprocess, "Popen", side_effect=AssertionError("unexpected Git child")):
+                    cycle._capture_source(source)
+            self.assertEqual(2, observer.call_count)
+
+    def test_exact_safe_status_config_values_are_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = self._repository(Path(directory))
+            for key, value in (
+                ("core.fileMode", "true"), ("core.ignoreStat", "false"),
+                ("core.trustCtime", "true"), ("core.checkStat", "default"),
+            ):
+                subprocess.run(["git", "-C", str(source), "config", key, value], check=True)
+            identity, _ = cycle._capture_source(source)
+            self.assertEqual("repository", identity["kind"])
+
+    def test_dangerous_repository_config_and_index_flags_fail_before_status(self) -> None:
+        variants = (
+            ("FiLtEr.Mixed.Process", "unsafe-command"),
+            ("core.worktree", "../other"),
+            ("core.attributesFile", "../attributes"),
+            ("core.excludesFile", "../excludes"),
+            ("extensions.worktreeConfig", "true"),
+            ("core.fileMode", "false"),
+            ("core.ignoreStat", "true"),
+            ("core.trustCtime", "false"),
+            ("core.checkStat", "minimal"),
+        )
+        real_popen = subprocess.Popen
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            for index, (key, value) in enumerate(variants):
+                with self.subTest(key=key):
+                    case_root = parent / str(index)
+                    case_root.mkdir()
+                    source = self._repository(case_root)
+                    subprocess.run(["git", "-C", str(source), "config", key, value], check=True)
+                    calls: list[list[str]] = []
+
+                    def spy(argv: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+                        calls.append(argv)
+                        return real_popen(argv, **kwargs)
+
+                    with mock.patch.object(cycle.subprocess, "Popen", side_effect=spy):
+                        with self.assertRaises(cycle.CycleError):
+                            cycle._capture_source(source)
+                    self.assertFalse(any(argv[8:10] == ["status", "--porcelain=v2"] for argv in calls))
+
+            flagged_root = parent / "flagged"
+            flagged_root.mkdir()
+            flagged = self._repository(flagged_root)
+            subprocess.run(["git", "-C", str(flagged), "update-index", "--assume-unchanged", "input.txt"], check=True)
+            calls = []
+            with mock.patch.object(cycle.subprocess, "Popen", side_effect=lambda argv, **kwargs: (calls.append(argv), real_popen(argv, **kwargs))[1]):
+                with self.assertRaises(cycle.CycleError):
+                    cycle._capture_source(flagged)
+            self.assertFalse(any(argv[8:10] == ["status", "--porcelain=v2"] for argv in calls))
+            nested_root = parent / "nested"
+            nested_root.mkdir()
+            repository = self._repository(nested_root)
+            nested = repository / "child"
+            nested.mkdir()
+            calls = []
+            with mock.patch.object(cycle.subprocess, "Popen", side_effect=lambda argv, **kwargs: (calls.append(argv), real_popen(argv, **kwargs))[1]):
+                with self.assertRaises(cycle.CycleError):
+                    cycle._capture_source(nested)
+            self.assertFalse(any(argv[8:10] == ["status", "--porcelain=v2"] for argv in calls))
+        with self.assertRaises(cycle.CycleError):
+            cycle._parse_index(b"H 100644 " + b"0" * 40 + b" 1\tconflict.txt\0")
+
+    def test_bounded_runner_drains_both_pipes_and_reaps_uncooperative_children(self) -> None:
+        real_popen = subprocess.Popen
+        fixed_prefix: list[str] | None = None
+        for mode in ("flood", "close", "stderr"):
+            with self.subTest(mode=mode):
+                def factory(argv: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+                    nonlocal fixed_prefix
+                    fixed_prefix = argv[:8]
+                    return real_popen(
+                        [sys.executable, str(Path(__file__).resolve()), "--bounded-git-child", mode],
+                        stdin=kwargs["stdin"], stdout=kwargs["stdout"], stderr=kwargs["stderr"],
+                        env={**kwargs["env"], "PYTHONDONTWRITEBYTECODE": "1"}, close_fds=True,
+                    )
+
+                started = time.monotonic()
+                with mock.patch.object(cycle.subprocess, "Popen", side_effect=factory):
+                    with self.assertRaises(cycle.CycleError):
+                        cycle._bounded_git(
+                            Path("/tmp"), ("status",), stdout_cap=1_024,
+                            deadline=time.monotonic() + 0.4,
+                        )
+                self.assertLess(time.monotonic() - started, 2.4)
+                self.assertEqual(
+                    ["git", "--no-pager", "-C", "/tmp", "-c", "core.fsmonitor=false", "-c", "diff.external="],
+                    fixed_prefix,
+                )
 
 
 class CardCycleM0Tests(unittest.TestCase):
@@ -688,6 +861,23 @@ class CardCycleM0Tests(unittest.TestCase):
             scoped = self._success_receipt(
                 self._run("complete", self._scope_command(entry, mode="M2"), source, "--work-root", str(work))
             )
+            outside = source / "outside.txt"
+            outside.write_text("untracked exterior\n", encoding="utf-8")
+            outside_blocked = self._success_receipt(
+                self._run("route", self._resume_command(scoped), source, "--work-root", str(work))
+            )
+            self.assertEqual(("blocked", "source-out-of-scope"), (outside_blocked["next_step"]["kind"], outside_blocked["next_step"]["reason_code"]))
+            outside.unlink()
+            recovered = self._success_receipt(
+                self._run("route", self._resume_command(scoped), source, "--work-root", str(work))
+            )
+            self.assertTrue(recovered["source_fresh"])
+            (source / "target.txt").rename(outside)
+            rename_blocked = self._success_receipt(
+                self._run("route", self._resume_command(scoped), source, "--work-root", str(work))
+            )
+            self.assertEqual(("blocked", "source-out-of-scope"), (rename_blocked["next_step"]["kind"], rename_blocked["next_step"]["reason_code"]))
+            outside.rename(source / "target.txt")
             (source / "target.txt").write_text("dirty allowed write\n", encoding="utf-8")
             dirty = self._success_receipt(
                 self._run("route", self._resume_command(scoped), source, "--work-root", str(work))
@@ -700,6 +890,34 @@ class CardCycleM0Tests(unittest.TestCase):
             )
             self.assertEqual(("blocked", "source-revision-changed", None), (blocked["next_step"]["kind"], blocked["next_step"]["reason_code"], blocked["current_lease"]))
             self.assertEqual([], json.loads((work / "locks.json").read_text(encoding="utf-8"))["leases"])
+
+    def test_ignored_exact_allowed_write_is_captured_without_scanning_other_ignored_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            work = root / "work"
+            source.mkdir()
+            work.mkdir()
+            subprocess.run(["git", "init", "-q", str(source)], check=True)
+            subprocess.run(["git", "-C", str(source), "config", "user.name", "SQW Test"], check=True)
+            subprocess.run(["git", "-C", str(source), "config", "user.email", "sqw@example.invalid"], check=True)
+            (source / ".gitignore").write_text("target.txt\ncache/\n", encoding="utf-8")
+            (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(source), "add", ".gitignore", "input.txt"], check=True)
+            subprocess.run(["git", "-C", str(source), "commit", "-q", "-m", "baseline"], check=True)
+            route = self._success_receipt(self._run("route", self._initial_command(), source))
+            entry = self._success_receipt(self._run("complete", self._entry_command(route), source))
+            scoped = self._success_receipt(
+                self._run("complete", self._scope_command(entry, mode="M2"), source, "--work-root", str(work))
+            )
+            cache = source / "cache"
+            cache.mkdir()
+            (cache / "noise.bin").write_bytes(b"ignored noise")
+            (source / "target.txt").write_text("authorized ignored output\n", encoding="utf-8")
+            resumed = self._success_receipt(
+                self._run("route", self._resume_command(scoped), source, "--work-root", str(work))
+            )
+            self.assertEqual([{"path": "target.txt", "status": "added"}], resumed["pending_source_transition"]["changed_paths"])
 
     def test_registry_covers_every_artifact_with_one_fixed_family_class(self) -> None:
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))

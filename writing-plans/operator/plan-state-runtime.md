@@ -18,4 +18,6 @@ Plan statuses are `drafting`, `ready`, `active`, `blocked`, `completed`, and `su
 
 Resume classifies source once per command. Eligible dirty leaves under `allowed_reads` produce `source_rebind_required` only while a live queue exists; the next exact completion applies the CLI-derived rebind and marks matching source-bound evidence stale. Empty-queue drift returns a stale terminal receipt without state mutation. Source kind/root and repository HEAD/tree drift are blocked and require a new Program.
 
+Repository source capture runs one fixed local-config preflight and canonical top-level check followed by two raw-byte-stable observations of commit/tree, the full staged index, and porcelain-v2 status. Git receives a fixed empty-derived environment; hook/filter/diff/credential/provider inheritance, remote prompting, lazy fetch, unsafe index flags, weakened status semantics, non-empty stderr, output caps, and deadline overruns fail before Program mutation.
+
 Program Handoff is derived under the Program lock from typed state refs. Its candidate state temp precedes immutable artifact publication, and state replacement follows the artifact final. The durable state stores only the completion-bound locator. Missing or hash-mismatched hard artifacts invalidate the owner; resume never guesses an artifact instance from its family ID.

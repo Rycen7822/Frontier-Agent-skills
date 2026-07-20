@@ -232,6 +232,27 @@
         "identity_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
       }
     },
+    "sourceTransition": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["operation_kind", "before_identity_hash", "after_identity_hash", "changed_paths"],
+      "properties": {
+        "operation_kind": {"const": "plan-output"},
+        "before_identity_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "after_identity_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "changed_paths": {
+          "type": "array", "maxItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["path", "status"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "status": {"enum": ["added", "modified"]}
+            }
+          }
+        }
+      }
+    },
     "nextCard": {
       "type": "object",
       "additionalProperties": false,
@@ -298,7 +319,7 @@
         "schema_version", "receipt_kind", "receipt_id", "bundle_id", "skill_id",
         "source_identity", "next_step", "route_context", "completion",
         "planning_scope_binding", "content_locator", "owner_locator", "already_completed",
-        "source_fresh", "source_rebind_required", "state_version", "state_hash"
+        "source_fresh", "source_rebind_required", "source_transition", "state_version", "state_hash"
       ],
       "properties": {
         "schema_version": {"const": "wp-card-receipt/1"},
@@ -316,6 +337,7 @@
         "already_completed": {"type": "boolean"},
         "source_fresh": {"type": ["boolean", "null"]},
         "source_rebind_required": {"type": "boolean"},
+        "source_transition": {"$ref": "#/$defs/sourceTransition"},
         "state_version": {"type": ["integer", "null"], "minimum": 1},
         "state_hash": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}]}
       }

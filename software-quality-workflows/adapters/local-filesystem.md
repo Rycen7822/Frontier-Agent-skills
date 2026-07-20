@@ -21,6 +21,8 @@ M2/M3 bootstrap publishes the fixed surface in the order lock, prepared state, `
 
 `route resume` validates the owner locator, bundle contract, scope binding, current source snapshot, source root binding, repository HEAD/tree when applicable, prepared operation, projection surface, and lease owner. Eligible changes limited to the immutable `allowed_writes` set produce a pending source transition. Revision, root, source-kind, HEAD/tree, exterior, or out-of-scope drift returns a blocked locator and no next lease.
 
+Repository capture uses one fixed local-config preflight, one canonical top-level check, and two observations of `HEAD^{commit}`/`HEAD^{tree}`, the full staged index, and porcelain-v2 status. Git children receive a fixed empty-derived environment with remote prompting, global/system configuration, hooks, filters, diff commands, lazy fetch, unsafe index flags, and weakened status semantics disabled or rejected. Both pipes are drained to EOF under one deadline; non-empty stderr, caps, timeout, unsafe paths, or raw-byte drift fail before owner mutation.
+
 The model-facing lifecycle uses canonical JSON on stdin and receipts on stdout:
 
 ```text

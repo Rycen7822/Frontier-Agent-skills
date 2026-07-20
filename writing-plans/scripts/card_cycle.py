@@ -7,11 +7,13 @@ import argparse
 from hashlib import sha256
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
+import selectors
 import stat
 import subprocess
 import sys
+import time
 from typing import Any
 
 from jsonschema import Draft202012Validator
@@ -46,6 +48,25 @@ RECEIPT_MAX_BYTES = 12_288
 SOURCE_FILE_MAX_BYTES = 8 * 1024 * 1024
 SOURCE_TOTAL_MAX_BYTES = 32 * 1024 * 1024
 SOURCE_MAX_FILES = 4_096
+GIT_SMALL_OUTPUT_MAX = 65_536
+GIT_LARGE_OUTPUT_MAX = 8_388_608
+GIT_DEADLINE_SECONDS = 30.0
+GIT_CONFIG_PATTERN = (
+    r"^(include(\..*)?|includeif\..*|extensions\.worktreeconfig|filter\..*\."
+    r"(clean|smudge|process)|diff\..*\.(command|textconv)|core\."
+    r"(fsmonitor|hookspath|worktree|attributesfile|excludesfile|filemode|ignorestat|trustctime|checkstat)"
+    r"|submodule\..*\.update)$"
+)
+GIT_ENV = {
+    "PATH": "/bin:/usr/bin",
+    "LANG": "C",
+    "LC_ALL": "C",
+    "GIT_OPTIONAL_LOCKS": "0",
+    "GIT_TERMINAL_PROMPT": "0",
+    "GIT_CONFIG_GLOBAL": "/dev/null",
+    "GIT_CONFIG_SYSTEM": "/dev/null",
+    "GIT_NO_LAZY_FETCH": "1",
+}
 SUPPORT_MAP_PATH = ROOT / "references" / "package-support-map.md"
 
 
@@ -210,23 +231,7 @@ def _source_observation(source_root: Path) -> dict[str, Any]:
     return {"kind": "unversioned", "root_binding": {"dev": info.st_dev, "ino": info.st_ino}, "records": records}
 
 
-def _git(source_root: Path, *arguments: str) -> bytes:
-    env = dict(os.environ)
-    env.update({"GIT_OPTIONAL_LOCKS": "0", "GIT_PAGER": "cat", "LC_ALL": "C"})
-    completed = subprocess.run(
-        ["git", "-C", str(source_root), *arguments],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        env=env,
-        timeout=15,
-    )
-    if completed.returncode != 0:
-        raise CycleError("E_SOURCE_UNAVAILABLE", "repository source cannot be observed", exit_code=5)
-    return completed.stdout
-
-
-def _repository_observation(source_root: Path) -> dict[str, Any]:
+def _validated_source_root(source_root: Path) -> tuple[Path, os.stat_result]:
     try:
         info = source_root.lstat()
         resolved = source_root.resolve(strict=True)
@@ -234,26 +239,240 @@ def _repository_observation(source_root: Path) -> dict[str, Any]:
         raise CycleError("E_SOURCE_UNAVAILABLE", "repository source root is unavailable", exit_code=5) from exc
     if source_root.is_symlink() or not stat.S_ISDIR(info.st_mode) or resolved != source_root.absolute():
         raise CycleError("E_SOURCE_UNAVAILABLE", "repository source root is not canonical", exit_code=5)
-    top = Path(_git(resolved, "rev-parse", "--show-toplevel").decode("utf-8").strip()).resolve(strict=True)
-    if top != resolved:
-        raise CycleError("E_SOURCE_UNAVAILABLE", "source root must be the repository top level", exit_code=5)
-    head_commit = _git(resolved, "rev-parse", "HEAD").decode("ascii").strip()
-    head_tree = _git(resolved, "rev-parse", "HEAD^{tree}").decode("ascii").strip()
-    status_fields = _git(resolved, "-c", "status.renames=false", "status", "--porcelain=v1", "-z", "--untracked-files=all").split(b"\0")
-    statuses: dict[str, str] = {}
-    for field in status_fields:
-        if not field:
+    return resolved, info
+
+
+def _repository_marker(source_root: Path) -> bool:
+    current = source_root
+    while True:
+        try:
+            (current / ".git").lstat()
+            return True
+        except FileNotFoundError:
+            pass
+        if current.parent == current:
+            return False
+        current = current.parent
+
+
+def _terminate_git(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=1.0)
+        return
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=1.0)
+
+
+def _bounded_git(
+    source_root: Path,
+    arguments: tuple[str, ...],
+    *,
+    stdout_cap: int,
+    deadline: float,
+    allowed_exit: tuple[int, ...] = (0,),
+) -> tuple[int, bytes]:
+    argv = [
+        "git", "--no-pager", "-C", str(source_root),
+        "-c", "core.fsmonitor=false", "-c", "diff.external=", *arguments,
+    ]
+    try:
+        process = subprocess.Popen(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=GIT_ENV,
+            close_fds=True,
+        )
+    except OSError as exc:
+        raise CycleError("E_SOURCE_UNAVAILABLE", "repository observer could not start", exit_code=5) from exc
+    assert process.stdout is not None and process.stderr is not None
+    stdout_descriptor = process.stdout.fileno()
+    stderr_descriptor = process.stderr.fileno()
+    streams = {stdout_descriptor: stdout_cap, stderr_descriptor: GIT_SMALL_OUTPUT_MAX}
+    captured = {descriptor: bytearray() for descriptor in streams}
+    selector = selectors.DefaultSelector()
+    try:
+        for descriptor in streams:
+            os.set_blocking(descriptor, False)
+            selector.register(descriptor, selectors.EVENT_READ)
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError
+            for key, _ in selector.select(remaining):
+                descriptor = int(key.fd)
+                chunk = os.read(descriptor, 65_536)
+                if not chunk:
+                    selector.unregister(descriptor)
+                    continue
+                captured[descriptor].extend(chunk)
+                if len(captured[descriptor]) > streams[descriptor]:
+                    raise OverflowError
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError
+        return_code = process.wait(timeout=remaining)
+    except (TimeoutError, subprocess.TimeoutExpired, OverflowError, OSError) as exc:
+        _terminate_git(process)
+        raise CycleError("E_SOURCE_UNAVAILABLE", "repository observer exceeded its fixed boundary", exit_code=5) from exc
+    finally:
+        selector.close()
+        process.stdout.close()
+        process.stderr.close()
+    stdout = bytes(captured[stdout_descriptor])
+    stderr = bytes(captured[stderr_descriptor])
+    if return_code not in allowed_exit or stderr:
+        raise CycleError("E_SOURCE_UNAVAILABLE", "repository observer rejected the source", exit_code=5)
+    return return_code, stdout
+
+
+def _validate_repository_config(source_root: Path, deadline: float) -> None:
+    return_code, payload = _bounded_git(
+        source_root,
+        ("config", "--local", "--no-includes", "--null", "--get-regexp", GIT_CONFIG_PATTERN),
+        stdout_cap=GIT_SMALL_OUTPUT_MAX,
+        deadline=deadline,
+        allowed_exit=(0, 1),
+    )
+    if return_code == 1:
+        if payload:
+            raise CycleError("E_SOURCE_UNAVAILABLE", "repository config response is invalid", exit_code=5)
+        return
+    safe = {
+        "core.filemode": "true",
+        "core.ignorestat": "false",
+        "core.trustctime": "true",
+        "core.checkstat": "default",
+    }
+    observed: set[str] = set()
+    for record in payload.split(b"\0"):
+        if not record:
             continue
-        text = field.decode("utf-8", errors="strict")
-        code, path = text[:2], text[3:]
-        statuses[path] = "added" if code == "??" or "A" in code else "deleted" if "D" in code else "modified"
-    paths = [item.decode("utf-8", errors="strict") for item in _git(resolved, "ls-files", "-co", "--exclude-standard", "-z").split(b"\0") if item]
+        if record.count(b"\n") != 1:
+            raise CycleError("E_SOURCE_UNAVAILABLE", "repository config response is invalid", exit_code=5)
+        raw_key, raw_value = record.split(b"\n", 1)
+        try:
+            key = raw_key.decode("ascii").lower()
+            value = raw_value.decode("utf-8", errors="strict")
+        except UnicodeError as exc:
+            raise CycleError("E_SOURCE_UNAVAILABLE", "repository config response is invalid", exit_code=5) from exc
+        if key in observed or key not in safe or safe[key] != value:
+            raise CycleError("E_SOURCE_UNAVAILABLE", "repository config weakens source observation", exit_code=5)
+        observed.add(key)
+
+
+def _canonical_source_path(raw: bytes) -> str:
+    try:
+        value = raw.decode("utf-8", errors="strict")
+    except UnicodeError as exc:
+        raise CycleError("E_SOURCE_UNAVAILABLE", "repository path encoding is invalid", exit_code=5) from exc
+    path = PurePosixPath(value)
+    if (
+        not value or path.is_absolute() or value in {".", ".."}
+        or any(part in {"", ".", ".."} for part in path.parts)
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
+        raise CycleError("E_SOURCE_UNAVAILABLE", "repository path is invalid", exit_code=5)
+    return path.as_posix()
+
+
+def _parse_index(payload: bytes) -> dict[str, dict[str, str]]:
+    records: dict[str, dict[str, str]] = {}
+    for raw in payload.split(b"\0"):
+        if not raw:
+            continue
+        try:
+            prefix, raw_path = raw.split(b"\t", 1)
+            tag = chr(prefix[0])
+            mode, object_id, stage = prefix[2:].decode("ascii").split(" ")
+        except (ValueError, UnicodeError, IndexError) as exc:
+            raise CycleError("E_SOURCE_UNAVAILABLE", "repository index response is invalid", exit_code=5) from exc
+        if tag.islower() or tag == "S" or stage != "0":
+            raise CycleError("E_SOURCE_UNAVAILABLE", "repository index uses an unsupported state", exit_code=5)
+        path = _canonical_source_path(raw_path)
+        if path in records:
+            raise CycleError("E_SOURCE_UNAVAILABLE", "repository index contains duplicate paths", exit_code=5)
+        records[path] = {"index_mode": mode, "index_object": object_id}
+    return records
+
+
+def _parse_status(payload: bytes) -> dict[str, str]:
+    fields = payload.split(b"\0")
+    result: dict[str, str] = {}
+    index = 0
+    while index < len(fields):
+        raw = fields[index]
+        index += 1
+        if not raw:
+            continue
+        kind = raw[:1]
+        if kind == b"1":
+            parts = raw.split(b" ", 8)
+            if len(parts) != 9:
+                raise CycleError("E_SOURCE_UNAVAILABLE", "repository status response is invalid", exit_code=5)
+            code, raw_path = parts[1], parts[8]
+            path = _canonical_source_path(raw_path)
+            result[path] = "deleted" if b"D" in code else "added" if b"A" in code else "modified"
+        elif kind == b"2":
+            parts = raw.split(b" ", 9)
+            if len(parts) != 10 or index >= len(fields):
+                raise CycleError("E_SOURCE_UNAVAILABLE", "repository rename response is invalid", exit_code=5)
+            new_path = _canonical_source_path(parts[9])
+            old_path = _canonical_source_path(fields[index])
+            index += 1
+            result[old_path] = "deleted"
+            result[new_path] = "added"
+        elif kind == b"?":
+            if not raw.startswith(b"? "):
+                raise CycleError("E_SOURCE_UNAVAILABLE", "repository status response is invalid", exit_code=5)
+            result[_canonical_source_path(raw[2:])] = "added"
+        elif kind in {b"u", b"!"}:
+            raise CycleError("E_SOURCE_UNAVAILABLE", "repository status uses an unsupported state", exit_code=5)
+        else:
+            raise CycleError("E_SOURCE_UNAVAILABLE", "repository status response is invalid", exit_code=5)
+    return result
+
+
+def _repository_observation(source_root: Path, root_info: os.stat_result, deadline: float) -> tuple[dict[str, Any], tuple[bytes, bytes, bytes]]:
+    _, revision_raw = _bounded_git(
+        source_root, ("rev-parse", "HEAD^{commit}", "HEAD^{tree}"),
+        stdout_cap=GIT_SMALL_OUTPUT_MAX, deadline=deadline,
+    )
+    _, index_raw = _bounded_git(
+        source_root, ("ls-files", "-v", "--stage", "-z"),
+        stdout_cap=GIT_LARGE_OUTPUT_MAX, deadline=deadline,
+    )
+    index_records = _parse_index(index_raw)
+    _, status_raw = _bounded_git(
+        source_root, ("status", "--porcelain=v2", "-z", "--untracked-files=all", "--ignore-submodules=all"),
+        stdout_cap=GIT_LARGE_OUTPUT_MAX, deadline=deadline,
+    )
+    try:
+        revision_parts = revision_raw.decode("ascii").splitlines()
+    except UnicodeError as exc:
+        raise CycleError("E_SOURCE_UNAVAILABLE", "repository revision response is invalid", exit_code=5) from exc
+    if (
+        len(revision_parts) != 2
+        or any(len(value) not in {40, 64} for value in revision_parts)
+        or any(character not in "0123456789abcdef" for value in revision_parts for character in value)
+    ):
+        raise CycleError("E_SOURCE_UNAVAILABLE", "repository revision response is invalid", exit_code=5)
+    statuses = _parse_status(status_raw)
+    paths = sorted(
+        {path for path in index_records if statuses.get(path) != "deleted"}
+        | {path for path, value in statuses.items() if value != "deleted"}
+    )
     if len(paths) > SOURCE_MAX_FILES:
         raise CycleError("E_SOURCE_UNAVAILABLE", "repository source exceeds its file bound", exit_code=5)
     records: list[dict[str, Any]] = []
     total = 0
-    for relative in sorted(set(paths)):
-        content_hash, size, mode = _read_source_file(resolved / relative)
+    for relative in paths:
+        content_hash, size, mode = _read_source_file(source_root / relative)
         total += size
         if total > SOURCE_TOTAL_MAX_BYTES:
             raise CycleError("E_SOURCE_UNAVAILABLE", "repository source exceeds its byte bound", exit_code=5)
@@ -264,18 +483,50 @@ def _repository_observation(source_root: Path) -> dict[str, Any]:
     for relative, status_value in sorted(statuses.items()):
         if status_value == "deleted" and relative not in paths:
             records.append({"path": relative, "status": "deleted", "content_hash": None, "bytes": 0, "mode": "0000"})
-    root_binding = {"dev": info.st_dev, "ino": info.st_ino}
+    root_binding = {"dev": root_info.st_dev, "ino": root_info.st_ino}
     semantic = {
         "kind": "repository", "root_binding": root_binding,
-        "head_commit": head_commit, "head_tree": head_tree, "scoped_records": records,
+        "head_commit": revision_parts[0], "head_tree": revision_parts[1], "scoped_records": records,
         "exterior_guard_hash": _hash_json({"root_binding": root_binding, "outside_allowed_reads": []}),
     }
-    return {**semantic, "identity_hash": _hash_json(semantic)}
+    return {**semantic, "identity_hash": _hash_json(semantic)}, (revision_raw, index_raw, status_raw)
+
+
+def _open_repository_capture(source_root: Path) -> tuple[Path, os.stat_result, float]:
+    resolved, info = _validated_source_root(source_root)
+    deadline = time.monotonic() + GIT_DEADLINE_SECONDS
+    _validate_repository_config(resolved, deadline)
+    _, top_raw = _bounded_git(
+        resolved, ("rev-parse", "--show-toplevel"),
+        stdout_cap=GIT_SMALL_OUTPUT_MAX, deadline=deadline,
+    )
+    try:
+        top_text = top_raw.decode("utf-8", errors="strict")
+        top = Path(top_text.removesuffix("\n")).resolve(strict=True)
+    except (OSError, UnicodeError) as exc:
+        raise CycleError("E_SOURCE_UNAVAILABLE", "repository root response is invalid", exit_code=5) from exc
+    if top_raw != (str(top) + "\n").encode("utf-8") or top != resolved:
+        raise CycleError("E_SOURCE_UNAVAILABLE", "source root must be the repository top level", exit_code=5)
+    return resolved, info, deadline
+
+
+def _repository_fence(session: tuple[Path, os.stat_result, float]) -> dict[str, Any]:
+    resolved, info, deadline = session
+    opening, opening_raw = _repository_observation(resolved, info, deadline)
+    closing, closing_raw = _repository_observation(resolved, info, deadline)
+    if opening_raw != closing_raw or opening != closing:
+        raise CycleError("E_SOURCE_DRIFT", "repository changed during the stability fence", exit_code=3, retryable=True)
+    return opening
+
+
+def _capture_repository(source_root: Path) -> dict[str, Any]:
+    return _repository_fence(_open_repository_capture(source_root))
 
 
 def _capture_source(source_root: Path) -> dict[str, str]:
-    if (source_root / ".git").exists():
-        current = _capture_program_source(source_root)
+    resolved, _ = _validated_source_root(source_root)
+    if _repository_marker(resolved):
+        current = _capture_repository(resolved)
         return {key: current[key] for key in ("kind", "identity_hash")}
     opening = _source_observation(source_root)
     closing = _source_observation(source_root)
@@ -285,12 +536,9 @@ def _capture_source(source_root: Path) -> dict[str, str]:
 
 
 def _capture_program_source(source_root: Path) -> dict[str, Any]:
-    if (source_root / ".git").exists():
-        opening = _repository_observation(source_root)
-        closing = _repository_observation(source_root)
-        if opening != closing:
-            raise CycleError("E_SOURCE_DRIFT", "repository changed during the stability fence", exit_code=3, retryable=True)
-        return opening
+    resolved, _ = _validated_source_root(source_root)
+    if _repository_marker(resolved):
+        return _capture_repository(resolved)
     opening = _source_observation(source_root)
     closing = _source_observation(source_root)
     if opening != closing:
@@ -305,6 +553,104 @@ def _capture_program_source(source_root: Path) -> dict[str, Any]:
         "scoped_records": [{**record, "status": "unchanged"} for record in opening["records"]],
         "exterior_guard_hash": _hash_json({"source_root": opening["root_binding"], "outside": []}),
     }
+
+
+def _open_publication_capture(source_root: Path) -> tuple[str, Any, dict[str, Any]]:
+    resolved, info = _validated_source_root(source_root)
+    if _repository_marker(resolved):
+        session = _open_repository_capture(resolved)
+        return "repository", session, _repository_fence(session)
+    opening = _source_observation(resolved)
+    closing = _source_observation(resolved)
+    if opening != closing:
+        raise CycleError("E_SOURCE_DRIFT", "source changed during the stability fence", exit_code=3, retryable=True)
+    return "unversioned", (resolved, info), opening
+
+
+def _publication_fence(kind: str, session: Any) -> dict[str, Any]:
+    try:
+        if kind == "repository":
+            return _repository_fence(session)
+        resolved, _ = session
+        opening = _source_observation(resolved)
+        closing = _source_observation(resolved)
+        if opening != closing:
+            raise CycleError("E_POST_PUBLISH_UNVERIFIED", "source changed after publication", exit_code=5)
+        return opening
+    except CycleError as exc:
+        if exc.code == "E_POST_PUBLISH_UNVERIFIED":
+            raise
+        raise CycleError("E_POST_PUBLISH_UNVERIFIED", "source could not be verified after publication", exit_code=5) from exc
+
+
+def _observation_identity(observation: dict[str, Any]) -> dict[str, str]:
+    if observation["kind"] == "repository":
+        return {"kind": "repository", "identity_hash": observation["identity_hash"]}
+    return {"kind": "unversioned", "identity_hash": _hash_json(observation)}
+
+
+def _identity_without_paths(observation: dict[str, Any], excluded: set[str]) -> dict[str, str]:
+    if observation["kind"] == "repository":
+        semantic = {
+            key: value
+            for key, value in observation.items()
+            if key != "identity_hash"
+        }
+        semantic["scoped_records"] = [record for record in semantic["scoped_records"] if record["path"] not in excluded]
+        return {"kind": "repository", "identity_hash": _hash_json(semantic)}
+    semantic = {**observation, "records": [record for record in observation["records"] if record["path"] not in excluded]}
+    return {"kind": "unversioned", "identity_hash": _hash_json(semantic)}
+
+
+def _publication_transition(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    relative: str,
+) -> tuple[dict[str, str], dict[str, Any]]:
+    immutable = ("kind", "root_binding", "head_commit", "head_tree")
+    if any(before.get(key) != after.get(key) for key in immutable):
+        raise CycleError("E_POST_PUBLISH_UNVERIFIED", "source identity changed during publication", exit_code=5)
+    record_key = "scoped_records" if before["kind"] == "repository" else "records"
+    before_records = {record["path"]: record for record in before[record_key]}
+    after_records = {record["path"]: record for record in after[record_key]}
+    changed = {
+        path for path in before_records.keys() | after_records.keys()
+        if before_records.get(path) != after_records.get(path)
+    }
+    if changed - {relative} or relative not in after_records:
+        raise CycleError("E_POST_PUBLISH_UNVERIFIED", "publication changed an unauthorized source path", exit_code=5)
+    after_identity = _observation_identity(after)
+    baseline_identity = _identity_without_paths(after, {relative})
+    transition = {
+        "operation_kind": "plan-output",
+        "before_identity_hash": baseline_identity["identity_hash"],
+        "after_identity_hash": after_identity["identity_hash"],
+        "changed_paths": [{"path": relative, "status": "added"}],
+    }
+    return after_identity, transition
+
+
+def _observation_paths(observation: dict[str, Any]) -> set[str]:
+    key = "scoped_records" if observation["kind"] == "repository" else "records"
+    return {record["path"] for record in observation[key]}
+
+
+def _relative_to_source(source_root: Path, path: Path) -> str:
+    try:
+        return path.relative_to(source_root).as_posix()
+    except ValueError as exc:
+        raise CycleError("E_ROOT_ROLE", "delivery root is outside the source") from exc
+
+
+def _publication_filename(contract_id: str, locator: dict[str, Any]) -> str:
+    digest = locator["content_hash"][7:]
+    if contract_id == "wp.complete.brief/1":
+        return f"plan-brief--{digest}.md"
+    if contract_id == "wp.complete.handoff/1":
+        return f"plan-handoff--{digest}.json"
+    if contract_id == "wp.render.handoff/1":
+        return f"plan-handoff--{digest}.md"
+    raise CycleError("E_UNSUPPORTED_VARIANT", "source-contained output is not active for this contract", exit_code=4)
 
 
 def _validate_delivery_root(path: Path) -> tuple[Path, dict[str, int]]:
@@ -345,6 +691,7 @@ def _base_receipt(manifest: dict[str, Any], source_identity: dict[str, str], nex
         "already_completed": False,
         "source_fresh": None,
         "source_rebind_required": False,
+        "source_transition": None,
         "state_version": None,
         "state_hash": None,
     }
@@ -1155,16 +1502,76 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
     }
     source_root = Path(args.source_root)
     source_resolved = source_root.resolve(strict=True)
-    for resolved, _ in roots.values():
-        if resolved == source_resolved or resolved.is_relative_to(source_resolved):
-            raise CycleError("E_UNSUPPORTED_VARIANT", "source-contained projection is not active in this slice", exit_code=4)
-    program_contract = contract_id in {"wp.route.resume/1", "wp.complete.program/1", "wp.complete.program-card/1", "wp.render.program/1"}
-    full_source_identity = _capture_program_source(source_root) if program_contract else None
-    source_identity = (
-        {key: full_source_identity[key] for key in ("kind", "identity_hash")}
-        if full_source_identity is not None
-        else _capture_source(source_root)
+    if "work" in roots:
+        work_resolved = roots["work"][0]
+        if work_resolved == source_resolved or work_resolved.is_relative_to(source_resolved):
+            raise CycleError("E_ROOT_ROLE", "Program work root must remain outside the source", exit_code=4)
+    output_role = {
+        "wp.complete.brief/1": "projection",
+        "wp.complete.handoff/1": "artifact",
+        "wp.render.handoff/1": "projection",
+    }.get(contract_id)
+    output_root = roots.get(output_role, (None, None))[0] if output_role is not None else None
+    source_publication = bool(
+        output_root is not None
+        and (output_root == source_resolved or output_root.is_relative_to(source_resolved))
     )
+    program_contract = contract_id in {"wp.route.resume/1", "wp.complete.program/1", "wp.complete.program-card/1", "wp.render.program/1"}
+    publication_capture: tuple[str, Any, dict[str, Any]] | None = None
+    recovery_target: str | None = None
+    if source_publication:
+        publication_capture = _open_publication_capture(source_root)
+        _, _, publication_before = publication_capture
+        source_identity = _observation_identity(publication_before)
+        output_relative = _relative_to_source(source_resolved, output_root)
+        output_prefix = "" if output_relative == "." else output_relative + "/"
+        candidate_pattern = {
+            "wp.complete.brief/1": ("plan-brief--", ".md"),
+            "wp.complete.handoff/1": ("plan-handoff--", ".json"),
+            "wp.render.handoff/1": ("plan-handoff--", ".md"),
+        }[contract_id]
+        base_exclusions: set[str] = set()
+        expected_identity = command.get("previous_receipt", {}).get("source_identity") if command.get("previous_receipt") else None
+        if contract_id == "wp.render.handoff/1":
+            artifact_root = roots["artifact"][0]
+            locator = command["fields"]["content_locator"]
+            artifact_path = artifact_root / f"plan-handoff--{locator['content_hash'][7:]}.json"
+            artifact_payload, _ = _read_regular(artifact_path)
+            try:
+                artifact_value = strict_json_bytes(artifact_payload, source=str(artifact_path))
+                expected_identity = artifact_value["source_identity"]
+            except (KeyError, TypeError, ValueError) as exc:
+                raise CycleError("E_HANDOFF_INVALID", "handoff artifact source binding is invalid", exit_code=4) from exc
+            if artifact_path.is_relative_to(source_resolved):
+                base_exclusions.add(artifact_path.relative_to(source_resolved).as_posix())
+        if expected_identity is not None and source_identity != expected_identity:
+            matches: list[str] = []
+            for relative in _observation_paths(publication_before):
+                name = relative.removeprefix(output_prefix)
+                if (
+                    relative.startswith(output_prefix)
+                    and "/" not in name
+                    and name.startswith(candidate_pattern[0])
+                    and name.endswith(candidate_pattern[1])
+                    and _identity_without_paths(publication_before, base_exclusions | {relative}) == expected_identity
+                ):
+                    matches.append(relative)
+            if len(matches) != 1:
+                if _identity_without_paths(publication_before, base_exclusions) != expected_identity:
+                    raise CycleError("E_SOURCE_REVISION_CHANGED", "source identity changed outside the authorized output", exit_code=3)
+            else:
+                recovery_target = matches[0]
+            source_identity = expected_identity
+        elif expected_identity is not None:
+            source_identity = expected_identity
+        full_source_identity = None
+    else:
+        full_source_identity = _capture_program_source(source_root) if program_contract else None
+        source_identity = (
+            {key: full_source_identity[key] for key in ("kind", "identity_hash")}
+            if full_source_identity is not None
+            else _capture_source(source_root)
+        )
     if contract_id == "wp.route.initial/1":
         receipt = _route_initial(command, manifest, source_identity)
     elif contract_id == "wp.route.resume/1":
@@ -1208,6 +1615,18 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
             receipt = _render_handoff_projection(command, manifest, source_identity, artifact, projection)
         else:
             raise CycleError("E_UNSUPPORTED_VARIANT", "command contract is not active", exit_code=4)
+    if publication_capture is not None:
+        publication_kind, publication_session, publication_before = publication_capture
+        assert output_root is not None
+        target = output_root / _publication_filename(contract_id, receipt["content_locator"])
+        relative_target = target.relative_to(source_resolved).as_posix()
+        if recovery_target is not None and recovery_target != relative_target:
+            raise CycleError("E_ORPHAN_CONFLICT", "recovered output does not match the deterministic locator", exit_code=5)
+        publication_after = _publication_fence(publication_kind, publication_session)
+        after_identity, transition = _publication_transition(publication_before, publication_after, relative_target)
+        receipt["source_identity"] = after_identity
+        receipt["source_transition"] = transition
+        receipt["receipt_id"] = _receipt_id(receipt)
     _validate(schema, "receipt", receipt, "E_CONTRACT_INVALID")
     if len(_canonical(receipt)) + 1 > RECEIPT_MAX_BYTES:
         raise CycleError("E_COMMAND_BUDGET", "receipt exceeds the byte limit", exit_code=4)
