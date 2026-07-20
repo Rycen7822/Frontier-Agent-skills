@@ -1074,6 +1074,21 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
             self.assertIn('fixture artifact sha256 mismatch', result.stdout)
 
+    def test_receipt_verification_reuses_precomputed_candidate_inventory(self) -> None:
+        module = load_analyzer_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = write_receipt_bundle(Path(tmp))
+            spec = json.loads(bundle['spec'].read_text(encoding='utf-8'))
+            case = json.loads(bundle['cases'].read_text(encoding='utf-8').strip())
+            row = json.loads(bundle['index'].read_text(encoding='utf-8').strip())
+            variant = spec['variants'][0]
+            package_hash = module.resolve_candidate_package_hash(spec, bundle['spec'])
+            shutil.rmtree(Path(spec['target']['candidate_path']))
+            verification = module.verify_receipt(
+                row, spec, bundle['spec'], case, variant, package_hash,
+            )
+        self.assertEqual(verification['status'], 'complete')
+
     def test_deterministic_invocation_rejects_missing_or_tampered_inputs_and_declaration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2126,6 +2141,32 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             report = json.loads(output.read_text(encoding='utf-8'))
         self.assertEqual(report['summary']['structural_error_count'], 0)
         self.assertFalse(report['summary']['security_certificate'])
+
+    def test_inventory_only_hash_matches_full_audit_for_catalog_root(self) -> None:
+        module = load_analyzer_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = Path(tmp) / 'skills'
+            first = catalog / 'first-skill'
+            second = catalog / 'second-skill'
+            first.mkdir(parents=True)
+            second.mkdir()
+            (first / 'SKILL.md').write_text(
+                '---\nname: first-skill\ndescription: First fixture.\n---\n',
+                encoding='utf-8',
+            )
+            (second / 'SKILL.md').write_text(
+                '---\nname: second-skill\ndescription: Second fixture.\n---\n',
+                encoding='utf-8',
+            )
+            report_path = Path(tmp) / 'audit.json'
+            result = self.run_cmd(
+                'scripts/audit_skill_package.py', str(catalog), '--json', str(report_path),
+            )
+            report = json.loads(report_path.read_text(encoding='utf-8'))
+            inventory_hash = module.compute_inventory_hash(catalog)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('SKILL.md is missing at package root', result.stderr)
+        self.assertEqual(inventory_hash, report['inventory_hash'])
 
     def test_audit_default_clean_output_is_compact_relative_and_sidecar_free(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

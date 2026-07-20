@@ -19,7 +19,7 @@ from collections import Counter, defaultdict
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
-from audit_skill_package import audit as audit_skill_package
+from audit_skill_package import compute_inventory_hash
 from validate_eval_suite import (
     check_cases,
     check_spec,
@@ -401,9 +401,21 @@ def verify_fixture(case: dict[str, Any], artifacts_root: Path) -> str:
     return actual_manifest_hash
 
 
+def resolve_candidate_package_hash(spec: dict[str, Any], spec_path: Path) -> str:
+    """Compute the candidate provenance binding once per analyzer invocation."""
+    candidate_path = Path(spec["target"]["candidate_path"])
+    if not candidate_path.is_absolute():
+        candidate_path = spec_path.parent.resolve() / candidate_path
+    try:
+        package_hash = "sha256:" + compute_inventory_hash(candidate_path)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"candidate package inventory failed: {exc}") from None
+    return package_hash
+
+
 def derive_verified_run(
     row: dict[str, Any], spec: dict[str, Any], spec_path: Path,
-    case: dict[str, Any], variant: dict[str, Any],
+    case: dict[str, Any], variant: dict[str, Any], candidate_package_hash: str,
 ) -> dict[str, Any]:
     spec_root = spec_path.parent.resolve()
     artifacts_reference, artifacts_root = resolve_bound_dir(
@@ -474,14 +486,7 @@ def derive_verified_run(
 
     package_hash = variant["package_hash"]
     if variant["role"] == "candidate":
-        candidate_path = Path(spec["target"]["candidate_path"])
-        if not candidate_path.is_absolute():
-            candidate_path = spec_root / candidate_path
-        try:
-            audited = audit_skill_package(candidate_path, 2_000_000, 20)
-        except (OSError, ValueError) as exc:
-            raise ValueError(f"candidate package audit failed: {exc}") from None
-        package_hash = "sha256:" + audited["inventory_hash"]
+        package_hash = candidate_package_hash
         if package_hash != spec["target"]["candidate_hash"] or package_hash != variant["package_hash"]:
             raise ValueError("candidate package inventory hash mismatch")
 
@@ -751,10 +756,12 @@ def derive_verified_run(
 
 def verify_receipt(
     row: dict[str, Any], spec: dict[str, Any], spec_path: Path,
-    case: dict[str, Any], variant: dict[str, Any],
+    case: dict[str, Any], variant: dict[str, Any], candidate_package_hash: str,
 ) -> dict[str, Any]:
     try:
-        record = derive_verified_run(row, spec, spec_path, case, variant)
+        record = derive_verified_run(
+            row, spec, spec_path, case, variant, candidate_package_hash
+        )
     except FileNotFoundError as exc:
         return {"status": "incomplete", "issue": str(exc), "record": None}
     except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -2045,6 +2052,7 @@ def main() -> int:
                 raise ValueError("scored-ready case suite still contains template placeholders")
             if spec.get("ready_for_scored_run") is not True:
                 raise ValueError("spec is not ready_for_scored_run")
+        candidate_package_hash = resolve_candidate_package_hash(spec, spec_path)
     except ValueError as exc:
         print(f"analysis error: {exc}", file=sys.stderr)
         return 2
@@ -2072,7 +2080,9 @@ def main() -> int:
                 "issue": f"run index references unknown {missing}",
             })
             continue
-        verification = verify_receipt(row, spec, spec_path, case, variant)
+        verification = verify_receipt(
+            row, spec, spec_path, case, variant, candidate_package_hash
+        )
         if verification["status"] != "complete":
             if verification["status"] == "invalid" or evidence_status == "complete":
                 evidence_status = verification["status"]
