@@ -88,7 +88,7 @@
 - [`schemas/route-result.schema.json` · `sha256:16ffea028a22f5a6577bb72e7d29769f774c7b2e8012889cad9cf0b4316efb73`](../schemas/route-result.schema.json)
 - [`schemas/verifier-bundle.schema.json` · `sha256:91f9c1889d281c29ea0abd9e5ff0a30f2f763be510ee65f4e6601d453c939dbd`](../schemas/verifier-bundle.schema.json)
 - [`schemas/workflow-event.schema.json` · `sha256:8ffd2dd69869b31a1e63fbedb344fdeeaea3ac8f5010e1a3ab151e475defcc6b`](../schemas/workflow-event.schema.json)
-- [`schemas/workflow-state.schema.json` · `sha256:fc6f5a6c919d61daea33f767fc07c6732cd3675ab63ab886afc60fb5284d9b64`](../schemas/workflow-state.schema.json)
+- [`schemas/workflow-state.schema.json` · `sha256:9ded5990f26f5793e41832a096ef3b8be9ee9f46fed4bea9d1bf1e9891398827`](../schemas/workflow-state.schema.json)
 
 ## scripts
 
@@ -96,7 +96,7 @@
 - [`scripts/_workflow_state.py` · `sha256:db85412c5cf5fbda2912922a159ab0480e324c422cd10a547292879974065626`](../scripts/_workflow_state.py)
 - [`scripts/build_reference_manifest.py` · `sha256:c171091fef09e10cb2c299cfc1dd74a9aaad65fda44323afbab803e5d8fcd650`](../scripts/build_reference_manifest.py)
 - [`scripts/card_cycle.py` · `sha256:8ea411b5241249d7d3748f574d15003d904d70f78e703d32c81147789bf99664`](../scripts/card_cycle.py)
-- [`scripts/local_workflow_adapter.py` · `sha256:bb3a5bc3f6c57a954a470fa87bc0a63eed93b59f2b5da145596ab5380be88515`](../scripts/local_workflow_adapter.py)
+- [`scripts/local_workflow_adapter.py` · `sha256:9b043468dbb6639a26be1312fd66d13aa25df4e92a83a5f244d3bfb3ea9fe344`](../scripts/local_workflow_adapter.py)
 - [`scripts/project_context.py` · `sha256:228bc00dd4ef841f8ae6dca704abb6bc9ef96b9b112089beaf3770f325c75ce8`](../scripts/project_context.py)
 - [`scripts/propagate_invalidation.py` · `sha256:1924917b5171bf48b883eb8939198299eedbb89df6f3eac87e34f6f160c43bcf`](../scripts/propagate_invalidation.py)
 - [`scripts/reconcile_workflow.py` · `sha256:fbb3c2dd505dbe3fb87685d67a41fe45cffc3df8ad44130540298595886be723`](../scripts/reconcile_workflow.py)
@@ -115,8 +115,8 @@
 
 ## operator
 
-- [`operator/context-projection.md` · `sha256:0cd348bb5f1ca8f75be633fc9bd374055958e618b7df9a2235a395bad376e4d2`](../operator/context-projection.md)
-- [`operator/context/projection-runtime.md` · `sha256:e53a527ebec796bf96da3a8eed7e91911bc10a7bc5d249a64eff7be00a37a841`](../operator/context/projection-runtime.md)
+- [`operator/context-projection.md` · `sha256:bd3ef774b25e9b6738edcb23121ae97bd0b3aa012e52f74b0fdb83b834bc9ee8`](../operator/context-projection.md)
+- [`operator/context/projection-runtime.md` · `sha256:f5b672bc9d05e4d6fb30647e9aeeab7dcd53f5eaff753f0af243983d45e90417`](../operator/context/projection-runtime.md)
 - [`operator/delegation/shared-ledger-runtime.md` · `sha256:4ee95fb6a77524fff8d3e2dd5ca91180c1847353c4f94a8322301d70f53e3b30`](../operator/delegation/shared-ledger-runtime.md)
 - [`operator/design-discovery/design-discovery-upstream-license.txt` · `sha256:a37e0e9697144819e1d965176ac4ae5bc3fa02d11e7812036bbcadf6dafe2400`](../operator/design-discovery/design-discovery-upstream-license.txt)
 - [`operator/design-discovery/frame-template.html` · `sha256:688506a0afa0b2f05fdd503ed8596a9b1454b92f4530a5565a9a9370a96a382c`](../operator/design-discovery/frame-template.html)
@@ -136,8 +136,8 @@
 - [`tests/fixtures/workflow-events/valid-events.jsonl` · `sha256:307d1f7ee0c151a964ed9bd644d89c4f0119c74e42c6aaa375dd1e26fa80f342`](../tests/fixtures/workflow-events/valid-events.jsonl)
 - [`tests/fixtures/workflow-route-sequences.json` · `sha256:43dec3aa9a6d9534dabb6e142e9ad2dc48ed2e01596253ff8d5f2ffcbd3f149b`](../tests/fixtures/workflow-route-sequences.json)
 - [`tests/fixtures/workflow-state/invalid-cases.json` · `sha256:78e7305c9c8a5ba61bdd5eab3d73740833538036bc4665defdd858d495e804b4`](../tests/fixtures/workflow-state/invalid-cases.json)
-- [`tests/fixtures/workflow-state/valid-m2.json` · `sha256:6401f24e3487cec506b0c4fc7f0425c731dd5651ee0697fcf26dfa35bc70c109`](../tests/fixtures/workflow-state/valid-m2.json)
-- [`tests/test_card_cycle.py` · `sha256:80d0f127453d0d9de1240370da28d2901f47aac6ecc110a4d357f4c0ae4f59f6`](../tests/test_card_cycle.py)
+- [`tests/fixtures/workflow-state/valid-m2.json` · `sha256:ac178a47c2c75971e04af8fed09dc0999a24ac4becc5722a0e52f83084cb3102`](../tests/fixtures/workflow-state/valid-m2.json)
+- [`tests/test_card_cycle.py` · `sha256:cd8e5bb48e9f43ad55324d5163eb0f87765d91413b18e61f3e883ced78995a9e`](../tests/test_card_cycle.py)
 - [`tests/test_cross_skill_integration.py` · `sha256:932b24d2bb63bf2ec8e70fc760a2ac71ada119665f7b29b1931570dcbf99db59`](../tests/test_cross_skill_integration.py)
 - [`tests/test_decision_card_map.py` · `sha256:7a7de92cee7a660c823181e277de7063a09389f2d92aaaa063f9131149e9ff46`](../tests/test_decision_card_map.py)
 - [`tests/test_decision_protocol_v6.py` · `sha256:d5019e034ad44910c68c364667414644f0bf57c9d8cb169b113352e2f182f585`](../tests/test_decision_protocol_v6.py)
@@ -145,5 +145,5 @@
 - [`tests/test_package_support_map.py` · `sha256:524e6160f16ce749f5497dbf71ecb43204b9fb660073313f665439d780cd6a8a`](../tests/test_package_support_map.py)
 - [`tests/test_skill_contracts.py` · `sha256:2cc3940b10047b8a16b6e5fd6010e05942736c233f8f907db285d2a40e3a0a83`](../tests/test_skill_contracts.py)
 - [`tests/test_verifier_bundle.py` · `sha256:8b8c592887b70233d342d2babc0ed0c4f2c77f89d719bbeb0af7976342929a41`](../tests/test_verifier_bundle.py)
-- [`tests/test_workflow_runtime.py` · `sha256:f1629870cf0494f712561d6845eec22a9512f2dc26391f682defe04006f6a85c`](../tests/test_workflow_runtime.py)
-- [`tests/test_workflow_state.py` · `sha256:350e3243a6492787b38fdecc6f2eda8375c6cb4a168c6ea1fe4262ab8a33a36f`](../tests/test_workflow_state.py)
+- [`tests/test_workflow_runtime.py` · `sha256:f8f4b4711f034c3979485f3372e97b4828417a5ad588a0566f0009dc63ff1b81`](../tests/test_workflow_runtime.py)
+- [`tests/test_workflow_state.py` · `sha256:b5da8556731a8d2558fa758ce5b8a96df3494eb37f3783a8df607bf155d02a2c`](../tests/test_workflow_state.py)

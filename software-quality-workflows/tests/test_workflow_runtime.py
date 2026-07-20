@@ -454,6 +454,21 @@ def _render_worker(root: Path, checkpoint_name: str, ready: Path) -> None:
     _render_context(root)
 
 
+def _event_worker(root: Path, event_path: Path, expected_sequence: int, checkpoint_name: str, ready: Path) -> None:
+    def pause(name: str) -> None:
+        if name != checkpoint_name:
+            return
+        ready.write_text(name + "\n", encoding="utf-8")
+        while True:
+            signal.pause()
+
+    workflow_adapter._checkpoint = pause
+    LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).append_event(
+        load_json(event_path),
+        expected_last_sequence=expected_sequence,
+    )
+
+
 class WorkflowRuntimeTests(unittest.TestCase):
     def test_context_projection_is_bounded_state_versioned_and_secret_safe(self) -> None:
         state = _base()
@@ -487,7 +502,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
         self.assertTrue(metadata["requires_on_demand_read"])
 
     def test_context_projection_real_sigkill_prefixes_converge(self) -> None:
-        for checkpoint in ("projection_temp_fsynced", "projection_replaced", "projection_parent_synced"):
+        for checkpoint in ("projection_temp_fsynced", "projection_replaced", "projection_parent_synced", "projection_before_return"):
             with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
                 parent = Path(directory)
                 root, state = _projection_owner(parent)
@@ -750,6 +765,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
             "lease_temp_fsynced",
             "lease_replaced",
             "lease_parent_synced",
+            "bootstrap_before_return",
         )
         prefixes = {
             "lock_temp_fsynced": {".adapter.lock.tmp"},
@@ -772,6 +788,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
             "lease_temp_fsynced": {".adapter.lock", "state.json", "locks.json", ".locks.json.tmp", "artifacts", "projections"},
             "lease_replaced": {".adapter.lock", "state.json", "locks.json", "artifacts", "projections"},
             "lease_parent_synced": {".adapter.lock", "state.json", "locks.json", "artifacts", "projections"},
+            "bootstrap_before_return": {".adapter.lock", "state.json", "locks.json", "artifacts", "projections"},
         }
         for checkpoint in checkpoints:
             with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
@@ -805,7 +822,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 if checkpoint == "lease_temp_fsynced":
                     self.assertEqual([], json.loads((root / "locks.json").read_text(encoding="utf-8"))["leases"])
                     self.assertEqual(1, len(json.loads((root / ".locks.json.tmp").read_text(encoding="utf-8"))["leases"]))
-                if checkpoint in {"lease_replaced", "lease_parent_synced"}:
+                if checkpoint in {"lease_replaced", "lease_parent_synced", "bootstrap_before_return"}:
                     self.assertEqual(1, len(json.loads((root / "locks.json").read_text(encoding="utf-8"))["leases"]))
 
                 state, locator, lease = _bootstrap(root, source)
@@ -824,7 +841,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 )
 
     def test_resume_replacement_lease_real_sigkill_prefixes_converge(self) -> None:
-        for checkpoint in ("route_lease_temp_fsynced", "route_lease_replaced", "route_lease_parent_synced"):
+        for checkpoint in ("route_lease_temp_fsynced", "route_lease_replaced", "route_lease_parent_synced", "route_before_return"):
             with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
                 parent = Path(directory)
                 root, state = _owner(parent)
@@ -932,6 +949,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
             "card_locks_temp_fsynced",
             "card_locks_replaced",
             "card_locks_parent_synced",
+            "card_before_return",
         )
         for checkpoint in checkpoints:
             with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
@@ -1067,6 +1085,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
             "card_locks_temp_fsynced",
             "card_locks_replaced",
             "card_locks_parent_synced",
+            "card_before_return",
         )
         for checkpoint in checkpoints:
             with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
@@ -1130,6 +1149,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
             "card_locks_temp_fsynced",
             "card_locks_replaced",
             "card_locks_parent_synced",
+            "card_before_return",
         )
         for checkpoint in checkpoints:
             with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
@@ -1293,6 +1313,131 @@ class WorkflowRuntimeTests(unittest.TestCase):
             self.assertEqual([event], load_json_lines(root / "events.jsonl"))
             self.assertFalse((root / ".events.jsonl.tmp").exists())
 
+    def test_operator_event_real_sigkill_prefixes_converge(self) -> None:
+        scenarios = {
+            "first": (
+                0,
+                (
+                    "event_temp_fsynced",
+                    "event_linked",
+                    "event_link_parent_synced",
+                    "event_temp_cleaned",
+                    "event_cleanup_parent_synced",
+                    "event_before_return",
+                ),
+            ),
+            "followup": (1, ("event_temp_fsynced", "event_replaced", "event_parent_synced", "event_before_return")),
+        }
+        for scenario, (expected_sequence, checkpoints) in scenarios.items():
+            for checkpoint in checkpoints:
+                with self.subTest(scenario=scenario, checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
+                    parent = Path(directory)
+                    root, state = _owner(parent)
+                    first = _event(0)
+                    first["workflow_id"] = state["workflow_id"]
+                    first["state_version"] = state["state_version"]
+                    expected_events: list[dict]
+                    if scenario == "followup":
+                        LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).append_event(first, expected_last_sequence=0)
+                        candidate = _event(1)
+                        candidate["workflow_id"] = state["workflow_id"]
+                        candidate["state_version"] = state["state_version"]
+                        expected_events = [first, candidate]
+                    else:
+                        candidate = first
+                        expected_events = [candidate]
+                    event_path = parent / "event.json"
+                    event_path.write_text(json.dumps(candidate), encoding="utf-8")
+                    ready = parent / "ready"
+                    owner_identity = {
+                        name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes())
+                        for name in ("state.json", "locks.json")
+                    }
+                    process = subprocess.Popen(
+                        [
+                            sys.executable,
+                            "-B",
+                            __file__,
+                            "--event-worker",
+                            str(root),
+                            str(event_path),
+                            str(expected_sequence),
+                            checkpoint,
+                            str(ready),
+                        ],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                    )
+                    deadline = time.monotonic() + 5
+                    while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    self.assertTrue(ready.exists(), f"worker did not reach {scenario}:{checkpoint}")
+                    process.kill()
+                    process.communicate(timeout=5)
+                    adapter = LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA)
+                    adapter.append_event(candidate, expected_last_sequence=expected_sequence)
+                    self.assertTrue(adapter.append_event(candidate, expected_last_sequence=expected_sequence))
+                    self.assertEqual(expected_events, load_json_lines(root / "events.jsonl"))
+                    self.assertFalse((root / ".events.jsonl.tmp").exists())
+                    self.assertEqual(
+                        owner_identity,
+                        {
+                            name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes())
+                            for name in ("state.json", "locks.json")
+                        },
+                    )
+
+    def test_interrupted_event_append_preserves_frozen_version_across_state_advance(self) -> None:
+        for scenario, expected_sequence in (("first", 0), ("followup", 1)):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                root, state = _owner(parent)
+                first = _event(0)
+                first["workflow_id"] = state["workflow_id"]
+                first["state_version"] = state["state_version"]
+                if scenario == "followup":
+                    LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA).append_event(first, expected_last_sequence=0)
+                    candidate = _event(1)
+                    candidate["workflow_id"] = state["workflow_id"]
+                    candidate["state_version"] = state["state_version"]
+                    expected_events = [first, candidate]
+                else:
+                    candidate = first
+                    expected_events = [candidate]
+                event_path = parent / "event.json"
+                event_path.write_text(json.dumps(candidate), encoding="utf-8")
+                ready = parent / "ready"
+                process = subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-B",
+                        __file__,
+                        "--event-worker",
+                        str(root),
+                        str(event_path),
+                        str(expected_sequence),
+                        "event_temp_fsynced",
+                        str(ready),
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                deadline = time.monotonic() + 5
+                while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(ready.exists(), f"worker did not reach {scenario}:event_temp_fsynced")
+                process.kill()
+                process.communicate(timeout=5)
+                advanced, _, _ = _complete_inline(root)
+                self.assertGreater(advanced["state_version"], candidate["state_version"])
+                adapter = LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA)
+                self.assertFalse(adapter.append_event(candidate, expected_last_sequence=expected_sequence))
+                self.assertTrue(adapter.append_event(candidate, expected_last_sequence=expected_sequence))
+                self.assertEqual(expected_events, load_json_lines(root / "events.jsonl"))
+                self.assertFalse((root / ".events.jsonl.tmp").exists())
+
     def test_operator_event_rejects_future_owner_and_fork_without_writes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root, state = _owner(Path(directory))
@@ -1340,5 +1485,7 @@ if __name__ == "__main__":
         _complete_materialized_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
     elif len(sys.argv) == 5 and sys.argv[1] == "--render-worker":
         _render_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
+    elif len(sys.argv) == 7 and sys.argv[1] == "--event-worker":
+        _event_worker(Path(sys.argv[2]), Path(sys.argv[3]), int(sys.argv[4]), sys.argv[5], Path(sys.argv[6]))
     else:
         unittest.main()

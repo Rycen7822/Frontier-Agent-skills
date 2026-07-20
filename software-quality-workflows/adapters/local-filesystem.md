@@ -1,34 +1,36 @@
 # Local Filesystem Adapter
 
-This is the P1, skill-only adapter for M2 Sparse and M3 Full. M0 never creates it; M1 uses only an explicitly task-owned trace path. The caller chooses a project-approved worknote/temp root or an external task-owned directory. The adapter never runs `git add` or expands authority.
+This adapter is the single durable owner for M2 Sparse and M3 Full workflows. M0 creates no control root, and M1 is rejected. The caller creates an empty task-owned work root outside the source root before invoking `scripts/card_cycle.py`; the CLI never creates that root, edits source files, runs Git writes, or expands authority.
 
-Layout:
+The established owner surface is fixed:
 
 ```text
-.workflow/
+<work-root>/
+  .adapter.lock
   state.json
-  events.jsonl
   locks.json
   artifacts/
-  capsules/
-  worktrees/
-  worktree-metadata/
-  README.md
+  projections/
 ```
 
-`scripts/local_workflow_adapter.py` validates state/event schemas before writes, uses compare-and-swap `state_version`, writes a same-directory temp file, flushes and `fsync`s it, then uses atomic replace and directory sync. Event append is logically append-only but P1 rewrites the validated bounded JSONL file atomically so a crash cannot expose a truncated last record.
+`events.jsonl` appears only after an operator appends audit evidence. The only permitted transient siblings are `.state.json.tmp`, `.locks.json.tmp`, `.events.jsonl.tmp`, and `projections/workflow-context.md.tmp` in their defined recovery states. No README, initialization marker, capsule tree, worktree metadata, or second ledger belongs to this owner.
 
-Adapter mutation uses a process-scoped host file lock, so a crashed process releases mutual exclusion without requiring deletion of a stale sentinel. `locks.json` is the local canonical lease projection and is merged into effective state before resume checks. An expired resource lock must be reconciled before reuse; it is never silently stolen. Content-addressed artifacts reject raw credentials and all payloads classified sensitive; sensitive data stays at an external controlled pointer. Crash leftovers remain discoverable as orphan artifacts until the controller reconciles them; cleanup is separate and task-owned.
+`.adapter.lock` is an immutable owner header created during bootstrap and opened without creation for every established operation. `state.json` is canonical semantic truth; its compare-and-swap key is exactly `state_version` plus `state_hash`. `locks.json` contains bounded card leases and is not merged into state or state hashing. `events.jsonl` is an optional bounded operator audit stream and never makes a semantic receipt stale.
 
-Resume validates source revision, scope hash, plan hash, event ordering, artifact hashes, pending background work, and leases. A drift report may select local repair or require parent replan; it never rewrites plan decisions.
+M2/M3 bootstrap publishes the fixed surface in the order lock, prepared state, `locks.json`, `artifacts/`, `projections/`, committed state, and first lease. Ordinary card completion publishes any immutable materialized artifact before the state reference, commits semantic state, then converges the next-lease projection. Fixed sibling temps, atomic replace, file and directory syncs, and exact owner headers make every legal interrupted prefix replayable; foreign, partial, stale, linked, or out-of-scope entries fail closed and remain unchanged.
 
-CLI examples use explicit paths:
+`route resume` validates the owner locator, bundle contract, scope binding, current source snapshot, source root binding, repository HEAD/tree when applicable, prepared operation, projection surface, and lease owner. Eligible changes limited to the immutable `allowed_writes` set produce a pending source transition. Revision, root, source-kind, HEAD/tree, exterior, or out-of-scope drift returns a blocked locator and no next lease.
+
+The model-facing lifecycle uses canonical JSON on stdin and receipts on stdout:
 
 ```text
-python3 scripts/local_workflow_adapter.py /task/.workflow init /task/initial-state.json
-python3 scripts/local_workflow_adapter.py /task/.workflow commit /task/next-state.json --expected-version 3
-python3 scripts/local_workflow_adapter.py /task/.workflow append-event /task/event.json --expected-sequence 4
-python3 scripts/local_workflow_adapter.py /task/.workflow resume
+python3 scripts/card_cycle.py route    --input - --source-root /task/source [--work-root /task/workflow]
+python3 scripts/card_cycle.py complete --input - --source-root /task/source [--work-root /task/workflow]
+python3 scripts/card_cycle.py render   --input - --source-root /task/source --work-root /task/workflow
 ```
 
-These commands only update the named task-owned workflow directory. Commit here means state compare-and-swap, not a VCS commit.
+The adapter module exposes no independent state, lease, artifact, initialization, commit, or resume CLI. Its only standalone command is the operator audit append:
+
+```text
+python3 scripts/local_workflow_adapter.py /task/workflow append-event /task/event.json --expected-sequence 4
+```

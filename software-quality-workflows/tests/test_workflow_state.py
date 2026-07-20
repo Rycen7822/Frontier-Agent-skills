@@ -121,6 +121,11 @@ class WorkflowStateTests(unittest.TestCase):
         m1["mode"] = "M1_TRACE"
         self.assertIn("workflow.schema", {item.code for item in validate_state(m1, STATE_SCHEMA)})
 
+    def test_context_projection_reference_is_not_canonical_state(self) -> None:
+        state = _base()
+        state["context_trace_ref"] = "artifact:context-trace/legacy"
+        self.assertIn("workflow.schema", {item.code for item in validate_state(state, STATE_SCHEMA)})
+
     def test_materialized_completion_uses_locator_without_inline_payload(self) -> None:
         state = _base()
         state["card_completions"] = [{

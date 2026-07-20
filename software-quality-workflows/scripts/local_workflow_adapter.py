@@ -739,6 +739,7 @@ def bootstrap_v3(
         if fcntl is not None:
             fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
         os.close(lock_descriptor)
+    _checkpoint("bootstrap_before_return")
     return state, locator, lease
 
 
@@ -1073,14 +1074,22 @@ class LocalWorkflowAdapter:
                     raise AdapterConflict("fixed event temp conflicts with requested append")
             else:
                 _write_fixed_temp(self.event_temp_path, candidate_payload)
+                _checkpoint("event_temp_fsynced")
             if final_exists:
                 os.replace(self.event_temp_path, self.events_path)
+                _checkpoint("event_replaced")
                 _sync_directory(self.root)
+                _checkpoint("event_parent_synced")
             else:
                 os.link(self.event_temp_path, self.events_path, follow_symlinks=False)
+                _checkpoint("event_linked")
                 _sync_directory(self.root)
+                _checkpoint("event_link_parent_synced")
                 self.event_temp_path.unlink()
+                _checkpoint("event_temp_cleaned")
                 _sync_directory(self.root)
+                _checkpoint("event_cleanup_parent_synced")
+            _checkpoint("event_before_return")
             return False
 
     def _abort_prepared_completion(self, state: dict[str, Any], expected_cards: dict[str, tuple[str, str]]) -> None:
@@ -1291,6 +1300,7 @@ class LocalWorkflowAdapter:
                     candidate_bytes=empty_bytes,
                     checkpoint_prefix="route_lease",
                 )
+                _checkpoint("route_before_return")
                 return state, None, None, False, blocked_reason
             if frontier is None:
                 if state["status"] != "completed":
@@ -1313,6 +1323,7 @@ class LocalWorkflowAdapter:
                     candidate_bytes=empty_bytes,
                     checkpoint_prefix="route_lease",
                 )
+                _checkpoint("route_before_return")
                 return state, None, None, source_fresh, None
             if not isinstance(frontier, dict) or expected_cards.get(frontier["card_id"]) != (frontier["card_path"], frontier["card_hash"]):
                 raise AdapterConflict("workflow frontier is stale")
@@ -1342,6 +1353,7 @@ class LocalWorkflowAdapter:
                 pending_transition is None
                 or final_lease["lease_id"] == pending_lease_id
             ):
+                _checkpoint("route_before_return")
                 return state, final_lease, pending_transition, source_fresh, None
             else:
                 issued_at = now.isoformat().replace("+00:00", "Z")
@@ -1359,6 +1371,7 @@ class LocalWorkflowAdapter:
                 candidate_bytes=candidate_bytes,
                 checkpoint_prefix="route_lease",
             )
+            _checkpoint("route_before_return")
             return state, candidate_lease, pending_transition, source_fresh, None
 
     def render_context(
@@ -1422,6 +1435,7 @@ class LocalWorkflowAdapter:
             ):
                 raise AdapterConflict("rendered workflow context does not bind current owner")
             replayed = _publish_disposable_projection(self.root / "projections", payload)
+            _checkpoint("projection_before_return")
             return state, metadata, projection_locator, replayed
 
     def complete_card(
@@ -1687,6 +1701,7 @@ class LocalWorkflowAdapter:
                     candidate_bytes=empty_bytes,
                     checkpoint_prefix="card_locks",
                 )
+                _checkpoint("card_before_return")
                 return state, None, f"replayed_blocked:{delivery_blocked_reason}"
             if frontier is None:
                 candidate_lease = None
@@ -1706,6 +1721,7 @@ class LocalWorkflowAdapter:
                     if final_locks != empty_bytes:
                         _, candidate_lease = _locks_kind(final_locks, empty_locks, new_owner)
                     if candidate_lease is not None and datetime.fromisoformat(candidate_lease["lease_expires_at"].replace("Z", "+00:00")) > now:
+                        _checkpoint("card_before_return")
                         return state, candidate_lease, outcome
                 if candidate_lease is None:
                     issued_at = now.isoformat().replace("+00:00", "Z")
@@ -1723,6 +1739,7 @@ class LocalWorkflowAdapter:
                 candidate_bytes=candidate_locks,
                 checkpoint_prefix="card_locks",
             )
+            _checkpoint("card_before_return")
             return state, candidate_lease, outcome
 
 
