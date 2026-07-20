@@ -245,18 +245,31 @@ class CardCycleM0Tests(unittest.TestCase):
         self.assertTrue(CLI.is_file(), "target card_cycle.py entrypoint is absent")
         env = dict(os.environ)
         env["PYTHONDONTWRITEBYTECODE"] = "1"
+        arguments = [
+            sys.executable,
+            str(CLI),
+            subcommand,
+            "--fields-json",
+            json.dumps(command.get("fields"), ensure_ascii=False, separators=(",", ":")),
+            "--source-root",
+            str(source_root),
+        ]
+        if command.get("contract_id") == "sqw.route.resume/2":
+            arguments.append("--resume")
+        if "outcome" in command:
+            arguments.extend([
+                "--outcome-json",
+                json.dumps(command["outcome"], ensure_ascii=False, separators=(",", ":")),
+            ])
+        arguments.extend(extra)
+        previous = command.get("previous_receipt") if subcommand != "route" else None
         return subprocess.run(
-            [
-                sys.executable,
-                str(CLI),
-                subcommand,
-                "--input",
-                "-",
-                "--source-root",
-                str(source_root),
-                *extra,
-            ],
-            input=json.dumps(command, ensure_ascii=False, separators=(",", ":")),
+            arguments,
+            input=(
+                json.dumps(previous, ensure_ascii=False, separators=(",", ":"))
+                if subcommand != "route"
+                else None
+            ),
             text=True,
             capture_output=True,
             check=False,
@@ -303,12 +316,10 @@ class CardCycleM0Tests(unittest.TestCase):
         self.assertEqual(outputs[0], outputs[1])
         self.assertLessEqual(len(outputs[0].encode("utf-8")), 1_280)
         lines = outputs[0].splitlines()
-        self.assertEqual("usage: card_cycle.py route --input - --source-root PATH [--work-root PATH]", lines[0])
+        self.assertEqual("usage: card_cycle.py route --fields-json JSON --source-root PATH [--resume --work-root PATH]", lines[0])
         initial = json.loads(lines[1].removeprefix("initial_input_contract="))
         self.assertEqual("sqw.route.initial/2", initial["contract_id"])
-        reconstructed = dict(initial["fixed_command"])
-        reconstructed[initial["route_fields_key"]] = self._initial_command()["fields"]
-        self.assertEqual(self._initial_command(), reconstructed)
+        self.assertEqual({"contract_id", "field_constraints", "required_fields", "required_root_args"}, set(initial))
         self.assertEqual({
             "implicated_surfaces": {"enum": cycle.SURFACE_FAMILIES},
             "unknown_implicated_facts": {"subset_of": "implicated_surfaces"},
@@ -317,7 +328,7 @@ class CardCycleM0Tests(unittest.TestCase):
             source = Path(tmp) / "source"
             source.mkdir()
             (source / "subject.py").write_text("def value():\n    return 1\n", encoding="utf-8")
-            self._success_receipt(self._run("route", reconstructed, source))
+            self._success_receipt(self._run("route", self._initial_command(), source))
         groups = initial["required_fields"]
         projected = [name for group in (groups["boolean"], groups["string_array"], groups["integer_min"], groups["enum"]) for name in group]
         schema, registry, manifest = cycle._load_contracts()
@@ -364,11 +375,15 @@ class CardCycleM0Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir)
             (source / "input.txt").write_text("stable\n", encoding="utf-8")
-            stale = self._initial_command()
-            stale["contract_id"] = "sqw.route.initial/1"
-            rejected = self._run("route", stale, source)
+            rejected = subprocess.run(
+                [sys.executable, str(CLI), "route", "--input", "-", "--source-root", str(source)],
+                input=json.dumps(self._initial_command(), separators=(",", ":")),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
             self.assertNotEqual(0, rejected.returncode)
-            self.assertEqual("E_COMMAND_SCHEMA", json.loads(rejected.stderr)["code"])
+            self.assertIn("--fields-json", rejected.stderr)
             route = self._success_receipt(self._run("route", self._initial_command(), source))
             route["schema_version"] = "sqw-card-receipt/1"
             route["receipt_id"] = cycle._receipt_id(route)

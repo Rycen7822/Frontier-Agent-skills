@@ -20,7 +20,8 @@ class WritingDocsV7Tests(unittest.TestCase):
         self.assertLessEqual(len(text.encode("utf-8")), 5200)
         for anchor in (
             "LC_ALL=C scripts/card_cycle.py route --help", "replacement receipt", "one needed projection/boundary",
-            "terminal-disposable", "Codex and Hermes Agent",
+            "terminal-disposable", "Codex and Hermes Agent", "migration_or_rollback` describes the work",
+            "same_session_execution` describes completing the plan now",
         ):
             self.assertIn(anchor, text)
 

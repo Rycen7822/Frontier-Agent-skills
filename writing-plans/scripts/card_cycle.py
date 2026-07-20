@@ -140,16 +140,67 @@ def _load_contracts() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     return schema, registry, manifest
 
 
-def _read_command() -> dict[str, Any]:
-    data = sys.stdin.buffer.read(COMMAND_MAX_BYTES + 1)
-    if len(data) > COMMAND_MAX_BYTES:
-        raise CycleError("E_COMMAND_BUDGET", "command exceeds the byte limit", exit_code=4)
+def _parse_cli_object(value: str, label: str) -> dict[str, Any]:
     try:
-        command = strict_json_bytes(data, source="stdin")
+        parsed = strict_json_bytes(value.encode("utf-8"), source=label)
     except ValueError as exc:
-        raise CycleError("E_COMMAND_SCHEMA", "command is not strict UTF-8 JSON") from exc
-    if not isinstance(command, dict):
-        raise CycleError("E_COMMAND_SCHEMA", "command must be one JSON object")
+        raise CycleError("E_COMMAND_SCHEMA", f"{label} is not strict UTF-8 JSON") from exc
+    if not isinstance(parsed, dict):
+        raise CycleError("E_COMMAND_SCHEMA", f"{label} must be one JSON object")
+    return parsed
+
+
+def _read_previous_receipt() -> dict[str, Any]:
+    data = sys.stdin.buffer.read(RECEIPT_MAX_BYTES + 1)
+    if len(data) > RECEIPT_MAX_BYTES:
+        raise CycleError("E_COMMAND_BUDGET", "previous receipt exceeds the byte limit", exit_code=4)
+    try:
+        receipt = strict_json_bytes(data, source="stdin receipt")
+    except ValueError as exc:
+        raise CycleError("E_COMMAND_SCHEMA", "previous receipt is not strict UTF-8 JSON") from exc
+    if not isinstance(receipt, dict):
+        raise CycleError("E_COMMAND_SCHEMA", "previous receipt must be one JSON object")
+    return receipt
+
+
+def _command_definition(schema: dict[str, Any], contract_id: str) -> dict[str, Any]:
+    for definition in schema["$defs"].values():
+        properties = definition.get("properties", {}) if isinstance(definition, dict) else {}
+        if properties.get("contract_id", {}).get("const") == contract_id:
+            return definition
+    raise CycleError("E_CONTRACT_INVALID", "command contract is not registered", exit_code=5)
+
+
+def _command_from_args(args: argparse.Namespace, schema: dict[str, Any]) -> dict[str, Any]:
+    fields = _parse_cli_object(args.fields_json, "fields")
+    if args.subcommand == "route":
+        contract_id = "wp.route.resume/2" if args.resume else "wp.route.initial/2"
+        previous_receipt = None
+    elif args.subcommand == "render":
+        previous_receipt = None
+        if "owner_locator" in fields and "projection_kind" in fields:
+            contract_id = "wp.render.program/2"
+        elif "content_locator" in fields:
+            contract_id = "wp.render.handoff/2"
+        else:
+            raise CycleError("E_COMMAND_SCHEMA", "render fields do not select one renderer")
+    else:
+        previous_receipt = _read_previous_receipt()
+        try:
+            contract_id = previous_receipt["next_step"]["input_contract"]["completion_contract_id"]
+        except (KeyError, TypeError) as exc:
+            raise CycleError("E_RECEIPT_INVALID", "previous receipt has no active input contract", exit_code=3) from exc
+    definition = _command_definition(schema, contract_id)
+    command: dict[str, Any] = {
+        "contract_id": contract_id,
+        "invocation_phase": definition["properties"]["invocation_phase"]["const"],
+        "previous_receipt": previous_receipt,
+        "fields": fields,
+    }
+    if "outcome" in definition.get("required", []):
+        command["outcome"] = _parse_cli_object(args.outcome_json, "outcome")
+    if len(_canonical(command)) > COMMAND_MAX_BYTES:
+        raise CycleError("E_COMMAND_BUDGET", "command exceeds the byte limit", exit_code=4)
     return command
 
 
@@ -857,16 +908,8 @@ def _route_help_contract(schema: dict[str, Any]) -> dict[str, Any]:
             raise CycleError("E_CONTRACT_INVALID", "route field cannot be projected", exit_code=5)
     if sum(len(value) for value in groups.values()) != len(fields["required"]):
         raise CycleError("E_CONTRACT_INVALID", "route fields are not uniquely projected", exit_code=5)
-    fixed_command = {
-        "contract_id": "wp.route.initial/2",
-        "invocation_phase": "initial",
-        "previous_receipt": None,
-        "outcome": {"blocker": None},
-    }
     return {
         "contract_id": "wp.route.initial/2",
-        "fixed_command": fixed_command,
-        "route_fields_key": "fields",
         "required_fields": groups,
         "required_root_args": ["--source-root"],
     }
@@ -874,7 +917,7 @@ def _route_help_contract(schema: dict[str, Any]) -> dict[str, Any]:
 
 def _route_help() -> str:
     output = (
-        "usage: card_cycle.py route --input - --source-root PATH [--work-root PATH]\n"
+        "usage: card_cycle.py route --fields-json JSON --source-root PATH [--resume --work-root PATH]\n"
         "initial_input_contract=" + _canonical(_route_help_contract(load_json(SCHEMA_PATH))).decode("utf-8") + "\n"
     )
     if len(output.encode("utf-8")) > ROUTE_HELP_MAX_BYTES:
@@ -1725,10 +1768,8 @@ def _render_handoff_projection(
 
 
 def _execute(args: argparse.Namespace) -> dict[str, Any]:
-    if args.input != "-":
-        raise CycleError("E_COMMAND_SCHEMA", "--input must be stdin")
     schema, registry, manifest = _load_contracts()
-    command = _read_command()
+    command = _command_from_args(args, schema)
     _validate(schema, "command", command, "E_COMMAND_SCHEMA")
     contract_id = command["contract_id"]
     expected_subcommand = "route" if contract_id.startswith("wp.route.") else "render" if contract_id.startswith("wp.render.") else "complete"
@@ -1923,7 +1964,9 @@ def _parser() -> argparse.ArgumentParser:
         command = subparsers.add_parser(name, add_help=name != "route")
         if name == "route":
             command.add_argument("-h", "--help", action=_RouteHelpAction, nargs=0)
-        command.add_argument("--input", required=True)
+            command.add_argument("--resume", action="store_true")
+        command.add_argument("--fields-json", required=True)
+        command.add_argument("--outcome-json", default='{"blocker":null}')
         command.add_argument("--source-root", required=True)
         command.add_argument("--work-root")
         command.add_argument("--artifact-root")

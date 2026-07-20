@@ -23,11 +23,11 @@ Own the lightest plan preserving scope/decisions/order/recovery/proof; never cla
 Use only this root's `scripts/card_cycle.py` as model protocol:
 
 1. Read `LC_ALL=C scripts/card_cycle.py route --help`.
-2. Route one v2 stdin command with `scripts/card_cycle.py route --input - --source-root <source>`; `--source-root` is the target repository root, never this skill root. Use `--work-root` only for resume.
-3. For `next_step.kind=card`, read only `card_path`, verify `card_hash`, decide it; never select by memory, similarity, link, or scan.
-4. Complete/render stdin has only: `contract_id` from `input_contract`, `invocation_phase` (`initial`/`resume`), `previous_receipt` as entire current replacement receipt (never an ID), `fields` from `input_contract`, `outcome.blocker`; pass only `--source-root`, `required_root_args.always`, and matching conditional roots.
-5. Use `scripts/card_cycle.py complete --input - ...`; keep only replacement receipt, never a receipt chain.
-6. Resume via route; use `scripts/card_cycle.py render --input - ...` only for bounded output; return to cycle.
+2. Run `scripts/card_cycle.py route --fields-json '<object>' --source-root <source>`; resume adds `--resume`, owner fields and required external `--work-root`.
+3. Read only `card_path`, verify `card_hash`, decide it; never recall or scan.
+4. Pipe receipt to `scripts/card_cycle.py complete --fields-json '<object>'`; send render fields to `scripts/card_cycle.py render --fields-json '<object>'`. CLI owns metadata. Never build an envelope, add `command`, or pass an unprojected root.
+5. If stdout is gone, rerun the unchanged pre-owner pipeline; after bootstrap use resume. Never write receipt/command files.
+6. Keep only the replacement. Before Program returns an owner, source is read-only except a projected output root.
 
 First Program bootstrap uses explicit external root; else require the pending replacement receipt's `receipt_id` matching `sha256:[0-9a-f]{64}` and select `<source-parent>/.frontier-wp-<full-hex>`. Before Program run `mkdir -m 700 -- <exact-root>` once if absent, never `-p`. Existing with matching canonical active anchor means route resume, not bootstrap; else block without scan/write.
 
@@ -40,6 +40,8 @@ First Program bootstrap uses explicit external root; else require the pending re
 ## Selection and profiles
 
 Unknown cause/intent returns to SQW; long corpus uses bridge; one uncertainty uses spike; public contract/migration/resume/external effect/multiple strategies use Program; cross-context/durable/multi-slice uses Handoff; explicit plan request uses Brief; else Direct.
+
+`migration_or_rollback` describes the work, not a required plan section; `same_session_execution` describes completing the plan now, not later implementation.
 
 - Brief: same-session immutable projection; no anchor.
 - Handoff: ordered slices/boundaries/proof/rollback, one delivery locator; no anchor.
