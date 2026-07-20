@@ -181,7 +181,8 @@ class PromptInputContractTest(unittest.TestCase):
         root_info = skills_root.lstat()
         self.assertTrue(stat.S_ISDIR(root_info.st_mode))
         self.assertEqual(os.geteuid(), root_info.st_uid)
-        self.assertEqual(set(SKILL_TARGETS), {path.name for path in skills_root.iterdir()})
+        skill_entries = {path.name for path in skills_root.iterdir()}
+        self.assertEqual(set(SKILL_TARGETS), skill_entries - {".system"})
         locator_text = "\n".join(prompt_texts)
         for skill, (version, card_count) in SKILL_TARGETS.items():
             skill_root = skills_root / skill
