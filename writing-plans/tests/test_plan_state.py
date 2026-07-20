@@ -41,6 +41,7 @@ from validate_plan_state import validate_file  # noqa: E402
 FIXTURES = ROOT / "tests" / "fixtures" / "plan-state"
 SCHEMA_PATH = ROOT / "schemas" / "plan-state.schema.json"
 SCHEMA = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+CRASH_WORKER = Path(__file__).with_name("_plan_crash_worker.py")
 
 
 def _base() -> dict:
@@ -438,7 +439,7 @@ class PlanStateTests(unittest.TestCase):
                 source.mkdir(mode=0o700)
                 root.mkdir(mode=0o700)
                 process = subprocess.Popen(
-                    [sys.executable, "-B", __file__, "--program-init-worker", str(root), str(source), checkpoint, str(ready)],
+                    [sys.executable, "-B", str(CRASH_WORKER), "--program-init-worker", str(root), str(source), checkpoint, str(ready)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -648,7 +649,7 @@ class PlanStateTests(unittest.TestCase):
                 root.mkdir(mode=0o700)
                 original, locator, _ = initialize_program_owner(root, source, _program_candidate(root, source))
                 process = subprocess.Popen(
-                    [sys.executable, "-B", __file__, "--program-apply-worker", str(root), str(source), checkpoint, str(ready)],
+                    [sys.executable, "-B", str(CRASH_WORKER), "--program-apply-worker", str(root), str(source), checkpoint, str(ready)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -1176,9 +1177,4 @@ class PlanStateTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 6 and sys.argv[1] == "--program-init-worker":
-        _program_init_worker(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], Path(sys.argv[5]))
-    elif len(sys.argv) == 6 and sys.argv[1] == "--program-apply-worker":
-        _program_apply_worker(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], Path(sys.argv[5]))
-    else:
-        unittest.main()
+    unittest.main()

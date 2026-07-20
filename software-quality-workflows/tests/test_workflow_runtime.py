@@ -32,6 +32,7 @@ STATE_FIXTURE = ROOT / "tests" / "fixtures" / "workflow-state" / "valid-m2.json"
 EVENT_FIXTURE = ROOT / "tests" / "fixtures" / "workflow-events" / "valid-events.jsonl"
 NOW = "2026-07-13T11:30:00+08:00"
 RESUME_NOW = "2026-07-13T13:30:00+08:00"
+CRASH_WORKER = Path(__file__).with_name("_adapter_crash_worker.py")
 
 
 def _base() -> dict:
@@ -512,7 +513,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     for name in ("state.json", "locks.json")
                 }
                 process = subprocess.Popen(
-                    [sys.executable, "-B", __file__, "--render-worker", str(root), checkpoint, str(ready)],
+                    [sys.executable, "-B", str(CRASH_WORKER), "--render-worker", str(root), checkpoint, str(ready)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -546,7 +547,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
             root, state = _projection_owner(parent)
             ready = parent / "ready"
             process = subprocess.Popen(
-                [sys.executable, "-B", __file__, "--render-worker", str(root), "projection_temp_fsynced", str(ready)],
+                [sys.executable, "-B", str(CRASH_WORKER), "--render-worker", str(root), "projection_temp_fsynced", str(ready)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -799,7 +800,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 source.mkdir(mode=0o700)
                 root.mkdir(mode=0o700)
                 process = subprocess.Popen(
-                    [sys.executable, "-B", __file__, "--bootstrap-worker", str(root), str(source), checkpoint, str(ready)],
+                    [sys.executable, "-B", str(CRASH_WORKER), "--bootstrap-worker", str(root), str(source), checkpoint, str(ready)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -858,7 +859,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 }
                 state_identity = ((root / "state.json").stat().st_ino, (root / "state.json").stat().st_mtime_ns, (root / "state.json").read_bytes())
                 process = subprocess.Popen(
-                    [sys.executable, "-B", __file__, "--resume-worker", str(root), checkpoint, str(ready)],
+                    [sys.executable, "-B", str(CRASH_WORKER), "--resume-worker", str(root), checkpoint, str(ready)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -915,7 +916,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     root, _ = _owner(parent)
                     ready = parent / "ready"
                     process = subprocess.Popen(
-                        [sys.executable, "-B", __file__, "--resume-outcome-worker", str(root), first, checkpoint, str(ready)],
+                        [sys.executable, "-B", str(CRASH_WORKER), "--resume-outcome-worker", str(root), first, checkpoint, str(ready)],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         text=True,
@@ -957,7 +958,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 root, _ = _owner(parent)
                 ready = parent / "ready"
                 process = subprocess.Popen(
-                    [sys.executable, "-B", __file__, "--complete-worker", str(root), checkpoint, str(ready)],
+                    [sys.executable, "-B", str(CRASH_WORKER), "--complete-worker", str(root), checkpoint, str(ready)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -999,7 +1000,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     root, _ = _owner(parent)
                     ready = parent / "ready"
                     process = subprocess.Popen(
-                        [sys.executable, "-B", __file__, "--complete-worker", str(root), checkpoint, str(ready)],
+                        [sys.executable, "-B", str(CRASH_WORKER), "--complete-worker", str(root), checkpoint, str(ready)],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         text=True,
@@ -1028,7 +1029,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     for name in ("state.json", "locks.json")
                 }
                 process = subprocess.Popen(
-                    [sys.executable, "-B", __file__, "--complete-worker", str(root), "card_state_temp_fsynced", str(ready)],
+                    [sys.executable, "-B", str(CRASH_WORKER), "--complete-worker", str(root), "card_state_temp_fsynced", str(ready)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -1093,7 +1094,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 root, initial = _owner(parent)
                 ready = parent / "ready"
                 process = subprocess.Popen(
-                    [sys.executable, "-B", __file__, "--complete-worker", str(root), checkpoint, str(ready)],
+                    [sys.executable, "-B", str(CRASH_WORKER), "--complete-worker", str(root), checkpoint, str(ready)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -1157,7 +1158,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 root, _ = _handoff_owner(parent)
                 ready = parent / "ready"
                 process = subprocess.Popen(
-                    [sys.executable, "-B", __file__, "--complete-materialized-worker", str(root), checkpoint, str(ready)],
+                    [sys.executable, "-B", str(CRASH_WORKER), "--complete-materialized-worker", str(root), checkpoint, str(ready)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -1202,7 +1203,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 root, state = _handoff_owner(parent)
                 ready = parent / "ready"
                 process = subprocess.Popen(
-                    [sys.executable, "-B", __file__, "--complete-materialized-worker", str(root), checkpoint, str(ready)],
+                    [sys.executable, "-B", str(CRASH_WORKER), "--complete-materialized-worker", str(root), checkpoint, str(ready)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -1357,7 +1358,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                         [
                             sys.executable,
                             "-B",
-                            __file__,
+                            str(CRASH_WORKER),
                             "--event-worker",
                             str(root),
                             str(event_path),
@@ -1412,7 +1413,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     [
                         sys.executable,
                         "-B",
-                        __file__,
+                        str(CRASH_WORKER),
                         "--event-worker",
                         str(root),
                         str(event_path),
@@ -1473,19 +1474,4 @@ class WorkflowRuntimeTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 6 and sys.argv[1] == "--bootstrap-worker":
-        _bootstrap_worker(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], Path(sys.argv[5]))
-    elif len(sys.argv) == 6 and sys.argv[1] == "--resume-outcome-worker":
-        _resume_outcome_worker(Path(sys.argv[2]), sys.argv[3], sys.argv[4], Path(sys.argv[5]))
-    elif len(sys.argv) == 5 and sys.argv[1] == "--resume-worker":
-        _resume_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
-    elif len(sys.argv) == 5 and sys.argv[1] == "--complete-worker":
-        _complete_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
-    elif len(sys.argv) == 5 and sys.argv[1] == "--complete-materialized-worker":
-        _complete_materialized_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
-    elif len(sys.argv) == 5 and sys.argv[1] == "--render-worker":
-        _render_worker(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
-    elif len(sys.argv) == 7 and sys.argv[1] == "--event-worker":
-        _event_worker(Path(sys.argv[2]), Path(sys.argv[3]), int(sys.argv[4]), sys.argv[5], Path(sys.argv[6]))
-    else:
-        unittest.main()
+    unittest.main()
