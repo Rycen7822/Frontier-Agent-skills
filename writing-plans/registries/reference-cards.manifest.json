@@ -30,7 +30,7 @@
       "sha256": "sha256:69f589e4e442230ae0fb2c7d146151e09765ddb58ff95ee58af87c4ed5f582f3"
     },
     {
-      "bytes": 3518,
+      "bytes": 3837,
       "card_id": "wp.economy.output-projection",
       "card_version": 2,
       "decision_id": "wp.select.economy.output-projection",
@@ -41,7 +41,7 @@
         "output-projection"
       ],
       "required_artifact_ids": [],
-      "sha256": "sha256:6deb4312fe52633faf8b8b9a0bb95c8241084ebc6d8e69c38e30d51ec3ecaeae"
+      "sha256": "sha256:bc69674386d8caf60919bf82321e8d734831b5158d5132089cdd423c57a79089"
     },
     {
       "bytes": 2187,
@@ -88,7 +88,7 @@
       "sha256": "sha256:3fb3ea91296fc42e114c28b770aa64af4aa5abc47a6354f75aac029f3fa4a7f3"
     },
     {
-      "bytes": 1797,
+      "bytes": 2058,
       "card_id": "wp.profiles.handoff",
       "card_version": 2,
       "decision_id": "wp.select.profiles.handoff",
@@ -99,10 +99,10 @@
         "plan-handoff"
       ],
       "required_artifact_ids": [],
-      "sha256": "sha256:7ba0855badb78a09904984c915a8e33bd8fb5f604288a994c869a6e21ee4f6ac"
+      "sha256": "sha256:7358e0edd0c9982c76dc34c74d7108da6972ed7cd9f43f8c6a6da49528f60373"
     },
     {
-      "bytes": 2341,
+      "bytes": 2346,
       "card_id": "wp.profiles.program",
       "card_version": 2,
       "decision_id": "wp.select.profiles.program",
@@ -113,10 +113,10 @@
         "plan-program"
       ],
       "required_artifact_ids": [],
-      "sha256": "sha256:522c89671617eda628ca5a0938db0002b0835d9902c39241ad3362f90c65995d"
+      "sha256": "sha256:779b43d7d16a8f4035759a7d62add00f50521427fc3fffc29b7f2782efe53966"
     },
     {
-      "bytes": 2248,
+      "bytes": 2396,
       "card_id": "wp.slicing.context-capsules",
       "card_version": 2,
       "decision_id": "wp.select.slicing.context-capsules",
@@ -129,7 +129,7 @@
       "required_artifact_ids": [
         "outcome-slices"
       ],
-      "sha256": "sha256:02d660469aa11c749312fe00a1aba172d1ee748a5f0eb4f8d36f77e3a460172f"
+      "sha256": "sha256:d1f5a4012ac703f3c35d87606c9e6005fc9f6a58b8f272fd7edda694840b551e"
     },
     {
       "bytes": 2274,

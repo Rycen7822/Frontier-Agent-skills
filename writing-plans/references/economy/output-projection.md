@@ -37,6 +37,7 @@ Classify agent-facing output by downstream action value and define compact, full
 2. Store bulky state in bounded artifacts, digests, checkpoints, indexes, or versioned documents with resolvable ID/path/hash/size and explicit on-demand reads.
 3. Define resume state: current checkpoint/delta, artifact index, validation state, next action, blockers, and freshness/invalidation binding.
 4. Set budgets from measured envelopes and protected-anchor cost. Mandatory fields fail closed rather than truncate; optional omissions list stable IDs and pointers.
+5. For Writing Plans Program, render only through `card_cycle.py` to fixed `projections/program.md`: validate the complete candidate and total 8,192-byte envelope in memory, commit state once, then publish. The state stores no projection locator or hash, and exact replay repairs state-after/output-before-return loss.
 
 ### 3. Prove parity and rollout
 1. Compare old/new counts, keys, ordering/ranking, warnings, required actions, coverage, and every quality-critical field. Tests needing full evidence request debug mode explicitly.

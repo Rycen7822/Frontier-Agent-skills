@@ -27,11 +27,11 @@ Specify a bounded generated projection for one current node without creating a s
 1. Project only goal; current objective/completion; global invariants; fresh dependency outputs; source/scope/state hashes; owner/read-first seams; allowed reads/writes/resources/effects/approval; verifier/distinction/false-green; non-goals/fog/blockers.
 2. Exclude full plan/future graph, candidate/workflow history, raw logs/chat/source dumps, unrelated decisions, and raw sensitive values. Redact sensitive objects to controlled IDs.
 3. Treat every mandatory field as indivisible: if it cannot fit, fail closed with required bytes/IDs; never truncate it. Include optional relevant evidence by priority, listing omitted IDs and on-demand pointers.
-4. Bind card IDs/hashes, plan/source identities, expiry, invalidation triggers, included/omitted IDs, and the self-excluding generated snapshot hash.
-5. Rebuild from canonical state on freshness change; a capsule/context hash change never mutates canonical workflow or plan identity.
+4. The command wrapper supplies only node, consumer, budget, and strict runtime projection. The CLI derives card, manifest, and renderer hashes and stores the bounded runtime bytes only in the accepted `last_transition`.
+5. Render once from candidate state in memory, commit exactly one semantic transition, then publish fixed `projections/context-capsule.md`. Exact replay repairs output loss; current-state rerender never changes state.
 
 ## Output contract
-- One `context-capsule` with capsule ref, projection/source hashes, current node, mandatory bytes/IDs, included/omitted optional IDs, on-demand pointers, expiry/invalidation, and `blocker|null`.
+- One fixed context projection and receipt locator. State stores no projection locator/hash or metadata sidecar; later state advance makes the old context non-current and blocks rerender.
 
 ## Load next only if
 
