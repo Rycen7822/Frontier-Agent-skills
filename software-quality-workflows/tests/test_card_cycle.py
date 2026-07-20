@@ -704,12 +704,23 @@ class CardCycleM0Tests(unittest.TestCase):
             entry = self._success_receipt(self._run("complete", self._entry_command(route), source))
             command = self._scope_command(entry, mode="M2")
 
+            missing = root / "missing"
+            rejected_missing = self._run("complete", command, source, "--work-root", str(missing))
+            missing_error = json.loads(rejected_missing.stderr)
+            self.assertEqual((5, "E_ORPHAN_CONFLICT", False), (rejected_missing.returncode, missing_error["code"], missing_error["retryable"]))
+            self.assertIn("non-retryable for this task", missing_error["message"])
+            self.assertNotIn(str(missing), missing_error["message"])
+            self.assertFalse(missing.exists())
+
             nested = source / "workflow"
             nested.mkdir()
             source_before = (source_file.read_bytes(), source_file.stat().st_mtime_ns)
             rejected_nested = self._run("complete", command, source, "--work-root", str(nested))
             self.assertEqual(5, rejected_nested.returncode)
-            self.assertEqual("E_ORPHAN_CONFLICT", json.loads(rejected_nested.stderr)["code"])
+            nested_error = json.loads(rejected_nested.stderr)
+            self.assertEqual(("E_ORPHAN_CONFLICT", False), (nested_error["code"], nested_error["retryable"]))
+            self.assertIn("stop without probing, mutation, retry, alternate root, or fallback", nested_error["message"])
+            self.assertNotIn(str(nested), nested_error["message"])
             self.assertEqual([], list(nested.iterdir()))
             self.assertEqual(source_before, (source_file.read_bytes(), source_file.stat().st_mtime_ns))
 

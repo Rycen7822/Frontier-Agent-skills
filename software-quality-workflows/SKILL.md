@@ -16,63 +16,65 @@ metadata:
 
 ## Owner contract
 
-Own software execution truth: authority, scope, diagnosis, changes, evidence, review, recovery, and completion. Routine work stays Direct; durable machinery needs recovery or proof value.
+Own execution truth: authority/scope/diagnosis/changes/evidence/review/recovery/completion. Stay Direct unless recovery/proof requires durability. Never invent intent, expand authority, treat context as state, trust worker verdicts, or equate local proof with release readiness. `writing-plans` owns plans, `long-document-segmented-writing` owns large drafts, hosted owners control remote state; missing owners preserve gates.
 
-Never invent intent, expand authority, treat context as state, trust worker self-verdicts, or equate local proof with publication readiness. `writing-plans` owns durable plans; `long-document-segmented-writing` owns large-corpus drafts; hosted-platform owners control live remote state. Missing owners do not remove gates.
-
-Codex and Hermes Agent share this contract. Resolve paths from this skill root. Optional host features are not prerequisites; live agents, remote/destructive work, release, and publication require explicit authority.
+For Codex and Hermes Agent: Resolve paths from this skill root. Optional host features are not prerequisites; live agents, remote/destructive work, release, and publication require explicit authority.
 
 ## Safety kernel
 
 Before changing anything:
 
-1. Re-observe request, revision, dirty/concurrent state, scope, protected surfaces, effects, verifier, and proof. Unknown safety facts stay unknown.
-2. Classify report, diagnose, intent, change, review, or recovery. Unknown cause blocks implementation; materially underdefined intent requires one focused decision.
-3. Freeze the smallest authorized read/write/effect boundary; preserve user changes and repository identity.
-4. Establish a behavior distinction first. Use [behavior cycle](references/test/behavior-cycle.md), make the smallest general change, and run proportional proof without weakening the oracle.
-5. Treat worker output and evidence as proposals; the controller verifies identity, freshness, scope, and independence.
-6. Inspect final diff/evidence and name every not-run, blocked, flaky, stale, sampled, or environment-limited gate. High-risk implementers do not self-approve.
+1. Re-observe request, revision, dirty/concurrent state, scope, protected surfaces, effects, verifier, proof; unknown stays unknown.
+2. Classify report, diagnosis, intent, change, review, or recovery. Unknown cause blocks implementation; materially underdefined intent requires one focused decision.
+3. Freeze the smallest authorized read/write/effect boundary; preserve user changes/repository identity.
+4. Establish a distinction. Use [behavior cycle](references/test/behavior-cycle.md), make the smallest general change, and prove proportionally without weakening the oracle.
+5. Treat worker output/evidence as proposals; verify identity, freshness, scope, independence.
+6. Inspect final diff/evidence; name not-run, blocked, flaky, stale, sampled, or environment-limited gates. High-risk implementers do not self-approve.
 
 ## Direct path
 
-Use **M0 Direct** without `card_cycle.py` only for same-session local reversible work with adequate authority, a known seam, and no durable, recovery, delegation, public-contract, or external-effect boundary. It creates no receipt, work root, anchor, or protocol artifact. Inspect source and dirty state, make or report the smallest distinction, and verify proportionally. Unknown cause blocks Direct implementation, not bounded read-only diagnosis.
+Use **M0 Direct** without `card_cycle.py` only for same-session, local, reversible work with known authority/seam and no durable, recovery, delegation, public-contract, or external-effect boundary. It creates no receipt, work root, anchor, or protocol artifact. Inspect source/dirty state, make or report the smallest distinction, and prove proportionally. Unknown cause blocks Direct implementation, not bounded read-only diagnosis.
 
 ## Card-cycle entry
 
 All other work uses only this skill root's `scripts/card_cycle.py` as the model-facing protocol:
 
-1. Read the compact initial contract with `LC_ALL=C scripts/card_cycle.py route --help`.
-2. Send one v2 route command through stdin with `scripts/card_cycle.py route --input - --source-root <source>`; `--source-root` is the target repository root, never this skill root. Add `--work-root` only for a durable resume required by that command.
-3. For `next_step.kind=card`, read only `card_path`, verify `card_hash`, and make that decision. Never select by memory, similarity, link, or scan.
+1. Read the initial contract with `LC_ALL=C scripts/card_cycle.py route --help`.
+2. Send one v2 route command through stdin with `scripts/card_cycle.py route --input - --source-root <source>`; `--source-root` is the target repository root, never this skill root. Add `--work-root` only for required durable resume.
+3. For `next_step.kind=card`, read only `card_path`, verify `card_hash`, and decide it. Never select by memory, similarity, link, or scan.
 4. Every complete/render stdin object has exactly: `contract_id` from `input_contract`, `invocation_phase` (`initial` or `resume`), `previous_receipt` as the entire current replacement receipt (never an ID), `fields` from `input_contract`, and `outcome.blocker`; pass only `--source-root`, `required_root_args.always`, and matching conditional roots.
-5. Send the command through stdin with `scripts/card_cycle.py complete --input - ...`. Keep only the returned replacement receipt; never preserve a receipt chain.
-6. Resume durable work only with the route resume variant. Produce bounded durable projections only with `scripts/card_cycle.py render --input - ...`. After every completion, return to the card cycle; cards never select or preload successors.
+5. Send it through stdin with `scripts/card_cycle.py complete --input - ...`; keep only the replacement receipt, never a receipt chain.
+6. Resume durable work only with route; render bounded projections only with `scripts/card_cycle.py render --input - ...`; after completion return to the cycle.
 
-`scripts/route_workflow.py`, schemas, registries, manifests, tests, and support map are internal owners, not model commands or default reads. Any identity mismatch fails closed; a card absent from the manifest is inactive.
+First M2/M3 bootstrap uses explicit external root; else require the pending replacement receipt's `receipt_id` to match `sha256:[0-9a-f]{64}` and select `<source-parent>/.frontier-sqw-<full-hex>`. Before scope, run `mkdir -m 700 -- <exact-root>` once if absent, never `-p`. Existing with matching canonical active anchor means route resume, not bootstrap; else block without scan/write.
 
-`semantic_inline` fields and protocol results exist only in stdin/stdout or owner state. Except for returned boundary/projection locators, write no protocol JSON, Markdown, ledger, worknote, card result, or receipt. Do not open raw state, locks, events, whole artifact/projection directories, full schemas/manifests, fixtures, history, or logs. Replacement stops future propagation; it does not prove physical context eviction.
+`E_ORPHAN_CONFLICT` is non-retryable. Unavailable/unsafe/foreign/partial/binding conflict stops: no inspect, chmod, delete, recreate, alternate root, source-nested `.eval-work`, `worknotes`, fallback Markdown/manual state. Later calls need root preconditions.
+
+`scripts/route_workflow.py`, schemas, registries, manifests, tests, and support map are internal, not model commands or default reads. Mismatch fails closed; an unmanifested card is inactive.
+
+`semantic_inline` fields/results exist only in stdin/stdout or owner state. Except returned boundary/projection locators, write no protocol JSON, Markdown, ledger, worknote, card result, or receipt. Do not open raw state, locks, events, whole artifact/projection directories, full schemas/manifests, fixtures, history, or logs. Replacement stops propagation; it does not prove physical context eviction.
 
 ## Mode, review, and context
 
-- **M0 Direct:** admission and procedure above; no durable state or anchor.
-- **M1 Trace:** bounded observed summaries and controlled pointers; no durable state or anchor.
-- **M2 Sparse:** one durable owner at costly, delegated, approval, public-contract, or recovery boundaries.
-- **M3 Full:** one durable owner for multi-session migration, release, destructive recovery, or shared state.
+- **M0 Direct:** admission above; no durable state/anchor.
+- **M1 Trace:** bounded summaries/pointers; no durable state or anchor.
+- **M2 Sparse:** one owner at costly, delegated, approval, public-contract, or recovery boundaries.
+- **M3 Full:** one owner for multi-session migration, release, destructive recovery, or shared state.
 
-Mode never expands authority. Upgrade on observed authority, source, shared state, conflict, failure-locality, or proof risk; downgrade when it ends. Review depth is independent: R0 self-diff plus verifier, R1 requirements plus engineering axes, R2 independent/adversarial high-risk evidence.
+Mode never expands authority. Upgrade on authority, source, shared state, conflict, failure-locality, or proof risk; downgrade afterward. Review is separate: R0 diff/verifier, R1 requirements/engineering axes, R2 independent/adversarial evidence for high risk.
 
-Model context is limited to this entry, current help/replacement receipt, one card, short stdout, and one needed projection/boundary artifact. `scripts/project_context.py` may render exact inputs within 8,192 bytes; overflow blocks, and projections never enter state hashing.
+Model context: this entry, help/receipt, one card, short stdout, one projection/boundary. `scripts/project_context.py` renders exact inputs ≤8,192 bytes; overflow blocks, projections never enter state hashing.
 
 ## Durable anchor lifecycle
 
-After an M2/M3 bootstrap, keep exactly one line in an existing canonical task index or host session state; create one task-level anchor only when no index exists:
+After M2/M3 bootstrap, keep one line in an existing canonical task index/host state; create one task anchor only when no index exists:
 
 `owner=<skill>/<owner-kind> | root=<exact task root> | locator=<immutable owner locator> | source=<source identity> | bundle=<bundle identity> | lifecycle=<active|terminal-retain|terminal-disposable> | boundary=<none or named consumer/evidence ref>`
 
-Keep each task root isolated and outside source. Replace locator/source in place; never save the receipt. A terminal owner without an unconsumed boundary becomes `terminal-disposable`: safely remove the exact root, verify absence, then remove the anchor. A named handoff/evidence boundary becomes `terminal-retain` until consumption or migration evidence makes it disposable. Never delete by age or add lifecycle schema, cleanup command, global registry, or per-step anchor.
+Keep task roots isolated/outside source. Replace locator/source in place; never save receipts. Terminal without an unconsumed boundary is `terminal-disposable`: remove exact root safely, verify absence, remove anchor. Named handoff/evidence is `terminal-retain` until consumption/migration evidence. Never delete by age or add lifecycle schema, cleanup command, global registry, or per-step anchor.
 
 ## Planning handoff and completion
 
-Planning hands off only through `writing-plans/schemas/plan-execution-handoff.schema.json`. Revalidate bundle, source, scope, authority, plan hash, policies, and blockers before execution state. Plan changes return to Writing Plans; publication readiness stays separate.
+Planning hands off through `writing-plans/schemas/plan-execution-handoff.schema.json` only. Before execution revalidate bundle, source, scope, authority, plan hash, policies, blockers. Plan changes return to Writing Plans; publication stays separate.
 
-Complete only from fresh source/scope identity, accepted evidence, satisfied verifiers, resolved approvals, no pending work or locks, and explicit residual risk. Report `needs_repair`, `verified_within_scope`, `blocked`, or `empirical_validation_required` precisely. Local completion does not imply commit, push, PR, merge, release, deploy, or publication.
+Complete only from fresh source/scope identity, accepted evidence, satisfied verifiers, resolved approvals, no pending work/locks, and stated residual risk. Report `needs_repair`, `verified_within_scope`, `blocked`, or `empirical_validation_required`. Local completion does not imply commit, push, PR, merge, release, deploy, or publication.
