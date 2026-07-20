@@ -92,6 +92,7 @@ def _references(state: dict[str, Any]) -> Iterable[tuple[str, str, str | None]]:
         for i, item in enumerate(state.get(collection, [])):
             yield from emit(item.get(field, []), (collection, i, field), item.get("id"))
     yield from emit(state.get("completion", {}).get("required_evidence", []), ("completion", "required_evidence"))
+    yield from emit(state.get("rollback", {}).get("verifier_refs", []), ("rollback", "verifier_refs"))
 
 
 def _node_graph(state: dict[str, Any]) -> dict[str, set[str]]:
@@ -232,7 +233,7 @@ def semantic_violations(
         if unsatisfied:
             violations.append(Violation("plan.frontier-stale", pointer(("current_frontier", index)), f"blocking dependencies are not complete: {unsatisfied}", node_id))
 
-    allowed_writes = state.get("scope", {}).get("allowed_writes", [])
+    allowed_writes = state.get("scope_binding", {}).get("allowed_plan_outputs", [])
     for index, node in enumerate(state.get("nodes", [])):
         node_id = node.get("id")
         verifier = node.get("verifier", {})
@@ -319,30 +320,21 @@ def semantic_violations(
                 )
             )
 
-    if current_revision and state.get("source", {}).get("base_revision") not in {current_revision, "explicit-unversioned"}:
-        violations.append(Violation("plan.source-stale", "/source/base_revision", "base revision differs from current revision"))
-    if current_scope_hash and state.get("source", {}).get("scope_hash") != current_scope_hash:
-        violations.append(Violation("plan.source-stale", "/source/scope_hash", "scope hash differs from current scope"))
+    source_identity = state.get("source_identity", {})
+    if current_revision and source_identity.get("kind") == "repository" and source_identity.get("head_commit") != current_revision:
+        violations.append(Violation("plan.source-stale", "/source_identity/head_commit", "repository HEAD differs from current revision"))
+    if current_scope_hash and state.get("scope_binding", {}).get("binding_id") != current_scope_hash:
+        violations.append(Violation("plan.source-stale", "/scope_binding/binding_id", "planning scope binding differs from current scope"))
     if state.get("content_hash") and state["content_hash"] != canonical_state_hash(state):
         violations.append(Violation("plan.source-stale", "/content_hash", "content hash does not match canonical plan state"))
 
     for index, snapshot in enumerate(state.get("snapshots", [])):
-        if snapshot.get("kind") in {"line", "snippet", "symbol", "capsule"} and not snapshot.get("source_revision"):
+        if snapshot.get("kind") in {"line", "snippet", "symbol"} and not snapshot.get("source_revision"):
             violations.append(Violation("plan.snapshot-unbound", pointer(("snapshots", index, "source_revision")), "snapshot kind requires source_revision", snapshot.get("id")))
         if snapshot.get("kind") == "symbol" and not snapshot.get("symbol"):
             violations.append(Violation("plan.snapshot-unbound", pointer(("snapshots", index, "symbol")), "symbol snapshot requires an identity token", snapshot.get("id")))
-        if snapshot.get("kind") in {"line", "snippet", "capsule"} and not snapshot.get("content_hash"):
+        if snapshot.get("kind") in {"line", "snippet"} and not snapshot.get("content_hash"):
             violations.append(Violation("plan.snapshot-unbound", pointer(("snapshots", index, "content_hash")), "content-bound snapshot requires content_hash", snapshot.get("id")))
-        if snapshot.get("kind") == "capsule" and (
-            not snapshot.get("plan_state_hash")
-            or not snapshot.get("plan_state_version")
-            or not snapshot.get("card_refs")
-            or not snapshot.get("projection_spec_id")
-            or not snapshot.get("projection_hash")
-        ):
-            violations.append(Violation("plan.snapshot-unbound", pointer(("snapshots", index)), "capsule snapshot requires state, card-manifest, and projection identity", snapshot.get("id")))
-        if snapshot.get("kind") == "capsule" and snapshot.get("content_hash") and snapshot.get("projection_hash") != snapshot.get("content_hash"):
-            violations.append(Violation("plan.snapshot-unbound", pointer(("snapshots", index, "projection_hash")), "capsule projection hash must match rendered content hash", snapshot.get("id")))
         if snapshot.get("line_start") and snapshot.get("line_end") and snapshot["line_end"] < snapshot["line_start"]:
             violations.append(Violation("plan.snapshot-unbound", pointer(("snapshots", index, "line_end")), "line_end cannot precede line_start", snapshot.get("id")))
 
@@ -383,8 +375,47 @@ def semantic_violations(
         if missing or blocking_gaps or unfinished:
             violations.append(Violation("plan.completion-premature", "/completion/status", f"completion has missing evidence={missing}, blocking gaps={blocking_gaps}, unfinished nodes={unfinished}"))
 
-    if state.get("profile") == "brief" and (state.get("nodes") or state.get("edges") or state.get("current_frontier")):
-        violations.append(Violation("plan.profile-overbuilt", "/profile", "Brief profile must not carry durable graph state"))
+    queue = state.get("pending_card_instances", [])
+    queue_ids = [item.get("card_instance_id") for item in queue if isinstance(item, dict)]
+    if len(queue_ids) != len(set(queue_ids)):
+        violations.append(Violation("plan.queue-duplicate", "/pending_card_instances", "pending card instance IDs must be unique"))
+    if state.get("status") in {"blocked", "completed", "superseded"} and queue:
+        violations.append(Violation("plan.queue-terminal", "/pending_card_instances", "terminal Program state must have an empty queue"))
+    if queue and state.get("status") not in {"drafting", "ready", "active"}:
+        violations.append(Violation("plan.queue-status", "/pending_card_instances", "only live Program state may have pending cards"))
+    for index, item in enumerate(queue):
+        subject = item.get("subject_ref") if isinstance(item, dict) else None
+        if subject is not None and (not str(subject).startswith("P-") or subject not in node_by_id):
+            violations.append(Violation("plan.queue-subject", pointer(("pending_card_instances", index, "subject_ref")), "queue subject must name a local plan node"))
+
+    scope_binding = state.get("scope_binding", {})
+    if scope_binding.get("initial_source_identity_hash") != source_identity.get("identity_hash") and state.get("state_version") == 1:
+        violations.append(Violation("plan.source-binding", "/source_identity/identity_hash", "initial source identity does not match planning scope"))
+    transition = state.get("last_transition", {})
+    if transition.get("scope_binding_id") != scope_binding.get("binding_id"):
+        violations.append(Violation("plan.transition-scope", "/last_transition/scope_binding_id", "transition does not bind the planning scope"))
+    if transition.get("transition_kind") == "init":
+        if (
+            state.get("state_version") != 1
+            or transition.get("prior_state_version") != 0
+            or transition.get("prior_content_hash") is not None
+            or transition.get("completed_card_instance_id") is not None
+            or transition.get("completion_id") != state.get("initial_completion_id")
+            or transition.get("enqueued_card_instance_ids") != queue_ids
+            or transition.get("inline_render_completion") is not None
+        ):
+            violations.append(Violation("plan.transition-init", "/last_transition", "initial transition does not bind version 0 and the exact initial queue"))
+    elif transition.get("transition_kind") == "card" and transition.get("completed_card_instance_id") is None:
+        violations.append(Violation("plan.transition-card", "/last_transition/completed_card_instance_id", "card transition must bind the completed queue instance"))
+
+    artifact_completion_ids = [item.get("completion_id") for item in state.get("artifacts", []) if isinstance(item, dict)]
+    if len(artifact_completion_ids) != len(set(artifact_completion_ids)):
+        violations.append(Violation("plan.artifact-duplicate", "/artifacts", "durable artifacts must be unique by completion ID"))
+    if any(item.get("scope_binding_id") != scope_binding.get("binding_id") for item in state.get("artifacts", []) if isinstance(item, dict)):
+        violations.append(Violation("plan.artifact-scope", "/artifacts", "durable artifact does not bind the planning scope"))
+    inline = transition.get("inline_render_completion")
+    if inline is not None and len(json.dumps(inline, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")) > 8192:
+        violations.append(Violation("plan.inline-render-budget", "/last_transition/inline_render_completion", "inline render completion exceeds 8192 bytes"))
 
     claims: dict[str, set[tuple[str, str]]] = defaultdict(set)
     claim_paths: dict[str, str] = {}
@@ -395,7 +426,7 @@ def semantic_violations(
         if policy_id and bundle_version and policy_hash:
             claims[policy_id].add((bundle_version, policy_hash))
             claim_paths.setdefault(policy_id, pointer(("policy_claims", index)))
-            if bundle_version != state.get("source", {}).get("bundle_id"):
+            if bundle_version != state.get("bundle_id"):
                 violations.append(Violation("plan.policy-binding", pointer(("policy_claims", index, "bundle_version")), "policy claim bundle differs from plan bundle identity", policy_id))
     for policy_id, bindings in claims.items():
         if len(bindings) > 1:

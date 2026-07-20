@@ -14,7 +14,7 @@ import subprocess
 import sys
 from typing import Any
 
-from _plan_state import PlanInputError, VERIFIER_REF_SCHEMES, canonical_state_hash, capsule_source_hash, file_hash, load_json, validate_against_schema
+from _plan_state import PlanInputError, VERIFIER_REF_SCHEMES, canonical_state_hash, file_hash, load_json, validate_against_schema
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCHEMA = ROOT / "schemas" / "plan-state.schema.json"
@@ -34,8 +34,7 @@ def _git(repository: Path, *args: str) -> tuple[int, str]:
 def _resolve_repository(state_path: Path, state: dict[str, Any], override: Path | None) -> Path:
     if override:
         return override.resolve()
-    configured = Path(state["source"]["repository"])
-    return configured.resolve() if configured.is_absolute() else (Path.cwd() / configured).resolve()
+    return state_path.parent.resolve()
 
 
 def _local_artifact(ref: str, repository: Path) -> Path | None:
@@ -197,43 +196,40 @@ def check_freshness(
         policy_root_stale = True
         add("policy", kind, message, global_issue=True)
 
-    source_identity = state.get("source", {})
-    if current_bundle_id is not None and source_identity.get("bundle_id") != current_bundle_id:
+    source_identity = state.get("source_identity", {})
+    if current_bundle_id is not None and state.get("bundle_id") != current_bundle_id:
         add("plan", "bundle_changed", "current bundle identity differs from the plan binding", global_issue=True)
-    if current_policy_bundle_hash is not None and state.get("source", {}).get("policy_bundle_hash") != current_policy_bundle_hash:
-        add_policy_root("policy_bundle_changed", "current policy bundle differs from the plan binding")
-    if current_reference_manifest_hash is not None and source_identity.get("reference_manifest_hash") != current_reference_manifest_hash:
-        capsule_ids = [item.get("id") for item in state.get("snapshots", []) if item.get("kind") == "capsule" and item.get("id")]
-        for capsule_id in capsule_ids or ["context"]:
-            add(capsule_id, "card_manifest_changed", "card manifest drift invalidates context projection only")
+    if current_policy_bundle_hash is not None and current_policy_bundle_hash not in {item.get("policy_hash") for item in state.get("policy_claims", [])}:
+        add_policy_root("policy_bundle_changed", "current policy binding differs from every plan policy claim")
+    if current_reference_manifest_hash is not None and state.get("manifest_hash") != current_reference_manifest_hash:
+        add("context", "card_manifest_changed", "card manifest drift invalidates the current context projection")
     for claim in state.get("policy_claims", []):
         policy_id = claim.get("policy_id")
         if current_policy_hashes and policy_id in current_policy_hashes and claim.get("policy_hash") != current_policy_hashes[policy_id]:
             add(policy_id, "policy_hash_changed", "stable policy ID resolves to a different hash")
-    if current_card_hashes:
-        for snapshot in state.get("snapshots", []):
-            if snapshot.get("kind") != "capsule":
-                continue
-            if any(current_card_hashes.get(ref.get("card_id"), ref.get("card_hash")) != ref.get("card_hash") for ref in snapshot.get("card_refs", [])):
-                add(snapshot.get("id", "context"), "card_hash_changed", "card hash drift invalidates context projection only")
+    inline = state.get("last_transition", {}).get("inline_render_completion")
+    if current_card_hashes and isinstance(inline, dict):
+        expected = current_card_hashes.get("wp.slicing.context-capsules")
+        if expected is not None and inline.get("card_hash") != expected:
+            add("context", "card_hash_changed", "card hash drift invalidates the current context projection")
     for changed_ref in sorted(declared_changed_refs):
         add(changed_ref, "declared_changed", "caller declared this plan ref changed", global_issue=changed_ref in {"source", "scope", "plan"} or changed_ref.startswith("I-"))
 
-    base_revision = state["source"]["base_revision"]
+    base_revision = source_identity.get("head_commit") if source_identity.get("kind") == "repository" else "explicit-unversioned"
     current_revision: str | None = None
     code, output = _git(repository, "rev-parse", "HEAD") if repository.exists() else (1, "")
     if code == 0:
         current_revision = output
-        if base_revision == "explicit-unversioned":
+        if source_identity.get("kind") == "unversioned":
             add("source", "versioning_available", "state is marked unversioned but repository has a revision", global_issue=True)
-        elif base_revision != current_revision:
-            ancestor_code, _ = _git(repository, "merge-base", "--is-ancestor", base_revision, current_revision)
+        elif source_identity.get("head_commit") != current_revision:
+            ancestor_code, _ = _git(repository, "merge-base", "--is-ancestor", str(base_revision), current_revision)
             if ancestor_code != 0:
                 add("source", "revision_diverged", f"base {base_revision} is not an ancestor of {current_revision}", global_issue=True)
             else:
                 add("source", "revision_advanced", f"repository advanced from {base_revision} to {current_revision}")
 
-    if current_scope_hash and state["source"]["scope_hash"] != current_scope_hash:
+    if current_scope_hash and state.get("scope_binding", {}).get("binding_id") != current_scope_hash:
         add("scope", "scope_hash_changed", "current scope hash differs from plan", global_issue=True)
     if state.get("content_hash") and state["content_hash"] != canonical_state_hash(state):
         add("plan", "state_hash_changed", "content_hash does not match canonical plan state", global_issue=True)
@@ -265,11 +261,6 @@ def check_freshness(
             add(snapshot_id, "content_changed", "snapshot content hash differs")
         if current_revision and snapshot.get("source_revision") not in {None, current_revision}:
             add(snapshot_id, "snapshot_revision_changed", "snapshot revision differs from current checkout")
-        if snapshot.get("kind") == "capsule" and (
-            snapshot.get("plan_state_hash") != capsule_source_hash(state)
-            or snapshot.get("plan_state_version") != state.get("state_version")
-        ):
-            add(snapshot_id, "capsule_stale", "capsule was generated from another canonical state hash or version")
 
     for node in state.get("nodes", []):
         if node.get("status") != "done":
