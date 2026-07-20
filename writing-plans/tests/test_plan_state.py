@@ -19,12 +19,15 @@ if str(SCRIPTS) not in sys.path:
 from _plan_state import (  # noqa: E402
     MAX_INPUT_BYTES,
     PlanInputError,
+    ProgramOwnerConflict,
+    apply_program_owner_transition,
     apply_card_transition,
     canonical_state_hash,
     file_hash,
     load_json,
     normalize_enqueue_requests,
     initialize_program_owner,
+    resume_program_owner,
 )
 import _plan_state as plan_state_runtime  # noqa: E402
 from check_plan_freshness import check_freshness, propagate_affected  # noqa: E402
@@ -92,6 +95,39 @@ def _program_init_worker(root: Path, source: Path, checkpoint: str, ready: Path)
 
     plan_state_runtime._checkpoint = pause
     initialize_program_owner(root, source, _program_candidate(root, source))
+
+
+def _program_apply_kwargs(state: dict) -> dict:
+    return {
+        "expected_state_version": state["state_version"],
+        "expected_content_hash": state["content_hash"],
+        "scope_binding_id": state["scope_binding"]["binding_id"],
+        "completed_card_instance_id": state["pending_card_instances"][0]["card_instance_id"],
+        "completion": {"outcome": "accepted", "rationale": "bounded proof"},
+        "operations": [],
+        "enqueue_requests": [],
+        "current_source_identity": state["source_identity"],
+        "artifact_id": "context-capsule",
+        "artifact_payload": b'{"schema_version":"wp-handoff/3"}\n',
+        "projection_kind": "program",
+        "projection_builder": lambda candidate: f"# Program\n\nState: {candidate['state_version']}\n".encode(),
+        "renderer_contract_hash": "sha256:" + "a" * 64,
+    }
+
+
+def _program_apply_worker(root: Path, source: Path, checkpoint: str, ready: Path) -> None:
+    state = json.loads((root / "plan-state.json").read_bytes())
+    locator = plan_state_runtime._program_locator(state)
+
+    def pause(name: str) -> None:
+        if name != checkpoint:
+            return
+        ready.write_text(name + "\n", encoding="utf-8")
+        while True:
+            signal.pause()
+
+    plan_state_runtime._checkpoint = pause
+    apply_program_owner_transition(root, source, locator, **_program_apply_kwargs(state))
 
 
 def _validate(state: dict) -> list:
@@ -276,6 +312,56 @@ class PlanStateTests(unittest.TestCase):
                 **common,
             )
 
+    def test_card_transition_enforces_live_terminal_and_growth_byte_budgets(self) -> None:
+        state = _base()
+        state["non_goals"] = [f"{index:02d}-" + "x" * 1900 for index in range(27)]
+        _rehash(state)
+        common = {
+            "expected_state_version": state["state_version"],
+            "expected_content_hash": state["content_hash"],
+            "scope_binding_id": state["scope_binding"]["binding_id"],
+            "completed_card_instance_id": state["pending_card_instances"][0]["card_instance_id"],
+            "completion": {"outcome": "accepted"},
+            "enqueue_requests": [],
+        }
+        with self.assertRaisesRegex(PlanInputError, "semantic budget"):
+            apply_card_transition(state, operations=[], **common)
+        terminal = apply_card_transition(
+            state,
+            operations=[
+                {"operation": "replace_field", "target": "status", "value": "blocked"},
+                {
+                    "operation": "replace_field",
+                    "target": "completion",
+                    "value": {
+                        "status": "incomplete",
+                        "epistemic_status": "blocked",
+                        "required_evidence": [],
+                        "residual_uncertainty": ["owner blocked"],
+                    },
+                },
+            ],
+            **common,
+        )
+        self.assertGreater(len(plan_state_runtime.canonical_bytes(terminal) + b"\n"), 57_344)
+        self.assertLessEqual(len(plan_state_runtime.canonical_bytes(terminal) + b"\n"), 65_536)
+
+        growing = _base()
+        growing_common = {
+            "expected_state_version": growing["state_version"],
+            "expected_content_hash": growing["content_hash"],
+            "scope_binding_id": growing["scope_binding"]["binding_id"],
+            "completed_card_instance_id": growing["pending_card_instances"][0]["card_instance_id"],
+            "completion": {"outcome": "accepted"},
+            "operations": [],
+            "enqueue_requests": [
+                {"decision_id": "wp.select.slicing.context-capsules", "subject_ref": f"P-{index:04d}"}
+                for index in range(100)
+            ],
+        }
+        with self.assertRaisesRegex(PlanInputError, "transition exceeds"):
+            apply_card_transition(growing, **growing_common)
+
     def test_program_owner_init_exact_replay_and_root_contract(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
@@ -350,6 +436,252 @@ class PlanStateTests(unittest.TestCase):
                 self.assertEqual([".plan-state.lock", "artifacts", "plan-state.json", "projections"], sorted(path.name for path in root.iterdir()))
                 replay = initialize_program_owner(root, source, candidate)
                 self.assertTrue(replay[2])
+
+    def test_program_apply_commits_once_and_exact_replay_finishes_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source = parent / "source"
+            root = parent / "program"
+            source.mkdir(mode=0o700)
+            root.mkdir(mode=0o700)
+            original, locator, _ = initialize_program_owner(root, source, _program_candidate(root, source))
+            committed, replayed, output_locator, blocked = apply_program_owner_transition(
+                root, source, locator, **_program_apply_kwargs(original)
+            )
+            self.assertFalse(replayed)
+            self.assertFalse(blocked)
+            self.assertEqual(original["state_version"] + 1, committed["state_version"])
+            self.assertEqual([], committed["pending_card_instances"])
+            self.assertEqual("projection", output_locator["content_kind"])
+            self.assertEqual(committed, json.loads((root / "plan-state.json").read_bytes()))
+            artifact_files = list((root / "artifacts").glob("*.json"))
+            self.assertEqual(1, len(artifact_files))
+            state_identity = ((root / "plan-state.json").stat().st_ino, (root / "plan-state.json").stat().st_mtime_ns)
+            replay_state, replayed, replay_locator, blocked = apply_program_owner_transition(
+                root, source, locator, **_program_apply_kwargs(original)
+            )
+            self.assertTrue(replayed)
+            self.assertFalse(blocked)
+            self.assertEqual(committed, replay_state)
+            self.assertEqual(output_locator, replay_locator)
+            self.assertEqual(state_identity, ((root / "plan-state.json").stat().st_ino, (root / "plan-state.json").stat().st_mtime_ns))
+            self.assertEqual([], [path.name for path in root.rglob("*.tmp")])
+
+    def test_program_resume_aborts_only_proven_prepared_state_and_preserves_orphan_final(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source = parent / "source"
+            root = parent / "program"
+            source.mkdir(mode=0o700)
+            root.mkdir(mode=0o700)
+            original, locator, _ = initialize_program_owner(root, source, _program_candidate(root, source))
+            checkpoint = plan_state_runtime._checkpoint
+
+            def interrupt(name: str) -> None:
+                if name == "program_artifact_link_parent_synced":
+                    raise RuntimeError("crash")
+
+            plan_state_runtime._checkpoint = interrupt
+            try:
+                with self.assertRaisesRegex(RuntimeError, "crash"):
+                    apply_program_owner_transition(root, source, locator, **_program_apply_kwargs(original))
+            finally:
+                plan_state_runtime._checkpoint = checkpoint
+            self.assertTrue((root / ".plan-state.tmp").exists())
+            self.assertEqual(2, len(list((root / "artifacts").iterdir())))
+            resumed, queue_head, source_status = resume_program_owner(
+                root, source, locator, current_source_identity=original["source_identity"]
+            )
+            self.assertEqual(original, resumed)
+            self.assertEqual(original["pending_card_instances"][0], queue_head)
+            self.assertEqual("fresh", source_status)
+            self.assertFalse((root / ".plan-state.tmp").exists())
+            artifact_files = list((root / "artifacts").iterdir())
+            self.assertEqual(1, len(artifact_files))
+            self.assertFalse(artifact_files[0].name.startswith("."))
+            committed, replayed, _, _ = apply_program_owner_transition(
+                root, source, locator, **_program_apply_kwargs(original)
+            )
+            self.assertFalse(replayed)
+            self.assertEqual(2, committed["state_version"])
+
+    def test_program_resume_cleans_only_current_committed_projection_temp(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source = parent / "source"
+            root = parent / "program"
+            source.mkdir(mode=0o700)
+            root.mkdir(mode=0o700)
+            original, locator, _ = initialize_program_owner(root, source, _program_candidate(root, source))
+            checkpoint = plan_state_runtime._checkpoint
+
+            def interrupt(name: str) -> None:
+                if name == "program_projection_temp_fsynced":
+                    raise RuntimeError("output crash")
+
+            plan_state_runtime._checkpoint = interrupt
+            try:
+                with self.assertRaisesRegex(RuntimeError, "output crash"):
+                    apply_program_owner_transition(root, source, locator, **_program_apply_kwargs(original))
+            finally:
+                plan_state_runtime._checkpoint = checkpoint
+            committed = json.loads((root / "plan-state.json").read_bytes())
+            self.assertEqual(2, committed["state_version"])
+            temporary = root / "projections" / "program.md.tmp"
+            self.assertTrue(temporary.is_file())
+            resumed, queue_head, source_status = resume_program_owner(
+                root, source, locator, current_source_identity=committed["source_identity"]
+            )
+            self.assertEqual(committed, resumed)
+            self.assertIsNone(queue_head)
+            self.assertEqual("fresh", source_status)
+            self.assertFalse(temporary.exists())
+            replay, replayed, _, _ = apply_program_owner_transition(
+                root, source, locator, **_program_apply_kwargs(original)
+            )
+            self.assertTrue(replayed)
+            self.assertEqual(committed, replay)
+            self.assertTrue((root / "projections" / "program.md").is_file())
+
+    def test_program_apply_foreign_entries_fail_before_state_write(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source = parent / "source"
+            root = parent / "program"
+            source.mkdir(mode=0o700)
+            root.mkdir(mode=0o700)
+            original, locator, _ = initialize_program_owner(root, source, _program_candidate(root, source))
+            state_identity = ((root / "plan-state.json").stat().st_ino, (root / "plan-state.json").read_bytes())
+            (root / "artifacts" / "foreign.json").write_text("{}\n", encoding="utf-8")
+            with self.assertRaisesRegex(ProgramOwnerConflict, "foreign"):
+                apply_program_owner_transition(root, source, locator, **_program_apply_kwargs(original))
+            self.assertEqual(state_identity, ((root / "plan-state.json").stat().st_ino, (root / "plan-state.json").read_bytes()))
+            self.assertFalse((root / ".plan-state.tmp").exists())
+
+    def test_program_source_rebind_and_terminal_stale_truth_table(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source = parent / "source"
+            root = parent / "program"
+            source.mkdir(mode=0o700)
+            root.mkdir(mode=0o700)
+            original, locator, _ = initialize_program_owner(root, source, _program_candidate(root, source))
+            eligible = deepcopy(original["source_identity"])
+            eligible["identity_hash"] = "sha256:" + "b" * 64
+            eligible["scoped_records"] = [{
+                "path": "src/changed.py",
+                "status": "added",
+                "content_hash": "sha256:" + "c" * 64,
+                "bytes": 8,
+                "mode": "0644",
+            }]
+            arguments = _program_apply_kwargs(original)
+            arguments["current_source_identity"] = eligible
+            with self.assertRaisesRegex(ProgramOwnerConflict, "source_rebind_required"):
+                apply_program_owner_transition(root, source, locator, **arguments)
+            self.assertEqual(original, json.loads((root / "plan-state.json").read_bytes()))
+            arguments["source_rebind"] = eligible
+            committed, replayed, _, _ = apply_program_owner_transition(root, source, locator, **arguments)
+            self.assertFalse(replayed)
+            self.assertEqual(eligible, committed["source_identity"])
+
+            later = deepcopy(eligible)
+            later["identity_hash"] = "sha256:" + "d" * 64
+            later["scoped_records"][0]["content_hash"] = "sha256:" + "e" * 64
+            resumed, queue_head, source_status = resume_program_owner(
+                root, source, locator, current_source_identity=later
+            )
+            self.assertEqual(committed, resumed)
+            self.assertIsNone(queue_head)
+            self.assertEqual("terminal_stale", source_status)
+
+            blocked = deepcopy(later)
+            blocked["root_binding"] = {"dev": blocked["root_binding"]["dev"], "ino": blocked["root_binding"]["ino"] + 1}
+            with self.assertRaisesRegex(ProgramOwnerConflict, "ineligible"):
+                resume_program_owner(root, source, locator, current_source_identity=blocked)
+
+    def test_program_apply_real_sigkill_prefixes_converge(self) -> None:
+        checkpoints = (
+            "program_state_temp_fsynced",
+            "program_artifact_temp_fsynced",
+            "program_artifact_linked",
+            "program_artifact_link_parent_synced",
+            "program_artifact_cleaned",
+            "program_artifact_cleanup_parent_synced",
+            "program_state_replaced",
+            "program_state_parent_synced",
+            "program_projection_temp_fsynced",
+            "program_projection_replaced",
+            "program_projection_parent_synced",
+            "program_apply_before_return",
+        )
+        for checkpoint in checkpoints:
+            with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                source = parent / "source"
+                root = parent / "program"
+                ready = parent / "ready"
+                source.mkdir(mode=0o700)
+                root.mkdir(mode=0o700)
+                original, locator, _ = initialize_program_owner(root, source, _program_candidate(root, source))
+                process = subprocess.Popen(
+                    [sys.executable, "-B", __file__, "--program-apply-worker", str(root), str(source), checkpoint, str(ready)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                deadline = time.monotonic() + 5
+                while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                if not ready.exists():
+                    if process.poll() is None:
+                        process.kill()
+                    stdout, stderr = process.communicate(timeout=1)
+                    self.fail(f"worker did not reach {checkpoint}: {stdout}{stderr}")
+                process.kill()
+                process.communicate(timeout=5)
+                committed, _, _, _ = apply_program_owner_transition(
+                    root, source, locator, **_program_apply_kwargs(original)
+                )
+                self.assertEqual(original["state_version"] + 1, committed["state_version"])
+                self.assertEqual([], [path.name for path in root.rglob("*.tmp")])
+                self.assertEqual(1, len(list((root / "artifacts").glob("*.json"))))
+                self.assertTrue((root / "projections" / "program.md").is_file())
+
+    def test_program_projection_8192_accepts_and_8193_is_zero_write(self) -> None:
+        def builder(total: int):
+            def render_body(candidate: dict) -> bytes:
+                empty = plan_state_runtime._program_projection_payload(
+                    candidate,
+                    kind="program",
+                    body=b"",
+                    renderer_contract_hash="sha256:" + "a" * 64,
+                    completion_id=plan_state_runtime.canonical_completion_id({"outcome": "accepted", "rationale": "bounded proof"}),
+                )
+                return b"x" * (total - len(empty))
+
+            return render_body
+
+        for total, accepted in ((8192, True), (8193, False)):
+            with self.subTest(total=total), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                source = parent / "source"
+                root = parent / "program"
+                source.mkdir(mode=0o700)
+                root.mkdir(mode=0o700)
+                original, locator, _ = initialize_program_owner(root, source, _program_candidate(root, source))
+                arguments = _program_apply_kwargs(original)
+                arguments.update({"artifact_id": None, "artifact_payload": None, "projection_builder": builder(total)})
+                before = ((root / "plan-state.json").stat().st_ino, (root / "plan-state.json").read_bytes())
+                if accepted:
+                    apply_program_owner_transition(root, source, locator, **arguments)
+                    self.assertEqual(8192, len((root / "projections" / "program.md").read_bytes()))
+                else:
+                    with self.assertRaisesRegex(ProgramOwnerConflict, "exceeds 8192"):
+                        apply_program_owner_transition(root, source, locator, **arguments)
+                    self.assertEqual(before, ((root / "plan-state.json").stat().st_ino, (root / "plan-state.json").read_bytes()))
+                    self.assertEqual([], list((root / "projections").iterdir()))
+                    self.assertFalse((root / ".plan-state.tmp").exists())
 
     def test_capsule_redacts_and_fails_closed_before_mandatory_truncation(self) -> None:
         state = _base()
@@ -809,5 +1141,7 @@ class PlanStateTests(unittest.TestCase):
 if __name__ == "__main__":
     if len(sys.argv) == 6 and sys.argv[1] == "--program-init-worker":
         _program_init_worker(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], Path(sys.argv[5]))
+    elif len(sys.argv) == 6 and sys.argv[1] == "--program-apply-worker":
+        _program_apply_worker(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], Path(sys.argv[5]))
     else:
         unittest.main()
