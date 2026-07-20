@@ -177,6 +177,23 @@ class BundleContractTests(unittest.TestCase):
         self.assertEqual("frontier-cross-skill-routes/1", routes["schema_version"])
         self.assertEqual(["sqw-to-writing-plans", "writing-plans-to-sqw"], [row["route_id"] for row in routes["routes"]])
 
+    def test_brainstorming_routing_excludes_routine_execution_owned_by_sqw(self) -> None:
+        skill_text = (ROOT / "brainstorming/SKILL.md").read_text(encoding="utf-8")
+        frontmatter = skill_frontmatter(ROOT / "brainstorming")
+        description = frontmatter["description"]
+        for boundary in (
+            "routine diagnosis",
+            "known-seam bug fixes",
+            "already-decided requirements",
+            "software-quality-workflows",
+        ):
+            self.assertIn(boundary, description)
+            self.assertIn(boundary, skill_text)
+        self.assertIn(
+            "changing code behavior alone does not make a task brainstorming work",
+            skill_text,
+        )
+
     def test_skill_evaluator_public_contract_is_bundle_owned(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("schema v3", readme)

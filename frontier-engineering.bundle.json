@@ -8,11 +8,11 @@
       "normative_owner_path": "writing-plans/schemas/plan-execution-handoff.schema.json"
     }
   },
-  "release_build_id": "build-19756af45ede470cfc516701",
+  "release_build_id": "build-ea51af33aec01a355ba501b0",
   "schema_version": "frontier-engineering-bundle/1.0",
   "skills": {
     "brainstorming": {
-      "root_hash": "sha256:d25775879a9147d670e1087cd02102b6fd74665f5f77f0208b75729cbca09ec0",
+      "root_hash": "sha256:de07f1ac2711e5fbfc026117a91e060455df06315c8a96d6b8045e40151cea0e",
       "version": "1.0.0"
     },
     "long-document-segmented-writing": {

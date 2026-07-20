@@ -1,6 +1,6 @@
 ---
 name: brainstorming
-description: Use before creative work such as creating features, building components, adding functionality, or modifying behavior. Clarifies intent, inspects context, compares viable designs, and chooses a proportionate implementation. When the user authorizes a change, default to executing the best-supported safe approach without routine approval questions; ask only for dangerous or materially irreversible decisions, missing authority or genuinely blocking information, or a clearly unsound technical route.
+description: Use before non-trivial creative design work where intent, architecture, UX, or multiple viable approaches must be resolved. Do not invoke for routine diagnosis, known-seam bug fixes, or implementation of already-decided requirements; software-quality-workflows owns those execution paths. Clarifies intent, inspects context, compares viable designs, and chooses a proportionate implementation. When the user authorizes a change, default to executing the best-supported safe approach without routine approval questions; ask only for dangerous or materially irreversible decisions, missing authority or genuinely blocking information, or a clearly unsound technical route.
 license: MIT
 metadata:
   version: 1.0.0
@@ -18,6 +18,7 @@ Turn requests into evidence-backed designs without making the user approve ordin
 
 ## Core contract
 
+- Route routine diagnosis, known-seam bug fixes, and implementation of already-decided requirements directly to `software-quality-workflows`; changing code behavior alone does not make a task brainstorming work.
 - Inspect the current project, relevant files, tests, documentation, and local conventions before deciding.
 - Distinguish an execution request from a design-only, review-only, or explanatory request.
 - Default action: execute the best-supported safe approach when the user has asked for a change and scope and authority are clear.
