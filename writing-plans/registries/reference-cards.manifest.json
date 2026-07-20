@@ -1,8 +1,8 @@
 {
-  "bundle_id": "frontier-engineering/8.0.0+7.0.0",
+  "bundle_id": "frontier-engineering/4.0.0",
   "cards": [
     {
-      "bytes": 2403,
+      "bytes": 2426,
       "card_id": "wp.bridges.long-document-handoff",
       "card_version": 2,
       "decision_id": "wp.select.bridges.long-document-handoff",
@@ -13,7 +13,7 @@
         "long-document-handoff"
       ],
       "required_artifact_ids": [],
-      "sha256": "sha256:99e88985835d30b9aa37d8e5016d2ae9bdb9bd058d52a91bd10a3d73240e3546"
+      "sha256": "sha256:cba683e50e75feea866cadaa7ae1096f82bf4859b5f7a83238c259ef50d2afa2"
     },
     {
       "bytes": 4297,

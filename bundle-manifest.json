@@ -3,14 +3,29 @@
   "bundle_version": "4.0.0",
   "skills": [
     {
-      "id": "writing-plans",
-      "path": "writing-plans",
-      "version": "7.0.0"
+      "id": "brainstorming",
+      "path": "brainstorming",
+      "version": "1.0.0"
+    },
+    {
+      "id": "long-document-segmented-writing",
+      "path": "long-document-segmented-writing",
+      "version": "1.0.0"
+    },
+    {
+      "id": "skill-evaluator",
+      "path": "skill-evaluator",
+      "version": "1.0.0"
     },
     {
       "id": "software-quality-workflows",
       "path": "software-quality-workflows",
       "version": "8.0.0"
+    },
+    {
+      "id": "writing-plans",
+      "path": "writing-plans",
+      "version": "7.0.0"
     }
   ],
   "cross_skill_contracts": [
@@ -71,22 +86,17 @@
     "implicit_routing_default": true,
     "remote_writes": false
   },
-  "optional_external_dependencies": [
-    {
-      "environment_variable": "LONG_DOCUMENT_SKILL_ROOT",
-      "id": "long-document-segmented-writing",
-      "required_for": "extended_long_document_tests"
-    }
-  ],
   "test_profiles": {
     "extended": [
-      "PYTHONDONTWRITEBYTECODE=1 LONG_DOCUMENT_SKILL_ROOT=<installed-skill-root> python3 -m unittest discover -s writing-plans/tests -p 'test_*.py' -v",
-      "PYTHONDONTWRITEBYTECODE=1 LONG_DOCUMENT_SKILL_ROOT=<installed-skill-root> python3 -m unittest discover -s software-quality-workflows/tests -p 'test_*.py' -v",
-      "PYTHONDONTWRITEBYTECODE=1 LONG_DOCUMENT_SKILL_ROOT=<installed-skill-root> python3 -m unittest discover -s tests -p 'test_*.py' -v"
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s writing-plans/tests -p 'test_*.py' -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_*.py' -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s long-document-segmented-writing/tests -p 'test_*.py' -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py' -v"
     ],
     "standalone": [
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s writing-plans/tests -p 'test_*.py' -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_*.py' -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s long-document-segmented-writing/tests -p 'test_*.py' -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py' -v"
     ]
   }

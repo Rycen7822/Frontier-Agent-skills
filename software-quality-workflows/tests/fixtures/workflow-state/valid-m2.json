@@ -1,14 +1,14 @@
 {
   "schema_version": "3.0",
   "workflow_id": "sqw-workflow:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "bundle_id": "frontier-engineering/8.0.0+7.0.0",
+  "bundle_id": "frontier-engineering/4.0.0",
   "mode": "M2",
   "request_mode": "change",
   "policy_bundle_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
   "card_manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
   "status": "active",
   "state_version": 3,
-  "state_hash": "sha256:cc7c00707f38551975fbcd84801978413788f74fe052aff1115d46c3d8776cf4",
+  "state_hash": "sha256:ce35ea811a43837ff092cce404fbe4fb8e0286dac3d2ee647f8901de77663ac6",
   "bootstrap": {
     "operation_id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
     "entry_completion_id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",

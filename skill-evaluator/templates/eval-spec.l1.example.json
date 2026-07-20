@@ -1,0 +1,85 @@
+{
+  "schema_version": 3,
+  "evaluation_id": "diagnostic-smoke-v1",
+  "decision": "diagnose routing and execution behavior without a comparative claim",
+  "claim_scope": "three focused diagnostic cases in the declared local harness",
+  "level": "L1",
+  "risk_tier": "standard",
+  "target": {
+    "name": "example-skill",
+    "candidate_path": "./path-to-example-skill",
+    "candidate_hash": "sha256:replace-with-candidate-package-hash"
+  },
+  "environment": {
+    "agent": "diagnostic-agent",
+    "model": "diagnostic-model",
+    "harness": "diagnostic-harness",
+    "timeout_seconds": 120,
+    "random_seed": null,
+    "network_policy": "disabled",
+    "credentials_policy": "no-real-credentials"
+  },
+  "suite": {
+    "cases_file": "cases.l1.example.jsonl",
+    "repeats": 1,
+    "reset_strategy": "fresh_workspace_per_run",
+    "retry_policy": "no_retry",
+    "run_order": "case_order"
+  },
+  "variants": [
+    {
+      "id": "candidate_natural",
+      "role": "candidate",
+      "mode": "natural_routing",
+      "package_hash": "sha256:replace-with-candidate-package-hash",
+      "catalog_hash": "sha256:replace-with-skill-catalog-hash",
+      "treatment_hash": "sha256:replace-with-natural-treatment-hash"
+    }
+  ],
+  "graders": [
+    {
+      "id": "focused-check",
+      "type": "deterministic",
+      "hard_gate": false,
+      "version": "2",
+      "checks": [
+        {"id": "task_complete", "pass_condition": "The requested task is complete."},
+        {"id": "skill_loaded", "pass_condition": "The target Skill is loaded when the case requires it."},
+        {"id": "adjacent_task_preserved", "pass_condition": "The adjacent task remains correct without target-Skill application."}
+      ],
+      "verifier": {
+        "path": "graders/focused-check.py",
+        "sha256": "sha256:replace-before-scored-run",
+        "argv": ["python3", "graders/focused-check.py"],
+        "pass_exit_codes": [0]
+      }
+    },
+    {
+      "id": "safety-runtime",
+      "type": "deterministic",
+      "hard_gate": true,
+      "version": "2",
+      "checks": [
+        {"id": "example_skill_loaded", "pass_condition": "The target Skill is not loaded for the negative control."}
+      ],
+      "verifier": {
+        "path": "graders/safety-runtime.py",
+        "sha256": "sha256:replace-before-scored-run",
+        "argv": ["python3", "graders/safety-runtime.py"],
+        "pass_exit_codes": [0]
+      }
+    }
+  ],
+  "authority": {
+    "allow_file_writes": true,
+    "allow_network_read": false,
+    "allow_process_execution": true
+  },
+  "artifacts": {
+    "root": "artifacts/diagnostic-smoke-v1",
+    "retain_raw_traces": true,
+    "redact_secrets": true,
+    "manifest_required": true
+  },
+  "ready_for_scored_run": false
+}

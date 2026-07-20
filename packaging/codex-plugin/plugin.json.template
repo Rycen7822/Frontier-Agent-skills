@@ -1,23 +1,24 @@
 {
   "name": "frontier-engineering-plugin",
   "version": "${BUNDLE_VERSION}",
-  "description": "Bounded planning and software-quality skills with deterministic local contracts.",
+  "description": "Five bounded engineering skills for design, planning, execution, long documents, and evaluation.",
   "author": {
     "name": "Hermes Agent"
   },
   "license": "MIT",
-  "keywords": ["software-development", "planning", "verification"],
+  "keywords": ["software-development", "planning", "verification", "documentation", "evaluation"],
   "skills": "./skills/",
   "interface": {
     "displayName": "Frontier Engineering",
-    "shortDescription": "Plan and verify bounded software changes",
-    "longDescription": "Writing Plans and Software Quality Workflows with deterministic local contracts and default-off live execution.",
+    "shortDescription": "Design, plan, execute, document, and evaluate",
+    "longDescription": "Five bounded Frontier Engineering skills for brainstorming, implementation planning, software-quality execution, long-document writing, and skill evaluation.",
     "developerName": "Hermes Agent",
     "category": "Developer Tools",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "Create a bounded implementation plan for this change.",
-      "Route and verify this local software task."
+      "Design and plan this bounded engineering change.",
+      "Execute and verify this local software task.",
+      "Write or evaluate the requested engineering artifact."
     ]
   }
 }

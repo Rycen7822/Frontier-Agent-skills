@@ -19,10 +19,13 @@
     "remote_writes": {"const": false},
     "discovered_skills": {
       "type": "object", "additionalProperties": false,
-      "required": ["software-quality-workflows", "writing-plans"],
+      "required": ["brainstorming", "long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
-        "software-quality-workflows": {"$ref": "#/$defs/skill"},
-        "writing-plans": {"$ref": "#/$defs/skill"}
+        "brainstorming": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}}}]},
+        "long-document-segmented-writing": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}}}]},
+        "skill-evaluator": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}}}]},
+        "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.0.0"}}}]},
+        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "7.0.0"}}}]}
       }
     },
     "isolated_install_discovery": {"const": true},

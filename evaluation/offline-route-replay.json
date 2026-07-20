@@ -177,7 +177,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2403,
+      "active_bytes": 2426,
       "active_card_count": 1,
       "actual_action": "select_card",
       "actual_card_id": "wp.bridges.long-document-handoff",
@@ -266,7 +266,7 @@
   },
   "input_bindings": {
     "software-quality-workflows": {
-      "card_manifest_hash": "sha256:f4af90212af21a22a843ac916399ef1a1870c1a01ff220aaeac8e40bec1150ac",
+      "card_manifest_hash": "sha256:b59fb4785b2638deae11c518bdbd8b205cedfdde0426f7471c06ec4e3594da7a",
       "decision_case_fixture_hash": "sha256:e4d06558466f24414b1d8a8d0965129ceb61a8dacf76aef726e70f700b9e8226",
       "decision_map_hash": "sha256:7c839bb4c79af958bfcac9e00e1c977e404a8e2c357fcd5800422fd7243467f0",
       "router_hash": "sha256:f5483ad2d5ea279052bbd5917a5a09f94830e29910b3aba12f044ef0e63773a2",
@@ -274,7 +274,7 @@
       "skill_version": "8.0.0"
     },
     "writing-plans": {
-      "card_manifest_hash": "sha256:bb856adf9fbd829c1f3366e037a9feaef44fafad669e6a87a3a6881179c7e3c4",
+      "card_manifest_hash": "sha256:09ca294f3504d5d7755eadb94597b61531708b17df344f7877199e5a2c8c25c3",
       "decision_case_fixture_hash": "sha256:829e690dc1ebf20ea16fe0111a0bd60d58ff0bc86f05102820c29c827257badb",
       "decision_map_hash": "sha256:ea5c88d757eeb48897742ea84a7b7e155490b9afcbd3a985701ce1ea53208a47",
       "router_hash": "sha256:7dd865b121a8e77e686d7c8276765d4f4951550852e9b3be066ec2bb1fa75a51",
@@ -1214,7 +1214,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2403,
+      "active_bytes": 2426,
       "active_card_count": 1,
       "actual_card_id": "wp.bridges.long-document-handoff",
       "actual_decision_id": "wp.select.bridges.long-document-handoff",
@@ -1394,7 +1394,7 @@
       "skill_id": "writing-plans"
     }
   ],
-  "report_hash": "sha256:d2e910aecc0e19a590352022620e4b7cf44f78a7755d29f05ce4634ef205d199",
+  "report_hash": "sha256:0ac2dfe1555812218fc530fb4a7024f34c8afecce68588ed948368cf0b58d5bc",
   "schema_version": "offline-route-replay/2.0",
   "selection_rows": [
     {
@@ -2022,7 +2022,7 @@
       "skill_id": "software-quality-workflows"
     },
     {
-      "active_bytes": 2403,
+      "active_bytes": 2426,
       "active_card_count": 1,
       "actual_card_id": "wp.bridges.long-document-handoff",
       "actual_decision_id": "wp.select.bridges.long-document-handoff",
@@ -2259,10 +2259,13 @@
     }
   ],
   "vnext": {
-    "bundle_build_id": "build-9d99639c97f0235c102fe99c",
-    "bundle_manifest_hash": "sha256:d6e0368417c87cd63742bbe76df69d3db6b4bf9578214ee8b40c47e626fec7ae",
-    "identity": "frontier-engineering/8.0.0+7.0.0",
+    "bundle_build_id": "build-32cd3c683b76fd690c2f68c1",
+    "bundle_manifest_hash": "sha256:bdd628254310bd8343c21e9f5b8bd16365e0f798d1f3b7571b6a23bbe0a094cf",
+    "identity": "frontier-engineering/4.0.0",
     "skill_versions": {
+      "brainstorming": "1.0.0",
+      "long-document-segmented-writing": "1.0.0",
+      "skill-evaluator": "1.0.0",
       "software-quality-workflows": "8.0.0",
       "writing-plans": "7.0.0"
     }

@@ -13,7 +13,7 @@ from typing import Any, Iterable
 
 
 SCHEMA_VERSION = "2.0"
-BUNDLE_ID = "frontier-engineering/8.0.0+7.0.0"
+BUNDLE_ID = "frontier-engineering/4.0.0"
 SKILL_ID = "writing-plans"
 TARGET_SKILL_VERSION = "7.0.0"
 MAX_INPUT_BYTES = 2 * 1024 * 1024

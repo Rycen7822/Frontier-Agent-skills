@@ -26,7 +26,13 @@ from smoke_codex_plugin import inspect_plugin, isolated_smoke  # noqa: E402
 
 
 EXPECTED_PLUGIN = "frontier-engineering-plugin"
-EXPECTED_SKILLS = ["software-quality-workflows", "writing-plans"]
+EXPECTED_SKILLS = [
+    "brainstorming",
+    "long-document-segmented-writing",
+    "skill-evaluator",
+    "software-quality-workflows",
+    "writing-plans",
+]
 MAX_CLI_OUTPUT = 1024 * 1024
 SECRET_ENV_MARKERS = (
     "TOKEN", "API_KEY", "ACCESS_KEY", "SECRET_KEY", "PASSWORD", "COOKIE", "CREDENTIAL"

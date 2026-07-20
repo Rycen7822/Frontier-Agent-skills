@@ -1,6 +1,6 @@
 {
   "schema_version": "3.0",
-  "bundle_id": "frontier-engineering/8.0.0+7.0.0",
+  "bundle_id": "frontier-engineering/4.0.0",
   "manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
   "plan_id": "wp-plan:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "profile": "program",
@@ -221,7 +221,7 @@
   "policy_claims": [
     {
       "policy_id": "sqw.verify.completion-evidence",
-      "bundle_version": "frontier-engineering/8.0.0+7.0.0",
+      "bundle_version": "frontier-engineering/4.0.0",
       "policy_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
     }
   ],
@@ -255,5 +255,5 @@
     "enqueued_card_instance_ids": ["sha256:5555555555555555555555555555555555555555555555555555555555555555"],
     "inline_render_completion": null
   },
-  "content_hash": "sha256:8bdad189255e96bfa2900cb04368b96e58b19b9474ecb410249a7231443169f1"
+  "content_hash": "sha256:703e962f35e0d26ab4b20447a913b8ca865b350eaa199ebff53515721c41708e"
 }

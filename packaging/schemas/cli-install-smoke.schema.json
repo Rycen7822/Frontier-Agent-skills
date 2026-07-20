@@ -45,7 +45,7 @@
     "uninstall_clean": {"const": true},
     "marketplace_removed": {"const": true},
     "final_config_clean": {"const": true},
-    "discovered_skills": {"const": ["software-quality-workflows", "writing-plans"]},
+    "discovered_skills": {"const": ["brainstorming", "long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"]},
     "explicit_skill_invocation": {"const": "not_run_model_free"},
     "implicit_route_invocation": {"const": "not_run_model_free"},
     "commands": {

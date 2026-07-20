@@ -53,12 +53,23 @@
     "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "nullable_string": {"type": ["string", "null"]},
     "skill_id": {"enum": ["software-quality-workflows", "writing-plans"]},
-    "skill_versions": {
+    "baseline_skill_versions": {
       "type": "object", "additionalProperties": false,
       "required": ["software-quality-workflows", "writing-plans"],
       "properties": {
         "software-quality-workflows": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
         "writing-plans": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}
+      }
+    },
+    "candidate_skill_versions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["brainstorming", "long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
+      "properties": {
+        "brainstorming": {"const": "1.0.0"},
+        "long-document-segmented-writing": {"const": "1.0.0"},
+        "skill-evaluator": {"const": "1.0.0"},
+        "software-quality-workflows": {"const": "8.0.0"},
+        "writing-plans": {"const": "7.0.0"}
       }
     },
     "baseline_source": {
@@ -67,17 +78,17 @@
       "properties": {
         "identity": {"type": "string", "minLength": 1, "maxLength": 128},
         "source_archive_hash": {"$ref": "#/$defs/hash"},
-        "skill_versions": {"$ref": "#/$defs/skill_versions"}
+        "skill_versions": {"$ref": "#/$defs/baseline_skill_versions"}
       }
     },
     "candidate_source": {
       "type": "object", "additionalProperties": false,
       "required": ["identity", "bundle_build_id", "bundle_manifest_hash", "skill_versions"],
       "properties": {
-        "identity": {"type": "string", "minLength": 1, "maxLength": 128},
+        "identity": {"const": "frontier-engineering/4.0.0"},
         "bundle_build_id": {"type": "string", "pattern": "^build-[0-9a-f]{24}$"},
         "bundle_manifest_hash": {"$ref": "#/$defs/hash"},
-        "skill_versions": {"$ref": "#/$defs/skill_versions"}
+        "skill_versions": {"$ref": "#/$defs/candidate_skill_versions"}
       }
     },
     "input_binding": {

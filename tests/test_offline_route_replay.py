@@ -163,14 +163,20 @@ class OfflineRouteReplayTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "missing or stale"):
                 replay.build_report()
 
-    def test_replay_binds_the_exact_atomic_version_pair(self) -> None:
+    def test_replay_binds_the_exact_atomic_five_skill_release(self) -> None:
         report = json.loads((ROOT / "evaluation" / "offline-route-replay.json").read_text(encoding="utf-8"))
         self.assertEqual(
             {"software-quality-workflows": "4.0.0", "writing-plans": "3.0.0"},
             report["baseline"]["skill_versions"],
         )
         self.assertEqual(
-            {"software-quality-workflows": "8.0.0", "writing-plans": "7.0.0"},
+            {
+                "brainstorming": "1.0.0",
+                "long-document-segmented-writing": "1.0.0",
+                "skill-evaluator": "1.0.0",
+                "software-quality-workflows": "8.0.0",
+                "writing-plans": "7.0.0",
+            },
             report["vnext"]["skill_versions"],
         )
         self.assertEqual(62, len(report["selection_rows"]))

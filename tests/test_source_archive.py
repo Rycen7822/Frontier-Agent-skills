@@ -20,6 +20,13 @@ SPEC = importlib.util.spec_from_file_location("build_source_archive", ARCHIVER_P
 assert SPEC is not None and SPEC.loader is not None
 archiver = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(archiver)
+EXPECTED_SKILLS = {
+    "brainstorming",
+    "long-document-segmented-writing",
+    "skill-evaluator",
+    "software-quality-workflows",
+    "writing-plans",
+}
 
 
 class SourceArchiveTests(unittest.TestCase):
@@ -109,7 +116,7 @@ class SourceArchiveTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unclassified top-level source path"):
                 archiver.build_archive(copied, parent / "bad.zip", parent / "bad.json", "bundle")
 
-    def test_skills_only_archive_contains_exactly_the_two_skill_roots(self) -> None:
+    def test_skills_only_archive_contains_exactly_the_five_skill_roots(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
             output = parent / "skills.zip"
@@ -120,10 +127,13 @@ class SourceArchiveTests(unittest.TestCase):
             with zipfile.ZipFile(output) as archive:
                 names = archive.namelist()
             roots = {Path(name).parts[0] for name in names}
-            self.assertEqual({"writing-plans", "software-quality-workflows"}, roots)
+            self.assertEqual(EXPECTED_SKILLS, roots)
             self.assertNotIn("README.md", names)
             self.assertIn("writing-plans/SKILL.md", names)
             self.assertIn("software-quality-workflows/SKILL.md", names)
+            self.assertIn("brainstorming/SKILL.md", names)
+            self.assertIn("long-document-segmented-writing/SKILL.md", names)
+            self.assertIn("skill-evaluator/SKILL.md", names)
 
     def test_no_overwrite_symlink_and_source_drift_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

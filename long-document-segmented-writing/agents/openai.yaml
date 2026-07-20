@@ -1,0 +1,7 @@
+interface:
+  display_name: "Long Document Segmented Writing"
+  short_description: "Write long documents without losing state"
+  default_prompt: "Use $long-document-segmented-writing to read a large source set and draft a long document with compaction-safe recovery state."
+
+policy:
+  allow_implicit_invocation: true

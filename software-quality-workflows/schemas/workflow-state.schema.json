@@ -8,7 +8,7 @@
   "properties": {
     "schema_version": {"const": "3.0"},
     "workflow_id": {"type": "string", "pattern": "^sqw-workflow:[0-9a-f]{64}$"},
-    "bundle_id": {"const": "frontier-engineering/8.0.0+7.0.0"},
+    "bundle_id": {"const": "frontier-engineering/4.0.0"},
     "mode": {"enum": ["M2", "M3"]},
     "request_mode": {"enum": ["report", "review", "diagnose", "change", "recovery"]},
     "policy_bundle_hash": {"$ref": "#/$defs/hash"},

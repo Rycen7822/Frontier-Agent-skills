@@ -99,7 +99,7 @@ class CrossSkillIntegrationTests(unittest.TestCase):
         handoff = {
             "schema_version": "3.0",
             "handoff_id": "wp-handoff:" + "0" * 64,
-            "bundle_id": "frontier-engineering/8.0.0+7.0.0",
+            "bundle_id": "frontier-engineering/4.0.0",
             "producer": {
                 "profile": "program", "card_id": "wp.profiles.handoff",
                 "decision_id": "wp.select.profiles.handoff", "completion_id": "sha256:" + "1" * 64,

@@ -61,7 +61,7 @@ def _bootstrap(root: Path, source: Path, *, next_step: dict | None = None) -> tu
     return bootstrap_v3(
         root,
         source,
-        bundle_id="frontier-engineering/8.0.0+7.0.0",
+        bundle_id="frontier-engineering/4.0.0",
         policy_bundle_hash="sha256:" + "2" * 64,
         card_manifest_hash="sha256:" + "3" * 64,
         mode="M2",
@@ -734,7 +734,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
             self.assertEqual({".adapter.lock", "artifacts", "locks.json", "projections", "state.json"}, {path.name for path in root.iterdir()})
             info = root.stat()
             semantics = {
-                "bundle_id": "frontier-engineering/8.0.0+7.0.0",
+                "bundle_id": "frontier-engineering/4.0.0",
                 "mode": "M2",
                 "entry_completion_id": "sha256:" + "4" * 64,
                 "scope_binding_id": "sha256:" + "6" * 64,
