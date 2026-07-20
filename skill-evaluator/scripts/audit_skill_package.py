@@ -143,6 +143,42 @@ def iter_paths(root: Path) -> Iterable[Path]:
             yield current_path / name
 
 
+def inventory_digest(inventory: list[dict[str, Any]]) -> str:
+    """Return the stable package inventory digest used by audit reports."""
+    return hashlib.sha256(
+        "\n".join(
+            f"{item.get('path')}\t{item.get('type')}\t{item.get('sha256','')}\t{item.get('target','')}"
+            for item in inventory
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def compute_inventory_hash(root: Path) -> str:
+    """Bind package bytes without running structural or heuristic security checks."""
+    root = root.resolve()
+    if not root.exists() or not root.is_dir():
+        raise ValueError(f"not a directory: {root}")
+
+    inventory: list[dict[str, Any]] = []
+    for path in iter_paths(root):
+        rel = path.relative_to(root).as_posix()
+        try:
+            lst = path.lstat()
+        except OSError as exc:
+            raise ValueError(f"cannot stat inventory path {rel}: {exc}") from None
+        if stat.S_ISLNK(lst.st_mode):
+            inventory.append({"path": rel, "type": "symlink", "target": os.readlink(path)})
+        elif stat.S_ISREG(lst.st_mode):
+            inventory.append({
+                "path": rel,
+                "type": "text" if is_probably_text(path) else "binary",
+                "sha256": sha256_file(path),
+            })
+        else:
+            inventory.append({"path": rel, "type": "other"})
+    return inventory_digest(inventory)
+
+
 def parse_frontmatter(skill_text: str) -> tuple[dict[str, str], list[str]]:
     errors: list[str] = []
     match = FRONTMATTER_RE.search(skill_text)
@@ -386,12 +422,7 @@ def audit(root: Path, max_text_bytes: int, max_pattern_hits: int) -> dict[str, A
         finding.setdefault("confidence", "medium")
         finding.setdefault("detection_source", "static-heuristic")
 
-    inventory_hash = hashlib.sha256(
-        "\n".join(
-            f"{item.get('path')}\t{item.get('type')}\t{item.get('sha256','')}\t{item.get('target','')}"
-            for item in inventory
-        ).encode("utf-8")
-    ).hexdigest()
+    inventory_hash = inventory_digest(inventory)
     severity_counts = Counter(item["severity"] for item in findings)
 
     return {
