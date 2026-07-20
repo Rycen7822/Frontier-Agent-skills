@@ -1394,7 +1394,7 @@
       "skill_id": "writing-plans"
     }
   ],
-  "report_hash": "sha256:37bf1ee420fa5c78906a08a59d6e77c8c14909b761a66375aa9a9ccbd3f85294",
+  "report_hash": "sha256:468b9108e4826f37af292e8ee62a382f87d4f764faf35d423174472538ce150d",
   "schema_version": "offline-route-replay/2.0",
   "selection_rows": [
     {
@@ -2259,8 +2259,8 @@
     }
   ],
   "vnext": {
-    "bundle_build_id": "build-19756af45ede470cfc516701",
-    "bundle_manifest_hash": "sha256:db689fc35155839d1ba02abd19ee94ee69b5f84503567436a36c6e003bc60a4e",
+    "bundle_build_id": "build-ea51af33aec01a355ba501b0",
+    "bundle_manifest_hash": "sha256:e2809cc0b33c08b647a083a56cbdd2fd02cdf3856e46319ad4763f2c67f5606d",
     "identity": "frontier-engineering/4.0.0",
     "skill_versions": {
       "brainstorming": "1.0.0",
