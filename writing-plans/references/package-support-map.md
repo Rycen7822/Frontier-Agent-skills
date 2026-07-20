@@ -34,7 +34,7 @@
 
 ## schemas
 
-- [`schemas/card-protocol.schema.json` · `sha256:3b352e4b1683e2d3311c161d9ada400ebb56bce4e97ffb2a229321018c4ad350`](../schemas/card-protocol.schema.json)
+- [`schemas/card-protocol.schema.json` · `sha256:58fdc50fd240c60fde33e5ee1e4272c0947b554ead5986c7981bb637af1e7766`](../schemas/card-protocol.schema.json)
 - [`schemas/decision-card-map.schema.json` · `sha256:b6785fc7488c13c836108e1d9811551683cfa3b6341b5fbbc209b7a03a747fa7`](../schemas/decision-card-map.schema.json)
 - [`schemas/plan-execution-handoff.schema.json` · `sha256:3136914bc0765ee4d2db107e28fd53a1542323e9b77ab8aba41ae42095b8f702`](../schemas/plan-execution-handoff.schema.json)
 - [`schemas/plan-route-facts.schema.json` · `sha256:e0a3b1ae420c2f62a8cd72932348ca32c140873ca3ec32bf2af8833f23eb5dac`](../schemas/plan-route-facts.schema.json)
@@ -50,7 +50,7 @@
 - [`scripts/_writing_reference_cards.py` · `sha256:3141292f735c0b689a01c8023f654ffbbf989aa5c08ac0b689b465432147ea88`](../scripts/_writing_reference_cards.py)
 - [`scripts/assess_plan_mode.py` · `sha256:036af4ec2121586b00f43b63cb9633282e23929efe30eb58b46836fcd027d699`](../scripts/assess_plan_mode.py)
 - [`scripts/build_reference_manifest.py` · `sha256:62d90c6924781203e4992b32bec080042df958fc8e53bdbf74ea353f117940d3`](../scripts/build_reference_manifest.py)
-- [`scripts/card_cycle.py` · `sha256:ef1f630fafc224bef32867735b1a5e64982f509055225477c10b87721d92e55f`](../scripts/card_cycle.py)
+- [`scripts/card_cycle.py` · `sha256:a47dac91656f242022a27528a3155cfc48818f08ecafa776385a2ea7b2107458`](../scripts/card_cycle.py)
 - [`scripts/check_plan_freshness.py` · `sha256:fc935ca2fdf46c3027a9b69fc9eba2642e0705e4982df2b9078f50e6290dc50d`](../scripts/check_plan_freshness.py)
 - [`scripts/render_context_capsule.py` · `sha256:73d27357b408e9d91ee0b1aeff48c414c67bc60d4e004657aa975a4663b59c6b`](../scripts/render_context_capsule.py)
 - [`scripts/render_plan_profile.py` · `sha256:0fe1d1971d8713e5b0d10807199a19f311823f02ae8322fada3b1575c17ac546`](../scripts/render_plan_profile.py)
@@ -66,9 +66,9 @@
 
 ## operator
 
-- [`operator/error-codes.md` · `sha256:3deaf95ff19287db8e1098084935783d73105b0dfe92043ed5e489e01cbf6492`](../operator/error-codes.md)
-- [`operator/plan-state-runtime.md` · `sha256:291148e8594f40b8fffc39360ac4270f781eca088889e445f0e1846962501cc5`](../operator/plan-state-runtime.md)
-- [`operator/renderers.md` · `sha256:10b18811f7e5e0a9a8e1d0bb7eaeecdb345b6621b09e01a457823dea8094a0b7`](../operator/renderers.md)
+- [`operator/error-codes.md` · `sha256:340dd7c3972ebf767d52145de93b28f307a4b6f3770cd7e7215c73aa6f61c657`](../operator/error-codes.md)
+- [`operator/plan-state-runtime.md` · `sha256:337c41a4cfec4dec69f92c9077b63eaf8a51eb17b333a923aa4ab7bf5b4efb8f`](../operator/plan-state-runtime.md)
+- [`operator/renderers.md` · `sha256:75abd722da24981aac914c90ec14e429c7f309326a961198f22dfb8c9177b58c`](../operator/renderers.md)
 
 ## tests
 
@@ -76,7 +76,7 @@
 - [`tests/fixtures/plan-route-sequences.json` · `sha256:c087e971b65da8a40d3c18f83e10154b437287f57f170e8cc83583d3d1175ee5`](../tests/fixtures/plan-route-sequences.json)
 - [`tests/fixtures/plan-state/invalid-cases.json` · `sha256:f512d958bdb5b3bf71ed9eb374abb3db5d8b4af4c05ac1a18593d5d85c925b70`](../tests/fixtures/plan-state/invalid-cases.json)
 - [`tests/fixtures/plan-state/valid-program.json` · `sha256:b5db966f71ad083b8b7431a1c60c6986bb1f556a65e184ec3ce0f80a41b7b229`](../tests/fixtures/plan-state/valid-program.json)
-- [`tests/test_card_cycle.py` · `sha256:f58cc82bb0e40dbbb69bfb8244b8d827251dc08efd29eac7a9298a5a768c55f5`](../tests/test_card_cycle.py)
+- [`tests/test_card_cycle.py` · `sha256:c1471887d985679b9ad81a9d47d491aa66ad13ee2f0d47118513fcaf6dd07124`](../tests/test_card_cycle.py)
 - [`tests/test_decision_card_map.py` · `sha256:63684f796e761aa0c1ce12d50ce2a39d4e0a9beb7e0d396bec6272fb02fd3a36`](../tests/test_decision_card_map.py)
 - [`tests/test_decision_protocol_v6.py` · `sha256:7a51131ee29d6f045bfffef1948af56074a08662ca4432ecc15d69efecd387af`](../tests/test_decision_protocol_v6.py)
 - [`tests/test_package_support_map.py` · `sha256:ee5850a4bb51ed51d115f7bc420dc4c1beac4ba8dca6e407e3484af484bdf620`](../tests/test_package_support_map.py)
