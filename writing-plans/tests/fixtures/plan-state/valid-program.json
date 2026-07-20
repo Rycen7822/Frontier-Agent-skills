@@ -1,23 +1,39 @@
 {
-  "schema_version": "2.0",
-  "plan_id": "plan-manifest-refresh-20260713",
+  "schema_version": "3.0",
+  "bundle_id": "frontier-engineering/6.0.0+5.0.0",
+  "manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "plan_id": "wp-plan:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "profile": "program",
   "status": "ready",
   "state_version": 1,
-  "source": {
-    "repository": ".",
-    "base_revision": "explicit-unversioned",
-    "scope_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-    "observed_at": "2026-07-13T13:30:00+00:00",
-    "bundle_id": "frontier-engineering/6.0.0+5.0.0",
-    "policy_bundle_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-    "reference_manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
-  },
-  "scope": {
+  "scope_binding": {
+    "binding_kind": "wp-planning",
+    "binding_id": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "producer_card_id": "wp.profiles.program",
+    "initial_source_identity_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
     "allowed_reads": ["src/**", "tests/**"],
-    "allowed_writes": ["src/manifest/**", "tests/manifest/**"],
-    "protected_paths": [],
-    "risk_ceiling": "local_reversible"
+    "allowed_plan_outputs": ["src/manifest/**", "tests/manifest/**"],
+    "effect_ceiling": "local-plan-artifact",
+    "approval_requirements": [],
+    "publication_ceiling": "none"
+  },
+  "initialization": {
+    "initialization_id": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "program_payload_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "initial_queue_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "initial_completion_id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+  "initial_root_binding": {"dev": 1, "ino": 2, "uid": 1000, "mode": 448},
+  "established_root_identity": {"dev": 1, "ino": 2, "uid": 1000, "mode": 448},
+  "source_root_binding": {"dev": 1, "ino": 3},
+  "source_identity": {
+    "kind": "unversioned",
+    "identity_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    "root_binding": {"dev": 1, "ino": 3},
+    "head_commit": null,
+    "head_tree": null,
+    "scoped_records": [],
+    "exterior_guard_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
   },
   "goal": "Preserve result identity when legacy manifests are compared after a metadata schema upgrade.",
   "non_goals": ["Redesign cache storage outside the manifest owner."],
@@ -214,5 +230,30 @@
     "epistemic_status": "needs_repair",
     "required_evidence": ["E-03", "E-04", "E-05"],
     "residual_uncertainty": ["Deployed cache behavior is outside the current source scope."]
-  }
+  },
+  "rollback": {
+    "strategy": "restore_previous_state",
+    "steps": ["Restore the previous manifest comparison implementation and rerun its verifier."],
+    "verifier_refs": ["E-03"]
+  },
+  "artifacts": [],
+  "pending_card_instances": [
+    {
+      "card_instance_id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "decision_id": "wp.select.slicing.context-capsules",
+      "subject_ref": "P-02"
+    }
+  ],
+  "last_transition": {
+    "transition_kind": "init",
+    "operation_id": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "prior_state_version": 0,
+    "prior_content_hash": null,
+    "scope_binding_id": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "completion_id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "completed_card_instance_id": null,
+    "enqueued_card_instance_ids": ["sha256:5555555555555555555555555555555555555555555555555555555555555555"],
+    "inline_render_completion": null
+  },
+  "content_hash": "sha256:af0656d491f6684c2769e809931a831dea10494764d735bcc627f2cbc8c61953"
 }

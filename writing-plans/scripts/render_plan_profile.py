@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
-import sys
 from typing import Any
 
-from _plan_state import canonical_state_hash, load_json
+from _plan_state import canonical_state_hash, load_json, validate_against_schema
+from validate_plan_state import semantic_violations
+
+
+ROOT = Path(__file__).resolve().parents[1]
+STATE_SCHEMA = ROOT / "schemas" / "plan-state.schema.json"
 
 
 def _items(value: Any) -> str:
@@ -48,7 +51,7 @@ def render_handoff(data: dict[str, Any]) -> str:
 - Profile: handoff
 - Source revision: {data['source_revision']}
 - Scope hash: {data['scope_hash']}
-- State ref/hash: {data.get('state_ref', 'none')} / {data.get('state_hash', 'none')}
+- State hash: {data.get('state_hash', 'none')}
 
 ## Non-goals
 
@@ -80,13 +83,11 @@ def render_handoff(data: dict[str, Any]) -> str:
 """
 
 
-def render_program(
-    state: dict[str, Any],
-    *,
-    state_ref: str = "canonical-plan-state",
-) -> str:
-    if state.get("schema_version") != "2.0" or state.get("profile") != "program":
-        raise ValueError("Program rendering requires canonical plan-state 2.0 with profile=program")
+def render_program(state: dict[str, Any]) -> str:
+    schema_errors = validate_against_schema(state, load_json(STATE_SCHEMA))
+    semantic_errors = [] if schema_errors else semantic_violations(state)
+    if schema_errors or semantic_errors:
+        raise ValueError("Program rendering requires valid canonical plan-state 3.0")
 
     state_hash = state.get("content_hash") or canonical_state_hash(state)
     node_by_id = {node.get("id"): node for node in state.get("nodes", [])}
@@ -126,11 +127,11 @@ def render_program(
 
 - Plan ID: {state['plan_id']}
 - Profile: program
-- State ref/hash: {state_ref} / {state_hash}
-- Source revision: {state['source']['base_revision']}
-- Scope hash: {state['source']['scope_hash']}
-- Bundle/cards: {state['source']['bundle_id']} / {state['source']['reference_manifest_hash']}
-- canonical_artifacts: full graph, evidence, alternatives, and history remain in {state_ref} at {state_hash}
+- State version/hash: {state['state_version']} / {state_hash}
+- Source identity: {state['source_identity']['kind']} / {state['source_identity']['identity_hash']}
+- Scope binding: {state['scope_binding']['binding_id']}
+- Bundle/cards: {state['bundle_id']} / {state['manifest_hash']}
+- canonical_artifacts: full graph, evidence, alternatives, and history remain in the locked Program owner at {state_hash}
 ## Non-goals
 
 {_items(state.get('non_goals'))}
@@ -185,34 +186,3 @@ Bound to source `{data['source_revision']}`, scope `{data['scope_hash']}`, and s
 {_items(data['novice_steps'])}
 """
 
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("profile", choices=("brief", "handoff", "program"))
-    parser.add_argument("input", type=Path)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--novice", action="store_true")
-    args = parser.parse_args(argv)
-    try:
-        data = load_json(args.input)
-        if not isinstance(data, dict):
-            raise ValueError("input must be a JSON object")
-        if args.profile == "program":
-            text = render_program(data, state_ref=str(args.input))
-        else:
-            text = {"brief": render_brief, "handoff": render_handoff}[args.profile](data)
-        if args.novice:
-            if args.profile == "brief":
-                raise ValueError("novice projection requires handoff or program")
-            text = add_novice_projection(text, data)
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
-        print(json.dumps({"ok": False, "error": str(exc)}, indent=2))
-        return 2
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(text, encoding="utf-8")
-    print(json.dumps({"ok": True, "profile": args.profile, "output": str(args.output), "novice": args.novice}, indent=2))
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

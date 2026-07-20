@@ -3,15 +3,13 @@
 
 from __future__ import annotations
 
-import argparse
 from hashlib import sha256
 import json
 from pathlib import Path
-import sys
 from typing import Any
 
-from _plan_state import capsule_source_hash, contains_secret_like, load_json, redact_secret_like
-from validate_plan_state import DEFAULT_SCHEMA, validate_file
+from _plan_state import canonical_state_hash, contains_secret_like, load_json, redact_secret_like, validate_against_schema
+from validate_plan_state import DEFAULT_SCHEMA, semantic_violations
 
 
 def _summary(item: dict[str, Any]) -> str:
@@ -36,56 +34,56 @@ def render(
     state: dict[str, Any],
     node_id: str,
     budget: int,
-    *,
-    runtime_projection: dict[str, Any] | None = None,
-    card_refs: list[dict[str, str]] | None = None,
-    projection_spec_id: str = "wp.slicing.context-capsules@1",
+    runtime_projection: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
+    schema_errors = validate_against_schema(state, load_json(DEFAULT_SCHEMA))
+    semantic_errors = [] if schema_errors else semantic_violations(state)
+    if schema_errors or semantic_errors:
+        raise ValueError("context rendering requires valid canonical plan-state 3.0")
     objects = _index(state)
     node = objects.get(node_id)
     if not node or not node_id.startswith("P-"):
         raise ValueError(f"node does not exist: {node_id}")
     node_sensitive = bool(node.get("sensitive")) or contains_secret_like(node)
-    state_hash = capsule_source_hash(state)
-    if card_refs is None:
-        manifest = load_json(Path(__file__).resolve().parents[1] / "registries" / "reference-cards.manifest.json")
-        card_refs = [
-            {"card_id": card["card_id"], "card_hash": card["sha256"]}
-            for card in manifest.get("cards", [])
-            if card.get("card_id") == "wp.slicing.context-capsules"
-        ]
-    if not 1 <= len(card_refs) <= 8 or any(
-        set(item) != {"card_id", "card_hash"}
-        or not str(item.get("card_id", "")).startswith(("wp.", "sqw."))
-        or not str(item.get("card_hash", "")).startswith("sha256:")
-        for item in card_refs
-    ):
-        raise ValueError("card_refs must contain one to eight exact card ID/hash bindings")
-    if not projection_spec_id.startswith("wp.") or "@" not in projection_spec_id:
-        raise ValueError("projection_spec_id must be a versioned WP policy ID")
-    effective_budget = min(budget, 8192)
-    runtime = runtime_projection or {}
+    state_hash = state["content_hash"]
+    if state_hash != canonical_state_hash(state):
+        raise ValueError("context rendering requires the current canonical state hash")
+    manifest = load_json(Path(__file__).resolve().parents[1] / "registries" / "reference-cards.manifest.json")
+    card_refs = [
+        {"card_id": card["card_id"], "card_hash": card["sha256"]}
+        for card in manifest.get("cards", [])
+        if card.get("card_id") == "wp.slicing.context-capsules"
+    ]
+    if len(card_refs) != 1:
+        raise ValueError("context card binding is unavailable")
+    if not 500 <= budget <= 8192:
+        raise ValueError("context budget must be between 500 and 8192 bytes")
+    effective_budget = budget
+    runtime = runtime_projection
+    if not isinstance(runtime, dict):
+        raise ValueError("runtime projection must be an object")
     unknown_runtime = sorted(set(runtime) - {"incumbent_artifact_ref", "hard_failure_refs", "remaining_budget"})
     if unknown_runtime:
         raise ValueError(f"unknown runtime projection fields: {unknown_runtime}")
     incumbent = runtime.get("incumbent_artifact_ref")
     if incumbent is not None and (not isinstance(incumbent, str) or not incumbent.startswith("artifact:")):
         raise ValueError("incumbent_artifact_ref must be an artifact reference")
-    hard_failures = runtime.get("hard_failure_refs", [])
+    hard_failures = runtime.get("hard_failure_refs")
     if not isinstance(hard_failures, list) or len(hard_failures) > 50 or any(not isinstance(item, str) for item in hard_failures):
         raise ValueError("hard_failure_refs must be a bounded string array")
-    remaining_budget = runtime.get("remaining_budget", {})
+    remaining_budget = runtime.get("remaining_budget")
     allowed_budget_fields = {"iterations", "candidate_evaluations", "review_rounds", "changed_lines", "total_changed_lines"}
-    if not isinstance(remaining_budget, dict) or set(remaining_budget) - allowed_budget_fields or any(type(value) is not int or value < 0 for value in remaining_budget.values()):
-        raise ValueError("remaining_budget must contain only non-negative bounded counters")
+    if not isinstance(remaining_budget, dict) or set(remaining_budget) != allowed_budget_fields or any(type(value) is not int or value < 0 for value in remaining_budget.values()):
+        raise ValueError("remaining_budget must contain every bounded non-negative counter")
     blocking_gaps = [gap for gap in state.get("gaps", []) if node_id in gap.get("blocks", []) and gap.get("status") != "closed"]
     mandatory: list[str] = [
         "# Plan context capsule",
         "",
         f"Plan: {state['plan_id']} / {state['profile']} / {state['status']}",
         f"State: version={state['state_version']} hash={state_hash}",
-        f"Source: revision={state['source']['base_revision']} scope={state['source']['scope_hash']}",
-        f"Bundle: {state['source']['bundle_id']} policy={state['source']['policy_bundle_hash']} cards={state['source']['reference_manifest_hash']}",
+        f"Source: kind={state['source_identity']['kind']} identity={state['source_identity']['identity_hash']}",
+        f"Scope: {state['scope_binding']['binding_id']}",
+        f"Bundle/cards: {state['bundle_id']} / {state['manifest_hash']}",
         "Cards: " + ", ".join(f"{item['card_id']}@{item['card_hash']}" for item in card_refs),
         "",
         "## Goal",
@@ -205,7 +203,7 @@ def render(
         "mandatory_truncation_count": 0,
         "budget_exceeded": False,
         "card_refs": card_refs,
-        "projection_spec_id": projection_spec_id,
+        "renderer_contract_hash": "sha256:" + sha256(Path(__file__).read_bytes()).hexdigest(),
         "projection_hash": projection_hash,
         "included_refs": sorted(set(included)),
         "omitted_refs": sorted(set(omitted)),
@@ -214,36 +212,3 @@ def render(
     }
     return text, metadata
 
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("state", type=Path)
-    parser.add_argument("node_id")
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
-    parser.add_argument("--budget-chars", type=int, default=6000)
-    parser.add_argument("--runtime-projection", type=Path)
-    args = parser.parse_args(argv)
-    if args.budget_chars < 500:
-        print(json.dumps({"ok": False, "error": "budget must be at least 500 characters"}, indent=2))
-        return 2
-    state, violations = validate_file(args.state, args.schema)
-    if violations or state is None:
-        print(json.dumps({"ok": False, "violations": [item.as_dict() for item in violations]}, indent=2))
-        return 2
-    try:
-        runtime = load_json(args.runtime_projection) if args.runtime_projection else None
-        if runtime is not None and not isinstance(runtime, dict):
-            raise ValueError("runtime projection must be a JSON object")
-        text, metadata = render(state, args.node_id, args.budget_chars, runtime_projection=runtime)
-    except (OSError, ValueError) as exc:
-        print(json.dumps({"ok": False, "error": str(exc)}, indent=2))
-        return 2
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(text, encoding="utf-8")
-    print(json.dumps({"ok": True, "capsule_path": str(args.output), **metadata}, ensure_ascii=False, indent=2))
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

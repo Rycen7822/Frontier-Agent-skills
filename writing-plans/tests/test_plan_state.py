@@ -4,9 +4,11 @@ from copy import deepcopy
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,7 +16,17 @@ SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from _plan_state import MAX_INPUT_BYTES, PlanInputError, canonical_state_hash, file_hash, load_json  # noqa: E402
+from _plan_state import (  # noqa: E402
+    MAX_INPUT_BYTES,
+    PlanInputError,
+    apply_card_transition,
+    canonical_state_hash,
+    file_hash,
+    load_json,
+    normalize_enqueue_requests,
+    initialize_program_owner,
+)
+import _plan_state as plan_state_runtime  # noqa: E402
 from check_plan_freshness import check_freshness, propagate_affected  # noqa: E402
 from render_context_capsule import render  # noqa: E402
 from render_plan_profile import add_novice_projection, render_brief, render_program  # noqa: E402
@@ -32,6 +44,54 @@ def _base() -> dict:
 
 def _node(state: dict, node_id: str) -> dict:
     return next(item for item in state["nodes"] if item["id"] == node_id)
+
+
+def _rehash(state: dict) -> dict:
+    state["content_hash"] = canonical_state_hash(state)
+    return state
+
+
+def _runtime_projection() -> dict:
+    return {
+        "hard_failure_refs": [],
+        "remaining_budget": {
+            "iterations": 1,
+            "candidate_evaluations": 1,
+            "review_rounds": 1,
+            "changed_lines": 0,
+            "total_changed_lines": 0,
+        },
+    }
+
+
+def _write_state(path: Path, state: dict) -> None:
+    _rehash(state)
+    path.write_text(json.dumps(state), encoding="utf-8")
+
+
+def _program_candidate(root: Path, source: Path) -> dict:
+    state = _base()
+    root_info = root.stat()
+    source_info = source.stat()
+    binding = {"dev": root_info.st_dev, "ino": root_info.st_ino, "uid": root_info.st_uid, "mode": root_info.st_mode & 0o777}
+    source_binding = {"dev": source_info.st_dev, "ino": source_info.st_ino}
+    state["initial_root_binding"] = binding
+    state["established_root_identity"] = binding
+    state["source_root_binding"] = source_binding
+    state["source_identity"]["root_binding"] = source_binding
+    return _rehash(state)
+
+
+def _program_init_worker(root: Path, source: Path, checkpoint: str, ready: Path) -> None:
+    def pause(name: str) -> None:
+        if name != checkpoint:
+            return
+        ready.write_text(name + "\n", encoding="utf-8")
+        while True:
+            signal.pause()
+
+    plan_state_runtime._checkpoint = pause
+    initialize_program_owner(root, source, _program_candidate(root, source))
 
 
 def _validate(state: dict) -> list:
@@ -88,8 +148,8 @@ def _mutate(state: dict, name: str) -> None:
     elif name == "completion_premature":
         state["completion"]["status"] = "complete"
         state["completion"]["epistemic_status"] = "verified_within_scope"
-    elif name == "profile_overbuilt":
-        state["profile"] = "brief"
+    elif name == "terminal_queue":
+        state["status"] = "completed"
     elif name == "owner_duplicate":
         state["policy_claims"].append({"policy_id": "sqw.verify.completion-evidence", "bundle_version": "frontier-engineering/6.0.0+5.0.0", "policy_hash": "sha256:" + "5" * 64})
     elif name == "sensitive_unclassified":
@@ -106,10 +166,12 @@ class PlanStateTests(unittest.TestCase):
     def test_valid_program_has_no_violations(self) -> None:
         self.assertEqual([], _validate(_base()))
 
-    def test_v5_policy_invariant_effect_and_bundle_identity_are_schema_owned(self) -> None:
+    def test_v3_policy_invariant_effect_and_bundle_identity_are_schema_owned(self) -> None:
         state = _base()
         self.assertEqual([], _validate(state))
-        self.assertTrue({"bundle_id", "policy_bundle_hash", "reference_manifest_hash"} <= set(state["source"]))
+        self.assertEqual("frontier-engineering/6.0.0+5.0.0", state["bundle_id"])
+        self.assertRegex(state["manifest_hash"], r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual({"binding_kind", "binding_id", "producer_card_id", "initial_source_identity_hash", "allowed_reads", "allowed_plan_outputs", "effect_ceiling", "approval_requirements", "publication_ceiling"}, set(state["scope_binding"]))
         self.assertEqual({"policy_id", "bundle_version", "policy_hash"}, set(state["policy_claims"][0]))
         self.assertNotIn(".md", json.dumps(state["policy_claims"]))
         self.assertTrue({"locality", "applicability", "targets"} <= set(state["global_invariants"][0]))
@@ -154,28 +216,164 @@ class PlanStateTests(unittest.TestCase):
         state["goal"] += " changed"
         self.assertNotEqual(first, canonical_state_hash(state))
 
+    def test_queue_normalizer_preserves_order_and_separates_instance_domains(self) -> None:
+        requests = [
+            {"decision_id": "wp.select.slicing.context-capsules", "subject_ref": "P-01"},
+            {"decision_id": "wp.select.slicing.context-capsules", "subject_ref": "P-02"},
+        ]
+        initial_specs, initial = normalize_enqueue_requests(requests, domain="initial", initialization_id="sha256:" + "1" * 64)
+        derived_specs, derived = normalize_enqueue_requests(
+            requests,
+            domain="derived",
+            plan_id="wp-plan:" + "a" * 64,
+            prior_content_hash="sha256:" + "2" * 64,
+            completion_id="sha256:" + "3" * 64,
+        )
+        self.assertEqual([0, 1], [item["ordinal"] for item in initial_specs])
+        self.assertEqual(requests, [{"decision_id": item["decision_id"], "subject_ref": item["subject_ref"]} for item in derived_specs])
+        self.assertEqual(["P-01", "P-02"], [item["subject_ref"] for item in derived])
+        self.assertNotEqual([item["card_instance_id"] for item in initial], [item["card_instance_id"] for item in derived])
+        with self.assertRaises(PlanInputError):
+            normalize_enqueue_requests([{**requests[0], "ordinal": 4}], domain="initial", initialization_id="sha256:" + "1" * 64)
+        with self.assertRaises(PlanInputError):
+            normalize_enqueue_requests([{**requests[0], "card_instance_id": "sha256:" + "4" * 64}], domain="initial", initialization_id="sha256:" + "1" * 64)
+
+    def test_card_transition_commits_once_and_full_completion_selects_operation(self) -> None:
+        state = _base()
+        queue_head = state["pending_card_instances"][0]["card_instance_id"]
+        enqueue = [{"decision_id": "wp.select.slicing.context-capsules", "subject_ref": "P-02"}]
+        common = {
+            "expected_state_version": state["state_version"],
+            "expected_content_hash": state["content_hash"],
+            "scope_binding_id": state["scope_binding"]["binding_id"],
+            "completed_card_instance_id": queue_head,
+            "operations": [],
+            "enqueue_requests": enqueue,
+        }
+        first = apply_card_transition(state, completion={"outcome": "accepted", "rationale": "first"}, **common)
+        second = apply_card_transition(state, completion={"outcome": "accepted", "rationale": "second"}, **common)
+        self.assertEqual(state["state_version"] + 1, first["state_version"])
+        self.assertEqual(1, len(first["pending_card_instances"]))
+        self.assertNotEqual(first["last_transition"]["completion_id"], second["last_transition"]["completion_id"])
+        self.assertNotEqual(first["last_transition"]["operation_id"], second["last_transition"]["operation_id"])
+        with self.assertRaisesRegex(PlanInputError, "stale"):
+            apply_card_transition(first, completion={"outcome": "accepted", "rationale": "first"}, **common)
+
+    def test_card_transition_rejects_model_queue_and_identity_fields(self) -> None:
+        state = _base()
+        common = {
+            "expected_state_version": state["state_version"],
+            "expected_content_hash": state["content_hash"],
+            "scope_binding_id": state["scope_binding"]["binding_id"],
+            "completed_card_instance_id": state["pending_card_instances"][0]["card_instance_id"],
+            "completion": {"outcome": "accepted"},
+            "enqueue_requests": [],
+        }
+        with self.assertRaisesRegex(PlanInputError, "not model writable"):
+            apply_card_transition(
+                state,
+                operations=[{"operation": "replace_field", "target": "pending_card_instances", "value": []}],
+                **common,
+            )
+
+    def test_program_owner_init_exact_replay_and_root_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source = parent / "source"
+            root = parent / "program"
+            source.mkdir(mode=0o700)
+            root.mkdir(mode=0o700)
+            candidate = _program_candidate(root, source)
+            state, locator, replayed = initialize_program_owner(root, source, candidate)
+            self.assertFalse(replayed)
+            self.assertEqual(candidate, state)
+            self.assertEqual("wp-program-owner/1", locator["schema_version"])
+            self.assertEqual([".plan-state.lock", "artifacts", "plan-state.json", "projections"], sorted(path.name for path in root.iterdir()))
+            identity = {
+                name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes())
+                for name in (".plan-state.lock", "plan-state.json")
+            }
+            replay_state, replay_locator, replayed = initialize_program_owner(root, source, candidate)
+            self.assertTrue(replayed)
+            self.assertEqual((state, locator), (replay_state, replay_locator))
+            self.assertEqual(identity, {name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes()) for name in identity})
+
+            nested = source / "nested"
+            nested.mkdir(mode=0o700)
+            with self.assertRaises(PlanInputError):
+                initialize_program_owner(nested, source, _program_candidate(nested, source))
+            self.assertEqual([], list(nested.iterdir()))
+
+    def test_program_init_real_sigkill_prefixes_converge(self) -> None:
+        checkpoints = (
+            "plan_lock_temp_fsynced",
+            "plan_lock_linked",
+            "plan_lock_link_parent_synced",
+            "plan_lock_cleaned",
+            "plan_lock_cleanup_parent_synced",
+            "plan_state_temp_fsynced",
+            "plan_artifacts_created",
+            "plan_projections_created",
+            "plan_state_linked",
+            "plan_state_link_parent_synced",
+            "plan_state_cleaned",
+            "plan_state_cleanup_parent_synced",
+            "plan_init_before_return",
+        )
+        for checkpoint in checkpoints:
+            with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                source = parent / "source"
+                root = parent / "program"
+                ready = parent / "ready"
+                source.mkdir(mode=0o700)
+                root.mkdir(mode=0o700)
+                process = subprocess.Popen(
+                    [sys.executable, "-B", __file__, "--program-init-worker", str(root), str(source), checkpoint, str(ready)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                deadline = time.monotonic() + 5
+                while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                if not ready.exists():
+                    if process.poll() is None:
+                        process.kill()
+                    stdout, stderr = process.communicate(timeout=1)
+                    self.fail(f"worker did not reach {checkpoint}: {stdout}{stderr}")
+                process.kill()
+                process.communicate(timeout=5)
+                candidate = _program_candidate(root, source)
+                state, _, _ = initialize_program_owner(root, source, candidate)
+                self.assertEqual(candidate, state)
+                self.assertEqual([".plan-state.lock", "artifacts", "plan-state.json", "projections"], sorted(path.name for path in root.iterdir()))
+                replay = initialize_program_owner(root, source, candidate)
+                self.assertTrue(replay[2])
+
     def test_capsule_redacts_and_fails_closed_before_mandatory_truncation(self) -> None:
         state = _base()
         decision = state["decisions"][0]
         decision["sensitive"] = True
         decision["statement"] = "SECRET_DO_NOT_RENDER"
         state["evidence"][2]["claim"] = "api_key=UNMARKED_SECRET_1234567890"
+        state["evidence"][2]["sensitive"] = True
         extra = deepcopy(_node(state, "P-02"))
         extra["id"] = "P-03"
         extra["status"] = "blocked"
         state["nodes"].append(extra)
-        card_refs = [{"card_id": "wp.slicing.context-capsules", "card_hash": "sha256:" + "6" * 64}]
-        full_text, full_metadata = render(state, "P-02", 10_000, card_refs=card_refs)
+        _rehash(state)
+        full_text, full_metadata = render(state, "P-02", 8192, _runtime_projection())
         self.assertNotIn("SECRET_DO_NOT_RENDER", full_text)
         self.assertNotIn("UNMARKED_SECRET_1234567890", full_text)
         self.assertIn("E-03: [REDACTED]", full_text)
         self.assertIn("D-01: [REDACTED]", full_text)
         self.assertEqual(0, full_metadata["mandatory_truncation_count"])
-        self.assertEqual(card_refs, full_metadata["card_refs"])
+        self.assertEqual("wp.slicing.context-capsules", full_metadata["card_refs"][0]["card_id"])
         self.assertRegex(full_metadata["projection_hash"], r"^sha256:[0-9a-f]{64}$")
         with self.assertRaisesRegex(ValueError, "mandatory capsule exceeds budget"):
-            render(state, "P-02", full_metadata["mandatory_chars"] - 1, card_refs=card_refs)
-        text, metadata = render(state, "P-02", full_metadata["mandatory_chars"] + 20, card_refs=card_refs)
+            render(state, "P-02", full_metadata["mandatory_bytes"] - 1, _runtime_projection())
+        text, metadata = render(state, "P-02", full_metadata["mandatory_bytes"] + 20, _runtime_projection())
         self.assertNotIn("SECRET_DO_NOT_RENDER", text)
         self.assertEqual(0, metadata["mandatory_truncation_count"])
         self.assertIn("P-03", metadata["omitted_refs"])
@@ -213,7 +411,7 @@ class PlanStateTests(unittest.TestCase):
             state = _base()
             state["snapshots"][0]["content_hash"] = file_hash(target)
             state_path = repository / "plan.json"
-            state_path.write_text(json.dumps(state), encoding="utf-8")
+            _write_state(state_path, state)
             fresh = check_freshness(state_path, repository_override=repository, now_value="2026-07-13T14:00:00+00:00")
             self.assertEqual("fresh", fresh["status"])
             target.write_text('{"changed": true}\n', encoding="utf-8")
@@ -245,17 +443,17 @@ class PlanStateTests(unittest.TestCase):
                 }
             )
             state_path = repository / "plan.json"
-            state_path.write_text(json.dumps(state), encoding="utf-8")
+            _write_state(state_path, state)
             unbound = check_freshness(state_path, repository_override=repository)
             self.assertIn("symbol_unbound", {item["kind"] for item in unbound["issues"]})
 
             state["snapshots"][-1]["symbol"] = "RefreshPlanner.removed_method"
-            state_path.write_text(json.dumps(state), encoding="utf-8")
+            _write_state(state_path, state)
             missing = check_freshness(state_path, repository_override=repository)
             self.assertIn("symbol_missing", {item["kind"] for item in missing["issues"]})
 
             state["snapshots"][-1]["symbol"] = "RefreshPlanner.compare_manifest"
-            state_path.write_text(json.dumps(state), encoding="utf-8")
+            _write_state(state_path, state)
             fresh = check_freshness(state_path, repository_override=repository)
             self.assertEqual("fresh", fresh["status"], fresh)
 
@@ -278,7 +476,7 @@ class PlanStateTests(unittest.TestCase):
             )
             _node(state, "P-01")["verifier"]["command_ref"] = "path:tests/missing-verifier.sh"
             state_path = repository / "plan.json"
-            state_path.write_text(json.dumps(state), encoding="utf-8")
+            _write_state(state_path, state)
             stale = check_freshness(state_path, repository_override=repository)
             kinds = {item["kind"] for item in stale["issues"]}
             self.assertTrue({"line_drift", "verifier_unresolved"} <= kinds, stale)
@@ -287,7 +485,7 @@ class PlanStateTests(unittest.TestCase):
             verifier.write_text("exit 0\n", encoding="utf-8")
             snapshot["line_end"] = 1
             _node(state, "P-01")["verifier"]["command_ref"] = "path:tests/check.sh"
-            state_path.write_text(json.dumps(state), encoding="utf-8")
+            _write_state(state_path, state)
             fresh = check_freshness(state_path, repository_override=repository)
             self.assertEqual("fresh", fresh["status"], fresh)
 
@@ -315,7 +513,7 @@ class PlanStateTests(unittest.TestCase):
                 }
             )
             state_path = repository / "plan.json"
-            state_path.write_text(json.dumps(state), encoding="utf-8")
+            _write_state(state_path, state)
             result = check_freshness(
                 state_path,
                 repository_override=repository,
@@ -388,7 +586,7 @@ class PlanStateTests(unittest.TestCase):
                 }
             )
             state_path = repository / "plan.json"
-            state_path.write_text(json.dumps(state), encoding="utf-8")
+            _write_state(state_path, state)
             result = check_freshness(state_path, repository_override=repository)
             kinds = {item["kind"] for item in result["issues"]}
             self.assertTrue({"snapshot_not_file", "artifact_not_file"} <= kinds, result)
@@ -418,7 +616,7 @@ class PlanStateTests(unittest.TestCase):
                 }
             )
             state_path = repository / "plan.json"
-            state_path.write_text(json.dumps(state), encoding="utf-8")
+            _write_state(state_path, state)
             result = check_freshness(state_path, repository_override=repository)
             kinds = {item["kind"] for item in result["issues"]}
             self.assertTrue({"evidence_revision_unbound", "evidence_time_unbound"} <= kinds, result)
@@ -446,7 +644,7 @@ class PlanStateTests(unittest.TestCase):
                 }
             )
             state_path = repository / "plan.json"
-            state_path.write_text(json.dumps(state), encoding="utf-8")
+            _write_state(state_path, state)
             self.assertEqual("fresh", check_freshness(state_path, repository_override=repository)["status"])
             stat = artifact.stat()
             os.utime(artifact, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
@@ -465,61 +663,22 @@ class PlanStateTests(unittest.TestCase):
             verifier["kind"] = "schema"
             verifier["command_ref"] = "schema:schemas/missing.json"
             state_path = repository / "plan.json"
-            state_path.write_text(json.dumps(state), encoding="utf-8")
+            _write_state(state_path, state)
             stale = check_freshness(state_path, repository_override=repository)
             self.assertIn("verifier_unresolved", {item["kind"] for item in stale["issues"]})
 
-    def test_capsule_snapshot_hash_excludes_generated_snapshot_self_reference(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            repository = Path(directory)
-            fixture = repository / "tests" / "manifest" / "legacy-fixture.json"
-            fixture.parent.mkdir(parents=True)
-            fixture.write_text("{}\n", encoding="utf-8")
-            state = _base()
-            state["snapshots"][0]["content_hash"] = file_hash(fixture)
-            card_refs = [{"card_id": "wp.slicing.context-capsules", "card_hash": "sha256:" + "6" * 64}]
-            capsule_text, metadata = render(state, "P-02", 10_000, card_refs=card_refs)
-            capsule = repository / ".workflow" / "capsules" / "P-02.md"
-            capsule.parent.mkdir(parents=True)
-            capsule.write_text(capsule_text, encoding="utf-8")
-            state["snapshots"].append(
-                {
-                    "id": "S-02",
-                    "kind": "capsule",
-                    "path": ".workflow/capsules/P-02.md",
-                    "source_revision": "explicit-unversioned",
-                    "content_hash": file_hash(capsule),
-                    "plan_state_hash": metadata["state_hash"],
-                    "plan_state_version": metadata["state_version"],
-                    "card_refs": metadata["card_refs"],
-                    "projection_spec_id": metadata["projection_spec_id"],
-                    "projection_hash": metadata["projection_hash"],
-                    "sensitive": False,
-                }
-            )
-            state_path = repository / "plan.json"
-            state_path.write_text(json.dumps(state), encoding="utf-8")
-            fresh = check_freshness(state_path, repository_override=repository)
-            self.assertEqual("fresh", fresh["status"], fresh)
-            manifest_stale = check_freshness(
-                state_path,
-                repository_override=repository,
-                current_reference_manifest_hash="sha256:" + "9" * 64,
-            )
-            self.assertEqual("partially_stale", manifest_stale["status"], manifest_stale)
-            self.assertEqual(["S-02"], manifest_stale["directly_stale_ids"])
-            self.assertNotIn("freshness_global_issue", manifest_stale["escalation_reasons"])
-            card_stale = check_freshness(
-                state_path,
-                repository_override=repository,
-                current_card_hashes={"wp.slicing.context-capsules": "sha256:" + "7" * 64},
-            )
-            self.assertEqual("partially_stale", card_stale["status"], card_stale)
-            self.assertEqual(["S-02"], card_stale["directly_stale_ids"])
-            state["state_version"] += 1
-            state_path.write_text(json.dumps(state), encoding="utf-8")
-            stale = check_freshness(state_path, repository_override=repository)
-            self.assertIn("capsule_stale", {item["kind"] for item in stale["issues"]})
+    def test_context_projection_identity_never_enters_canonical_state(self) -> None:
+        state = _base()
+        _, metadata = render(state, "P-02", 8192, _runtime_projection())
+        encoded = json.dumps(state)
+        for forbidden in ("projection_hash", "projection_spec_id", "plan_state_hash", "card_refs"):
+            self.assertNotIn(forbidden, encoded)
+        self.assertEqual(state["content_hash"], metadata["state_hash"])
+        legacy = deepcopy(state)
+        legacy["snapshots"].append(
+            {"id": "S-02", "kind": "capsule", "path": "context.md", "projection_hash": metadata["projection_hash"]}
+        )
+        self.assertIn("plan.schema", {item.code for item in _validate(legacy)})
 
     def test_invalidation_cascades_without_touching_unrelated_branch(self) -> None:
         state = _base()
@@ -584,11 +743,11 @@ class PlanStateTests(unittest.TestCase):
         state = _base()
         projection_data = {
             "state_hash": canonical_state_hash(state),
-            "source_revision": state["source"]["base_revision"],
-            "scope_hash": state["source"]["scope_hash"],
+            "source_revision": state["source_identity"]["identity_hash"],
+            "scope_hash": state["scope_binding"]["binding_id"],
             "novice_steps": ["Run the bounded verifier"],
         }
-        program = add_novice_projection(render_program(state, state_ref="plan.json"), projection_data)
+        program = add_novice_projection(render_program(state), projection_data)
         self.assertIn("non-canonical", program)
         self.assertIn(projection_data["state_hash"], program)
         self.assertIn(projection_data["scope_hash"], program)
@@ -606,7 +765,8 @@ class PlanStateTests(unittest.TestCase):
                 "reversibility": "local",
             }
         )
-        program = render_program(state, state_ref="plan.json")
+        _rehash(state)
+        program = render_program(state)
         self.assertLessEqual(len(program.encode("utf-8")), 8192)
         self.assertIn("P-02", program)
         self.assertNotIn("UNRELATED_FUTURE_DECISION", program)
@@ -647,4 +807,7 @@ class PlanStateTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if len(sys.argv) == 6 and sys.argv[1] == "--program-init-worker":
+        _program_init_worker(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], Path(sys.argv[5]))
+    else:
+        unittest.main()

@@ -1,17 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://hermes.local/schemas/writing-plans/plan-state-2.0.json",
-  "title": "Hermes writing-plans durable plan state",
+  "$id": "https://frontier-agent.local/writing-plans/plan-state-3.0.schema.json",
+  "title": "Writing Plans Program state 3.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
+    "bundle_id",
+    "manifest_hash",
     "plan_id",
     "profile",
     "status",
     "state_version",
-    "source",
-    "scope",
     "goal",
     "non_goals",
     "global_invariants",
@@ -26,17 +26,29 @@
     "approvals",
     "snapshots",
     "policy_claims",
-    "completion"
+    "completion",
+    "scope_binding",
+    "initialization",
+    "initial_completion_id",
+    "initial_root_binding",
+    "established_root_identity",
+    "source_root_binding",
+    "source_identity",
+    "rollback",
+    "artifacts",
+    "pending_card_instances",
+    "last_transition",
+    "content_hash"
   ],
   "properties": {
-    "schema_version": {"const": "2.0"},
-    "plan_id": {"type": "string", "pattern": "^plan-[a-z0-9][a-z0-9._-]{2,127}$"},
-    "profile": {"enum": ["brief", "handoff", "program"]},
+    "schema_version": {"const": "3.0"},
+    "bundle_id": {"const": "frontier-engineering/6.0.0+5.0.0"},
+    "manifest_hash": {"$ref": "#/$defs/hash"},
+    "plan_id": {"type": "string", "pattern": "^wp-plan:[0-9a-f]{64}$"},
+    "profile": {"const": "program"},
     "status": {"enum": ["drafting", "ready", "active", "blocked", "completed", "superseded"]},
     "state_version": {"type": "integer", "minimum": 1},
-    "content_hash": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/hash"}]},
-    "source": {"$ref": "#/$defs/source"},
-    "scope": {"$ref": "#/$defs/scope"},
+    "content_hash": {"$ref": "#/$defs/hash"},
     "goal": {"$ref": "#/$defs/non_empty_string"},
     "non_goals": {"$ref": "#/$defs/string_array"},
     "global_invariants": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/invariant"}},
@@ -51,11 +63,175 @@
     "approvals": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/approval"}},
     "snapshots": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/snapshot"}},
     "policy_claims": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/policy_claim"}},
-    "completion": {"$ref": "#/$defs/completion"}
+    "completion": {"$ref": "#/$defs/completion"},
+    "scope_binding": {"$ref": "#/$defs/scope_binding"},
+    "initialization": {"$ref": "#/$defs/initialization"},
+    "initial_completion_id": {"$ref": "#/$defs/hash"},
+    "initial_root_binding": {"$ref": "#/$defs/root_binding"},
+    "established_root_identity": {"$ref": "#/$defs/root_binding"},
+    "source_root_binding": {"$ref": "#/$defs/source_root_binding"},
+    "source_identity": {"$ref": "#/$defs/source_identity"},
+    "rollback": {"$ref": "#/$defs/rollback"},
+    "artifacts": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/durable_artifact"}},
+    "pending_card_instances": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/card_instance"}},
+    "last_transition": {"$ref": "#/$defs/last_transition"}
   },
   "$defs": {
     "non_empty_string": {"type": "string", "minLength": 1, "maxLength": 20000},
     "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "path_array": {
+      "type": "array", "maxItems": 1000, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+"}
+    },
+    "root_binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["dev", "ino", "uid", "mode"],
+      "properties": {
+        "dev": {"type": "integer", "minimum": 0},
+        "ino": {"type": "integer", "minimum": 1},
+        "uid": {"type": "integer", "minimum": 0},
+        "mode": {"type": "integer", "minimum": 0, "maximum": 511}
+      }
+    },
+    "source_root_binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["dev", "ino"],
+      "properties": {"dev": {"type": "integer", "minimum": 0}, "ino": {"type": "integer", "minimum": 1}}
+    },
+    "source_record": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "status", "content_hash", "bytes", "mode"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "status": {"enum": ["added", "modified", "deleted", "unchanged"]},
+        "content_hash": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/hash"}]},
+        "bytes": {"type": "integer", "minimum": 0},
+        "mode": {"type": "string", "pattern": "^[0-7]{4}$"}
+      }
+    },
+    "source_identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "identity_hash", "root_binding", "head_commit", "head_tree", "scoped_records", "exterior_guard_hash"],
+      "properties": {
+        "kind": {"enum": ["repository", "unversioned"]},
+        "identity_hash": {"$ref": "#/$defs/hash"},
+        "root_binding": {"$ref": "#/$defs/source_root_binding"},
+        "head_commit": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"}]},
+        "head_tree": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"}]},
+        "scoped_records": {"type": "array", "maxItems": 4096, "items": {"$ref": "#/$defs/source_record"}},
+        "exterior_guard_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "scope_binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["binding_kind", "binding_id", "producer_card_id", "initial_source_identity_hash", "allowed_reads", "allowed_plan_outputs", "effect_ceiling", "approval_requirements", "publication_ceiling"],
+      "properties": {
+        "binding_kind": {"const": "wp-planning"},
+        "binding_id": {"$ref": "#/$defs/hash"},
+        "producer_card_id": {"type": "string", "pattern": "^wp\\."},
+        "initial_source_identity_hash": {"$ref": "#/$defs/hash"},
+        "allowed_reads": {"$ref": "#/$defs/path_array"},
+        "allowed_plan_outputs": {"$ref": "#/$defs/path_array"},
+        "effect_ceiling": {"enum": ["read-only", "local-plan-artifact"]},
+        "approval_requirements": {"$ref": "#/$defs/string_array"},
+        "publication_ceiling": {"enum": ["none", "local-artifact"]}
+      }
+    },
+    "initialization": {
+      "type": "object", "additionalProperties": false,
+      "required": ["initialization_id", "program_payload_hash", "initial_queue_hash"],
+      "properties": {
+        "initialization_id": {"$ref": "#/$defs/hash"},
+        "program_payload_hash": {"$ref": "#/$defs/hash"},
+        "initial_queue_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "rollback": {
+      "type": "object", "additionalProperties": false,
+      "required": ["strategy", "steps", "verifier_refs"],
+      "properties": {
+        "strategy": {"enum": ["restore_previous_state", "manual_recovery", "not_applicable"]},
+        "steps": {"$ref": "#/$defs/string_array"},
+        "verifier_refs": {"$ref": "#/$defs/id_array"}
+      }
+    },
+    "content_locator": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "content_kind", "artifact_id", "content_hash", "bytes"],
+      "properties": {
+        "schema_version": {"const": "content-locator/1"},
+        "content_kind": {"const": "artifact"},
+        "artifact_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "content_hash": {"$ref": "#/$defs/hash"},
+        "bytes": {"type": "integer", "minimum": 1, "maximum": 2097152}
+      }
+    },
+    "durable_artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["completion_id", "artifact_id", "scope_binding_id", "content_locator"],
+      "properties": {
+        "completion_id": {"$ref": "#/$defs/hash"},
+        "artifact_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "scope_binding_id": {"$ref": "#/$defs/hash"},
+        "content_locator": {"$ref": "#/$defs/content_locator"}
+      }
+    },
+    "card_instance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["card_instance_id", "decision_id", "subject_ref"],
+      "properties": {
+        "card_instance_id": {"$ref": "#/$defs/hash"},
+        "decision_id": {"type": "string", "pattern": "^wp\\.select\\."},
+        "subject_ref": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/local_id"}]}
+      }
+    },
+    "runtime_projection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["hard_failure_refs", "remaining_budget"],
+      "properties": {
+        "incumbent_artifact_ref": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "hard_failure_refs": {"type": "array", "maxItems": 50, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 1024}},
+        "remaining_budget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["iterations", "candidate_evaluations", "review_rounds", "changed_lines", "total_changed_lines"],
+          "properties": {
+            "iterations": {"type": "integer", "minimum": 0},
+            "candidate_evaluations": {"type": "integer", "minimum": 0},
+            "review_rounds": {"type": "integer", "minimum": 0},
+            "changed_lines": {"type": "integer", "minimum": 0},
+            "total_changed_lines": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "inline_render_completion": {
+      "type": "object", "additionalProperties": false,
+      "required": ["node_id", "consumer_profile", "budget_bytes", "runtime_projection", "manifest_hash", "card_hash", "renderer_contract_hash"],
+      "properties": {
+        "node_id": {"$ref": "#/$defs/local_id"},
+        "consumer_profile": {"type": "string", "minLength": 1, "maxLength": 128},
+        "budget_bytes": {"type": "integer", "minimum": 500, "maximum": 8192},
+        "runtime_projection": {"$ref": "#/$defs/runtime_projection"},
+        "manifest_hash": {"$ref": "#/$defs/hash"},
+        "card_hash": {"$ref": "#/$defs/hash"},
+        "renderer_contract_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "last_transition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["transition_kind", "operation_id", "prior_state_version", "prior_content_hash", "scope_binding_id", "completion_id", "completed_card_instance_id", "enqueued_card_instance_ids", "inline_render_completion"],
+      "properties": {
+        "transition_kind": {"enum": ["init", "card"]},
+        "operation_id": {"$ref": "#/$defs/hash"},
+        "prior_state_version": {"type": "integer", "minimum": 0},
+        "prior_content_hash": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/hash"}]},
+        "scope_binding_id": {"$ref": "#/$defs/hash"},
+        "completion_id": {"$ref": "#/$defs/hash"},
+        "completed_card_instance_id": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/hash"}]},
+        "enqueued_card_instance_ids": {"type": "array", "maxItems": 1000, "uniqueItems": true, "items": {"$ref": "#/$defs/hash"}},
+        "inline_render_completion": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/inline_render_completion"}]}
+      }
+    },
     "local_id": {"type": "string", "pattern": "^(I|F|D|E|P|R|G|X|AP|S)-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
     "ref_id": {"type": "string", "pattern": "^((I|F|D|E|P|R|G|X|AP|S)-[A-Za-z0-9][A-Za-z0-9._-]{0,63}|[a-z_]+:[A-Za-z0-9._:-]+#[A-Za-z0-9._-]+)$"},
     "string_array": {"type": "array", "maxItems": 1000, "items": {"type": "string", "maxLength": 2000}},
@@ -287,27 +463,16 @@
     "snapshot": {
       "type": "object",
       "additionalProperties": false,
-      "allOf": [
-        {
-          "if": {"properties": {"kind": {"const": "capsule"}}, "required": ["kind"]},
-          "then": {"required": ["source_revision", "content_hash", "plan_state_hash", "plan_state_version", "card_refs", "projection_spec_id", "projection_hash"]}
-        }
-      ],
       "required": ["id", "kind", "path"],
       "properties": {
         "id": {"type": "string", "pattern": "^S-"},
-        "kind": {"enum": ["path", "line", "snippet", "symbol", "capsule"]},
+        "kind": {"enum": ["path", "line", "snippet", "symbol"]},
         "path": {"type": "string", "minLength": 1, "maxLength": 4096},
         "symbol": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.:#]{0,511}$"},
         "line_start": {"type": "integer", "minimum": 1},
         "line_end": {"type": "integer", "minimum": 1},
         "content_hash": {"$ref": "#/$defs/hash"},
         "source_revision": {"type": "string", "maxLength": 256},
-        "plan_state_hash": {"$ref": "#/$defs/hash"},
-        "plan_state_version": {"type": "integer", "minimum": 1},
-        "card_refs": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/card_ref"}},
-        "projection_spec_id": {"type": "string", "pattern": "^wp\\.[a-z0-9.-]+@[1-9][0-9]*$"},
-        "projection_hash": {"$ref": "#/$defs/hash"},
         "sensitive": {"type": "boolean"}
       }
     },

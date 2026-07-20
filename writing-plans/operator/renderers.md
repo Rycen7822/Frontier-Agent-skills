@@ -1,38 +1,13 @@
 # Renderer operations
 
-Renderers are read-only projections of canonical plan state. They must not mutate the plan, infer execution success, or become a second policy owner.
+All renderer functions validate their complete typed input before producing bytes. Public file writes belong only to `scripts/card_cycle.py`; `render_plan_profile.py` and `render_context_capsule.py` expose no free state path, runtime JSON path, output path, or metadata path CLI.
 
-## Profile renderer
+Brief renders directly from its validated completion payload to an immutable file in the explicit projection root. Standalone Handoff first materializes one typed v3 boundary artifact; its Markdown is a projection of that artifact and never exposes a Program state path. Program output and context render only from the locked current owner.
 
-`render_plan_profile.py` emits one requested profile:
+Program uses `projections/program.md`; context uses `projections/context-capsule.md`. Their only temps are the matching `.tmp` siblings. Headers bind plan ID, current state version/hash, completion where applicable, card/manifest identity, and renderer contract. State stores neither projection locator nor projection hash. Removing a final is valid; the same current state rebuilds identical bytes. A request bound to an older state hash is stale.
 
-- Brief: goal, scope, acceptance, blockers, and immediate proof.
-- Handoff: ordered outcome slices, current frontier, boundaries, and verification commands for standard execution.
-- Program: only the current frontier, decisions and invariants that bind it, canonical artifact pointers, and the expand-migrate-contract state transition.
+Program output has an exact 8,192-byte ceiling. Mandatory current-frontier content must fit completely; 8,193 bytes returns `E_PROJECTION_BUDGET` before state or projection writes. It never truncates mandatory identity, decision, invariant, scope, source, frontier, verifier, or rollback content.
 
-Program output has an 8,192-byte hard ceiling. The renderer fails closed if mandatory content exceeds it; it never truncates a required decision, invariant, source identity, or frontier field. Historical and unrelated future nodes remain in canonical state and are retrieved on demand.
+Context accepts 500–8,192 bytes and one strict runtime projection. Mandatory selection order is identity/card binding, goal/current node, decisions, blocking gaps, policy claims, global invariants, approvals/edges, verifier/retry, non-goals, then runtime bytes. Optional node inputs, outputs, verifier evidence, and direct dependencies use ordered first-fit. Missing local references fail; external references become on-demand. Mandatory, included, omitted, and on-demand groups remain disjoint and ordered.
 
-## Context capsule renderer
-
-`render_context_capsule.py` projects one node. Mandatory content is:
-
-- goal and node completion criterion;
-- bundle, policy-bundle, reference-manifest, source, scope, state version, and state hash;
-- exact card IDs/hashes and projection spec ID/hash;
-- applicable invariants, decisions, blockers, authority, and protected boundaries;
-- reads, writes, resources, effects, approvals, verifier, false-green risk, and qualifying evidence needs;
-- bounded runtime facts supplied by the current controller.
-
-The effective output ceiling is 8,192 bytes even if a caller asks for more. Optional facts and evidence are admitted by relevance only after mandatory content. If mandatory content exceeds the ceiling, rendering raises `mandatory capsule exceeds budget`; mandatory content is never truncated. Metadata reports mandatory bytes/chars and must report zero mandatory truncations.
-
-## Rebuild and verification
-
-Treat generated profiles and capsules as caches:
-
-1. validate canonical state;
-2. render from the current state hash and exact card identities;
-3. store the returned projection identity in the capsule snapshot;
-4. run freshness checking before reuse;
-5. delete and regenerate on state, projection, manifest, or referenced-card drift.
-
-A rebuild must be deterministic for identical canonical inputs. Deleting all generated projections must not change state hash, graph frontier, evidence, decisions, or workflow-controller state.
+Context completion validates candidate state and projection in memory, commits the one semantic transition, then publishes the fixed projection. Exact retry after state commit reconstructs from `last_transition.inline_render_completion`; runtime input is not retransmitted. Rerender is read-only with respect to state. Context rebuild is allowed only while that context completion is the current last transition; later state returns `E_CONTEXT_NOT_CURRENT` and preserves stale bytes.
