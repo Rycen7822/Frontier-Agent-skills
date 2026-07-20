@@ -31,6 +31,7 @@ BUNDLE_DIRECTORIES = {"bundle", "evaluation", "packaging", "scripts", "tests"}
 BUNDLE_FILES = {"README.md", "RELEASE_NOTES.md", "bundle-manifest.json", "frontier-engineering.bundle.json"}
 IGNORED_TOP_LEVEL = {
     ".git",
+    ".agents",
     ".gitignore",
     ".pytest_cache",
     ".work",

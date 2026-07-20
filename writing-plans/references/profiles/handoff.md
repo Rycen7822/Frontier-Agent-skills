@@ -5,7 +5,9 @@
   "kind": "procedure",
   "decision_id": "wp.select.profiles.handoff",
   "required_artifact_ids": [],
-  "produced_artifact_ids": ["plan-handoff"],
+  "produced_artifact_ids": [
+    "plan-handoff"
+  ],
   "max_bytes": 4096
 }
 ---

@@ -1,5 +1,5 @@
 {
-  "bundle_id": "frontier-engineering/6.0.0+5.0.0",
+  "bundle_id": "frontier-engineering/7.0.0+6.0.0",
   "cards": [
     {
       "bytes": 2251,
@@ -883,5 +883,5 @@
   },
   "schema_version": "2.0",
   "skill_id": "software-quality-workflows",
-  "skill_version": "6.0.0"
+  "skill_version": "7.0.0"
 }

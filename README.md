@@ -1,10 +1,10 @@
 # Frontier Agent Skills
 
-This repository is the development source of truth for the dual-host `writing-plans` 5.0.0 and `software-quality-workflows` 6.0.0 skills. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository never mutates an active installation.
+This repository is the development source of truth for the dual-host `writing-plans` 6.0.0 and `software-quality-workflows` 7.0.0 skills. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository never mutates an active installation.
 
 ## Release identity
 
-The indivisible source pair is `frontier-engineering/6.0.0+5.0.0` in bundle version 2.0.1 and schema epoch 2. `bundle-manifest.json` contains exactly two cross-skill contracts: `plan-to-workflow` and `workflow-plan-change-proposal`.
+The indivisible source pair is `frontier-engineering/7.0.0+6.0.0` in bundle version 3.0.0 and schema epoch 2. `bundle-manifest.json` contains exactly two cross-skill contracts: `plan-to-workflow` and `workflow-plan-change-proposal`.
 
 The checked-in activation policy is exact and fail-closed:
 
@@ -56,21 +56,21 @@ Use absent outputs under a task-owned evidence root. The builder is no-overwrite
 scripts/build_source_archive.py \
   --source-root . \
   --layout bundle \
-  --output <evidence-root>/frontier-engineering-bundle-2.0.1.zip \
-  --evidence-output <evidence-root>/frontier-engineering-bundle-2.0.1.evidence.json
+  --output <evidence-root>/frontier-engineering-bundle-3.0.0.zip \
+  --evidence-output <evidence-root>/frontier-engineering-bundle-3.0.0.evidence.json
 
 scripts/build_source_archive.py \
   --source-root . \
   --layout skills_only \
-  --output <evidence-root>/frontier-engineering-skills-2.0.1.zip \
-  --evidence-output <evidence-root>/frontier-engineering-skills-2.0.1.evidence.json
+  --output <evidence-root>/frontier-engineering-skills-3.0.0.zip \
+  --evidence-output <evidence-root>/frontier-engineering-skills-3.0.0.evidence.json
 ```
 
 The bundle layout uses root `frontier-engineering-bundle`. The skills-only layout contains exactly the two skill roots.
 
 ## Isolated plugin staging
 
-The plugin identity is `frontier-engineering-plugin` version 2.0.1 with display name `Frontier Engineering`. Build only into an absent task-owned marketplace destination:
+The plugin identity is `frontier-engineering-plugin` version 3.0.0 with display name `Frontier Engineering`. Build only into an absent task-owned marketplace destination:
 
 ```bash
 scripts/build_codex_plugin.py \

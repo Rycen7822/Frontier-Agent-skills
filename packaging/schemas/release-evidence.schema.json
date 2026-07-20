@@ -10,8 +10,8 @@
   ],
   "properties": {
     "schema_version": {"const": "release-evidence/2.0"},
-    "bundle_id": {"const": "frontier-engineering/6.0.0+5.0.0"},
-    "bundle_version": {"const": "2.0.1"},
+    "bundle_id": {"const": "frontier-engineering/7.0.0+6.0.0"},
+    "bundle_version": {"const": "3.0.0"},
     "source_tree_hash": {"$ref": "#/$defs/hash"},
     "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "source_revision_signed": {"const": true},

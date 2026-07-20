@@ -73,10 +73,10 @@ MANIFEST_CARD_KEYS = {
     "bytes", "card_id", "card_version", "decision_id", "kind", "max_bytes", "path",
     "required_artifact_ids", "produced_artifact_ids", "sha256",
 }
-class WritingDecisionProtocolV5Tests(unittest.TestCase):
+class WritingDecisionProtocolV6Tests(unittest.TestCase):
     def setUp(self) -> None:
         self.fixture = json.loads(
-            (ROOT / "tests" / "fixtures" / "decision-route-cases-v5.json").read_text(encoding="utf-8")
+            (ROOT / "tests" / "fixtures" / "decision-route-cases-v6.json").read_text(encoding="utf-8")
         )
 
     def _load(self, relative: str) -> object:
@@ -113,7 +113,7 @@ class WritingDecisionProtocolV5Tests(unittest.TestCase):
         decision_map = self._load("registries/decision-card-map.json")
         cards = manifest["cards"]
         mappings = decision_map["decisions"]
-        self.assertEqual("5.0.0", manifest["skill_version"])
+        self.assertEqual("6.0.0", manifest["skill_version"])
         self.assertEqual(TARGET_CARDS, {card["card_id"] for card in cards})
         self.assertEqual(TARGET_CARDS, {mapping["card_id"] for mapping in mappings})
         self.assertEqual(len(mappings), len({mapping["decision_id"] for mapping in mappings}))

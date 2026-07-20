@@ -1,6 +1,14 @@
 # Release Notes
 
-## Bundle 2.0.1 implicit-local activation
+## Bundle 3.0.0 bounded card-cycle runtimes
+
+Bundle 3.0.0 atomically pairs `writing-plans` 6.0.0 with `software-quality-workflows` 7.0.0 as `frontier-engineering/7.0.0+6.0.0`. Both skills now expose one strict route/complete/render card-cycle surface, flat bounded receipts, content-bound source and scope identity, and fixed crash-safe owner protocols without per-card JSON sidecars.
+
+Writing Plans 6.0.0 adds Program state 3.0, ordered card-instance queues, typed Handoff 3.0, immutable Brief/Handoff delivery, fixed Program/context projections, repository and unversioned source fences, lost-input recovery, exact replay, and CLI-derived source rebind. Software Quality Workflows 7.0.0 adds the corresponding bounded workflow owner, leases, hard artifacts, operator event ledger, fixed context projection, and crash convergence.
+
+This is a local deterministic candidate. It does not claim scored model usefulness, publication, deployment, main-HOME installation, or remote-write authority. Implicit invocation remains enabled in both Codex metadata files; release and installation remain separate gates.
+
+## Historical bundle 2.0.1 implicit-local activation
 
 Bundle 2.0.1 changes the canonical pair's Codex invocation policy from explicit-only shadow operation to `implicit_local_pilot`. Both `agents/openai.yaml` files set `allow_implicit_invocation: true`; `bundle-manifest.json` sets `implicit_routing_default: true`; remote writes remain false.
 
@@ -22,7 +30,7 @@ The checked-in activation level remains `shadow`. Implicit routing and remote wr
 
 - Plugin folder and manifest name: `frontier-engineering-plugin`
 - Plugin display name: `Frontier Engineering`
-- Plugin version: `2.0.1`
+- Plugin version: `3.0.0`
 - Bundle archive root: `frontier-engineering-bundle`
 - Skills-only archive roots: `writing-plans`, `software-quality-workflows`
 - Build evidence: `plugin-build-evidence/2.0`

@@ -5,7 +5,9 @@
   "kind": "decision",
   "decision_id": "wp.select.economy.output-projection",
   "required_artifact_ids": [],
-  "produced_artifact_ids": ["output-projection"],
+  "produced_artifact_ids": [
+    "output-projection"
+  ],
   "max_bytes": 8192
 }
 ---

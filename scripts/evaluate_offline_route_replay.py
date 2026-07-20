@@ -22,19 +22,19 @@ BUNDLE_BUILDER_PATH = ROOT / "bundle" / "build_bundle_manifest.py"
 OUTPUT = ROOT / "evaluation" / "offline-route-replay.json"
 SKILLS = {
     "writing-plans": {
-        "version": "5.0.0",
+        "version": "6.0.0",
         "router": "scripts/assess_plan_mode.py",
         "decision_map": "registries/decision-card-map.json",
         "card_manifest": "registries/reference-cards.manifest.json",
-        "decision_cases": "tests/fixtures/decision-route-cases-v5.json",
+        "decision_cases": "tests/fixtures/decision-route-cases-v6.json",
         "sequences": "tests/fixtures/plan-route-sequences.json",
     },
     "software-quality-workflows": {
-        "version": "6.0.0",
+        "version": "7.0.0",
         "router": "scripts/route_workflow.py",
         "decision_map": "registries/decision-card-map.json",
         "card_manifest": "registries/reference-cards.manifest.json",
-        "decision_cases": "tests/fixtures/decision-route-cases-v6.json",
+        "decision_cases": "tests/fixtures/decision-route-cases-v7.json",
         "sequences": "tests/fixtures/workflow-route-sequences.json",
     },
 }

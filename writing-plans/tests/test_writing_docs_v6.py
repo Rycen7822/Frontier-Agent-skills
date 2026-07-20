@@ -8,10 +8,10 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class WritingDocsV5Tests(unittest.TestCase):
+class WritingDocsV6Tests(unittest.TestCase):
     def test_entry_version_structure_budget_and_router_boundary(self) -> None:
         text = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-        self.assertRegex(text, r"(?m)^  version: 5\.0\.0$")
+        self.assertRegex(text, r"(?m)^  version: 6\.0\.0$")
         headings = [
             "## Owner boundary", "## Route", "## Profile selection", "## One-card protocol",
             "## SQW handoff", "## Completion",

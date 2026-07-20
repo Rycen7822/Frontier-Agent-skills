@@ -79,10 +79,10 @@ class BundleContractTests(unittest.TestCase):
         )
         Draft202012Validator.check_schema(schema)
         self.assertEqual([], list(Draft202012Validator(schema).iter_errors(checked_in)))
-        self.assertEqual("frontier-engineering/6.0.0+5.0.0", checked_in["bundle_id"])
+        self.assertEqual("frontier-engineering/7.0.0+6.0.0", checked_in["bundle_id"])
         self.assertEqual(2, checked_in["compatible_schema_epoch"])
         self.assertEqual(
-            {"software-quality-workflows": "6.0.0", "writing-plans": "5.0.0"},
+            {"software-quality-workflows": "7.0.0", "writing-plans": "6.0.0"},
             {skill_id: item["version"] for skill_id, item in checked_in["skills"].items()},
         )
         for item in checked_in["skills"].values():
@@ -118,11 +118,11 @@ class BundleContractTests(unittest.TestCase):
 
     def test_manifest_declares_exact_skills_versions_and_profiles(self) -> None:
         self.assertEqual("2.0", MANIFEST["bundle_schema_version"])
-        self.assertEqual("2.0.1", MANIFEST["bundle_version"])
+        self.assertEqual("3.0.0", MANIFEST["bundle_version"])
         skills = MANIFEST["skills"]
         self.assertEqual({"writing-plans", "software-quality-workflows"}, {item["id"] for item in skills})
         self.assertEqual(
-            {"writing-plans": "5.0.0", "software-quality-workflows": "6.0.0"},
+            {"writing-plans": "6.0.0", "software-quality-workflows": "7.0.0"},
             {item["id"]: item["version"] for item in skills},
         )
         for item in skills:

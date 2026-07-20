@@ -4,8 +4,12 @@
   "card_version": 2,
   "kind": "procedure",
   "decision_id": "wp.select.slicing.context-capsules",
-  "required_artifact_ids": ["outcome-slices"],
-  "produced_artifact_ids": ["context-capsule"],
+  "required_artifact_ids": [
+    "outcome-slices"
+  ],
+  "produced_artifact_ids": [
+    "context-capsule"
+  ],
   "max_bytes": 8192
 }
 ---

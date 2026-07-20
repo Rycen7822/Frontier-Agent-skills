@@ -3,7 +3,7 @@ name: writing-plans
 description: Use when an authorized software change needs a durable implementation plan, cross-context handoff, migration plan, or evidence-backed design decision. Do not use for routine direct edits, unresolved diagnosis, or actual execution, verification, sign-off, or publication.
 license: MIT
 metadata:
-  version: 5.0.0
+  version: 6.0.0
   author: Hermes Agent (adapted from obra/superpowers)
   hosts: [codex, hermes-agent]
   hermes:

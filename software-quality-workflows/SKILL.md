@@ -3,7 +3,7 @@ name: software-quality-workflows
 description: "Use for software inspection, diagnosis, implementation, refactoring, testing, review, recovery, migration, developer tooling, or developer-facing documentation. Routine low-risk same-session edits use the direct path; load one specialized card only when current facts select it."
 license: MIT
 metadata:
-  version: 6.0.0
+  version: 7.0.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:

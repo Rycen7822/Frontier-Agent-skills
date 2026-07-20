@@ -5,7 +5,9 @@
   "kind": "procedure",
   "decision_id": "wp.select.experiments.disposable-spike",
   "required_artifact_ids": [],
-  "produced_artifact_ids": ["spike-evidence"],
+  "produced_artifact_ids": [
+    "spike-evidence"
+  ],
   "max_bytes": 4096
 }
 ---

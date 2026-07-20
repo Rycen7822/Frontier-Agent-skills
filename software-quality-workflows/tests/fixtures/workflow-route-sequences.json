@@ -1,7 +1,7 @@
 {
   "schema_version": "outcome-linked-route-sequences/1.0",
   "skill_id": "software-quality-workflows",
-  "decision_case_fixture": "tests/fixtures/decision-route-cases-v6.json",
+  "decision_case_fixture": "tests/fixtures/decision-route-cases-v7.json",
   "entry_cases": [
     {
       "id": "sqw-entry-direct-change",

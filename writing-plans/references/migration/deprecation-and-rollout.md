@@ -4,8 +4,12 @@
   "card_version": 2,
   "kind": "procedure",
   "decision_id": "wp.select.migration.deprecation-and-rollout",
-  "required_artifact_ids": ["plan-program"],
-  "produced_artifact_ids": ["migration-plan"],
+  "required_artifact_ids": [
+    "plan-program"
+  ],
+  "produced_artifact_ids": [
+    "migration-plan"
+  ],
   "max_bytes": 8192
 }
 ---
