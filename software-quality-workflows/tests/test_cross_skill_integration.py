@@ -51,8 +51,8 @@ HANDOFF_SCHEMA = load_json(WRITING_ROOT / "schemas" / "plan-execution-handoff.sc
 WORKFLOW_FIXTURE = SQW_ROOT / "tests" / "fixtures" / "workflow-state" / "valid-m2.json"
 PLAN_FIXTURE = WRITING_ROOT / "tests" / "fixtures" / "plan-state" / "valid-program.json"
 EVENT_FIXTURE = SQW_ROOT / "tests" / "fixtures" / "workflow-events" / "valid-events.jsonl"
-WP_ROUTE_FIXTURE = WRITING_ROOT / "tests" / "fixtures" / "decision-route-cases-v6.json"
-SQW_ROUTE_FIXTURE = SQW_ROOT / "tests" / "fixtures" / "decision-route-cases-v7.json"
+WP_ROUTE_FIXTURE = WRITING_ROOT / "tests" / "fixtures" / "decision-route-cases-v7.json"
+SQW_ROUTE_FIXTURE = SQW_ROOT / "tests" / "fixtures" / "decision-route-cases-v8.json"
 
 
 def _workflow() -> dict:
@@ -99,7 +99,7 @@ class CrossSkillIntegrationTests(unittest.TestCase):
         handoff = {
             "schema_version": "3.0",
             "handoff_id": "wp-handoff:" + "0" * 64,
-            "bundle_id": "frontier-engineering/7.0.0+6.0.0",
+            "bundle_id": "frontier-engineering/8.0.0+7.0.0",
             "producer": {
                 "profile": "program", "card_id": "wp.profiles.handoff",
                 "decision_id": "wp.select.profiles.handoff", "completion_id": "sha256:" + "1" * 64,

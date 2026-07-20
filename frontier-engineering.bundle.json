@@ -1,39 +1,39 @@
 {
-  "bundle_id": "frontier-engineering/7.0.0+6.0.0",
+  "bundle_id": "frontier-engineering/8.0.0+7.0.0",
   "compatible_schema_epoch": 2,
   "contracts": {
     "plan-execution-handoff": {
       "contract_id": "https://local.frontier-agent/schemas/plan-execution-handoff.schema.json",
-      "normative_owner_hash": "sha256:3136914bc0765ee4d2db107e28fd53a1542323e9b77ab8aba41ae42095b8f702",
+      "normative_owner_hash": "sha256:b0bb3bf903698167ffedf86b47068fb8195ec87d37e820d4b98988de3b2fcc76",
       "normative_owner_path": "writing-plans/schemas/plan-execution-handoff.schema.json"
     }
   },
-  "release_build_id": "build-a38667057bdd39876be1f679",
+  "release_build_id": "build-6be01d8e0c4ee5f90676127e",
   "schema_version": "frontier-engineering-bundle/1.0",
   "skills": {
     "software-quality-workflows": {
       "policy_registry": {
-        "content_hash": "sha256:1c8d95cdbc7e324eaf70b656774000bf4a2166d1cad543aa21ce1d9fabe658a8",
+        "content_hash": "sha256:1c74a0ab4800488abe27288c53cbefccb879e70e404aedf0f5feb64e7f5b0f85",
         "path": "software-quality-workflows/registries/policy-owners.json"
       },
       "reference_card_manifest": {
-        "content_hash": "sha256:714ca6d884d6eabb99df9c0ebd7e4986ea903838513dd650ea951a8bcd8ae9d7",
+        "content_hash": "sha256:f4af90212af21a22a843ac916399ef1a1870c1a01ff220aaeac8e40bec1150ac",
         "path": "software-quality-workflows/registries/reference-cards.manifest.json"
       },
-      "root_hash": "sha256:3c3cd77f00deb07a108c89c39139b06ea9a874472c6dec81c024918f4c76ae47",
-      "version": "7.0.0"
+      "root_hash": "sha256:bb744cfdf1029eac7dff454117a92fb4566c7a29c3e3cd00a73cb713208957d9",
+      "version": "8.0.0"
     },
     "writing-plans": {
       "policy_registry": {
-        "content_hash": "sha256:7cdb46505282a5f1d37ecf8a8e1a1e46561e85af2b3ac64e8603ed2f19631c3e",
+        "content_hash": "sha256:5f6de287ebfaa9fe4f4f909507d867c1ebf6395f476240550efc180f5c635229",
         "path": "writing-plans/registries/policy-owners.json"
       },
       "reference_card_manifest": {
-        "content_hash": "sha256:a115c94b6dd2fbf29a957e94f4838990573a37a1f76ddda824ef261972303ca3",
+        "content_hash": "sha256:bb856adf9fbd829c1f3366e037a9feaef44fafad669e6a87a3a6881179c7e3c4",
         "path": "writing-plans/registries/reference-cards.manifest.json"
       },
-      "root_hash": "sha256:730eb9c2495d15f424b02e8e877a5552fe0dd957f66fcad41b48b25e45a3d79a",
-      "version": "6.0.0"
+      "root_hash": "sha256:6310d72f739b6a7c4e24e52e67ba01fb4d565d11db68e67e96816f87f2ed59b9",
+      "version": "7.0.0"
     }
   }
 }

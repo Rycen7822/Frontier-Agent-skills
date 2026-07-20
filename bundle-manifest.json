@@ -1,16 +1,16 @@
 {
   "bundle_schema_version": "2.0",
-  "bundle_version": "3.0.0",
+  "bundle_version": "4.0.0",
   "skills": [
     {
       "id": "writing-plans",
       "path": "writing-plans",
-      "version": "6.0.0"
+      "version": "7.0.0"
     },
     {
       "id": "software-quality-workflows",
       "path": "software-quality-workflows",
-      "version": "7.0.0"
+      "version": "8.0.0"
     }
   ],
   "cross_skill_contracts": [

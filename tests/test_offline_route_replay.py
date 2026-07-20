@@ -170,7 +170,7 @@ class OfflineRouteReplayTests(unittest.TestCase):
             report["baseline"]["skill_versions"],
         )
         self.assertEqual(
-            {"software-quality-workflows": "7.0.0", "writing-plans": "6.0.0"},
+            {"software-quality-workflows": "8.0.0", "writing-plans": "7.0.0"},
             report["vnext"]["skill_versions"],
         )
         self.assertEqual(62, len(report["selection_rows"]))

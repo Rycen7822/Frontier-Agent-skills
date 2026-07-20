@@ -3,7 +3,7 @@ name: writing-plans
 description: Use when an authorized software change needs a durable implementation plan, cross-context handoff, migration plan, or evidence-backed design decision. Do not use for routine direct edits, unresolved diagnosis, or actual execution, verification, sign-off, or publication.
 license: MIT
 metadata:
-  version: 6.0.0
+  version: 7.0.0
   author: Hermes Agent (adapted from obra/superpowers)
   hosts: [codex, hermes-agent]
   hermes:
@@ -16,42 +16,49 @@ metadata:
 
 ## Owner boundary
 
-Own the lightest durable intended-state plan preserving scope, constraints, decisions, order, recovery, and proof. Compile what must become true; never claim actual execution truth.
+Own the lightest intended-state plan preserving scope, decisions, order, recovery, and proof. Never claim execution truth. Diagnosis, edits, evidence acceptance, and publication belong to `software-quality-workflows`; `long-document-segmented-writing` owns large-corpus drafting.
 
-Diagnosis, code edits, evidence acceptance, execution state, sign-off, and publication belong to `software-quality-workflows` (SQW). Direct work remains planless unless a durable plan is requested. Long non-software corpora belong to `long-document-segmented-writing`.
+Codex and Hermes Agent share this contract. Resolve paths from this root; index authoritative sources instead of copying them.
 
-The contract is identical in Codex and Hermes Agent. Resolve bundled paths from this skill root and use equivalent host capabilities; plan UI and delegation are optional. Plans index authoritative sources and stable IDs rather than copying the repository.
+## Card-cycle entry
 
-## Route
+Use only this skill root's `scripts/card_cycle.py` as the model-facing protocol:
 
-Observe facts; do not infer missing safety facts. Run `scripts/assess_plan_mode.py` with input conforming to `schemas/plan-route-facts.schema.json`, then validate the exact result against `schemas/plan-route-result.schema.json`, `registries/decision-card-map.json`, and the live card manifest.
+1. Read the compact initial contract with `LC_ALL=C scripts/card_cycle.py route --help`.
+2. Send one v2 command through stdin with `scripts/card_cycle.py route --input - --source-root <source>`; add `--work-root` only for resume.
+3. For `next_step.kind=card`, read only `card_path`, verify `card_hash`, and make that decision. Never select by memory, similarity, cross-card link, or scan.
+4. Build the v2 complete command from `input_contract`; pass only `--source-root`, `required_root_args.always`, and matching conditional roots.
+5. Send it with `scripts/card_cycle.py complete --input - ...`. Keep only the replacement receipt, never a receipt chain.
+6. Resume only with route; render bounded output only with `scripts/card_cycle.py render --input - ...`; then return to the cycle.
 
-Fixed precedence: unknown root cause or material intent gap returns to SQW; long corpus selects its bridge; one feasibility uncertainty selects spike; public contract, migration, resume, external effect, or multiple strategy families select Program; cross-context, durable, multi-slice, or copy-paste execution selects Handoff; an explicit plan request selects Brief; otherwise return Direct.
+`scripts/assess_plan_mode.py`, schemas, registries, manifests, tests, operator docs, templates, and support map are internal, not model commands/default reads. Identity mismatch fails closed.
 
-Accept exactly zero or one `primary_card` transport reference. Pending decisions enter the queue only through a schema-valid `decision_request` produced by the just-completed mapped card. Unknown, duplicate, completed, producer-mismatched, or prerequisite-missing decisions block with a typed reason. Never choose a card by filename, memory, cross-card link, or broad similarity.
+`semantic_inline` fields/results exist only in stdin/stdout or owner state. Except for returned boundary/projection locators, write no protocol file. Do not open raw state, locks, whole artifact/projection directories, full schemas/manifests, fixtures, history, or logs. Replacement stops propagation; it does not prove physical context eviction.
 
-## Profile selection
+## Selection and profiles
 
-- Brief (`wp.profiles.brief`): one same-session outcome; no durable graph or state.
-- Handoff (`wp.profiles.handoff`): ordered slices, frontier, boundaries, gaps, proof, and rollback.
-- Program (`wp.profiles.program`): multi-owner, public-contract, migration, or resumable program graph. `schemas/plan-state.schema.json` is truth; render only frontier-relevant decisions and invariants within 8,192 bytes.
+Unknown cause/intent returns to SQW; long corpus selects bridge; one uncertainty selects spike; public contract, migration, resume, external effect, or multiple strategies select Program; cross-context/durable/multi-slice execution selects Handoff; explicit plan requests select Brief; otherwise Direct.
 
-Use the lightest profile that preserves migration, authority, recovery, and verifier dependencies. Validate Program state through `scripts/validate_plan_state.py`. Generated profiles and capsules are disposable projections: capsules bind exact card and projection hashes, have an effective 8,192-byte ceiling, and fail closed if mandatory content does not fit.
+- Brief: one same-session immutable projection; no owner or anchor.
+- Handoff: ordered slices, boundaries, proof, rollback, one delivery locator; no owner anchor.
+- Program: one durable migration/resume graph. `schemas/plan-state.schema.json` is truth; render the frontier within 8,192 bytes.
 
-## One-card protocol
+Use the lightest profile preserving authority, recovery, and proof. A missing long-document owner yields a typed blocker. Hand intended state to SQW only through `schemas/plan-execution-handoff.schema.json`; SQW revalidates it.
 
-Load the selected card, verify its map/manifest identity, and make only its named decision. Emit only the declared artifact or typed blocker, then reroute. Do not preload siblings, operator manuals, or directories.
+## One-card context
 
-Use the [support map](references/package-support-map.md) only for lookup; do not preload it. Cards decide; schemas/scripts own machine truth; `operator/` non-model runtime; templates projections. Policies: `policy_id + bundle_version + policy_hash`, never paths.
+Context is limited to this entry, current help/receipt, one card, short stdout, and one needed projection/boundary. Manifest/card drift invalidates projections; source/scope/policy drift replans. Overflow blocks.
 
-If context is approaching its limit, persist canonical state and render a node capsule with `scripts/render_context_capsule.py`; do not write a prose substitute. Manifest/card drift invalidates only generated context, while source, scope, or root-policy drift requires wider replanning.
+The long-document bridge passes only `scratch_retention`, final locator/hash, source/scope, requirements, and unresolved decisions. Never copy sections, ledger, coverage, recovery, or confidence content.
 
-## SQW handoff
+## Program anchor lifecycle
 
-Writing Plans hands off intended state; SQW independently owns execution and proof. Emit exactly `schemas/plan-execution-handoff.schema.json`: plan identity, source revision, authority manifest, scope, current frontier, required SQW policy IDs, and unresolved blockers.
+After Program bootstrap, keep exactly one line in an existing canonical task index or host state; create one task anchor only if neither exists:
 
-Do not include internal route-card IDs in the handoff. Point to canonical plan state instead of embedding historical nodes. SQW may reject stale, under-authorized, unverifiable, or conflicting plans.
+`owner=<skill>/<owner-kind> | root=<exact task root> | locator=<immutable owner locator> | source=<source identity> | bundle=<bundle identity> | lifecycle=<active|terminal-retain|terminal-disposable> | boundary=<none or named consumer/evidence ref>`
+
+Keep each root isolated and outside source. Replace locator/source in place; never save receipts. Without an unconsumed boundary, mark `terminal-disposable`, safely remove the exact root, verify absence, then remove the anchor. A named boundary is `terminal-retain` until consumption evidence. Never delete by age or add lifecycle schema, cleanup command, registry, or per-step anchor.
 
 ## Completion
 
-Writing is complete when the requested artifact is internally consistent, source-bound, proportionate, schema-valid where applicable, and handed off with explicit gaps. This does not mean implementation, sign-off, publication, or workflow completion; report those outcomes as unproven until SQW supplies fresh owner-qualified evidence.
+Writing is complete when the requested artifact is consistent, source-bound, proportionate, schema-valid where applicable, and handed off with explicit gaps. This does not prove implementation, sign-off, publication, or workflow completion.

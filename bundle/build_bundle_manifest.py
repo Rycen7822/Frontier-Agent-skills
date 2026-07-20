@@ -21,14 +21,14 @@ if str(SCRIPTS) not in sys.path:
 from _bundle_hash import FORBIDDEN_PARTS, FORBIDDEN_SUFFIXES, inventory, tree_hash  # noqa: E402
 
 
-BUNDLE_ID = "frontier-engineering/7.0.0+6.0.0"
+BUNDLE_ID = "frontier-engineering/8.0.0+7.0.0"
 SCHEMA_EPOCH = 2
 OUTPUT = ROOT / "frontier-engineering.bundle.json"
 SCHEMA = ROOT / "bundle" / "frontier-engineering-bundle.schema.json"
 SOURCE_MANIFEST = ROOT / "bundle-manifest.json"
 EXPECTED_SKILLS = {
-    "software-quality-workflows": "7.0.0",
-    "writing-plans": "6.0.0",
+    "software-quality-workflows": "8.0.0",
+    "writing-plans": "7.0.0",
 }
 POLICY_REGISTRY = Path("registries/policy-owners.json")
 CARD_MANIFEST = Path("registries/reference-cards.manifest.json")
@@ -114,8 +114,8 @@ def build_manifest() -> dict[str, Any]:
     }
     if observed != EXPECTED_SKILLS or len(skills) != len(EXPECTED_SKILLS):
         raise ValueError(f"source bundle must bind the exact vNext skill pair: {observed}")
-    if source.get("bundle_schema_version") != "2.0" or source.get("bundle_version") != "3.0.0":
-        raise ValueError("source bundle must bind schema 2.0 and release 3.0.0")
+    if source.get("bundle_schema_version") != "2.0" or source.get("bundle_version") != "4.0.0":
+        raise ValueError("source bundle must bind schema 2.0 and release 4.0.0")
     if source.get("cross_skill_contracts") != ["plan-to-workflow", "workflow-plan-change-proposal"]:
         raise ValueError("source bundle must declare the exact two cross-skill contracts")
     route_source = source.get("cross_skill_routes")

@@ -17,7 +17,7 @@ from route_workflow import assess  # noqa: E402
 class WorkflowRouteSequenceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.decision_map = self._load("registries/decision-card-map.json")
-        self.selector_fixture = self._load("tests/fixtures/decision-route-cases-v7.json")
+        self.selector_fixture = self._load("tests/fixtures/decision-route-cases-v8.json")
         self.sequence_fixture = self._load("tests/fixtures/workflow-route-sequences.json")
 
     @staticmethod
@@ -34,7 +34,7 @@ class WorkflowRouteSequenceTests(unittest.TestCase):
         self.assertEqual("outcome-linked-route-sequences/1.0", self.sequence_fixture["schema_version"])
         self.assertEqual("software-quality-workflows", self.sequence_fixture["skill_id"])
         self.assertEqual(
-            "tests/fixtures/decision-route-cases-v7.json",
+            "tests/fixtures/decision-route-cases-v8.json",
             self.sequence_fixture["decision_case_fixture"],
         )
         mappings = self.decision_map["decisions"]

@@ -26,7 +26,7 @@ from _writing_reference_cards import (  # noqa: E402
 )
 
 
-class ReferenceCardsV6Tests(unittest.TestCase):
+class ReferenceCardsV7Tests(unittest.TestCase):
     def test_navigation_render_preserves_frontmatter_bytes(self) -> None:
         card = parse_card(ROOT / "references" / "design" / "decision-resolution.md", ROOT)
         boundary = card.raw.find(b"\n---\n", 4) + 5
@@ -40,7 +40,7 @@ class ReferenceCardsV6Tests(unittest.TestCase):
         self.assertEqual([], issues)
         self.assertEqual(canonical_json_bytes(expected), manifest_path.read_bytes())
         self.assertEqual(10, len(manifest["cards"]))
-        self.assertEqual("6.0.0", manifest["skill_version"])
+        self.assertEqual("7.0.0", manifest["skill_version"])
         self.assertLessEqual(sum(card["bytes"] for card in manifest["cards"]), 10 * 8192)
         for schema_name, instance in (
             ("policy-owners.schema.json", load_json(ROOT / "registries" / "policy-owners.json")),
@@ -63,7 +63,7 @@ class ReferenceCardsV6Tests(unittest.TestCase):
             for name in ("references", "registries"):
                 shutil.copytree(ROOT / name, target / name)
             (target / "tests" / "fixtures").mkdir(parents=True)
-            shutil.copy2(ROOT / "tests" / "fixtures" / "decision-route-cases-v6.json", target / "tests" / "fixtures")
+            shutil.copy2(ROOT / "tests" / "fixtures" / "decision-route-cases-v7.json", target / "tests" / "fixtures")
 
             decision_map = json.loads((target / "registries" / "decision-card-map.json").read_text(encoding="utf-8"))
             decision_map["decisions"].append(dict(decision_map["decisions"][0], card_id="wp.orphan.card"))
@@ -71,9 +71,9 @@ class ReferenceCardsV6Tests(unittest.TestCase):
             self.assertIn("decision-map.coverage", {issue.code for issue in build_manifest(target)[1]})
 
             shutil.copy2(ROOT / "registries" / "decision-card-map.json", target / "registries")
-            fixtures = json.loads((target / "tests" / "fixtures" / "decision-route-cases-v6.json").read_text(encoding="utf-8"))
+            fixtures = json.loads((target / "tests" / "fixtures" / "decision-route-cases-v7.json").read_text(encoding="utf-8"))
             fixtures["near_miss_cases"].pop()
-            (target / "tests" / "fixtures" / "decision-route-cases-v6.json").write_text(json.dumps(fixtures), encoding="utf-8")
+            (target / "tests" / "fixtures" / "decision-route-cases-v7.json").write_text(json.dumps(fixtures), encoding="utf-8")
             self.assertIn("decision-fixture.coverage", {issue.code for issue in build_manifest(target)[1]})
 
     def test_card_cycle_is_the_only_public_route_surface(self) -> None:

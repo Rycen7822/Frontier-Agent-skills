@@ -1,8 +1,8 @@
 {
-  "bundle_id": "frontier-engineering/7.0.0+6.0.0",
+  "bundle_id": "frontier-engineering/8.0.0+7.0.0",
   "cards": [
     {
-      "bytes": 2196,
+      "bytes": 2403,
       "card_id": "wp.bridges.long-document-handoff",
       "card_version": 2,
       "decision_id": "wp.select.bridges.long-document-handoff",
@@ -13,7 +13,7 @@
         "long-document-handoff"
       ],
       "required_artifact_ids": [],
-      "sha256": "sha256:4be0102eaf10a133d37babbf5d4cce0a454bf3f6f4d279a00127710ad5637eda"
+      "sha256": "sha256:99e88985835d30b9aa37d8e5016d2ae9bdb9bd058d52a91bd10a3d73240e3546"
     },
     {
       "bytes": 4297,
@@ -209,5 +209,5 @@
   },
   "schema_version": "2.0",
   "skill_id": "writing-plans",
-  "skill_version": "6.0.0"
+  "skill_version": "7.0.0"
 }

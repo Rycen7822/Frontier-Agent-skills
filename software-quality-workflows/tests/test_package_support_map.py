@@ -80,8 +80,9 @@ class PackageSupportMapTests(unittest.TestCase):
         self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
         self.assertTrue((ROOT / SUPPORT_MAP).is_file())
         skill_entry = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("](references/package-support-map.md)", skill_entry)
-        self.assertIn("do not preload", skill_entry.lower())
+        self.assertNotIn("](references/package-support-map.md)", skill_entry)
+        self.assertIn("support map", skill_entry.lower())
+        self.assertIn("not model commands or default reads", skill_entry.lower())
         self._assert_map_exact(ROOT)
 
     def test_entrypoint_pair_stays_within_the_frozen_budget(self) -> None:
