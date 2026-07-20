@@ -33,12 +33,14 @@ CORE_GRAPH = re.compile(
 ENTRY_REQUIRED_TEXT = (
     "LC_ALL=C scripts/card_cycle.py route --help",
     "scripts/card_cycle.py route --input -",
+    "target repository root, never this skill root",
     "card_path",
     "card_hash",
     "input_contract",
     "required_root_args.always",
     "conditional",
     "replacement receipt",
+    "entire current replacement receipt",
     "receipt chain",
     "scripts/card_cycle.py complete --input -",
     "scripts/card_cycle.py render --input -",
@@ -203,7 +205,7 @@ class AtomicCutoverContractTests(unittest.TestCase):
         )
 
     def test_model_entries_are_closed_over_the_card_cycle(self) -> None:
-        limits = {"writing-plans": 4850, "software-quality-workflows": 6817}
+        limits = {"writing-plans": 5200, "software-quality-workflows": 7200}
         raw_selector_command = re.compile(
             r"`[^`]*(?:assess_plan_mode|route_workflow)\.py\s+(?:--|route|complete|render)[^`]*`"
         )

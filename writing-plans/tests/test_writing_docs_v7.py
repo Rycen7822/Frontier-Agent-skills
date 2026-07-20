@@ -17,7 +17,7 @@ class WritingDocsV7Tests(unittest.TestCase):
             "## Program anchor lifecycle", "## Completion",
         ]
         self.assertEqual(headings, re.findall(r"(?m)^## .+$", text))
-        self.assertLessEqual(len(text.encode("utf-8")), 4850)
+        self.assertLessEqual(len(text.encode("utf-8")), 5200)
         for anchor in (
             "LC_ALL=C scripts/card_cycle.py route --help", "replacement receipt", "one needed projection/boundary",
             "terminal-disposable", "Codex and Hermes Agent",

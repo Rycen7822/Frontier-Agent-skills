@@ -294,11 +294,19 @@ class BriefCardCycleTests(unittest.TestCase):
             self.assertEqual("", completed.stderr)
             outputs.append(completed.stdout)
         self.assertEqual(outputs[0], outputs[1])
-        self.assertEqual(637, len(outputs[0].encode("utf-8")))
+        self.assertLessEqual(len(outputs[0].encode("utf-8")), 1_024)
         lines = outputs[0].splitlines()
         self.assertEqual("usage: card_cycle.py route --input - --source-root PATH [--work-root PATH]", lines[0])
         initial = json.loads(lines[1].removeprefix("initial_input_contract="))
         self.assertEqual("wp.route.initial/2", initial["contract_id"])
+        reconstructed = dict(initial["fixed_command"])
+        reconstructed[initial["route_fields_key"]] = self._route_command()["fields"]
+        self.assertEqual(self._route_command(), reconstructed)
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source"
+            source.mkdir()
+            (source / "subject.py").write_text("def value():\n    return 1\n", encoding="utf-8")
+            self._receipt(self._run("route", reconstructed, source))
         groups = initial["required_fields"]
         projected = [name for group in (groups["boolean"], groups["string_array"], groups["integer_min"], groups["enum"]) for name in group]
         schema, registry, manifest = cycle._load_contracts()
@@ -315,9 +323,9 @@ class BriefCardCycleTests(unittest.TestCase):
                 contract = cycle._card_input_contract(schema, registry, card, program=program)
                 observed.append((len(cycle._canonical(contract)), card["card_id"], program))
                 self.assertFalse(set(contract["required_fields"]) & set(contract["optional_fields"]))
+                self.assertEqual(set(contract["required_fields"]) | set(contract["optional_fields"]), set(contract["field_types"]))
                 self.assertLessEqual(len(cycle._canonical(contract)), cycle.INPUT_CONTRACT_MAX_BYTES)
         self.assertEqual(15, len(observed))
-        self.assertEqual((457, "wp.economy.output-projection", True), max(observed))
         sample = json.loads(json.dumps(manifest["cards"][0]))
         for artifact_ids in ([], ["one", "two"]):
             sample["produced_artifact_ids"] = artifact_ids

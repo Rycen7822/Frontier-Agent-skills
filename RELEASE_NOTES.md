@@ -6,6 +6,8 @@ Bundle 4.0.0 atomically pairs `writing-plans` 7.0.0 with `software-quality-workf
 
 The model entrypoints now use only the local `card_cycle.py`, one hash-verified returned card, stdin/stdout or owner state, and one replacement receipt. Raw state, receipt chains, protocol worknotes, directory walks, and per-step sibling artifacts are outside the model read/write surface. M2/M3/Program recovery uses one task anchor with explicit retain/dispose evidence. Writing Plans also fixes Program owner locators up to the existing 65,536-byte state ceiling without increasing the 32,768-byte artifact/projection limit.
 
+Initial route help now projects the fixed command envelope, target-repository root role, and SQW surface constraints. Every completion contract projects schema-derived field types and array enum values within an 800-byte ceiling, while the entry contract requires the entire current replacement receipt instead of flattened IDs. These are single-path v2 contract clarifications; no compatibility reader or parallel state format is added.
+
 This remains a local deterministic candidate. Isolated packaging and installation, scoped L2 usefulness, activation, publication, deployment, credentials, and remote writes are independent gates; no empirical model claim is made by this source cut.
 
 ## Bundle 3.0.0 bounded card-cycle runtimes

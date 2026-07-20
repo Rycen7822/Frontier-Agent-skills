@@ -301,11 +301,23 @@ class CardCycleM0Tests(unittest.TestCase):
             self.assertEqual("", completed.stderr)
             outputs.append(completed.stdout)
         self.assertEqual(outputs[0], outputs[1])
-        self.assertEqual(637, len(outputs[0].encode("utf-8")))
+        self.assertLessEqual(len(outputs[0].encode("utf-8")), 1_280)
         lines = outputs[0].splitlines()
         self.assertEqual("usage: card_cycle.py route --input - --source-root PATH [--work-root PATH]", lines[0])
         initial = json.loads(lines[1].removeprefix("initial_input_contract="))
         self.assertEqual("sqw.route.initial/2", initial["contract_id"])
+        reconstructed = dict(initial["fixed_command"])
+        reconstructed[initial["route_fields_key"]] = self._initial_command()["fields"]
+        self.assertEqual(self._initial_command(), reconstructed)
+        self.assertEqual({
+            "implicated_surfaces": {"enum": cycle.SURFACE_FAMILIES},
+            "unknown_implicated_facts": {"subset_of": "implicated_surfaces"},
+        }, initial["field_constraints"])
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source"
+            source.mkdir()
+            (source / "subject.py").write_text("def value():\n    return 1\n", encoding="utf-8")
+            self._success_receipt(self._run("route", reconstructed, source))
         groups = initial["required_fields"]
         projected = [name for group in (groups["boolean"], groups["string_array"], groups["integer_min"], groups["enum"]) for name in group]
         schema, registry, manifest = cycle._load_contracts()
@@ -318,12 +330,15 @@ class CardCycleM0Tests(unittest.TestCase):
             observed.append((len(cycle._canonical(contract)), card["card_id"]))
             self.assertEqual({
                 "completion_contract_id", "artifact_id", "persistence_class", "required_fields",
-                "optional_fields", "enum_values", "human_max_bytes", "required_root_args",
+                "optional_fields", "enum_values", "field_types", "human_max_bytes", "required_root_args",
             }, set(contract))
             self.assertFalse(set(contract["required_fields"]) & set(contract["optional_fields"]))
+            self.assertEqual(set(contract["required_fields"]) | set(contract["optional_fields"]), set(contract["field_types"]))
             self.assertLessEqual(len(cycle._canonical(contract)), cycle.INPUT_CONTRACT_MAX_BYTES)
         self.assertEqual(52, len(observed))
-        self.assertEqual((532, "sqw.control.scope-authority-and-effects"), max(observed))
+        entry_contract = cycle._card_input_contract(schema, registry, next(card for card in manifest["cards"] if card["card_id"].startswith("sqw.entry.")))
+        self.assertEqual("string[]", entry_contract["field_types"]["protected_paths"])
+        self.assertEqual("string[]", entry_contract["field_types"]["proof_requirements"])
         scope = cycle._card_input_contract(schema, registry, next(card for card in manifest["cards"] if card["card_id"] == "sqw.control.scope-authority-and-effects"))
         self.assertEqual([{"arg": "--work-root", "field": "mode", "in": ["M2", "M3"]}], scope["required_root_args"]["conditional"])
         sample = json.loads(json.dumps(manifest["cards"][0]))

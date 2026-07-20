@@ -38,9 +38,9 @@ Before changing anything:
 Use only this skill root's `scripts/card_cycle.py` as the model-facing protocol:
 
 1. Read the compact initial contract with `LC_ALL=C scripts/card_cycle.py route --help`.
-2. Send one v2 route command through stdin with `scripts/card_cycle.py route --input - --source-root <source>`; add `--work-root` only for a durable resume required by that command.
+2. Send one v2 route command through stdin with `scripts/card_cycle.py route --input - --source-root <source>`; `--source-root` is the target repository root, never this skill root. Add `--work-root` only for a durable resume required by that command.
 3. For `next_step.kind=card`, read only `card_path`, verify `card_hash`, and make that decision. Never select by memory, similarity, link, or scan.
-4. Build the v2 complete command from `input_contract`; pass only `--source-root`, `required_root_args.always`, and matching conditional roots.
+4. Every complete/render stdin object has exactly: `contract_id` from `input_contract`, `invocation_phase` (`initial` or `resume`), `previous_receipt` as the entire current replacement receipt (never an ID), `fields` from `input_contract`, and `outcome.blocker`; pass only `--source-root`, `required_root_args.always`, and matching conditional roots.
 5. Send the command through stdin with `scripts/card_cycle.py complete --input - ...`. Keep only the returned replacement receipt; never preserve a receipt chain.
 6. Resume durable work only with the route resume variant. Produce bounded durable projections only with `scripts/card_cycle.py render --input - ...`. After every completion, return to the card cycle; cards never select or preload successors.
 

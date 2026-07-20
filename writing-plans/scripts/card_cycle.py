@@ -47,7 +47,7 @@ MANIFEST_PATH = ROOT / "registries" / "reference-cards.manifest.json"
 HANDOFF_SCHEMA_PATH = ROOT / "schemas" / "plan-execution-handoff.schema.json"
 COMMAND_MAX_BYTES = 65_536
 RECEIPT_MAX_BYTES = 12_288
-INPUT_CONTRACT_MAX_BYTES = 544
+INPUT_CONTRACT_MAX_BYTES = 800
 ROUTE_HELP_MAX_BYTES = 1_024
 SOURCE_FILE_MAX_BYTES = 8 * 1024 * 1024
 SOURCE_TOTAL_MAX_BYTES = 32 * 1024 * 1024
@@ -736,6 +736,41 @@ def _definition(schema: dict[str, Any], reference: str) -> dict[str, Any]:
     return definition
 
 
+def _field_type(definition: dict[str, Any]) -> str:
+    value = definition.get("type")
+    if isinstance(value, list) and value and all(isinstance(item, str) for item in value):
+        return "|".join(value)
+    if value == "array":
+        items = definition.get("items", {})
+        item_type = items.get("type") if isinstance(items, dict) else None
+        if isinstance(item_type, str):
+            return item_type + "[]"
+        if isinstance(items, dict) and isinstance(items.get("enum"), list):
+            return "enum[]"
+        if isinstance(items, dict) and isinstance(items.get("$ref"), str):
+            return "object[]"
+        raise CycleError("E_CONTRACT_INVALID", "array field type cannot be projected", exit_code=5)
+    if isinstance(value, str):
+        return value
+    if isinstance(definition.get("$ref"), str):
+        return "object"
+    choices = definition.get("oneOf")
+    if isinstance(choices, list) and choices:
+        return "|".join(sorted({_field_type(choice) for choice in choices if isinstance(choice, dict)}))
+    if isinstance(definition.get("enum"), list):
+        return "enum"
+    raise CycleError("E_CONTRACT_INVALID", "field type cannot be projected", exit_code=5)
+
+
+def _enum_values(definition: dict[str, Any]) -> list[Any] | None:
+    if isinstance(definition.get("enum"), list):
+        return definition["enum"]
+    items = definition.get("items")
+    if isinstance(items, dict) and isinstance(items.get("enum"), list):
+        return items["enum"]
+    return None
+
+
 def _input_contract(
     schema: dict[str, Any],
     registry: dict[str, Any],
@@ -773,7 +808,8 @@ def _input_contract(
         "persistence_class": family["persistence_class"],
         "required_fields": required,
         "optional_fields": sorted(set(properties) - set(required)),
-        "enum_values": {name: properties[name]["enum"] for name in sorted(properties) if isinstance(properties[name], dict) and "enum" in properties[name]},
+        "enum_values": {name: values for name in sorted(properties) if (values := _enum_values(properties[name])) is not None},
+        "field_types": {name: _field_type(properties[name]) for name in sorted(properties)},
         "human_max_bytes": family["human_max_bytes"],
         "required_root_args": {"always": always, "conditional": conditional},
     }
@@ -821,7 +857,19 @@ def _route_help_contract(schema: dict[str, Any]) -> dict[str, Any]:
             raise CycleError("E_CONTRACT_INVALID", "route field cannot be projected", exit_code=5)
     if sum(len(value) for value in groups.values()) != len(fields["required"]):
         raise CycleError("E_CONTRACT_INVALID", "route fields are not uniquely projected", exit_code=5)
-    return {"contract_id": "wp.route.initial/2", "required_fields": groups, "required_root_args": ["--source-root"]}
+    fixed_command = {
+        "contract_id": "wp.route.initial/2",
+        "invocation_phase": "initial",
+        "previous_receipt": None,
+        "outcome": {"blocker": None},
+    }
+    return {
+        "contract_id": "wp.route.initial/2",
+        "fixed_command": fixed_command,
+        "route_fields_key": "fields",
+        "required_fields": groups,
+        "required_root_args": ["--source-root"],
+    }
 
 
 def _route_help() -> str:

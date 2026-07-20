@@ -25,9 +25,9 @@ Codex and Hermes Agent share this contract. Resolve paths from this root; index 
 Use only this skill root's `scripts/card_cycle.py` as the model-facing protocol:
 
 1. Read the compact initial contract with `LC_ALL=C scripts/card_cycle.py route --help`.
-2. Send one v2 command through stdin with `scripts/card_cycle.py route --input - --source-root <source>`; add `--work-root` only for resume.
+2. Send one v2 command through stdin with `scripts/card_cycle.py route --input - --source-root <source>`; `--source-root` is the target repository root, never this skill root. Add `--work-root` only for resume.
 3. For `next_step.kind=card`, read only `card_path`, verify `card_hash`, and make that decision. Never select by memory, similarity, cross-card link, or scan.
-4. Build the v2 complete command from `input_contract`; pass only `--source-root`, `required_root_args.always`, and matching conditional roots.
+4. Every complete/render stdin object has exactly: `contract_id` from `input_contract`, `invocation_phase` (`initial` or `resume`), `previous_receipt` as the entire current replacement receipt (never an ID), `fields` from `input_contract`, and `outcome.blocker`; pass only `--source-root`, `required_root_args.always`, and matching conditional roots.
 5. Send it with `scripts/card_cycle.py complete --input - ...`. Keep only the replacement receipt, never a receipt chain.
 6. Resume only with route; render bounded output only with `scripts/card_cycle.py render --input - ...`; then return to the cycle.
 
