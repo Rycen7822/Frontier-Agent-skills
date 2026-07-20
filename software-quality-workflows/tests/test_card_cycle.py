@@ -435,6 +435,57 @@ class CardCycleM0Tests(unittest.TestCase):
             self.assertEqual(projection_identity, (projection_path.stat().st_ino, projection_path.stat().st_mtime_ns, projection_path.read_bytes()))
             self.assertFalse((work / "projections" / "workflow-context.md.tmp").exists())
 
+    def test_source_nested_work_root_and_v2_owner_are_zero_write_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            source.mkdir()
+            source_file = source / "input.txt"
+            source_file.write_text("stable input\n", encoding="utf-8")
+            route = self._success_receipt(self._run("route", self._initial_command(), source))
+            entry = self._success_receipt(self._run("complete", self._entry_command(route), source))
+            command = self._scope_command(entry, mode="M2")
+
+            nested = source / "workflow"
+            nested.mkdir()
+            source_before = (source_file.read_bytes(), source_file.stat().st_mtime_ns)
+            rejected_nested = self._run("complete", command, source, "--work-root", str(nested))
+            self.assertEqual(5, rejected_nested.returncode)
+            self.assertEqual("E_ORPHAN_CONFLICT", json.loads(rejected_nested.stderr)["code"])
+            self.assertEqual([], list(nested.iterdir()))
+            self.assertEqual(source_before, (source_file.read_bytes(), source_file.stat().st_mtime_ns))
+
+            work = root / "work"
+            work.mkdir()
+            scoped = self._success_receipt(self._run("complete", command, source, "--work-root", str(work)))
+            state_path = work / "state.json"
+            retired = json.loads(state_path.read_text(encoding="utf-8"))
+            retired["schema_version"] = "2.0"
+            retired.pop("state_hash")
+            retired["state_hash"] = "sha256:" + sha256(
+                json.dumps(retired, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+            state_path.write_text(
+                json.dumps(retired, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+            control_before = {
+                name: ((work / name).stat().st_ino, (work / name).stat().st_mtime_ns, (work / name).read_bytes())
+                for name in (".adapter.lock", "state.json", "locks.json")
+            }
+            rejected_v2 = self._run("route", self._resume_command(scoped), source, "--work-root", str(work))
+            self.assertEqual(5, rejected_v2.returncode)
+            self.assertEqual("E_ORPHAN_CONFLICT", json.loads(rejected_v2.stderr)["code"])
+            self.assertEqual(
+                control_before,
+                {
+                    name: ((work / name).stat().st_ino, (work / name).stat().st_mtime_ns, (work / name).read_bytes())
+                    for name in (".adapter.lock", "state.json", "locks.json")
+                },
+            )
+            self.assertEqual([], list((work / "artifacts").iterdir()))
+            self.assertEqual([], list((work / "projections").iterdir()))
+
     def test_durable_inline_completion_advances_once_and_terminal_clears_lease(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

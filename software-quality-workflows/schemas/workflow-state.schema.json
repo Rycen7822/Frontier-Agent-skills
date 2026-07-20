@@ -25,7 +25,6 @@
     "scope": {"$ref": "#/$defs/scope"},
     "global_invariants": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/invariant"}},
     "active_owners": {"$ref": "#/$defs/active_owners"},
-    "context_trace_ref": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/artifact_ref"}]},
     "plan_ref": {"$ref": "#/$defs/plan_ref"},
     "nodes": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/node"}},
     "verifiers": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/verifier"}},

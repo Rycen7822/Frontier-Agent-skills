@@ -8,7 +8,7 @@
   "card_manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
   "status": "active",
   "state_version": 3,
-  "state_hash": "sha256:bde4d75be9d87314f4abc61a966f6645b5a1f9900ff432c4b91dc3538e2b0009",
+  "state_hash": "sha256:8d4c5dbdfbfdd56711dcc594401c705c23cff13d3ed0050fdec0c3aa7545143b",
   "bootstrap": {
     "operation_id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
     "entry_completion_id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
@@ -71,7 +71,6 @@
     "normative": ["test-driven-development", "verification-discipline"],
     "companions": []
   },
-  "context_trace_ref": "artifact:context-trace/trace-manifest-refresh",
   "plan_ref": {
     "plan_id": "plan-manifest-refresh",
     "artifact_ref": "artifact:plan/plan-manifest-refresh",
