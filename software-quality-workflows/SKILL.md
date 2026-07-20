@@ -39,12 +39,12 @@ Use **M0 Direct** without `card_cycle.py` only for same-session, local, reversib
 
 All other work uses only this skill root's `scripts/card_cycle.py` as the model-facing protocol:
 
-1. Read the initial contract with `LC_ALL=C scripts/card_cycle.py route --help`.
-2. Send one v2 route command through stdin with `scripts/card_cycle.py route --input - --source-root <source>`; `--source-root` is the target repository root, never this skill root. Add `--work-root` only for required durable resume.
-3. For `next_step.kind=card`, read only `card_path`, verify `card_hash`, and decide it. Never select by memory, similarity, link, or scan.
-4. Every complete/render stdin object has exactly: `contract_id` from `input_contract`, `invocation_phase` (`initial` or `resume`), `previous_receipt` as the entire current replacement receipt (never an ID), `fields` from `input_contract`, and `outcome.blocker`; pass only `--source-root`, `required_root_args.always`, and matching conditional roots.
-5. Send it through stdin with `scripts/card_cycle.py complete --input - ...`; keep only the replacement receipt, never a receipt chain.
-6. Resume durable work only with route; render bounded projections only with `scripts/card_cycle.py render --input - ...`; after completion return to the cycle.
+1. Read `LC_ALL=C scripts/card_cycle.py route --help`.
+2. Route fields only with `scripts/card_cycle.py route --fields-json '<object>' --source-root <source>`; resume uses the same command with `--resume`, owner-locator fields and required external `--work-root`. Source is the target repository.
+3. For a card step, read only `card_path`, verify `card_hash`, and decide it; never select from memory or scan.
+4. Pipe the receipt unchanged to `scripts/card_cycle.py complete --fields-json '<object>' ...`; SQW render uses the same receipt pipe with `scripts/card_cycle.py render --fields-json '<object>' ...`. CLI owns contract, phase and previous receipt. Never build an envelope, add `command`, or pass an unprojected root.
+5. If stdout is gone, rerun the unchanged pre-owner prefix as one pipeline; after bootstrap use resume. Use variables/pipes, never receipt/command files.
+6. Keep only the replacement. Before M2/M3 returns an owner, do not patch, emit task output or create a source-nested root.
 
 First M2/M3 bootstrap uses explicit external root; else require the pending replacement receipt's `receipt_id` to match `sha256:[0-9a-f]{64}` and select `<source-parent>/.frontier-sqw-<full-hex>`. Before scope, run `mkdir -m 700 -- <exact-root>` once if absent, never `-p`. Existing with matching canonical active anchor means route resume, not bootstrap; else block without scan/write.
 

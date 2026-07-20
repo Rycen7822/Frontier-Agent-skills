@@ -39,18 +39,15 @@ CORE_GRAPH = re.compile(
 
 ENTRY_REQUIRED_TEXT = (
     "LC_ALL=C scripts/card_cycle.py route --help",
-    "scripts/card_cycle.py route --input -",
-    "target repository root, never this skill root",
+    "scripts/card_cycle.py route --fields-json",
+    "--source-root <source>",
     "card_path",
     "card_hash",
-    "input_contract",
-    "required_root_args.always",
-    "conditional",
-    "replacement receipt",
-    "entire current replacement receipt",
-    "receipt chain",
-    "scripts/card_cycle.py complete --input -",
-    "scripts/card_cycle.py render --input -",
+    "scripts/card_cycle.py complete --fields-json",
+    "scripts/card_cycle.py render --fields-json",
+    "Never build an envelope",
+    "receipt/command files",
+    "Keep only the replacement",
     "semantic_inline",
     "raw state",
     "whole artifact/projection directories",
@@ -114,9 +111,27 @@ class _ConstrainedCaller:
         return json.loads(completed.stdout.splitlines()[1].removeprefix("initial_input_contract="))
 
     def invoke(self, action: str, command: dict[str, object], *root_args: str) -> dict[str, object]:
+        arguments = [
+            sys.executable,
+            str(self.cli),
+            action,
+            "--fields-json",
+            json.dumps(command["fields"], separators=(",", ":")),
+            "--source-root",
+            str(self.source),
+        ]
+        if command["contract_id"] in {"sqw.route.resume/2", "wp.route.resume/2"}:
+            arguments.append("--resume")
+        if "outcome" in command:
+            arguments.extend(["--outcome-json", json.dumps(command["outcome"], separators=(",", ":"))])
+        arguments.extend(root_args)
         completed = subprocess.run(
-            [sys.executable, str(self.cli), action, "--input", "-", "--source-root", str(self.source), *root_args],
-            input=json.dumps(command, separators=(",", ":")),
+            arguments,
+            input=(
+                json.dumps(command.get("previous_receipt"), separators=(",", ":"))
+                if action != "route"
+                else None
+            ),
             text=True,
             capture_output=True,
             check=False,
@@ -227,9 +242,8 @@ class AtomicCutoverContractTests(unittest.TestCase):
                 self.assertIn(ANCHOR_TEMPLATE, text)
                 self.assertIsNone(raw_selector_command.search(text))
                 for action in ("route", "complete", "render"):
-                    command_spans = re.findall(rf"`([^`]*\.py {action}(?:\s|`)[^`]*)`", text)
-                    self.assertTrue(command_spans, action)
-                    self.assertTrue(all("scripts/card_cycle.py" in span for span in command_spans))
+                    self.assertIn(f"scripts/card_cycle.py {action}", text)
+                self.assertNotIn(" --input ", text)
                 self.assertIn("Replacement stops", text)
                 self.assertIn("physical context eviction", text)
                 if skill == "software-quality-workflows":
