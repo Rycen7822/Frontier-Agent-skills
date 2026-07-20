@@ -882,6 +882,72 @@ class LocalWorkflowAdapter:
                 _sync_directory(self.root)
             return False
 
+    def _abort_prepared_inline(self, state: dict[str, Any], expected_cards: dict[str, tuple[str, str]]) -> None:
+        temporary = self.root / ".state.json.tmp"
+        if _optional_lstat(temporary) is None:
+            return
+        if _optional_lstat(self.root / ".locks.json.tmp") is not None:
+            raise AdapterConflict("prepared card state has an illegal precommit locks temp")
+        payload, _ = _safe_regular_bytes(temporary)
+        try:
+            candidate = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise AdapterConflict("prepared card state is invalid") from exc
+        if not isinstance(candidate, dict) or payload != _compact_bytes(candidate) + b"\n":
+            raise AdapterConflict("prepared card state is not canonical")
+        violations = validate_state(candidate, self.state_schema) + validate_transition(state, candidate)
+        if violations:
+            raise AdapterConflict("prepared card state is invalid: " + "; ".join(f"{item.code}@{item.path}" for item in violations[:8]))
+        mutable = {"card_completions", "state_version", "state_hash", "status", "active_frontier", "last_transition"}
+        if {key: value for key, value in candidate.items() if key not in mutable} != {key: value for key, value in state.items() if key not in mutable}:
+            raise AdapterConflict("prepared card state changes fields outside one completion")
+        if candidate["card_completions"][:-1] != state["card_completions"] or len(candidate["card_completions"]) != len(state["card_completions"]) + 1:
+            raise AdapterConflict("prepared card state does not append exactly one completion")
+        entry = candidate["card_completions"][-1]
+        completion = entry.get("completion") if entry.get("storage") == "inline" else None
+        transition = candidate["last_transition"]
+        frontier = state.get("active_frontier")
+        if (
+            not isinstance(completion, dict)
+            or not isinstance(frontier, dict)
+            or entry.get("prior_state_version") != state["state_version"]
+            or entry.get("prior_state_hash") != state["state_hash"]
+            or completion.get("producer_card_id") != frontier.get("card_id")
+            or completion.get("decision_id") != frontier.get("decision_id")
+            or transition.get("transition_kind") != "card"
+            or transition.get("prior_state_version") != state["state_version"]
+            or transition.get("prior_state_hash") != state["state_hash"]
+            or transition.get("completion_id") != completion.get("content_hash")
+            or transition.get("operation_id") != entry.get("operation_id")
+        ):
+            raise AdapterConflict("prepared card state does not bind the current frontier")
+        next_decision = transition["next_decision_id"]
+        expected_operation = _value_hash({
+            "contract_id": "sqw.complete.card/1",
+            "workflow_id": state["workflow_id"],
+            "prior_state_version": state["state_version"],
+            "prior_state_hash": state["state_hash"],
+            "completion_id": completion["content_hash"],
+            "next_decision_id": next_decision,
+        })
+        next_frontier = candidate["active_frontier"]
+        terminal = next_decision is None
+        if entry["operation_id"] != expected_operation or candidate["state_version"] != state["state_version"] + 1:
+            raise AdapterConflict("prepared card operation identity is invalid")
+        if terminal:
+            if candidate["status"] != "completed" or next_frontier is not None:
+                raise AdapterConflict("prepared terminal state is invalid")
+        elif (
+            candidate["status"] != "active"
+            or not isinstance(next_frontier, dict)
+            or next_frontier.get("decision_id") != next_decision
+            or expected_cards.get(next_frontier.get("card_id")) != (next_frontier.get("card_path"), next_frontier.get("card_hash"))
+        ):
+            raise AdapterConflict("prepared next frontier is invalid")
+        _sync_directory(self.root)
+        temporary.unlink()
+        _sync_directory(self.root)
+
     def resume(
         self,
         locator: dict[str, Any],
@@ -895,8 +961,6 @@ class LocalWorkflowAdapter:
     ) -> tuple[dict[str, Any], dict[str, Any] | None]:
         """Return the committed frontier and reuse or replace its independent lease."""
         with self._locked_state() as state:
-            if _optional_lstat(self.root / ".state.json.tmp") is not None:
-                raise AdapterConflict("prepared card state requires resume-abort recovery")
             expected_locator = {
                 "schema_version": "sqw-workflow-owner/1",
                 "workflow_id": state["workflow_id"],
@@ -915,6 +979,7 @@ class LocalWorkflowAdapter:
                 or state["card_manifest_hash"] != expected_card_manifest_hash
             ):
                 raise AdapterConflict("workflow owner contract is stale")
+            self._abort_prepared_inline(state, expected_cards)
             if current_source_identity != state["source_identity"]:
                 raise AdapterSourceDrift("current source identity differs from committed workflow state")
             frontier = state.get("active_frontier")
@@ -925,27 +990,8 @@ class LocalWorkflowAdapter:
                 "scope_binding_id": state["scope_binding"]["binding_id"],
                 "leases": [],
             }
-            if frontier is None:
-                empty_bytes = _compact_bytes(empty_locks) + b"\n"
-                final_bytes, _ = _safe_regular_bytes(self.root / "locks.json")
-                if state["status"] != "completed" or final_bytes != empty_bytes:
-                    raise AdapterConflict("terminal workflow locks are not empty")
-                if _optional_lstat(self.root / ".locks.json.tmp") is not None:
-                    _replace_fixed_mutable(
-                        self.root,
-                        "locks.json",
-                        ".locks.json.tmp",
-                        expected_bytes=empty_bytes,
-                        candidate_bytes=empty_bytes,
-                        checkpoint_prefix="route_lease",
-                    )
-                return state, None
-            if not isinstance(frontier, dict) or expected_cards.get(frontier["card_id"]) != (frontier["card_path"], frontier["card_hash"]):
-                raise AdapterConflict("workflow frontier is stale")
-            lease_owner = {"producer_id": frontier["card_id"], "decision_id": frontier["decision_id"]}
             final_path = self.root / "locks.json"
             final_bytes, _ = _safe_regular_bytes(final_path)
-            final_kind, final_lease = _locks_kind(final_bytes, empty_locks, lease_owner)
             try:
                 now = datetime.fromisoformat(now_value.replace("Z", "+00:00")) if now_value else datetime.now(timezone.utc)
             except ValueError as exc:
@@ -953,6 +999,48 @@ class LocalWorkflowAdapter:
             if now.tzinfo is None:
                 raise AdapterConflict("workflow lease clock is invalid")
             temp_path = self.root / ".locks.json.tmp"
+            old_owner = None
+            if state["last_transition"]["transition_kind"] == "card":
+                matches = [entry for entry in state["card_completions"] if entry["operation_id"] == state["last_transition"]["operation_id"]]
+                if len(matches) == 1 and matches[0]["storage"] == "inline":
+                    old_completion = matches[0]["completion"]
+                    old_owner = {"producer_id": old_completion.get("producer_card_id"), "decision_id": old_completion.get("decision_id")}
+
+            empty_bytes = _compact_bytes(empty_locks) + b"\n"
+            if frontier is None:
+                if state["status"] != "completed":
+                    raise AdapterConflict("terminal workflow status is invalid")
+                if final_bytes != empty_bytes:
+                    if old_owner is None:
+                        raise AdapterConflict("terminal workflow locks are foreign")
+                    old_kind, old_lease = _locks_kind(final_bytes, empty_locks, old_owner)
+                    if old_kind != "leased" or old_lease is None:
+                        raise AdapterConflict("terminal workflow locks are foreign")
+                if _optional_lstat(temp_path) is not None:
+                    temp_bytes, _ = _safe_regular_bytes(temp_path)
+                    if temp_bytes != empty_bytes:
+                        raise AdapterConflict("terminal workflow locks temp conflicts")
+                _replace_fixed_mutable(
+                    self.root,
+                    "locks.json",
+                    ".locks.json.tmp",
+                    expected_bytes=final_bytes,
+                    candidate_bytes=empty_bytes,
+                    checkpoint_prefix="route_lease",
+                )
+                return state, None
+            if not isinstance(frontier, dict) or expected_cards.get(frontier["card_id"]) != (frontier["card_path"], frontier["card_hash"]):
+                raise AdapterConflict("workflow frontier is stale")
+            lease_owner = {"producer_id": frontier["card_id"], "decision_id": frontier["decision_id"]}
+            try:
+                final_kind, final_lease = _locks_kind(final_bytes, empty_locks, lease_owner)
+            except AdapterConflict:
+                if old_owner is None:
+                    raise
+                old_kind, old_lease = _locks_kind(final_bytes, empty_locks, old_owner)
+                if old_kind != "leased" or old_lease is None:
+                    raise AdapterConflict("workflow locks are foreign")
+                final_kind, final_lease = "old", None
             if _optional_lstat(temp_path) is not None:
                 candidate_bytes, _ = _safe_regular_bytes(temp_path)
                 candidate_kind, candidate_lease = _locks_kind(candidate_bytes, empty_locks, lease_owner)

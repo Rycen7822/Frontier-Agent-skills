@@ -572,6 +572,122 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     {name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes()) for name in identities},
                 )
 
+    def test_resume_aborts_prepared_inline_completion_without_human_input(self) -> None:
+        for drifted in (False, True):
+            with self.subTest(drifted=drifted), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                root, state = _owner(parent)
+                ready = parent / "ready"
+                control_identity = {
+                    name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes())
+                    for name in ("state.json", "locks.json")
+                }
+                process = subprocess.Popen(
+                    [sys.executable, "-B", __file__, "--complete-worker", str(root), "card_state_temp_fsynced", str(ready)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                deadline = time.monotonic() + 5
+                while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(ready.exists(), "worker did not prepare state temp")
+                process.kill()
+                process.communicate(timeout=5)
+                self.assertTrue((root / ".state.json.tmp").is_file())
+                locator = {
+                    "schema_version": "sqw-workflow-owner/1",
+                    "workflow_id": state["workflow_id"],
+                    "bootstrap_operation_id": state["bootstrap"]["operation_id"],
+                    "bundle_id": state["bundle_id"],
+                    "initial_source_identity_hash": state["bootstrap"]["initial_source_identity_hash"],
+                    "scope_binding_id": state["scope_binding"]["binding_id"],
+                    "mode": state["mode"],
+                    "initial_root_binding_hash": workflow_adapter._value_hash(state["bootstrap"]["initial_root_binding"]),
+                }
+                source_identity = {"kind": "unversioned", "identity_hash": "sha256:" + ("0" if drifted else "7") * 64}
+                adapter = LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA)
+                arguments = {
+                    "expected_bundle_id": state["bundle_id"],
+                    "expected_policy_bundle_hash": state["policy_bundle_hash"],
+                    "expected_card_manifest_hash": state["card_manifest_hash"],
+                    "expected_cards": {
+                        state["active_frontier"]["card_id"]: (state["active_frontier"]["card_path"], state["active_frontier"]["card_hash"]),
+                        "sqw.test.oracle-and-lifecycle": ("references/test/oracle-and-lifecycle.md", "sha256:" + "9" * 64),
+                    },
+                    "now_value": NOW,
+                }
+                if drifted:
+                    with self.assertRaises(workflow_adapter.AdapterSourceDrift):
+                        adapter.resume(locator, source_identity, **arguments)
+                else:
+                    resumed, lease = adapter.resume(locator, source_identity, **arguments)
+                    self.assertEqual((state, load_json(root / "locks.json")["leases"][0]), (resumed, lease))
+                self.assertFalse((root / ".state.json.tmp").exists())
+                self.assertEqual(
+                    control_identity,
+                    {
+                        name: ((root / name).stat().st_ino, (root / name).stat().st_mtime_ns, (root / name).read_bytes())
+                        for name in ("state.json", "locks.json")
+                    },
+                )
+
+    def test_locator_only_resume_finishes_postcommit_locks(self) -> None:
+        checkpoints = (
+            "card_state_replaced",
+            "card_state_parent_synced",
+            "card_locks_temp_fsynced",
+            "card_locks_replaced",
+            "card_locks_parent_synced",
+        )
+        for checkpoint in checkpoints:
+            with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                root, initial = _owner(parent)
+                ready = parent / "ready"
+                process = subprocess.Popen(
+                    [sys.executable, "-B", __file__, "--complete-worker", str(root), checkpoint, str(ready)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                deadline = time.monotonic() + 5
+                while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(ready.exists(), f"worker did not reach {checkpoint}")
+                process.kill()
+                process.communicate(timeout=5)
+                committed = load_json(root / "state.json")
+                self.assertEqual(2, committed["state_version"])
+                locator = {
+                    "schema_version": "sqw-workflow-owner/1",
+                    "workflow_id": committed["workflow_id"],
+                    "bootstrap_operation_id": committed["bootstrap"]["operation_id"],
+                    "bundle_id": committed["bundle_id"],
+                    "initial_source_identity_hash": committed["bootstrap"]["initial_source_identity_hash"],
+                    "scope_binding_id": committed["scope_binding"]["binding_id"],
+                    "mode": committed["mode"],
+                    "initial_root_binding_hash": workflow_adapter._value_hash(committed["bootstrap"]["initial_root_binding"]),
+                }
+                adapter = LocalWorkflowAdapter(root, STATE_SCHEMA, EVENT_SCHEMA)
+                resumed, lease = adapter.resume(
+                    locator,
+                    committed["source_identity"],
+                    expected_bundle_id=committed["bundle_id"],
+                    expected_policy_bundle_hash=committed["policy_bundle_hash"],
+                    expected_card_manifest_hash=committed["card_manifest_hash"],
+                    expected_cards={
+                        initial["active_frontier"]["card_id"]: (initial["active_frontier"]["card_path"], initial["active_frontier"]["card_hash"]),
+                        committed["active_frontier"]["card_id"]: (committed["active_frontier"]["card_path"], committed["active_frontier"]["card_hash"]),
+                    },
+                    now_value=NOW,
+                )
+                self.assertEqual(committed, resumed)
+                self.assertEqual(committed["active_frontier"]["card_id"], lease["producer_id"])
+                self.assertEqual([lease], load_json(root / "locks.json")["leases"])
+                self.assertFalse((root / ".state.json.tmp").exists())
+                self.assertFalse((root / ".locks.json.tmp").exists())
+
     def test_bootstrap_rejects_skipped_or_foreign_prefix_before_mutation(self) -> None:
         for entry in ("projections", ".state.json.tmp"):
             with self.subTest(entry=entry), tempfile.TemporaryDirectory() as directory:
