@@ -4,12 +4,8 @@
   "card_version": 2,
   "kind": "procedure",
   "decision_id": "wp.select.slicing.outcome-slices",
-  "required_artifact_ids": [
-    "plan-program"
-  ],
-  "produced_artifact_ids": [
-    "outcome-slices"
-  ],
+  "required_artifact_ids": ["plan-program"],
+  "produced_artifact_ids": ["outcome-slices"],
   "max_bytes": 8192
 }
 ---

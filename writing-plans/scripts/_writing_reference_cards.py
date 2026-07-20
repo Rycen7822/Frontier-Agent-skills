@@ -192,8 +192,10 @@ def replace_navigation(card: Card) -> bytes:
         raise ValueError(f"card lacks renderable navigation section: {card.path}")
     start += len(start_marker)
     body = card.body[:start] + "\n" + render_navigation(card.metadata) + "\n" + card.body[stop:]
-    frontmatter = json.dumps(card.metadata, ensure_ascii=False, indent=2, sort_keys=False)
-    return f"---\n{frontmatter}\n---\n{body}".encode()
+    boundary = card.raw.find(b"\n---\n", 4)
+    if boundary < 0:
+        raise ValueError(f"card frontmatter is unterminated: {card.path}")
+    return card.raw[: boundary + 5] + body.encode()
 
 
 def _identifiers(value: Any, *, allow_empty: bool) -> bool:

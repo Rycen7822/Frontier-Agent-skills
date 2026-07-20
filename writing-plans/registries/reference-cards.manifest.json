@@ -16,7 +16,7 @@
       "sha256": "sha256:4be0102eaf10a133d37babbf5d4cce0a454bf3f6f4d279a00127710ad5637eda"
     },
     {
-      "bytes": 4305,
+      "bytes": 4297,
       "card_id": "wp.design.decision-resolution",
       "card_version": 2,
       "decision_id": "wp.select.design.decision-resolution",
@@ -27,7 +27,7 @@
         "design-decision"
       ],
       "required_artifact_ids": [],
-      "sha256": "sha256:5693540a3f024c505ab4cfceb447ef574d62121a04b23705de588669321267bb"
+      "sha256": "sha256:69f589e4e442230ae0fb2c7d146151e09765ddb58ff95ee58af87c4ed5f582f3"
     },
     {
       "bytes": 3845,
@@ -44,7 +44,7 @@
       "sha256": "sha256:6f328524f4a4ccf945c5151b2f480d0b80fb19db213dc92f20160bee382f5d22"
     },
     {
-      "bytes": 2195,
+      "bytes": 2187,
       "card_id": "wp.experiments.disposable-spike",
       "card_version": 2,
       "decision_id": "wp.select.experiments.disposable-spike",
@@ -55,10 +55,10 @@
         "spike-evidence"
       ],
       "required_artifact_ids": [],
-      "sha256": "sha256:c17a92a67acd469225527dfb851db1afb46be6df2347f2528c0aa6d184731680"
+      "sha256": "sha256:31fb4c5ccd63b927103d24d3a35dd1439ae67e207aaf1597bde4d461894bfc21"
     },
     {
-      "bytes": 2355,
+      "bytes": 2339,
       "card_id": "wp.migration.deprecation-and-rollout",
       "card_version": 2,
       "decision_id": "wp.select.migration.deprecation-and-rollout",
@@ -71,7 +71,7 @@
       "required_artifact_ids": [
         "plan-program"
       ],
-      "sha256": "sha256:bdd653600cdc30ffc68774fa90414977442b5afd20b775330ec958481433cc8b"
+      "sha256": "sha256:9f9d2fd64613b5397aae67bc4b5f1c82daa9a9d479e1b066c20ee2179f0e14d9"
     },
     {
       "bytes": 1607,
@@ -132,7 +132,7 @@
       "sha256": "sha256:29e8da4891834eaf78fec52832ae3aaa79652520648e2c1ec89a45419e295568"
     },
     {
-      "bytes": 2290,
+      "bytes": 2274,
       "card_id": "wp.slicing.outcome-slices",
       "card_version": 2,
       "decision_id": "wp.select.slicing.outcome-slices",
@@ -145,7 +145,7 @@
       "required_artifact_ids": [
         "plan-program"
       ],
-      "sha256": "sha256:99876bb9d09643634a1c8f54753f569c343db90f4470961e041ceac41ca30ae0"
+      "sha256": "sha256:495201d7a7c241e02af5ced5a7d9f52e8fe9df21b36a15f1988869d09f259196"
     }
   ],
   "cross_skill_routes": {
