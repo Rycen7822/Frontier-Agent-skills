@@ -16,10 +16,23 @@ SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from _writing_reference_cards import build_manifest, canonical_json_bytes, discover_cards, load_json  # noqa: E402
+from _writing_reference_cards import (  # noqa: E402
+    build_manifest,
+    canonical_json_bytes,
+    discover_cards,
+    load_json,
+    parse_card,
+    replace_navigation,
+)
 
 
 class ReferenceCardsV6Tests(unittest.TestCase):
+    def test_navigation_render_preserves_frontmatter_bytes(self) -> None:
+        card = parse_card(ROOT / "references" / "design" / "decision-resolution.md", ROOT)
+        boundary = card.raw.find(b"\n---\n", 4) + 5
+        self.assertGreaterEqual(boundary, 5)
+        self.assertEqual(card.raw[:boundary], replace_navigation(card)[:boundary])
+
     def test_manifest_policy_schema_and_card_set_are_exact(self) -> None:
         manifest_path = ROOT / "registries" / "reference-cards.manifest.json"
         manifest = load_json(manifest_path)

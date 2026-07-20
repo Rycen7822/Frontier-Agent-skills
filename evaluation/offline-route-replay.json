@@ -132,7 +132,7 @@
       "skill_id": "software-quality-workflows"
     },
     {
-      "active_bytes": 2195,
+      "active_bytes": 2187,
       "active_card_count": 1,
       "actual_action": "select_card",
       "actual_card_id": "wp.experiments.disposable-spike",
@@ -274,7 +274,7 @@
       "skill_version": "7.0.0"
     },
     "writing-plans": {
-      "card_manifest_hash": "sha256:362ebe0bea664d0a42164ce222807bcd1ce04ccf11a1308bdf419e7fc661db2d",
+      "card_manifest_hash": "sha256:a115c94b6dd2fbf29a957e94f4838990573a37a1f76ddda824ef261972303ca3",
       "decision_case_fixture_hash": "sha256:829e690dc1ebf20ea16fe0111a0bd60d58ff0bc86f05102820c29c827257badb",
       "decision_map_hash": "sha256:9a6c65c65e1c5db87305a7108baa5af9eeaf8bc6f0a33fa1b380041cbba79594",
       "router_hash": "sha256:036af4ec2121586b00f43b63cb9633282e23929efe30eb58b46836fcd027d699",
@@ -305,7 +305,7 @@
     "protected_negative_pass_rate": 1.0,
     "sequence_total_active_bytes": {
       "maximum": 17563,
-      "median": 9757,
+      "median": 9749,
       "minimum": 6827,
       "p95": 17563
     },
@@ -1169,7 +1169,7 @@
       "skill_id": "software-quality-workflows"
     },
     {
-      "active_bytes": 2355,
+      "active_bytes": 2339,
       "active_card_count": 1,
       "actual_card_id": "wp.migration.deprecation-and-rollout",
       "actual_decision_id": "wp.select.migration.deprecation-and-rollout",
@@ -1274,7 +1274,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2195,
+      "active_bytes": 2187,
       "active_card_count": 1,
       "actual_card_id": "wp.experiments.disposable-spike",
       "actual_decision_id": "wp.select.experiments.disposable-spike",
@@ -1289,7 +1289,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2290,
+      "active_bytes": 2274,
       "active_card_count": 1,
       "actual_card_id": "wp.slicing.outcome-slices",
       "actual_decision_id": "wp.select.slicing.outcome-slices",
@@ -1304,7 +1304,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 4305,
+      "active_bytes": 4297,
       "active_card_count": 1,
       "actual_card_id": "wp.design.decision-resolution",
       "actual_decision_id": "wp.select.design.decision-resolution",
@@ -1394,7 +1394,7 @@
       "skill_id": "writing-plans"
     }
   ],
-  "report_hash": "sha256:ee5c896cc1df664fa0610e97bd46cfe230d2527b089870cdbedbc6e765cc2dca",
+  "report_hash": "sha256:883f8e0868c27fc09a62ae3c285a5a582d46307f29f1ce4676eaf21de0a12050",
   "schema_version": "offline-route-replay/2.0",
   "selection_rows": [
     {
@@ -2034,7 +2034,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 4305,
+      "active_bytes": 4297,
       "active_card_count": 1,
       "actual_card_id": "wp.design.decision-resolution",
       "actual_decision_id": "wp.select.design.decision-resolution",
@@ -2058,7 +2058,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2195,
+      "active_bytes": 2187,
       "active_card_count": 1,
       "actual_card_id": "wp.experiments.disposable-spike",
       "actual_decision_id": "wp.select.experiments.disposable-spike",
@@ -2070,7 +2070,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2355,
+      "active_bytes": 2339,
       "active_card_count": 1,
       "actual_card_id": "wp.migration.deprecation-and-rollout",
       "actual_decision_id": "wp.select.migration.deprecation-and-rollout",
@@ -2130,7 +2130,7 @@
       "skill_id": "writing-plans"
     },
     {
-      "active_bytes": 2290,
+      "active_bytes": 2274,
       "active_card_count": 1,
       "actual_card_id": "wp.slicing.outcome-slices",
       "actual_decision_id": "wp.select.slicing.outcome-slices",
@@ -2218,7 +2218,7 @@
     {
       "active_bytes_per_step": [
         1607,
-        4305,
+        4297,
         3845
       ],
       "selected_card_ids": [
@@ -2232,14 +2232,14 @@
       "terminal_complete": true,
       "terminal_owner": "software-quality-workflows",
       "terminal_status": "completed",
-      "total_active_bytes": 9757,
+      "total_active_bytes": 9749,
       "unnecessary_card_loads": 0
     },
     {
       "active_bytes_per_step": [
         2354,
-        2355,
-        2290,
+        2339,
+        2274,
         2412
       ],
       "selected_card_ids": [
@@ -2254,13 +2254,13 @@
       "terminal_complete": true,
       "terminal_owner": "software-quality-workflows",
       "terminal_status": "completed",
-      "total_active_bytes": 9411,
+      "total_active_bytes": 9379,
       "unnecessary_card_loads": 0
     }
   ],
   "vnext": {
-    "bundle_build_id": "build-4a0193d33f33a24275d52245",
-    "bundle_manifest_hash": "sha256:9b92baa3e3cf541291a650637090e2571ece36ddcec22cf30325f4fdd7490f03",
+    "bundle_build_id": "build-a38667057bdd39876be1f679",
+    "bundle_manifest_hash": "sha256:7061ff4917893e638f4c1cd7f0c9862e4e156210f12618fdf4cae2afafe711c9",
     "identity": "frontier-engineering/7.0.0+6.0.0",
     "skill_versions": {
       "software-quality-workflows": "7.0.0",
