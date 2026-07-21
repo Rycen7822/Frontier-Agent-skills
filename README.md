@@ -94,6 +94,46 @@ The isolated CLI smoke requires a task-owned marketplace created by the installe
 
 Release-mode plugin output additionally requires external `release-evidence/2.0` bound to a clean signed source revision, the deterministic replay, a scored L2 report, and an activation decision. No such evidence is stored in the candidate repository.
 
+## Same-thread Codex skill reload supervisor
+
+`scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles. It never calls `fork`, never selects `--last`, never edits global Codex configuration, and never drives the TUI with synthesized keystrokes. It owns a local Unix-socket app-server and launches every TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
+
+The protocol is fail-closed and pinned to `codex-cli 0.144.6`. Validate the CLI schema and local Unix WebSocket transport before the first run:
+
+```bash
+scripts/codex_skill_reload_supervisor.py validate --probe-cwd "$PWD"
+```
+
+Exit the previously unsupervised TUI once, then start the exact existing session from an ordinary shell. A session UUID is mandatory; names, pickers, `--last`, and forked sessions are rejected.
+
+```bash
+scripts/codex_skill_reload_supervisor.py run \
+  --thread-id <exact-session-uuid> \
+  --cwd "$PWD"
+```
+
+The supervisor injects `CODEX_SKILL_RELOAD_STATE` into app-server, the TUI, and agent shell commands. After the agent completes the normal local plugin build/reinstall and byte checks, its final shell step for that turn is:
+
+```bash
+scripts/codex_skill_reload_supervisor.py checkpoint \
+  --plugin frontier-engineering-plugin@local-personal \
+  --continue-skill frontier-engineering-plugin:software-quality-workflows
+```
+
+`checkpoint` resolves the exact enabled local plugin version, compares every source skill tree with the installed cache, and stores only their paths and hashes. `--continue-skill` selects the one to three verified skills attached to the automatic continuation turn; it does not weaken full-plugin verification. For one standalone `--skill NAME=/absolute/path/to/SKILL.md`, that sole skill is selected automatically.
+
+Codex's `agent-turn-complete` notifier changes the pending checkpoint only after the current turn finishes. The supervisor then snapshots the persisted goal, closes the old TUI and app-server, starts a new app-server, resumes the exact thread with full access, forces a disk skill rescan, verifies the exact skill paths and tree hashes, and opens the replacement TUI. It sends the continuation turn through `turn/start` with an explicit skill input only after every proof passes.
+
+A goal is set back to `active` only when it was `active` immediately before this reload boundary and is `paused` or `blocked` after resume. An intentionally paused, intentionally blocked, completed, usage-limited, or budget-limited goal is never activated and receives no automatic continuation turn. Initial adoption does not infer prior goal intent.
+
+The runtime keeps one compact private JSON state file plus one transient Unix socket; it does not create per-turn receipts or history files. `status` prints a redacted summary:
+
+```bash
+scripts/codex_skill_reload_supervisor.py status
+```
+
+Any CLI version drift, schema drift, thread/cwd mismatch, permission mismatch, plugin/cache mismatch, skill error, hash drift, or non-resumable goal transition stops the cycle before an automatic turn. Update the pin and contract tests deliberately when Codex changes the experimental app-server protocol.
+
 ## Evaluation boundary
 
 `evaluation/offline-route-replay.json` is a deterministic diagnostic, not an L2 usefulness result. Scored L2 specifications, fixtures, holdouts, receipts, and activation decisions belong only to revision-bound external run roots. See [evaluation/README.md](evaluation/README.md).

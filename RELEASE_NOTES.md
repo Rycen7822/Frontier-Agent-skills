@@ -12,6 +12,8 @@ Brainstorming preserves its visual companion, local browser-server helpers, and 
 
 Existing 3.0.0 durable owners must finish under 3.0.0 or be explicitly retired; 4.0.0 never adopts them. This remains a local deterministic candidate. Authorization to run the scoped F9 evaluation permits that evaluation only; its observed result still determines whether release can advance. Isolated packaging and installation, scored usefulness, signed-source release, activation, publication, deployment, credentials, and remote writes remain independent gates, and no empirical model claim is made by this source cut.
 
+Repository developer tooling now includes a Codex 0.144.6-pinned same-thread skill reload supervisor. It restarts a task-owned Unix-socket app-server and TUI after an `agent-turn-complete` checkpoint, proves exact thread/full-access/skill/goal state before continuing, and rejects forks, `--last`, global config mutation, implicit goal activation, and per-cycle artifact proliferation. This external operator tool is not copied into the runtime-free five-skill plugin and does not change the bundle identity or activation evidence.
+
 ## Bundle 3.0.0 bounded card-cycle runtimes
 
 Bundle 3.0.0 atomically pairs `writing-plans` 6.0.0 with `software-quality-workflows` 7.0.0 as `frontier-engineering/7.0.0+6.0.0`. Both skills now expose one strict route/complete/render card-cycle surface, flat bounded receipts, content-bound source and scope identity, and fixed crash-safe owner protocols without per-card JSON sidecars.
