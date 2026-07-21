@@ -67,6 +67,7 @@ class QuickSkillContractTests(unittest.TestCase):
         text = SKILL_PATH.read_text(encoding="utf-8")
         default_section = text.split("## Default execution", 1)[1].split("\n## ", 1)[0]
         self.assertRegex(default_section, r"(?is)Direct creates no .*workflow.*card.*state.*ledger")
+        self.assertIn("Use log/blame only when release, recovery, or source freshness actually requires history", default_section)
         for path in (SKILL_ROOT / "references").rglob("*.md"):
             content = path.read_text(encoding="utf-8")
             self.assertTrue(content.startswith("# "), path)
