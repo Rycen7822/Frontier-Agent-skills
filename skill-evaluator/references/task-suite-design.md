@@ -58,7 +58,7 @@ Use the existing exact tag `protected` for finite controls whose required outcom
 Every scored-ready L2+ suite has at least one protected case. Each protected case:
 
 - sets `attribution_evaluable=false`;
-- contains both `baseline/skill_disabled` and `candidate/natural_routing` profiles;
+- contains `baseline/skill_disabled` and the primary candidate profile (`candidate/natural_routing` when declared, otherwise `candidate/force_loaded`);
 - has at least one required outcome requirement.
 
 The analyzer counts every protected `case × selected arm × repeat` plan key once. Missing, duplicate, invalid, or required-outcome-failed rows all increase `protected_outcome_failures`; observed-row filtering cannot hide them.

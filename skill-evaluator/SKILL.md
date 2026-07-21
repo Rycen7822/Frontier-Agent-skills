@@ -53,11 +53,11 @@ Without selection, order, and composition receipts, L4 must not claim library-sc
 ## Non-negotiable invariants
 
 - Spec schema v3, canonical `requirements[]`, one receipt index, and one hashed receipt are the only decision inputs. Never accept inline run scores or legacy oracle fields.
-- L2+ contribution requires the same cases and controls for a no-Skill baseline and candidate natural-routing variant. Forced or prior variants exist only when the decision needs them.
+- L2+ contribution requires the same cases and controls for a no-Skill baseline and a candidate treatment: natural routing for a routing claim, or forced loading for explicit-invocation value. When both are declared, natural routing remains the default comparison unless the analyzer caller selects the forced arm; a prior comparator matches the selected mode.
 - Repeats diagnose run variability; inference resamples distinct case means. Point lift or absolute pass rate cannot replace the declared positive lower-bound benefit gate.
 - Missing, invalid, duplicate, or tampered evidence remains outside metric denominators and makes usefulness inconclusive. Treatment-attributable failures with complete host evidence remain valid outcome failures.
 - Target-Skill context is verified from captured component artifacts. The frozen intended-trigger candidate plan is the attribution denominator; total input tokens cannot substitute for attributed body/reference cost.
-- A prior natural-routing context delta is available only for one prior variant, complete 100% attributed paired rows, matching measurement sources, and successful outcomes; otherwise it is null.
+- A prior context delta is available only for one same-mode prior variant, complete 100% attributed paired rows, matching measurement sources, and successful outcomes; otherwise it is null.
 - Safety and protected outcomes are unweighted guardrails. Utility cannot offset a material safety or protected-case failure.
 - Static audit findings are provisional review locators. They never authorize deleting package resources, hiding matched text, weakening rules, or treating scanner silence as safety evidence.
 - Empirical usefulness is `supported`, `not_supported`, `inconclusive`, or `not_applicable`. Manual review and deployment authority are separate final gates.

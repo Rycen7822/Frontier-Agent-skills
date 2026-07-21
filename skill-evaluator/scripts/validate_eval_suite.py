@@ -22,6 +22,7 @@ CANONICAL_VARIANT_PROFILES = {
     "baseline/skill_disabled",
     "candidate/force_loaded",
     "candidate/natural_routing",
+    "prior/force_loaded",
     "prior/natural_routing",
 }
 GLOBAL_GATE_METRICS = {
@@ -644,8 +645,15 @@ def check_spec(spec: Any, errors: list[str], warnings: list[str]) -> None:
         } if isinstance(variants, list) else set()
         if ("baseline", "skill_disabled") not in variant_profiles:
             errors.append("L2+ spec must include a baseline/skill_disabled variant")
-        if ("candidate", "natural_routing") not in variant_profiles:
-            errors.append("L2+ spec must include a candidate/natural_routing variant")
+        candidate_profiles = {
+            profile for profile in variant_profiles
+            if profile[0] == "candidate" and profile[1] in {"force_loaded", "natural_routing"}
+        }
+        if not candidate_profiles:
+            errors.append(
+                "L2+ spec must include a candidate/force_loaded or "
+                "candidate/natural_routing variant"
+            )
 
     serialized = json.dumps(spec, ensure_ascii=False)
     if PLACEHOLDER_RE.search(serialized):
@@ -692,6 +700,18 @@ def check_cases(spec: dict[str, Any], cases: list[dict[str, Any]], errors: list[
         for variant in variants_value
         if isinstance(variant, dict) and variant.get("role") in ROLES and variant.get("mode") in MODES
     } if isinstance(variants_value, list) else set()
+    candidate_profiles = {
+        profile for profile in declared_variant_profiles
+        if profile in {"candidate/force_loaded", "candidate/natural_routing"}
+    }
+    primary_candidate_profile = (
+        "candidate/natural_routing"
+        if "candidate/natural_routing" in candidate_profiles
+        else "candidate/force_loaded"
+    )
+    required_comparison_profiles = {
+        "baseline/skill_disabled", primary_candidate_profile,
+    }
 
     for record in cases:
         line = record.get("_line", "?")
@@ -746,8 +766,7 @@ def check_cases(spec: dict[str, Any], cases: list[dict[str, Any]], errors: list[
             if unknown_profiles:
                 errors.append(f"{prefix}: applicable_variant_profiles contains undeclared profiles {unknown_profiles}")
             if attribution is True:
-                required_profiles = {"baseline/skill_disabled", "candidate/natural_routing"}
-                missing_profiles = sorted(required_profiles - profile_set)
+                missing_profiles = sorted(required_comparison_profiles - profile_set)
                 if missing_profiles:
                     errors.append(f"{prefix}: attribution-evaluable case is missing profiles {missing_profiles}")
         authoritative_inputs = record.get("authoritative_inputs")
@@ -854,9 +873,7 @@ def check_cases(spec: dict[str, Any], cases: list[dict[str, Any]], errors: list[
         ):
             if attribution is not False:
                 errors.append(f"{prefix}: protected case must set attribution_evaluable=false")
-            missing_profiles = sorted(
-                {"baseline/skill_disabled", "candidate/natural_routing"} - profile_set
-            )
+            missing_profiles = sorted(required_comparison_profiles - profile_set)
             if missing_profiles:
                 errors.append(f"{prefix}: protected case is missing profiles {missing_profiles}")
             if not isinstance(requirements, list) or not any(
