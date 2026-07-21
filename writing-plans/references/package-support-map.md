@@ -34,7 +34,7 @@
 
 ## schemas
 
-- [`schemas/card-protocol.schema.json` · `sha256:c8420fcd07f1ef9aa72201abf6458f82c9b9a720f4455a3213ae4697e2a413c4`](../schemas/card-protocol.schema.json)
+- [`schemas/card-protocol.schema.json` · `sha256:8e0c982b514d86318e04988dd7484c950b3a9c4b40f1036e7be4bbd68b17dc4a`](../schemas/card-protocol.schema.json)
 - [`schemas/decision-card-map.schema.json` · `sha256:e6fa9c67ab560ed8077d2f5d1ec81a60f2ae4de893f80117b8f4cec00fb0942d`](../schemas/decision-card-map.schema.json)
 - [`schemas/plan-execution-handoff.schema.json` · `sha256:d602f6c0d3d2e809bcfe1a97425b30219ebcb719b5e87c29ad3444ba09cfef9f`](../schemas/plan-execution-handoff.schema.json)
 - [`schemas/plan-route-facts.schema.json` · `sha256:e0a3b1ae420c2f62a8cd72932348ca32c140873ca3ec32bf2af8833f23eb5dac`](../schemas/plan-route-facts.schema.json)
@@ -50,7 +50,7 @@
 - [`scripts/_writing_reference_cards.py` · `sha256:8207d8b4bd21a04071bfc737fb67e19c8d6d92636452a599045136ef373411ea`](../scripts/_writing_reference_cards.py)
 - [`scripts/assess_plan_mode.py` · `sha256:7dd865b121a8e77e686d7c8276765d4f4951550852e9b3be066ec2bb1fa75a51`](../scripts/assess_plan_mode.py)
 - [`scripts/build_reference_manifest.py` · `sha256:62d90c6924781203e4992b32bec080042df958fc8e53bdbf74ea353f117940d3`](../scripts/build_reference_manifest.py)
-- [`scripts/card_cycle.py` · `sha256:12e3a7a193ca61b3cccad21c9ffbed65f0189ffe305089aeb3614edd4692705e`](../scripts/card_cycle.py)
+- [`scripts/card_cycle.py` · `sha256:d63b667f6f44a9d44bad25aae81b2c0f39605e844cf2d6cea9875e4363762a53`](../scripts/card_cycle.py)
 - [`scripts/check_plan_freshness.py` · `sha256:fc935ca2fdf46c3027a9b69fc9eba2642e0705e4982df2b9078f50e6290dc50d`](../scripts/check_plan_freshness.py)
 - [`scripts/render_context_capsule.py` · `sha256:73d27357b408e9d91ee0b1aeff48c414c67bc60d4e004657aa975a4663b59c6b`](../scripts/render_context_capsule.py)
 - [`scripts/render_plan_profile.py` · `sha256:0fe1d1971d8713e5b0d10807199a19f311823f02ae8322fada3b1575c17ac546`](../scripts/render_plan_profile.py)
@@ -77,10 +77,10 @@
 - [`tests/fixtures/plan-route-sequences.json` · `sha256:f41cbb453c8fee0d608308b786ad6bcc85a5fe1627bdb8826aabd380f25aea66`](../tests/fixtures/plan-route-sequences.json)
 - [`tests/fixtures/plan-state/invalid-cases.json` · `sha256:f512d958bdb5b3bf71ed9eb374abb3db5d8b4af4c05ac1a18593d5d85c925b70`](../tests/fixtures/plan-state/invalid-cases.json)
 - [`tests/fixtures/plan-state/valid-program.json` · `sha256:d7844f8241462345e5c756a331e1a57cc0575954db2d204d507ce9c9845b89c9`](../tests/fixtures/plan-state/valid-program.json)
-- [`tests/test_card_cycle.py` · `sha256:b26d89ef25ead753748d4b7272741a032ee6a7254a009c24de646849f4df1b08`](../tests/test_card_cycle.py)
+- [`tests/test_card_cycle.py` · `sha256:348ab6f30d25eca2836e39db368695c42c43831f422512cdef46b58b359b6b00`](../tests/test_card_cycle.py)
 - [`tests/test_decision_card_map.py` · `sha256:7bde014d65408917e1b6190dce7f734b6119ff910fbd5097369efd34d038cd16`](../tests/test_decision_card_map.py)
 - [`tests/test_decision_protocol_v7.py` · `sha256:678378f5303cb22333afcc9bcb642da74e43739575a977c5fe05150abd637eb9`](../tests/test_decision_protocol_v7.py)
 - [`tests/test_package_support_map.py` · `sha256:1c1a1d9248cbe49b9a77425225efd48c8a3f8fa07b336d39b28b67bfa2ea27f9`](../tests/test_package_support_map.py)
 - [`tests/test_plan_state.py` · `sha256:28acc630afae188b67c8bdb5638aeedc8e7e30b05bc0a42d28f52eb251109152`](../tests/test_plan_state.py)
 - [`tests/test_reference_cards_v7.py` · `sha256:e62459d1516fdcd2aeec732315a98671bb0a5246692645fe7807f94dceecaca5`](../tests/test_reference_cards_v7.py)
-- [`tests/test_writing_docs_v7.py` · `sha256:dac06b28759e179e6dfc6727625e49c9cf15629aff22dc38a16664a210fb9da3`](../tests/test_writing_docs_v7.py)
+- [`tests/test_writing_docs_v7.py` · `sha256:a5965ca6b57e340531995336007a2fb5b18f35fd455bc4eee4fd53398337bf34`](../tests/test_writing_docs_v7.py)

@@ -47,8 +47,8 @@ MANIFEST_PATH = ROOT / "registries" / "reference-cards.manifest.json"
 HANDOFF_SCHEMA_PATH = ROOT / "schemas" / "plan-execution-handoff.schema.json"
 COMMAND_MAX_BYTES = 65_536
 RECEIPT_MAX_BYTES = 12_288
-INPUT_CONTRACT_MAX_BYTES = 800
-ROUTE_HELP_MAX_BYTES = 1_024
+INPUT_CONTRACT_MAX_BYTES = 2_048
+ROUTE_HELP_MAX_BYTES = 1_536
 SOURCE_FILE_MAX_BYTES = 8 * 1024 * 1024
 SOURCE_TOTAL_MAX_BYTES = 32 * 1024 * 1024
 SOURCE_MAX_FILES = 4_096
@@ -177,13 +177,22 @@ def _command_from_args(args: argparse.Namespace, schema: dict[str, Any]) -> dict
         contract_id = "wp.route.resume/2" if args.resume else "wp.route.initial/2"
         previous_receipt = None
     elif args.subcommand == "render":
-        previous_receipt = None
-        if "owner_locator" in fields and "projection_kind" in fields:
+        previous_receipt = _read_previous_receipt()
+        if previous_receipt.get("owner_locator") is not None:
+            if set(fields) - {"projection_kind"}:
+                raise CycleError("E_COMMAND_SCHEMA", "Program render accepts only projection_kind")
             contract_id = "wp.render.program/2"
-        elif "content_locator" in fields:
+            fields = {
+                "owner_locator": previous_receipt["owner_locator"],
+                "projection_kind": fields.get("projection_kind", "program"),
+            }
+        elif previous_receipt.get("content_locator") is not None:
+            if fields:
+                raise CycleError("E_COMMAND_SCHEMA", "handoff render fields must be empty")
             contract_id = "wp.render.handoff/2"
+            fields = {"content_locator": previous_receipt["content_locator"]}
         else:
-            raise CycleError("E_COMMAND_SCHEMA", "render fields do not select one renderer")
+            raise CycleError("E_RECEIPT_INVALID", "previous receipt has no renderable locator", exit_code=3)
     else:
         previous_receipt = _read_previous_receipt()
         try:
@@ -864,6 +873,46 @@ def _input_contract(
         "human_max_bytes": family["human_max_bytes"],
         "required_root_args": {"always": always, "conditional": conditional},
     }
+    if completion_contract_id == "wp.complete.program/2":
+        field_examples = {
+            "initial_nodes": [
+                {
+                    "id": "P-01",
+                    "kind": "implementation",
+                    "status": "ready",
+                    "objective": "Replace with the first executable stage.",
+                    "depends_on": [],
+                    "inputs": [],
+                    "outputs": [],
+                    "read_set": [],
+                    "write_set": [],
+                    "resource_set": [],
+                    "effect_set": [],
+                    "side_effect_level": "local_reversible",
+                    "verifier": {
+                        "kind": "evidence_set",
+                        "completion_criterion": "Replace with the exact verification gate.",
+                        "false_green_risk": "Replace with the concrete false-green risk.",
+                        "required_evidence": [],
+                    },
+                    "retry": {"allowed": False, "max_attempts": 0, "idempotency": "not_retryable"},
+                    "refinement": {"parent": None, "replaces": []},
+                }
+            ],
+            "initial_queue": [
+                {"decision_id": "wp.select.economy.output-projection", "subject_ref": None}
+            ],
+        }
+        sample = {
+            "goal": "Replace with the bounded Program outcome.",
+            "non_goals": [],
+            "invariants": ["Replace with one preserved invariant."],
+            **field_examples,
+        }
+        sample_schema = {"$schema": schema["$schema"], "$defs": schema["$defs"], "$ref": field_reference}
+        if list(Draft202012Validator(sample_schema).iter_errors(sample)):
+            raise CycleError("E_CONTRACT_INVALID", "Program field examples are invalid", exit_code=5)
+        contract["field_examples"] = field_examples
     if len(_canonical(contract)) > INPUT_CONTRACT_MAX_BYTES:
         raise CycleError("E_CONTRACT_INVALID", "input contract exceeds the byte limit", exit_code=5)
     return contract
@@ -911,6 +960,11 @@ def _route_help_contract(schema: dict[str, Any]) -> dict[str, Any]:
     return {
         "contract_id": "wp.route.initial/2",
         "required_fields": groups,
+        "field_semantics": {
+            "migration_or_rollback": "true only when the target change itself has migration, cutover, or rollout phases; a rollback section alone is false",
+            "resume_required": "true only when mutable Program planning state must continue later; an immutable receiving-context handoff is false",
+            "same_session_execution": "true when this request produces its final plan now; later implementation timing is irrelevant",
+        },
         "required_root_args": ["--source-root"],
     }
 
@@ -1905,7 +1959,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                 schema,
                 command["previous_receipt"],
                 source_identity,
-                allow_source_drift=contract_id == "wp.complete.program-card/2",
+                allow_source_drift=contract_id in {"wp.complete.program-card/2", "wp.render.handoff/2"},
             )
             if previous["bundle_id"] != manifest["bundle_id"]:
                 raise CycleError("E_RECEIPT_INVALID", "previous receipt bundle is stale", exit_code=3)
