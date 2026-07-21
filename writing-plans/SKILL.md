@@ -14,15 +14,17 @@ metadata:
 
 # Writing Plans
 
+Explicit invocation supplies this file. Treat its body as the required full read; do not reopen `SKILL.md`. Open only a selected reference.
+
 ## Scope
 
-Compile settled decisions into the lightest implementation-ready deliverable. Own intended state, ordered work, authority, dependencies, recovery, and acceptance evidence. Do not rediscover intent, diagnose unknown causes, compare unresolved architectures, execute changes, or claim verification.
+Compile settled decisions into the lightest implementation-ready deliverable. Own intended state, order, authority, dependencies, recovery, and acceptance evidence. Do not rediscover intent, diagnose unknown causes, resolve architecture, execute, or claim verification.
 
-Use this skill only for an explicit plan request, a cross-context executable handoff, or a resumable migration/program. Routine same-session changes remain with `$software-quality-workflows`.
+Use only for an explicit plan request, cross-context handoff, or resumable migration/program. Routine same-session changes remain with `$software-quality-workflows`.
 
 ## Required inputs
 
-Require a settled goal, non-goals, scope, authority, protected work, selected decisions, and acceptance evidence. Handoff and Program also require source identity/freshness, allowed writes/effects, dependencies, rollback conditions, blockers, and an exact next action.
+Require a settled goal, non-goals, scope, authority, protected work, selected decisions, and acceptance evidence. Handoff and Program also require source freshness, authority, dependencies, rollback conditions, blockers, and an exact next action.
 
 Do not invent missing facts. Return unresolved inputs to their owning workflow.
 
