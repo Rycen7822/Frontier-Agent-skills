@@ -83,4 +83,4 @@
 - [`tests/test_package_support_map.py` · `sha256:1c1a1d9248cbe49b9a77425225efd48c8a3f8fa07b336d39b28b67bfa2ea27f9`](../tests/test_package_support_map.py)
 - [`tests/test_plan_state.py` · `sha256:28acc630afae188b67c8bdb5638aeedc8e7e30b05bc0a42d28f52eb251109152`](../tests/test_plan_state.py)
 - [`tests/test_reference_cards_v7.py` · `sha256:e62459d1516fdcd2aeec732315a98671bb0a5246692645fe7807f94dceecaca5`](../tests/test_reference_cards_v7.py)
-- [`tests/test_writing_docs_v7.py` · `sha256:a5965ca6b57e340531995336007a2fb5b18f35fd455bc4eee4fd53398337bf34`](../tests/test_writing_docs_v7.py)
+- [`tests/test_writing_docs_v7.py` · `sha256:1be2c9a9ed1669e19d9e486a6ba41f3358e01b70312127459431376c8784b4bb`](../tests/test_writing_docs_v7.py)

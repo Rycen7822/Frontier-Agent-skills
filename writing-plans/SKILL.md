@@ -25,7 +25,7 @@ Use this root's `scripts/card_cycle.py`:
 1. Read `LC_ALL=C scripts/card_cycle.py route --help`.
 2. Run `scripts/card_cycle.py route --fields-json '<object>' --source-root <source>`; resume adds `--resume`, owner fields and required external `--work-root`.
 3. Read only `card_path`, verify `card_hash`, decide it; never recall or scan.
-4. Pass previous stdout unchanged to `scripts/card_cycle.py complete --fields-json '<object>'`; Pass completion stdout unchanged to `scripts/card_cycle.py render --fields-json '{}'` (`{"projection_kind":"context-capsule"}` only there). Render validates stdin. Never build an envelope or copy locators.
+4. Pipe stdout unchanged to `scripts/card_cycle.py complete --fields-json JSON`. Brief ends with its projection. Only Program/Handoff pipe completion stdout to `scripts/card_cycle.py render --fields-json '{}'`; Program may use `{"projection_kind":"context-capsule"}`. Never build an envelope or copy locators.
 5. Lost stdout: replay pre-owner; post-owner resume. Give only projected roots. Never write receipt/command files or inspect CLI source.
 6. Keep only the replacement. Before Program returns an owner, source is read-only except a projected output root.
 
@@ -51,7 +51,7 @@ Use the lightest profile preserving authority/recovery/proof. Missing long-docum
 
 ## One-card context
 
-Context: entry, help/receipt, one card, stdout, one projection/boundary. Manifest/card drift invalidates; source/scope/policy drift replans; overflow blocks.
+Entry, help/receipt, one card, stdout, one projection/boundary. Manifest/card drift invalidates; source/scope/policy drift replans; overflow blocks.
 
 Long-document bridge passes only `scratch_retention`, final locator/hash, source/scope, requirements, unresolved decisions; never section/ledger/coverage/recovery/confidence content.
 

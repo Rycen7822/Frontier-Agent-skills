@@ -19,12 +19,14 @@ class WritingDocsV7Tests(unittest.TestCase):
         self.assertEqual(headings, re.findall(r"(?m)^## .+$", text))
         self.assertLessEqual(len(text.encode("utf-8")), 5200)
         for anchor in (
-            "LC_ALL=C scripts/card_cycle.py route --help", "previous stdout unchanged", "one projection/boundary",
+            "LC_ALL=C scripts/card_cycle.py route --help", "one projection/boundary",
             "terminal-disposable", "Codex and Hermes Agent", "migration_or_rollback=true` only if",
             "resume_required=true` only for", "same_session_execution=true` when",
-            "schema-valid `field_examples`", "Pass completion stdout unchanged",
+            "schema-valid `field_examples`", "Brief ends with its projection",
+            "Only Program/Handoff pipe completion stdout",
         ):
             self.assertIn(anchor, text)
+        self.assertNotIn("; Pass completion stdout unchanged", text)
 
     def test_openai_metadata_is_narrow_and_exact(self) -> None:
         metadata = (ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
