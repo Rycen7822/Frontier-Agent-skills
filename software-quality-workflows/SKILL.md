@@ -24,7 +24,7 @@ Use `$writing-plans` for explicit plans, handoffs, or program rollout after deci
 
 Use Direct for same-session, local, reversible work with known authority and owner seam, one writer, no recovery need, and no destructive, release, production, or external effect:
 
-1. Inspect the smallest relevant source, tests, documentation, revision, and dirty state.
+1. Inspect the smallest relevant source, tests, docs, and dirty state. Use log/blame only when release, recovery, or source freshness actually requires history.
 2. Diagnose unknown causes with bounded read-only evidence before editing.
 3. Establish an observable current/required behavior distinction.
 4. Change the smallest owner seam; add no parallel abstraction, compatibility shell, or unrelated cleanup.
