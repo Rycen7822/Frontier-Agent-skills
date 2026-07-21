@@ -307,12 +307,15 @@ class BriefCardCycleTests(unittest.TestCase):
             self.assertEqual("", completed.stderr)
             outputs.append(completed.stdout)
         self.assertEqual(outputs[0], outputs[1])
-        self.assertLessEqual(len(outputs[0].encode("utf-8")), 1_024)
+        self.assertLessEqual(len(outputs[0].encode("utf-8")), 1_536)
         lines = outputs[0].splitlines()
         self.assertEqual("usage: card_cycle.py route --fields-json JSON --source-root PATH [--resume --work-root PATH]", lines[0])
         initial = json.loads(lines[1].removeprefix("initial_input_contract="))
         self.assertEqual("wp.route.initial/2", initial["contract_id"])
-        self.assertEqual({"contract_id", "required_fields", "required_root_args"}, set(initial))
+        self.assertEqual({"contract_id", "field_semantics", "required_fields", "required_root_args"}, set(initial))
+        self.assertIn("target change itself", initial["field_semantics"]["migration_or_rollback"])
+        self.assertIn("mutable Program planning state", initial["field_semantics"]["resume_required"])
+        self.assertIn("final plan now", initial["field_semantics"]["same_session_execution"])
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "source"
             source.mkdir()
@@ -337,6 +340,14 @@ class BriefCardCycleTests(unittest.TestCase):
                 self.assertEqual(set(contract["required_fields"]) | set(contract["optional_fields"]), set(contract["field_types"]))
                 self.assertLessEqual(len(cycle._canonical(contract)), cycle.INPUT_CONTRACT_MAX_BYTES)
         self.assertEqual(15, len(observed))
+        program_card = next(card for card in manifest["cards"] if card["card_id"] == "wp.profiles.program")
+        program_contract = cycle._card_input_contract(schema, registry, program_card, program=False)
+        examples = program_contract["field_examples"]
+        self.assertEqual("P-01", examples["initial_nodes"][0]["id"])
+        self.assertEqual(
+            [{"decision_id": "wp.select.economy.output-projection", "subject_ref": None}],
+            examples["initial_queue"],
+        )
         sample = json.loads(json.dumps(manifest["cards"][0]))
         for artifact_ids in ([], ["one", "two"]):
             sample["produced_artifact_ids"] = artifact_ids
@@ -567,9 +578,16 @@ class BriefCardCycleTests(unittest.TestCase):
             self.assertNotIn("authority_granted", artifact)
             render_command = {
                 "contract_id": "wp.render.handoff/2", "invocation_phase": "resume",
-                "previous_receipt": None, "fields": {"content_locator": first["content_locator"]},
+                "previous_receipt": first, "fields": {},
                 "outcome": {"blocker": None},
             }
+            manual_locator = {**render_command, "fields": {"content_locator": first["content_locator"]}}
+            rejected_manual = self._run(
+                "render", manual_locator, source,
+                "--artifact-root", str(artifacts), "--projection-root", str(projections),
+            )
+            self.assertEqual(2, rejected_manual.returncode)
+            self.assertEqual("E_COMMAND_SCHEMA", json.loads(rejected_manual.stderr)["code"])
             render_receipt = self._receipt(self._run(
                 "render", render_command, source,
                 "--artifact-root", str(artifacts), "--projection-root", str(projections),
@@ -646,6 +664,55 @@ class BriefCardCycleTests(unittest.TestCase):
                 path.relative_to(work).as_posix(): (path.stat().st_ino, path.stat().st_mtime_ns, path.stat().st_size)
                 for path in work.rglob("*")
             })
+
+    def test_projected_program_examples_initialize_and_render_without_internal_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            work = root / "program"
+            source.mkdir()
+            work.mkdir(mode=0o700)
+            (source / "input.txt").write_text("stable input\n", encoding="utf-8")
+            route_command = self._route_command()
+            route_command["fields"].update({
+                "migration_or_rollback": True,
+                "resume_required": True,
+                "same_session_execution": False,
+                "independent_write_slices": 2,
+            })
+            routed = self._receipt(self._run("route", route_command, source))
+            examples = json.loads(json.dumps(routed["next_step"]["input_contract"]["field_examples"]))
+            examples["initial_nodes"][0]["objective"] = "Implement the first bounded migration stage."
+            examples["initial_nodes"][0]["verifier"]["completion_criterion"] = "The focused parity test passes."
+            examples["initial_nodes"][0]["verifier"]["false_green_risk"] = "The test may omit malformed input."
+            command = {
+                "contract_id": "wp.complete.program/2",
+                "invocation_phase": "initial",
+                "previous_receipt": routed,
+                "fields": {
+                    "goal": "Migrate through one verified reversible stage.",
+                    "non_goals": ["Execute the migration now"],
+                    "invariants": ["Keep rollback available"],
+                    **examples,
+                },
+                "outcome": {"blocker": None},
+            }
+            initialized = self._receipt(self._run("complete", command, source, "--work-root", str(work)))
+            rendered = self._receipt(self._run(
+                "render",
+                {
+                    "contract_id": "wp.render.program/2",
+                    "invocation_phase": "resume",
+                    "previous_receipt": initialized,
+                    "fields": {},
+                    "outcome": {"blocker": None},
+                },
+                source,
+                "--work-root",
+                str(work),
+            ))
+            self.assertEqual("program", rendered["content_locator"]["artifact_id"])
+            self.assertIn("first bounded migration stage", (work / "projections" / "program.md").read_text(encoding="utf-8"))
 
     def test_program_preflight_failures_leave_work_root_empty(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -741,6 +808,13 @@ class BriefCardCycleTests(unittest.TestCase):
             self.assertEqual(1, initialized["state_version"])
             self.assertEqual("wp.economy.output-projection", initialized["next_step"]["card_id"])
             self.assertEqual({".plan-state.lock", "plan-state.json", "artifacts", "projections"}, {path.name for path in work.iterdir()})
+            render_command = {
+                "contract_id": "wp.render.program/2", "invocation_phase": "resume",
+                "previous_receipt": initialized, "fields": {}, "outcome": {"blocker": None},
+            }
+            rendered = self._receipt(self._run("render", render_command, source, "--work-root", str(work)))
+            self.assertEqual("program", rendered["content_locator"]["artifact_id"])
+            self.assertTrue((work / "projections" / "program.md").is_file())
             resume_command = {
                 "contract_id": "wp.route.resume/2", "invocation_phase": "resume",
                 "previous_receipt": None, "fields": {"owner_locator": initialized["owner_locator"]},
@@ -834,8 +908,8 @@ class BriefCardCycleTests(unittest.TestCase):
             capsule.unlink()
             render_command = {
                 "contract_id": "wp.render.program/2", "invocation_phase": "resume",
-                "previous_receipt": None,
-                "fields": {"owner_locator": context_completion["owner_locator"], "projection_kind": "context-capsule"},
+                "previous_receipt": context_completion,
+                "fields": {"projection_kind": "context-capsule"},
                 "outcome": {"blocker": None},
             }
             rendered = self._receipt(self._run("render", render_command, source, "--work-root", str(work)))
@@ -1015,7 +1089,7 @@ class BriefCardCycleTests(unittest.TestCase):
             self.assertEqual(first, replay)
             render_command = {
                 "contract_id": "wp.render.handoff/2", "invocation_phase": "resume",
-                "previous_receipt": None, "fields": {"content_locator": first["content_locator"]},
+                "previous_receipt": first, "fields": {},
                 "outcome": {"blocker": None},
             }
             rendered = self._receipt(self._run(

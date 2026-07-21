@@ -37,18 +37,18 @@ Use **M0 Direct** without `card_cycle.py` only for same-session, local, reversib
 
 ## Card-cycle entry
 
-All other work uses only this skill root's `scripts/card_cycle.py` as the model-facing protocol:
+All other work uses this root's `scripts/card_cycle.py`:
 
 1. Read `LC_ALL=C scripts/card_cycle.py route --help`.
 2. Route fields only with `scripts/card_cycle.py route --fields-json '<object>' --source-root <source>`; resume uses the same command with `--resume`, owner-locator fields and required external `--work-root`. Source is the target repository.
 3. For a card step, read only `card_path`, verify `card_hash`, and decide it; never select from memory or scan.
-4. Pipe the receipt unchanged to `scripts/card_cycle.py complete --fields-json '<object>' ...`; SQW render uses the same receipt pipe with `scripts/card_cycle.py render --fields-json '<object>' ...`. CLI owns contract, phase and previous receipt. Never build an envelope, add `command`, or pass an unprojected root.
-5. If stdout is gone, rerun the unchanged pre-owner prefix as one pipeline; after bootstrap use resume. Use variables/pipes, never receipt/command files.
+4. Pass previous stdout to `scripts/card_cycle.py complete --fields-json '<object>'`; render uses `scripts/card_cycle.py render --fields-json '<object>'` with the same stdin. CLI owns machine fields. Never build an envelope or pass an unprojected root.
+5. Lost stdout: replay pre-owner; post-owner resume. Initial M2/M3 route/entry have no work root; only scope completion receives the receipt-derived `--work-root`. Never write receipt/command files.
 6. Keep only the replacement. Before M2/M3 returns an owner, do not patch, emit task output or create a source-nested root.
 
-First M2/M3 bootstrap uses explicit external root; else require the pending replacement receipt's `receipt_id` to match `sha256:[0-9a-f]{64}` and select `<source-parent>/.frontier-sqw-<full-hex>`. Before scope, run `mkdir -m 700 -- <exact-root>` once if absent, never `-p`. Existing with matching canonical active anchor means route resume, not bootstrap; else block without scan/write.
+Require entry receipt ID matching `sha256:[0-9a-f]{64}`; root is `<source-parent>/.frontier-sqw-<full-hex>`. Before scope run `mkdir -m 700 -- <exact-root>` once, never `-p`. Replay route/entry without it; scope alone receives it. `allowed_reads`/`allowed_writes` use source-relative selectors only; never include the owner root or any absolute path. Existing with matching canonical active anchor means route resume, not bootstrap; else block without scan/write.
 
-`E_ORPHAN_CONFLICT` is non-retryable. Unavailable/unsafe/foreign/partial/binding conflict stops: no inspect, chmod, delete, recreate, alternate root, source-nested `.eval-work`, `worknotes`, fallback Markdown/manual state. Later calls need root preconditions.
+`E_ORPHAN_CONFLICT` is non-retryable. Unavailable/unsafe/foreign/partial/binding conflict stops: no inspect, chmod, delete, recreate, alternate root, or fallback Markdown/manual state.
 
 `scripts/route_workflow.py`, schemas, registries, manifests, tests, and support map are internal, not model commands or default reads. Mismatch fails closed; an unmanifested card is inactive.
 
@@ -71,7 +71,7 @@ After M2/M3 bootstrap, keep one line in an existing canonical task index/host st
 
 `owner=<skill>/<owner-kind> | root=<exact task root> | locator=<immutable owner locator> | source=<source identity> | bundle=<bundle identity> | lifecycle=<active|terminal-retain|terminal-disposable> | boundary=<none or named consumer/evidence ref>`
 
-Keep task roots isolated/outside source. Replace locator/source in place; never save receipts. Terminal without an unconsumed boundary is `terminal-disposable`: remove exact root safely, verify absence, remove anchor. Named handoff/evidence is `terminal-retain` until consumption/migration evidence. Never delete by age or add lifecycle schema, cleanup command, global registry, or per-step anchor.
+Keep roots outside source. Replace locator/source; never save receipts. No boundary: `terminal-disposable`, remove exact root/anchor. Named handoff/evidence: `terminal-retain` until consumed. Never delete by age or add lifecycle schema, cleanup command, global registry, or per-step anchor.
 
 ## Planning handoff and completion
 

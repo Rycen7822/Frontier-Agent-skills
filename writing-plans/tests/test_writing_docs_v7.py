@@ -19,9 +19,10 @@ class WritingDocsV7Tests(unittest.TestCase):
         self.assertEqual(headings, re.findall(r"(?m)^## .+$", text))
         self.assertLessEqual(len(text.encode("utf-8")), 5200)
         for anchor in (
-            "LC_ALL=C scripts/card_cycle.py route --help", "replacement receipt", "one needed projection/boundary",
-            "terminal-disposable", "Codex and Hermes Agent", "migration_or_rollback` describes the work",
-            "same_session_execution` describes completing the plan now",
+            "LC_ALL=C scripts/card_cycle.py route --help", "previous stdout unchanged", "one projection/boundary",
+            "terminal-disposable", "Codex and Hermes Agent", "migration_or_rollback=true` only if",
+            "resume_required=true` only for", "same_session_execution=true` when",
+            "schema-valid `field_examples`", "Pass completion stdout unchanged",
         ):
             self.assertIn(anchor, text)
 
