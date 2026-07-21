@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.verify.classification-and-completion",
-  "card_version": 2,
-  "kind": "decision",
-  "decision_id": "sqw.select.verify.classification-and-completion",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "verify-classification-and-completion"
-  ],
-  "max_bytes": 8192
-}
----
 # Verification Classification and Completion
 
-## Decision this card owns
+## Purpose
 Classify non-passing gates and decide the strongest truthful scoped completion status supported by fresh evidence.
 
 ## Use when
@@ -25,7 +10,7 @@ Classify non-passing gates and decide the strongest truthful scoped completion s
 - Required gates have not run, source/scope drift is unresolved, or implementation is still changing.
 
 ## Required inputs
-- `workflow-intake`; verification plan and immutable gate records; exact failures/logs; expected distinctions; pre-change baseline; source/scope/environment; coverage/freshness; installed/public proof; reviews, async work, and blockers.
+- task context; verification plan and immutable gate records; exact failures/logs; expected distinctions; pre-change baseline; source/scope/environment; coverage/freshness; installed/public proof; reviews, async work, and blockers.
 
 ## Procedure
 1. For each non-pass, reproduce only enough to classify `product_failure`, `harness_gap`, `environment_unavailable`, `permission_denied`, `baseline_failure`, or `stochastic_or_flaky`.
@@ -38,12 +23,8 @@ Classify non-passing gates and decide the strongest truthful scoped completion s
 8. Emit `completed` only when every required fresh record passes within scope and no blocker/review/async work remains; otherwise use `interim`, `blocked`, or `inconclusive` with pending items and safe next action.
 9. Keep local technical completion separate from merge, publication, release, deployment, approval, and remote-write authority.
 
-## Output contract
+## Required result
 - One `verify-classification-and-completion` with per-failure cause/evidence/owner/action, scoped status, source/scope/environment, gate records, public proof, not-run/not-applicable items, baseline delta, coverage/freshness, pending work, residual uncertainty, and blocker.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop before a completed claim unless every required proof is fresh and passing; this artifact grants no external authority.

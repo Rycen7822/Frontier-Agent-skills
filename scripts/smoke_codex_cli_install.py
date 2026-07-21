@@ -21,18 +21,23 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from _bundle_hash import inventory, tree_hash  # noqa: E402
-from build_codex_plugin import _strict_json  # noqa: E402
+from build_codex_plugin import _strict_json, skill_activation  # noqa: E402
 from smoke_codex_plugin import inspect_plugin, isolated_smoke  # noqa: E402
 
 
 EXPECTED_PLUGIN = "frontier-engineering-plugin"
 EXPECTED_SKILLS = [
-    "brainstorming",
     "long-document-segmented-writing",
     "skill-evaluator",
     "software-quality-workflows",
     "writing-plans",
 ]
+EXPECTED_ACTIVATION = {
+    "long-document-segmented-writing": True,
+    "skill-evaluator": False,
+    "software-quality-workflows": True,
+    "writing-plans": False,
+}
 MAX_CLI_OUTPUT = 1024 * 1024
 SECRET_ENV_MARKERS = (
     "TOKEN", "API_KEY", "ACCESS_KEY", "SECRET_KEY", "PASSWORD", "COOKIE", "CREDENTIAL"
@@ -261,7 +266,7 @@ def _expect_single_plugin_list(
 def _verify_static_evidence(static_path: Path, build: dict[str, Any]) -> dict[str, Any]:
     static = _strict_json(static_path)
     expected = {
-        "schema_version": "static-plugin-smoke/2.0",
+        "schema_version": "static-plugin-smoke/3.0",
         "plugin_name": EXPECTED_PLUGIN,
         "plugin_tree_hash": build.get("plugin_tree_hash"),
         "build_evidence_hash": build.get("evidence_hash"),
@@ -278,8 +283,12 @@ def _verify_static_evidence(static_path: Path, build: dict[str, Any]) -> dict[st
     skills = static.get("discovered_skills")
     if not isinstance(skills, dict) or sorted(skills) != EXPECTED_SKILLS:
         raise ValueError("static smoke evidence does not discover exactly the expected skills")
-    if any(not isinstance(item, dict) or item.get("implicit_eligible") is not True for item in skills.values()):
-        raise ValueError("static smoke evidence does not prove implicit eligibility")
+    if any(
+        not isinstance(skills[skill_id], dict)
+        or skills[skill_id].get("implicit_eligible") is not EXPECTED_ACTIVATION[skill_id]
+        for skill_id in EXPECTED_SKILLS
+    ):
+        raise ValueError("static smoke evidence does not match the exact mixed activation matrix")
     return static
 
 
@@ -302,9 +311,10 @@ def run_cli_smoke(
         raise ValueError("work root must be a real directory")
     build = _strict_json(build_evidence_path)
     if (
-        build.get("schema_version") != "plugin-build-evidence/2.0"
+        build.get("schema_version") != "plugin-build-evidence/3.0"
         or build.get("plugin_name") != EXPECTED_PLUGIN
         or build.get("activation_ceiling") != "implicit_local_pilot"
+        or build.get("skill_activation") != EXPECTED_ACTIVATION
     ):
         raise ValueError("CLI smoke build evidence identity is invalid")
     unhashed_build = dict(build)
@@ -397,6 +407,12 @@ def run_cli_smoke(
         installed_tree_hash = tree_hash(installed_records)
         if installed_records != source_records or installed_tree_hash != build.get("plugin_tree_hash"):
             raise ValueError("installed cache bytes differ from the staged plugin")
+        installed_activation = {
+            skill_id: skill_activation(installed_root / "skills" / skill_id)
+            for skill_id in EXPECTED_SKILLS
+        }
+        if installed_activation != build.get("skill_activation"):
+            raise ValueError("installed skill activation differs from build evidence")
         _run_validator(validator, installed_root, environment=environment, cwd=marketplace_root)
 
         listed, commands["list_installed"] = _run_json(
@@ -499,7 +515,7 @@ def run_cli_smoke(
             raise ValueError("build evidence output class is invalid")
         release_eligible = output_class == "release"
         result: dict[str, Any] = {
-            "schema_version": "cli-install-smoke/2.0",
+            "schema_version": "cli-install-smoke/3.0",
             "plugin_name": EXPECTED_PLUGIN,
             "bundle_version": build["bundle_version"],
             "plugin_tree_hash": build["plugin_tree_hash"],
@@ -524,6 +540,7 @@ def run_cli_smoke(
             "marketplace_added": True,
             "discovered_before_install": True,
             "installed_enabled": True,
+            "skill_activation": installed_activation,
             "installed_tree_hash": installed_tree_hash,
             "cache_matches_staging": True,
             "staged_validator_passed": True,

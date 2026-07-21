@@ -1,6 +1,6 @@
 # Independent Reviewer Prompt Template
 
-Use this task text only when the current host permits independent review. The controller supplies bounded, revision-addressed inputs, selects `sqw.review.findings-and-result`, and validates the result against `schemas/review-result.schema.json`.
+Use this task text only when the current host permits independent review. The controller supplies a frozen manifest, bounded revision-addressed scope and evidence, then validates the result against `schemas/review-result.schema.json`.
 
 Replace every bracketed controller field before dispatch. Do not paste an unbounded repository or change set into the prompt; provide a manifest plus bounded file, diff, and evidence locations.
 

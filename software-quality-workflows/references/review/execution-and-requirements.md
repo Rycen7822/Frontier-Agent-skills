@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.review.execution-and-requirements",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "sqw.select.review.execution-and-requirements",
-  "required_artifact_ids": [
-    "review-tier"
-  ],
-  "produced_artifact_ids": [
-    "review-execution"
-  ],
-  "max_bytes": 8192
-}
----
 # Review Execution and Requirements
 
-## Decision this card owns
+## Purpose
 Execute one bounded independent review and trace stable requirements to implementation and proof without inventing criteria.
 
 ## Use when
@@ -37,12 +22,8 @@ Execute one bounded independent review and trace stable requirements to implemen
 7. Re-observe head/scope and validate finding candidates, coverage, rubric independence, and traceability. One same-scope retry may repair malformed review output, not substantive disagreement.
 8. Emit execution/traceability artifacts only; fixes require separately authorized finding disposition and hosted publication remains separate.
 
-## Output contract
+## Required result
 - One `review-execution` with bound identity/scope/coverage, finding candidates by rubric, requirement→implementation→proof matrix and conflicts/gaps, evidence index, positive notes, reviewer independence/limits, cycle use, stale state, and blocker.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop on stale scope, cycle exhaustion, missing authoritative requirements, or complete evidence fan-in; do not fix or publish.

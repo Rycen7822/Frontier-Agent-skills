@@ -2,7 +2,7 @@
 name: skill-evaluator
 description: "Evaluate, benchmark, compare, regression-test, or security-audit an Agent Skill package. Use when deciding whether a skill triggers correctly, improves task outcomes over a no-skill or prior-version baseline, follows its intended process, remains efficient and safe, generalizes beyond development examples, or is ready to install, publish, or deploy."
 metadata:
-  version: 1.0.0
+  version: 2.0.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -18,6 +18,8 @@ metadata:
 Evaluate the complete Skill package and its runtime contribution. For a frontier model, reward only specialized, task-relevant help beyond the model's native competence; treat redundant instructions and loaded references as context cost.
 
 Use the lightest level that can support the decision. A package audit or smoke run never becomes a comparative, release, or deployment claim. Resolve all paths below from this `SKILL.md` directory as `SKILL_EVALUATOR_DIR`.
+
+This skill is explicit-only. Ordinary software development does not run an evaluation automatically; invoke it only for a requested package-quality, comparison, security, release, or longitudinal decision.
 
 ## Decision router
 

@@ -74,7 +74,9 @@ Evidence locators are one-based inclusive `{start_line,end_line}` spans into all
 - `replay_manifest`: each component has `tokens=null`; only captured bytes are claimed;
 - `paired_total_only`: components are empty and target-Skill attribution is unavailable.
 
-Each component is exactly `{kind,source_path,artifact,tokens}`, where kind is `metadata`, `body`, or `reference` and artifact names one unique UTF-8 allowlisted file. Body presence must agree with body loading. The set of reference source paths must equal `routing.resources_loaded`; repeated injection of one source uses distinct captured artifacts and each copy counts.
+Each component remains exactly `{kind,source_path,artifact,tokens}`. `kind` is `metadata`, `body`, `reference`, `protocol_output`, or `failed_command_output`; artifact names one unique UTF-8 allowlisted file. Static source paths are canonical plugin-relative POSIX paths. Dynamic paths are redacted `protocol:<tool_id>:<ordinal>` or `failed-command:<tool_family>:<ordinal>` identifiers, never command arguments or local paths. Body presence must agree with body loading, and the unique reference source set must equal `routing.resources_loaded`.
+
+Component order is model-visible event order. Failure, timeout, and partial output use `failed_command_output`; other successful helper output uses `protocol_output` unless it exactly equals a bound static file or deterministic continuous byte slice. The controller captures every skill-attributed visible event exactly once. The analyzer hashes artifact bytes, derives unique/repeated static and protocol/failed-output byte totals, and rejects any run whose four totals do not conserve total attributed bytes. No receipt field or sidecar is added.
 
 ## Deterministic grader receipt
 

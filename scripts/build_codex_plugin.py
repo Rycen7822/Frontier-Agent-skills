@@ -16,6 +16,9 @@ import sys
 import tempfile
 from typing import Any
 
+from jsonschema import Draft202012Validator
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -29,26 +32,37 @@ FORBIDDEN_PLUGIN_KEYS = {"mcpServers", "apps", "hooks"}
 FORBIDDEN_PLUGIN_NAMES = {".mcp.json", ".app.json", "hooks.json"}
 TEXT_SUFFIXES = {".md", ".json", ".yaml", ".yml", ".py", ".template"}
 RELEASE_FIELDS = {
-    "schema_version", "bundle_id", "bundle_version", "source_tree_hash", "source_revision",
+    "schema_version", "bundle_id", "bundle_version", "source_tree_hash", "plugin_tree_hash", "source_revision",
     "source_revision_signed", "source_clean", "deterministic_report_hash",
-    "l2_scored_report_hash", "activation_decision_hash", "release_gate",
-    "approved_activation_level",
+    "l2_scored_report_hash", "longitudinal_report_hash", "activation_decision_hash",
+    "approved_skill_activation", "remote_writes", "release_gate",
 }
 EXPECTED_SKILLS = {
-    "brainstorming": "1.0.0",
     "long-document-segmented-writing": "1.0.0",
-    "skill-evaluator": "1.0.0",
-    "software-quality-workflows": "8.0.0",
-    "writing-plans": "7.0.0",
+    "skill-evaluator": "2.0.0",
+    "software-quality-workflows": "9.0.0",
+    "writing-plans": "8.0.0",
+}
+EXPECTED_ACTIVATION = {
+    "long-document-segmented-writing": True,
+    "skill-evaluator": False,
+    "software-quality-workflows": True,
+    "writing-plans": False,
+}
+EXPECTED_APPROVED_ACTIVATION = {
+    skill_id: "implicit" if enabled else "explicit_only"
+    for skill_id, enabled in EXPECTED_ACTIVATION.items()
 }
 
 
-def _strict_json(path: Path, maximum: int = 4 * 1024 * 1024) -> dict[str, Any]:
+def _regular_bytes(path: Path, maximum: int = 4 * 1024 * 1024) -> bytes:
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(path, flags)
     try:
         info = os.fstat(descriptor)
-        if not stat.S_ISREG(info.st_mode) or info.st_size > maximum:
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError(f"input is not a regular file: {path}")
+        if info.st_size > maximum:
             raise ValueError(f"JSON input exceeds byte budget: {path}")
         chunks: list[bytes] = []
         remaining = maximum + 1
@@ -58,11 +72,15 @@ def _strict_json(path: Path, maximum: int = 4 * 1024 * 1024) -> dict[str, Any]:
                 break
             chunks.append(chunk)
             remaining -= len(chunk)
-        payload = b"".join(chunks)
-        if len(payload) > maximum:
+        value = b"".join(chunks)
+        if len(value) > maximum:
             raise ValueError(f"JSON input exceeds byte budget: {path}")
     finally:
         os.close(descriptor)
+    return value
+
+
+def _decode_json(payload: bytes, path: Path) -> dict[str, Any]:
 
     def pairs_hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         value: dict[str, Any] = {}
@@ -79,6 +97,14 @@ def _strict_json(path: Path, maximum: int = 4 * 1024 * 1024) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON object: {path}")
     return value
+
+
+def _strict_json(path: Path, maximum: int = 4 * 1024 * 1024) -> dict[str, Any]:
+    return _decode_json(_regular_bytes(path, maximum), path)
+
+
+def _bytes_hash(value: bytes) -> str:
+    return "sha256:" + sha256(value).hexdigest()
 
 
 def _content_hash(path: Path) -> str:
@@ -107,6 +133,32 @@ def skill_version(path: Path) -> str:
     return match.group(1)
 
 
+def skill_activation(path: Path) -> bool:
+    value = yaml.safe_load((path / "agents" / "openai.yaml").read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"invalid agents/openai.yaml object: {path}")
+    policy = value.get("policy")
+    if not isinstance(policy, dict) or set(policy) != {"allow_implicit_invocation"}:
+        raise ValueError(f"agents/openai.yaml must declare only policy.allow_implicit_invocation: {path}")
+    activation = policy["allow_implicit_invocation"]
+    if not isinstance(activation, bool):
+        raise ValueError(f"allow_implicit_invocation must be boolean: {path}")
+    return activation
+
+
+def _self_hash(report: dict[str, Any]) -> str:
+    value = dict(report)
+    value.pop("report_hash", None)
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + sha256(encoded).hexdigest()
+
+
 def _validate_exact_bundle_identity(source_root: Path) -> None:
     builder_path = source_root / "bundle" / "build_bundle_manifest.py"
     output_path = source_root / "frontier-engineering.bundle.json"
@@ -120,7 +172,7 @@ def _validate_exact_bundle_identity(source_root: Path) -> None:
     expected = namespace["build_manifest"]()
     observed = _strict_json(output_path)
     if observed != expected:
-        raise ValueError("frontier-engineering.bundle.json does not match the exact five-skill source")
+        raise ValueError("frontier-engineering.bundle.json does not match the exact four-skill source")
     rendered = (json.dumps(expected, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
     if output_path.is_symlink() or output_path.read_bytes() != rendered:
         raise ValueError("frontier-engineering.bundle.json is not the canonical generated artifact")
@@ -129,11 +181,12 @@ def _validate_exact_bundle_identity(source_root: Path) -> None:
 def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
     skills = manifest.get("skills")
     if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != set(EXPECTED_SKILLS):
-        raise ValueError("manifest must declare exactly the five canonical skills")
-    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("2.0", "4.0.0"):
+        raise ValueError("manifest must declare exactly the four canonical skills")
+    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "5.0.0"):
         raise ValueError("manifest bundle schema/version is invalid")
     if {item.get("id"): item.get("version") for item in skills} != EXPECTED_SKILLS:
-        raise ValueError("version mismatch: manifest skill versions do not match the five-skill release identity")
+        raise ValueError("version mismatch: manifest skill versions do not match the four-skill release identity")
+    observed_activation: dict[str, bool] = {}
     for item in skills:
         if not isinstance(item, dict) or set(item) != {"id", "path", "version"}:
             raise ValueError("manifest skill entries must contain only id, path, and version")
@@ -143,15 +196,20 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
         observed = skill_version(path)
         if observed != item["version"]:
             raise ValueError(f"version mismatch for {item['id']}: manifest={item['version']} skill={observed}")
+        observed_activation[item["id"]] = skill_activation(path)
+    if observed_activation != EXPECTED_ACTIVATION:
+        raise ValueError("skill activation does not match the exact mixed activation matrix")
     _validate_exact_bundle_identity(source_root)
-    activation = manifest.get("activation_policy")
-    required_activation = {
-        "current_level": "implicit_local_pilot", "implicit_routing_default": True, "remote_writes": False,
+    if manifest.get("activation_ceiling") != "implicit_local_pilot" or manifest.get("remote_writes") is not False:
+        raise ValueError("manifest activation ceiling or remote-write boundary is invalid")
+    generated = _strict_json(source_root / "frontier-engineering.bundle.json")
+    generated_activation = {
+        skill_id: record.get("allow_implicit_invocation")
+        for skill_id, record in generated.get("skills", {}).items()
+        if isinstance(record, dict)
     }
-    if activation != required_activation:
-        raise ValueError("manifest activation policy fields are invalid")
-    if manifest.get("cross_skill_contracts") != ["plan-to-workflow", "workflow-plan-change-proposal"]:
-        raise ValueError("manifest cross-skill contracts do not match the five-skill release identity")
+    if generated_activation != EXPECTED_ACTIVATION:
+        raise ValueError("generated bundle activation does not match skill metadata")
     records = bundle_inventory(source_root, manifest)
     for record in records:
         path = source_root / record["path"]
@@ -208,33 +266,128 @@ def validate_release_evidence(
     source_root: Path,
     manifest: dict[str, Any],
     source_tree_hash: str,
+    plugin_tree_hash: str | None = None,
 ) -> dict[str, Any]:
     if path is None:
         raise ValueError("dist output requires matching passed release evidence")
+    _reject_symlink_components(path)
     evidence = _strict_json(path)
-    if set(evidence) != RELEASE_FIELDS or evidence.get("schema_version") != "release-evidence/2.0":
+    schema = _strict_json(source_root / "packaging" / "schemas" / "release-evidence.schema.json")
+    Draft202012Validator.check_schema(schema)
+    errors = list(Draft202012Validator(schema).iter_errors(evidence))
+    if errors or set(evidence) != RELEASE_FIELDS or evidence.get("schema_version") != "release-evidence/3.0":
         raise ValueError("release evidence schema is invalid")
     bundle = _strict_json(source_root / "frontier-engineering.bundle.json")
-    report = _strict_json(source_root / "evaluation" / "offline-route-replay.json")
     if (
         evidence.get("bundle_id") != bundle.get("bundle_id")
         or evidence.get("bundle_version") != manifest.get("bundle_version")
         or evidence.get("source_tree_hash") != source_tree_hash
+        or evidence.get("approved_skill_activation") != EXPECTED_APPROVED_ACTIVATION
+        or evidence.get("remote_writes") is not False
     ):
-        raise ValueError("release evidence source tree or bundle identity does not match")
-    if evidence.get("deterministic_report_hash") != report.get("report_hash"):
-        raise ValueError("release evidence deterministic report hash does not match")
+        raise ValueError("release evidence source, bundle, or activation identity does not match")
+    if plugin_tree_hash is not None and evidence.get("plugin_tree_hash") != plugin_tree_hash:
+        raise ValueError("release evidence plugin tree hash does not match the staged plugin")
     revision = evidence.get("source_revision")
     if (
         evidence.get("release_gate") != "passed"
-        or evidence.get("approved_activation_level") != "implicit_local_pilot"
         or evidence.get("source_revision_signed") is not True
         or evidence.get("source_clean") is not True
         or not isinstance(revision, str)
         or not re.fullmatch(r"[0-9a-f]{40}", revision)
         or not _git_release_source_ok(source_root, revision)
     ):
-        raise ValueError("release evidence lacks a clean signed source revision and implicit local pilot approval")
+        raise ValueError("release evidence lacks a clean signed source revision and passed release gate")
+
+    static_report = _strict_json(source_root / "evaluation" / "static-contract-diagnostic.json")
+    if (
+        static_report.get("report_hash") != _self_hash(static_report)
+        or evidence.get("deterministic_report_hash") != static_report.get("report_hash")
+        or static_report.get("bundle_id") != bundle.get("bundle_id")
+        or static_report.get("bundle_version") != manifest.get("bundle_version")
+        or static_report.get("skill_activation") != EXPECTED_ACTIVATION
+    ):
+        raise ValueError("static contract diagnostic identity or report hash does not match")
+
+    evidence_root = path.absolute().parent
+    external_paths = {
+        "sqw": evidence_root / "l2" / "sqw" / "report.json",
+        "writing_plans": evidence_root / "l2" / "writing-plans" / "report.json",
+        "aggregate": evidence_root / "l2" / "aggregate-report.json",
+        "longitudinal": evidence_root / "longitudinal" / "report.json",
+        "activation": evidence_root / "activation-decision.json",
+    }
+    external_bytes = {name: _regular_bytes(item, 16 * 1024 * 1024) for name, item in external_paths.items()}
+    external = {name: _decode_json(value, external_paths[name]) for name, value in external_bytes.items()}
+    hashes = {name: _bytes_hash(value) for name, value in external_bytes.items()}
+    sqw = external["sqw"]
+    writing_plans = external["writing_plans"]
+    aggregate = external["aggregate"]
+    longitudinal = external["longitudinal"]
+    activation = external["activation"]
+
+    if sqw.get("report_hash") != _self_hash(sqw) or writing_plans.get("report_hash") != _self_hash(writing_plans):
+        raise ValueError("L2 scored report self-hash mismatch")
+    if (sqw.get("evidence_status"), sqw.get("usefulness_status")) != ("complete", "supported"):
+        raise ValueError("SQW L2 report is not complete and supported")
+    if (writing_plans.get("evidence_status"), writing_plans.get("usefulness_status")) != ("complete", "supported"):
+        raise ValueError("Writing Plans L2 report is not complete and supported")
+    if (
+        aggregate.get("aggregate_status") != "passed"
+        or aggregate.get("sqw_report_content_hash") != hashes["sqw"]
+        or aggregate.get("writing_plans_report_content_hash") != hashes["writing_plans"]
+    ):
+        raise ValueError("aggregate L2 status or arm content hash does not match")
+    if longitudinal.get("longitudinal_status") != "passed":
+        raise ValueError("longitudinal report is not passed")
+
+    expected_hashes = {
+        "l2_scored_report_hash": hashes["aggregate"],
+        "longitudinal_report_hash": hashes["longitudinal"],
+        "activation_decision_hash": hashes["activation"],
+    }
+    if any(evidence.get(key) != value for key, value in expected_hashes.items()):
+        raise ValueError("release evidence external content hash does not match")
+
+    activation_fields = {
+        "schema_version", "bundle_id", "candidate_revision", "source_tree_hash",
+        "candidate_plugin_tree_hash", "sqw_l2_report_hash", "writing_plans_l2_report_hash",
+        "aggregate_l2_report_hash", "longitudinal_report_hash", "approved_skill_activation",
+        "remote_writes", "decision", "blocking_observations",
+    }
+    if (
+        set(activation) != activation_fields
+        or activation.get("schema_version") != "activation-decision/1.0"
+        or activation.get("bundle_id") != bundle.get("bundle_id")
+        or activation.get("decision") != "approve"
+        or activation.get("blocking_observations") != []
+        or activation.get("approved_skill_activation") != EXPECTED_APPROVED_ACTIVATION
+        or activation.get("remote_writes") is not False
+        or activation.get("sqw_l2_report_hash") != hashes["sqw"]
+        or activation.get("writing_plans_l2_report_hash") != hashes["writing_plans"]
+        or activation.get("aggregate_l2_report_hash") != hashes["aggregate"]
+        or activation.get("longitudinal_report_hash") != hashes["longitudinal"]
+    ):
+        raise ValueError("activation decision is not an exact unblocked approval")
+
+    for label, report in (
+        ("SQW", sqw),
+        ("Writing Plans", writing_plans),
+        ("aggregate", aggregate),
+        ("longitudinal", longitudinal),
+    ):
+        if (
+            report.get("candidate_revision") != revision
+            or report.get("candidate_source_tree_hash") != source_tree_hash
+            or report.get("candidate_plugin_tree_hash") != evidence.get("plugin_tree_hash")
+        ):
+            raise ValueError(f"{label} candidate identity does not match release evidence")
+    if (
+        activation.get("candidate_revision") != revision
+        or activation.get("source_tree_hash") != source_tree_hash
+        or activation.get("candidate_plugin_tree_hash") != evidence.get("plugin_tree_hash")
+    ):
+        raise ValueError("activation decision candidate identity does not match release evidence")
     return evidence
 
 
@@ -249,7 +402,7 @@ def _validate_staging(staging: Path, plugin_name: str) -> list[dict[str, Any]]:
         raise ValueError("rendered plugin manifest identity or runtime surface is invalid")
     skill_names = {path.name for path in (staging / "skills").iterdir() if path.is_dir()}
     if skill_names != set(EXPECTED_SKILLS):
-        raise ValueError("staging must contain exactly the five canonical skills")
+        raise ValueError("staging must contain exactly the four canonical skills")
     candidates = [path for path in staging.rglob("*") if path.is_file() or path.is_symlink()]
     if any(path.name in FORBIDDEN_PLUGIN_NAMES for path in candidates):
         raise ValueError("staging contains a forbidden MCP/app/hook file")
@@ -316,10 +469,9 @@ def build(source_root: Path, output: Path, release_evidence: Path | None, eviden
     )
     if output.name != template["name"]:
         raise ValueError(f"plugin output folder must match manifest name: {template['name']}")
-    is_release = release_evidence is not None or "dist" in output.parts
-    release_binding: dict[str, Any] | None = None
+    is_release = release_evidence is not None
     if is_release:
-        release_binding = validate_release_evidence(
+        validate_release_evidence(
             release_evidence,
             source_root=source_root,
             manifest=manifest,
@@ -349,20 +501,22 @@ def build(source_root: Path, output: Path, release_evidence: Path | None, eviden
         _assert_skill_copy_matches(source_records, plugin_records)
         if validate_source(source_root, manifest) != source_records:
             raise ValueError("E_SOURCE_DRIFT: bundle source changed during plugin staging")
+        plugin_tree_hash = tree_hash(plugin_records)
         if is_release:
             validate_release_evidence(
                 release_evidence,
                 source_root=source_root,
                 manifest=manifest,
                 source_tree_hash=source_tree_hash,
+                plugin_tree_hash=plugin_tree_hash,
             )
-        plugin_tree_hash = tree_hash(plugin_records)
         release_evidence_hash = _content_hash(release_evidence) if release_evidence is not None else None
         evidence: dict[str, Any] = {
-            "schema_version": "plugin-build-evidence/2.0",
+            "schema_version": "plugin-build-evidence/3.0",
             "bundle_id": _strict_json(source_root / "frontier-engineering.bundle.json")["bundle_id"],
             "bundle_version": manifest["bundle_version"],
             "skill_versions": {item["id"]: item["version"] for item in sorted(manifest["skills"], key=lambda item: item["id"])},
+            "skill_activation": dict(EXPECTED_ACTIVATION),
             "source_tree_hash": source_tree_hash,
             "source_revision": _source_revision(source_root),
             "source_file_count": len(source_records),
@@ -371,7 +525,7 @@ def build(source_root: Path, output: Path, release_evidence: Path | None, eviden
             "plugin_name": template["name"],
             "output_class": "release" if is_release else "staging",
             "release_evidence_hash": release_evidence_hash,
-            "activation_ceiling": manifest["activation_policy"]["current_level"],
+            "activation_ceiling": manifest["activation_ceiling"],
             "files": plugin_records,
         }
         evidence["evidence_hash"] = "sha256:" + sha256(

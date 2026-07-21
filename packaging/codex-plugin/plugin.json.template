@@ -1,7 +1,7 @@
 {
   "name": "frontier-engineering-plugin",
   "version": "${BUNDLE_VERSION}",
-  "description": "Five bounded engineering skills for design, planning, execution, long documents, and evaluation.",
+  "description": "Four engineering skills for implementation and verification, explicit planning and handoff, long-document writing, and skill evaluation.",
   "author": {
     "name": "Hermes Agent"
   },
@@ -10,15 +10,15 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Frontier Engineering",
-    "shortDescription": "Design, plan, execute, document, and evaluate",
-    "longDescription": "Five bounded Frontier Engineering skills for brainstorming, implementation planning, software-quality execution, long-document writing, and skill evaluation.",
+    "shortDescription": "Execute, plan handoffs, write long documents, and evaluate skills",
+    "longDescription": "Four Frontier Engineering owners for implementation and verification, explicit planning and handoff, long-document writing, and skill evaluation.",
     "developerName": "Hermes Agent",
     "category": "Developer Tools",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "Design and plan this bounded engineering change.",
       "Execute and verify this local software task.",
-      "Write or evaluate the requested engineering artifact."
+      "Write an explicit handoff or program plan for settled software decisions.",
+      "Write the requested long document or evaluate an Agent Skill."
     ]
   }
 }

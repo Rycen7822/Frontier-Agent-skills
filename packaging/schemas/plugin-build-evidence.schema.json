@@ -4,23 +4,32 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "bundle_id", "bundle_version", "skill_versions", "source_tree_hash",
+    "schema_version", "bundle_id", "bundle_version", "skill_versions", "skill_activation", "source_tree_hash",
     "source_revision", "source_file_count", "plugin_tree_hash", "plugin_file_count", "plugin_name",
     "output_class", "release_evidence_hash", "activation_ceiling", "files", "evidence_hash"
   ],
   "properties": {
-    "schema_version": {"const": "plugin-build-evidence/2.0"},
-    "bundle_id": {"const": "frontier-engineering/4.0.0"},
-    "bundle_version": {"const": "4.0.0"},
+    "schema_version": {"const": "plugin-build-evidence/3.0"},
+    "bundle_id": {"const": "frontier-engineering/5.0.0"},
+    "bundle_version": {"const": "5.0.0"},
     "skill_versions": {
       "type": "object", "additionalProperties": false,
-      "required": ["brainstorming", "long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
+      "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
-        "brainstorming": {"const": "1.0.0"},
         "long-document-segmented-writing": {"const": "1.0.0"},
-        "skill-evaluator": {"const": "1.0.0"},
-        "software-quality-workflows": {"const": "8.0.0"},
-        "writing-plans": {"const": "7.0.0"}
+        "skill-evaluator": {"const": "2.0.0"},
+        "software-quality-workflows": {"const": "9.0.0"},
+        "writing-plans": {"const": "8.0.0"}
+      }
+    },
+    "skill_activation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
+      "properties": {
+        "long-document-segmented-writing": {"const": true},
+        "skill-evaluator": {"const": false},
+        "software-quality-workflows": {"const": true},
+        "writing-plans": {"const": false}
       }
     },
     "source_tree_hash": {"$ref": "#/$defs/hash"},

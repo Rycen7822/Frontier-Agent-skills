@@ -11,7 +11,7 @@
   "properties": {
     "schema_version": {"const": "source-archive-evidence/2.0"},
     "layout": {"enum": ["bundle", "skills_only"]},
-    "bundle_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "bundle_version": {"const": "5.0.0"},
     "root_prefix": {
       "oneOf": [
         {"const": "frontier-engineering-bundle"},
@@ -21,13 +21,12 @@
     "skill_versions": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["brainstorming", "long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
+      "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
-        "brainstorming": {"const": "1.0.0"},
         "long-document-segmented-writing": {"const": "1.0.0"},
-        "skill-evaluator": {"const": "1.0.0"},
-        "software-quality-workflows": {"const": "8.0.0"},
-        "writing-plans": {"const": "7.0.0"}
+        "skill-evaluator": {"const": "2.0.0"},
+        "software-quality-workflows": {"const": "9.0.0"},
+        "writing-plans": {"const": "8.0.0"}
       }
     },
     "source_tree_hash": {"$ref": "#/$defs/hash"},

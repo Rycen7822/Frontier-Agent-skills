@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.review.rubrics.product-and-operability",
-  "card_version": 2,
-  "kind": "rubric",
-  "decision_id": "sqw.select.review.rubrics.product-and-operability",
-  "required_artifact_ids": [
-    "review-tier"
-  ],
-  "produced_artifact_ids": [
-    "review-rubrics-product-and-operability"
-  ],
-  "max_bytes": 8192
-}
----
 # Product and Operability Rubric
 
-## Decision this card owns
+## Purpose
 Judge whether the change delivers its user outcome and remains safely diagnosable, ready, recoverable, and operable.
 
 ## Use when
@@ -34,12 +19,8 @@ Judge whether the change delivers its user outcome and remains safely diagnosabl
 4. Distinguish health from readiness; check bounded retry/backoff/timeout/circuit, long-job progress/completion/cancel/partial failure, atomic queue/batch validation, smoke/rollback/canary/migration/recovery, and triggered data/model provenance.
 5. Require focused evidence for semantics/correlation/cancel/redaction and emit only introduced/materially obscured user or operating risks. Unavailable deployment judgement is an evidence/owner need, not an inferred pass.
 
-## Output contract
+## Required result
 - One `review-rubrics-product-and-operability` with zero or more user-journey or operability candidates, expected/observed state, signal/recovery evidence, cardinality/privacy/rollout limitations, impact/correction/confidence/blocking/verification, owner needs, and positive notes.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop at review evidence; do not expand product scope, design signals, operate deployment, fix, or publish approval.

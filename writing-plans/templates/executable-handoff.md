@@ -1,23 +1,41 @@
-# Typed Executable Handoff v3: {{ goal }}
+# Executable Handoff
 
-- Handoff ID: `wp-handoff:{{ canonical payload sha256 }}`
-- Producer: `{{ profile }} / {{ card_id }} / {{ completion_id }}`
-- Plan/state binding: `{{ plan_id or standalone }} / {{ state_hash or null }}`
-- Source identity: `{{ kind }} / {{ identity_hash }}`
-- Planning scope binding: `{{ binding_id }}`
-- Bundle: `frontier-engineering/4.0.0`
+## Source identity and freshness
 
-This artifact records execution-authority requirements. It does not grant or claim actual authority. The receiver must route through Software Quality Workflows and re-establish scope and effect authority.
+[replace: repository, revision, dirty-state boundary, and freshness check]
 
-## Typed payload
+## Goal and non-goals
 
-- Goal/non-goals: observable destination and explicit exclusions.
-- Global invariants: ordered `{ref, statement}` entries.
-- Owner seams: ordered `{owner, paths, resources, effects}` entries.
-- Requirements: exact fact, decision, evidence, approval, and policy completion refs.
-- Ordered slices: `{slice_id,node_ref,objective,depends_on,read_set,write_set,effect_set,completion_criterion}`.
-- Rollback: typed strategy, ordered steps, verifier refs.
-- Target entry: `software-quality-workflows`, `route_phase=entry`, required SQW decision IDs.
-- Unresolved blockers: facts the receiver must not invent.
+[replace: observable goal and explicit exclusions]
 
-No filesystem state path, free output path, inferred authority, or unbound artifact-type reference is part of this contract.
+## Authority, scope, and protected work
+
+[replace: granted authority, allowed scope, user-owned work, and forbidden effects]
+
+## Decisions and invariants
+
+[replace: settled decisions and facts that must remain true]
+
+## Ordered slices and dependencies
+
+1. [replace: outcome, owner seam, prerequisites, and downstream dependency]
+
+## Allowed writes and effects
+
+[replace: exact local writes and separately authorized external effects]
+
+## Acceptance evidence and verification
+
+[replace: required checks, expected observations, and false-green risks]
+
+## Rollback and recovery
+
+[replace: rollback boundary and interruption recovery]
+
+## Blockers and unresolved facts
+
+[replace: real blockers only, or "None"]
+
+## Exact next action
+
+[replace: one command, inspection, or edit that safely resumes execution]

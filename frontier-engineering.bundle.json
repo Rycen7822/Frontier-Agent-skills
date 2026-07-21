@@ -1,51 +1,30 @@
 {
-  "bundle_id": "frontier-engineering/4.0.0",
-  "compatible_schema_epoch": 3,
-  "contracts": {
-    "plan-execution-handoff": {
-      "contract_id": "https://local.frontier-agent/schemas/plan-execution-handoff.schema.json",
-      "normative_owner_hash": "sha256:d602f6c0d3d2e809bcfe1a97425b30219ebcb719b5e87c29ad3444ba09cfef9f",
-      "normative_owner_path": "writing-plans/schemas/plan-execution-handoff.schema.json"
-    }
-  },
-  "release_build_id": "build-9b32c1ab44236ac58b25fb57",
-  "schema_version": "frontier-engineering-bundle/1.0",
+  "activation_ceiling": "implicit_local_pilot",
+  "bundle_id": "frontier-engineering/5.0.0",
+  "compatible_schema_epoch": 4,
+  "release_build_id": "build-48b3e0e52a57675ac47eaf64",
+  "remote_writes": false,
+  "schema_version": "frontier-engineering-bundle/2.0",
   "skills": {
-    "brainstorming": {
-      "root_hash": "sha256:de07f1ac2711e5fbfc026117a91e060455df06315c8a96d6b8045e40151cea0e",
-      "version": "1.0.0"
-    },
     "long-document-segmented-writing": {
+      "allow_implicit_invocation": true,
       "root_hash": "sha256:73bd5711a85b79eb3edacb0abc7a08fb7917b777b67e6decc8b4700adadfc7ae",
       "version": "1.0.0"
     },
     "skill-evaluator": {
-      "root_hash": "sha256:eb5316247f02a62a8a9b148547626cb8c960057a48df593e0ca860e20eff5b04",
-      "version": "1.0.0"
+      "allow_implicit_invocation": false,
+      "root_hash": "sha256:eeb083a38ff33b12fd12b236a03726d339cd8c3f62a97a52a699ba11e3a2ff0d",
+      "version": "2.0.0"
     },
     "software-quality-workflows": {
-      "policy_registry": {
-        "content_hash": "sha256:9932a4de573cee247e1d7544c0583fee2233ba1b65dce97b3e0d81c13203555b",
-        "path": "software-quality-workflows/registries/policy-owners.json"
-      },
-      "reference_card_manifest": {
-        "content_hash": "sha256:b59fb4785b2638deae11c518bdbd8b205cedfdde0426f7471c06ec4e3594da7a",
-        "path": "software-quality-workflows/registries/reference-cards.manifest.json"
-      },
-      "root_hash": "sha256:5eeac0f77fa61bac126f9696154e9663c4db3ec5494488857facbae433c3eebb",
-      "version": "8.0.0"
+      "allow_implicit_invocation": true,
+      "root_hash": "sha256:60b7ff0636c01d30ab3833e8e6ab4ba4b52f65995f06f2b62750ebbc5008bde1",
+      "version": "9.0.0"
     },
     "writing-plans": {
-      "policy_registry": {
-        "content_hash": "sha256:3408e1bf92dafd82f2ebe79fd72c29294bd65385c1107f2cf11970fdcc9107bc",
-        "path": "writing-plans/registries/policy-owners.json"
-      },
-      "reference_card_manifest": {
-        "content_hash": "sha256:09ca294f3504d5d7755eadb94597b61531708b17df344f7877199e5a2c8c25c3",
-        "path": "writing-plans/registries/reference-cards.manifest.json"
-      },
-      "root_hash": "sha256:dbae2ca981b27d39d2c4517eb986155ea5cf6aebbf953e1eaea557ac0312509c",
-      "version": "7.0.0"
+      "allow_implicit_invocation": false,
+      "root_hash": "sha256:e462e35ab141dfd65dd73383f281d40f092c5f89a9c65c5fb4a40e394fa1855b",
+      "version": "8.0.0"
     }
   }
 }

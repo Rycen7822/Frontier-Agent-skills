@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.domain.performance.baseline-and-parity",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "sqw.select.domain.performance.baseline-and-parity",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "domain-performance-baseline-and-parity"
-  ],
-  "max_bytes": 8192
-}
----
 # Performance Baseline and Parity
 
-## Decision this card owns
+## Purpose
 Establish a stable measured bottleneck, change one owner seam, and prove comparable result parity and trade-offs.
 
 ## Use when
@@ -25,7 +10,7 @@ Establish a stable measured bottleneck, change one owner seam, and prove compara
 - No observable result contract exists, evidence is noisy/incomparable, or the optimization is already frozen elsewhere.
 
 ## Required inputs
-- `workflow-intake`; symptom and frozen output/order/error/state/effect identity; representative inputs/environment/build/warm-cold state; raw samples/method/noise budget; bottleneck evidence; independent parity oracle; authority/trade-off ceiling; rollback save point.
+- task context; symptom and frozen output/order/error/state/effect identity; representative inputs/environment/build/warm-cold state; raw samples/method/noise budget; bottleneck evidence; independent parity oracle; authority/trade-off ceiling; rollback save point.
 
 ## Procedure
 1. Freeze result identity, approved tolerances, determinism, side effects, and rollback baseline before measuring.
@@ -37,12 +22,8 @@ Establish a stable measured bottleneck, change one owner seam, and prove compara
 7. Rerun the same method/input/environment and prove parity for public output/order/errors/state/determinism/effects plus tolerances.
 8. Report before/after samples, noise/confidence, invalid runs, CPU/memory/I/O/latency/complexity trade-offs, inference versus measurement, threshold decision, rollback, and shifted bottlenecks.
 
-## Output contract
+## Required result
 - One `domain-performance-baseline-and-parity` with symptom/result identity, environment/method/raw evidence, samples/noise/uncertainty, bottleneck, intervention/owner, parity matrix/evidence, comparable delta, resource trade-offs, threshold, rollback, cleanup, residual risk, and blocker.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop on noisy evidence or parity ambiguity; never trade correctness, privacy, compatibility, or diagnosability for unapproved speed.

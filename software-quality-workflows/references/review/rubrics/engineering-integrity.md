@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.review.rubrics.engineering-integrity",
-  "card_version": 2,
-  "kind": "rubric",
-  "decision_id": "sqw.select.review.rubrics.engineering-integrity",
-  "required_artifact_ids": [
-    "review-tier"
-  ],
-  "produced_artifact_ids": [
-    "review-rubrics-engineering-integrity"
-  ],
-  "max_bytes": 8192
-}
----
 # Engineering Integrity Rubric
 
-## Decision this card owns
+## Purpose
 Identify scoped regressions across API consumers, architecture maintainability, CI/release controls, dependency provenance, and test evidence.
 
 ## Use when
@@ -35,12 +20,8 @@ Identify scoped regressions across API consumers, architecture maintainability, 
 5. For test evidence, map material behavior/risk to the lowest sufficient boundary, reject mock/private/stale/skipped/unexercised/swallowed false greens, and check determinism/isolation/data plus actual collection/execution; do not implement tests.
 6. Emit only change-caused, line/contract-grounded findings with impact, smallest correction, confidence, blocking, executable verification, explicit uncertainty, and useful positive evidence; never manufacture generic smells.
 
-## Output contract
+## Required result
 - One `review-rubrics-engineering-integrity` with zero or more candidates classified by the five subdomains, evidence/impact/correction/confidence/blocking/verification, uncertainties, and positive notes.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop at scoped review evidence; do not redesign, fix, operate pipelines, install, publish, or traverse another rubric.

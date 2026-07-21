@@ -1,31 +1,16 @@
----
-{
-  "card_id": "sqw.delegation.admission-and-contract",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "sqw.select.delegation.admission-and-contract",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "delegation-admission-and-contract"
-  ],
-  "max_bytes": 8192
-}
----
 # Delegation Admission and Contract
 
-## Decision this card owns
+## Purpose
 Decide whether delegation has net value and define revision-bound read-only or isolated-write slice contracts without transferring controller authority.
 
 ## Use when
-- `workflow-intake` permits delegation and independent slices can reduce latency or improve evidence separation.
+- task context permits delegation and independent slices can reduce latency or improve evidence separation.
 
 ## Do not use when
 - Work is small, serial, shares mutable state or canonical writers, has unresolved intent/control flow, lacks acceptance proof, or delegation is unauthorized or unavailable.
 
 ## Required inputs
-- `workflow-intake`; authority and mode; frozen source/scope/state identity; objective, frontier and invariants; dependencies; read/write/resource sets; effects and protected surfaces; acceptance verifier and false-green risk; and live host capabilities and limits.
+- task context; authority and mode; frozen source/scope/state identity; objective, frontier and invariants; dependencies; read/write/resource sets; effects and protected surfaces; acceptance verifier and false-green risk; and live host capabilities and limits.
 
 ## Procedure
 1. Compare reliability, latency, and separation value with capsule, coordination, validation, and reconciliation cost. Keep work controller-local when delegation has no net value.
@@ -36,12 +21,8 @@ Decide whether delegation has net value and define revision-bound read-only or i
 6. Require both slice kinds to stop on stale identity, overlap, scope ambiguity, verifier invalidation, unexpected external effects, or required authority expansion. The isolated-write contract requires the worker to re-observe state, implement the smallest coherent candidate only in its set, run the assigned verifier, and return slice/observed identity, touched set, candidate hash/path, original commands/statuses, evidence refs, side effects, deviations, unresolved items, status, and controller-validation needs.
 7. Forbid workers from asking on the controller's behalf, changing criteria, overwriting unrelated work, integrating canonical artifacts, self-approving, publishing, or claiming task/workflow completion. Returned summaries and test claims are evidence proposals; emit admitted contracts, rejected/controller-local reasons, dependency order, capability limits, and fan-in rules.
 
-## Output contract
+## Required result
 - One `delegation-admission-and-contract` with revision-bound slice manifests, shared identity and result schema, kind-specific authority and exact result envelopes, dependency order, read/write/resource and protection sets, effects, verifiers, capability bounds, rejections, fan-in rules, and blocker.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop after admission and contract definition; do not dispatch, implement, validate results, integrate, review, publish, or complete the workflow.

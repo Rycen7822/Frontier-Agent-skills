@@ -30,6 +30,8 @@ GLOBAL_GATE_METRICS = {
     "paired_task_pass_lift_lower_bound", "paired_process_score_lift_lower_bound",
     "paired_quality_score_lift_lower_bound", "paired_safety_pass_lift_lower_bound",
     "skill_context_attribution_rate", "skill_context_bytes_p95", "skill_context_tokens_p95",
+    "repeated_static_content_bytes_max", "protocol_output_bytes_max",
+    "failed_command_output_bytes_max",
 }
 VARIANT_GATE_METRICS = {
     "task_pass_rate", "routing_precision", "routing_recall", "routing_f1",
@@ -601,6 +603,21 @@ def check_spec(spec: Any, errors: list[str], warnings: list[str]) -> None:
                     errors.append("scored-ready L2+ spec requires one skill_context_attribution_rate == 1 gate")
                 if len(budget_gates) != 1:
                     errors.append("scored-ready L2+ spec requires exactly one Skill context p95 budget gate")
+                for metric in (
+                    "repeated_static_content_bytes_max",
+                    "protocol_output_bytes_max",
+                    "failed_command_output_bytes_max",
+                ):
+                    matches = [
+                        gate for gate in (gates if isinstance(gates, list) else [])
+                        if isinstance(gate, dict) and gate.get("metric") == metric
+                    ]
+                    if (
+                        len(matches) != 1
+                        or matches[0].get("operator") != "=="
+                        or matches[0].get("value") != 0
+                    ):
+                        errors.append(f"scored-ready L2+ spec requires one {metric} == 0 gate")
 
     authority = spec.get("authority")
     if not isinstance(authority, dict):

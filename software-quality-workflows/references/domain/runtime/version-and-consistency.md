@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.domain.runtime.version-and-consistency",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "sqw.select.domain.runtime.version-and-consistency",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "domain-runtime-version-and-consistency"
-  ],
-  "max_bytes": 8192
-}
----
 # Runtime Version and Consistency
 
-## Decision this card owns
+## Purpose
 Select an explicit runtime boundary and reconcile every declaration, consumer, generated surface, and managed-runtime smoke against it.
 
 ## Use when
@@ -25,7 +10,7 @@ Select an explicit runtime boundary and reconcile every declaration, consumer, g
 - Runtime support is unaffected and no consistency surface changes.
 
 ## Required inputs
-- `workflow-intake`; advertised range and exact versions; manifests/locks/docs/CI/containers/generated/package/installers/adapters; questioned core/optional/build/public feature; consumers; exact bad/good/public probes; compatibility/retirement constraints; environment authority.
+- task context; advertised range and exact versions; manifests/locks/docs/CI/containers/generated/package/installers/adapters; questioned core/optional/build/public feature; consumers; exact bad/good/public probes; compatibility/retirement constraints; environment authority.
 
 ## Procedure
 1. Inventory all support declarations and consumers. Probe the exact lowest advertised and nearest bad/good versions through the real import/parse/build/start/public path; preserve versions, statuses, and cause classes.
@@ -37,12 +22,8 @@ Select an explicit runtime boundary and reconcile every declaration, consumer, g
 7. Classify supported/failed/not-addressable, separate provisioning from product, list adjacent untested combinations, and preserve replay command/evidence. If unavailable, record strongest static proof, exact unverified claim, and precise follow-up without unapproved setup.
 8. Report focused, affected, public, and canonical evidence separately; clean only task-owned runtime state.
 
-## Output contract
+## Required result
 - One `domain-runtime-version-and-consistency` with selected range/outcome, version probe matrix, consumer impact, compatibility/optional contract, cross-surface matrix and changed declarations, below/at-boundary and managed-runtime smoke results, runner provenance, unverified follow-up, retirement, cleanup, gaps, and blocker.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop at explicit cross-surface evidence; never call an unavailable or adjacent boundary proven or mutate environments without authority.

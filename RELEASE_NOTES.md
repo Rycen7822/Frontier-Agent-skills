@@ -1,5 +1,17 @@
 # Release Notes
 
+## Bundle 5.0.0 direct-first major cut
+
+Bundle 5.0.0 removes the standalone `brainstorming` package and publishes exactly four owners: Long Document 1.0.0, Skill Evaluator 2.0.0, Software Quality Workflows 9.0.0, and Writing Plans 8.0.0. SQW now owns proportionate design discovery inside its Direct-first software workflow.
+
+SQW and Writing Plans delete their card, receipt, router, registry, and state runtimes instead of retaining adapters. Direct same-session work creates no workflow artifacts. Writing Plans is explicit-only and produces a Brief directly or one canonical Handoff/Program Markdown; it returns unresolved intent, cause, architecture, authority, and feasibility to SQW.
+
+Behavior work is distinction-first rather than strict-RED-first. Closeout classifies only tests added or materially changed in the current diff, retains durable/risk protection, removes temporary or duplicate probes, and gives migration tests an observable deterministic removal contract.
+
+Activation is intentionally mixed: Long Document and SQW remain implicit-local; Skill Evaluator and Writing Plans are explicit-only. Remote writes remain false. Quick, Extended, and Release are distinct profiles, and real CLI installation remains isolated and model-free.
+
+Bundle source schema advances to 3.0 and generated schema epoch advances to 4. Build, static-smoke, CLI-smoke, and release evidence advance to 3.0. The tracked deterministic artifact is now a static contract diagnostic; scored L2, longitudinal L4, and activation authority remain in an external revision-bound run root. Version 4 state is neither read nor migrated: finish under 4.x or restart from current source truth.
+
 ## Bundle 4.0.0 five-skill major cut
 
 Bundle 4.0.0 publishes `brainstorming` 1.0.0, `long-document-segmented-writing` 1.0.0, `skill-evaluator` 1.0.0, `software-quality-workflows` 8.0.0, and `writing-plans` 7.0.0 as the indivisible `frontier-engineering/4.0.0` release unit. Compatible schema epoch advances to 3: every skill record binds its version and root hash, while only the two card-driven skills carry policy-registry and reference-card components. No epoch-2 bundle reader is retained.
@@ -44,13 +56,13 @@ The checked-in activation level remains `shadow`. Implicit routing and remote wr
 
 - Plugin folder and manifest name: `frontier-engineering-plugin`
 - Plugin display name: `Frontier Engineering`
-- Plugin version: `4.0.0`
+- Plugin version: `5.0.0`
 - Bundle archive root: `frontier-engineering-bundle`
-- Skills-only archive roots: `writing-plans`, `software-quality-workflows`
-- Build evidence: `plugin-build-evidence/2.0`
-- Release evidence: `release-evidence/2.0`
-- Static smoke: `static-plugin-smoke/2.0`
-- CLI smoke: `cli-install-smoke/2.0`
+- Skills-only archive roots: `long-document-segmented-writing`, `skill-evaluator`, `software-quality-workflows`, `writing-plans`
+- Build evidence: `plugin-build-evidence/3.0`
+- Release evidence: `release-evidence/3.0`
+- Static smoke: `static-plugin-smoke/3.0`
+- CLI smoke: `cli-install-smoke/3.0`
 - Source archive evidence: `source-archive-evidence/2.0`
 
 Candidate-local P5 evaluation artifacts and P6-named packaging schemas were removed. Scored L2 evidence and activation decisions now exist only in revision-bound external run roots, preventing candidate self-reference.

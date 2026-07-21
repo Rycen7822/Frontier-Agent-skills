@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.verify.gate-selection-and-execution",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "sqw.select.verify.gate-selection-and-execution",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "verify-gate-selection-and-execution"
-  ],
-  "max_bytes": 8192
-}
----
 # Verification Gate Selection and Execution
 
-## Decision this card owns
+## Purpose
 Select proportionate gates and execute them without losing command identity, original status, provenance, or failure visibility.
 
 ## Use when
@@ -25,7 +10,7 @@ Select proportionate gates and execute them without losing command identity, ori
 - No applicable gate exists yet, or immutable records already cover the unchanged source/scope/environment.
 
 ## Required inputs
-- `workflow-intake`; changed behavior/surface/callers; available repository/plan/CI/user gates; risks and baseline; exact working directory; source/scope/environment; expected distinctions; output/evidence policy.
+- task context; changed behavior/surface/callers; available repository/plan/CI/user gates; risks and baseline; exact working directory; source/scope/environment; expected distinctions; output/evidence policy.
 
 ## Procedure
 1. Select valid RED when behavior changes, then the smallest focused gate proving the contract and only affected gates for real dependent seams.
@@ -37,12 +22,8 @@ Select proportionate gates and execute them without losing command identity, ori
 7. Capture complete evidence before bounded rendering. A renderer failure is separate and cannot change the gate result.
 8. Emit one immutable `pass|fail|not_run` record per gate with failed IDs/actionable slice and full-log ref. Stop before classifying failure or claiming completion.
 
-## Output contract
+## Required result
 - One `verify-gate-selection-and-execution` with verification plan, applicability/not-run reasons, exact immutable gate records, original statuses/log refs, public/risk proof records, baseline refs, and execution limitations.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop after faithful gate records exist; execution output alone does not prove a product defect or completion.

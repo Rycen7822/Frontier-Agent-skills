@@ -38,6 +38,17 @@ NUMERIC_FIELDS = {
 }
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.I)
 PLACEHOLDER_RE = re.compile(r"(?:\breplace(?:-|_)|sha256:replace|example-(?:agent|model|harness))", re.I)
+STATIC_CONTEXT_KINDS = {"metadata", "body", "reference"}
+CONTEXT_COMPONENT_KINDS = STATIC_CONTEXT_KINDS | {"protocol_output", "failed_command_output"}
+CONTEXT_EFFICIENCY_FIELDS = (
+    "unique_static_content_bytes",
+    "repeated_static_content_bytes",
+    "protocol_output_bytes",
+    "failed_command_output_bytes",
+)
+DYNAMIC_CONTEXT_SOURCE = re.compile(
+    r"^(?:protocol|failed-command):[A-Za-z0-9][A-Za-z0-9._-]{0,63}:[1-9][0-9]*$"
+)
 
 
 def canonical_sha256(value: Any) -> str:
@@ -567,6 +578,9 @@ def derive_verified_run(
         raise ValueError("paired_total_only context_usage requires empty components")
     verified_components: list[dict[str, Any]] = []
     component_artifacts: set[str] = set()
+    dynamic_sources: set[str] = set()
+    static_content_seen: set[tuple[str, str]] = set()
+    context_efficiency = {field: 0 for field in CONTEXT_EFFICIENCY_FIELDS}
     for index, component in enumerate(components):
         if not isinstance(component, dict) or set(component) != {
             "kind", "source_path", "artifact", "tokens",
@@ -576,10 +590,20 @@ def derive_verified_run(
         source_path = component.get("source_path")
         artifact = component.get("artifact")
         tokens = component.get("tokens")
-        if kind not in {"metadata", "body", "reference"}:
+        if kind not in CONTEXT_COMPONENT_KINDS:
             raise ValueError(f"context component {index} kind is invalid")
         if not isinstance(source_path, str) or not source_path.strip():
             raise ValueError(f"context component {index} source_path must be non-empty")
+        if kind in STATIC_CONTEXT_KINDS:
+            if normalize_relative_path(source_path, f"context component {index} source_path") != source_path:
+                raise ValueError(f"context component {index} source_path is not canonical")
+        else:
+            expected_prefix = "protocol:" if kind == "protocol_output" else "failed-command:"
+            if not DYNAMIC_CONTEXT_SOURCE.fullmatch(source_path) or not source_path.startswith(expected_prefix):
+                raise ValueError(f"context component {index} dynamic source_path is invalid")
+            if source_path in dynamic_sources:
+                raise ValueError("dynamic context source paths must be unique")
+            dynamic_sources.add(source_path)
         if not isinstance(artifact, str) or artifact not in artifacts:
             raise ValueError(f"context component {index} artifact is not allowlisted")
         if artifact in component_artifacts:
@@ -593,11 +617,22 @@ def derive_verified_run(
                 raise ValueError("host_receipt context components require non-negative integer tokens")
         elif tokens is not None:
             raise ValueError("replay_manifest context component tokens must be null")
+        byte_count = artifact_item["resolved"].stat().st_size
+        content_sha256 = file_sha256(artifact_item["resolved"])
+        if kind in STATIC_CONTEXT_KINDS:
+            identity = (source_path, content_sha256)
+            field = "repeated_static_content_bytes" if identity in static_content_seen else "unique_static_content_bytes"
+            static_content_seen.add(identity)
+        elif kind == "protocol_output":
+            field = "protocol_output_bytes"
+        else:
+            field = "failed_command_output_bytes"
+        context_efficiency[field] += byte_count
         verified_components.append({
             "kind": kind,
             "source_path": source_path,
             "artifact": artifact,
-            "bytes": artifact_item["resolved"].stat().st_size,
+            "bytes": byte_count,
             "tokens": tokens if measurement_source == "host_receipt" else None,
         })
     if measurement_source != "paired_total_only":
@@ -618,7 +653,10 @@ def derive_verified_run(
             if measurement_source == "host_receipt" else None
         ),
         "components": verified_components,
+        **context_efficiency,
     }
+    if derived_context_usage["bytes"] != sum(context_efficiency.values()):
+        raise ValueError("context byte attribution does not conserve total skill context bytes")
 
     grader_outputs = receipt.get("grader_outputs")
     if not isinstance(grader_outputs, list):
@@ -1423,6 +1461,16 @@ def summarize_skill_context(
     attributed = len(attributed_rows)
     coverage = attributed / planned if planned else None
     complete = planned > 0 and attributed == planned
+    efficiency_values = {field: [] for field in CONTEXT_EFFICIENCY_FIELDS}
+    for row in attributed_rows:
+        context = row["context_usage"]
+        values = [context.get(field) for field in CONTEXT_EFFICIENCY_FIELDS]
+        if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in values):
+            raise ValueError("context efficiency fields must be non-negative integers")
+        if context.get("bytes") != sum(values):
+            raise ValueError("context efficiency fields do not conserve total skill context bytes")
+        for field, value in zip(CONTEXT_EFFICIENCY_FIELDS, values, strict=True):
+            efficiency_values[field].append(value)
     byte_values = [float(row["context_usage"]["bytes"]) for row in attributed_rows]
     token_values = [row["context_usage"]["tokens"] for row in attributed_rows]
     token_complete = complete and all(
@@ -1438,6 +1486,14 @@ def summarize_skill_context(
             kind_bytes[component["kind"]] += component["bytes"]
             if component["tokens"] is not None:
                 kind_tokens[component["kind"]] += component["tokens"]
+    context_efficiency = {
+        field: {
+            "p50": nearest_rank(values, 0.50) if complete else None,
+            "p95": nearest_rank(values, 0.95) if complete else None,
+            "max": max(values) if complete and values else None,
+        }
+        for field, values in efficiency_values.items()
+    }
     return {
         "planned_rows": planned,
         "attributed_rows": attributed,
@@ -1447,6 +1503,7 @@ def summarize_skill_context(
         "measurement_source_counts": dict(sorted(sources.items())),
         "component_bytes": dict(sorted(kind_bytes.items())),
         "component_tokens": dict(sorted(kind_tokens.items())) if token_complete else None,
+        "context_efficiency": context_efficiency,
     }
 
 
@@ -1639,6 +1696,15 @@ def resolve_gate_metric(
     }
     if metric in context_metrics:
         value = context_summary.get(context_metrics[metric]) if context_summary else None
+        return float(value) if value is not None else None
+    efficiency_metrics = {
+        "repeated_static_content_bytes_max": "repeated_static_content_bytes",
+        "protocol_output_bytes_max": "protocol_output_bytes",
+        "failed_command_output_bytes_max": "failed_command_output_bytes",
+    }
+    if metric in efficiency_metrics:
+        field = context_summary.get("context_efficiency", {}).get(efficiency_metrics[metric], {}) if context_summary else {}
+        value = field.get("max")
         return float(value) if value is not None else None
     variant = candidate
     name = metric
@@ -2144,6 +2210,7 @@ def main() -> int:
             "evidence_issues": evidence_issues,
             "manual_review": manual_review_result,
             "skill_context": failed_context_summary,
+            "context_efficiency": failed_context_summary["context_efficiency"],
         }
         if failed_prior_context is not None:
             failure_report.update(failed_prior_context)
@@ -2445,6 +2512,7 @@ def main() -> int:
         "variant_summaries": variant_summaries,
         "paired": paired,
         "skill_context": context_summary,
+        "context_efficiency": context_summary["context_efficiency"],
         "evaluation_id": spec.get("evaluation_id") if spec else None,
         "spec_ready_for_scored_run": spec_ready,
         "hard_gates": hard_gates,

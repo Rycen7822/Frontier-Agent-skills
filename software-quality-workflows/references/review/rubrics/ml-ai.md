@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.review.rubrics.ml-ai",
-  "card_version": 2,
-  "kind": "rubric",
-  "decision_id": "sqw.select.review.rubrics.ml-ai",
-  "required_artifact_ids": [
-    "review-tier"
-  ],
-  "produced_artifact_ids": [
-    "review-rubrics-ml-ai"
-  ],
-  "max_bytes": 8192
-}
----
 # ML and AI Rubric
 
-## Decision this card owns
+## Purpose
 Judge ML/AI claim validity, data discipline, reproducibility, train/inference parity, capacity, and operational risk for the scoped change.
 
 ## Use when
@@ -35,12 +20,8 @@ Judge ML/AI claim validity, data discipline, reproducibility, train/inference pa
 5. Evaluate focused transforms/metrics/config/load/inference proof, proportionate train/infer smoke, memory/latency/throughput/I/O/scale/cost budgets, monitoring/version/rollback.
 6. Emit material leakage, exposure, skew, untraceability, irreproducible claim, or silent-production-risk findings; optional extra plots/seeds stay non-blocking when the claim does not need them.
 
-## Output contract
+## Required result
 - ML/AI finding candidates, claim/baseline limits, provenance and parity evidence, capacity/operations gaps, qualified-decision needs, and positive evidence.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop at the scoped claim/evidence boundary; do not guess scientific/privacy/safety approval.

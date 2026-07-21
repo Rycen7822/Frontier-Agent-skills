@@ -9,7 +9,7 @@
     "isolated_install_discovery", "uninstall_clean"
   ],
   "properties": {
-    "schema_version": {"const": "static-plugin-smoke/2.0"},
+    "schema_version": {"const": "static-plugin-smoke/3.0"},
     "plugin_name": {"const": "frontier-engineering-plugin"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "build_evidence_hash": {"$ref": "#/$defs/hash"},
@@ -19,13 +19,12 @@
     "remote_writes": {"const": false},
     "discovered_skills": {
       "type": "object", "additionalProperties": false,
-      "required": ["brainstorming", "long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
+      "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
-        "brainstorming": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}}}]},
-        "long-document-segmented-writing": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}}}]},
-        "skill-evaluator": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}}}]},
-        "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.0.0"}}}]},
-        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "7.0.0"}}}]}
+        "long-document-segmented-writing": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}, "implicit_eligible": {"const": true}}}]},
+        "skill-evaluator": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "2.0.0"}, "implicit_eligible": {"const": false}}}]},
+        "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "9.0.0"}, "implicit_eligible": {"const": true}}}]},
+        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.0.0"}, "implicit_eligible": {"const": false}}}]}
       }
     },
     "isolated_install_discovery": {"const": true},
@@ -40,7 +39,7 @@
         "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
         "description_hash": {"$ref": "#/$defs/hash"},
         "explicit_invocation": {"const": true},
-        "implicit_eligible": {"const": true}
+        "implicit_eligible": {"type": "boolean"}
       }
     }
   }

@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.review.rubrics.adversarial-decision",
-  "card_version": 2,
-  "kind": "rubric",
-  "decision_id": "sqw.select.review.rubrics.adversarial-decision",
-  "required_artifact_ids": [
-    "review-tier"
-  ],
-  "produced_artifact_ids": [
-    "review-rubrics-adversarial-decision"
-  ],
-  "max_bytes": 8192
-}
----
 # Adversarial Decision Rubric
 
-## Decision this card owns
+## Purpose
 Try to falsify one high-consequence non-obvious claim without leaking an intended answer or expanding authority.
 
 ## Use when
@@ -35,12 +20,8 @@ Try to falsify one high-consequence non-obvious claim without leaking an intende
 5. Classify candidate gaps as true, covered, false positive, or out of scope; unsupported concerns remain hypotheses.
 6. Emit findings no stronger than coverage and proof; stop rather than loop for consensus.
 
-## Output contract
+## Required result
 - Claim/contract/artifact identity, disconfirming checks, finding candidates, evidence boundary, residual uncertainty, and no approval/publication claim.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop when disproven, materially reproved, explicitly bounded, or further review is speculative.
