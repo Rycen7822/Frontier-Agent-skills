@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.recovery.repository-recovery",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "sqw.select.recovery.repository-recovery",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "recovery-repository-recovery"
-  ],
-  "max_bytes": 8192
-}
----
 # Repository Recovery
 
-## Decision this card owns
+## Purpose
 Restore a bounded repository/index/ref/operation invariant while preserving unrelated state.
 
 ## Use when
@@ -25,7 +10,7 @@ Restore a bounded repository/index/ref/operation invariant while preserving unre
 - A normal merge conflict or optional cleanup is the only issue.
 
 ## Required inputs
-- `workflow-intake`; status; refs and reflogs; object/index/worktree evidence; active operation; repository configuration/remotes; artifact provenance; protected paths; and exact allowed recovery actions.
+- task context; status; refs and reflogs; object/index/worktree evidence; active operation; repository configuration/remotes; artifact provenance; protected paths; and exact allowed recovery actions.
 
 ## Procedure
 1. Snapshot refs, operation markers, index, worktree, status, configuration, and user-owned state without changing them.
@@ -36,12 +21,8 @@ Restore a bounded repository/index/ref/operation invariant while preserving unre
 6. Re-observe refs, index, worktree, operation state, protected paths, and restored content; compare against the restore map and run the cheapest relevant integrity/behavior check.
 7. Report unavailable content and blocked actions plainly; do not invent missing bytes or broaden into cleanup.
 
-## Output contract
+## Required result
 - One `recovery-repository-recovery` with artifact classification, violated invariant, restore map and source identities, repair actions, preserved paths, post-recovery state, integrity proof, and blocker.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop when repository invariants are restored or the next safe action exceeds authority.

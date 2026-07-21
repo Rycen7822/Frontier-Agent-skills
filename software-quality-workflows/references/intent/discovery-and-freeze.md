@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.intent.discovery-and-freeze",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "sqw.select.intent.discovery-and-freeze",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "intent-discovery-and-freeze"
-  ],
-  "max_bytes": 8192
-}
----
 # Intent Discovery and Freeze
 
-## Decision this card owns
+## Purpose
 Resolve material outcome semantics and freeze one authoritative implementation-plannable specification when durability is warranted.
 
 ## Use when
@@ -25,7 +10,7 @@ Resolve material outcome semantics and freeze one authoritative implementation-p
 - Only implementation technique is undecided, cause is unknown, or routine defined work needs no durable spec.
 
 ## Required inputs
-- `workflow-intake`; authoritative request/repository/session facts; scenarios, public behavior, constraints, reversibility/compatibility/risk; architecture/flows/interfaces/failures; proof/rollout; and documentation/approval authority.
+- task context; authoritative request/repository/session facts; scenarios, public behavior, constraints, reversibility/compatibility/risk; architecture/flows/interfaces/failures; proof/rollout; and documentation/approval authority.
 
 ## Procedure
 1. List only decisions that change observable outcomes or irreversible commitments. Retrieve direct source facts before asking and accept defaults only when explicit, safe, reversible, and low impact.
@@ -38,12 +23,8 @@ Resolve material outcome semantics and freeze one authoritative implementation-p
 8. Persist only when warranted at the project convention without inferring commit/publication authority; otherwise use a stable inline identity. Decompose if one plan cannot credibly implement it.
 9. Emit the authoritative identity plus exact handoff to Writing Plans or the applicable non-implementation owner; do not implement or plan slices here.
 
-## Output contract
+## Required result
 - One `intent-discovery-and-freeze` with resolved facts/defaults, requirement blocks, selected/rejected outcomes, underdetermination or approval blocker, frozen spec identity/hash or inline identity, component/flow/interface/failure/proof/rollout contract, assumptions/exclusions, and next-owner handoff.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop at an internally reviewed authoritative spec or typed blocker; never infer approval, implement, or duplicate planning.

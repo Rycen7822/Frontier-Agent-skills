@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.review.findings-and-result",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "sqw.select.review.findings-and-result",
-  "required_artifact_ids": [
-    "review-execution"
-  ],
-  "produced_artifact_ids": [
-    "review-result"
-  ],
-  "max_bytes": 8192
-}
----
 # Review Findings and Result
 
-## Decision this card owns
+## Purpose
 Assemble one immutable local review result and later disposition each finding or feedback item without rewriting that result.
 
 ## Use when
@@ -37,12 +22,8 @@ Assemble one immutable local review result and later disposition each finding or
 7. Reverify fixes and interactions, then record exactly `fixed_reverified`, `accepted_risk`, `declined_evidence`, or `deferred` with owner/trigger. Never mutate the immutable finding/result after discussion.
 8. Keep hosted comment/approval/state changes as separately authorized publication actions.
 
-## Output contract
+## Required result
 - One `review-result` with immutable local result identity/verdicts/coverage/findings/blockers/risks plus an optional disposition ledger binding feedback IDs, assessments, evidence, fixes/proof, risk or defer owner/trigger, and unchanged/authorized platform state.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop with inconclusive on stale/insufficient scope, requirements, specialist evidence, or authority; never loop for consensus or infer publication readiness.

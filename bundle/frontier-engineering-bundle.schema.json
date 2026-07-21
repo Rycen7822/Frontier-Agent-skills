@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://local.frontier-agent/schemas/frontier-engineering-bundle.schema.json",
-  "title": "Frontier Engineering Bundle Identity",
+  "$id": "https://frontier-agent-skills.local/schemas/frontier-engineering-bundle.schema.json",
+  "title": "Frontier Engineering generated bundle manifest",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -9,78 +9,64 @@
     "bundle_id",
     "compatible_schema_epoch",
     "release_build_id",
-    "skills",
-    "contracts"
+    "activation_ceiling",
+    "remote_writes",
+    "skills"
   ],
   "properties": {
-    "schema_version": {"const": "frontier-engineering-bundle/1.0"},
-    "bundle_id": {"const": "frontier-engineering/4.0.0"},
-    "compatible_schema_epoch": {"const": 3},
+    "schema_version": {"const": "frontier-engineering-bundle/2.0"},
+    "bundle_id": {"const": "frontier-engineering/5.0.0"},
+    "compatible_schema_epoch": {"const": 4},
     "release_build_id": {"type": "string", "pattern": "^build-[0-9a-f]{24}$"},
+    "activation_ceiling": {"const": "implicit_local_pilot"},
+    "remote_writes": {"const": false},
     "skills": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["brainstorming", "long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
+      "required": [
+        "long-document-segmented-writing",
+        "skill-evaluator",
+        "software-quality-workflows",
+        "writing-plans"
+      ],
       "properties": {
-        "brainstorming": {"$ref": "#/$defs/base_skill"},
-        "long-document-segmented-writing": {"$ref": "#/$defs/base_skill"},
-        "skill-evaluator": {"$ref": "#/$defs/base_skill"},
-        "software-quality-workflows": {"$ref": "#/$defs/card_skill"},
-        "writing-plans": {"$ref": "#/$defs/card_skill"}
-      }
-    },
-    "contracts": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["plan-execution-handoff"],
-      "properties": {
-        "plan-execution-handoff": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["contract_id", "normative_owner_path", "normative_owner_hash"],
-          "properties": {
-            "contract_id": {
-              "const": "https://local.frontier-agent/schemas/plan-execution-handoff.schema.json"
-            },
-            "normative_owner_path": {
-              "const": "writing-plans/schemas/plan-execution-handoff.schema.json"
-            },
-            "normative_owner_hash": {"$ref": "#/$defs/hash"}
-          }
+        "long-document-segmented-writing": {
+          "$ref": "#/$defs/implicit_skill",
+          "properties": {"version": {"const": "1.0.0"}}
+        },
+        "skill-evaluator": {
+          "$ref": "#/$defs/explicit_skill",
+          "properties": {"version": {"const": "2.0.0"}}
+        },
+        "software-quality-workflows": {
+          "$ref": "#/$defs/implicit_skill",
+          "properties": {"version": {"const": "9.0.0"}}
+        },
+        "writing-plans": {
+          "$ref": "#/$defs/explicit_skill",
+          "properties": {"version": {"const": "8.0.0"}}
         }
       }
     }
   },
   "$defs": {
-    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-    "component": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["path", "content_hash"],
-      "properties": {
-        "path": {"type": "string", "minLength": 1, "pattern": "^[^/].*\\.json$"},
-        "content_hash": {"$ref": "#/$defs/hash"}
-      }
-    },
     "base_skill": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "root_hash"],
+      "required": ["version", "root_hash", "allow_implicit_invocation"],
       "properties": {
         "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
-        "root_hash": {"$ref": "#/$defs/hash"}
+        "root_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "allow_implicit_invocation": {"type": "boolean"}
       }
     },
-    "card_skill": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["version", "root_hash", "policy_registry", "reference_card_manifest"],
-      "properties": {
-        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
-        "root_hash": {"$ref": "#/$defs/hash"},
-        "policy_registry": {"$ref": "#/$defs/component"},
-        "reference_card_manifest": {"$ref": "#/$defs/component"}
-      }
+    "implicit_skill": {
+      "$ref": "#/$defs/base_skill",
+      "properties": {"allow_implicit_invocation": {"const": true}}
+    },
+    "explicit_skill": {
+      "$ref": "#/$defs/base_skill",
+      "properties": {"allow_implicit_invocation": {"const": false}}
     }
   }
 }

@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.domain.architecture.migration-proof",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "sqw.select.domain.architecture.migration-proof",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "domain-architecture-migration-proof"
-  ],
-  "max_bytes": 8192
-}
----
 # Architecture Migration Proof
 
-## Decision this card owns
+## Purpose
 Define and prove ownership migration, coexistence, rollback, temporary-path retirement, and caller-visible locality for a selected architecture.
 
 ## Use when
@@ -25,7 +10,7 @@ Define and prove ownership migration, coexistence, rollback, temporary-path reti
 - No structural migration is required or architecture selection remains unresolved.
 
 ## Required inputs
-- `workflow-intake`; selected design/contracts, caller/consumer and generated/config/docs inventory, authoritative policy owner, coexistence needs, last compatible state, rollback constraints, and proof gates.
+- task context; selected design/contracts, caller/consumer and generated/config/docs inventory, authoritative policy owner, coexistence needs, last compatible state, rollback constraints, and proof gates.
 
 ## Procedure
 1. Characterize the highest stable owned interface, material errors/lifecycle, and existing locality before moving behavior.
@@ -36,12 +21,8 @@ Define and prove ownership migration, coexistence, rollback, temporary-path reti
 6. Prove representative callers/errors/lifecycle, dependency/layering checks, distribution-test locality, stale-consumer scan, and affected public/security/performance evidence.
 7. Record last compatible state and semantic restoration path; do not use destructive version-control rollback or silently promote exploratory code.
 
-## Output contract
+## Required result
 - Migration phases/callers, policy/coexistence contract, per-slice proof, temporary-path ledger, stale-surface scan, locality/distribution result, rollback boundary, final removal gate, blockers and residual uncertainty.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop at executable migration/rollback/removal proof; passing compilation, diagrams, mocks, or moved files alone are insufficient.

@@ -1,12 +1,7 @@
 {
-  "bundle_schema_version": "2.0",
-  "bundle_version": "4.0.0",
+  "bundle_schema_version": "3.0",
+  "bundle_version": "5.0.0",
   "skills": [
-    {
-      "id": "brainstorming",
-      "path": "brainstorming",
-      "version": "1.0.0"
-    },
     {
       "id": "long-document-segmented-writing",
       "path": "long-document-segmented-writing",
@@ -15,89 +10,35 @@
     {
       "id": "skill-evaluator",
       "path": "skill-evaluator",
-      "version": "1.0.0"
+      "version": "2.0.0"
     },
     {
       "id": "software-quality-workflows",
       "path": "software-quality-workflows",
-      "version": "8.0.0"
+      "version": "9.0.0"
     },
     {
       "id": "writing-plans",
       "path": "writing-plans",
-      "version": "7.0.0"
+      "version": "8.0.0"
     }
   ],
-  "cross_skill_contracts": [
-    "plan-to-workflow",
-    "workflow-plan-change-proposal"
-  ],
-  "cross_skill_routes": {
-    "schema_version": "frontier-cross-skill-routes/1",
-    "routes": [
-      {
-        "route_id": "sqw-to-writing-plans",
-        "source_skill_id": "software-quality-workflows",
-        "target_skill_id": "writing-plans",
-        "contract_id": "workflow-plan-change-proposal",
-        "copied_fields": ["intent_status", "root_cause_status"],
-        "intent_status_map": {
-          "adequate": "defined",
-          "materially_underdefined": "materially_underdefined"
-        },
-        "constants": {
-          "explicit_plan_request": true,
-          "copy_paste_projection_requested": false,
-          "disposable_spike": false,
-          "durable_handoff": false,
-          "external_side_effect": false,
-          "independent_write_slices": 1,
-          "long_corpus_only": false,
-          "migration_or_rollback": false,
-          "public_contract": false,
-          "resume_required": false,
-          "same_session_execution": true,
-          "strategy_family_count": 1
-        }
-      },
-      {
-        "route_id": "writing-plans-to-sqw",
-        "source_skill_id": "writing-plans",
-        "target_skill_id": "software-quality-workflows",
-        "contract_id": "plan-to-workflow",
-        "copied_fields": ["intent_status", "root_cause_status"],
-        "intent_status_map": {
-          "defined": "adequate",
-          "materially_underdefined": "materially_underdefined"
-        },
-        "constants": {
-          "request_mode": "report",
-          "implicated_surfaces": [],
-          "unknown_implicated_facts": ["cross-skill-handoff"],
-          "persistence_need": "none",
-          "delegation_need": "none",
-          "external_side_effect": "none"
-        }
-      }
-    ]
-  },
-  "activation_policy": {
-    "current_level": "implicit_local_pilot",
-    "implicit_routing_default": true,
-    "remote_writes": false
-  },
+  "activation_ceiling": "implicit_local_pilot",
+  "remote_writes": false,
   "test_profiles": {
-    "extended": [
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s writing-plans/tests -p 'test_*.py' -v",
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_*.py' -v",
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s long-document-segmented-writing/tests -p 'test_*.py' -v",
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py' -v"
+    "quick": [
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_quick_*.py' -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s writing-plans/tests -p 'test_quick_*.py' -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 long-document-segmented-writing/tests/test_workflow_contract.py -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_quick_*.py' -v"
     ],
-    "standalone": [
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s writing-plans/tests -p 'test_*.py' -v",
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_*.py' -v",
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s long-document-segmented-writing/tests -p 'test_*.py' -v",
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py' -v"
+    "extended": [
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_extended_*.py' -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 long-document-segmented-writing/tests/test_assemble_markdown.py -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_extended_*.py' -v"
+    ],
+    "release": [
+      "PYTHONDONTWRITEBYTECODE=1 python3 tests/test_release_cli_install.py -v"
     ]
   }
 }

@@ -1,56 +1,55 @@
 # Frontier Agent Skills
 
-This repository is the development source of truth for the dual-host Frontier Engineering skill bundle: `brainstorming` 1.0.0, `long-document-segmented-writing` 1.0.0, `skill-evaluator` 1.0.0, `software-quality-workflows` 8.0.0, and `writing-plans` 7.0.0. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository never mutates an active installation.
+This repository is the development source of truth for the dual-host `frontier-engineering/5.0.0` bundle. It contains exactly four skills: `long-document-segmented-writing` 1.0.0, `skill-evaluator` 2.0.0, `software-quality-workflows` 9.0.0, and `writing-plans` 8.0.0. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository never mutates an active installation.
 
 ## Release identity
 
-The indivisible release unit is `frontier-engineering/4.0.0` in bundle version 4.0.0 and schema epoch 3. The generated identity binds all five exact skill versions and root hashes; only the two card-driven skills carry policy-registry and reference-card components. `bundle-manifest.json` still contains exactly two cross-skill contracts: `plan-to-workflow` and `workflow-plan-change-proposal`.
-
-The checked-in activation policy is exact and fail-closed:
+The indivisible release unit is bundle version 5.0.0 at schema epoch 4. The generated identity binds the four exact versions, root hashes, and mixed activation matrix:
 
 ```json
 {
-  "current_level": "implicit_local_pilot",
-  "implicit_routing_default": true,
-  "remote_writes": false
+  "long-document-segmented-writing": true,
+  "skill-evaluator": false,
+  "software-quality-workflows": true,
+  "writing-plans": false
 }
 ```
 
-All five `agents/openai.yaml` files permit implicit selection while retaining explicit `$skill-name` invocation. This activation authorizes local host routing only. Packaging, archive, static smoke, or CLI installation success does not satisfy the independent scored-L2, signed-source, release, publication, deployment, credential, or remote-write gates.
+`true` permits implicit local selection; `false` is explicit-only and its prompt retains the exact `$skill-name`. The bundle ceiling remains `implicit_local_pilot`, and `remote_writes` is false. Packaging, archive, static smoke, or CLI installation does not satisfy the independent scored-L2, longitudinal, signed-source, release, publication, deployment, credential, or remote-write gates.
 
 ## Design boundary
 
-The skills are optimized for frontier coding agents that already possess broad software-engineering knowledge. Compact entrypoints and explicit owner links keep optional resources unloaded until selected; deterministic maps, manifests, schemas, CLIs, and tests carry durable contracts instead of repeated tutorials.
+The skills assume a capable coding agent and keep the common path compact. Optional references load only for a concrete specialist risk.
 
-- `brainstorming` owns proportionate design exploration and leaves its visual companion and delegated reviewer unloaded unless explicitly selected.
-- `long-document-segmented-writing` owns compact/full long-corpus drafting, one scratch root, deterministic assembly, and final confidence repair.
-- `skill-evaluator` owns L0–L4 evaluation claim ceilings, bounded audit triage, package tests, and evidence interpretation.
-- `writing-plans` owns intended design, planning profile, decision resolution, slicing, and durable handoff.
-- `software-quality-workflows` owns work routing, execution safety, verification, review, and truthful completion classification.
+- `software-quality-workflows` defaults to Direct execution for authorized, local, reversible same-session work. Direct creates no workflow protocol calls, JSON receipts, router/card state, or fallback ledger.
+- `writing-plans` is explicit-only and compiles settled decisions into a Brief, one executable Handoff, or one resumable Program Markdown. Unresolved intent, cause, architecture, authority, or feasibility returns to SQW.
+- `long-document-segmented-writing` owns long-corpus drafting, bounded scratch state, deterministic assembly, and final confidence repair.
+- `skill-evaluator` is explicit-only and owns L0–L4 evaluation claim ceilings, package audit, scored analysis, and evidence interpretation.
 
-Routine local work stays on the direct path. Material ambiguity, unknown causes, recovery, public contracts, migration, and other risk surfaces enter their explicit owners without expanding user authority.
+SQW uses one fallback Markdown ledger only when the host and repository have no durable owner and one of five conditions exists: cross-context recovery, destructive or external effects, staged migration/release/rollout, multiple writers, or an explicitly requested recoverable audit trail. It never creates a second state projection.
+
+Development is distinction-first: each behavior change needs an observable test, probe, smoke, property, benchmark, or runtime proof, but strict RED is not mandatory. Closeout classifies only tests added or materially changed in the current diff as `durable_contract`, `regression`, `risk_boundary`, `migration_temporary`, `temporary_probe`, `duplicate`, or `implementation_coupled`; temporary and duplicate protection is removed, while migration tests carry a deterministic removal contract.
 
 ## Deterministic validation
 
-Run the standalone suites from the repository root:
+Run the three distinct profiles from the repository root. Quick is model-free and must remain under its cold-start budget:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s writing-plans/tests -p 'test_*.py' -v
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_*.py' -v
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s long-document-segmented-writing/tests -p 'test_*.py' -v
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py' -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_quick_*.py' -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s writing-plans/tests -p 'test_quick_*.py' -v
+PYTHONDONTWRITEBYTECODE=1 python3 long-document-segmented-writing/tests/test_workflow_contract.py -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_quick_*.py' -v
 ```
 
-Verify every generated identity before packaging:
+Extended owns runtime lifecycle, tampering, large fixtures, analyzer matrices, archive reproducibility, and plugin atomicity:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 writing-plans/scripts/build_reference_manifest.py --check
-PYTHONDONTWRITEBYTECODE=1 software-quality-workflows/scripts/build_reference_manifest.py --check
-PYTHONDONTWRITEBYTECODE=1 bundle/build_bundle_manifest.py --check
-PYTHONDONTWRITEBYTECODE=1 scripts/evaluate_offline_route_replay.py --check
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_extended_*.py' -v
+PYTHONDONTWRITEBYTECODE=1 python3 long-document-segmented-writing/tests/test_assemble_markdown.py -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_extended_*.py' -v
 ```
 
-The long-document and evaluator suites use only repository-owned package roots. No installed-skill environment variable or parent-repository delivery script is part of deterministic validation.
+Release runs only `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_release_cli_install.py -v` after all external paths and signed evidence are frozen. Verify generated identities with `python3 bundle/build_bundle_manifest.py --check` and `python3 scripts/evaluate_static_contracts.py --check`.
 
 ## Source archives
 
@@ -60,21 +59,21 @@ Use absent outputs under a task-owned evidence root. The builder is no-overwrite
 scripts/build_source_archive.py \
   --source-root . \
   --layout bundle \
-  --output <evidence-root>/frontier-engineering-bundle-4.0.0.zip \
-  --evidence-output <evidence-root>/frontier-engineering-bundle-4.0.0.evidence.json
+  --output <evidence-root>/frontier-engineering-bundle-5.0.0.zip \
+  --evidence-output <evidence-root>/frontier-engineering-bundle-5.0.0.evidence.json
 
 scripts/build_source_archive.py \
   --source-root . \
   --layout skills_only \
-  --output <evidence-root>/frontier-engineering-skills-4.0.0.zip \
-  --evidence-output <evidence-root>/frontier-engineering-skills-4.0.0.evidence.json
+  --output <evidence-root>/frontier-engineering-skills-5.0.0.zip \
+  --evidence-output <evidence-root>/frontier-engineering-skills-5.0.0.evidence.json
 ```
 
-The bundle layout uses root `frontier-engineering-bundle`. The skills-only layout contains exactly the five canonical skill roots.
+The bundle layout uses root `frontier-engineering-bundle`. The skills-only layout contains exactly the four canonical skill roots.
 
 ## Isolated plugin staging
 
-The plugin identity is `frontier-engineering-plugin` version 4.0.0 with display name `Frontier Engineering`. Build only into an absent task-owned marketplace destination:
+The plugin identity is `frontier-engineering-plugin` version 5.0.0 with display name `Frontier Engineering`. Build only into an absent task-owned marketplace destination:
 
 ```bash
 scripts/build_codex_plugin.py \
@@ -88,11 +87,11 @@ scripts/smoke_codex_plugin.py \
   --output <evidence-root>/static-plugin-smoke.json
 ```
 
-The builder uses `<evidence-root>/plugin-build-staging` and atomically renames a validated tree to the absent destination on the same filesystem. A failed build leaves the staging directory intact and leaves the destination absent. Staging evidence records `activation_ceiling: implicit_local_pilot` and `release_evidence_hash: null`. The activation ceiling is identical for staging and release outputs; `output_class` plus the release-evidence hash alone determine release eligibility.
+The builder uses `<evidence-root>/plugin-build-staging` and atomically renames a validated tree to the absent destination on the same filesystem. A failed build leaves the staging directory intact and the destination absent. Build evidence binds the exact mixed activation matrix. Staging records `release_evidence_hash: null`; only an explicit `--release-evidence` argument enables release-mode validation.
 
 The isolated CLI smoke requires a task-owned marketplace created by the installed `plugin-creator`, with source `./plugins/frontier-engineering-plugin`, installation policy `AVAILABLE`, authentication policy `ON_INSTALL`, and category `Developer Tools`. The smoke rehomes all Codex configuration under its work root, strips credential-bearing environment variables, validates staged and installed bytes, removes the plugin and marketplace from the isolated configuration, and never invokes a model.
 
-Release-mode plugin output additionally requires external `release-evidence/2.0` bound to a clean signed source revision, the deterministic replay, a scored L2 report, and an activation decision. No such evidence is stored in the candidate repository.
+Release-mode output requires external `release-evidence/3.0` bound to a clean signed source revision, the tracked static diagnostic, both scored L2 reports and their aggregate, the longitudinal report, an unblocked activation decision, one candidate source identity, and the staged plugin tree hash. The builder recomputes every content and self-hash; no case, fixture, receipt, longitudinal run, or activation decision is stored in the candidate repository.
 
 ## Same-thread Codex skill reload supervisor
 
@@ -136,6 +135,8 @@ Any CLI version drift, schema drift, thread/cwd mismatch, permission mismatch, p
 
 ## Evaluation boundary
 
-`evaluation/offline-route-replay.json` is a deterministic diagnostic, not an L2 usefulness result. Scored L2 specifications, fixtures, holdouts, receipts, and activation decisions belong only to revision-bound external run roots. See [evaluation/README.md](evaluation/README.md).
+`evaluation/static-contract-diagnostic.json` proves only the checked source/package contract: exact paths, links, versions, activation, entry budgets, profile hashes, package size, and absence of retired runtime owners. It does not replay routing and cannot prove model behavior, usefulness, token efficiency, longitudinal test retention, release authority, or deployment readiness.
 
-`skill-evaluator` uses schema v3 specifications, one receipt index, and hash-bound receipt artifacts. Analyzer exit 3 means evidence is incomplete, invalid, or inconclusive; it is not a successful usefulness result. Its public placeholders are not live evidence. Routine L0 audit emits a bounded zero-file triage summary, while complete JSON is reserved for a frozen evaluation or an external machine consumer.
+Scored L2 specifications, cases, fixtures, graders, run records, receipts, aggregate reports, longitudinal L4 artifacts, and activation decisions remain in a revision-bound external run root. Release evidence binds their hashes without copying them into the candidate. A smaller static package is not evidence of model usefulness or lower host tokens. See [evaluation/README.md](evaluation/README.md).
+
+Version 4 workflow/card/plan state is not read, migrated, aliased, or dual-written. Finish an active 4.x task under 4.x, or terminate it explicitly and restart from current repository truth.

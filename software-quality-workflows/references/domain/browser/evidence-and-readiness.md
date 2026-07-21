@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.domain.browser.evidence-and-readiness",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "sqw.select.domain.browser.evidence-and-readiness",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "domain-browser-evidence-and-readiness"
-  ],
-  "max_bytes": 8192
-}
----
 # Browser Evidence and Readiness
 
-## Decision this card owns
+## Purpose
 Select minimum browser evidence for the exact user claim and prove document/live readiness, failure behavior, and cleanup when applicable.
 
 ## Use when
@@ -25,7 +10,7 @@ Select minimum browser evidence for the exact user claim and prove document/live
 - No browser surface is affected or static/ordinary request evidence already proves the claim.
 
 ## Required inputs
-- `workflow-intake`; source/build/installed surface identity; trusted route/interaction; claim and starting artifact; breakpoints/states; HTTP/DOM/accessibility/screenshot/console/network capabilities; live event contract; side-effect/time/cleanup authority.
+- task context; source/build/installed surface identity; trusted route/interaction; claim and starting artifact; breakpoints/states; HTTP/DOM/accessibility/screenshot/console/network capabilities; live event contract; side-effect/time/cleanup authority.
 
 ## Procedure
 1. Match evidence to claim: source/static branches, HTTP status/headers/payload, DOM/accessibility roles/focus/geometry, screenshot qualitative layout, console/network runtime failures, and computed values for numeric contrast/geometry.
@@ -36,12 +21,8 @@ Select minimum browser evidence for the exact user claim and prove document/live
 6. Bind observations to request/event/client-state identity, run a clean reload/retrigger, and classify product versus startup/harness failure; an alternate probe must prove the same contract.
 7. Restore task-owned browser profile, feature settings, fixtures, process/port, listeners, and connections; report unverified states separately.
 
-## Output contract
+## Required result
 - One `domain-browser-evidence-and-readiness` with surface/route identity, layer rationale, DOM/accessibility/geometry/console/network observations, data lineage and cause, readiness predicate, live/order/dedup/reconnect/cancel/zero/error results, timing, clean-state proof, harness classification, cleanup, gaps, and verdict.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop at bounded browser evidence; never infer missing layers from screenshots or wait indefinitely for network idle.

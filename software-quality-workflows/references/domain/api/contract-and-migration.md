@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.domain.api.contract-and-migration",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "sqw.select.domain.api.contract-and-migration",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "domain-api-contract-and-migration"
-  ],
-  "max_bytes": 8192
-}
----
 # API Contract and Migration
 
-## Decision this card owns
+## Purpose
 Define a public contract change, its real-boundary proof, and any staged compatibility migration/removal gate.
 
 ## Use when
@@ -25,7 +10,7 @@ Define a public contract change, its real-boundary proof, and any staged compati
 - The change is entirely private and no consumer can observe it.
 
 ## Required inputs
-- `workflow-intake`; current/requested contract; producers/consumers/versions; names/types/fields/defaults/errors/order/IDs/timing/effects; valid/invalid fixtures; rollout/cutover authority; telemetry; and rollback constraints.
+- task context; current/requested contract; producers/consumers/versions; names/types/fields/defaults/errors/order/IDs/timing/effects; valid/invalid fixtures; rollout/cutover authority; telemetry; and rollback constraints.
 
 ## Procedure
 1. Inventory every producer/consumer, supported version, example, generated client, fixture/doc, stored form, and observable field/default/error/order/side effect.
@@ -36,12 +21,8 @@ Define a public contract change, its real-boundary proof, and any staged compati
 6. If consumers cannot move atomically, define expand, ordered producer/consumer migration, coexistence precedence, divergence detection, rollback/last-compatible state, and contract phase.
 7. Remove the old path only after fresh evidence finds no old readers, writers, callers, stored forms, fixtures, generated artifacts, or supported clients. Keep technical readiness separate from cutover/release/publication authority.
 
-## Output contract
+## Required result
 - One `domain-api-contract-and-migration` with contract surface, compatibility class, consumer/version inventory, preserved/changed behavior, positive/negative/compatibility/public gates, expand/migrate/coexistence/rollback/removal contract, cutover authority ref, evidence, gaps, and blocker.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop when the public boundary and migration/removal proof are executable; do not grant publication authority.

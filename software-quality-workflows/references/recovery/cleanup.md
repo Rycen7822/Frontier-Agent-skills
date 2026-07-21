@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.recovery.cleanup",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "sqw.select.recovery.cleanup",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "recovery-cleanup"
-  ],
-  "max_bytes": 8192
-}
----
 # Authorized Cleanup
 
-## Decision this card owns
+## Purpose
 Remove only an explicitly authorized bounded set of task-owned artifacts or redundant source while proving retained state and behavior remain.
 
 ## Use when
@@ -25,10 +10,10 @@ Remove only an explicitly authorized bounded set of task-owned artifacts or redu
 - Ownership or behavior is uncertain, evidence may still be valuable, repository/workspace recovery is needed, or cleanup is merely convenient.
 
 ## Required inputs
-- `workflow-intake`; exact object/change inventory; ownership and reachability evidence; preserved behavior contract; retention/archive requirements; focused proof; and cleanup authority.
+- task context; exact object/change inventory; ownership and reachability evidence; preserved behavior contract; retention/archive requirements; focused proof; and cleanup authority.
 
 ## Procedure
-1. Classify the bounded request as artifact cleanup, source simplification, or both; reject workspace reorganization and recovery work from this card.
+1. Classify the bounded request as artifact cleanup, source simplification, or both; reject workspace reorganization and recovery work from this reference.
 2. For artifacts, classify every item as retained, archived, removable, or uncertain. Exclude unrelated, user-owned, needed generated, and evidentiary state.
 3. For source, use reuse, quality, and efficiency lenses to identify proven dead/redundant branches, wrappers, compatibility paths, or duplication; confirm reachability, public contracts, callers, tests, and runtime/config consumers before removal.
 4. Freeze the exact allowlist, preserved behavior/retention contract, rollback/archive plan, and dry-run inventory when removal is material.
@@ -36,12 +21,8 @@ Remove only an explicitly authorized bounded set of task-owned artifacts or redu
 6. Inspect the semantic diff and verify focused behavior, affected contracts, required retention, absence, and unrelated-path preservation.
 7. Report uncertain candidates and residual duplication instead of escalating the cleanup scope.
 
-## Output contract
+## Required result
 - One `recovery-cleanup` with cleanup mode, removed objects or spans, retained objects, preserved behavior, archive refs, semantic diff, post-cleanup proof, and unresolved candidates.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop without removal whenever authority, ownership, reachability, retention, or preserved behavior is uncertain.

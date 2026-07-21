@@ -1,45 +1,26 @@
----
-{
-  "card_id": "wp.profiles.program",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "wp.select.profiles.program",
-  "required_artifact_ids": [],
-  "produced_artifact_ids": [
-    "plan-program"
-  ],
-  "max_bytes": 8192
-}
----
-# Program Plan
+# Program Profile
 
-## Decision this card owns
-Define a durable multi-stage plan and its current executable frontier without turning the model context into the state store.
+## Purpose
+
+Maintain one resumable plan for a multi-milestone software program whose dependencies, migration, or rollout cannot be represented safely as a Brief or one-way handoff.
 
 ## Use when
-- The work spans stages, migrations, rollback boundaries, resumable execution, or public contract changes.
 
-## Do not use when
-- A bounded Brief or single handoff is sufficient.
+Use only after goal, architecture, authority, and acceptance strategy are settled and the work has multiple dependent milestones, a changing frontier, or a real migration/rollout boundary.
 
-## Required inputs
-- Intended outcomes, source/scope/authority identities, dependency evidence, rollout and rollback constraints, and required proof.
+## Inputs
 
-## Procedure
-1. Define coarse milestones and typed outcome nodes/edges while keeping future fog deliberately coarse.
-2. Record major decisions, constraint coverage, invalidated/superseded lineage, blockers, and compatibility/expand-migrate-contract order.
-3. Identify the detailed current topologically ready conflict-safe frontier and next slices.
-4. Bind rollout, approval, resource/retry/idempotency, verification, risk, and rollback obligations to their owners.
-5. Submit the closed Program payload to `card_cycle.py`; the caller pre-creates the external owner root, and the CLI alone initializes the locked v3 state, ordered queue, `artifacts/`, and `projections/`.
-6. When a costly durable architecture choice changes a public/data/security/runtime/deployment/storage/ownership contract, decide whether an ADR is justified under the project's existing convention and documentation authority.
-7. A proposed ADR records status, context, exact decision/owners/contracts, materially considered alternatives and rejection evidence, consequences, proof/rollback, and supersession lineage. Preserve historical ADRs and never infer acceptance or publication authority.
+- Source identity, scope, authority, outcomes, non-goals, decisions, and invariants.
+- Milestones with dependencies and independently observable proof.
+- Current frontier, blockers, rollback, and exact next executable slice.
+- Temporary compatibility owner and removal contract when compatibility is unavoidable.
 
-## Output contract
-- One Program owner locator plus the exact next queue card or terminal status. `program.md` is a disposable fixed projection with a total ≤8,192-byte envelope; canonical truth remains only in locked state.
+## Required result
 
-## Load next only if
+Create one canonical Markdown from the [Program Plan template](../../templates/program-plan.md) and update it in place. Keep completed history compressed to current facts. `Decision lineage` records only a current decision and the decision it replaced in one line.
 
-None. Return control to Router after producing the output contract.
+Milestones describe outcomes rather than horizontal implementation layers. Proof gates name observable evidence without claiming it has run.
 
-## Stop
-Stop after the current frontier is executable or a typed blocker identifies the next planning decision.
+## Failure boundary
+
+Return unresolved intent, cause, architecture, authority, or feasibility to Software Quality Workflows. Stop if the current frontier or next executable slice cannot be identified. Do not create plan state, timeline logs, projections, or sidecars.

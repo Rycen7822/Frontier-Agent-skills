@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.review.rubrics.privacy-data-lifecycle",
-  "card_version": 2,
-  "kind": "rubric",
-  "decision_id": "sqw.select.review.rubrics.privacy-data-lifecycle",
-  "required_artifact_ids": [
-    "review-tier"
-  ],
-  "produced_artifact_ids": [
-    "review-rubrics-privacy-data-lifecycle"
-  ],
-  "max_bytes": 8192
-}
----
 # Privacy and Data-Lifecycle Rubric
 
-## Decision this card owns
+## Purpose
 Identify privacy or data-lifecycle regressions in data flows affected by the scoped change.
 
 ## Use when
@@ -34,12 +19,8 @@ Identify privacy or data-lifecycle regressions in data flows affected by the sco
 4. Prefer synthetic/redacted evidence and identify lifecycle gaps across failure/retry/recovery paths, not only the happy path.
 5. Emit only scoped findings with concrete data subject/system impact and smallest compliant correction; do not invent legal requirements.
 
-## Output contract
+## Required result
 - Zero or more local finding candidates with data class and lifecycle stage, evidence, impact, violated local contract, correction, confidence, blocking, and verification.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop at privacy/data-lifecycle evidence; do not provide legal advice or enter implementation.

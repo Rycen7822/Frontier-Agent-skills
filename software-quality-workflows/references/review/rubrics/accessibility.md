@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.review.rubrics.accessibility",
-  "card_version": 2,
-  "kind": "rubric",
-  "decision_id": "sqw.select.review.rubrics.accessibility",
-  "required_artifact_ids": [
-    "review-tier"
-  ],
-  "produced_artifact_ids": [
-    "review-rubrics-accessibility"
-  ],
-  "max_bytes": 8192
-}
----
 # Accessibility Rubric
 
-## Decision this card owns
+## Purpose
 Identify accessibility regressions introduced or materially worsened in the affected interface.
 
 ## Use when
@@ -34,12 +19,8 @@ Identify accessibility regressions introduced or materially worsened in the affe
 4. Combine automated checks with risk-matched manual inspection; automation passing is not proof of usable interaction.
 5. Emit only reproducible, scoped findings with affected users, failure state, and smallest standards-aligned correction.
 
-## Output contract
+## Required result
 - Zero or more local finding candidates with interaction/state, accessible expectation, evidence, user impact, correction, confidence, blocking, and verification.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop at accessibility evidence; do not widen into general UI preference or implementation.

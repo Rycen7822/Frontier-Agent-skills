@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.review.rubrics.secret-handling",
-  "card_version": 2,
-  "kind": "rubric",
-  "decision_id": "sqw.select.review.rubrics.secret-handling",
-  "required_artifact_ids": [
-    "review-tier"
-  ],
-  "produced_artifact_ids": [
-    "review-rubrics-secret-handling"
-  ],
-  "max_bytes": 8192
-}
----
 # Secret-Handling Rubric
 
-## Decision this card owns
+## Purpose
 Identify credential, token, cookie, key, or secret-material exposure and lifecycle regressions in the scoped change.
 
 ## Use when
@@ -34,12 +19,8 @@ Identify credential, token, cookie, key, or secret-material exposure and lifecyc
 4. Never print or copy live credentials while gathering evidence; use redacted structure and synthetic values.
 5. Emit only scoped findings with exposure surface, likely consequence, immediate containment/correction, confidence, blocking, and safe verification; do not perform destructive cleanup.
 
-## Output contract
+## Required result
 - Zero or more local finding candidates that remain redacted and separate source correction from required credential response.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop at secret-handling evidence; do not reveal secrets, rotate credentials, or rewrite history.

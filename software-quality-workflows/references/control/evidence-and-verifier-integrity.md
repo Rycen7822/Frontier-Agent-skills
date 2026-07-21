@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.control.evidence-and-verifier-integrity",
-  "card_version": 2,
-  "kind": "safety",
-  "decision_id": "sqw.select.control.evidence-and-verifier-integrity",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "control-evidence-and-verifier-integrity"
-  ],
-  "max_bytes": 8192
-}
----
 # Evidence and Verifier Integrity
 
-## Decision this card owns
+## Purpose
 Decide evidence coverage/freshness, verifier independence, and the exact invalidation or repair boundary.
 
 ## Use when
@@ -25,7 +10,7 @@ Decide evidence coverage/freshness, verifier independence, and the exact invalid
 - One fresh bounded proof covers the whole declared seam and no relevant identity or dependency changed.
 
 ## Required inputs
-- `workflow-intake`; source/scope/environment/artifact identities; coverage and truncation metadata; required oracles/protected surfaces; typed dependencies and changed fields; side effects, authority, locks/leases/background work; and repair budget.
+- task context; source/scope/environment/artifact identities; coverage and truncation metadata; required oracles/protected surfaces; typed dependencies and changed fields; side effects, authority, locks/leases/background work; and repair budget.
 
 ## Procedure
 1. Mark every scoped item `full`, `sampled`, or `not_reviewed`; scanner hits remain candidates until contextual review. Unread, omitted, failed, or truncated material is partial and disclosed.
@@ -37,12 +22,8 @@ Decide evidence coverage/freshness, verifier independence, and the exact invalid
 7. Allow local repair only at one modeled owner seam when preserved dependencies remain fresh/equivalent, effects are known/reversible, precision proof exists, and retry/approval budget remains. Goal, authority, security, global invariant, root cause, multi-owner/shared state, uncertain rollback, or non-local changes require parent/global replan.
 8. Reconcile source/scope/plan/evidence hashes, state versions, locks/leases, background work, effects, retry, and approvals before resume. Never silently rewrite decisions, broaden scope, grant approval, weaken a gate, or retry a non-idempotent effect.
 
-## Output contract
+## Required result
 - One `control-evidence-and-verifier-integrity` with coverage ledger, freshness decision, oracle authority/independence map, protected surfaces, changed/affected/invalidated/preserved IDs, required rechecks, local-repair/global-replan/blocker decision, resume reconciliation, limitations, and evidence refs.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop any completion/approval/publication claim with unread, stale, truncated, self-graded, unavailable, or insufficiently local evidence.

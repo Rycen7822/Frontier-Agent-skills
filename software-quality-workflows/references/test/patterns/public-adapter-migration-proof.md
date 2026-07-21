@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.test.patterns.public-adapter-migration-proof",
-  "card_version": 2,
-  "kind": "recipe",
-  "decision_id": "sqw.select.test.patterns.public-adapter-migration-proof",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "test-patterns-public-adapter-migration-proof"
-  ],
-  "max_bytes": 8192
-}
----
 # Public Adapter Migration Proof Pattern
 
-## Decision this card owns
+## Purpose
 Prove that every public adapter preserves the approved contract, identity, read/write boundary, and legacy behavior during migration.
 
 ## Use when
@@ -25,7 +10,7 @@ Prove that every public adapter preserves the approved contract, identity, read/
 - The change is wholly internal and no public boundary, identity, schema, or compatibility behavior changes.
 
 ## Required inputs
-- `workflow-intake`; public contract/schema/docs; adapter inventory; state identity rules; approved legacy compatibility/rejection; old/new fixtures; and risk authority.
+- task context; public contract/schema/docs; adapter inventory; state identity rules; approved legacy compatibility/rejection; old/new fixtures; and risk authority.
 
 ## Procedure
 1. Inventory adapters translating arguments, identities, paths, schemas, errors, or versions, including dormant/generated surfaces.
@@ -34,12 +19,8 @@ Prove that every public adapter preserves the approved contract, identity, read/
 4. Assert state location, schema/version negatives, errors, read/write boundaries, migration lineage, and approved compatibility or rejection.
 5. Keep rollback/migration artifacts until gates pass; cleanup only isolated state and task-owned configuration.
 
-## Output contract
+## Required result
 - One `test-patterns-public-adapter-migration-proof` with adapter/consumer coverage matrix, old/new fixture identities, public-path command/status evidence, state/schema/error assertions, residual-name scan, rollback evidence, and cleanup status.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop at public adapter migration evidence; do not infer public parity from internal calls or perform an unauthorized migration write.

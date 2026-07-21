@@ -47,12 +47,17 @@ If benefit is process, quality, or safety rather than task outcome, `analysis.ta
 
 `analyze_runs.py::summarize_skill_context` freezes every intended-trigger candidate/natural `case × repeat` key as the denominator. Missing, duplicate, invalid, or `paired_total_only` rows reduce attribution coverage; candidate failures cannot look efficient by disappearing.
 
-Report metadata/body/reference bytes, complete host tokens, measurement-source counts, attribution rate, and nearest-rank p95. Byte/token p95 is available only at 100% attribution coverage. End-to-end `tokens_in/out`, latency, calls, and retries remain a separate total-cost view.
+For every run, derive `unique_static_content_bytes`, `repeated_static_content_bytes`, `protocol_output_bytes`, and `failed_command_output_bytes` from the ordered component artifacts. Static uniqueness is the first `(source_path, content_sha256)` occurrence per run; later identical occurrences are repeated bytes. Their sum must equal total attributed bytes.
+
+Report the four fields in every run and as an exact four-key `context_efficiency` map of nearest-rank p50, p95, and max. Byte/token p95 and aggregate context efficiency are complete only at 100% attribution coverage. Necessary unique static content has no separate size gate; total context p95 remains authoritative. End-to-end `tokens_in/out`, latency, calls, and retries remain a separate total-cost view.
 
 Every scored-ready L2+ spec has:
 
 - one `skill_context_attribution_rate == 1` gate;
 - exactly one `skill_context_bytes_p95` or `skill_context_tokens_p95` budget gate;
+- one `repeated_static_content_bytes_max == 0` gate;
+- one `protocol_output_bytes_max == 0` gate;
+- one `failed_command_output_bytes_max == 0` gate;
 - `analysis.context_budget_gate_id` pointing to it;
 - an exact deployment/user authority with lowercase source SHA-256, matching unit and threshold.
 

@@ -1,71 +1,53 @@
 #!/usr/bin/env python3
-"""Validate the active software-quality-workflows skill with stdlib only."""
+"""Validate the SQW 9.0 static package and local review evidence."""
 
 from __future__ import annotations
 
 import argparse
-import json
-import re
-import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+import json
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+import re
+import sys
+from typing import Any, Sequence
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
+import yaml
 
-from _workflow_reference_cards import (  # noqa: E402
-    build_manifest as build_reference_manifest,
-    canonical_json_bytes as canonical_reference_json_bytes,
-    load_json as load_reference_json,
-)
+
+ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = ROOT.parent
+REPO_SCRIPTS = REPO_ROOT / "scripts"
+if str(REPO_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(REPO_SCRIPTS))
+
+from evaluate_static_contracts import collect_legacy_contract, markdown_link_errors  # noqa: E402
 
 
 SKILL_NAME = "software-quality-workflows"
-REQUIRED_OWNER_IDS: set[str] = set()
-REQUIRED_CORE = {f"references/{owner_id}.md" for owner_id in REQUIRED_OWNER_IDS}
-RESOURCE_PREFIXES = ("references/", "templates/", "scripts/", "schemas/", "adapters/", "assets/")
-STALE_MARKERS = {
-    "multi_agent_v1": "legacy collaboration API",
-    "$software-quality-workflows": "Codex-style skill invocation",
-    "$writing-plans": "Codex-style skill invocation",
-    "$long-document-segmented-writing": "Codex-style skill invocation",
-    "Retired skill body": "retired migration body",
-    "/" + "home" + "/" + "xu" + "/": "personal absolute path",
-    "/" + "home" + "/" + "bb" + "/": "personal absolute path",
-    "HY Memory": "product-specific case",
-    "Codex-Scientist": "product-specific case",
-    "CodexScientist": "product-specific case",
+SKILL_VERSION = "9.0.0"
+ENTRY_MAX_BYTES = 4096
+REQUIRED_HEADINGS = (
+    "# Software Quality Workflows",
+    "## Scope",
+    "## Default execution",
+    "## Ask only for material blockers",
+    "## Evidence and test retention",
+    "## Durable escalation",
+    "## Optional specialist references",
+    "## Completion truth",
+)
+EXPECTED_AGENT_METADATA = {
+    "interface": {
+        "display_name": "Software Quality Workflows",
+        "short_description": "Execute and verify software changes with minimal process overhead",
+        "default_prompt": "Use $software-quality-workflows to inspect, implement, and verify this software task directly unless a concrete risk requires durable coordination.",
+    },
+    "policy": {"allow_implicit_invocation": True},
 }
-UNSAFE_EXECUTABLE_MARKERS = {
-    "git add -A": "unscoped staging",
-    "git reset --hard": "destructive git reset",
-    "git checkout --": "destructive worktree discard",
-    "--inspect=0.0.0.0": "public debugger binding",
-    "npm i -g": "global package installation",
-    "npx -y": "implicit network package execution",
-}
-UNSUPPORTED_SLOGANS = (
-    "100% confidence",
-    "Delete it. Start over.",
-    "systematic always wins",
-    "95% vs 40%",
-)
-GATE_WORDS = re.compile(
-    r"\b(pytest|unittest|ruff|mypy|lint|typecheck|test|tests|build|verify|verification|"
-    r"cargo|npm|pnpm|yarn|gradle|mvn|go\s+test)\b",
-    re.IGNORECASE,
-)
-PIPELINE_MASK = re.compile(r"\|\s*(?:head|tail)\b|\|\s*(?:grep|sed|awk)\b", re.IGNORECASE)
-LOCAL_MARKDOWN_LINK = re.compile(
-    r"\]\(((?:references|templates|scripts|schemas|adapters|assets)/[^)\s#]+)(?:#[^)\s]+)?\)"
-)
-MARKDOWN_LINK_TARGET = re.compile(r"\]\(([^)\s]+)\)")
-LOCAL_BACKTICK_PATH = re.compile(
-    r"`((?:references|templates|scripts|schemas|adapters|assets)/[^`\s,;:]+)`"
-)
+VISUAL_OWNER = Path("operator/design-discovery")
+VISUAL_RUNTIME_MARKERS = ("frame-template.html", "helper.js", "server.cjs", "start-server.sh", "stop-server.sh")
+INDEPENDENT_REVIEWER = Path("templates/requesting-code-review/independent-reviewer-prompt.md")
 
 
 @dataclass(frozen=True, order=True)
@@ -76,481 +58,107 @@ class Violation:
     message: str
 
 
-def _line_number(text: str, offset: int) -> int:
-    return text.count("\n", 0, offset) + 1
-
-
-def extract_local_resources(text: str) -> set[str]:
-    resources = {match.group(1) for match in LOCAL_MARKDOWN_LINK.finditer(text)}
-    resources.update(match.group(1).rstrip(".);,") for match in LOCAL_BACKTICK_PATH.finditer(text))
-    return resources
-
-
-def markdown_files(root: Path) -> list[Path]:
-    files: list[Path] = []
-    skill = root / "SKILL.md"
-    if skill.is_file():
-        files.append(skill)
-    for directory in (root / "references", root / "templates", root / "adapters"):
-        if directory.is_dir():
-            files.extend(path for path in directory.rglob("*.md") if path.is_file())
-    return sorted(files)
-
-
-FRONTMATTER_SLUG = re.compile(r"^[A-Za-z][A-Za-z0-9._:-]*$")
-FRONTMATTER_PLAIN_SCALAR = re.compile(r"^[A-Za-z][A-Za-z0-9 .,_/()+&-]*$")
-# SemVer 2.0.0 FAQ reference expression, with explicit ASCII digits for Python.
-SEMANTIC_VERSION = re.compile(
-    r"^(?P<major>0|[1-9][0-9]*)\."
-    r"(?P<minor>0|[1-9][0-9]*)\."
-    r"(?P<patch>0|[1-9][0-9]*)"
-    r"(?:-(?P<prerelease>"
-    r"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
-    r"(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*"
-    r"))?"
-    r"(?:\+(?P<buildmetadata>"
-    r"[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*"
-    r"))?$"
-)
-YAML_IMPLICIT_NON_STRINGS = {
-    "null",
-    "true",
-    "false",
-    "yes",
-    "no",
-    "on",
-    "off",
-    "~",
-}
-
-
-def _parse_frontmatter_scalar(value: str, field: str) -> str:
-    value = value.strip()
-    if not value:
-        raise ValueError(f"{field} must be a non-empty string")
-    if value.startswith('"'):
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError as error:
-            raise ValueError(f"{field} has invalid double-quoted syntax") from error
-        if not isinstance(parsed, str) or not parsed:
-            raise ValueError(f"{field} must be a non-empty string")
-        return parsed
-    if (
-        value.lower() in YAML_IMPLICIT_NON_STRINGS
-        or not FRONTMATTER_PLAIN_SCALAR.fullmatch(value)
-    ):
-        raise ValueError(f"{field} must use a canonical string scalar")
+def _frontmatter(text: str) -> dict[str, Any]:
+    if not text.startswith("---\n"):
+        raise ValueError("missing opening YAML frontmatter delimiter")
+    end = text.find("\n---\n", 4)
+    if end < 0:
+        raise ValueError("missing closing YAML frontmatter delimiter")
+    value = yaml.safe_load(text[4:end])
+    if not isinstance(value, dict):
+        raise ValueError("frontmatter must be a mapping")
     return value
 
 
-def _parse_inline_slug_list(value: str, field: str) -> list[str]:
-    value = value.strip()
-    if not value.startswith("[") or not value.endswith("]"):
-        raise ValueError(f"{field} must be an inline list")
-    body = value[1:-1].strip()
-    if not body:
-        raise ValueError(f"{field} must not be empty")
-    items = [item.strip() for item in body.split(",")]
-    if any(
-        not item
-        or item.lower() in YAML_IMPLICIT_NON_STRINGS
-        or not FRONTMATTER_SLUG.fullmatch(item)
-        for item in items
-    ):
-        raise ValueError(f"{field} contains an empty, non-string, or invalid entry")
-    if len(items) != len(set(items)):
-        raise ValueError(f"{field} contains duplicate entries")
-    return items
-
-
-def _parse_dual_host_frontmatter(text: str) -> dict[str, Any]:
-    if not text.startswith("---\n"):
-        raise ValueError("opening delimiter is missing")
-    end = text.find("\n---\n", 4)
-    if end < 0:
-        raise ValueError("closing delimiter is missing")
-    lines = text[4:end].splitlines()
-    if len(lines) != 11:
-        raise ValueError(f"expected 11 canonical dual-host frontmatter lines; got {len(lines)}")
-
-    scalar_top_keys = ("name", "description", "license")
-    raw: dict[str, str] = {}
-    for index, key in enumerate(scalar_top_keys):
-        prefix = f"{key}: "
-        line = lines[index]
-        if line.startswith((" ", "\t")) or not line.startswith(prefix):
-            raise ValueError(f"expected top-level scalar field {key} at line {index + 1}")
-        raw[key] = line[len(prefix):].strip()
-    if lines[3] != "metadata:":
-        raise ValueError("metadata must be a mapping")
-
-    metadata_keys = ("version", "author")
-    raw_metadata: dict[str, str] = {}
-    for index, key in enumerate(metadata_keys, start=4):
-        prefix = f"  {key}: "
-        line = lines[index]
-        if not line.startswith(prefix):
-            raise ValueError(f"expected metadata.{key}")
-        raw_metadata[key] = line[len(prefix):].strip()
-    hosts_prefix = "  hosts: "
-    if not lines[6].startswith(hosts_prefix):
-        raise ValueError("expected metadata.hosts")
-    hosts = _parse_inline_slug_list(lines[6][len(hosts_prefix):], "metadata.hosts")
-    if hosts != ["codex", "hermes-agent"]:
-        raise ValueError("metadata.hosts must be exactly [codex, hermes-agent]")
-    if lines[7] != "  hermes:":
-        raise ValueError("metadata.hermes must be a mapping")
-
-    nested_keys = ("tags", "category", "related_skills")
-    nested: dict[str, str] = {}
-    for index, key in enumerate(nested_keys, start=8):
-        prefix = f"    {key}: "
-        line = lines[index]
-        if not line.startswith(prefix):
-            raise ValueError(f"expected metadata.hermes.{key}")
-        nested[key] = line[len(prefix):].strip()
-
-    name = _parse_frontmatter_scalar(raw["name"], "name")
-    description = _parse_frontmatter_scalar(raw["description"], "description")
-    version = raw_metadata["version"].strip()
-    if version.startswith('"'):
-        try:
-            version = json.loads(version)
-        except json.JSONDecodeError as error:
-            raise ValueError("metadata.version has invalid double-quoted syntax") from error
-    if not isinstance(version, str) or not version:
-        raise ValueError("metadata.version must be a non-empty string")
-    if not SEMANTIC_VERSION.fullmatch(version):
-        raise ValueError("version must use canonical semantic-version syntax")
-    author = _parse_frontmatter_scalar(raw_metadata["author"], "metadata.author")
-    license_name = _parse_frontmatter_scalar(raw["license"], "license")
-    category = _parse_frontmatter_scalar(nested["category"], "metadata.hermes.category")
-    tags = _parse_inline_slug_list(nested["tags"], "metadata.hermes.tags")
-    related = _parse_inline_slug_list(
-        nested["related_skills"], "metadata.hermes.related_skills"
-    )
-    return {
-        "name": name,
-        "description": description,
-        "license": license_name,
-        "metadata": {
-            "version": version,
-            "author": author,
-            "hosts": hosts,
-            "hermes": {
-                "tags": tags,
-                "category": category,
-                "related_skills": related,
-            }
-        },
-    }
-
-
-# Compatibility alias for callers that consumed the former private parser name.
-_parse_hermes_frontmatter = _parse_dual_host_frontmatter
-
-
-def _check_skill_entry(root: Path, violations: list[Violation]) -> set[str]:
+def _check_skill_entry(root: Path, violations: list[Violation]) -> None:
     path = root / "SKILL.md"
-    if not path.is_file():
-        violations.append(Violation("entry.missing", "SKILL.md", 0, "required entrypoint is missing"))
-        return set()
-    text = path.read_text(encoding="utf-8")
+    if path.is_symlink() or not path.is_file():
+        violations.append(Violation("entry.missing", "SKILL.md", 0, "required regular entrypoint is missing"))
+        return
+    payload = path.read_bytes()
+    if len(payload) > ENTRY_MAX_BYTES:
+        violations.append(Violation("entry.size", "SKILL.md", 1, f"entry exceeds {ENTRY_MAX_BYTES} UTF-8 bytes"))
     try:
-        frontmatter = _parse_dual_host_frontmatter(text)
-    except ValueError as error:
-        violations.append(
-            Violation(
-                "entry.frontmatter",
-                "SKILL.md",
-                1,
-                f"invalid canonical dual-host frontmatter: {error}",
-            )
-        )
-    else:
-        if frontmatter["name"] != SKILL_NAME:
-            violations.append(
-                Violation("entry.name", "SKILL.md", 2, "skill name does not match directory")
-            )
-        if not SEMANTIC_VERSION.fullmatch(frontmatter["metadata"]["version"]):
-            violations.append(Violation("entry.version", "SKILL.md", 1, "version must be semantic"))
-        category = frontmatter["metadata"]["hermes"]["category"]
-        if category != "software-development":
-            violations.append(
-                Violation(
-                    "entry.category",
-                    "SKILL.md",
-                    1,
-                    "Hermes category must be software-development",
-                )
-            )
-    if "## Owner contract" not in text:
-        violations.append(Violation("entry.owners", "SKILL.md", 1, "missing policy ownership section"))
-    direct = extract_local_resources(text)
-    missing_core = sorted(REQUIRED_CORE - direct)
-    for resource in missing_core:
-        violations.append(
-            Violation("entry.core-owner", "SKILL.md", 1, f"missing required core owner: {resource}")
-        )
-    return direct
-
-
-def _registered_reference_cards(root: Path, violations: list[Violation]) -> set[str]:
-    manifest_path = root / "registries" / "reference-cards.manifest.json"
-    if not manifest_path.exists():
-        return set()
-    relative_manifest = manifest_path.relative_to(root).as_posix()
-    try:
-        expected, issues = build_reference_manifest(root)
-        actual = load_reference_json(manifest_path)
-    except (OSError, TypeError, ValueError) as exc:
-        violations.append(Violation("reference-cards.invalid", relative_manifest, 1, str(exc)))
-        return set()
-    if issues:
-        first = issues[0]
-        violations.append(
-            Violation(
-                "reference-cards.invalid",
-                relative_manifest,
-                1,
-                f"{len(issues)} card contract issue(s); first: {first.code} in {first.path}: {first.message}",
-            )
-        )
-        return set()
-    if canonical_reference_json_bytes(actual) != canonical_reference_json_bytes(expected):
-        violations.append(
-            Violation(
-                "reference-cards.manifest-stale",
-                relative_manifest,
-                1,
-                "manifest does not match the registered card bytes",
-            )
-        )
-        return set()
-    return {item["path"] for item in expected["cards"]}
-
-
-def _check_active_set(
-    root: Path,
-    direct: set[str],
-    registered_reference_cards: set[str],
-    violations: list[Violation],
-) -> None:
-    actual: set[str] = set()
-    for directory_name in ("references",):
-        directory = root / directory_name
-        if not directory.is_dir():
-            continue
-        for path in directory.rglob("*.md"):
-            if path.is_file():
-                relative = path.relative_to(root).as_posix()
-                actual.add(relative)
-                if (
-                    directory_name == "references"
-                    and path.parent != directory
-                    and relative not in registered_reference_cards
-                ):
-                    violations.append(
-                        Violation(
-                            "active.nested-reference",
-                            relative,
-                            1,
-                            "active references must be flat and directly discoverable",
-                        )
-                    )
-    direct_markdown = {item for item in direct if item.endswith(".md") and item.startswith("references/")}
-    generated_internal = {"references/package-support-map.md"}
-    for relative in sorted(actual - direct_markdown - registered_reference_cards - generated_internal):
-        violations.append(
-            Violation("active.orphan", relative, 1, "Markdown resource is not linked directly from SKILL.md")
-        )
-    for relative in sorted(direct_markdown - actual):
-        violations.append(Violation("active.missing", "SKILL.md", 1, f"direct resource does not exist: {relative}"))
+        text = payload.decode("utf-8")
+        metadata = _frontmatter(text)
+    except (UnicodeError, ValueError, yaml.YAMLError) as exc:
+        violations.append(Violation("entry.frontmatter", "SKILL.md", 1, str(exc)))
+        return
+    if metadata.get("name") != SKILL_NAME:
+        violations.append(Violation("entry.name", "SKILL.md", 1, f"name must be {SKILL_NAME}"))
+    nested = metadata.get("metadata")
+    version = nested.get("version") if isinstance(nested, dict) else None
+    if version != SKILL_VERSION:
+        violations.append(Violation("entry.version", "SKILL.md", 1, f"version must be {SKILL_VERSION}"))
+    observed = tuple(line for line in text.splitlines() if line.startswith("#"))
+    if observed != REQUIRED_HEADINGS:
+        violations.append(Violation("entry.headings", "SKILL.md", 1, "entry headings differ from the fixed SQW 9.0 surface"))
 
 
 def _check_agent_metadata(root: Path, violations: list[Violation]) -> None:
     agents = root / "agents"
-    if not agents.exists():
+    if agents.is_symlink() or not agents.is_dir():
+        violations.append(Violation("agent-metadata.missing", "agents", 0, "agents directory is missing or symlinked"))
         return
-    if not agents.is_dir():
-        violations.append(Violation("agent-metadata.type", "agents", 0, "agents must be a directory"))
+    entries = sorted(path.name for path in agents.iterdir())
+    if entries != ["openai.yaml"]:
+        violations.append(Violation("agent-metadata.inventory", "agents", 0, "agents must contain only openai.yaml"))
         return
-    entries = sorted(path for path in agents.iterdir())
-    for path in entries:
+    path = agents / "openai.yaml"
+    if path.is_symlink() or not path.is_file():
+        violations.append(Violation("agent-metadata.type", "agents/openai.yaml", 0, "metadata must be a regular file"))
+        return
+    try:
+        value = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        violations.append(Violation("agent-metadata.yaml", "agents/openai.yaml", 1, str(exc)))
+        return
+    if value != EXPECTED_AGENT_METADATA:
+        violations.append(Violation("agent-metadata.contract", "agents/openai.yaml", 1, "metadata differs from the fixed implicit SQW profile"))
+
+
+def _check_markdown(root: Path, violations: list[Violation]) -> None:
+    for path in sorted(root.rglob("*.md")):
         relative = path.relative_to(root).as_posix()
-        if path.name != "openai.yaml" or not path.is_file() or path.is_symlink():
-            violations.append(Violation("agent-metadata.unexpected", relative, 0, "only a regular agents/openai.yaml metadata file is allowed"))
+        if path.is_symlink() or not path.is_file():
+            violations.append(Violation("markdown.type", relative, 0, "Markdown input must be a regular non-symlink file"))
             continue
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
-            violations.append(Violation("agent-metadata.read", relative, 0, str(exc)))
+            violations.append(Violation("markdown.read", relative, 0, str(exc)))
             continue
-        if len(text.encode("utf-8")) > 8192:
-            violations.append(Violation("agent-metadata.size", relative, 0, "agent metadata exceeds 8192 bytes"))
-        for marker in ("hooks:", "mcp:", "apps:", "remote_writes_default: true"):
-            if marker in text:
-                violations.append(Violation("agent-metadata.unsafe", relative, 1, f"agent metadata contains forbidden setting: {marker}"))
-        for required in ("interface:", "display_name:", "short_description:", "default_prompt:", "allow_implicit_invocation:"):
-            if required not in text:
-                violations.append(Violation("agent-metadata.required", relative, 1, f"agent metadata lacks {required}"))
-
-
-def _check_links(root: Path, files: Iterable[Path], violations: list[Violation]) -> None:
-    resolved_root = root.resolve()
-    for path in files:
-        text = path.read_text(encoding="utf-8")
-        relative = path.relative_to(root).as_posix()
-        for match in MARKDOWN_LINK_TARGET.finditer(text):
-            raw_target = match.group(1).strip("<>")
-            if raw_target.startswith(("#", "//")) or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", raw_target):
-                continue
-            resource = raw_target.split("#", 1)[0].split("?", 1)[0]
-            if not resource:
-                continue
-            candidate = (path.parent / resource).resolve()
-            if not candidate.is_relative_to(resolved_root):
-                violations.append(
-                    Violation(
-                        "link.outside",
-                        relative,
-                        _line_number(text, match.start(1)),
-                        f"local link escapes the active skill: {raw_target}",
-                    )
-                )
-            elif not candidate.is_file():
-                violations.append(
-                    Violation(
-                        "link.missing",
-                        relative,
-                        _line_number(text, match.start(1)),
-                        f"local link does not resolve from its document: {raw_target}",
-                    )
-                )
-
-
-def _check_markdown(
-    root: Path,
-    files: Iterable[Path],
-    registered_reference_cards: set[str],
-    violations: list[Violation],
-) -> None:
-    for path in files:
-        text = path.read_text(encoding="utf-8")
-        relative = path.relative_to(root).as_posix()
-        lines = text.splitlines()
-        if relative.startswith("references/") and len(lines) > 100:
-            if not any(heading in text for heading in ("## Contents", "## Table of Contents", "## 目录")):
-                violations.append(
-                    Violation("markdown.toc", relative, 1, f"{len(lines)}-line reference lacks a contents section")
-                )
+        if relative != "SKILL.md" and text.startswith("---\n"):
+            violations.append(Violation("markdown.legacy-frontmatter", relative, 1, "retained references must be normal Markdown, not card JSON frontmatter"))
         if text.count("```") % 2:
             violations.append(Violation("markdown.fence", relative, 1, "unbalanced fenced code block"))
-        if (
-            relative != "SKILL.md"
-            and text.startswith("---\n")
-            and relative not in registered_reference_cards
-        ):
-            violations.append(Violation("markdown.reference-frontmatter", relative, 1, "active reference has legacy frontmatter"))
-        for marker, explanation in STALE_MARKERS.items():
-            offset = text.find(marker)
-            if offset >= 0:
-                violations.append(
-                    Violation("portability.stale", relative, _line_number(text, offset), f"{explanation}: {marker}")
-                )
-        for marker, explanation in UNSAFE_EXECUTABLE_MARKERS.items():
-            offset = text.find(marker)
-            if offset >= 0:
-                violations.append(
-                    Violation("authority.unsafe-example", relative, _line_number(text, offset), f"{explanation}: {marker}")
-                )
-        for slogan in UNSUPPORTED_SLOGANS:
-            offset = text.find(slogan)
-            if offset >= 0:
-                violations.append(
-                    Violation("wording.unsupported", relative, _line_number(text, offset), f"unsupported slogan: {slogan}")
-                )
-        for line_number, line in enumerate(lines, start=1):
-            if GATE_WORDS.search(line) and (PIPELINE_MASK.search(line) or "|| true" in line):
-                violations.append(
-                    Violation(
-                        "gate.masked-exit",
-                        relative,
-                        line_number,
-                        "canonical-looking gate masks or replaces the original exit status",
-                    )
-                )
+
+    for error in markdown_link_errors(REPO_ROOT):
+        violations.append(Violation("link.invalid", error["path"], error["line"], f"local link is missing, symlinked, or outside the repository: {error['target']}"))
 
 
-def _check_version_recipes(root: Path, violations: list[Violation]) -> None:
-    legacy = root / "references" / "version-sensitive-recipes.md"
-    if legacy.exists():
-        violations.append(Violation("recipe.compatibility", "references/version-sensitive-recipes.md", 1, "legacy recipe aggregator must stay deleted"))
+def _check_shared_legacy_contract(violations: list[Violation]) -> None:
+    facts = collect_legacy_contract(REPO_ROOT)
+    for path in facts["legacy_runtime_paths_present"]:
+        violations.append(Violation("legacy.path", path, 0, "legacy runtime path must be absent"))
+    for field in ("legacy_protocol_matches", "brainstorming_runtime_copies"):
+        for match in facts[field]:
+            violations.append(Violation(f"legacy.{field}", match["path"], match["line"], f"forbidden model-facing token: {match['pattern']}"))
 
 
-def validate_decision_cases(data: Any) -> list[str]:
-    errors: list[str] = []
-    if not isinstance(data, list) or not data:
-        return ["decision cases must be a non-empty list"]
-    ids: list[str] = []
-    modes = {"report", "diagnose", "change"}
-    risks = {"READ_ONLY", "LOCAL_REVERSIBLE", "EXTERNAL_STATE", "PRIVILEGED_DANGEROUS"}
-    gate_names = {"red", "focused", "affected", "public_surface", "canonical", "static_contract"}
-    for index, case in enumerate(data):
-        prefix = f"case[{index}]"
-        if not isinstance(case, dict):
-            errors.append(f"{prefix} must be an object")
-            continue
-        required = {"id", "prompt", "mode", "max_risk", "required_gates", "forbidden_actions"}
-        missing = required - case.keys()
-        if missing:
-            errors.append(f"{prefix} missing {sorted(missing)}")
-            continue
-        if not _is_nonempty_string(case["id"]):
-            errors.append(f"{prefix}.id must be a non-empty string")
-        else:
-            ids.append(case["id"])
-        if not _is_nonempty_string(case["prompt"]):
-            errors.append(f"{prefix}.prompt must be a non-empty string")
-        if not isinstance(case["mode"], str) or case["mode"] not in modes:
-            errors.append(f"{prefix}.mode must be one of {sorted(modes)}")
-        if not isinstance(case["max_risk"], str) or case["max_risk"] not in risks:
-            errors.append(f"{prefix}.max_risk must be one of {sorted(risks)}")
-        gates = case["required_gates"]
-        if (
-            not isinstance(gates, list)
-            or any(not isinstance(item, str) or item not in gate_names for item in gates)
-            or len(gates) != len(set(gates))
-        ):
-            errors.append(f"{prefix}.required_gates must be a unique list from {sorted(gate_names)}")
-        actions = case["forbidden_actions"]
-        if (
-            not isinstance(actions, list)
-            or not actions
-            or any(not _is_nonempty_string(item) for item in actions)
-            or len(actions) != len(set(actions))
-        ):
-            errors.append(f"{prefix}.forbidden_actions must be a unique list of non-empty strings")
-    duplicates = sorted(item for item, count in Counter(ids).items() if count > 1)
-    if duplicates:
-        errors.append(f"duplicate decision case ids: {duplicates}")
-    return errors
-
-
-def _check_decision_fixture(root: Path, violations: list[Violation]) -> None:
-    path = root / "tests" / "fixtures" / "decision-cases.json"
-    relative = "tests/fixtures/decision-cases.json"
-    if not path.is_file():
-        violations.append(Violation("fixture.missing", relative, 0, "decision fixture is missing"))
-        return
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        violations.append(Violation("fixture.json", relative, 1, str(error)))
-        return
-    for error in validate_decision_cases(data):
-        violations.append(Violation("fixture.contract", relative, 1, error))
+def _check_single_owners(root: Path, violations: list[Violation]) -> None:
+    provenance = root / VISUAL_OWNER / "SOURCE.md"
+    if provenance.is_symlink() or not provenance.is_file():
+        violations.append(Violation("owner.visual-provenance", provenance.relative_to(root).as_posix(), 0, "visual runtime provenance is missing or symlinked"))
+    for name in VISUAL_RUNTIME_MARKERS:
+        expected = root / VISUAL_OWNER / name
+        copies = sorted(path for path in root.rglob(name) if path.is_file() or path.is_symlink())
+        if copies != [expected] or expected.is_symlink():
+            violations.append(Violation("owner.visual-runtime", name, 0, f"expected one runtime owner at {(VISUAL_OWNER / name).as_posix()}"))
+    reviewer = root / INDEPENDENT_REVIEWER
+    copies = sorted(path for path in root.rglob(INDEPENDENT_REVIEWER.name) if path.is_file() or path.is_symlink())
+    if copies != [reviewer] or reviewer.is_symlink():
+        violations.append(Violation("owner.independent-reviewer", INDEPENDENT_REVIEWER.as_posix(), 0, "expected exactly one independent reviewer owner"))
 
 
 def _is_nonempty_string(value: Any) -> bool:
@@ -666,20 +274,13 @@ def validate_review_result(
         errors.append("current_scope_hash context must be a non-empty string")
 
     allowed_scope = set(manifest_context["snapshots"]) if manifest_context is not None else None
-
-    allowed_fields = required | {"summary", "positive_notes"}
-    unexpected = sorted(data.keys() - allowed_fields)
+    unexpected = sorted(data.keys() - (required | {"summary", "positive_notes"}))
     if unexpected:
         errors.append(f"unexpected result fields: {unexpected}")
-
     if data["schema_version"] != "3.0":
         errors.append("schema_version must be '3.0'; earlier results require re-review")
-    enums = {
-        "code_review_verdict": {"pass", "changes_requested", "inconclusive"},
-        "verification_status": {"passed", "failed", "partial", "not_run"},
-    }
-    for field, values in enums.items():
-        validate_enum(field, values)
+    validate_enum("code_review_verdict", {"pass", "changes_requested", "inconclusive"})
+    validate_enum("verification_status", {"passed", "failed", "partial", "not_run"})
 
     traceability = data["spec_traceability"]
     if not isinstance(traceability, dict):
@@ -717,17 +318,12 @@ def validate_review_result(
             errors.append("reviewed_scope_hash does not match the frozen scope manifest")
         if _is_nonempty_string(current_head) and current_head != manifest_context["head_revision"]:
             errors.append("current head differs from the frozen scope manifest")
-        if (
-            _is_nonempty_string(current_scope_hash)
-            and current_scope_hash != manifest_context["scope_hash"]
-        ):
+        if _is_nonempty_string(current_scope_hash) and current_scope_hash != manifest_context["scope_hash"]:
             errors.append("current scope hash differs from the frozen scope manifest")
 
+    coverage = data["coverage"] if isinstance(data["coverage"], list) else []
     if not isinstance(data["coverage"], list):
         errors.append("coverage must be a list")
-        coverage = []
-    else:
-        coverage = data["coverage"]
     coverage_statuses: list[str] = []
     coverage_paths: list[str] = []
     for index, item in enumerate(coverage):
@@ -740,7 +336,6 @@ def validate_review_result(
         unexpected_coverage = sorted(item.keys() - {"path", "status", "snapshot_id", "sampling_note"})
         if unexpected_coverage:
             errors.append(f"coverage[{index}] has unexpected fields: {unexpected_coverage}")
-
         path_value = item["path"]
         if not _is_nonempty_string(path_value):
             errors.append(f"coverage[{index}].path must be a non-empty string")
@@ -748,17 +343,13 @@ def validate_review_result(
             coverage_paths.append(path_value)
             if allowed_scope is not None and path_value not in allowed_scope:
                 errors.append(f"coverage[{index}].path is outside the scope allowlist")
-
         snapshot_value = item["snapshot_id"]
         if not _is_nonempty_string(snapshot_value):
             errors.append(f"coverage[{index}].snapshot_id must be a non-empty string")
         elif manifest_context is not None and _is_nonempty_string(path_value):
             expected_snapshot = manifest_context["snapshots"].get(path_value)
             if expected_snapshot is not None and snapshot_value != expected_snapshot:
-                errors.append(
-                    f"coverage[{index}].snapshot_id does not match the frozen scope manifest"
-                )
-
+                errors.append(f"coverage[{index}].snapshot_id does not match the frozen scope manifest")
         status_value = item["status"]
         allowed_coverage = {"full", "sampled", "not_reviewed"}
         if not isinstance(status_value, str) or status_value not in allowed_coverage:
@@ -768,9 +359,7 @@ def validate_review_result(
             if status_value == "sampled" and not _is_nonempty_string(item.get("sampling_note")):
                 errors.append(f"coverage[{index}].sampling_note is required for sampled coverage")
 
-    duplicate_coverage = sorted(
-        item for item, count in Counter(coverage_paths).items() if count > 1
-    )
+    duplicate_coverage = sorted(item for item, count in Counter(coverage_paths).items() if count > 1)
     if duplicate_coverage:
         errors.append(f"duplicate coverage paths: {duplicate_coverage}")
     if allowed_scope is not None:
@@ -778,41 +367,25 @@ def validate_review_result(
         if missing_coverage:
             errors.append(f"coverage is missing allowlisted paths: {missing_coverage}")
 
+    blocking_reasons: list[str] = []
     if not isinstance(data["blocking_reasons"], list):
         errors.append("blocking_reasons must be a list")
-        blocking_reasons: list[str] = []
     else:
-        blocking_reasons = []
         for index, reason in enumerate(data["blocking_reasons"]):
             if not _is_nonempty_string(reason):
                 errors.append(f"blocking_reasons[{index}] must be a non-empty string")
             else:
                 blocking_reasons.append(reason)
-        duplicate_reasons = sorted(
-            item for item, count in Counter(blocking_reasons).items() if count > 1
-        )
-        if duplicate_reasons:
-            errors.append(f"duplicate blocking_reasons: {duplicate_reasons}")
+        duplicates = sorted(item for item, count in Counter(blocking_reasons).items() if count > 1)
+        if duplicates:
+            errors.append(f"duplicate blocking_reasons: {duplicates}")
 
+    findings = data["findings"] if isinstance(data["findings"], list) else []
     if not isinstance(data["findings"], list):
         errors.append("findings must be a list")
-        findings: list[Any] = []
-    else:
-        findings = data["findings"]
     finding_required = {
-        "id",
-        "severity",
-        "blocking",
-        "category",
-        "path",
-        "line",
-        "evidence",
-        "impact",
-        "recommended_fix",
-        "confidence",
-        "verification",
-        "code_fixable",
-        "source_revision",
+        "id", "severity", "blocking", "category", "path", "line", "evidence", "impact",
+        "recommended_fix", "confidence", "verification", "code_fixable", "source_revision",
     }
     ids: list[str] = []
     blocking_ids: list[str] = []
@@ -825,27 +398,13 @@ def validate_review_result(
         if missing_finding:
             errors.append(f"{prefix} missing {sorted(missing_finding)}")
             continue
-
-        for field in (
-            "id",
-            "category",
-            "path",
-            "evidence",
-            "impact",
-            "recommended_fix",
-            "verification",
-            "source_revision",
-        ):
+        for field in ("id", "category", "path", "evidence", "impact", "recommended_fix", "verification", "source_revision"):
             if not _is_nonempty_string(finding[field]):
                 errors.append(f"{prefix}.{field} must be a non-empty string")
-
         if _is_nonempty_string(finding["id"]):
             ids.append(finding["id"])
-        if _is_nonempty_string(finding["category"]) and not re.fullmatch(
-            r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*", finding["category"]
-        ):
+        if _is_nonempty_string(finding["category"]) and not re.fullmatch(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*", finding["category"]):
             errors.append(f"{prefix}.category must be lower_snake_case")
-
         allowed_severity = {"critical", "high", "medium", "low", "info"}
         if not isinstance(finding["severity"], str) or finding["severity"] not in allowed_severity:
             errors.append(f"{prefix}.severity must be one of {sorted(allowed_severity)}")
@@ -855,60 +414,42 @@ def validate_review_result(
             blocking_ids.append(finding["id"])
         if not isinstance(finding["code_fixable"], bool):
             errors.append(f"{prefix}.code_fixable must be boolean")
-
         allowed_confidence = {"high", "medium", "low"}
         if not isinstance(finding["confidence"], str) or finding["confidence"] not in allowed_confidence:
             errors.append(f"{prefix}.confidence must be one of {sorted(allowed_confidence)}")
-
         line_value = finding["line"]
         if line_value is not None and (type(line_value) is not int or line_value < 1):
             errors.append(f"{prefix}.line must be null or a positive integer")
         if _is_nonempty_string(finding["source_revision"]) and finding["source_revision"] != data["reviewed_head_sha"]:
             errors.append(f"{prefix}.source_revision does not match reviewed_head_sha")
-        if (
-            allowed_scope is not None
-            and _is_nonempty_string(finding["path"])
-            and finding["path"] not in allowed_scope
-        ):
+        if allowed_scope is not None and _is_nonempty_string(finding["path"]) and finding["path"] not in allowed_scope:
             errors.append(f"{prefix}.path is outside the scope allowlist")
 
     duplicates = sorted(item for item, count in Counter(ids).items() if count > 1)
     if duplicates:
         errors.append(f"duplicate finding ids: {duplicates}")
-
     for finding_id in blocking_ids:
         if finding_id not in blocking_reasons:
             errors.append(f"blocking finding {finding_id!r} is missing from blocking_reasons")
-
-    blocking = bool(blocking_ids)
-    if blocking and data["code_review_verdict"] == "pass":
+    if blocking_ids and data["code_review_verdict"] == "pass":
         errors.append("blocking finding conflicts with code_review_verdict=pass")
     if blocking_reasons and data["code_review_verdict"] == "pass":
         errors.append("blocking_reasons conflict with code_review_verdict=pass")
     if "not_reviewed" in coverage_statuses and data["code_review_verdict"] == "pass":
         errors.append("not_reviewed coverage conflicts with code_review_verdict=pass")
-
-    if (
-        manifest_context is not None
-        and _is_nonempty_string(current_head)
-        and current_head != manifest_context["head_revision"]
-    ):
+    if manifest_context is not None and _is_nonempty_string(current_head) and current_head != manifest_context["head_revision"]:
         errors.append("review result is stale for the current head revision")
     return errors
 
 
 def validate_skill(root: Path) -> list[Violation]:
-    root = root.resolve()
+    root = root.resolve(strict=True)
     violations: list[Violation] = []
-    direct = _check_skill_entry(root, violations)
-    files = markdown_files(root)
-    registered_reference_cards = _registered_reference_cards(root, violations)
-    _check_active_set(root, direct, registered_reference_cards, violations)
+    _check_skill_entry(root, violations)
     _check_agent_metadata(root, violations)
-    _check_links(root, files, violations)
-    _check_markdown(root, files, registered_reference_cards, violations)
-    _check_version_recipes(root, violations)
-    _check_decision_fixture(root, violations)
+    _check_markdown(root, violations)
+    _check_shared_legacy_contract(violations)
+    _check_single_owners(root, violations)
     return sorted(set(violations))
 
 
@@ -929,13 +470,25 @@ def compact_violations(violations: Sequence[Violation], *, per_code: int = 4) ->
 
 
 def _load_json(path: Path) -> Any:
-    with path.open(encoding="utf-8") as handle:
-        return json.load(handle)
+    def no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"duplicate JSON key: {key}")
+            value[key] = item
+        return value
+
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"non-finite JSON number: {value}")
+
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("input must be a regular non-symlink file")
+    return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=no_duplicates, parse_constant=reject_constant)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("root", nargs="?", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("root", nargs="?", type=Path, default=ROOT)
     parser.add_argument("--review-result", type=Path)
     parser.add_argument("--scope-manifest", type=Path)
     parser.add_argument("--current-head")
@@ -944,16 +497,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.review_result:
         try:
             data = _load_json(args.review_result)
-        except (OSError, json.JSONDecodeError) as error:
-            print(f"FAIL: unable to read review result: {error}")
+            scope_manifest = _load_json(args.scope_manifest) if args.scope_manifest is not None else None
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            print(f"FAIL: unable to read review evidence: {exc}")
             return 1
-        scope_manifest = None
-        if args.scope_manifest is not None:
-            try:
-                scope_manifest = _load_json(args.scope_manifest)
-            except (OSError, json.JSONDecodeError) as error:
-                print(f"FAIL: unable to read scope manifest: {error}")
-                return 1
         errors = validate_review_result(
             data,
             scope_manifest=scope_manifest,
@@ -969,7 +516,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
         print("OK: local review result satisfies schema 3.0")
         return 0
-    violations = validate_skill(args.root)
+    try:
+        violations = validate_skill(args.root)
+    except (OSError, UnicodeError, ValueError, yaml.YAMLError) as exc:
+        print(f"FAIL: unable to inspect skill contracts: {exc}")
+        return 1
     if violations:
         print(compact_violations(violations))
         return 1

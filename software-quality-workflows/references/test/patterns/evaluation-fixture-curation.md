@@ -1,31 +1,16 @@
----
-{
-  "card_id": "sqw.test.patterns.evaluation-fixture-curation",
-  "card_version": 2,
-  "kind": "recipe",
-  "decision_id": "sqw.select.test.patterns.evaluation-fixture-curation",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "test-patterns-evaluation-fixture-curation"
-  ],
-  "max_bytes": 8192
-}
----
 # Evaluation Fixture Curation Pattern
 
-## Decision this card owns
+## Purpose
 Apply one reviewed revision-bound benchmark, retrieval, ranking, routing, or recommendation fixture delta with defensible oracles, representative diversity, held-out evidence, and exact durable count.
 
 ## Use when
-- `workflow-intake` requires expanding or repairing a canonical evaluation corpus, an exact accepted count, or a missing contract stratum.
+- task context requires expanding or repairing a canonical evaluation corpus, an exact accepted count, or a missing contract stratum.
 
 ## Do not use when
 - Data is disposable diagnostic output, labels lack a defensible oracle, or one unreviewed model would generate, filter, and judge all cases.
 
 ## Required inputs
-- `workflow-intake`; versioned manifest, schema, evaluator and metrics; current accepted inventory; exact target and strata; categories/languages/exclusions; provenance/privacy/license/dedup rules; independent judgment/oracle; generator/filter/seed/removal/refill policy; held-out/parity set; noise, repeat and threshold contract; and canonical revision.
+- task context; versioned manifest, schema, evaluator and metrics; current accepted inventory; exact target and strata; categories/languages/exclusions; provenance/privacy/license/dedup rules; independent judgment/oracle; generator/filter/seed/removal/refill policy; held-out/parity set; noise, repeat and threshold contract; and canonical revision.
 
 ## Procedure
 1. Read accepted cases from disk, normalize IDs/prompts/gold targets/exclusions/categories/language/provenance/evaluator version, and freeze the exact target plus missing strata before candidate generation.
@@ -35,12 +20,8 @@ Apply one reviewed revision-bound benchmark, retrieval, ranking, routing, or rec
 5. Apply only the reviewed manifest delta, reread canonical data, and prove before/after identity, exact accepted count from disk, strata/diversity, metrics, held-out/adjudication, provenance, privacy/license, dedup and oracle status.
 6. Compact durable selection evidence before scratch cleanup. Roll back only the task-owned delta after confirming the canonical post-update revision; reconcile drift instead of overwriting concurrent work.
 
-## Output contract
+## Required result
 - One `test-patterns-evaluation-fixture-curation` with candidate/accepted/rejected delta, canonical before/after identity, exact accepted count, strata and diversity metrics, schema/provenance/privacy/license/dedup/oracle checks, held-out/parity/adjudication evidence, rollback state, and unresolved items.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop after durable reread and exact quality/count proof; parsing or generation is not acceptance, and fixtures or thresholds cannot be tuned against the evaluated candidate.

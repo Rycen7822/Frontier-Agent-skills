@@ -1,6 +1,6 @@
 # Design-discovery spec reviewer prompt
 
-Use this template only when the user explicitly requests an independent specification review or the governing workflow requires separation of duties. Copy the resolved path, authoritative requirements, and review scope into a `delegate_task`; do not make independent review a mandatory gate for every design.
+Use this template only when the user explicitly requests an independent specification review or an explicit separation-of-duties requirement applies. Pass the resolved path, authoritative requirements, and review scope through the host's ordinary delegation capability; do not make independent review a mandatory gate for every design.
 
 ```text
 Goal: Review a software specification for implementation-planning readiness.

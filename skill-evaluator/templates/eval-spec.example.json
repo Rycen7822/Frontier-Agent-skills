@@ -213,6 +213,24 @@
       "metric": "protected_outcome_failures",
       "operator": "==",
       "value": 0
+    },
+    {
+      "id": "zero-repeated-static-content",
+      "metric": "repeated_static_content_bytes_max",
+      "operator": "==",
+      "value": 0
+    },
+    {
+      "id": "zero-protocol-output",
+      "metric": "protocol_output_bytes_max",
+      "operator": "==",
+      "value": 0
+    },
+    {
+      "id": "zero-failed-command-output",
+      "metric": "failed_command_output_bytes_max",
+      "operator": "==",
+      "value": 0
     }
   ],
   "metrics": [
@@ -228,6 +246,9 @@
     "skill_context_attribution_rate",
     "skill_context_bytes_p95",
     "skill_context_tokens_p95",
+    "repeated_static_content_bytes_max",
+    "protocol_output_bytes_max",
+    "failed_command_output_bytes_max",
     "process_score",
     "quality_score",
     "tokens_in",

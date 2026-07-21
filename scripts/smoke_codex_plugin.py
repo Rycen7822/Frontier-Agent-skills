@@ -13,6 +13,8 @@ import sys
 import tempfile
 from typing import Any
 
+import yaml
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -22,13 +24,13 @@ from _bundle_hash import inventory, tree_hash  # noqa: E402
 from build_codex_plugin import _strict_json  # noqa: E402
 
 
-EXPECTED_SKILLS = {
-    "brainstorming",
-    "long-document-segmented-writing",
-    "skill-evaluator",
-    "software-quality-workflows",
-    "writing-plans",
+EXPECTED_ACTIVATION = {
+    "long-document-segmented-writing": True,
+    "skill-evaluator": False,
+    "software-quality-workflows": True,
+    "writing-plans": False,
 }
+EXPECTED_SKILLS = set(EXPECTED_ACTIVATION)
 
 
 def _frontmatter(path: Path) -> dict[str, str]:
@@ -59,6 +61,8 @@ def inspect_plugin(plugin_root: Path, evidence_path: Path) -> dict[str, Any]:
     ).hexdigest()
     if observed_evidence_hash != expected_evidence_hash:
         raise ValueError("build evidence self-hash is invalid")
+    if evidence.get("schema_version") != "plugin-build-evidence/3.0" or evidence.get("skill_activation") != EXPECTED_ACTIVATION:
+        raise ValueError("build evidence identity or skill activation is invalid")
     manifest = _strict_json(plugin_root / ".codex-plugin" / "plugin.json")
     if plugin_root.name != manifest.get("name") or manifest.get("name") != evidence.get("plugin_name"):
         raise ValueError("plugin directory, manifest, and build evidence identities differ")
@@ -72,25 +76,32 @@ def inspect_plugin(plugin_root: Path, evidence_path: Path) -> dict[str, Any]:
     discovered: dict[str, dict[str, Any]] = {}
     skills_root = plugin_root / "skills"
     if {path.name for path in skills_root.iterdir() if path.is_dir()} != EXPECTED_SKILLS:
-        raise ValueError("static discovery did not find exactly the five canonical skills")
+        raise ValueError("static discovery did not find exactly the four canonical skills")
     for name in sorted(EXPECTED_SKILLS):
         skill_root = skills_root / name
         fields = _frontmatter(skill_root / "SKILL.md")
         if fields["name"] != name or evidence.get("skill_versions", {}).get(name) != fields["version"]:
             raise ValueError(f"explicit skill identity/version mismatch: {name}")
-        metadata = (skill_root / "agents" / "openai.yaml").read_text(encoding="utf-8")
-        if "allow_implicit_invocation: true" not in metadata or "default_prompt:" not in metadata or f"${name}" not in metadata:
+        metadata_text = (skill_root / "agents" / "openai.yaml").read_text(encoding="utf-8")
+        metadata = yaml.safe_load(metadata_text)
+        if not isinstance(metadata, dict) or not isinstance(metadata.get("interface"), dict) or not isinstance(metadata.get("policy"), dict):
             raise ValueError(f"Codex invocation metadata is incomplete: {name}")
-        if any(marker in metadata for marker in ("hooks:", "mcp:", "apps:", "remote_writes_default: true")):
+        activation = metadata["policy"].get("allow_implicit_invocation")
+        if type(activation) is not bool or activation is not EXPECTED_ACTIVATION[name] or evidence["skill_activation"].get(name) is not activation:
+            raise ValueError(f"Codex activation metadata differs from the fixed matrix: {name}")
+        prompt = metadata["interface"].get("default_prompt")
+        if not isinstance(prompt, str) or f"${name}" not in prompt:
+            raise ValueError(f"Codex invocation metadata is incomplete: {name}")
+        if any(marker in metadata_text for marker in ("hooks:", "mcp:", "apps:", "remote_writes_default: true")):
             raise ValueError(f"skill metadata attempts to widen plugin authority: {name}")
         discovered[name] = {
             "version": fields["version"],
             "description_hash": "sha256:" + sha256(fields["description"].encode("utf-8")).hexdigest(),
             "explicit_invocation": True,
-            "implicit_eligible": True,
+            "implicit_eligible": activation,
         }
     return {
-        "schema_version": "static-plugin-smoke/2.0",
+        "schema_version": "static-plugin-smoke/3.0",
         "plugin_name": manifest["name"],
         "plugin_tree_hash": evidence["plugin_tree_hash"],
         "build_evidence_hash": evidence["evidence_hash"],
@@ -127,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
         with args.output.open("x", encoding="utf-8") as handle:
             json.dump(result, handle, ensure_ascii=False, indent=2, sort_keys=True)
             handle.write("\n")
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, json.JSONDecodeError, yaml.YAMLError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 1
     print(json.dumps({"ok": True, "plugin_tree_hash": result["plugin_tree_hash"], "actual_codex_cli_install": False}, ensure_ascii=False))

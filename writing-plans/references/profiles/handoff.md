@@ -1,43 +1,26 @@
----
-{
-  "card_id": "wp.profiles.handoff",
-  "card_version": 2,
-  "kind": "procedure",
-  "decision_id": "wp.select.profiles.handoff",
-  "required_artifact_ids": [],
-  "produced_artifact_ids": [
-    "plan-handoff"
-  ],
-  "max_bytes": 4096
-}
----
-# Executable Handoff
+# Executable Handoff Profile
 
-## Decision this card owns
-Freeze the minimum durable handoff needed for another turn, session, or authorized worker to continue without rediscovery.
+## Purpose
+
+Make one cross-context software handoff executable without repeating intent discovery or architecture selection.
 
 ## Use when
-- Execution crosses a context boundary or has multiple independently owned slices.
 
-## Do not use when
-- A same-context Brief is sufficient or the work requires a multi-stage Program state.
+Use after goal, decisions, authority, scope, and acceptance evidence are settled, but another context, session, or engineer must execute the work.
 
-## Required inputs
-- Source revision, scope and authority identities, intended outcome, current frontier, evidence anchors, dependencies, and verification gates.
+## Inputs
 
-## Procedure
-1. Bind the typed v3 handoff to producer completion, source, planning scope, and bundle identity; record authority requirements without claiming actual authority.
-2. Record goal/non-goals, global invariants/owner seams, requirement/constraint coverage, completed evidence, pending decisions, and blockers separately.
-3. Give ordered outcome slices stable dependencies, allowed writes/effects, one owner, acceptance/verifier distinction, false-green risk, and produced evidence.
-4. Record current frontier, rollback, fog, and only source-bound resume commands/anchors.
-5. Complete to one immutable JSON artifact under the explicit artifact root. A later `render` command validates that exact locator and emits Markdown under the explicit projection root; neither artifact contains local owner or output paths.
+- Exact source revision and freshness condition.
+- Goal, non-goals, protected work, allowed writes, and allowed effects.
+- Locked decisions and invariants with source pointers.
+- Ordered work, dependencies, verification, rollback, blockers, and exact next action.
 
-## Output contract
-- One `plan-handoff` artifact binding producer/bundle/source/scope, typed owner seams and requirement refs, ordered slices, rollback, explicit blockers, and the required SQW entry decisions. The receiver reroutes and re-establishes authority.
+## Required result
 
-## Load next only if
+Write one canonical Markdown using the [Executable Handoff template](../../templates/executable-handoff.md). Every slice names an observable outcome, owned paths or seams, prerequisites, acceptance evidence, and rollback when real. Point to source evidence instead of copying large excerpts.
 
-None. Return control to Router after producing the output contract.
+The receiver rechecks revision, dirty state, authority, and external effects before executing. The handoff records authority; it does not grant it.
 
-## Stop
-Stop after the receiving boundary can validate identity and reroute inside its own skill manifest.
+## Failure boundary
+
+Return to Software Quality Workflows when intent, root cause, architecture, authority, or feasibility is unresolved. Stop if source freshness or protected work cannot be stated exactly. Create no second plan, sidecar, state, or generated summary.

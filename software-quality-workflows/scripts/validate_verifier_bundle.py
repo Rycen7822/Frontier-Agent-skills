@@ -4,18 +4,89 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
+import os
 from pathlib import Path, PurePosixPath
+import stat
 import sys
 from typing import Any
 
-from _workflow_state import InputError, Violation, load_json, validate_against_schema
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import SchemaError
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCHEMA = ROOT / "schemas" / "verifier-bundle.schema.json"
 LEVEL = {"addressable": 0, "stable": 1, "discriminating": 2, "independent": 3}
+MAX_INPUT_BYTES = 4 * 1024 * 1024
+
+
+class InputError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class Violation:
+    code: str
+    path: str
+    message: str
+    object_id: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        result = asdict(self)
+        if result["object_id"] is None:
+            result.pop("object_id")
+        return result
+
+
+def _pairs_no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise InputError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_constant(value: str) -> None:
+    raise InputError(f"non-finite JSON number is not allowed: {value}")
+
+
+def load_json(path: str | Path) -> Any:
+    source = Path(path)
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(source, flags)
+        with os.fdopen(descriptor, "rb") as stream:
+            metadata = os.fstat(stream.fileno())
+            if not stat.S_ISREG(metadata.st_mode):
+                raise InputError(f"input is not a regular file: {source}")
+            if metadata.st_size > MAX_INPUT_BYTES:
+                raise InputError(f"input is {metadata.st_size} bytes; maximum is {MAX_INPUT_BYTES}")
+            payload = stream.read(MAX_INPUT_BYTES + 1)
+        if len(payload) > MAX_INPUT_BYTES:
+            raise InputError(f"input exceeds maximum of {MAX_INPUT_BYTES} bytes")
+        text = payload.decode("utf-8")
+        return json.loads(text, object_pairs_hook=_pairs_no_duplicates, parse_constant=_reject_constant)
+    except (OSError, UnicodeError, json.JSONDecodeError, InputError, RecursionError) as exc:
+        raise InputError(f"{source}: {exc}") from exc
+
+
+def _json_pointer(parts: Any) -> str:
+    escaped = [str(part).replace("~", "~0").replace("/", "~1") for part in parts]
+    return "/" + "/".join(escaped) if escaped else ""
+
+
+def validate_against_schema(value: Any, schema: dict[str, Any], *, code: str) -> list[Violation]:
+    try:
+        Draft202012Validator.check_schema(schema)
+    except SchemaError as exc:
+        raise InputError(f"invalid JSON schema: {exc.message}") from exc
+    validator = Draft202012Validator(schema)
+    errors = sorted(validator.iter_errors(value), key=lambda item: (_json_pointer(item.absolute_path), item.message))
+    return [Violation(code, _json_pointer(error.absolute_path), error.message) for error in errors]
 
 
 def canonical_bundle_hash(bundle: dict[str, Any]) -> str:

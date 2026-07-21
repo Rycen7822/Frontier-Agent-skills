@@ -1,21 +1,6 @@
----
-{
-  "card_id": "sqw.domain.source.external-authority",
-  "card_version": 2,
-  "kind": "decision",
-  "decision_id": "sqw.select.domain.source.external-authority",
-  "required_artifact_ids": [
-    "workflow-intake"
-  ],
-  "produced_artifact_ids": [
-    "domain-source-external-authority"
-  ],
-  "max_bytes": 8192
-}
----
 # External Source Authority
 
-## Decision this card owns
+## Purpose
 Select and bind narrow authoritative external/versioned evidence when upstream behavior is genuinely normative for the local implementation decision.
 
 ## Use when
@@ -25,7 +10,7 @@ Select and bind narrow authoritative external/versioned evidence when upstream b
 - Local behavior is fully governed by repository contracts, or the task merely contains a URL without making external source/version authoritative.
 
 ## Required inputs
-- `workflow-intake`; exact dependency/runtime/protocol/generated-client/compatibility versions from repository declarations/lock state, one decision question, local wrapper/conventions/tests/support range, and candidate primary sources.
+- task context; exact dependency/runtime/protocol/generated-client/compatibility versions from repository declarations/lock state, one decision question, local wrapper/conventions/tests/support range, and candidate primary sources.
 
 ## Procedure
 1. Detect exact relevant versions locally and formulate the narrow question before research.
@@ -36,12 +21,8 @@ Select and bind narrow authoritative external/versioned evidence when upstream b
 6. Resolve conflicts explicitly and label unavailable/silent authority `unverified`; use strongest local proof without presenting inference/model memory as source fact.
 7. Record a concise nearby evidence anchor and recheck code/tests/generated artifacts/docs/citations agree with what ships.
 
-## Output contract
+## Required result
 - Question and detected versions; selected authoritative source/anchor/freshness; governing rule; local comparison/conflict decision; implementation constraint; unverified assumptions/follow-up; affected consistency surfaces.
-
-## Load next only if
-
-None. Return control to Router after producing the output contract.
 
 ## Stop
 Stop at the source-authority decision; do not broaden research, copy unsafe upstream examples, or treat citation as implementation proof.
