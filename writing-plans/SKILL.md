@@ -14,7 +14,7 @@ metadata:
 
 # Writing Plans
 
-Explicit invocation supplies this body in full; do not reopen `SKILL.md`. References only serve non-Brief profiles.
+Explicit invocation includes this full body; never reopen `SKILL.md`. Load non-Brief references directly without listing or counting files.
 
 ## Scope
 

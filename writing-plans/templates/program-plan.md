@@ -12,9 +12,9 @@
 
 [replace: settled architecture and facts that every milestone preserves]
 
-## Milestones and dependency graph
+## Phases, milestones, and dependency graph
 
-1. [replace: milestone outcome, dependencies, owner seam, and acceptance evidence]
+1. [replace: phase or milestone outcome, dependencies, owner seam, and acceptance evidence]
 
 ## Current frontier
 
