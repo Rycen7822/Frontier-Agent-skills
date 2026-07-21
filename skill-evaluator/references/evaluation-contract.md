@@ -39,11 +39,12 @@ L4 is limited to version and cycle monitoring. Without selection, order, and com
 | Profile | Purpose |
 |---|---|
 | `baseline/skill_disabled` | Base-model capability under identical task and controls; required at L2+ |
-| `candidate/natural_routing` | Complete retrieval, loading, application, outcome, and context path; required at L2+ |
-| `candidate/force_loaded` | Optional diagnostic that removes routing from the question |
-| `prior/natural_routing` | Optional revision comparator |
+| `candidate/natural_routing` | Complete retrieval, loading, application, outcome, and context path; one valid L2+ candidate treatment |
+| `candidate/force_loaded` | Explicit-invocation contribution without a routing claim; the other valid L2+ candidate treatment |
+| `prior/natural_routing` | Optional natural-routing revision comparator |
+| `prior/force_loaded` | Optional explicit-invocation revision comparator |
 
-Declare only variants required by the decision. Forced-use success cannot prove routing or contribution. A prior variant is not a substitute for the no-Skill baseline when the question is incremental value over the frontier model.
+Declare only candidate treatments required by the decision. Natural routing is the default comparison when both candidate modes are present; selecting forced loading requires an explicit analyzer candidate. Forced-use success cannot prove routing. A prior variant must match the selected candidate treatment and is not a substitute for the no-Skill baseline when the question is incremental value over the frontier model.
 
 ## Fair case and repeat design
 

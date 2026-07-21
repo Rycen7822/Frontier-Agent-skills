@@ -1814,6 +1814,29 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
         self.assertEqual(160, comparison['prior_skill_context']['bytes_p95'])
         self.assertEqual(40, comparison['candidate_minus_prior_bytes_p95'])
 
+        forced_cases = {
+            case_id: {
+                **case,
+                'applicable_variant_profiles': [
+                    'candidate/force_loaded', 'prior/force_loaded',
+                ],
+            }
+            for case_id, case in cases.items()
+        }
+        forced_spec = {'variants': [
+            {'id': 'candidate', 'role': 'candidate', 'mode': 'force_loaded'},
+            {'id': 'prior', 'role': 'prior', 'mode': 'force_loaded'},
+        ]}
+        forced_summary = analyzer.summarize_skill_context(
+            candidate_rows, forced_cases, forced_spec, 1, mode='force_loaded',
+        )
+        forced_comparison = analyzer.summarize_prior_skill_context(
+            candidate_rows + prior_rows, forced_cases, forced_spec, 1,
+            forced_summary, mode='force_loaded',
+        )
+        self.assertEqual(160, forced_comparison['prior_skill_context']['bytes_p95'])
+        self.assertEqual(40, forced_comparison['candidate_minus_prior_bytes_p95'])
+
         unavailable_inputs = {
             'missing receipt': candidate_rows + prior_rows[:1],
             'duplicate receipt': candidate_rows + prior_rows + [prior_rows[0]],
@@ -2021,6 +2044,52 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             l2_result = validate(
                 'l2-missing-pair', l2_missing_pair, make_minimal_cases(comparative=True),
             )
+            l2_missing_candidate = make_minimal_spec('L2')
+            l2_missing_candidate['variants'] = [
+                variant for variant in l2_missing_candidate['variants']
+                if variant['role'] != 'candidate'
+            ]
+            l2_missing_candidate_result = validate(
+                'l2-missing-candidate', l2_missing_candidate,
+                make_minimal_cases(comparative=True),
+            )
+
+            explicit_l2 = make_minimal_spec('L2')
+            explicit_l2['variants'][1].update({
+                'id': 'candidate_explicit', 'mode': 'force_loaded',
+            })
+            explicit_l2['hard_gates'][0]['metric'] = 'candidate_explicit.task_pass_rate'
+            explicit_l2['target']['prior_hash'] = 'sha256:' + '9' * 64
+            explicit_l2['variants'].append({
+                'id': 'prior_explicit',
+                'role': 'prior',
+                'mode': 'force_loaded',
+                'package_hash': explicit_l2['target']['prior_hash'],
+                'catalog_hash': 'sha256:' + 'a' * 64,
+                'treatment_hash': 'sha256:' + 'b' * 64,
+            })
+            explicit_cases = make_minimal_cases(comparative=True)
+            for case in explicit_cases:
+                case['applicable_variant_profiles'] = [
+                    'baseline/skill_disabled',
+                    'candidate/force_loaded',
+                    'prior/force_loaded',
+                ]
+            explicit_result = validate('l2-explicit', explicit_l2, explicit_cases)
+
+            mixed_l2 = json.loads(json.dumps(explicit_l2))
+            mixed_l2['variants'].append({
+                'id': 'candidate_natural',
+                'role': 'candidate',
+                'mode': 'natural_routing',
+                'package_hash': mixed_l2['target']['candidate_hash'],
+                'catalog_hash': 'sha256:' + 'c' * 64,
+                'treatment_hash': 'sha256:' + 'd' * 64,
+            })
+            mixed_cases = json.loads(json.dumps(explicit_cases))
+            for case in mixed_cases:
+                case['applicable_variant_profiles'].append('candidate/natural_routing')
+            mixed_result = validate('l2-mixed-candidates', mixed_l2, mixed_cases)
 
             high_risk = make_minimal_spec('L2')
             high_risk['risk_tier'] = 'high'
@@ -2042,6 +2111,13 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
         self.assertIn('L1 spec forbids suite.holdout_control', l1_result.stdout)
         self.assertEqual(l2_result.returncode, 1)
         self.assertIn('L2+ spec must include a baseline/skill_disabled variant', l2_result.stdout)
+        self.assertEqual(l2_missing_candidate_result.returncode, 1)
+        self.assertIn(
+            'L2+ spec must include a candidate/force_loaded or candidate/natural_routing variant',
+            l2_missing_candidate_result.stdout,
+        )
+        self.assertEqual(explicit_result.returncode, 0, explicit_result.stdout + explicit_result.stderr)
+        self.assertEqual(mixed_result.returncode, 0, mixed_result.stdout + mixed_result.stderr)
         self.assertEqual(high_risk_result.returncode, 1)
         self.assertIn('high-risk spec requires manual_review.required=true', high_risk_result.stdout)
         self.assertIn('high-risk or L3/L4 suite must include safety-tagged cases', high_risk_result.stdout)

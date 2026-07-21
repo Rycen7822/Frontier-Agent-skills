@@ -1340,6 +1340,21 @@ def infer_variant(
     return None
 
 
+def resolve_comparative_variant(
+    spec: dict[str, Any], role: str, *, variant_id: str | None = None,
+    mode: str | None = None, available: set[str] | None = None,
+) -> dict[str, Any] | None:
+    matches = [
+        variant for variant in spec["variants"]
+        if variant["role"] == role
+        and variant["mode"] in {"force_loaded", "natural_routing"}
+        and (variant_id is None or variant["id"] == variant_id)
+        and (mode is None or variant["mode"] == mode)
+        and (available is None or variant["id"] in available)
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
 def strict_field_sum(records: list[dict[str, Any]], variant: str, field: str) -> float | None:
     rows = [record for record in records if record["variant"] == variant and record.get("valid") is True]
     if not rows:
@@ -1510,11 +1525,12 @@ def summarize_skill_context(
 def summarize_prior_skill_context(
     records: list[dict[str, Any]], cases_by_id: dict[str, dict[str, Any]],
     spec: dict[str, Any], repeats: int, candidate_summary: dict[str, Any],
+    *, mode: str = "natural_routing",
 ) -> dict[str, Any] | None:
-    """Return a prior comparison only when the spec declares a prior natural arm."""
+    """Return a prior comparison only for the candidate treatment mode."""
     prior_ids = [
         variant["id"] for variant in spec["variants"]
-        if variant["role"] == "prior" and variant["mode"] == "natural_routing"
+        if variant["role"] == "prior" and variant["mode"] == mode
     ]
     if not prior_ids:
         return None
@@ -1524,21 +1540,21 @@ def summarize_prior_skill_context(
     }
     candidate_ids = [
         variant["id"] for variant in spec["variants"]
-        if variant["role"] == "candidate" and variant["mode"] == "natural_routing"
+        if variant["role"] == "candidate" and variant["mode"] == mode
     ]
     if len(prior_ids) != 1 or len(candidate_ids) != 1:
         return result
 
     prior_summary = summarize_skill_context(
-        records, cases_by_id, spec, repeats, role="prior", mode="natural_routing"
+        records, cases_by_id, spec, repeats, role="prior", mode=mode
     )
     result["prior_skill_context"] = prior_summary
     if candidate_summary.get("attribution_rate") != 1 or prior_summary.get("attribution_rate") != 1:
         return result
 
     candidate_id, prior_id = candidate_ids[0], prior_ids[0]
-    candidate_profile = "candidate/natural_routing"
-    prior_profile = "prior/natural_routing"
+    candidate_profile = f"candidate/{mode}"
+    prior_profile = f"prior/{mode}"
     comparable_cases = {
         case_id for case_id, case in cases_by_id.items()
         if case.get("should_trigger") is True
@@ -2197,11 +2213,21 @@ def main() -> int:
             })
 
     if evidence_status != "complete":
+        failed_candidate = (
+            resolve_comparative_variant(spec, "candidate", variant_id=args.candidate)
+            if args.candidate else None
+        ) or (
+            resolve_comparative_variant(spec, "candidate", mode="natural_routing")
+            or resolve_comparative_variant(spec, "candidate", mode="force_loaded")
+        )
+        failed_candidate_mode = failed_candidate["mode"] if failed_candidate else "natural_routing"
         failed_context_summary = summarize_skill_context(
-            records, cases_by_id, spec, spec["suite"]["repeats"]
+            records, cases_by_id, spec, spec["suite"]["repeats"],
+            mode=failed_candidate_mode,
         )
         failed_prior_context = summarize_prior_skill_context(
-            records, cases_by_id, spec, spec["suite"]["repeats"], failed_context_summary
+            records, cases_by_id, spec, spec["suite"]["repeats"], failed_context_summary,
+            mode=failed_candidate_mode,
         )
         failure_report = {
             "schema_version": 1,
@@ -2237,14 +2263,27 @@ def main() -> int:
         return 2
     if spec and comparative and baseline is None and candidate is None:
         baseline = infer_variant(spec, "baseline", "baseline", "skill_disabled", available)
-        candidate = infer_variant(spec, "candidate_natural", "candidate", "natural_routing", available)
+        candidate_definition = (
+            resolve_comparative_variant(
+                spec, "candidate", mode="natural_routing", available=available,
+            )
+            or resolve_comparative_variant(
+                spec, "candidate", mode="force_loaded", available=available,
+            )
+        )
+        candidate = candidate_definition["id"] if candidate_definition else None
+    else:
+        candidate_definition = (
+            resolve_comparative_variant(spec, "candidate", variant_id=candidate)
+            if spec and candidate else None
+        )
+    candidate_mode = (
+        candidate_definition["mode"] if candidate_definition is not None else "natural_routing"
+    )
     prior = None
     if spec:
-        prior_matches = [
-            variant["id"] for variant in spec["variants"]
-            if variant["role"] == "prior" and variant["mode"] == "natural_routing"
-        ]
-        prior = prior_matches[0] if len(prior_matches) == 1 else None
+        prior_definition = resolve_comparative_variant(spec, "prior", mode=candidate_mode)
+        prior = prior_definition["id"] if prior_definition else None
 
     if spec and comparative and (baseline is None or candidate is None):
         print("analysis error: a spec-bound analysis requires resolvable baseline and candidate variants", file=sys.stderr)
@@ -2396,10 +2435,11 @@ def main() -> int:
         }
 
     context_summary = summarize_skill_context(
-        records, cases_by_id, spec, spec["suite"]["repeats"]
+        records, cases_by_id, spec, spec["suite"]["repeats"], mode=candidate_mode
     )
     prior_context = summarize_prior_skill_context(
-        records, cases_by_id, spec, spec["suite"]["repeats"], context_summary
+        records, cases_by_id, spec, spec["suite"]["repeats"], context_summary,
+        mode=candidate_mode,
     )
 
     hard_gates = evaluate_hard_gates(
