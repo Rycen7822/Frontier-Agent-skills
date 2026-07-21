@@ -22,19 +22,21 @@ Use `$writing-plans` for explicit plans, handoffs, or program rollout after deci
 
 ## Default execution
 
-Use Direct for same-session, local, reversible work with known authority and owner seam, one writer, no recovery need, and no destructive, release, production, or external effect:
+Start every route with one bounded owner inventory; read history, repeat inventories, or open adjacent references only for a current discrepancy.
 
-1. Inspect the smallest relevant source, tests, docs, and dirty state. Use log/blame only when release, recovery, or source freshness actually requires history.
+Use Direct for same-session local, reversible, single-writer work with known authority/owner and no recovery, destructive, release, production, or external effect:
+
+1. Inspect only relevant source, tests, docs, and dirty state.
 2. Diagnose unknown causes with bounded read-only evidence before editing.
 3. Establish an observable current/required behavior distinction.
 4. Change the smallest owner seam; add no parallel abstraction, compatibility shell, or unrelated cleanup.
 5. Run proportional proof; inspect the final diff and residue.
 
-Direct creates no workflow/router/card calls, workflow state, receipt/card JSON, or fallback ledger.
+Direct creates no workflow/router/card calls, state, JSON receipts/cards, or fallback ledger.
 
 ## Ask only for material blockers
 
-Proceed with safe reversible choices supported by evidence. Ask once only when missing intent or authority changes the result, an effect is dangerous or irreversible, a required fact cannot be discovered safely, or the route is demonstrably unsound. Unknown cause blocks speculative implementation, not diagnosis.
+Proceed with safe evidence-backed choices. Ask once only when missing intent or authority changes the result, an effect is dangerous or irreversible, a required fact cannot be discovered safely, or the route is demonstrably unsound. Unknown cause blocks speculative implementation, not diagnosis.
 
 ## Evidence and test retention
 
