@@ -14,7 +14,7 @@ metadata:
 
 # Writing Plans
 
-Explicit invocation supplies this file. Treat its body as the required full read; do not reopen `SKILL.md`. Open only a selected reference.
+Explicit invocation supplies this body in full; do not reopen `SKILL.md`. References only serve non-Brief profiles.
 
 ## Scope
 
@@ -30,7 +30,7 @@ Do not invent missing facts. Return unresolved inputs to their owning workflow.
 
 ## Profiles
 
-- **Brief**: one bounded outcome in the current context. Include goal, smallest change scope, ordered steps, verification, and only actual risks/rollback. Return it directly; write one [Brief plan](templates/brief-plan.md) only when the user requests a file. Create no state.
+- **Brief**: one bounded outcome in the current context. Include goal, smallest change scope, ordered steps, verification, and only actual risks/rollback. Return it directly. When requested, write one Markdown file; never open a template or profile reference. Create no state.
 - **Handoff**: work must cross a context boundary. Produce one canonical [Executable Handoff](templates/executable-handoff.md) and load [Handoff](references/profiles/handoff.md). Load exactly one of [Outcome slices](references/slicing/outcome-slices.md) or [Context capsules](references/slicing/context-capsules.md) only when independent outcomes, explicit dependency order, or a real target-context budget requires it.
 - **Program**: a resumable multi-milestone program, migration, or rollout. Create and update one canonical [Program Plan](templates/program-plan.md), loading [Program](references/profiles/program.md). Load [Deprecation, migration, and rollout](references/migration/deprecation-and-rollout.md) only when a real migration or rollout exists.
 - **Large source**: when the plan must carry source ranges, required sections, and a final document path, load only [Long-document handoff](references/bridges/long-document-handoff.md), then transfer explicitly to `$long-document-segmented-writing`. Load no other Writing Plans reference for that route.
