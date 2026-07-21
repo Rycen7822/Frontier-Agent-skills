@@ -35,6 +35,7 @@ class QuickWritingPlansTests(unittest.TestCase):
         self.assertIs(agents["policy"]["allow_implicit_invocation"], False)
         profiles = text.split("## Profiles", 1)[1].split("\n## ", 1)[0]
         self.assertRegex(profiles, r"(?s)Brief.*current context.*loads no profile reference")
+        self.assertRegex(profiles, r"(?s)Brief.*never open a template or profile reference")
         self.assertRegex(profiles, r"(?s)Handoff.*cross a context boundary.*references/profiles/handoff\.md")
         self.assertRegex(profiles, r"(?s)Program.*multi-milestone.*references/profiles/program\.md")
 
