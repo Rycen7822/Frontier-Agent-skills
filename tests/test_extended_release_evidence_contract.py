@@ -136,8 +136,8 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
         write_json(evidence_path, evidence)
         return source, evidence_path, evidence
 
-    def validate(self, source: Path, evidence_path: Path) -> dict:
-        with mock.patch.object(self.builder, "_git_release_source_ok", return_value=True):
+    def validate(self, source: Path, evidence_path: Path, *, git_ok: bool = True) -> dict:
+        with mock.patch.object(self.builder, "_git_release_source_ok", return_value=git_ok):
             return self.builder.validate_release_evidence(
                 evidence_path,
                 source_root=source,
@@ -178,6 +178,62 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
             report.symlink_to(backup)
             with self.assertRaises(OSError):
                 self.validate(source, evidence_path)
+
+    def test_missing_or_malformed_bound_inputs_fail_closed(self) -> None:
+        missing = (
+            "source/evaluation/static-contract-diagnostic.json",
+            "run/l2/aggregate-report.json",
+            "run/longitudinal/report.json",
+            "run/activation-decision.json",
+        )
+        for relative in missing:
+            with self.subTest(missing=relative), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                source, evidence_path, _ = self.make_contract(root)
+                (root / relative).unlink()
+                with self.assertRaises(OSError):
+                    self.validate(source, evidence_path)
+
+        malformed = (
+            "source/evaluation/static-contract-diagnostic.json",
+            "run/l2/sqw/report.json",
+            "run/longitudinal/report.json",
+            "run/activation-decision.json",
+        )
+        for relative in malformed:
+            with self.subTest(malformed=relative), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                source, evidence_path, _ = self.make_contract(root)
+                (root / relative).write_text("{", encoding="utf-8")
+                with self.assertRaises(json.JSONDecodeError):
+                    self.validate(source, evidence_path)
+
+    def test_static_l2_longitudinal_and_decision_hashes_are_recomputed(self) -> None:
+        fields = (
+            "deterministic_report_hash", "l2_scored_report_hash",
+            "longitudinal_report_hash", "activation_decision_hash",
+        )
+        for field in fields:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
+                source, evidence_path, evidence = self.make_contract(Path(directory))
+                evidence[field] = "sha256:" + "f" * 64
+                write_json(evidence_path, evidence)
+                with self.assertRaisesRegex(ValueError, "static contract|external content hash"):
+                    self.validate(source, evidence_path)
+
+    def test_unsigned_dirty_or_unverifiable_source_is_rejected(self) -> None:
+        for field in ("source_revision_signed", "source_clean"):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
+                source, evidence_path, evidence = self.make_contract(Path(directory))
+                evidence[field] = False
+                write_json(evidence_path, evidence)
+                with self.assertRaisesRegex(ValueError, "schema is invalid"):
+                    self.validate(source, evidence_path)
+
+        with tempfile.TemporaryDirectory() as directory:
+            source, evidence_path, _ = self.make_contract(Path(directory))
+            with self.assertRaisesRegex(ValueError, "clean signed source revision"):
+                self.validate(source, evidence_path, git_ok=False)
 
 
 if __name__ == "__main__":
