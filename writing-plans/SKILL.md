@@ -14,11 +14,11 @@ metadata:
 
 # Writing Plans
 
-Explicit invocation includes this full body; never reopen `SKILL.md`. Load non-Brief references directly without listing or counting files.
+Explicit invocation is this full body. Never reopen `SKILL.md`, inventory workspace/skill/Git internals, or size references; read only named non-Brief files.
 
 ## Scope
 
-Compile settled decisions into the lightest implementation-ready deliverable. Own intended state, order, authority, dependencies, recovery, and acceptance evidence. Do not rediscover intent, diagnose unknown causes, resolve architecture, execute, or claim verification.
+Compile settled decisions into the lightest executable deliverable. Own state, order, authority, dependencies, recovery, and acceptance evidence. Do not rediscover intent, diagnose unknown causes, resolve architecture, execute, or claim verification.
 
 Use only for an explicit plan request, cross-context handoff, or resumable migration/program. Routine same-session changes remain with `$software-quality-workflows`.
 
