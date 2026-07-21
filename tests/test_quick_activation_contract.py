@@ -41,9 +41,10 @@ class QuickActivationContractTests(unittest.TestCase):
 
     def test_writing_plans_explicit_body_prevents_redundant_self_load(self) -> None:
         entry = (ROOT / "writing-plans" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("includes this full body", entry)
-        self.assertIn("never reopen `SKILL.md`", entry)
-        self.assertIn("without listing or counting files", entry)
+        self.assertIn("is this full body", entry)
+        self.assertIn("Never reopen `SKILL.md`", entry)
+        self.assertIn("inventory workspace/skill/Git internals", entry)
+        self.assertIn("read only named non-Brief files", entry)
 
 
 if __name__ == "__main__":
