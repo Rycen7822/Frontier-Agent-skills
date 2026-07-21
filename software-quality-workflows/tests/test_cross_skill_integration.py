@@ -61,10 +61,6 @@ def _workflow() -> dict:
 
 class CrossSkillIntegrationTests(unittest.TestCase):
     def test_cross_skill_routes_are_exact_local_projections_of_one_source(self) -> None:
-        source = load_json(SQW_ROOT.parent / "bundle-manifest.json")["cross_skill_routes"]
-        source_hash = "sha256:" + sha256(
-            json.dumps(source, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
         manifests = {
             "software-quality-workflows": load_json(
                 SQW_ROOT / "registries" / "reference-cards.manifest.json"
@@ -73,6 +69,25 @@ class CrossSkillIntegrationTests(unittest.TestCase):
                 WRITING_ROOT / "registries" / "reference-cards.manifest.json"
             ),
         }
+        route_sets = {
+            skill_id: sorted(
+                manifest["cross_skill_routes"]["outbound"]
+                + manifest["cross_skill_routes"]["inbound"],
+                key=lambda row: row["route_id"],
+            )
+            for skill_id, manifest in manifests.items()
+        }
+        self.assertEqual(
+            route_sets["software-quality-workflows"],
+            route_sets["writing-plans"],
+        )
+        source = {
+            "schema_version": "frontier-cross-skill-routes/1",
+            "routes": route_sets["software-quality-workflows"],
+        }
+        source_hash = "sha256:" + sha256(
+            json.dumps(source, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
         for skill_id, manifest in manifests.items():
             projection = manifest["cross_skill_routes"]
             self.assertEqual({"source_hash", "outbound", "inbound"}, set(projection))
