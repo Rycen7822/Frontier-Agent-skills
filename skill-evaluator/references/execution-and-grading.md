@@ -1,6 +1,6 @@
 # Execution and Grading
 
-This file owns run isolation, run index v1, receipt v2, artifact/provenance verification, routing/usage/context capture, grader transport/semantics, and apparatus failure classification.
+This file owns run isolation, run index v1, receipt v3, artifact/provenance verification, routing/usage/context capture, grader transport/semantics, and apparatus failure classification.
 
 ## Preflight and isolation
 
@@ -38,13 +38,13 @@ The index contains no pass, score, routing, usage, grader, or provenance claim. 
 
 Raw scored receipts and their artifacts stay immutable for the frozen retention period, but they are not the model's default reading surface. Read analyzer summary → failure index → the spec-limited representative receipts. Open raw artifacts only through one named receipt for a named failure, grader disagreement, or integrity audit. Do not walk the artifact tree first, create per-step worknotes or per-notice JSON, or copy receipt data into parallel model-authored files. A short early failure remains a failed outcome and cannot establish an efficiency advantage.
 
-## Receipt v2
+## Receipt v3
 
 One receipt owns all captured evidence:
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "receipt_hash": "sha256:<64 lowercase hex>",
   "run": {"run_id": "...", "case_id": "...", "variant": "...", "repeat": 1, "valid": true, "error_type": null, "invalid_reason": null, "provenance": {}},
   "artifacts": [{"path": "ordered-trace.jsonl", "sha256": "sha256:<64 hex>", "encoding": "utf-8"}],
@@ -63,7 +63,7 @@ The analyzer requires exact shapes. It normalizes POSIX-relative paths, rejects 
 
 Provenance binds candidate revision/source/plugin identities plus spec, case, case-contract, fixture-set, selected-grader-set, grader-schedule, environment, package, catalog, and treatment hashes. Candidate package inventory, suite assets, grader declarations, verifier bytes, model prompt, and model schema are recomputed locally where the spec provides their bytes. Catalog, treatment, controller, private-contract, and grader-schedule claims remain hash-bound external attestations.
 
-`receipt_hash` removes only itself, then hashes UTF-8 JSON with sorted keys, compact separators, `allow_nan=false`, and a `sha256:` prefix. No v1 receipt is accepted or silently upgraded.
+`receipt_hash` removes only itself, then hashes UTF-8 JSON with sorted keys, compact separators, `allow_nan=false`, and a `sha256:` prefix. No older receipt is accepted or silently upgraded.
 
 ## Routing and usage
 

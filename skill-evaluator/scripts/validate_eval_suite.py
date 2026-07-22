@@ -19,6 +19,33 @@ RISKS = {"low", "standard", "high"}
 MODES = {"skill_disabled", "force_loaded", "natural_routing"}
 ROLES = {"baseline", "candidate", "prior"}
 REQUIREMENT_OWNERS = {"deterministic", "model"}
+COMPARATORS = {"baseline", "prior"}
+BENEFIT_DIRECTIONS = {"higher_is_better", "lower_is_better"}
+BENEFIT_EFFECTS = {"absolute", "relative"}
+PAIRED_METRIC_DIRECTIONS = {
+    "task_pass_rate": "higher_is_better",
+    "safety_pass_rate": "higher_is_better",
+    "process_score_normalized": "higher_is_better",
+    "quality_score_normalized": "higher_is_better",
+    "tokens_in": "lower_is_better",
+    "tokens_out": "lower_is_better",
+    "task_tool_calls": "lower_is_better",
+    "prewrite_task_tool_calls": "lower_is_better",
+    "prewrite_tool_output_bytes": "lower_is_better",
+    "skill_context_bytes": "lower_is_better",
+    "host_injected_body_count": "lower_is_better",
+    "model_initiated_body_read_count": "lower_is_better",
+    "reference_load_count": "lower_is_better",
+    "skill_load_tool_calls": "lower_is_better",
+    "skill_protocol_tool_calls": "lower_is_better",
+    "workflow_artifact_count": "lower_is_better",
+}
+PAIRED_METRICS = set(PAIRED_METRIC_DIRECTIONS)
+COST_METRICS = {
+    metric for metric, direction in PAIRED_METRIC_DIRECTIONS.items()
+    if direction == "lower_is_better"
+}
+RELATIVE_EFFECT_METRICS = {"tokens_in", "tokens_out", "skill_context_bytes"}
 CANONICAL_VARIANT_PROFILES = {
     "baseline/skill_disabled",
     "candidate/force_loaded",
@@ -28,9 +55,7 @@ CANONICAL_VARIANT_PROFILES = {
 }
 GLOBAL_GATE_METRICS = {
     "critical_safety_incidents", "unauthorized_side_effects", "protected_outcome_failures",
-    "paired_task_pass_lift", "paired_case_count",
-    "paired_task_pass_lift_lower_bound", "paired_process_score_lift_lower_bound",
-    "paired_quality_score_lift_lower_bound", "paired_safety_pass_lift_lower_bound",
+    "paired_case_count",
     "skill_context_attribution_rate", "skill_context_bytes_p95", "skill_context_tokens_p95",
     "repeated_static_content_bytes_max", "protocol_output_bytes_max",
     "failed_command_output_bytes_max",
@@ -44,9 +69,7 @@ VARIANT_GATE_METRICS = {
     "tool_calls", "retries", "unauthorized_side_effects",
     "worst_slice_task_pass",
 }
-SUPPORTED_DECLARED_METRICS = GLOBAL_GATE_METRICS | VARIANT_GATE_METRICS | {
-    "paired_wins_losses",
-}
+SUPPORTED_DECLARED_METRICS = GLOBAL_GATE_METRICS | VARIANT_GATE_METRICS | PAIRED_METRICS
 GRADER_TYPES = {"deterministic", "model_rubric"}
 REQUIREMENT_DIMENSIONS = {"outcome", "process", "quality", "safety"}
 SAFETY_SEVERITIES = {"critical", "high", "standard"}
@@ -115,6 +138,40 @@ def nonempty_string(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+def check_benefit_definition(
+    value: Any, errors: list[str], *, prefix: str, allow_negative_threshold: bool,
+) -> None:
+    required = {"metric", "comparator", "direction", "effect", "minimum_benefit"}
+    if not isinstance(value, dict):
+        errors.append(f"{prefix} must be an object")
+        return
+    if set(value) != required:
+        errors.append(f"{prefix} fields must equal {sorted(required)}")
+    metric = value.get("metric")
+    if metric not in PAIRED_METRICS:
+        errors.append(f"{prefix}.metric must be one of {sorted(PAIRED_METRICS)}")
+    comparator = value.get("comparator")
+    if comparator not in COMPARATORS:
+        errors.append(f"{prefix}.comparator must be one of {sorted(COMPARATORS)}")
+    direction = value.get("direction")
+    if direction not in BENEFIT_DIRECTIONS:
+        errors.append(f"{prefix}.direction must be one of {sorted(BENEFIT_DIRECTIONS)}")
+    elif metric in PAIRED_METRIC_DIRECTIONS and direction != PAIRED_METRIC_DIRECTIONS[metric]:
+        errors.append(f"{prefix}.direction contradicts metric {metric}")
+    if value.get("effect") not in BENEFIT_EFFECTS:
+        errors.append(f"{prefix}.effect must be one of {sorted(BENEFIT_EFFECTS)}")
+    elif value.get("effect") == "relative" and metric not in RELATIVE_EFFECT_METRICS:
+        errors.append(f"{prefix}.effect must be absolute for metric {metric}")
+    threshold = value.get("minimum_benefit")
+    if (
+        not isinstance(threshold, (int, float)) or isinstance(threshold, bool)
+        or not math.isfinite(float(threshold))
+        or (not allow_negative_threshold and threshold < 0)
+    ):
+        qualifier = "finite numeric" if allow_negative_threshold else "finite non-negative numeric"
+        errors.append(f"{prefix}.minimum_benefit must be {qualifier}")
+
+
 def check_spec(spec: Any, errors: list[str], warnings: list[str]) -> None:
     if not isinstance(spec, dict):
         errors.append("evaluation spec must be a JSON object")
@@ -134,8 +191,8 @@ def check_spec(spec: Any, errors: list[str], warnings: list[str]) -> None:
         if field not in spec:
             errors.append(f"spec missing required field: {field}")
 
-    if spec.get("schema_version") != 3:
-        errors.append("spec.schema_version must equal 3")
+    if spec.get("schema_version") != 4:
+        errors.append("spec.schema_version must equal 4")
     if not nonempty_string(spec.get("evaluation_id")):
         errors.append("spec.evaluation_id must be a non-empty string")
     if not nonempty_string(spec.get("decision")):
@@ -438,30 +495,50 @@ def check_spec(spec: Any, errors: list[str], warnings: list[str]) -> None:
             if not isinstance(gate, dict):
                 errors.append(f"spec.hard_gates[{index}] must be an object")
                 continue
-            for field in ("id", "metric", "operator", "value"):
-                if field not in gate:
-                    errors.append(f"spec.hard_gates[{index}] missing {field}")
+            prefix = f"spec.hard_gates[{index}]"
             if nonempty_string(gate.get("id")):
                 gate_ids.append(gate["id"])
             else:
-                errors.append(f"spec.hard_gates[{index}].id must be a non-empty string")
+                errors.append(f"{prefix}.id must be a non-empty string")
             if not nonempty_string(gate.get("metric")):
-                errors.append(f"spec.hard_gates[{index}].metric must be a non-empty string")
+                errors.append(f"{prefix}.metric must be a non-empty string")
             else:
                 metric = gate["metric"]
-                supported = metric in GLOBAL_GATE_METRICS or ("." in metric and metric.split(".", 1)[1] in VARIANT_GATE_METRICS)
+                supported = (
+                    metric in PAIRED_METRICS or metric in GLOBAL_GATE_METRICS
+                    or ("." in metric and metric.split(".", 1)[1] in VARIANT_GATE_METRICS)
+                )
                 if not supported:
-                    errors.append(f"spec.hard_gates[{index}].metric is not supported by the bundled analyzer: {metric}")
+                    errors.append(f"{prefix}.metric is not supported by the bundled analyzer: {metric}")
                 elif "." in metric and metric.split(".", 1)[0] not in variant_ids:
-                    errors.append(f"spec.hard_gates[{index}].metric references an unknown variant: {metric}")
-            if gate.get("operator") not in {"==", "!=", ">=", "<=", ">", "<"}:
-                errors.append(f"spec.hard_gates[{index}].operator is invalid")
-            value = gate.get("value")
-            if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(float(value)):
-                errors.append(f"spec.hard_gates[{index}].value must be numeric for the bundled analyzer")
+                    errors.append(f"{prefix}.metric references an unknown variant: {metric}")
+            if gate.get("metric") in PAIRED_METRICS:
+                if set(gate) != {"id", "metric", "comparator", "direction", "effect", "minimum_benefit"}:
+                    errors.append(f"{prefix} comparative fields are invalid")
+                check_benefit_definition(
+                    {key: gate.get(key) for key in (
+                        "metric", "comparator", "direction", "effect", "minimum_benefit",
+                    )},
+                    errors, prefix=prefix, allow_negative_threshold=True,
+                )
+            else:
+                if set(gate) != {"id", "metric", "operator", "value"}:
+                    errors.append(f"{prefix} absolute fields are invalid")
+                if gate.get("operator") not in {"==", "!=", ">=", "<=", ">", "<"}:
+                    errors.append(f"{prefix}.operator is invalid")
+                value = gate.get("value")
+                if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(float(value)):
+                    errors.append(f"{prefix}.value must be numeric for the bundled analyzer")
         duplicates = sorted(name for name, count in Counter(gate_ids).items() if count > 1)
         if duplicates:
             errors.append(f"duplicate hard-gate IDs: {duplicates}")
+        paired_gate_metrics = [
+            gate.get("metric") for gate in gates
+            if isinstance(gate, dict) and gate.get("metric") in PAIRED_METRICS
+        ]
+        duplicates = sorted(name for name, count in Counter(paired_gate_metrics).items() if count > 1)
+        if duplicates:
+            errors.append(f"comparative hard-gate metrics must be unique: {duplicates}")
 
     metrics = spec.get("metrics")
     if level in {"L2", "L3", "L4"} and (
@@ -499,6 +576,13 @@ def check_spec(spec: Any, errors: list[str], warnings: list[str]) -> None:
     if level in {"L2", "L3", "L4"} and not isinstance(analysis, dict):
         errors.append("spec.analysis must be an object")
     elif isinstance(analysis, dict):
+        allowed_analysis_fields = {
+            "confidence_level", "paired_bootstrap_iterations", "primary_benefit",
+            "context_budget_gate_id", "context_budget_authority",
+        }
+        unsupported_analysis_fields = sorted(set(analysis) - allowed_analysis_fields)
+        if unsupported_analysis_fields:
+            errors.append(f"spec.analysis has unsupported fields {unsupported_analysis_fields}")
         confidence = analysis.get("confidence_level")
         if not isinstance(confidence, (int, float)) or isinstance(confidence, bool) or not math.isfinite(float(confidence)) or not 0 < confidence < 1:
             errors.append("spec.analysis.confidence_level must be numeric in (0, 1)")
@@ -511,50 +595,82 @@ def check_spec(spec: Any, errors: list[str], warnings: list[str]) -> None:
                 for gate in (gates if isinstance(gates, list) else []) if isinstance(gate, dict)
                 and nonempty_string(gate.get("id"))
             }
-            benefit_id = analysis.get("usefulness_benefit_gate_id")
-            benefit_gate = gates_by_id.get(benefit_id)
-            benefit_metrics = {
-                "paired_task_pass_lift_lower_bound",
-                "paired_process_score_lift_lower_bound",
-                "paired_quality_score_lift_lower_bound",
-                "paired_safety_pass_lift_lower_bound",
-            }
-            if not nonempty_string(benefit_id) or benefit_gate is None:
-                errors.append("spec.analysis.usefulness_benefit_gate_id must reference a hard gate")
-            elif (
-                benefit_gate.get("metric") not in benefit_metrics
-                or benefit_gate.get("operator") != ">="
-                or not isinstance(benefit_gate.get("value"), (int, float))
-                or isinstance(benefit_gate.get("value"), bool)
-                or benefit_gate["value"] <= 0
-            ):
-                errors.append("usefulness benefit gate must be a positive comparative lower-bound >= gate")
-            noninferiority_id = analysis.get("task_noninferiority_gate_id")
-            if benefit_gate and benefit_gate.get("metric") != "paired_task_pass_lift_lower_bound":
-                noninferiority_gate = gates_by_id.get(noninferiority_id)
-                if not nonempty_string(noninferiority_id) or noninferiority_id == benefit_id or noninferiority_gate is None:
-                    errors.append("non-task benefit requires a different exact task_noninferiority_gate_id")
-                elif (
-                    noninferiority_gate.get("metric") != "paired_task_pass_lift_lower_bound"
-                    or noninferiority_gate.get("operator") != ">="
-                    or not isinstance(noninferiority_gate.get("value"), (int, float))
-                    or isinstance(noninferiority_gate.get("value"), bool)
-                    or noninferiority_gate["value"] > 0
+            for legacy_field in ("usefulness_benefit_gate_id", "task_noninferiority_gate_id"):
+                if legacy_field in analysis:
+                    errors.append(f"spec.analysis.{legacy_field} is not supported by spec v4")
+            primary_benefit = analysis.get("primary_benefit")
+            check_benefit_definition(
+                primary_benefit, errors, prefix="spec.analysis.primary_benefit",
+                allow_negative_threshold=False,
+            )
+            if isinstance(primary_benefit, dict):
+                comparator = primary_benefit.get("comparator")
+                if comparator in COMPARATORS and not any(
+                    variant.get("role") == comparator
+                    for variant in spec.get("variants", []) if isinstance(variant, dict)
                 ):
-                    errors.append("task_noninferiority_gate_id must reference task lift lower-bound >= a non-positive margin")
-            elif noninferiority_id is not None:
-                errors.append("task benefit forbids spec.analysis.task_noninferiority_gate_id")
+                    errors.append(f"spec.analysis.primary_benefit.comparator has no {comparator} variant")
+                if isinstance(metrics, list) and primary_benefit.get("metric") not in metrics:
+                    errors.append("spec.metrics must declare the primary benefit metric")
+                if primary_benefit.get("metric") in {
+                    gate.get("metric") for gate in (gates if isinstance(gates, list) else [])
+                    if isinstance(gate, dict)
+                }:
+                    errors.append("primary benefit metric must not be duplicated as a hard gate")
+
+                comparative_guardrails = {
+                    gate.get("metric") for gate in (gates if isinstance(gates, list) else [])
+                    if isinstance(gate, dict)
+                    and gate.get("metric") in PAIRED_METRICS
+                    and isinstance(gate.get("minimum_benefit"), (int, float))
+                    and not isinstance(gate.get("minimum_benefit"), bool)
+                    and gate.get("minimum_benefit") <= 0
+                    and gate.get("comparator") == primary_benefit.get("comparator")
+                }
+                for gate in (gates if isinstance(gates, list) else []):
+                    if not isinstance(gate, dict) or gate.get("metric") not in PAIRED_METRICS:
+                        continue
+                    if isinstance(metrics, list) and gate.get("metric") not in metrics:
+                        errors.append(f"spec.metrics must declare comparative gate metric {gate.get('metric')}")
+                    comparator_role = gate.get("comparator")
+                    if comparator_role in COMPARATORS and not any(
+                        variant.get("role") == comparator_role
+                        for variant in spec.get("variants", []) if isinstance(variant, dict)
+                    ):
+                        errors.append(f"comparative gate {gate.get('id')} has no {comparator_role} variant")
+                if (
+                    primary_benefit.get("metric") != "task_pass_rate"
+                    and "task_pass_rate" not in comparative_guardrails
+                ):
+                    errors.append("non-task primary benefit requires a task_pass_rate noninferiority gate")
+                if primary_benefit.get("metric") in COST_METRICS:
+                    missing_guardrails = sorted({
+                        "task_pass_rate", "quality_score_normalized", "safety_pass_rate",
+                    } - comparative_guardrails)
+                    if missing_guardrails:
+                        errors.append(
+                            "cost primary benefit requires task/quality/safety noninferiority gates: "
+                            f"{missing_guardrails}"
+                        )
+                    authority_protection = any(
+                        isinstance(gate, dict)
+                        and gate.get("metric") == "unauthorized_side_effects"
+                        and gate.get("operator") == "==" and gate.get("value") == 0
+                        for gate in (gates if isinstance(gates, list) else [])
+                    )
+                    if not authority_protection:
+                        errors.append("cost primary benefit requires unauthorized_side_effects == 0 authority protection")
 
             protected_gates = [
                 gate for gate in (gates if isinstance(gates, list) else []) if isinstance(gate, dict)
                 and gate.get("metric") == "protected_outcome_failures"
             ]
-            if spec.get("ready_for_scored_run") is True and (
+            if (
                 len(protected_gates) != 1
                 or protected_gates[0].get("operator") != "=="
                 or protected_gates[0].get("value") != 0
             ):
-                errors.append("scored-ready L2+ spec requires one protected_outcome_failures == 0 gate")
+                errors.append("L2+ spec requires one protected_outcome_failures == 0 gate")
 
             context_gate_id = analysis.get("context_budget_gate_id")
             context_authority = analysis.get("context_budget_authority")

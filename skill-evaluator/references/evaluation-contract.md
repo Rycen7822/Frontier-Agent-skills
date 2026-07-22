@@ -1,6 +1,6 @@
 # Evaluation Contract
 
-This file owns spec schema v3, evaluation levels, canonical variants, fairness, and claim ceilings. Freeze it before collecting runtime evidence.
+This file owns spec schema v4, evaluation levels, canonical variants, fairness, and claim ceilings. Freeze it before collecting runtime evidence.
 
 ## Decision and claim ceiling
 
@@ -8,9 +8,9 @@ Record one decision: static audit, diagnosis, scoped incremental usefulness, rel
 
 Evaluation permission never grants permission to install dependencies, expose secrets, use networks, mutate persistent state, publish, deploy, or perform destructive, privileged, financial, or sensitive actions. Freeze those permissions separately.
 
-## Spec v3 owner
+## Spec v4 owner
 
-`schema_version=3` is the only accepted behavioral contract. It binds:
+`schema_version=4` is the only accepted behavioral contract. It binds:
 
 - evaluation identity, level, risk, decision, and claim scope;
 - candidate path/inventory hash, revision, source-tree hash, plugin-tree hash, and every declared variant's package, catalog, and treatment hashes;
@@ -53,10 +53,10 @@ Run the same frozen case, fixture, agent/model, harness, tools, permissions, tim
 Repeats and cases have different roles:
 
 1. pair `(case_id, repeat)` rows to diagnose missing, invalid, win, loss, and tie behavior;
-2. average repeat-level candidate-minus-baseline outcomes inside each distinct case;
-3. resample the distinct case means for inference.
+2. normalize the declared metric, convert it to the frozen candidate-benefit direction, and average comparator/candidate repeat values inside each distinct case;
+3. resample the keyed case benefits for inference.
 
-Repeats never increase `paired_case_count`. Fewer than two complete independent cases cannot produce an interval. A positive point estimate cannot replace the frozen lower-bound benefit gate.
+Repeats never increase `case_count`. Fewer than two complete independent cases cannot produce an interval. A positive point estimate cannot replace the frozen primary-benefit lower bound.
 
 ## Isolation and provenance
 

@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "evaluation_id": "diagnostic-smoke-v1",
   "decision": "diagnose routing and execution behavior without a comparative claim",
   "claim_scope": "three focused diagnostic cases in the declared local harness",

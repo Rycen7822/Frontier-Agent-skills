@@ -43,13 +43,13 @@ These fields remain separate. `supported` is not a release decision; `eligible` 
 - Canonical `requirements[]` and declared grader ownership:
 - Deterministic/model/manual graders actually used:
 - Safety containment and protected cases:
-- L2+ — case-cluster interval configuration and designated benefit gate:
+- L2+ — case-cluster interval configuration and declared primary benefit:
 - Contract changes or invalidated evidence:
 
 ## 4. Receipt integrity and run accounting — L1+
 
 - Receipt-index version and immutable raw-bytes path/hash:
-- Receipt v2 and arm-report v2 self-hash verification:
+- Receipt v3 and arm-report v3 self-hash verification:
 - Receipt verification status and checked-run count:
 - Recomputed fixture/package/artifact/grader/provenance/invocation bindings:
 - Trust boundaries still externally attested or unverified:
@@ -71,14 +71,14 @@ These fields remain separate. `supported` is not a release decision; `eligible` 
 
 ## 6. Independent-case attribution — L2+
 
-- Baseline/candidate identities:
-- Distinct case count (`paired_case_count`):
-- Descriptive repeat-level pair count (`run_pair_count`):
-- Wins / losses / tie-pass / tie-fail:
-- Case-mean lift point / lower / upper:
-- Confidence level / iterations / seed / `resampling_unit=case_id`:
-- Candidate-only and baseline-only failures:
-- Missing paired fields or attribution limits:
+- Candidate/comparator identities:
+- Primary metric / direction / effect / minimum benefit:
+- Distinct `case_count` / descriptive `repeat_count`:
+- Keyed case differences with raw/reported scales:
+- Benefit point / lower / upper:
+- Confidence level / iterations / seed / case-cluster resampling:
+- Cost pairs excluded by comparator/candidate task failures:
+- Missing fields, zero relative comparator, or attribution limits:
 
 Repeats are not independent inferential samples.
 
@@ -86,7 +86,7 @@ Repeats are not independent inferential samples.
 
 | Gate | Role | Metric | Rule | Observed | Status |
 |---|---|---|---|---:|---|
-| | benefit/guardrail | | | | pass/fail/not_evaluable |
+| | primary/guardrail | | | | pass/fail/not_evaluable |
 
 - Protected-outcome failure count and affected keys:
 - Material safety harm:
@@ -102,6 +102,7 @@ Repeats are not independent inferential samples.
 - Skill-context bytes/tokens p95 and frozen budget gate:
 - Context-budget authority reference and verification boundary:
 - Captured-zero versus missing context rows:
+- Negative-cohort false body-load bytes, case rate/Wilson interval, and repeat consistency:
 - Host/model body loads, reference/load/protocol/prewrite/task calls, workflow artifacts, and prewrite output bytes:
 - End-to-end input/output tokens, latency, retries, and residue:
 
@@ -153,6 +154,6 @@ Do not infer this record from analyzer eligibility.
 - Spec and public/holdout case bindings:
 - Receipt index, receipts, artifacts, and grader outputs:
 - Package inventory and environment fingerprint:
-- Analyzer arm-report v2 JSON/Markdown, raw report hash, and package audit:
+- Analyzer arm-report v3 JSON/Markdown, raw report hash, and package audit:
 - Manual-review receipt when declared:
 - Cleanup verification:

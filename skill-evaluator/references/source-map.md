@@ -29,9 +29,9 @@ Each `Owner heading` is the normative product section. `Source basis` identifies
 
 | ID | Method | Source basis | Relation | Owner heading | Concrete field/function |
 |---|---|---|---|---|---|
-| M-01 | Freeze the decision, measured dimensions, and gates before execution | OpenAI guidance on defining success and measurable eval criteria | Direct + adaptation | `evaluation-contract.md` → `Decision and claim ceiling`; `evaluation-contract.md` → `Spec v3 owner` | `schema_version=3`; `ready_for_scored_run`; `hard_gates[]`; `validate_eval_suite.py::check_spec` |
+| M-01 | Freeze the decision, measured dimensions, and gates before execution | OpenAI guidance on defining success and measurable eval criteria | Direct + adaptation | `evaluation-contract.md` → `Decision and claim ceiling`; `evaluation-contract.md` → `Spec v4 owner` | `schema_version=4`; `ready_for_scored_run`; `analysis.primary_benefit`; `hard_gates[]`; `validate_eval_suite.py::check_spec` |
 | M-02 | Separate retrieval, selection, loading, incorporation, application, and negative routing | OpenAI activation coverage; Anthropic progressive disclosure; Ding et al. skill relevance and use | Direct + adaptation | `task-suite-design.md` → `Coverage boundaries`; `execution-and-grading.md` → `Routing and usage` | case `should_trigger`; receipt routing; `routing_evaluable`; `analyze_runs.py::routing_summary` |
-| M-03 | Derive required outcomes from canonical requirements and bind deterministic/qualitative grader receipts | OpenAI deterministic checks and constrained rubric grading | Direct + adaptation | `task-suite-design.md` → `Canonical case and requirements`; `execution-and-grading.md` → `Deterministic grader receipt`; `execution-and-grading.md` → `Grader semantic owner` | `requirements[]`; declared graders; receipt v2 grader outputs; `validate_eval_suite.py::check_cases`; `analyze_runs.py::derive_run_fields` |
+| M-03 | Derive required outcomes from canonical requirements and bind deterministic/qualitative grader receipts | OpenAI deterministic checks and constrained rubric grading | Direct + adaptation | `task-suite-design.md` → `Canonical case and requirements`; `execution-and-grading.md` → `Deterministic grader receipt`; `execution-and-grading.md` → `Grader semantic owner` | `requirements[]`; declared graders; receipt v3 grader outputs; `validate_eval_suite.py::check_cases`; `analyze_runs.py::derive_run_fields` |
 | M-04 | Audit package anatomy, metadata routing, progressive disclosure, and reachable resources | Anthropic package anatomy and progressive loading | Direct + adaptation | `security-and-package-audit.md` → `2. Establish provenance and trust`; `security-and-package-audit.md` → `3. Audit the package boundary` | `audit_skill_package.py::audit`; reachable-support graph; `text_scan_complete` |
 | M-05 | Treat instructions, scripts, dependencies, files, and network behavior as executable surfaces | Anthropic security treatment of package resources and executable code | Direct + adaptation | `security-and-package-audit.md` → `4. Review instructions as executable policy`; `security-and-package-audit.md` → `8. Controlled runtime probes` | `audit_skill_package.py::PATTERNS`; structural and scan-completeness gates |
 | M-06 | Bind relevance, execution, termination, reuse, and treatment identity | Ding et al. relevance, execution policy, termination, and reuse dimensions | Direct + adaptation | `evaluation-contract.md` → `Canonical variants`; `evaluation-contract.md` → `Isolation and provenance` | `variant_profile_requirements`; `package_hash`; `catalog_hash`; `treatment_hash`; receipt provenance |
@@ -44,15 +44,15 @@ Each `Owner heading` is the normative product section. `Source basis` identifies
 
 | Local field / function / heading | Method IDs | Source basis |
 |---|---|---|
-| `schema_version=3`, `ready_for_scored_run`, `hard_gates[]` | M-01 | OpenAI measurable-success and eval-contract guidance |
+| `schema_version=4`, `ready_for_scored_run`, `analysis.primary_benefit`, `hard_gates[]` | M-01 | OpenAI measurable-success and eval-contract guidance |
 | `should_trigger`, receipt routing, `routing_evaluable`, `routing_summary` | M-02 | OpenAI activation coverage; Anthropic progressive disclosure |
-| `requirements[]`, exact declared graders, receipt v2 grader outputs, `derive_run_fields` | M-03 | OpenAI deterministic and qualitative grader guidance |
+| `requirements[]`, exact declared graders, receipt v3 grader outputs, `derive_run_fields` | M-03 | OpenAI deterministic and qualitative grader guidance |
 | `audit_skill_package.py::audit`, reachable support, scan completeness | M-04, M-05 | Anthropic package anatomy and security surfaces |
 | `package_hash`, `catalog_hash`, `treatment_hash`, receipt provenance | M-06 | Ding et al. relevance, execution, termination, and reuse dimensions |
 | split/tags, frontier filter, `summarize_variant` | M-07 | Ding et al. task and capability coverage |
 | holdout manifest `payload_sha256`, protected cases, `derive_protected_outcome_failures` | M-08 | Ding et al. evolution, robustness, and regression coverage |
 | safety cases, hard grader evidence, material-harm blocking | M-09 | Ding et al. safety coverage; Anthropic package security boundaries |
-| `summarize_case_differences`, `resampling_unit=case_id`, `paired_case_count` | M-01, M-10 | local experimental discipline applied to M-01–M-09 |
+| `summarize_case_differences`, `resampling_unit=case_id`, keyed `case_count` | M-01, M-10 | local experimental discipline applied to M-01–M-09 |
 | `summarize_skill_context`, measurement source, attribution and p95 gates | M-02, M-04, M-10 | progressive-disclosure adaptation of M-02/M-04 |
 | `derive_usefulness_status`, receipt verification, manual-review receipt | M-03, M-09, M-10 | local synthesis over M-01–M-09 |
 
@@ -61,8 +61,8 @@ Each `Owner heading` is the normative product section. `Source basis` identifies
 The following are explicit product choices, not universal standards:
 
 - L0–L4 levels and their claim ceilings;
-- schema v3 and canonical `requirements[]`;
-- receipt index v1 and receipt v2 as the only runtime evidence input;
+- schema v4 and canonical `requirements[]`;
+- receipt index v1 and receipt v3 as the only runtime evidence input;
 - exact path/hash/provenance/invocation/grader binding before result derivation;
 - independent-case bootstrap intervals with repeat-level descriptive diagnostics;
 - benefit, noninferiority, safety, protected-outcome, and context gates;
