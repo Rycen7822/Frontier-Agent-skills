@@ -16,32 +16,30 @@ metadata:
 
 ## Scope
 
-Use only for a material boundary in the description. Preserve user work, identity, scope, and authority. Never invent intent or treat local/self-verdict as release proof.
+At a described material boundary, preserve user work, identity, scope, and authority; never invent intent or treat local proof as release proof.
 
-Return planning to `$writing-plans`, large documents to `$long-document-segmented-writing`, and package evaluation to `$skill-evaluator`; hosted owners retain remote authority.
+Use `$writing-plans`, `$long-document-segmented-writing`, or `$skill-evaluator` for their named work; hosted owners retain remote authority.
 
 ## Default execution
 
-Routine known-seam work stays Direct with no reference or workflow/router/card/state/JSON receipt/ledger.
+Routine work stays Direct: no reference, workflow/router/card/state, JSON receipt, or ledger.
 
-For a triggered boundary, establish current and required behavior from bounded evidence. Unknown cause permits diagnosis, never a guessed fix. Change the smallest owner seam without parallel abstractions, speculative compatibility, or unrelated cleanup. Match proof to risk; strict RED is optional when another distinction is stronger.
+At a trigger, derive current and required behavior from bounded evidence; unknown cause permits diagnosis, not a guessed fix. Change only the owner seam: no parallel abstractions, speculative compatibility, or unrelated cleanup. Match proof to risk; strict RED is optional.
 
-## Ask only for material blockers
-
-Ask only when intent or authority changes the result, an effect is dangerous or irreversible, a fact cannot be found safely, or the route is unsound.
+Ask only for outcome-changing intent/authority, irreversible effects, unavailable facts, or an unsound route.
 
 ## Evidence and test retention
 
-Never weaken an oracle or retain temporary, duplicate, or implementation-coupled tests. A migration-only test needs an owner, observable removal condition, and gate. Load [test lifecycle](references/test/test-suite-lifecycle.md) only when retention is material.
+Never weaken an oracle or keep temporary, duplicate, or implementation-coupled tests. Migration tests need an owner, observable removal condition, and gate. Load [test lifecycle](references/test/test-suite-lifecycle.md) only for material retention risk.
 
 ## Durable escalation
 
-Use durable state only for a context boundary, destructive/external effect, staged migration/release, or multiple writers. Prefer host/repository state; otherwise only a single controller may use the [fallback ledger](references/control/durable-work-ledger.md). Never add leases, daemons, event stores, or compatibility readers.
+Durable state is only for context boundaries, destructive/external effects, staged migration/release, or multiple writers. Prefer host/repo state; otherwise one controller may use the [fallback ledger](references/control/durable-work-ledger.md). No leases, daemons, event stores, or compatibility readers.
 
 ## Optional specialist references
 
-Load at most one boundary owner: [authority](references/control/scope-authority-and-effects.md), [tests](references/test/test-suite-lifecycle.md), [recovery](references/recovery/repository-recovery.md), [release/install](references/domain/plugin/package-registration-and-installed-proof.md), or [review](references/review/tier-selection.md). Use the [index](references/index.md) only for another named risk. A second reference requires two independent material risks; never scan.
+Load at most one owner: [authority](references/control/scope-authority-and-effects.md), [tests](references/test/test-suite-lifecycle.md), [recovery](references/recovery/repository-recovery.md), [release/install](references/domain/plugin/package-registration-and-installed-proof.md), or [review](references/review/tier-selection.md). Use the [index](references/index.md) only for another material risk. A second reference needs a separate material risk; never scan.
 
 ## Completion truth
 
-Report only completed work and proof actually run; name blockers, residual risk, and unrun gates. Local completion does not imply commit, push, merge, release, deploy, or publication.
+Report only completed work and proof run; name blockers, residual risk, and unrun gates. Local completion is not commit, push, merge, release, deploy, or publication.
