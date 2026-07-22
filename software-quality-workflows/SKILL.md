@@ -16,13 +16,13 @@ metadata:
 
 ## Scope
 
-Own software execution truth: scope, diagnosis, edits, tests, review, recovery, migration, and completion. Preserve user work and repository identity. Never invent intent, expand authority, treat context as state, trust self-verdicts, or equate local proof with release readiness.
+Own software execution truth from diagnosis through completion. Preserve user work, repository identity, and authority. Never invent intent, treat context or self-verdict as proof, or equate local proof with release readiness.
 
-Use `$writing-plans` for explicit plans, handoffs, or program rollout after decisions are settled; `$long-document-segmented-writing` for large-source documents; and `$skill-evaluator` for package evaluation. Hosted owners retain live remote-state authority.
+Delegate settled plans, handoffs, and rollouts to `$writing-plans`; large-source documents to `$long-document-segmented-writing`; package evaluation to `$skill-evaluator`. Hosted owners retain live remote-state authority.
 
 ## Default execution
 
-Start every route with one bounded owner inventory; read history, repeat inventories, or open adjacent references only for a current discrepancy.
+Start with one bounded owner inventory; repeat or expand it only for a named discrepancy. Never read Git history for ordinary work; allow it only when explicitly requested or required by a concrete release/recovery/freshness conflict.
 
 Use Direct for same-session local, reversible, single-writer work with known authority/owner and no recovery, destructive, release, production, or external effect:
 

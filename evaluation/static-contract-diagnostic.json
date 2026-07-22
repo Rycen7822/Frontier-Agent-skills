@@ -5,7 +5,7 @@
   "entry_bytes": {
     "long-document-segmented-writing": 10365,
     "skill-evaluator": 8505,
-    "software-quality-workflows": 4090,
+    "software-quality-workflows": 4088,
     "writing-plans": 4091
   },
   "legacy_protocol_matches": [],
@@ -96,14 +96,14 @@
     "writing-plans/templates/executable-handoff.md",
     "writing-plans/templates/program-plan.md"
   ],
-  "package_bytes": 664795,
+  "package_bytes": 664953,
   "package_file_count": 119,
   "profile_command_hashes": {
     "extended": "sha256:3f73165c0d95154cd0115a14fad3bc746697a8db0d9c864a2f371f2b73822679",
     "quick": "sha256:c895e68a59c34c1e2c98cfbedb132c79340a6856f08b76a1c7fc6f32dcb96236",
     "release": "sha256:796f0f9d60160f8c23a7c6e15a0fe95cf7e2676845a509f7803691363a746f77"
   },
-  "report_hash": "sha256:62d8d0bd041fe9a6b5c38219dfca1e040018a8621f5ea18789b6cdab56ce2ef0",
+  "report_hash": "sha256:2242b3d75f3a3e7af45266f2b0738786865c252fbb946fa202018b9d6802d600",
   "schema_epoch": 4,
   "schema_version": "static-contract-diagnostic/1.0",
   "skill_activation": {

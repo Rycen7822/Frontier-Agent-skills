@@ -67,8 +67,10 @@ class QuickSkillContractTests(unittest.TestCase):
         text = SKILL_PATH.read_text(encoding="utf-8")
         default_section = text.split("## Default execution", 1)[1].split("\n## ", 1)[0]
         self.assertRegex(default_section, r"(?is)Direct creates no .*workflow.*card.*state.*ledger")
-        self.assertIn("Start every route with one bounded owner inventory", default_section)
-        self.assertIn("read history, repeat inventories", default_section)
+        self.assertIn("Start with one bounded owner inventory", default_section)
+        self.assertIn("repeat or expand it only for a named discrepancy", default_section)
+        self.assertIn("Never read Git history for ordinary work", default_section)
+        self.assertIn("only when explicitly requested", default_section)
         for path in (SKILL_ROOT / "references").rglob("*.md"):
             content = path.read_text(encoding="utf-8")
             self.assertTrue(content.startswith("# "), path)
