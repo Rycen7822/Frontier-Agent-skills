@@ -179,6 +179,34 @@ def compute_inventory_hash(root: Path) -> str:
     return inventory_digest(inventory)
 
 
+def audit_with_invariance(
+    root: Path, max_text_bytes: int, max_pattern_hits: int,
+) -> dict[str, Any]:
+    """Audit once and fail structurally if package identity changes during the scan."""
+    pre_inventory_hash = compute_inventory_hash(root)
+    report = audit(root, max_text_bytes, max_pattern_hits)
+    post_inventory_hash = compute_inventory_hash(root)
+    report["pre_inventory_hash"] = pre_inventory_hash
+    report["post_inventory_hash"] = post_inventory_hash
+    if pre_inventory_hash != post_inventory_hash:
+        report["structural_errors"] = sorted({
+            *report["structural_errors"],
+            "package inventory changed during audit",
+        })
+        report["summary"]["structural_error_count"] = len(report["structural_errors"])
+    return report
+
+
+def report_path_is_inside_package(root: Path, report_path: str) -> bool:
+    if report_path == "-":
+        return False
+    try:
+        Path(report_path).resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return True
+
+
 def parse_frontmatter(skill_text: str) -> tuple[dict[str, str], list[str]]:
     errors: list[str] = []
     match = FRONTMATTER_RE.search(skill_text)
@@ -528,6 +556,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("skill_dir", help="Path to the skill package root")
     parser.add_argument("--json", metavar="PATH", help="Write the full JSON report; use - for stdout")
+    parser.add_argument(
+        "--assert-unchanged", action="store_true",
+        help="Fail if the package inventory changes during the audit",
+    )
     parser.add_argument("--max-text-bytes", type=int, default=2_000_000, help="Maximum bytes scanned per text file")
     parser.add_argument("--max-pattern-hits", type=int, default=20, help="Maximum findings retained per text pattern")
     parser.add_argument(
@@ -541,8 +573,21 @@ def main() -> int:
     if args.max_text_bytes <= 0 or args.max_pattern_hits <= 0:
         parser.error("scan limits must be positive")
 
+    skill_root = Path(args.skill_dir)
+    if (
+        args.assert_unchanged and args.json
+        and report_path_is_inside_package(skill_root, args.json)
+    ):
+        print("audit output error: --json report must be outside the audited package", file=sys.stderr)
+        return 2
+
     try:
-        report = audit(Path(args.skill_dir), args.max_text_bytes, args.max_pattern_hits)
+        if args.assert_unchanged:
+            report = audit_with_invariance(
+                skill_root, args.max_text_bytes, args.max_pattern_hits,
+            )
+        else:
+            report = audit(skill_root, args.max_text_bytes, args.max_pattern_hits)
     except (OSError, ValueError) as exc:
         print(f"audit error: {exc}", file=sys.stderr)
         return 2

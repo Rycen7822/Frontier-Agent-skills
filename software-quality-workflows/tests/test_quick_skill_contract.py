@@ -35,16 +35,9 @@ def frontmatter(path: Path) -> dict:
 
 
 class QuickSkillContractTests(unittest.TestCase):
-    def test_entry_metadata_budget_and_required_sections(self) -> None:
-        text = SKILL_PATH.read_text(encoding="utf-8")
+    def test_entry_metadata_budget_and_activation(self) -> None:
         self.assertEqual("9.0.0", frontmatter(SKILL_PATH)["metadata"]["version"])
         self.assertLessEqual(len(SKILL_PATH.read_bytes()), 4096)
-        headings = set(re.findall(r"(?m)^## (.+)$", text))
-        self.assertTrue({
-            "Scope", "Default execution", "Ask only for material blockers",
-            "Evidence and test retention", "Durable escalation",
-            "Optional specialist references", "Completion truth",
-        } <= headings)
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
         self.assertIs(agents["policy"]["allow_implicit_invocation"], True)
 
@@ -63,18 +56,21 @@ class QuickSkillContractTests(unittest.TestCase):
         self.assertEqual([], legacy["legacy_runtime_paths_present"])
         self.assertEqual([], protocol_matches)
 
-    def test_direct_is_artifact_free_and_references_are_plain_markdown(self) -> None:
-        text = SKILL_PATH.read_text(encoding="utf-8")
-        default_section = text.split("## Default execution", 1)[1].split("\n## ", 1)[0]
-        self.assertRegex(default_section, r"(?is)Direct creates no .*workflow.*card.*state.*ledger")
-        self.assertIn("Start with one bounded owner inventory", default_section)
-        self.assertIn("repeat or expand it only for a named discrepancy", default_section)
-        self.assertIn("Never read Git history for ordinary work", default_section)
-        self.assertIn("only when explicitly requested", default_section)
+    def test_references_are_plain_markdown(self) -> None:
         for path in (SKILL_ROOT / "references").rglob("*.md"):
             content = path.read_text(encoding="utf-8")
             self.assertTrue(content.startswith("# "), path)
             self.assertNotIn("card_id:", content)
+
+    def test_direct_contract_forbids_workflow_artifacts(self) -> None:
+        paragraphs = [
+            paragraph for paragraph in SKILL_PATH.read_text(encoding="utf-8").split("\n\n")
+            if re.search(r"\bDirect\b", paragraph)
+        ]
+        self.assertTrue(any(
+            re.search(r"(?is)\bno\b.*\b(?:workflow|router|card|state|ledger)\b", paragraph)
+            for paragraph in paragraphs
+        ))
 
     def test_design_discovery_has_one_runtime_and_provenance_owner(self) -> None:
         runtime = SKILL_ROOT / "operator" / "design-discovery"

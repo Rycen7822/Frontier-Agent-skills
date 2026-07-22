@@ -17,11 +17,11 @@ Choose the smallest R0/R1/R2 review tier that can answer the requested local tec
 2. Select R1 for substantive owner or cross-component work: full scoped diff, relevant call sites, specification axis when applicable, engineering axis, and at most one authorized focused fix cycle.
 3. Select R2 for security, data loss, public contract, migration, release, broad refactor, or explicit high risk: independent complete declared-scope review, only triggered specialist surfaces, and at most two explicitly justified fix cycles.
 4. Review-only always has zero fix budget. Reviewer availability never widens authority; absence is an evidence limit.
-5. Record exactly which rubric surfaces are implicated without loading them into this decision.
-6. Record the tier, independence need, bounded input requirement, cycle budget, implicated rubric surfaces, and blocker. The owning task controls continuation.
+5. Record exactly which review axes are implicated without loading execution detail into this decision.
+6. Record the tier, independence need, bounded input requirement, cycle budget, implicated axes, and blocker. The owning task controls continuation.
 
 ## Required result
-- Tier, reason, scope depth, independence, implicated rubrics, fix-cycle budget, required input, and blocker.
+- Tier, reason, scope depth, independence, implicated axes, fix-cycle budget, required input, and blocker.
 
 ## Stop
 Stop at the tier decision and return it to the owning task.
