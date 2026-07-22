@@ -18,6 +18,7 @@ SPLITS = {"dev", "regression", "heldout"}
 RISKS = {"low", "standard", "high"}
 MODES = {"skill_disabled", "force_loaded", "natural_routing"}
 ROLES = {"baseline", "candidate", "prior"}
+REQUIREMENT_OWNERS = {"deterministic", "model"}
 CANONICAL_VARIANT_PROFILES = {
     "baseline/skill_disabled",
     "candidate/force_loaded",
@@ -184,6 +185,15 @@ def check_spec(spec: Any, errors: list[str], warnings: list[str]) -> None:
             value = target.get(field)
             if nonempty_string(value) and not PLACEHOLDER_RE.search(value) and not SHA256_RE.fullmatch(value):
                 errors.append(f"spec.target.{field} must be sha256:<64 hex>")
+        if level != "L0":
+            if not nonempty_string(target.get("candidate_revision")):
+                errors.append("spec.target.candidate_revision must be a non-empty string")
+            for field in ("candidate_source_tree_hash", "candidate_plugin_tree_hash"):
+                value = target.get(field)
+                if not nonempty_string(value):
+                    errors.append(f"spec.target.{field} must be a non-empty SHA-256 value")
+                elif not PLACEHOLDER_RE.search(value) and not SHA256_RE.fullmatch(value):
+                    errors.append(f"spec.target.{field} must be sha256:<64 hex>")
 
     variants = [] if level == "L0" else spec.get("variants")
     variant_ids: list[str] = []
@@ -281,6 +291,15 @@ def check_spec(spec: Any, errors: list[str], warnings: list[str]) -> None:
         for field in ("reset_strategy", "retry_policy", "run_order"):
             if not nonempty_string(suite.get(field)):
                 errors.append(f"spec.suite.{field} must be a non-empty string")
+        for field in (
+            "cases_content_hash", "case_contracts_content_hash",
+            "fixture_manifest_set_hash", "grader_batch_schedule_hash",
+        ):
+            value = suite.get(field)
+            if not nonempty_string(value):
+                errors.append(f"spec.suite.{field} must be a non-empty SHA-256 value")
+            elif not PLACEHOLDER_RE.search(value) and not SHA256_RE.fullmatch(value):
+                errors.append(f"spec.suite.{field} must be sha256:<64 hex>")
         if level in {"L2", "L3", "L4"} and repeats == 1:
             warnings.append("L2+ spec uses one repeat; label deterministic evidence or increase repetitions")
         for field in ("development_split", "regression_split", "holdout_split"):
@@ -795,7 +814,7 @@ def check_cases(spec: dict[str, Any], cases: list[dict[str, Any]], errors: list[
                 if not isinstance(requirement, dict):
                     errors.append(f"{req_prefix} must be an object")
                     continue
-                required_fields = {"id", "dimension", "required", "grader_id", "check_id"}
+                required_fields = {"id", "dimension", "required", "owner", "grader_id", "check_id"}
                 missing = sorted(required_fields - set(requirement))
                 if missing:
                     errors.append(f"{req_prefix} missing required fields {missing}")
@@ -813,8 +832,30 @@ def check_cases(spec: dict[str, Any], cases: list[dict[str, Any]], errors: list[
                 if dimension in {"outcome", "safety"} and required is not True:
                     errors.append(f"{dimension} requirement must be required")
 
+                requirement_profiles = requirement.get("applicable_variant_profiles")
+                if requirement_profiles is not None:
+                    if (
+                        not isinstance(requirement_profiles, list)
+                        or not requirement_profiles
+                        or not all(nonempty_string(item) for item in requirement_profiles)
+                    ):
+                        errors.append(
+                            f"{req_prefix}.applicable_variant_profiles must be a non-empty string array"
+                        )
+                    elif len(set(requirement_profiles)) != len(requirement_profiles):
+                        errors.append(
+                            f"{req_prefix}.applicable_variant_profiles must not contain duplicates"
+                        )
+                    elif not set(requirement_profiles) <= profile_set:
+                        errors.append(
+                            f"{req_prefix}: requirement profiles are outside the case profiles"
+                        )
+
                 grader_id = requirement.get("grader_id")
                 check_id = requirement.get("check_id")
+                owner = requirement.get("owner")
+                if "owner" in requirement and owner not in REQUIREMENT_OWNERS:
+                    errors.append(f"{req_prefix}.owner must be one of {sorted(REQUIREMENT_OWNERS)}")
                 if nonempty_string(grader_id) and nonempty_string(check_id):
                     grader_check_bindings.append((grader_id, check_id))
                     selected_grader_ids.add(grader_id)
@@ -822,6 +863,13 @@ def check_cases(spec: dict[str, Any], cases: list[dict[str, Any]], errors: list[
                         errors.append(f"{req_prefix} references unknown grader {grader_id}")
                     elif check_id not in checks_by_grader.get(grader_id, set()):
                         errors.append(f"{req_prefix} references unknown check {grader_id}/{check_id}")
+                    else:
+                        grader_type = graders_by_id[grader_id]["type"]
+                        expected_owner = "deterministic" if grader_type == "deterministic" else "model"
+                        if owner in REQUIREMENT_OWNERS and owner != expected_owner:
+                            errors.append(
+                                f"{req_prefix}.owner {owner} does not match grader type {grader_type}"
+                            )
                 else:
                     errors.append(f"{req_prefix}.grader_id and check_id must be non-empty strings")
 
@@ -983,6 +1031,26 @@ def check_bound_paths(
         actual = cases_path.resolve()
         if expected != actual:
             errors.append(f"supplied cases file does not match spec.suite.cases_file: expected {expected}, got {actual}")
+        clean_cases = [
+            {key: value for key, value in case.items() if key != "_line"}
+            for case in cases
+        ]
+        derived_bindings = {
+            "cases_content_hash": canonical_sha256(clean_cases),
+            "fixture_manifest_set_hash": canonical_sha256([
+                {"case_id": case.get("case_id"), "fixture": case.get("fixture")}
+                for case in clean_cases
+            ]),
+        }
+        for field, actual_hash in derived_bindings.items():
+            expected_hash = suite.get(field)
+            if (
+                spec.get("ready_for_scored_run") is True
+                and isinstance(expected_hash, str)
+                and SHA256_RE.fullmatch(expected_hash)
+                and expected_hash != actual_hash
+            ):
+                errors.append(f"spec.suite.{field} mismatch: expected {expected_hash}, got {actual_hash}")
         holdout = suite.get("holdout_control")
         if isinstance(holdout, dict):
             for file_field, hash_field in (("manifest_file", "manifest_hash"), ("payload_file", "payload_hash")):

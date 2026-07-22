@@ -8,7 +8,10 @@
   "target": {
     "name": "example-skill",
     "candidate_path": "./path-to-example-skill",
-    "candidate_hash": "sha256:replace-with-candidate-package-hash"
+    "candidate_hash": "sha256:replace-with-candidate-package-hash",
+    "candidate_revision": "replace-with-candidate-revision",
+    "candidate_source_tree_hash": "sha256:replace-with-candidate-source-tree-hash",
+    "candidate_plugin_tree_hash": "sha256:replace-with-candidate-plugin-tree-hash"
   },
   "environment": {
     "agent": "diagnostic-agent",
@@ -21,6 +24,10 @@
   },
   "suite": {
     "cases_file": "cases.l1.example.jsonl",
+    "cases_content_hash": "sha256:replace-with-cases-content-hash",
+    "case_contracts_content_hash": "sha256:replace-with-case-contracts-content-hash",
+    "fixture_manifest_set_hash": "sha256:replace-with-fixture-manifest-set-hash",
+    "grader_batch_schedule_hash": "sha256:replace-with-grader-batch-schedule-hash",
     "repeats": 1,
     "reset_strategy": "fresh_workspace_per_run",
     "retry_policy": "no_retry",

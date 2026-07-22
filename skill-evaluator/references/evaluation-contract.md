@@ -13,7 +13,7 @@ Evaluation permission never grants permission to install dependencies, expose se
 `schema_version=3` is the only accepted behavioral contract. It binds:
 
 - evaluation identity, level, risk, decision, and claim scope;
-- candidate path/inventory hash and every declared variant's package, catalog, and treatment hashes;
+- candidate path/inventory hash, revision, source-tree hash, plugin-tree hash, and every declared variant's package, catalog, and treatment hashes;
 - agent/model/harness, environment and tool/catalog identities, timeout, reset, seed, and network/credential policy;
 - case and optional holdout assets, repeats, ordering, retry policy, graders, metrics, gates, authority, and artifact retention;
 - `ready_for_scored_run`, which is `false` for public L1/L2 templates and must be explicitly closed before scored execution.
@@ -44,7 +44,7 @@ L4 is limited to version and cycle monitoring. Without selection, order, and com
 | `prior/natural_routing` | Optional natural-routing revision comparator |
 | `prior/force_loaded` | Optional explicit-invocation revision comparator |
 
-Declare only candidate treatments required by the decision. Natural routing is the default comparison when both candidate modes are present; selecting forced loading requires an explicit analyzer candidate. Forced-use success cannot prove routing. A prior variant must match the selected candidate treatment and is not a substitute for the no-Skill baseline when the question is incremental value over the frontier model.
+Declare only candidate treatments required by the decision. Natural routing is the default comparison when both candidate modes are present; selecting forced loading requires an explicit analyzer candidate. A force-loaded arm can establish incremental value for an explicit-only Skill only when the task text is byte-identical across arms, the native Skill selection is outside that text, and baseline exposes no Skill name, path, body, catalog hint, or treatment label. It cannot prove natural routing. A prior variant must match the selected candidate treatment and is not a substitute for the no-Skill baseline when the question is incremental value over the frontier model.
 
 ## Fair case and repeat design
 
@@ -60,7 +60,7 @@ Repeats never increase `paired_case_count`. Fewer than two complete independent 
 
 ## Isolation and provenance
 
-Every run index points to one hashed receipt under `spec.artifacts.root`. The analyzer recomputes spec, case, environment, package, fixture, grader, artifact, and invocation bindings before deriving any result. Catalog/treatment IDs and controller assertions remain external attestations, not cryptographic proof.
+Every run index points to one hashed receipt under `spec.artifacts.root`. The analyzer recomputes spec, case, environment, package, fixture set, grader, artifact, and invocation bindings before deriving any result, and matches the receipt to the frozen candidate revision/source/plugin identity. Catalog/treatment IDs and private contract/schedule/controller hashes remain external attestations, not cryptographic proof.
 
 Keep cases, hidden graders, holdout payloads, and evaluation-controller instructions outside the tested executor context unless the deployment contract genuinely supplies them. Preserve invalid apparatus rows, treatment failures, retries, timeouts, and raw artifacts under their declared semantics.
 

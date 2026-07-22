@@ -88,7 +88,7 @@ The analyzer returns `0` for a completed supported/diagnostic result, `1` for ve
 
 - [Evaluation contract](references/evaluation-contract.md): schema v3, levels, variants, fairness, and claim ceilings.
 - [Task-suite design](references/task-suite-design.md): frontier-model filter, requirements, protected controls, and holdout boundaries.
-- [Execution and grading](references/execution-and-grading.md): receipt v1, artifacts, routing, usage, context, graders, and failure classification.
+- [Execution and grading](references/execution-and-grading.md): receipt v2, artifacts, routing, usage, context, graders, and failure classification.
 - [Rubric and metrics](references/rubric-and-metrics.md): independent-case intervals, benefit/context gates, and usefulness states.
 - [Reporting and decisions](references/reporting-and-decisions.md): evidence, usefulness, manual authority, and external-decision boundaries.
 - [Longitudinal evaluation](references/longitudinal-evaluation.md): version and cycle monitoring.

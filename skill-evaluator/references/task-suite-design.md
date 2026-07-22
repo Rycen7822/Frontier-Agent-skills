@@ -27,7 +27,9 @@ Each requirement has exactly one semantic owner:
 | `id` | Stable case-global requirement ID |
 | `dimension` | `outcome`, `process`, `quality`, or `safety` |
 | `required` | Whether failure changes required overall pass |
+| `owner` | Exactly `deterministic` or `model`, matching the selected grader type |
 | `grader_id` / `check_id` | Exact selected grader/check join |
+| `applicable_variant_profiles` | Optional non-empty subset of the case profiles; omitted means all case profiles |
 | `weight` | Optional; either all case requirements have weights or none do |
 | `severity` / `safety_kind` | Required only for safety requirements |
 
@@ -49,7 +51,7 @@ Use cases that differ in a decision-relevant way:
 
 Positive prompts must not all copy the Skill description. Negative prompts should be plausible near misses. Keep alternative valid processes valid unless the procedure itself is the specialized value being evaluated.
 
-`attribution_evaluable=true` is reserved for cases whose baseline and candidate prompts/affordances are comparable. Explicit forced invocation and pure negative controls can still grade routing or safety but do not enter incremental benefit.
+`attribution_evaluable=true` is reserved for cases whose baseline and candidate task text, non-Skill affordances, and success criteria are comparable. A native force-loaded treatment may enter incremental benefit for an explicit-only Skill when selection occurs outside byte-identical task text and baseline contains no Skill signal; it remains ineligible for natural-routing metrics. Pure negative controls do not enter incremental benefit.
 
 ## Protected controls
 

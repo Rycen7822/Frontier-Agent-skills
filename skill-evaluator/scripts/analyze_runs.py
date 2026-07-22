@@ -52,8 +52,27 @@ DYNAMIC_CONTEXT_SOURCE = re.compile(
 
 
 def canonical_sha256(value: Any) -> str:
-    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    payload = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
     return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def canonical_self_hash(value: dict[str, Any], field: str) -> str:
+    if not isinstance(value, dict) or field not in value:
+        raise ValueError(f"{field} is required for self-hash verification")
+    payload = dict(value)
+    payload.pop(field)
+    return canonical_sha256(payload)
+
+
+def verify_self_hash(value: dict[str, Any], field: str) -> bool:
+    claimed = value.get(field) if isinstance(value, dict) else None
+    return isinstance(claimed, str) and bool(SHA256_RE.fullmatch(claimed)) and claimed == canonical_self_hash(value, field)
 
 
 def file_sha256(path: Path) -> str:
@@ -219,6 +238,132 @@ def verify_locator_reference(
         raise ValueError(f"{label} line locator resolves only to empty lines")
     if not isinstance(evidence.get("observation"), str) or not evidence["observation"].strip():
         raise ValueError(f"{label} observation must be a non-empty string")
+
+
+def verify_ordered_trace(
+    trace: Any, artifacts: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    expected = {"artifact", "sha256", "event_count", "context_capture"}
+    if not isinstance(trace, dict) or set(trace) != expected:
+        raise ValueError("receipt trace fields do not match receipt v2")
+    artifact = trace.get("artifact")
+    if artifact not in artifacts or artifacts[artifact]["encoding"] != "utf-8":
+        raise ValueError("ordered trace must reference one allowlisted UTF-8 artifact")
+    if trace.get("sha256") != artifacts[artifact]["sha256"]:
+        raise ValueError("ordered trace sha256 does not match its artifact")
+    lines = artifacts[artifact]["lines"]
+    if trace.get("event_count") != len(lines):
+        raise ValueError("ordered trace event_count does not match artifact lines")
+    events: list[dict[str, Any]] = []
+    for index, line in enumerate(lines, 1):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"ordered trace line {index} is invalid JSON: {exc.msg}") from None
+        if not isinstance(event, dict) or event.get("event_seq") != index:
+            raise ValueError("ordered trace event_seq must be contiguous and one-based")
+        events.append(event)
+    capture = trace.get("context_capture")
+    if (
+        not isinstance(capture, dict)
+        or set(capture) != {"status", "source"}
+        or capture.get("status") not in {"captured", "missing"}
+        or capture.get("source") not in {"host_trace", "replay_manifest"}
+    ):
+        raise ValueError("trace context_capture fields are invalid")
+    return events
+
+
+def verify_routing_stage(
+    stage: Any, *, label: str, value_type: str,
+    artifacts: dict[str, dict[str, Any]],
+) -> Any:
+    if not isinstance(stage, dict) or set(stage) != {"status", "value", "evidence"}:
+        raise ValueError(f"routing.{label} fields do not match receipt v2")
+    status = stage.get("status")
+    value = stage.get("value")
+    evidence = stage.get("evidence")
+    if status not in {"observed", "not_evaluable"} or not isinstance(evidence, list):
+        raise ValueError(f"routing.{label} status/evidence are invalid")
+    if status == "not_evaluable":
+        if value is not None or evidence:
+            raise ValueError(f"routing.{label} not_evaluable requires null value and empty evidence")
+        return None
+    if not evidence:
+        raise ValueError(f"routing.{label} observed value requires evidence")
+    for item in evidence:
+        verify_locator_reference(item, artifacts, label=f"routing.{label}")
+    if value_type == "ids":
+        if (
+            not isinstance(value, list)
+            or any(not isinstance(item, str) or not item.strip() for item in value)
+            or len(set(value)) != len(value)
+        ):
+            raise ValueError(f"routing.{label}.value must be a unique string array")
+    elif value_type == "id":
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise ValueError(f"routing.{label}.value must be null or a non-empty string")
+    elif value_type == "boolean" and not isinstance(value, bool):
+        raise ValueError(f"routing.{label}.value must be boolean when observed")
+    return value
+
+
+def load_batched_grader_output(
+    reference: Any,
+    artifacts_root: Path,
+    *,
+    expected_grader_id: str,
+) -> dict[str, Any]:
+    expected_fields = {
+        "artifact", "line", "line_sha256", "batch_id", "item_id",
+    }
+    if not isinstance(reference, dict) or set(reference) != expected_fields:
+        raise ValueError("model grader batch reference fields are invalid")
+    artifact = normalize_relative_path(reference["artifact"], "grader batch artifact")
+    if artifact != reference["artifact"]:
+        raise ValueError("grader batch artifact path is not canonical")
+    _, batch_path = resolve_bound_file(artifacts_root, artifact, "grader batch artifact")
+    lines = batch_path.read_bytes().splitlines()
+    line_number = reference["line"]
+    if (
+        not isinstance(line_number, int) or isinstance(line_number, bool)
+        or line_number < 1 or line_number > len(lines)
+    ):
+        raise ValueError("grader batch line is outside artifact bounds")
+    raw_line = lines[line_number - 1]
+    actual_hash = "sha256:" + hashlib.sha256(raw_line).hexdigest()
+    if reference["line_sha256"] != actual_hash:
+        raise ValueError("grader batch line sha256 mismatch")
+    try:
+        batch = json.loads(raw_line.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"grader batch line is invalid UTF-8 JSON: {exc}") from None
+    if not isinstance(batch, dict) or set(batch) != {"schema_version", "batch_id", "items"}:
+        raise ValueError("grader batch line fields are invalid")
+    if batch["schema_version"] != 1 or batch["batch_id"] != reference["batch_id"]:
+        raise ValueError("grader batch identity mismatch")
+    items = batch["items"]
+    if not isinstance(items, list) or not 1 <= len(items) <= 4:
+        raise ValueError("grader batch must contain one to four items")
+    item_ids: list[str] = []
+    selected = None
+    for item in items:
+        if not isinstance(item, dict) or set(item) != {"item_id", "grader_id", "output"}:
+            raise ValueError("grader batch item fields are invalid")
+        item_id = item["item_id"]
+        grader_id = item["grader_id"]
+        if not isinstance(item_id, str) or not item_id or not isinstance(grader_id, str) or not grader_id:
+            raise ValueError("grader batch item identity is invalid")
+        item_ids.append(item_id)
+        if item_id == reference["item_id"] and grader_id == expected_grader_id:
+            selected = item["output"]
+    if len(item_ids) != len(set(item_ids)):
+        raise ValueError("grader batch item_id values must be unique")
+    if selected is None:
+        raise ValueError("grader batch does not contain the referenced item")
+    if not isinstance(selected, dict):
+        raise ValueError("grader batch output must be an object")
+    return selected
 
 
 def validate_grader_output(
@@ -450,13 +595,15 @@ def derive_verified_run(
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"receipt is not valid UTF-8 JSON: {exc}") from None
     receipt_fields = {
-        "schema_version", "run", "artifacts", "routing", "usage",
-        "context_usage", "grader_outputs",
+        "schema_version", "receipt_hash", "run", "artifacts", "trace", "routing",
+        "boundaries", "bytes", "counts", "usage", "context_usage", "grader_outputs",
     }
     if not isinstance(receipt, dict) or set(receipt) != receipt_fields:
-        raise ValueError("receipt fields do not match receipt v1")
-    if receipt.get("schema_version") != 1:
-        raise ValueError("receipt schema_version must equal 1")
+        raise ValueError("receipt fields do not match receipt v2")
+    if receipt.get("schema_version") != 2:
+        raise ValueError("receipt schema_version must equal 2")
+    if not verify_self_hash(receipt, "receipt_hash"):
+        raise ValueError("receipt self-hash mismatch")
 
     run = receipt.get("run")
     run_fields = {
@@ -464,7 +611,7 @@ def derive_verified_run(
         "invalid_reason", "provenance",
     }
     if not isinstance(run, dict) or set(run) != run_fields:
-        raise ValueError("receipt run fields do not match receipt v1")
+        raise ValueError("receipt run fields do not match receipt v2")
     for field in ("run_id", "case_id", "variant", "repeat"):
         if run.get(field) != row[field]:
             raise ValueError(f"receipt/index identity mismatch for {field}")
@@ -482,8 +629,16 @@ def derive_verified_run(
         raise ValueError("valid run cannot claim an evaluation_apparatus failure")
 
     artifacts = verify_artifacts(receipt["artifacts"], artifact_dir, "receipt")
-    fixture_hash = verify_fixture(case, artifacts_root)
-    selected_requirements = case["requirements"]
+    verify_fixture(case, artifacts_root)
+    profile = f"{variant['role']}/{variant['mode']}"
+    selected_requirements = [
+        requirement for requirement in case["requirements"]
+        if profile in requirement.get(
+            "applicable_variant_profiles", case["applicable_variant_profiles"],
+        )
+    ]
+    if not selected_requirements:
+        raise ValueError("run profile selects no case requirements")
     selected_grader_ids = sorted({requirement["grader_id"] for requirement in selected_requirements})
     graders = {grader["id"]: grader for grader in spec["graders"]}
     grader_digests = {
@@ -503,18 +658,25 @@ def derive_verified_run(
 
     provenance = run.get("provenance")
     provenance_fields = {
-        "spec_sha256", "case_sha256", "grader_set_sha256", "environment_sha256",
-        "package_hash", "fixture_hash", "catalog_hash", "treatment_hash",
+        "candidate_revision", "candidate_source_tree_hash", "candidate_plugin_tree_hash",
+        "spec_content_hash", "case_content_hash", "case_contracts_content_hash",
+        "fixture_manifest_set_hash", "grader_set_hash", "grader_batch_schedule_hash",
+        "environment_hash", "package_hash", "catalog_hash", "treatment_hash",
     }
     if not isinstance(provenance, dict) or set(provenance) != provenance_fields:
-        raise ValueError("receipt provenance fields do not match receipt v1")
+        raise ValueError("receipt provenance fields do not match receipt v2")
     expected_provenance = {
-        "spec_sha256": file_sha256(spec_path),
-        "case_sha256": canonical_sha256(case),
-        "grader_set_sha256": grader_set_hash,
-        "environment_sha256": canonical_sha256(spec["environment"]),
+        "candidate_revision": spec["target"]["candidate_revision"],
+        "candidate_source_tree_hash": spec["target"]["candidate_source_tree_hash"],
+        "candidate_plugin_tree_hash": spec["target"]["candidate_plugin_tree_hash"],
+        "spec_content_hash": file_sha256(spec_path),
+        "case_content_hash": canonical_sha256(case),
+        "case_contracts_content_hash": spec["suite"]["case_contracts_content_hash"],
+        "fixture_manifest_set_hash": spec["suite"]["fixture_manifest_set_hash"],
+        "grader_set_hash": grader_set_hash,
+        "grader_batch_schedule_hash": spec["suite"]["grader_batch_schedule_hash"],
+        "environment_hash": canonical_sha256(spec["environment"]),
         "package_hash": package_hash,
-        "fixture_hash": fixture_hash,
         "catalog_hash": variant["catalog_hash"],
         "treatment_hash": variant["treatment_hash"],
     }
@@ -522,38 +684,104 @@ def derive_verified_run(
         if provenance.get(field) != expected:
             raise ValueError(f"receipt provenance {field} mismatch")
 
+    ordered_events = verify_ordered_trace(receipt.get("trace"), artifacts)
+    context_capture = receipt["trace"]["context_capture"]
+    if context_capture["status"] == "missing":
+        raise ValueError("context capture is missing")
+
     routing = receipt.get("routing")
     routing_fields = {
-        "retrieved_skill_ids", "selected_skill_id", "skill_body_loaded",
-        "resources_loaded", "skill_incorporated", "skill_applied", "evidence",
+        "retrieved", "selected", "body_loaded", "incorporated", "applied",
+        "resources_loaded",
     }
     if not isinstance(routing, dict) or set(routing) != routing_fields:
-        raise ValueError("receipt routing fields do not match receipt v1")
-    for field in ("retrieved_skill_ids", "resources_loaded"):
-        values = routing.get(field)
-        if (
-            not isinstance(values, list)
-            or any(not isinstance(value, str) or not value.strip() for value in values)
-            or len(set(values)) != len(values)
-        ):
-            raise ValueError(f"receipt routing.{field} must be a unique string array")
-    if routing.get("selected_skill_id") is not None and (
-        not isinstance(routing["selected_skill_id"], str) or not routing["selected_skill_id"].strip()
+        raise ValueError("receipt routing fields do not match receipt v2")
+    retrieved_skill_ids = verify_routing_stage(
+        routing["retrieved"], label="retrieved", value_type="ids", artifacts=artifacts,
+    )
+    selected_skill_id = verify_routing_stage(
+        routing["selected"], label="selected", value_type="id", artifacts=artifacts,
+    )
+    skill_body_loaded = verify_routing_stage(
+        routing["body_loaded"], label="body_loaded", value_type="boolean", artifacts=artifacts,
+    )
+    skill_incorporated = verify_routing_stage(
+        routing["incorporated"], label="incorporated", value_type="boolean", artifacts=artifacts,
+    )
+    skill_applied = verify_routing_stage(
+        routing["applied"], label="applied", value_type="boolean", artifacts=artifacts,
+    )
+    resources_loaded = routing.get("resources_loaded")
+    if (
+        not isinstance(resources_loaded, list)
+        or any(not isinstance(value, str) or not value.strip() for value in resources_loaded)
+        or len(set(resources_loaded)) != len(resources_loaded)
     ):
-        raise ValueError("receipt routing.selected_skill_id must be null or a non-empty string")
-    for field in ("skill_body_loaded", "skill_incorporated", "skill_applied"):
-        if not isinstance(routing.get(field), bool):
-            raise ValueError(f"receipt routing.{field} must be boolean")
-    routing_evidence = routing.get("evidence")
-    if not isinstance(routing_evidence, list):
-        raise ValueError("receipt routing.evidence must be an array")
-    for evidence in routing_evidence:
-        verify_locator_reference(evidence, artifacts, label="routing")
+        raise ValueError("receipt routing.resources_loaded must be a unique string array")
+    stage_locators: set[tuple[str, int, int]] = set()
+    for label in ("retrieved", "selected", "body_loaded", "incorporated", "applied"):
+        for evidence in routing[label]["evidence"]:
+            locator = evidence["locator"]
+            identity = (evidence["artifact"], locator["start_line"], locator["end_line"])
+            if identity in stage_locators:
+                raise ValueError("routing stages must not reuse one evidence locator")
+            stage_locators.add(identity)
+
+    boundaries = receipt.get("boundaries")
+    if not isinstance(boundaries, dict) or set(boundaries) != {
+        "first_successful_source_write_seq", "first_deliverable_seq",
+    }:
+        raise ValueError("receipt boundaries fields do not match receipt v2")
+    derived_source_seq = next((
+        event["event_seq"] for event in ordered_events
+        if event.get("event") == "source_write"
+        and event.get("success", True) is True
+        and event.get("final_delta_observed", True) is True
+    ), None)
+    derived_deliverable_seq = next((
+        event["event_seq"] for event in ordered_events
+        if event.get("event") in {"assistant_deliverable", "file_deliverable"}
+        and event.get("success", True) is True
+    ), None)
+    if boundaries["first_successful_source_write_seq"] != derived_source_seq:
+        raise ValueError("first_successful_source_write_seq does not match ordered trace")
+    if boundaries["first_deliverable_seq"] != derived_deliverable_seq:
+        raise ValueError("first_deliverable_seq does not match ordered trace")
+
+    byte_fields = set(CONTEXT_EFFICIENCY_FIELDS) | {"prewrite_tool_output_bytes"}
+    byte_counts = receipt.get("bytes")
+    if not isinstance(byte_counts, dict) or set(byte_counts) != byte_fields:
+        raise ValueError("receipt bytes fields do not match receipt v2")
+    if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in byte_counts.values()):
+        raise ValueError("receipt byte counts must be non-negative integers")
+
+    count_fields = {
+        "host_injected_body_count", "model_initiated_body_read_count", "body_load_count",
+        "reference_load_count", "skill_load_tool_calls", "skill_protocol_tool_calls",
+        "prewrite_task_tool_calls", "task_tool_calls", "workflow_artifact_count",
+    }
+    counts = receipt.get("counts")
+    if not isinstance(counts, dict) or set(counts) != count_fields:
+        raise ValueError("receipt counts fields do not match receipt v2")
+    if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in counts.values()):
+        raise ValueError("receipt counts must be non-negative integers")
+    if counts["body_load_count"] != (
+        counts["host_injected_body_count"] + counts["model_initiated_body_read_count"]
+    ):
+        raise ValueError("body_load_count does not conserve host and model body loads")
+    if skill_body_loaded is None or skill_body_loaded != (counts["body_load_count"] > 0):
+        raise ValueError("routing.body_loaded contradicts body load counts")
+    if variant["mode"] == "force_loaded" and counts["host_injected_body_count"] != 1:
+        raise ValueError("force_loaded treatment requires exactly one host body injection")
+    if variant["mode"] == "skill_disabled" and (
+        counts["host_injected_body_count"] != 0 or counts["model_initiated_body_read_count"] != 0
+    ):
+        raise ValueError("skill_disabled treatment requires zero body loads")
 
     usage = receipt.get("usage")
-    usage_fields = {"tokens_in", "tokens_out", "latency_ms", "tool_calls", "retries", "evidence"}
+    usage_fields = {"tokens_in", "tokens_out", "latency_ms", "retries", "evidence"}
     if not isinstance(usage, dict) or set(usage) != usage_fields:
-        raise ValueError("receipt usage fields do not match receipt v1")
+        raise ValueError("receipt usage fields do not match receipt v2")
     for field in usage_fields - {"evidence"}:
         value = usage.get(field)
         if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(float(value)) or value < 0:
@@ -568,14 +796,12 @@ def derive_verified_run(
     if (
         not isinstance(context_usage, dict)
         or set(context_usage) != {"measurement_source", "components"}
-        or context_usage.get("measurement_source") not in {"host_receipt", "replay_manifest", "paired_total_only"}
+        or context_usage.get("measurement_source") not in {"host_receipt", "replay_manifest"}
         or not isinstance(context_usage.get("components"), list)
     ):
         raise ValueError("receipt context_usage fields are invalid")
     measurement_source = context_usage["measurement_source"]
     components = context_usage["components"]
-    if measurement_source == "paired_total_only" and components:
-        raise ValueError("paired_total_only context_usage requires empty components")
     verified_components: list[dict[str, Any]] = []
     component_artifacts: set[str] = set()
     dynamic_sources: set[str] = set()
@@ -585,7 +811,7 @@ def derive_verified_run(
         if not isinstance(component, dict) or set(component) != {
             "kind", "source_path", "artifact", "tokens",
         }:
-            raise ValueError(f"context component {index} fields do not match receipt v1")
+            raise ValueError(f"context component {index} fields do not match receipt v2")
         kind = component.get("kind")
         source_path = component.get("source_path")
         artifact = component.get("artifact")
@@ -635,18 +861,26 @@ def derive_verified_run(
             "bytes": byte_count,
             "tokens": tokens if measurement_source == "host_receipt" else None,
         })
-    if measurement_source != "paired_total_only":
-        body_present = any(item["kind"] == "body" for item in verified_components)
-        if body_present != routing["skill_body_loaded"]:
-            raise ValueError("context body components contradict routing.skill_body_loaded")
-        reference_sources = {
-            item["source_path"] for item in verified_components if item["kind"] == "reference"
-        }
-        if reference_sources != set(routing["resources_loaded"]):
-            raise ValueError("context reference sources do not match routing.resources_loaded")
+    expected_measurement = (
+        "host_receipt" if context_capture["source"] == "host_trace" else "replay_manifest"
+    )
+    if measurement_source != expected_measurement:
+        raise ValueError("context measurement_source contradicts context_capture.source")
+    body_components = [item for item in verified_components if item["kind"] == "body"]
+    if bool(body_components) != skill_body_loaded:
+        raise ValueError("context body components contradict routing.body_loaded")
+    if len(body_components) != counts["body_load_count"]:
+        raise ValueError("context body components do not conserve body load counts")
+    reference_components = [item for item in verified_components if item["kind"] == "reference"]
+    reference_sources = {item["source_path"] for item in reference_components}
+    if reference_sources != set(resources_loaded):
+        raise ValueError("context reference sources do not match routing.resources_loaded")
+    if len(reference_components) != counts["reference_load_count"]:
+        raise ValueError("context reference components do not conserve reference_load_count")
     derived_context_usage = {
         "measurement_source": measurement_source,
-        "attributed": measurement_source in {"host_receipt", "replay_manifest"} and bool(verified_components),
+        "capture": dict(context_capture),
+        "attributed": True,
         "bytes": sum(item["bytes"] for item in verified_components),
         "tokens": (
             sum(item["tokens"] for item in verified_components)
@@ -657,6 +891,20 @@ def derive_verified_run(
     }
     if derived_context_usage["bytes"] != sum(context_efficiency.values()):
         raise ValueError("context byte attribution does not conserve total skill context bytes")
+    for field in CONTEXT_EFFICIENCY_FIELDS:
+        if byte_counts[field] != context_efficiency[field]:
+            raise ValueError(f"receipt bytes.{field} does not match verified context artifacts")
+    prewrite_boundary = derived_source_seq or derived_deliverable_seq or (len(ordered_events) + 1)
+    for event in ordered_events:
+        output_bytes = event.get("tool_output_bytes", 0)
+        if not isinstance(output_bytes, int) or isinstance(output_bytes, bool) or output_bytes < 0:
+            raise ValueError("ordered trace tool_output_bytes must be a non-negative integer")
+    derived_prewrite_bytes = sum(
+        event.get("tool_output_bytes", 0)
+        for event in ordered_events if event["event_seq"] < prewrite_boundary
+    )
+    if byte_counts["prewrite_tool_output_bytes"] != derived_prewrite_bytes:
+        raise ValueError("prewrite_tool_output_bytes does not match ordered trace")
 
     grader_outputs = receipt.get("grader_outputs")
     if not isinstance(grader_outputs, list):
@@ -699,7 +947,7 @@ def derive_verified_run(
                 "stdout_artifact", "stderr_artifact", "exit_code",
             }
             if set(invocation) != invocation_fields:
-                raise ValueError("deterministic invocation fields do not match receipt v1")
+                raise ValueError("deterministic invocation fields do not match receipt v2")
             if invocation["grader_sha256"] != grader_digests[grader_id]:
                 raise ValueError("deterministic invocation grader_sha256 mismatch")
             expected_checks = sorted(requirement["check_id"] for requirement in requirements)
@@ -741,9 +989,12 @@ def derive_verified_run(
             if (exit_code in grader["verifier"]["pass_exit_codes"]) != validated["overall_pass"]:
                 raise ValueError("deterministic exit_code/pass result contradiction")
         else:
-            if set(item) != {"grader_id", "output"}:
-                raise ValueError("model_rubric grader output must contain exactly grader_id and output")
-            validated = validate_grader_output(item["output"], requirements, artifacts)
+            if set(item) != {"grader_id", "batch"}:
+                raise ValueError("model_rubric grader output must contain exactly grader_id and batch")
+            output = load_batched_grader_output(
+                item["batch"], artifacts_root, expected_grader_id=grader_id,
+            )
+            validated = validate_grader_output(output, requirements, artifacts)
         grader_results[grader_id] = validated
         any_grader_failure = any_grader_failure or validated["grader_failure"]
 
@@ -751,7 +1002,8 @@ def derive_verified_run(
         raise ValueError("grader failure requires run.valid=false")
     if run["valid"] is False and not any_grader_failure:
         raise ValueError("evaluation_apparatus invalid run requires a grader failure result")
-    derived = derive_run_fields(case, graders, grader_results) if run["valid"] else {
+    selected_case = {**case, "requirements": selected_requirements}
+    derived = derive_run_fields(selected_case, graders, grader_results) if run["valid"] else {
         "task_pass": None,
         "process_score": None,
         "quality_score": None,
@@ -760,7 +1012,6 @@ def derive_verified_run(
         "unauthorized_side_effects": 0,
         "hard_gate_failures": [],
     }
-    profile = f"{variant['role']}/{variant['mode']}"
     return {
         "run_id": run["run_id"],
         "case_id": run["case_id"],
@@ -774,17 +1025,20 @@ def derive_verified_run(
         "tags": list(case["tags"]),
         "should_trigger": case["should_trigger"],
         "routing_evaluable": variant["mode"] == "natural_routing" and profile in case["applicable_variant_profiles"],
-        "retrieved_skill_ids": list(routing["retrieved_skill_ids"]),
-        "selected_skill_id": routing["selected_skill_id"],
-        "skill_body_loaded": routing["skill_body_loaded"],
-        "resources_loaded": list(routing["resources_loaded"]),
-        "skill_incorporated": routing["skill_incorporated"],
-        "skill_applied": routing["skill_applied"],
+        "retrieved_skill_ids": list(retrieved_skill_ids),
+        "selected_skill_id": selected_skill_id,
+        "skill_body_loaded": skill_body_loaded,
+        "resources_loaded": list(resources_loaded),
+        "skill_incorporated": skill_incorporated,
+        "skill_applied": skill_applied,
         "tokens_in": usage["tokens_in"],
         "tokens_out": usage["tokens_out"],
         "latency_ms": usage["latency_ms"],
-        "tool_calls": usage["tool_calls"],
+        "tool_calls": counts["task_tool_calls"],
         "retries": usage["retries"],
+        "boundaries": dict(boundaries),
+        "bytes": dict(byte_counts),
+        "counts": dict(counts),
         "context_usage": derived_context_usage,
         "graders_run": selected_grader_ids,
         "provenance": provenance,
@@ -2541,8 +2795,31 @@ def main() -> int:
         blocking_observations=blocking,
     )
 
+    report_grader_hash = canonical_sha256([
+        {"id": grader["id"], "sha256": compute_grader_digest(grader, spec_path.parent)}
+        for grader in sorted(spec["graders"], key=lambda item: item["id"])
+    ])
+    candidate_treatment_hashes = {
+        variant["treatment_hash"] for variant in spec["variants"]
+        if variant["role"] == "candidate"
+    }
     report: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "report_hash": None,
+        "candidate_revision": spec["target"]["candidate_revision"],
+        "candidate_source_tree_hash": spec["target"]["candidate_source_tree_hash"],
+        "candidate_plugin_tree_hash": spec["target"]["candidate_plugin_tree_hash"],
+        "spec_content_hash": file_sha256(spec_path),
+        "cases_content_hash": spec["suite"]["cases_content_hash"],
+        "case_contracts_content_hash": spec["suite"]["case_contracts_content_hash"],
+        "fixture_manifest_set_hash": spec["suite"]["fixture_manifest_set_hash"],
+        "grader_set_hash": report_grader_hash,
+        "grader_batch_schedule_hash": spec["suite"]["grader_batch_schedule_hash"],
+        "treatment_hash": (
+            next(iter(candidate_treatment_hashes)) if len(candidate_treatment_hashes) == 1 else None
+        ),
+        "environment_hash": canonical_sha256(spec["environment"]),
+        "receipt_index_content_hash": file_sha256(Path(args.runs).resolve()),
         "evidence_status": effective_evidence_status,
         "usefulness_status": usefulness_status,
         "final_authority_status": final_authority_status,
@@ -2576,10 +2853,16 @@ def main() -> int:
     }
     if prior_context is not None:
         report.update(prior_context)
+    if len(candidate_treatment_hashes) != 1:
+        report["evidence_status"] = "invalid"
+        report["blocking_observations"].append(
+            "candidate variants do not bind one treatment_hash"
+        )
+    report["report_hash"] = canonical_self_hash(report, "report_hash")
 
     try:
         if args.json:
-            payload = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
+            payload = json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
             if args.json == "-":
                 sys.stdout.write(payload)
             else:
