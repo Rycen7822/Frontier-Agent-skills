@@ -29,11 +29,14 @@ class QuickWritingPlansTests(unittest.TestCase):
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
         self.assertIs(agents["policy"]["allow_implicit_invocation"], False)
 
-    def test_templates_are_plain_markdown_and_brief_has_no_template(self) -> None:
+    def test_templates_are_plain_markdown_and_brief_surface_is_absent(self) -> None:
         templates = SKILL_ROOT / "templates"
         self.assertFalse((templates / "brief-plan.md").exists())
         for path in templates.glob("*.md"):
             self.assertTrue(path.read_text(encoding="utf-8").startswith("# "), path)
+        runtime_markdown = [SKILL_PATH, *templates.glob("*.md"), *(SKILL_ROOT / "references").rglob("*.md")]
+        for path in runtime_markdown:
+            self.assertNotIn("Brief", path.read_text(encoding="utf-8"), path)
 
     def test_output_contract_limits_each_task_to_one_canonical_deliverable(self) -> None:
         paragraphs = [
