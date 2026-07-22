@@ -29,7 +29,7 @@
       "properties": {
         "long-document-segmented-writing": {"const": "implicit"},
         "skill-evaluator": {"const": "explicit_only"},
-        "software-quality-workflows": {"const": "implicit"},
+        "software-quality-workflows": {"const": "explicit_only"},
         "writing-plans": {"const": "explicit_only"}
       }
     },

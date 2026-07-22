@@ -17,13 +17,13 @@ REVISION = "a" * 40
 ACTIVATION = {
     "long-document-segmented-writing": "implicit",
     "skill-evaluator": "explicit_only",
-    "software-quality-workflows": "implicit",
+    "software-quality-workflows": "explicit_only",
     "writing-plans": "explicit_only",
 }
 ACTIVATION_BOOL = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": True,
+    "software-quality-workflows": False,
     "writing-plans": False,
 }
 

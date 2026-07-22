@@ -3,4 +3,4 @@ interface:
   short_description: "Execute and verify software changes with minimal process overhead"
   default_prompt: "Use $software-quality-workflows to inspect, implement, and verify this software task directly unless a concrete risk requires durable coordination."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

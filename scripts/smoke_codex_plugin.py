@@ -27,7 +27,7 @@ from build_codex_plugin import _strict_json  # noqa: E402
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": True,
+    "software-quality-workflows": False,
     "writing-plans": False,
 }
 EXPECTED_SKILLS = set(EXPECTED_ACTIVATION)

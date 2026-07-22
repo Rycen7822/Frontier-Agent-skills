@@ -46,7 +46,7 @@ EXPECTED_SKILLS = {
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": True,
+    "software-quality-workflows": False,
     "writing-plans": False,
 }
 EXPECTED_APPROVED_ACTIVATION = {
