@@ -12,7 +12,7 @@
 
 [replace: settled architecture and facts that every milestone preserves]
 
-## Phase and milestone dependency graph
+## Ordered phase and milestone dependency graph
 
 1. [replace: phase or milestone outcome, dependencies, owner seam, and acceptance evidence]
 

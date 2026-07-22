@@ -50,7 +50,7 @@ class QuickWritingPlansTests(unittest.TestCase):
             ],
             "program-plan.md": [
                 "Identity, scope, and authority", "Outcomes and non-goals", "Decisions and invariants",
-                "Phase and milestone dependency graph", "Current frontier", "Migration, rollout, and rollback",
+                "Ordered phase and milestone dependency graph", "Current frontier", "Migration, rollout, and rollback",
                 "Proof gates", "Temporary compatibility and removal", "Open blockers", "Next executable slice",
                 "Decision lineage",
             ],
