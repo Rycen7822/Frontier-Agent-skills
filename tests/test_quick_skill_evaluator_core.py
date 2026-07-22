@@ -78,7 +78,9 @@ class QuickSkillEvaluatorCoreTests(unittest.TestCase):
             "protocol_output_bytes", "failed_command_output_bytes",
         ), analyzer.CONTEXT_EFFICIENCY_FIELDS)
         self.assertTrue({
-            "repeated_static_content_bytes_max", "protocol_output_bytes_max",
+            "controlled_skill_context_bytes_p95", "host_integration_duplicate_bytes_max",
+            "unexplained_repeated_static_content_bytes_max",
+            "unattributed_model_body_read_count_max", "protocol_output_bytes_max",
             "failed_command_output_bytes_max",
         } <= validator.GLOBAL_GATE_METRICS)
 
