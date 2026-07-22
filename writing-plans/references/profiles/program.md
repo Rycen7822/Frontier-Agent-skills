@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Maintain one resumable plan for a multi-milestone software program whose dependencies, migration, or rollout cannot be represented safely as a Brief or one-way handoff.
+Maintain one resumable plan for a multi-milestone software program whose dependencies, migration, or changing frontier exceed a one-way handoff.
 
 ## Use when
 

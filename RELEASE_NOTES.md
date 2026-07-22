@@ -4,7 +4,7 @@
 
 Bundle 5.0.0 removes the standalone `brainstorming` package and publishes exactly four owners: Long Document 1.0.0, Skill Evaluator 2.0.0, Software Quality Workflows 9.0.0, and Writing Plans 8.0.0. SQW now owns proportionate design discovery inside its Direct-first software workflow.
 
-SQW and Writing Plans delete their card, receipt, router, registry, and state runtimes instead of retaining adapters. Direct same-session work creates no workflow artifacts. Writing Plans is explicit-only and produces a Brief directly or one canonical Handoff/Program Markdown; it returns unresolved intent, cause, architecture, authority, and feasibility to SQW.
+SQW and Writing Plans delete their card, receipt, router, registry, and state runtimes instead of retaining adapters. Direct same-session work creates no workflow artifacts. Writing Plans is explicit-only and produces one canonical Handoff/Program Markdown; routine same-session plans remain model-native, and unresolved intent, cause, architecture, authority, and feasibility returns to SQW.
 
 Behavior work is distinction-first rather than strict-RED-first. Closeout classifies only tests added or materially changed in the current diff, retains durable/risk protection, removes temporary or duplicate probes, and gives migration tests an observable deterministic removal contract.
 

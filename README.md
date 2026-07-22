@@ -22,7 +22,7 @@ The indivisible release unit is bundle version 5.0.0 at schema epoch 4. The gene
 The skills assume a capable coding agent and keep the common path compact. Optional references load only for a concrete specialist risk.
 
 - `software-quality-workflows` defaults to Direct execution for authorized, local, reversible same-session work. Direct creates no workflow protocol calls, JSON receipts, router/card state, or fallback ledger.
-- `writing-plans` is explicit-only and compiles settled decisions into a Brief, one executable Handoff, or one resumable Program Markdown. Unresolved intent, cause, architecture, authority, or feasibility returns to SQW.
+- `writing-plans` is explicit-only and compiles settled decisions into one executable Handoff or one resumable Program Markdown. Routine same-session plans remain model-native; unresolved intent, cause, architecture, authority, or feasibility returns to SQW.
 - `long-document-segmented-writing` owns long-corpus drafting, bounded scratch state, deterministic assembly, and final confidence repair.
 - `skill-evaluator` is explicit-only and owns L0–L4 evaluation claim ceilings, package audit, scored analysis, and evidence interpretation.
 

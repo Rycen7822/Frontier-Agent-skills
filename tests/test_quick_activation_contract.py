@@ -44,7 +44,7 @@ class QuickActivationContractTests(unittest.TestCase):
         self.assertIn("is this full body", entry)
         self.assertIn("Never reopen `SKILL.md`", entry)
         self.assertIn("inventory workspace/skill/Git internals", entry)
-        self.assertIn("read only named non-Brief files", entry)
+        self.assertIn("read only files named by the selected profile or bridge", entry)
 
 
 if __name__ == "__main__":
