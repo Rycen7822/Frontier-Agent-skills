@@ -37,7 +37,7 @@ def frontmatter(path: Path) -> dict:
 class QuickSkillContractTests(unittest.TestCase):
     def test_entry_metadata_budget_and_activation(self) -> None:
         self.assertEqual("9.0.0", frontmatter(SKILL_PATH)["metadata"]["version"])
-        self.assertLessEqual(len(SKILL_PATH.read_bytes()), 4096)
+        self.assertLessEqual(len(SKILL_PATH.read_bytes()), 3072)
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
         self.assertIs(agents["policy"]["allow_implicit_invocation"], True)
 
