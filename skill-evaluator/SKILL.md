@@ -52,7 +52,7 @@ Without selection, order, and composition receipts, L4 must not claim library-sc
 
 ## Non-negotiable invariants
 
-- Spec schema v3, canonical `requirements[]`, one receipt index, and one hashed receipt are the only decision inputs. Never accept inline run scores or legacy oracle fields.
+- Spec schema v4, canonical `requirements[]`, one receipt index, and one hashed receipt are the only decision inputs. Never accept inline run scores or legacy oracle fields.
 - L2+ contribution requires the same cases and controls for a no-Skill baseline and a candidate treatment: natural routing for a routing claim, or forced loading for explicit-invocation value. When both are declared, natural routing remains the default comparison unless the analyzer caller selects the forced arm; a prior comparator matches the selected mode.
 - Repeats diagnose run variability; inference resamples distinct case means. Point lift or absolute pass rate cannot replace the declared positive lower-bound benefit gate.
 - Missing, invalid, duplicate, or tampered evidence remains outside metric denominators and makes usefulness inconclusive. Treatment-attributable failures with complete host evidence remain valid outcome failures.
@@ -86,9 +86,9 @@ The analyzer returns `0` for a completed supported/diagnostic result, `1` for ve
 
 ## Owner index
 
-- [Evaluation contract](references/evaluation-contract.md): schema v3, levels, variants, fairness, and claim ceilings.
+- [Evaluation contract](references/evaluation-contract.md): schema v4, levels, variants, fairness, and claim ceilings.
 - [Task-suite design](references/task-suite-design.md): frontier-model filter, requirements, protected controls, and holdout boundaries.
-- [Execution and grading](references/execution-and-grading.md): receipt v2, artifacts, routing, usage, context, graders, and failure classification.
+- [Execution and grading](references/execution-and-grading.md): receipt v3, artifacts, routing, usage, context, graders, and failure classification.
 - [Rubric and metrics](references/rubric-and-metrics.md): independent-case intervals, benefit/context gates, and usefulness states.
 - [Reporting and decisions](references/reporting-and-decisions.md): evidence, usefulness, manual authority, and external-decision boundaries.
 - [Longitudinal evaluation](references/longitudinal-evaluation.md): version and cycle monitoring.

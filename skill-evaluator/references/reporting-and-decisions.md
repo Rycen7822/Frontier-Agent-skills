@@ -59,22 +59,23 @@ Report:
 
 An invalid receipt is invalid evidence. Do not summarize claims copied from a trace, final answer, or host event when the receipt binding failed.
 
-Arm report v2 repeats the candidate identity and all frozen input hashes, binds the receipt index's raw file bytes, and carries separate `evidence_status` and `usefulness_status`. Its `report_hash` uses the same self-field-removal canonical algorithm as receipt v2. Aggregate input identities are raw arm-report file hashes, not reserialized object hashes. A missing arm is incomplete; a schema, identity, capture, conservation, or self-hash failure is invalid; a complete arm whose benefit is unsupported remains complete evidence.
+Arm report v3 repeats the candidate identity and all frozen input hashes, binds the receipt index's raw file bytes, and carries separate `evidence_status` and `usefulness_status`. Its `report_hash` uses the same self-field-removal canonical algorithm as receipt v3. Invalid/incomplete reports retain these bindings; an already-corrupt grader surface is represented by a null grader-set hash plus its evidence issue, not by an unhandled second failure. Aggregate input identities are raw arm-report file hashes, not reserialized object hashes. A missing arm is incomplete; a schema, identity, capture, conservation, or self-hash failure is invalid; a complete arm whose benefit is unsupported remains complete evidence.
 
 ## Independent-case attribution
 
-Separate descriptive run pairs from inferential cases:
+Use the report's keyed `paired_metrics` map:
 
-- `run_pair_count` describes matched repeat-level outcomes;
-- `paired_case_count` is the number of distinct cases in the case-cluster interval;
-- wins, losses, tie-pass, and tie-fail are descriptive pair diagnostics;
-- interval point/lower/upper values come from one case-mean difference per distinct case.
+- `case_count` is the number of distinct independent cases;
+- `repeat_count` describes repeats per case and never becomes inferential `n`;
+- point/lower/upper values come from one direction-normalized benefit per distinct case;
+- every difference names its `case_id` and retains comparator/candidate raw and reported-scale values;
+- `paired_task_failures` discloses cost pairs excluded because either arm failed the task.
 
-Never present repeats as independent statistical samples. Report the confidence level, iterations, seed, resampling unit, missing paired fields, and candidate-only/baseline-only case IDs. If the matrix or required field coverage is incomplete, report the interval as not evaluable.
+Never present repeats as independent statistical samples. Report comparator, metric, direction, effect, estimand, scale, threshold, interval, and keyed contrary cases. If the matrix or required field coverage is incomplete, or a relative comparator is zero, report the interval as not evaluable.
 
 ## Gates and usefulness
 
-List every frozen hard gate with metric, operator, threshold, observed value, and status. Identify the single designated benefit gate separately from guardrails.
+List the single `primary_benefit` separately, then every frozen hard gate with metric, comparator when comparative, direction/effect, threshold, observed value, and status.
 
 Usefulness is `supported` only when evidence is complete, the benefit lower-bound gate passes, every guardrail passes, protected outcomes have no failure, and no material safety harm was observed. Report `not_supported`, `inconclusive`, or `not_applicable` exactly as derived; do not repair the status in prose.
 

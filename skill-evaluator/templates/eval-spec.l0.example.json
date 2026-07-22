@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "evaluation_id": "package-audit-v1",
   "decision": "audit the package without making runtime claims",
   "claim_scope": "static package structure, provenance, links, and review findings",

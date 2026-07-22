@@ -21,6 +21,8 @@ from typing import Any, Iterable
 
 from audit_skill_package import compute_inventory_hash
 from validate_eval_suite import (
+    COST_METRICS,
+    PAIRED_METRIC_DIRECTIONS,
     check_cases,
     check_spec,
     load_json as load_contract_json,
@@ -49,6 +51,24 @@ CONTEXT_EFFICIENCY_FIELDS = (
 DYNAMIC_CONTEXT_SOURCE = re.compile(
     r"^(?:protocol|failed-command):[A-Za-z0-9][A-Za-z0-9._-]{0,63}:[1-9][0-9]*$"
 )
+PAIRED_METRIC_SOURCES = {
+    "task_pass_rate": (None, "task_pass", "binary"),
+    "safety_pass_rate": (None, "safety_pass", "binary"),
+    "process_score_normalized": (None, "process_score", "score"),
+    "quality_score_normalized": (None, "quality_score", "score"),
+    "tokens_in": (None, "tokens_in", "native"),
+    "tokens_out": (None, "tokens_out", "native"),
+    "task_tool_calls": ("counts", "task_tool_calls", "native"),
+    "prewrite_task_tool_calls": ("counts", "prewrite_task_tool_calls", "native"),
+    "prewrite_tool_output_bytes": ("bytes", "prewrite_tool_output_bytes", "native"),
+    "skill_context_bytes": ("context_usage", "bytes", "native"),
+    "host_injected_body_count": ("counts", "host_injected_body_count", "native"),
+    "model_initiated_body_read_count": ("counts", "model_initiated_body_read_count", "native"),
+    "reference_load_count": ("counts", "reference_load_count", "native"),
+    "skill_load_tool_calls": ("counts", "skill_load_tool_calls", "native"),
+    "skill_protocol_tool_calls": ("counts", "skill_protocol_tool_calls", "native"),
+    "workflow_artifact_count": ("counts", "workflow_artifact_count", "native"),
+}
 
 
 def canonical_sha256(value: Any) -> str:
@@ -245,7 +265,7 @@ def verify_ordered_trace(
 ) -> list[dict[str, Any]]:
     expected = {"artifact", "sha256", "event_count", "context_capture"}
     if not isinstance(trace, dict) or set(trace) != expected:
-        raise ValueError("receipt trace fields do not match receipt v2")
+        raise ValueError("receipt trace fields do not match receipt v3")
     artifact = trace.get("artifact")
     if artifact not in artifacts or artifacts[artifact]["encoding"] != "utf-8":
         raise ValueError("ordered trace must reference one allowlisted UTF-8 artifact")
@@ -279,7 +299,7 @@ def verify_routing_stage(
     artifacts: dict[str, dict[str, Any]],
 ) -> Any:
     if not isinstance(stage, dict) or set(stage) != {"status", "value", "evidence"}:
-        raise ValueError(f"routing.{label} fields do not match receipt v2")
+        raise ValueError(f"routing.{label} fields do not match receipt v3")
     status = stage.get("status")
     value = stage.get("value")
     evidence = stage.get("evidence")
@@ -539,6 +559,38 @@ def compute_grader_digest(grader: dict[str, Any], spec_root: Path) -> str:
     return canonical_sha256(binding)
 
 
+def report_identity_fields(
+    spec: dict[str, Any], spec_path: Path, receipt_index_path: Path, *, strict: bool = True,
+) -> dict[str, Any]:
+    try:
+        grader_set_hash = canonical_sha256([
+            {"id": grader["id"], "sha256": compute_grader_digest(grader, spec_path.parent)}
+            for grader in sorted(spec["graders"], key=lambda item: item["id"])
+        ])
+    except (OSError, ValueError):
+        if strict:
+            raise
+        grader_set_hash = None
+    treatment_hashes = {
+        variant["treatment_hash"] for variant in spec["variants"]
+        if variant["role"] == "candidate"
+    }
+    return {
+        "candidate_revision": spec["target"]["candidate_revision"],
+        "candidate_source_tree_hash": spec["target"]["candidate_source_tree_hash"],
+        "candidate_plugin_tree_hash": spec["target"]["candidate_plugin_tree_hash"],
+        "spec_content_hash": file_sha256(spec_path),
+        "cases_content_hash": spec["suite"]["cases_content_hash"],
+        "case_contracts_content_hash": spec["suite"]["case_contracts_content_hash"],
+        "fixture_manifest_set_hash": spec["suite"]["fixture_manifest_set_hash"],
+        "grader_set_hash": grader_set_hash,
+        "grader_batch_schedule_hash": spec["suite"]["grader_batch_schedule_hash"],
+        "treatment_hash": next(iter(treatment_hashes)) if len(treatment_hashes) == 1 else None,
+        "environment_hash": canonical_sha256(spec["environment"]),
+        "receipt_index_content_hash": file_sha256(receipt_index_path),
+    }
+
+
 def verify_fixture(case: dict[str, Any], artifacts_root: Path) -> str:
     fixture = case["fixture"]
     _, manifest_path = resolve_bound_file(artifacts_root, fixture["manifest"], "fixture manifest")
@@ -599,9 +651,9 @@ def derive_verified_run(
         "boundaries", "bytes", "counts", "usage", "context_usage", "grader_outputs",
     }
     if not isinstance(receipt, dict) or set(receipt) != receipt_fields:
-        raise ValueError("receipt fields do not match receipt v2")
-    if receipt.get("schema_version") != 2:
-        raise ValueError("receipt schema_version must equal 2")
+        raise ValueError("receipt fields do not match receipt v3")
+    if receipt.get("schema_version") != 3:
+        raise ValueError("receipt schema_version must equal 3")
     if not verify_self_hash(receipt, "receipt_hash"):
         raise ValueError("receipt self-hash mismatch")
 
@@ -611,7 +663,7 @@ def derive_verified_run(
         "invalid_reason", "provenance",
     }
     if not isinstance(run, dict) or set(run) != run_fields:
-        raise ValueError("receipt run fields do not match receipt v2")
+        raise ValueError("receipt run fields do not match receipt v3")
     for field in ("run_id", "case_id", "variant", "repeat"):
         if run.get(field) != row[field]:
             raise ValueError(f"receipt/index identity mismatch for {field}")
@@ -664,7 +716,7 @@ def derive_verified_run(
         "environment_hash", "package_hash", "catalog_hash", "treatment_hash",
     }
     if not isinstance(provenance, dict) or set(provenance) != provenance_fields:
-        raise ValueError("receipt provenance fields do not match receipt v2")
+        raise ValueError("receipt provenance fields do not match receipt v3")
     expected_provenance = {
         "candidate_revision": spec["target"]["candidate_revision"],
         "candidate_source_tree_hash": spec["target"]["candidate_source_tree_hash"],
@@ -695,7 +747,7 @@ def derive_verified_run(
         "resources_loaded",
     }
     if not isinstance(routing, dict) or set(routing) != routing_fields:
-        raise ValueError("receipt routing fields do not match receipt v2")
+        raise ValueError("receipt routing fields do not match receipt v3")
     retrieved_skill_ids = verify_routing_stage(
         routing["retrieved"], label="retrieved", value_type="ids", artifacts=artifacts,
     )
@@ -731,7 +783,7 @@ def derive_verified_run(
     if not isinstance(boundaries, dict) or set(boundaries) != {
         "first_successful_source_write_seq", "first_deliverable_seq",
     }:
-        raise ValueError("receipt boundaries fields do not match receipt v2")
+        raise ValueError("receipt boundaries fields do not match receipt v3")
     derived_source_seq = next((
         event["event_seq"] for event in ordered_events
         if event.get("event") == "source_write"
@@ -751,7 +803,7 @@ def derive_verified_run(
     byte_fields = set(CONTEXT_EFFICIENCY_FIELDS) | {"prewrite_tool_output_bytes"}
     byte_counts = receipt.get("bytes")
     if not isinstance(byte_counts, dict) or set(byte_counts) != byte_fields:
-        raise ValueError("receipt bytes fields do not match receipt v2")
+        raise ValueError("receipt bytes fields do not match receipt v3")
     if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in byte_counts.values()):
         raise ValueError("receipt byte counts must be non-negative integers")
 
@@ -762,7 +814,7 @@ def derive_verified_run(
     }
     counts = receipt.get("counts")
     if not isinstance(counts, dict) or set(counts) != count_fields:
-        raise ValueError("receipt counts fields do not match receipt v2")
+        raise ValueError("receipt counts fields do not match receipt v3")
     if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in counts.values()):
         raise ValueError("receipt counts must be non-negative integers")
     if counts["body_load_count"] != (
@@ -781,7 +833,7 @@ def derive_verified_run(
     usage = receipt.get("usage")
     usage_fields = {"tokens_in", "tokens_out", "latency_ms", "retries", "evidence"}
     if not isinstance(usage, dict) or set(usage) != usage_fields:
-        raise ValueError("receipt usage fields do not match receipt v2")
+        raise ValueError("receipt usage fields do not match receipt v3")
     for field in usage_fields - {"evidence"}:
         value = usage.get(field)
         if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(float(value)) or value < 0:
@@ -811,7 +863,7 @@ def derive_verified_run(
         if not isinstance(component, dict) or set(component) != {
             "kind", "source_path", "artifact", "tokens",
         }:
-            raise ValueError(f"context component {index} fields do not match receipt v2")
+            raise ValueError(f"context component {index} fields do not match receipt v3")
         kind = component.get("kind")
         source_path = component.get("source_path")
         artifact = component.get("artifact")
@@ -947,7 +999,7 @@ def derive_verified_run(
                 "stdout_artifact", "stderr_artifact", "exit_code",
             }
             if set(invocation) != invocation_fields:
-                raise ValueError("deterministic invocation fields do not match receipt v2")
+                raise ValueError("deterministic invocation fields do not match receipt v3")
             if invocation["grader_sha256"] != grader_digests[grader_id]:
                 raise ValueError("deterministic invocation grader_sha256 mismatch")
             expected_checks = sorted(requirement["check_id"] for requirement in requirements)
@@ -1203,7 +1255,10 @@ def routing_summary(
         )
     ]
     if not target_skill_id:
-        return {"status": "not_evaluable", "reason": "target skill ID is unavailable", "n": len(rows)}
+        return {
+            "status": "not_evaluable", "reason": "target skill ID is unavailable",
+            "n": len({row.get("case_id") for row in rows}), "run_count": len(rows),
+        }
     required_fields = {
         "should_trigger", "retrieved_skill_ids", "selected_skill_id", "skill_body_loaded",
         "resources_loaded", "skill_incorporated", "skill_applied",
@@ -1229,13 +1284,33 @@ def routing_summary(
         return {
             "status": "not_evaluable",
             "reason": "routing-stage evidence is incomplete or malformed",
-            "n": len(rows),
+            "n": len({row.get("case_id") for row in rows}),
+            "run_count": len(rows),
             "missing": missing[:100],
             "bad_types": bad_types[:100],
         }
 
-    positives = [row for row in rows if row["should_trigger"]]
-    negatives = [row for row in rows if not row["should_trigger"]]
+    by_case: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        by_case[row["case_id"]].append(row)
+    inconsistent_labels = [
+        case_id for case_id, case_rows in by_case.items()
+        if len({row["should_trigger"] for row in case_rows}) != 1
+    ]
+    if inconsistent_labels:
+        return {
+            "status": "not_evaluable",
+            "reason": "should_trigger disagrees across repeats",
+            "case_ids": sorted(inconsistent_labels),
+            "n": len(by_case),
+        }
+
+    cases = [
+        (case_id, sorted(case_rows, key=lambda row: row["repeat"]))
+        for case_id, case_rows in sorted(by_case.items())
+    ]
+    positives = [(case_id, case_rows) for case_id, case_rows in cases if case_rows[0]["should_trigger"]]
+    negatives = [(case_id, case_rows) for case_id, case_rows in cases if not case_rows[0]["should_trigger"]]
 
     def retrieved(row: dict[str, Any]) -> bool:
         return target_skill_id in row["retrieved_skill_ids"]
@@ -1243,56 +1318,78 @@ def routing_summary(
     def selected(row: dict[str, Any]) -> bool:
         return row["selected_skill_id"] == target_skill_id
 
-    tp = sum(1 for row in rows if row["should_trigger"] and selected(row))
-    fn = sum(1 for row in rows if row["should_trigger"] and not selected(row))
-    fp = sum(1 for row in rows if not row["should_trigger"] and selected(row))
-    tn = sum(1 for row in rows if not row["should_trigger"] and not selected(row))
+    def all_stage(case_rows: list[dict[str, Any]], predicate: Any) -> bool:
+        return all(predicate(row) for row in case_rows)
+
+    def any_stage(case_rows: list[dict[str, Any]], predicate: Any) -> bool:
+        return any(predicate(row) for row in case_rows)
+
+    positive_loaded = [all_stage(case_rows, lambda row: row["skill_body_loaded"]) for _, case_rows in positives]
+    negative_loaded = [any_stage(case_rows, lambda row: row["skill_body_loaded"]) for _, case_rows in negatives]
+    tp = sum(positive_loaded)
+    fn = len(positive_loaded) - tp
+    fp = sum(negative_loaded)
+    tn = len(negative_loaded) - fp
     precision = tp / (tp + fp) if tp + fp else None
     recall = tp / (tp + fn) if tp + fn else None
     f1 = 2 * precision * recall / (precision + recall) if precision is not None and recall is not None and precision + recall else None
 
     reciprocal_ranks = []
-    for row in positives:
-        try:
-            reciprocal_ranks.append(1.0 / (row["retrieved_skill_ids"].index(target_skill_id) + 1))
-        except ValueError:
-            reciprocal_ranks.append(0.0)
+    for _, case_rows in positives:
+        repeat_ranks = []
+        for row in case_rows:
+            try:
+                repeat_ranks.append(1.0 / (row["retrieved_skill_ids"].index(target_skill_id) + 1))
+            except ValueError:
+                repeat_ranks.append(0.0)
+        reciprocal_ranks.append(statistics.fmean(repeat_ranks))
 
     failure_counts: Counter[str] = Counter()
-    for row in rows:
-        if row["should_trigger"]:
-            if not retrieved(row):
+    for _, case_rows in cases:
+        should_trigger = case_rows[0]["should_trigger"]
+        if should_trigger:
+            if not all_stage(case_rows, retrieved):
                 failure_counts["retrieval_miss"] += 1
-            elif not selected(row):
+            elif not all_stage(case_rows, selected):
                 failure_counts["selection_miss"] += 1
-            elif not row["skill_body_loaded"]:
+            elif not all_stage(case_rows, lambda row: row["skill_body_loaded"]):
                 failure_counts["body_load_miss"] += 1
-            elif not row["skill_incorporated"]:
+            elif not all_stage(case_rows, lambda row: row["skill_incorporated"]):
                 failure_counts["incorporation_miss"] += 1
-            elif not row["skill_applied"]:
+            elif not all_stage(case_rows, lambda row: row["skill_applied"]):
                 failure_counts["application_miss"] += 1
         else:
-            if selected(row):
+            if any_stage(case_rows, selected):
                 failure_counts["false_selection"] += 1
-            if row["skill_body_loaded"]:
+            if any_stage(case_rows, lambda row: row["skill_body_loaded"]):
                 failure_counts["false_body_load"] += 1
-            if row["skill_applied"]:
+            if any_stage(case_rows, lambda row: row["skill_applied"]):
                 failure_counts["false_application"] += 1
 
-    retrieval_positive = proportion(retrieved(row) for row in positives)
-    retrieval_negative = proportion(retrieved(row) for row in negatives)
-    selection_positive = proportion(selected(row) for row in positives)
-    selection_negative = proportion(selected(row) for row in negatives)
-    body_positive = proportion(row["skill_body_loaded"] for row in positives)
-    body_negative = proportion(row["skill_body_loaded"] for row in negatives)
-    incorporated_positive = proportion(row["skill_incorporated"] for row in positives)
-    applied_positive = proportion(row["skill_applied"] for row in positives)
-    applied_negative = proportion(row["skill_applied"] for row in negatives)
+    retrieval_positive = proportion(all_stage(case_rows, retrieved) for _, case_rows in positives)
+    retrieval_negative = proportion(any_stage(case_rows, retrieved) for _, case_rows in negatives)
+    selection_positive = proportion(all_stage(case_rows, selected) for _, case_rows in positives)
+    selection_negative = proportion(any_stage(case_rows, selected) for _, case_rows in negatives)
+    body_positive = proportion(positive_loaded)
+    body_negative = proportion(negative_loaded)
+    incorporated_positive = proportion(
+        all_stage(case_rows, lambda row: row["skill_incorporated"]) for _, case_rows in positives
+    )
+    applied_positive = proportion(
+        all_stage(case_rows, lambda row: row["skill_applied"]) for _, case_rows in positives
+    )
+    applied_negative = proportion(
+        any_stage(case_rows, lambda row: row["skill_applied"]) for _, case_rows in negatives
+    )
+    repeat_consistency = proportion(
+        len({row["skill_body_loaded"] for row in case_rows}) == 1 for _, case_rows in cases
+    )
 
     return {
         "status": "complete",
         "target_skill_id": target_skill_id,
-        "n": len(rows),
+        "n": len(cases),
+        "run_count": len(rows),
         "confusion": {"tp": tp, "fp": fp, "tn": tn, "fn": fn},
         "precision": precision,
         "precision_wilson95": wilson(tp, tp + fp),
@@ -1310,7 +1407,11 @@ def routing_summary(
         "body_load": {"positive_rate": body_positive, "negative_rate": body_negative},
         "incorporation": {"positive_rate": incorporated_positive},
         "application": {"positive_rate": applied_positive, "negative_rate": applied_negative},
-        "resources_loaded": continuous(len(row["resources_loaded"]) for row in rows),
+        "repeat_consistency": repeat_consistency,
+        "resources_loaded": continuous(
+            statistics.fmean(len(row["resources_loaded"]) for row in case_rows)
+            for _, case_rows in cases
+        ),
         "stage_failure_counts": dict(sorted(failure_counts.items())),
     }
 
@@ -1409,73 +1510,13 @@ def paired_summary(
             continue
         pairs.append((key, base, cand))
 
-    wins = sum(1 for _, b, c in pairs if c["task_pass"] and not b["task_pass"])
-    losses = sum(1 for _, b, c in pairs if not c["task_pass"] and b["task_pass"])
-    tie_pass = sum(1 for _, b, c in pairs if c["task_pass"] and b["task_pass"])
-    tie_fail = sum(1 for _, b, c in pairs if not c["task_pass"] and not b["task_pass"])
-    base_values = [b["task_pass"] for _, b, _ in pairs]
-    cand_values = [c["task_pass"] for _, _, c in pairs]
-    field_types = {
-        "task_pass": bool,
-        "process_score": (int, float),
-        "quality_score": (int, float),
-        "safety_pass": bool,
-    }
-    case_difference_vectors: dict[str, list[float]] = {}
-    missing_paired_fields: dict[str, int] = {}
-    for field, expected_type in field_types.items():
-        by_case: dict[str, list[float]] = defaultdict(list)
-        missing = 0
-        for key, base, cand in pairs:
-            base_value = base.get(field)
-            cand_value = cand.get(field)
-            if expected_type is bool:
-                valid_values = isinstance(base_value, bool) and isinstance(cand_value, bool)
-            else:
-                valid_values = (
-                    isinstance(base_value, expected_type) and not isinstance(base_value, bool)
-                    and isinstance(cand_value, expected_type) and not isinstance(cand_value, bool)
-                )
-            if not valid_values:
-                missing += 1
-                continue
-            by_case[key[0]].append(float(cand_value) - float(base_value))
-        case_difference_vectors[field] = [
-            sum(values) / len(values)
-            for _, values in sorted(by_case.items())
-        ]
-        missing_paired_fields[field] = missing
-    base_rate = sum(base_values) / len(base_values) if base_values else None
-    cand_rate = sum(cand_values) / len(cand_values) if cand_values else None
-
-    both_pass = [(b, c) for _, b, c in pairs if b["task_pass"] and c["task_pass"]]
-    efficiency_delta = {}
-    for field in ("tokens_in", "tokens_out", "latency_ms", "tool_calls", "retries"):
-        deltas = [float(c[field]) - float(b[field]) for b, c in both_pass if isinstance(b.get(field), (int, float)) and isinstance(c.get(field), (int, float))]
-        efficiency_delta[field] = continuous(deltas)
-
     return {
         "baseline": baseline,
         "candidate": candidate,
         "shared_keys": len(shared),
         "paired_valid": len(pairs),
-        "run_pair_count": len(pairs),
-        "repeat_count": len({key[1] for key, _, _ in pairs}),
         "excluded": dict(excluded),
         "duplicate_variant_keys": duplicate_keys,
-        "wins": wins,
-        "losses": losses,
-        "tie_pass": tie_pass,
-        "tie_fail": tie_fail,
-        "baseline_pass_rate": base_rate,
-        "candidate_pass_rate": cand_rate,
-        "absolute_pass_lift": cand_rate - base_rate if base_rate is not None and cand_rate is not None else None,
-        "paired_task_pass_lift": cand_rate - base_rate if base_rate is not None and cand_rate is not None else None,
-        "case_difference_vectors": case_difference_vectors,
-        "missing_paired_fields": missing_paired_fields,
-        "success_conditioned_efficiency_delta": efficiency_delta,
-        "candidate_only_failures": [key[0] for key, b, c in pairs if not c["task_pass"] and b["task_pass"]],
-        "candidate_only_wins": [key[0] for key, b, c in pairs if c["task_pass"] and not b["task_pass"]],
     }
 
 
@@ -1509,56 +1550,168 @@ def summarize_case_differences(
         "point": sum(values) / count,
         "lower": percentile(bootstrap_means, alpha / 2),
         "upper": percentile(bootstrap_means, 1 - alpha / 2),
-        "paired_case_count": count,
+        "case_count": count,
         "resampling_unit": "case_id",
     }
 
 
-def paired_case_uncertainty(
-    paired: dict[str, Any] | None,
-    spec: dict[str, Any] | None,
-    completeness: dict[str, Any] | None,
-    field: str,
-) -> dict[str, Any]:
-    if spec is None:
-        return {"status": "not_evaluable", "reason": "no frozen spec supplied"}
-    if paired is None:
-        return {"status": "not_evaluable", "reason": "baseline/candidate pair was not resolved"}
-    if completeness and (
-        completeness.get("missing_expected_keys_count", 0)
-        or completeness.get("invalid_expected_keys_count", 0)
-    ):
-        return {"status": "not_evaluable", "reason": "run matrix evidence is missing or invalid"}
-    if paired.get("duplicate_variant_keys"):
-        return {"status": "not_evaluable", "reason": "duplicate pair keys are present"}
-    if sum(paired.get("excluded", {}).values()):
-        return {"status": "not_evaluable", "reason": "one or more shared pairs were excluded"}
-    if paired.get("missing_paired_fields", {}).get(field):
-        return {"status": "not_evaluable", "reason": f"paired {field} evidence is incomplete"}
-    differences = paired.get("case_difference_vectors", {}).get(field)
-    if not isinstance(differences, list) or len(differences) < 2:
-        return {"status": "not_evaluable", "reason": "at least two distinct complete cases are required"}
+def paired_metric_value(record: dict[str, Any], metric: str) -> tuple[float, float]:
+    container, field, scale = PAIRED_METRIC_SOURCES[metric]
+    source = record if container is None else record.get(container)
+    if not isinstance(source, dict) or field not in source:
+        raise ValueError(f"missing {metric}")
+    value = source[field]
+    if scale == "binary":
+        if not isinstance(value, bool):
+            raise ValueError(f"{metric} must be boolean")
+        raw = float(value)
+        return raw, raw
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(float(value)):
+        raise ValueError(f"{metric} must be finite numeric")
+    raw = float(value)
+    if raw < 0:
+        raise ValueError(f"{metric} must be non-negative")
+    if scale == "score":
+        if raw > 100:
+            raise ValueError(f"{metric} raw score must be in [0, 100]")
+        return raw, raw / 100
+    return raw, raw
 
-    analysis = spec["analysis"]
-    confidence = float(analysis["confidence_level"])
-    iterations = int(analysis["paired_bootstrap_iterations"])
-    seed = int(spec["environment"]["random_seed"])
-    summary = summarize_case_differences(
-        differences,
-        confidence_level=confidence,
-        bootstrap_iterations=iterations,
-        random_seed=seed,
+
+def paired_metric_scale(metric: str) -> dict[str, str]:
+    if metric in {"process_score_normalized", "quality_score_normalized"}:
+        return {"raw": "rubric_0_100", "reported": "normalized_0_1", "normalization": "raw / 100"}
+    if metric in {"task_pass_rate", "safety_pass_rate"}:
+        return {"raw": "boolean", "reported": "binary_0_1", "normalization": "false=0,true=1"}
+    return {"raw": "native", "reported": "native", "normalization": "identity"}
+
+
+def paired_metric_result_base(
+    metric: str, comparator: str, direction: str, effect: str,
+) -> dict[str, Any]:
+    return {
+        "status": "not_evaluable",
+        "comparator": comparator,
+        "direction": direction,
+        "effect": effect,
+        "estimand": f"{direction}:{effect}:{metric}:candidate_vs_{comparator}",
+        "scale": paired_metric_scale(metric),
+        "case_count": 0,
+        "repeat_count": 0,
+        "point": None,
+        "lower": None,
+        "upper": None,
+        "case_differences": [],
+        "task_failures": [],
+    }
+
+
+def summarize_paired_metric(
+    records: list[dict[str, Any]], *, comparator: str, candidate: str,
+    metric: str, direction: str, effect: str, confidence_level: float,
+    bootstrap_iterations: int, random_seed: int,
+    eligible_case_ids: set[str] | None = None,
+) -> dict[str, Any]:
+    base = paired_metric_result_base(metric, comparator, direction, effect)
+    if metric not in PAIRED_METRIC_DIRECTIONS:
+        return {**base, "reason": f"unsupported paired metric: {metric}"}
+    if direction != PAIRED_METRIC_DIRECTIONS[metric]:
+        return {**base, "reason": f"direction contradicts metric: {metric}"}
+    if effect not in {"absolute", "relative"}:
+        return {**base, "reason": f"unsupported effect: {effect}"}
+
+    indexed: dict[tuple[str, str, int], list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        if eligible_case_ids is not None and record.get("case_id") not in eligible_case_ids:
+            continue
+        if record.get("variant") in {comparator, candidate}:
+            indexed[(record["variant"], record["case_id"], record["repeat"])].append(record)
+    comparator_keys = {(case_id, repeat) for variant, case_id, repeat in indexed if variant == comparator}
+    candidate_keys = {(case_id, repeat) for variant, case_id, repeat in indexed if variant == candidate}
+    shared_keys = sorted(comparator_keys & candidate_keys)
+    if not shared_keys:
+        return {**base, "reason": "no shared comparator/candidate pairs"}
+    duplicate_keys = [
+        f"{variant}:{case_id}:{repeat}"
+        for (variant, case_id, repeat), rows in sorted(indexed.items()) if len(rows) != 1
+    ]
+    if duplicate_keys:
+        return {**base, "reason": "duplicate variant/case/repeat keys", "duplicate_keys": duplicate_keys}
+
+    by_case: dict[str, list[tuple[float, float, float, float]]] = defaultdict(list)
+    task_failures: list[dict[str, Any]] = []
+    for case_id, repeat in shared_keys:
+        comparator_row = indexed[(comparator, case_id, repeat)][0]
+        candidate_row = indexed[(candidate, case_id, repeat)][0]
+        if comparator_row.get("valid") is not True or candidate_row.get("valid") is not True:
+            return {**base, "reason": "paired run is invalid"}
+        if metric in COST_METRICS and (
+            comparator_row.get("task_pass") is not True or candidate_row.get("task_pass") is not True
+        ):
+            task_failures.append({
+                "case_id": case_id,
+                "repeat": repeat,
+                "comparator_task_pass": comparator_row.get("task_pass"),
+                "candidate_task_pass": candidate_row.get("task_pass"),
+            })
+            continue
+        try:
+            comparator_raw, comparator_value = paired_metric_value(comparator_row, metric)
+            candidate_raw, candidate_value = paired_metric_value(candidate_row, metric)
+        except ValueError as exc:
+            return {**base, "reason": str(exc), "task_failures": task_failures}
+        by_case[case_id].append((comparator_raw, candidate_raw, comparator_value, candidate_value))
+
+    case_differences: list[dict[str, Any]] = []
+    for case_id, values in sorted(by_case.items()):
+        comparator_raw = statistics.fmean(item[0] for item in values)
+        candidate_raw = statistics.fmean(item[1] for item in values)
+        comparator_value = statistics.fmean(item[2] for item in values)
+        candidate_value = statistics.fmean(item[3] for item in values)
+        if effect == "relative" and comparator_value == 0:
+            return {
+                **base,
+                "reason": f"comparator value is zero for case {case_id}",
+                "task_failures": task_failures,
+            }
+        signed_difference = (
+            candidate_value - comparator_value
+            if direction == "higher_is_better" else comparator_value - candidate_value
+        )
+        benefit = signed_difference if effect == "absolute" else signed_difference / comparator_value
+        case_differences.append({
+            "case_id": case_id,
+            "comparator_raw_value": comparator_raw,
+            "candidate_raw_value": candidate_raw,
+            "comparator_value": comparator_value,
+            "candidate_value": candidate_value,
+            "benefit": benefit,
+        })
+    if len(case_differences) < 2:
+        return {
+            **base,
+            "reason": "at least two distinct complete cases are required",
+            "case_count": len(case_differences),
+            "repeat_count": len({repeat for _, repeat in shared_keys}),
+            "case_differences": case_differences,
+            "task_failures": task_failures,
+        }
+    uncertainty = summarize_case_differences(
+        [row["benefit"] for row in case_differences],
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed,
     )
     return {
+        **base,
         "status": "complete",
-        "method": "case_cluster_percentile_bootstrap",
-        "estimand": "candidate_task_pass_rate_minus_baseline_task_pass_rate",
-        "confidence_level": confidence,
-        "iterations": iterations,
-        "random_seed": seed,
-        "run_pair_count": paired["run_pair_count"],
-        "repeat_count": paired["repeat_count"],
-        **summary,
+        "case_count": len(case_differences),
+        "repeat_count": len({repeat for _, repeat in shared_keys}),
+        "point": uncertainty["point"],
+        "lower": uncertainty["lower"],
+        "upper": uncertainty["upper"],
+        "case_differences": case_differences,
+        "task_failures": task_failures,
     }
 
 
@@ -1607,6 +1760,82 @@ def resolve_comparative_variant(
         and (available is None or variant["id"] in available)
     ]
     return matches[0] if len(matches) == 1 else None
+
+
+def build_paired_metrics(
+    records: list[dict[str, Any]], spec: dict[str, Any], *, candidate: str,
+    comparator_variants: dict[str, str | None], cases_by_id: dict[str, dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+    primary = spec["analysis"]["primary_benefit"]
+    definitions = [primary] + [
+        gate for gate in spec.get("hard_gates", [])
+        if gate.get("metric") in PAIRED_METRIC_DIRECTIONS
+    ]
+    candidate_definition = next(item for item in spec["variants"] if item["id"] == candidate)
+    results: dict[str, dict[str, Any]] = {}
+    task_failures: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for definition in definitions:
+        metric = definition["metric"]
+        comparator_role = definition["comparator"]
+        comparator = comparator_variants.get(comparator_role)
+        if comparator is None:
+            unavailable = {
+                **paired_metric_result_base(
+                    metric, comparator_role, definition["direction"], definition["effect"],
+                ),
+                "reason": f"{comparator_role} comparator variant is unavailable",
+                "comparator_variant": None,
+            }
+            unavailable.pop("task_failures")
+            results[metric] = unavailable
+            continue
+        comparator_definition = next(item for item in spec["variants"] if item["id"] == comparator)
+        candidate_profile = f"{candidate_definition['role']}/{candidate_definition['mode']}"
+        comparator_profile = f"{comparator_definition['role']}/{comparator_definition['mode']}"
+        eligible_case_ids = {
+            case_id for case_id, case in cases_by_id.items()
+            if case.get("attribution_evaluable") is True
+            and candidate_profile in case.get("applicable_variant_profiles", [])
+            and comparator_profile in case.get("applicable_variant_profiles", [])
+        }
+        summary = summarize_paired_metric(
+            records, comparator=comparator, candidate=candidate, metric=metric,
+            direction=definition["direction"], effect=definition["effect"],
+            confidence_level=float(spec["analysis"]["confidence_level"]),
+            bootstrap_iterations=int(spec["analysis"]["paired_bootstrap_iterations"]),
+            random_seed=int(spec["environment"]["random_seed"]),
+            eligible_case_ids=eligible_case_ids,
+        )
+        for failure in summary.pop("task_failures", []):
+            key = (
+                comparator_role, failure["case_id"], failure["repeat"],
+                failure["comparator_task_pass"], failure["candidate_task_pass"],
+            )
+            task_failures[key] = {"comparator": comparator_role, **failure}
+        summary["comparator"] = comparator_role
+        summary["comparator_variant"] = comparator
+        results[metric] = summary
+    return results, [task_failures[key] for key in sorted(task_failures, key=str)]
+
+
+def evaluate_benefit(summary: dict[str, Any], minimum_benefit: float) -> dict[str, Any]:
+    result = {
+        "minimum_benefit": float(minimum_benefit),
+        "point": summary.get("point"),
+        "lower": summary.get("lower"),
+        "upper": summary.get("upper"),
+    }
+    if summary.get("status") != "complete":
+        return {**result, "status": "not_evaluable", "reason": summary.get("reason", "paired metric unavailable")}
+    if summary["lower"] >= minimum_benefit:
+        return {**result, "status": "pass", "reason": None}
+    if summary["upper"] < minimum_benefit:
+        return {**result, "status": "fail", "reason": None}
+    return {
+        **result,
+        "status": "not_evaluable",
+        "reason": "benefit interval overlaps the declared threshold",
+    }
 
 
 def strict_field_sum(records: list[dict[str, Any]], variant: str, field: str) -> float | None:
@@ -1717,6 +1946,54 @@ def summarize_skill_context(
     for record in records:
         indexed[(record["variant"], record["case_id"], record["repeat"])].append(record)
 
+    valid_rows = [record for record in records if record.get("valid") is True]
+    conservation_failures = 0
+    for row in valid_rows:
+        context = row.get("context_usage")
+        values = [context.get(field) for field in CONTEXT_EFFICIENCY_FIELDS] if isinstance(context, dict) else []
+        if (
+            len(values) != len(CONTEXT_EFFICIENCY_FIELDS)
+            or any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in values)
+            or context.get("bytes") != sum(values)
+        ):
+            conservation_failures += 1
+
+    negative_case_ids = {
+        case_id for case_id, case in cases_by_id.items()
+        if case.get("should_trigger") is False
+        and any(profile in case.get("applicable_variant_profiles", []) for profile in selected_profiles.values())
+    }
+    negative_cases: list[list[dict[str, Any]]] = []
+    for case_id in sorted(negative_case_ids):
+        case_rows = [
+            indexed.get((variant_id, case_id, repeat), [])
+            for variant_id in selected_profiles
+            for repeat in range(1, repeats + 1)
+        ]
+        if all(
+            len(rows) == 1 and rows[0].get("valid") is True
+            and rows[0].get("context_usage", {}).get("attributed") is True
+            for rows in case_rows
+        ):
+            negative_cases.append([rows[0] for rows in case_rows])
+    false_loads = [any(row.get("skill_body_loaded") is True for row in case_rows) for case_rows in negative_cases]
+    false_body_load_bytes = sum(
+        component["bytes"]
+        for case_rows in negative_cases for row in case_rows
+        for component in row["context_usage"]["components"] if component.get("kind") == "body"
+    )
+    negative_summary = {
+        "planned_case_count": len(negative_case_ids),
+        "complete_case_count": len(negative_cases),
+        "false_body_load_bytes": false_body_load_bytes,
+        "false_body_load_case_count": sum(false_loads),
+        "false_body_load_rate": proportion(false_loads),
+        "repeat_consistency": proportion(
+            len({row.get("skill_body_loaded") for row in case_rows}) == 1
+            for case_rows in negative_cases
+        ),
+    }
+
     attributed_rows: list[dict[str, Any]] = []
     for key in sorted(planned_keys):
         rows = indexed.get(key, [])
@@ -1764,6 +2041,9 @@ def summarize_skill_context(
         for field, values in efficiency_values.items()
     }
     return {
+        "all_valid_rows": len(valid_rows),
+        "conservation_failures": conservation_failures,
+        "negative_cohort": negative_summary,
         "planned_rows": planned,
         "attributed_rows": attributed,
         "attribution_rate": coverage,
@@ -1856,7 +2136,7 @@ def derive_usefulness_status(
     *,
     level: str,
     evidence_status: str,
-    benefit_gate_status: str,
+    primary_benefit_status: str,
     guardrail_statuses: list[str],
     protected_outcome_failures: int,
     material_harm: bool,
@@ -1873,11 +2153,22 @@ def derive_usefulness_status(
         or "fail" in guardrail_statuses
     ):
         return "not_supported"
-    if benefit_gate_status == "fail":
+    if primary_benefit_status == "fail":
         return "not_supported"
-    if benefit_gate_status == "pass" and all(status == "pass" for status in guardrail_statuses):
+    if primary_benefit_status == "pass" and all(status == "pass" for status in guardrail_statuses):
         return "supported"
     return "inconclusive"
+
+
+def derive_evidence_status(
+    *, current_status: str, incomplete_matrix: bool,
+    duplicate_pairs: bool, identity_invalid: bool,
+) -> str:
+    if current_status == "invalid" or duplicate_pairs or identity_invalid:
+        return "invalid"
+    if current_status == "incomplete" or incomplete_matrix:
+        return "incomplete"
+    return "complete"
 
 
 def derive_final_authority_status(
@@ -1939,25 +2230,12 @@ def resolve_gate_metric(
     cases_by_id: dict[str, dict[str, Any]] | None,
     repeats: int | None,
     context_summary: dict[str, Any] | None = None,
+    paired_metrics: dict[str, dict[str, Any]] | None = None,
 ) -> float | None:
-    if metric == "paired_task_pass_lift":
-        value = None
-        if paired and not paired["duplicate_variant_keys"] and not any(paired["excluded"].values()):
-            value = paired.get("paired_task_pass_lift")
-        return float(value) if value is not None else None
     if metric == "paired_case_count":
-        interval = paired.get("case_intervals", {}).get("task_pass") if paired else None
-        value = interval.get("paired_case_count") if interval and interval.get("status") == "complete" else None
-        return float(value) if value is not None else None
-    lower_bound_metrics = {
-        "paired_task_pass_lift_lower_bound": "task_pass",
-        "paired_process_score_lift_lower_bound": "process_score",
-        "paired_quality_score_lift_lower_bound": "quality_score",
-        "paired_safety_pass_lift_lower_bound": "safety_pass",
-    }
-    if metric in lower_bound_metrics:
-        interval = paired.get("case_intervals", {}).get(lower_bound_metrics[metric]) if paired else None
-        value = interval.get("lower") if interval and interval.get("status") == "complete" else None
+        primary_metric = spec.get("analysis", {}).get("primary_benefit", {}).get("metric")
+        summary = paired_metrics.get(primary_metric) if paired_metrics and primary_metric else None
+        value = summary.get("case_count") if summary and summary.get("status") == "complete" else None
         return float(value) if value is not None else None
     context_metrics = {
         "skill_context_attribution_rate": "attribution_rate",
@@ -2065,44 +2343,41 @@ def evaluate_hard_gates(
     cases_by_id: dict[str, dict[str, Any]] | None,
     repeats: int | None,
     context_summary: dict[str, Any] | None = None,
+    paired_metrics: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
-    benefit_gate_id = spec.get("analysis", {}).get("usefulness_benefit_gate_id")
-    interval_fields = {
-        "paired_task_pass_lift_lower_bound": "task_pass",
-        "paired_process_score_lift_lower_bound": "process_score",
-        "paired_quality_score_lift_lower_bound": "quality_score",
-        "paired_safety_pass_lift_lower_bound": "safety_pass",
-    }
     for index, gate in enumerate(spec.get("hard_gates", [])):
         if not isinstance(gate, dict):
             results.append({"id": f"invalid-gate-{index}", "status": "not_evaluable", "reason": "gate is not an object"})
             continue
         metric = gate.get("metric")
+        if metric in PAIRED_METRIC_DIRECTIONS:
+            summary = paired_metrics.get(metric, {}) if paired_metrics else {}
+            benefit = evaluate_benefit(summary, gate["minimum_benefit"])
+            results.append({
+                "id": gate.get("id", f"gate-{index}"),
+                "metric": metric,
+                "comparator": gate["comparator"],
+                "direction": gate["direction"],
+                "effect": gate["effect"],
+                "operator": "benefit_lower_bound >=",
+                "threshold": gate["minimum_benefit"],
+                "observed": summary.get("lower"),
+                "status": benefit["status"],
+                "reason": benefit["reason"],
+            })
+            continue
         operator = gate.get("operator")
         expected = gate.get("value")
         observed = resolve_gate_metric(
             metric, spec, variant_summaries, records, candidate, paired, target_skill_id,
-            prior, cases_by_id, repeats, context_summary,
+            prior, cases_by_id, repeats, context_summary, paired_metrics,
         )
         reason = None
-        if gate.get("id") == benefit_gate_id and metric in interval_fields:
-            interval = paired.get("case_intervals", {}).get(interval_fields[metric]) if paired else None
-            if not interval or interval.get("status") != "complete":
-                status = "not_evaluable"
-                reason = interval.get("reason", "benefit interval unavailable") if interval else "benefit interval unavailable"
-            elif interval["lower"] >= float(expected):
-                status = "pass"
-            elif interval["upper"] < float(expected):
-                status = "fail"
-            else:
-                status = "not_evaluable"
-                reason = "benefit interval overlaps the declared threshold"
-        else:
-            comparison = compare_gate(observed, str(operator), expected) if observed is not None else None
-            status = "pass" if comparison is True else "fail" if comparison is False else "not_evaluable"
-            if observed is None:
-                reason = "metric unavailable or incomplete in verified candidate runs"
+        comparison = compare_gate(observed, str(operator), expected) if observed is not None else None
+        status = "pass" if comparison is True else "fail" if comparison is False else "not_evaluable"
+        if observed is None:
+            reason = "metric unavailable or incomplete in verified candidate runs"
         results.append({
             "id": gate.get("id", f"gate-{index}"),
             "metric": metric,
@@ -2215,30 +2490,35 @@ def markdown_report(report: dict[str, Any]) -> str:
             suffix = " …" if completeness["invalid_expected_keys_count"] > 10 else ""
             lines.append(f"- Invalid sample (`variant/case/repeat`): {sample}{suffix}")
 
-    paired = report.get("paired")
-    if paired:
+    primary_benefit = report.get("primary_benefit")
+    paired_metrics = report.get("paired_metrics", {})
+    if primary_benefit:
         lines.extend([
             "",
-            "## Paired comparison",
+            "## Primary benefit and paired metrics",
             "",
-            f"- Baseline: `{paired['baseline']}`",
-            f"- Candidate: `{paired['candidate']}`",
-            f"- Valid pairs: {paired['paired_valid']} (shared keys: {paired['shared_keys']})",
-            f"- Wins / losses / tie-pass / tie-fail: {paired['wins']} / {paired['losses']} / {paired['tie_pass']} / {paired['tie_fail']}",
-            f"- Paired task-pass lift: {fmt_rate(paired['paired_task_pass_lift'])}",
-            f"- Candidate-only wins: {', '.join(paired['candidate_only_wins']) or 'none'}",
-            f"- Candidate-only failures: {', '.join(paired['candidate_only_failures']) or 'none'}",
+            f"- Primary: `{primary_benefit['metric']}` vs `{primary_benefit['comparator']}` "
+            f"({primary_benefit['direction']}, {primary_benefit['effect']})",
+            f"- Threshold/status: lower >= {fmt_num(primary_benefit['minimum_benefit'], 4)} / "
+            f"`{primary_benefit['status']}`",
         ])
-        uncertainty = paired.get("case_intervals", {}).get("task_pass")
-        if uncertainty and uncertainty.get("status") == "complete":
+        for metric, summary in paired_metrics.items():
+            if summary.get("status") == "complete":
+                lines.append(
+                    f"- `{metric}` vs `{summary['comparator']}`: point/lower/upper="
+                    f"{summary['point']:.4f}/{summary['lower']:.4f}/{summary['upper']:.4f}; "
+                    f"cases={summary['case_count']}, repeats={summary['repeat_count']}, "
+                    f"scale={summary['scale']['reported']}"
+                )
+            else:
+                lines.append(
+                    f"- `{metric}` vs `{summary.get('comparator', 'n/a')}`: not evaluable — "
+                    f"{summary.get('reason', 'unspecified')}"
+                )
+        if report.get("paired_task_failures"):
             lines.append(
-                f"- {uncertainty['confidence_level']:.1%} case-cluster bootstrap interval: "
-                f"[{uncertainty['lower']:.3f}, {uncertainty['upper']:.3f}] "
-                f"(cases={uncertainty['paired_case_count']}, run pairs={uncertainty['run_pair_count']}, "
-                f"iterations={uncertainty['iterations']}, seed={uncertainty['random_seed']})"
+                f"- Cost exclusions caused by task failures: {len(report['paired_task_failures'])} pair(s)"
             )
-        elif uncertainty:
-            lines.append(f"- Paired uncertainty: not evaluable — {uncertainty.get('reason', 'unspecified')}")
 
     case_gate_evidence = report.get("case_gate_evidence")
     if case_gate_evidence:
@@ -2466,6 +2746,27 @@ def main() -> int:
                 "issue": str(exc),
             })
 
+    report_identity = report_identity_fields(
+        spec, spec_path, Path(args.runs).resolve(), strict=False,
+    )
+    identity_failures = []
+    if report_identity["grader_set_hash"] is None:
+        identity_failures.append("grader set identity cannot be reproduced")
+    if report_identity["treatment_hash"] is None:
+        identity_failures.append("candidate variants do not bind one treatment_hash")
+    for issue in identity_failures:
+        evidence_issues.append({
+            "run_id": "<report-identity>",
+            "status": "invalid",
+            "issue": issue,
+        })
+    evidence_status = derive_evidence_status(
+        current_status=evidence_status,
+        incomplete_matrix=False,
+        duplicate_pairs=False,
+        identity_invalid=bool(identity_failures),
+    )
+
     if evidence_status != "complete":
         failed_candidate = (
             resolve_comparative_variant(spec, "candidate", variant_id=args.candidate)
@@ -2484,9 +2785,17 @@ def main() -> int:
             mode=failed_candidate_mode,
         )
         failure_report = {
-            "schema_version": 1,
+            "schema_version": 3,
+            "report_hash": None,
+            **report_identity,
             "evidence_status": evidence_status,
             "usefulness_status": "not_applicable" if level == "L1" else "inconclusive",
+            "primary_benefit": (
+                {**spec["analysis"]["primary_benefit"], "status": "not_evaluable"}
+                if level in {"L2", "L3", "L4"} else None
+            ),
+            "paired_metrics": {},
+            "paired_task_failures": [],
             "evidence_issues": evidence_issues,
             "manual_review": manual_review_result,
             "skill_context": failed_context_summary,
@@ -2494,6 +2803,7 @@ def main() -> int:
         }
         if failed_prior_context is not None:
             failure_report.update(failed_prior_context)
+        failure_report["report_hash"] = canonical_self_hash(failure_report, "report_hash")
         payload = json.dumps(failure_report, indent=2, ensure_ascii=False) + "\n"
         if args.json == "-":
             print(payload, end="")
@@ -2682,10 +2992,22 @@ def main() -> int:
         for name in variants
     }
     paired = paired_summary(records, baseline, candidate, attribution_case_ids) if baseline and candidate else None
-    if paired is not None:
-        paired["case_intervals"] = {
-            field: paired_case_uncertainty(paired, spec, completeness, field)
-            for field in ("task_pass", "process_score", "quality_score", "safety_pass")
+    paired_metrics: dict[str, dict[str, Any]] = {}
+    paired_task_failures: list[dict[str, Any]] = []
+    primary_benefit = None
+    if comparative:
+        paired_metrics, paired_task_failures = build_paired_metrics(
+            records, spec, candidate=candidate,
+            comparator_variants={"baseline": baseline, "prior": prior},
+            cases_by_id=cases_by_id,
+        )
+        primary_definition = spec["analysis"]["primary_benefit"]
+        primary_benefit = {
+            **primary_definition,
+            **evaluate_benefit(
+                paired_metrics.get(primary_definition["metric"], {}),
+                primary_definition["minimum_benefit"],
+            ),
         }
 
     context_summary = summarize_skill_context(
@@ -2698,7 +3020,7 @@ def main() -> int:
 
     hard_gates = evaluate_hard_gates(
         spec, variant_summaries, records, candidate, paired, target_skill_id,
-        prior, cases_by_id, spec["suite"]["repeats"], context_summary,
+        prior, cases_by_id, spec["suite"]["repeats"], context_summary, paired_metrics,
     ) if spec and comparative else []
     hard_failures_by_variant: dict[str, int] = defaultdict(int)
     for record in records:
@@ -2766,10 +3088,22 @@ def main() -> int:
     if paired and paired["paired_valid"] == 0:
         blocking.append("no valid paired candidate/baseline outcomes")
 
-    effective_evidence_status = "incomplete" if incomplete_matrix else "invalid" if duplicate_pairs else "complete"
-    benefit_gate_id = spec.get("analysis", {}).get("usefulness_benefit_gate_id")
-    benefit_gate = next((gate for gate in hard_gates if gate["id"] == benefit_gate_id), None)
-    guardrail_gates = [gate for gate in hard_gates if gate["id"] != benefit_gate_id]
+    effective_evidence_status = derive_evidence_status(
+        current_status=evidence_status,
+        incomplete_matrix=incomplete_matrix,
+        duplicate_pairs=duplicate_pairs,
+        identity_invalid=bool(identity_failures),
+    )
+    if primary_benefit and primary_benefit["status"] == "fail":
+        blocking.append(
+            f"primary benefit {primary_benefit['metric']} failed: lower={primary_benefit.get('lower')} "
+            f"threshold={primary_benefit['minimum_benefit']}"
+        )
+    elif primary_benefit and primary_benefit["status"] == "not_evaluable":
+        blocking.append(
+            f"primary benefit {primary_benefit['metric']} is not evaluable: "
+            f"{primary_benefit.get('reason')}"
+        )
     protected_gate = next(
         (gate for gate in hard_gates if gate["metric"] == "protected_outcome_failures"),
         None,
@@ -2778,8 +3112,8 @@ def main() -> int:
     usefulness_status = derive_usefulness_status(
         level=level,
         evidence_status=effective_evidence_status,
-        benefit_gate_status=benefit_gate["status"] if benefit_gate else "not_evaluable",
-        guardrail_statuses=[gate["status"] for gate in guardrail_gates],
+        primary_benefit_status=primary_benefit["status"] if primary_benefit else "not_evaluable",
+        guardrail_statuses=[gate["status"] for gate in hard_gates],
         protected_outcome_failures=protected_failures,
         material_harm=observed_safety_block,
         candidate_hard_failures=candidate_case_failures,
@@ -2795,31 +3129,10 @@ def main() -> int:
         blocking_observations=blocking,
     )
 
-    report_grader_hash = canonical_sha256([
-        {"id": grader["id"], "sha256": compute_grader_digest(grader, spec_path.parent)}
-        for grader in sorted(spec["graders"], key=lambda item: item["id"])
-    ])
-    candidate_treatment_hashes = {
-        variant["treatment_hash"] for variant in spec["variants"]
-        if variant["role"] == "candidate"
-    }
     report: dict[str, Any] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "report_hash": None,
-        "candidate_revision": spec["target"]["candidate_revision"],
-        "candidate_source_tree_hash": spec["target"]["candidate_source_tree_hash"],
-        "candidate_plugin_tree_hash": spec["target"]["candidate_plugin_tree_hash"],
-        "spec_content_hash": file_sha256(spec_path),
-        "cases_content_hash": spec["suite"]["cases_content_hash"],
-        "case_contracts_content_hash": spec["suite"]["case_contracts_content_hash"],
-        "fixture_manifest_set_hash": spec["suite"]["fixture_manifest_set_hash"],
-        "grader_set_hash": report_grader_hash,
-        "grader_batch_schedule_hash": spec["suite"]["grader_batch_schedule_hash"],
-        "treatment_hash": (
-            next(iter(candidate_treatment_hashes)) if len(candidate_treatment_hashes) == 1 else None
-        ),
-        "environment_hash": canonical_sha256(spec["environment"]),
-        "receipt_index_content_hash": file_sha256(Path(args.runs).resolve()),
+        **report_identity,
         "evidence_status": effective_evidence_status,
         "usefulness_status": usefulness_status,
         "final_authority_status": final_authority_status,
@@ -2827,7 +3140,9 @@ def main() -> int:
         "run_matrix": records,
         "variants": variants,
         "variant_summaries": variant_summaries,
-        "paired": paired,
+        "primary_benefit": primary_benefit,
+        "paired_metrics": paired_metrics,
+        "paired_task_failures": paired_task_failures,
         "skill_context": context_summary,
         "context_efficiency": context_summary["context_efficiency"],
         "evaluation_id": spec.get("evaluation_id") if spec else None,
@@ -2853,11 +3168,6 @@ def main() -> int:
     }
     if prior_context is not None:
         report.update(prior_context)
-    if len(candidate_treatment_hashes) != 1:
-        report["evidence_status"] = "invalid"
-        report["blocking_observations"].append(
-            "candidate variants do not bind one treatment_hash"
-        )
     report["report_hash"] = canonical_self_hash(report, "report_hash")
 
     try:
@@ -2886,12 +3196,12 @@ def main() -> int:
             f"critical_safety={critical}",
             file=status_stream,
         )
-    if paired:
+    if primary_benefit:
         print(
-            f"paired {paired['candidate']} vs {paired['baseline']}: n={paired['paired_valid']} "
-            f"wins={paired['wins']} losses={paired['losses']} "
-            f"tie_pass={paired['tie_pass']} tie_fail={paired['tie_fail']} "
-            f"lift={fmt_rate(paired['absolute_pass_lift'])}",
+            f"primary_benefit {primary_benefit['metric']} vs {primary_benefit['comparator']}: "
+            f"status={primary_benefit['status']} point={fmt_num(primary_benefit.get('point'), 4)} "
+            f"lower={fmt_num(primary_benefit.get('lower'), 4)} "
+            f"threshold={fmt_num(primary_benefit['minimum_benefit'], 4)}",
             file=status_stream,
         )
     if completeness:

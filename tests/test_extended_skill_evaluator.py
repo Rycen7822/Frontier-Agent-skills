@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib.util
 import json
@@ -67,7 +68,7 @@ def bind_suite_hashes(spec: dict, rows: list[dict]) -> None:
 
 def make_minimal_spec(level: str) -> dict:
     spec = {
-        'schema_version': 3,
+        'schema_version': 4,
         'evaluation_id': f'minimal-{level.lower()}',
         'decision': 'audit package' if level == 'L0' else 'diagnose skill behavior',
         'claim_scope': 'bounded test fixture',
@@ -158,7 +159,13 @@ def make_minimal_spec(level: str) -> dict:
     spec['analysis'] = {
         'confidence_level': 0.95,
         'paired_bootstrap_iterations': 100,
-        'usefulness_benefit_gate_id': 'minimum-task-lift',
+        'primary_benefit': {
+            'metric': 'task_pass_rate',
+            'comparator': 'baseline',
+            'direction': 'higher_is_better',
+            'effect': 'absolute',
+            'minimum_benefit': 0.1,
+        },
         'context_budget_gate_id': 'replace-before-scored-run',
         'context_budget_authority': {
             'reference': 'replace-before-scored-run',
@@ -166,7 +173,7 @@ def make_minimal_spec(level: str) -> dict:
             'threshold': 'replace-before-scored-run',
         },
     }
-    spec['metrics'] = ['task_pass_rate', 'paired_task_pass_lift_lower_bound']
+    spec['metrics'] = ['task_pass_rate']
     spec['hard_gates'] = [
         {
             'id': 'minimum-pass-rate',
@@ -175,10 +182,10 @@ def make_minimal_spec(level: str) -> dict:
             'value': 0.5,
         },
         {
-            'id': 'minimum-task-lift',
-            'metric': 'paired_task_pass_lift_lower_bound',
-            'operator': '>=',
-            'value': 0.1,
+            'id': 'protected-outcomes',
+            'metric': 'protected_outcome_failures',
+            'operator': '==',
+            'value': 0,
         },
     ]
     return spec
@@ -293,7 +300,7 @@ def make_cases_concrete(rows: list[dict]) -> list[dict]:
     return concrete
 
 
-def write_v3_bundle(root: Path, spec: dict, rows: list[dict], *, ready: bool = False) -> tuple[Path, Path]:
+def write_spec_bundle(root: Path, spec: dict, rows: list[dict], *, ready: bool = False) -> tuple[Path, Path]:
     spec = json.loads(json.dumps(spec))
     rows = json.loads(json.dumps(rows))
     spec['suite']['cases_file'] = 'cases.jsonl'
@@ -352,7 +359,7 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
     })
     row = make_minimal_cases()[0]
     row['applicable_variant_profiles'] = ['candidate/force_loaded']
-    spec_path, cases_path = write_v3_bundle(root, spec, [row], ready=True)
+    spec_path, cases_path = write_spec_bundle(root, spec, [row], ready=True)
 
     package_root = root / 'target-skill'
     package_root.mkdir()
@@ -443,7 +450,7 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
         }
 
     receipt = {
-        'schema_version': 2,
+        'schema_version': 3,
         'receipt_hash': None,
         'run': {
             'run_id': f"{case['case_id']}:candidate_forced:1",
@@ -570,7 +577,7 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
 
 def rewrite_bound_receipt(bundle: dict[str, Path], receipt: dict) -> None:
     receipt_path = bundle['receipt']
-    if receipt.get('schema_version') == 2 and 'receipt_hash' in receipt:
+    if receipt.get('schema_version') == 3 and 'receipt_hash' in receipt:
         receipt['receipt_hash'] = 'sha256:' + hashlib.sha256(
             json.dumps(
                 {key: value for key, value in receipt.items() if key != 'receipt_hash'},
@@ -889,14 +896,14 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
         self.assertIn('L3/L4 spec requires suite.holdout_control', l3_missing.stdout)
         self.assertIn('L3/L4 spec requires manual_review.required=true', l3_missing.stdout)
         self.assertEqual(v1.returncode, 1, v1.stdout + v1.stderr)
-        self.assertIn('spec.schema_version must equal 3', v1.stdout)
+        self.assertIn('spec.schema_version must equal 4', v1.stdout)
 
-    def test_schema_v3_rejects_legacy_spec_and_case_fields(self) -> None:
+    def test_schema_v4_rejects_legacy_spec_and_case_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             spec = make_minimal_spec('L1')
             rows = make_minimal_cases()
-            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            spec_path, cases_path = write_spec_bundle(root, spec, rows)
             valid = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(valid.returncode, 0, valid.stdout + valid.stderr)
             self.assertIn('non-ready deterministic verifier placeholder', valid.stdout)
@@ -904,19 +911,19 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
 
             legacy_spec = json.loads(json.dumps(spec))
             legacy_spec['schema_version'] = 2
-            spec_path, cases_path = write_v3_bundle(root, legacy_spec, rows)
+            spec_path, cases_path = write_spec_bundle(root, legacy_spec, rows)
             old_spec = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(old_spec.returncode, 1, old_spec.stdout + old_spec.stderr)
-            self.assertIn('spec.schema_version must equal 3', old_spec.stdout)
+            self.assertIn('spec.schema_version must equal 4', old_spec.stdout)
 
             legacy_rows = json.loads(json.dumps(rows))
             legacy_rows[0]['oracle'] = ['focused-check']
-            spec_path, cases_path = write_v3_bundle(root, spec, legacy_rows)
+            spec_path, cases_path = write_spec_bundle(root, spec, legacy_rows)
             old_case = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(old_case.returncode, 1, old_case.stdout + old_case.stderr)
             self.assertIn('forbidden legacy field oracle', old_case.stdout)
 
-    def test_schema_v3_rejects_unmapped_duplicate_or_optional_safety_requirements(self) -> None:
+    def test_schema_v4_rejects_unmapped_duplicate_or_optional_safety_requirements(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             spec = make_minimal_spec('L1')
@@ -934,13 +941,13 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
                 },
             })
             rows = make_minimal_cases()
-            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            spec_path, cases_path = write_spec_bundle(root, spec, rows)
             valid = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(valid.returncode, 0, valid.stdout + valid.stderr)
 
             unmapped = json.loads(json.dumps(rows))
             unmapped[0]['requirements'][0]['check_id'] = 'unknown-check'
-            spec_path, cases_path = write_v3_bundle(root, spec, unmapped)
+            spec_path, cases_path = write_spec_bundle(root, spec, unmapped)
             result = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('references unknown check', result.stdout)
@@ -949,7 +956,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             copied = dict(duplicate[0]['requirements'][0])
             copied['id'] = 'duplicate-binding'
             duplicate[0]['requirements'].append(copied)
-            spec_path, cases_path = write_v3_bundle(root, spec, duplicate)
+            spec_path, cases_path = write_spec_bundle(root, spec, duplicate)
             result = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('duplicate grader/check binding', result.stdout)
@@ -964,12 +971,12 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
                 'grader_id': 'safety-check',
                 'check_id': 'no-write',
             })
-            spec_path, cases_path = write_v3_bundle(root, spec, optional_safety)
+            spec_path, cases_path = write_spec_bundle(root, spec, optional_safety)
             result = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('safety requirement must be required', result.stdout)
 
-    def test_schema_v3_derives_exact_grader_set_from_requirements(self) -> None:
+    def test_schema_v4_derives_exact_grader_set_from_requirements(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             spec = make_minimal_spec('L1')
@@ -981,7 +988,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
                 'checks': [{'id': 'unused', 'pass_condition': 'An unused check.'}],
             })
             rows = make_minimal_cases()
-            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            spec_path, cases_path = write_spec_bundle(root, spec, rows)
             unselected = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(unselected.returncode, 0, unselected.stdout + unselected.stderr)
 
@@ -990,55 +997,55 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
                 'grader_id': 'unused-check',
                 'check_id': 'unused',
             })
-            spec_path, cases_path = write_v3_bundle(root, spec, selected_rows)
+            spec_path, cases_path = write_spec_bundle(root, spec, selected_rows)
             selected = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(selected.returncode, 1, selected.stdout + selected.stderr)
             self.assertIn('selected deterministic grader unused-check must declare verifier', selected.stdout)
 
-    def test_schema_v3_rejects_unknown_or_duplicate_declared_metrics(self) -> None:
+    def test_schema_v4_rejects_unknown_or_duplicate_declared_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             spec = make_minimal_spec('L2')
             rows = make_minimal_cases(comparative=True)
-            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            spec_path, cases_path = write_spec_bundle(root, spec, rows)
             valid = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(valid.returncode, 0, valid.stdout + valid.stderr)
 
             unknown = json.loads(json.dumps(spec))
             unknown['metrics'] = ['unknown_metric']
-            spec_path, cases_path = write_v3_bundle(root, unknown, rows)
+            spec_path, cases_path = write_spec_bundle(root, unknown, rows)
             result = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('unsupported declared metric', result.stdout)
 
             duplicate = json.loads(json.dumps(spec))
             duplicate['metrics'] = ['task_pass_rate', 'task_pass_rate']
-            spec_path, cases_path = write_v3_bundle(root, duplicate, rows)
+            spec_path, cases_path = write_spec_bundle(root, duplicate, rows)
             result = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('spec.metrics must not contain duplicates', result.stdout)
 
-    def test_schema_v3_rejects_legacy_deterministic_grader_types(self) -> None:
+    def test_schema_v4_rejects_legacy_deterministic_grader_types(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             spec = make_minimal_spec('L1')
             rows = make_minimal_cases()
-            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            spec_path, cases_path = write_spec_bundle(root, spec, rows)
             valid = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(valid.returncode, 0, valid.stdout + valid.stderr)
 
             for grader_type in ('deterministic_trace', 'deterministic_security', 'deterministic_custom'):
                 invalid = json.loads(json.dumps(spec))
                 invalid['graders'][0]['type'] = grader_type
-                spec_path, cases_path = write_v3_bundle(root, invalid, rows)
+                spec_path, cases_path = write_spec_bundle(root, invalid, rows)
                 result = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertIn('grader type must be one of', result.stdout)
 
-    def test_schema_v3_rejects_ready_deterministic_verifier_placeholder(self) -> None:
+    def test_schema_v4_rejects_ready_deterministic_verifier_placeholder(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            spec_path, cases_path = write_v3_bundle(
+            spec_path, cases_path = write_spec_bundle(
                 root, make_minimal_spec('L1'), make_minimal_cases(), ready=True,
             )
             valid = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
@@ -1051,27 +1058,27 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('scored-ready deterministic verifier placeholder is forbidden', result.stdout)
 
-    def test_schema_v3_rejects_selected_nonhard_deterministic_without_verifier(self) -> None:
+    def test_schema_v4_rejects_selected_nonhard_deterministic_without_verifier(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             spec = make_minimal_spec('L1')
             rows = make_minimal_cases()
-            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            spec_path, cases_path = write_spec_bundle(root, spec, rows)
             valid = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(valid.returncode, 0, valid.stdout + valid.stderr)
 
             invalid = json.loads(json.dumps(spec))
             self.assertFalse(invalid['graders'][0]['hard_gate'])
             invalid['graders'][0].pop('verifier')
-            spec_path, cases_path = write_v3_bundle(root, invalid, rows)
+            spec_path, cases_path = write_spec_bundle(root, invalid, rows)
             result = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('selected deterministic grader focused-check must declare verifier', result.stdout)
 
-    def test_schema_v3_rejects_ready_fixture_placeholder(self) -> None:
+    def test_schema_v4_rejects_ready_fixture_placeholder(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            spec_path, cases_path = write_v3_bundle(
+            spec_path, cases_path = write_spec_bundle(
                 root, make_minimal_spec('L1'), make_minimal_cases(), ready=True,
             )
             valid = self.run_cmd('scripts/validate_eval_suite.py', str(spec_path), str(cases_path))
@@ -1087,11 +1094,11 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('scored-ready fixture manifest placeholder is forbidden', result.stdout)
 
-    def test_receipt_and_report_v2_bind_capture_routing_boundaries_and_identity(self) -> None:
+    def test_receipt_and_report_v3_bind_capture_routing_boundaries_and_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             bundle = write_receipt_bundle(Path(tmp))
             receipt = json.loads(bundle['receipt'].read_text(encoding='utf-8'))
-            self.assertEqual(receipt['schema_version'], 2)
+            self.assertEqual(receipt['schema_version'], 3)
             self.assertTrue(load_analyzer_module().verify_self_hash(receipt, 'receipt_hash'))
             self.assertEqual(
                 receipt['trace']['context_capture'],
@@ -1107,7 +1114,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             )
 
             report = self.assert_valid_receipt_bundle(bundle)
-            self.assertEqual(report['schema_version'], 2)
+            self.assertEqual(report['schema_version'], 3)
             self.assertTrue(load_analyzer_module().verify_self_hash(report, 'report_hash'))
             for field in (
                 'candidate_revision', 'candidate_source_tree_hash', 'candidate_plugin_tree_hash',
@@ -1117,7 +1124,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             ):
                 self.assertIn(field, report)
 
-    def test_receipt_v2_separates_host_injection_model_reread_and_routing_stages(self) -> None:
+    def test_receipt_v3_separates_host_injection_model_reread_and_routing_stages(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
 
@@ -1164,9 +1171,22 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             self.assertIsNone(record['skill_incorporated'])
             self.assertIsNone(record['skill_applied'])
 
-    def test_receipt_v2_rejects_self_hash_identity_and_boundary_tampering(self) -> None:
+    def test_receipt_v3_rejects_self_hash_identity_and_boundary_tampering(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+
+            legacy = write_receipt_bundle(root / 'legacy-version')
+            receipt = json.loads(legacy['receipt'].read_text(encoding='utf-8'))
+            receipt['schema_version'] = 2
+            rewrite_bound_receipt(legacy, receipt)
+            result = self.run_receipt_analysis(legacy)
+            self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+            self.assertIn('receipt schema_version must equal 3', result.stdout)
+            failure_report = json.loads(legacy['summary'].read_text(encoding='utf-8'))
+            self.assertEqual((3, 'invalid'), (
+                failure_report['schema_version'], failure_report['evidence_status'],
+            ))
+            self.assertTrue(load_analyzer_module().verify_self_hash(failure_report, 'report_hash'))
 
             self_hash = write_receipt_bundle(root / 'self-hash')
             receipt = json.loads(self_hash['receipt'].read_text(encoding='utf-8'))
@@ -1208,6 +1228,21 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             result = self.run_receipt_analysis(missing)
             self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
             self.assertIn('evidence_status=incomplete', result.stdout)
+
+            ambiguous = write_receipt_bundle(root / 'ambiguous-identity')
+            spec = json.loads(ambiguous['spec'].read_text(encoding='utf-8'))
+            second_candidate = copy.deepcopy(spec['variants'][0])
+            second_candidate.update({
+                'id': 'candidate_forced_2',
+                'treatment_hash': 'sha256:' + 'e' * 64,
+            })
+            spec['variants'].append(second_candidate)
+            ambiguous['spec'].write_text(json.dumps(spec), encoding='utf-8')
+            ambiguous['receipt'].unlink()
+            result = self.run_receipt_analysis(ambiguous)
+            self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+            self.assertIn('evidence_status=invalid', result.stdout)
+            self.assertIn('candidate variants do not bind one treatment_hash', result.stdout)
 
             tampered = write_receipt_bundle(root / 'tampered')
             tampered['receipt'].write_text('{}\n', encoding='utf-8')
@@ -1617,7 +1652,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
                 hard_failures, candidate_blockers = hard_failure_state(dimension, required)
                 blockers = [*candidate_blockers, *extra_blockers]
                 usefulness = analyzer.derive_usefulness_status(
-                    level='L2', evidence_status=evidence, benefit_gate_status='pass',
+                    level='L2', evidence_status=evidence, primary_benefit_status='pass',
                     guardrail_statuses=['pass'], protected_outcome_failures=0,
                     material_harm=False, candidate_hard_failures=len(hard_failures),
                 )
@@ -1767,27 +1802,304 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
 
     def test_negative_lift_cannot_report_usefulness_supported_when_absolute_rate_passes(self) -> None:
         analyzer = load_analyzer_module()
-        spec = make_minimal_spec('L2')
-        spec['hard_gates'] = [{
-            'id': 'minimum-task-lift', 'metric': 'paired_task_pass_lift_lower_bound',
-            'operator': '>=', 'value': 0.10,
-        }]
-        paired = {
-            'case_intervals': {'task_pass': {
-                'status': 'complete', 'lower': -0.30, 'upper': -0.10,
-                'paired_case_count': 10,
-            }},
-        }
-        gate = analyzer.evaluate_hard_gates(
-            spec, {}, [], None, paired, None, None, None, None,
-        )[0]
-        self.assertEqual(gate['status'], 'fail')
+        benefit = analyzer.evaluate_benefit(
+            {'status': 'complete', 'point': -0.2, 'lower': -0.3, 'upper': -0.1},
+            0.1,
+        )
+        self.assertEqual(benefit['status'], 'fail')
         status = analyzer.derive_usefulness_status(
-            level='L2', evidence_status='complete', benefit_gate_status=gate['status'],
+            level='L2', evidence_status='complete', primary_benefit_status=benefit['status'],
             guardrail_statuses=['pass', 'pass'], protected_outcome_failures=0,
             material_harm=False, candidate_hard_failures=0,
         )
         self.assertEqual(status, 'not_supported')
+
+    def test_primary_benefit_contract_is_finite_and_replaces_legacy_gate_id(self) -> None:
+        analyzer = load_analyzer_module()
+        spec = make_minimal_spec('L2')
+        spec['analysis']['primary_benefit'] = {
+            'metric': 'task_pass_rate',
+            'comparator': 'baseline',
+            'direction': 'higher_is_better',
+            'effect': 'absolute',
+            'minimum_benefit': 0.0,
+        }
+        spec['metrics'] = ['task_pass_rate']
+        spec['hard_gates'] = [{
+            'id': 'protected-outcomes', 'metric': 'protected_outcome_failures',
+            'operator': '==', 'value': 0,
+        }]
+        errors: list[str] = []
+        analyzer.check_spec(spec, errors, [])
+        self.assertEqual([], errors)
+
+        for field, value in (
+            ('metric', 'free-form-metric'),
+            ('comparator', 'candidate'),
+            ('direction', 'smaller'),
+            ('effect', 'ratio'),
+            ('minimum_benefit', -0.01),
+        ):
+            with self.subTest(field=field):
+                mutated = copy.deepcopy(spec)
+                mutated['analysis']['primary_benefit'][field] = value
+                errors = []
+                analyzer.check_spec(mutated, errors, [])
+                self.assertTrue(any(f'primary_benefit.{field}' in error for error in errors), errors)
+
+        legacy = copy.deepcopy(spec)
+        legacy['analysis']['usefulness_benefit_gate_id'] = 'legacy-benefit'
+        errors = []
+        analyzer.check_spec(legacy, errors, [])
+        self.assertTrue(any('usefulness_benefit_gate_id' in error for error in errors), errors)
+
+    def test_cost_primary_requires_task_quality_safety_and_authority_protection(self) -> None:
+        analyzer = load_analyzer_module()
+        spec = make_minimal_spec('L2')
+        spec['analysis']['primary_benefit'] = {
+            'metric': 'tokens_in', 'comparator': 'baseline',
+            'direction': 'lower_is_better', 'effect': 'relative', 'minimum_benefit': 0.1,
+        }
+        spec['metrics'] = [
+            'tokens_in', 'task_pass_rate', 'quality_score_normalized', 'safety_pass_rate',
+        ]
+        spec['hard_gates'] = [
+            {'id': 'task-ni', 'metric': 'task_pass_rate', 'comparator': 'baseline',
+             'direction': 'higher_is_better', 'effect': 'absolute', 'minimum_benefit': -0.05},
+            {'id': 'quality-ni', 'metric': 'quality_score_normalized', 'comparator': 'baseline',
+             'direction': 'higher_is_better', 'effect': 'absolute', 'minimum_benefit': -0.05},
+            {'id': 'safety-ni', 'metric': 'safety_pass_rate', 'comparator': 'baseline',
+             'direction': 'higher_is_better', 'effect': 'absolute', 'minimum_benefit': 0.0},
+            {'id': 'authority', 'metric': 'unauthorized_side_effects', 'operator': '==', 'value': 0},
+            {'id': 'protected', 'metric': 'protected_outcome_failures', 'operator': '==', 'value': 0},
+        ]
+        errors: list[str] = []
+        analyzer.check_spec(spec, errors, [])
+        self.assertEqual([], errors)
+
+        for gate_id, expected in (
+            ('task-ni', 'task/quality/safety'),
+            ('quality-ni', 'task/quality/safety'),
+            ('safety-ni', 'task/quality/safety'),
+            ('authority', 'authority protection'),
+        ):
+            with self.subTest(gate_id=gate_id):
+                mutated = copy.deepcopy(spec)
+                mutated['hard_gates'] = [gate for gate in mutated['hard_gates'] if gate['id'] != gate_id]
+                errors = []
+                analyzer.check_spec(mutated, errors, [])
+                self.assertTrue(any(expected in error for error in errors), errors)
+
+    def test_evidence_and_usefulness_cover_five_declared_states(self) -> None:
+        analyzer = load_analyzer_module()
+        scenarios = {
+            'supported': ('complete', 'pass', ['pass'], 'supported'),
+            'not_supported': ('complete', 'fail', ['pass'], 'not_supported'),
+            'inconclusive': ('complete', 'not_evaluable', ['pass'], 'inconclusive'),
+            'incomplete': ('incomplete', 'pass', ['pass'], 'inconclusive'),
+            'invalid': ('invalid', 'pass', ['pass'], 'inconclusive'),
+        }
+        observed = {}
+        for name, (evidence, benefit, guardrails, expected_usefulness) in scenarios.items():
+            usefulness = analyzer.derive_usefulness_status(
+                level='L2', evidence_status=evidence, primary_benefit_status=benefit,
+                guardrail_statuses=guardrails, protected_outcome_failures=0,
+                material_harm=False, candidate_hard_failures=0,
+            )
+            observed[name] = {'evidence_status': evidence, 'usefulness_status': usefulness}
+            self.assertEqual(expected_usefulness, usefulness)
+        self.assertEqual(
+            {'supported', 'not_supported', 'inconclusive', 'incomplete', 'invalid'},
+            set(observed),
+        )
+        self.assertEqual('invalid', analyzer.derive_evidence_status(
+            current_status='complete', incomplete_matrix=True,
+            duplicate_pairs=False, identity_invalid=True,
+        ))
+
+    def test_paired_metric_summary_normalizes_scores_and_preserves_case_ids(self) -> None:
+        analyzer = load_analyzer_module()
+        records = []
+        for case_id, baseline_score, candidate_score in (
+            ('case-a', 50, 70), ('case-b', 80, 90),
+        ):
+            for repeat in (1, 2):
+                records.extend([
+                    {'case_id': case_id, 'repeat': repeat, 'variant': 'baseline',
+                     'valid': True, 'task_pass': True, 'quality_score': baseline_score},
+                    {'case_id': case_id, 'repeat': repeat, 'variant': 'candidate',
+                     'valid': True, 'task_pass': True, 'quality_score': candidate_score},
+                ])
+        summary = analyzer.summarize_paired_metric(
+            records, comparator='baseline', candidate='candidate',
+            metric='quality_score_normalized', direction='higher_is_better',
+            effect='absolute', confidence_level=0.95,
+            bootstrap_iterations=200, random_seed=7,
+        )
+        self.assertEqual('complete', summary['status'])
+        self.assertEqual((2, 2), (summary['case_count'], summary['repeat_count']))
+        self.assertAlmostEqual(0.15, summary['point'])
+        self.assertEqual(['case-a', 'case-b'], [row['case_id'] for row in summary['case_differences']])
+        self.assertEqual('normalized_0_1', summary['scale']['reported'])
+        self.assertEqual(50.0, summary['case_differences'][0]['comparator_raw_value'])
+        self.assertEqual(0.5, summary['case_differences'][0]['comparator_value'])
+        self.assertEqual(
+            'higher_is_better:absolute:quality_score_normalized:candidate_vs_baseline',
+            summary['estimand'],
+        )
+
+    def test_report_paired_metric_map_uses_primary_and_guardrail_contracts(self) -> None:
+        analyzer = load_analyzer_module()
+        spec = make_minimal_spec('L2')
+        spec['analysis']['primary_benefit'] = {
+            'metric': 'quality_score_normalized', 'comparator': 'baseline',
+            'direction': 'higher_is_better', 'effect': 'absolute', 'minimum_benefit': 0.05,
+        }
+        spec['metrics'] = ['quality_score_normalized', 'task_pass_rate']
+        spec['hard_gates'].append({
+            'id': 'task-ni', 'metric': 'task_pass_rate', 'comparator': 'baseline',
+            'direction': 'higher_is_better', 'effect': 'absolute', 'minimum_benefit': -0.05,
+        })
+        cases = {
+            case_id: {
+                'attribution_evaluable': True,
+                'applicable_variant_profiles': ['baseline/skill_disabled', 'candidate/natural_routing'],
+            }
+            for case_id in ('case-a', 'case-b')
+        }
+        records = []
+        for case_id in cases:
+            records.extend([
+                {'case_id': case_id, 'repeat': 1, 'variant': 'baseline',
+                 'valid': True, 'task_pass': True, 'quality_score': 70},
+                {'case_id': case_id, 'repeat': 1, 'variant': 'candidate_natural',
+                 'valid': True, 'task_pass': True, 'quality_score': 80},
+            ])
+        metrics, failures = analyzer.build_paired_metrics(
+            records, spec, candidate='candidate_natural',
+            comparator_variants={'baseline': 'baseline', 'prior': None},
+            cases_by_id=cases,
+        )
+        self.assertEqual({'quality_score_normalized', 'task_pass_rate'}, set(metrics))
+        self.assertEqual([], failures)
+        self.assertEqual(('baseline', 'baseline'), (
+            metrics['quality_score_normalized']['comparator'],
+            metrics['quality_score_normalized']['comparator_variant'],
+        ))
+        self.assertEqual('pass', analyzer.evaluate_benefit(
+            metrics['quality_score_normalized'], 0.05,
+        )['status'])
+
+    def test_paired_cost_metric_excludes_task_failures_and_rejects_relative_zero(self) -> None:
+        analyzer = load_analyzer_module()
+        records = []
+        for case_id, baseline_tokens, candidate_tokens, candidate_pass in (
+            ('case-a', 100, 80, True),
+            ('case-b', 200, 150, True),
+            ('early-failure', 300, 1, False),
+        ):
+            records.extend([
+                {'case_id': case_id, 'repeat': 1, 'variant': 'baseline',
+                 'valid': True, 'task_pass': True, 'tokens_in': baseline_tokens},
+                {'case_id': case_id, 'repeat': 1, 'variant': 'candidate',
+                 'valid': True, 'task_pass': candidate_pass, 'tokens_in': candidate_tokens},
+            ])
+        summary = analyzer.summarize_paired_metric(
+            records, comparator='baseline', candidate='candidate', metric='tokens_in',
+            direction='lower_is_better', effect='absolute', confidence_level=0.95,
+            bootstrap_iterations=200, random_seed=11,
+        )
+        self.assertEqual('complete', summary['status'])
+        self.assertAlmostEqual(35.0, summary['point'])
+        self.assertEqual(['early-failure'], [row['case_id'] for row in summary['task_failures']])
+
+        relative = analyzer.summarize_paired_metric(
+            records, comparator='baseline', candidate='candidate', metric='tokens_in',
+            direction='lower_is_better', effect='relative', confidence_level=0.95,
+            bootstrap_iterations=200, random_seed=11,
+        )
+        self.assertEqual('complete', relative['status'])
+        self.assertAlmostEqual(0.225, relative['point'])
+
+        for row in records:
+            if row['case_id'] == 'case-a' and row['variant'] == 'baseline':
+                row['tokens_in'] = 0
+        relative = analyzer.summarize_paired_metric(
+            records, comparator='baseline', candidate='candidate', metric='tokens_in',
+            direction='lower_is_better', effect='relative', confidence_level=0.95,
+            bootstrap_iterations=200, random_seed=11,
+        )
+        self.assertEqual('not_evaluable', relative['status'])
+        self.assertIn('comparator value is zero', relative['reason'])
+
+    def test_routing_aggregates_repeats_by_case_and_reports_disagreement(self) -> None:
+        analyzer = load_analyzer_module()
+        rows = []
+        patterns = {
+            'positive-consistent': (True, [True, True]),
+            'positive-disagreement': (True, [True, False]),
+            'negative-consistent': (False, [False, False]),
+            'negative-disagreement': (False, [False, True]),
+        }
+        for case_id, (should_trigger, body_loads) in patterns.items():
+            for repeat, body_loaded in enumerate(body_loads, 1):
+                rows.append({
+                    'run_id': f'{case_id}:{repeat}', 'case_id': case_id, 'repeat': repeat,
+                    'valid': True, 'routing_evaluable': True, 'should_trigger': should_trigger,
+                    'retrieved_skill_ids': ['example-skill'] if body_loaded else [],
+                    'selected_skill_id': 'example-skill' if body_loaded else None,
+                    'skill_body_loaded': body_loaded, 'resources_loaded': [],
+                    'skill_incorporated': body_loaded, 'skill_applied': body_loaded,
+                })
+        routing = analyzer.routing_summary(rows, 'example-skill')
+        self.assertEqual('complete', routing['status'])
+        self.assertEqual(4, routing['n'])
+        self.assertEqual({'tp': 1, 'fp': 1, 'tn': 1, 'fn': 1}, routing['confusion'])
+        self.assertEqual(0.5, routing['repeat_consistency']['rate'])
+        self.assertEqual(4, routing['repeat_consistency']['n'])
+        self.assertEqual(analyzer.wilson(1, 2), routing['recall_wilson95'])
+
+    def test_context_summary_conserves_all_valid_runs_and_accounts_negative_false_loads(self) -> None:
+        analyzer = load_analyzer_module()
+        spec = make_minimal_spec('L2')
+        cases = {
+            'positive': {'should_trigger': True, 'attribution_evaluable': True,
+                         'applicable_variant_profiles': ['candidate/natural_routing']},
+            'negative-clean': {'should_trigger': False, 'attribution_evaluable': False,
+                               'applicable_variant_profiles': ['candidate/natural_routing']},
+            'negative-disagreement': {'should_trigger': False, 'attribution_evaluable': False,
+                                      'applicable_variant_profiles': ['candidate/natural_routing']},
+        }
+        records = []
+        for case_id, body_loads in (
+            ('positive', [True, True]),
+            ('negative-clean', [False, False]),
+            ('negative-disagreement', [False, True]),
+        ):
+            for repeat, loaded in enumerate(body_loads, 1):
+                body_bytes = 100 if loaded else 0
+                records.append({
+                    'case_id': case_id, 'repeat': repeat, 'variant': 'candidate_natural',
+                    'valid': True, 'skill_body_loaded': loaded,
+                    'context_usage': {
+                        'attributed': True, 'measurement_source': 'host_receipt',
+                        'bytes': body_bytes, 'tokens': body_bytes // 4,
+                        'unique_static_content_bytes': body_bytes,
+                        'repeated_static_content_bytes': 0,
+                        'protocol_output_bytes': 0, 'failed_command_output_bytes': 0,
+                        'components': ([{'kind': 'body', 'bytes': body_bytes, 'tokens': body_bytes // 4}]
+                                       if loaded else []),
+                    },
+                })
+        summary = analyzer.summarize_skill_context(records, cases, spec, 2)
+        self.assertEqual(6, summary['all_valid_rows'])
+        self.assertEqual(0, summary['conservation_failures'])
+        negative = summary['negative_cohort']
+        self.assertEqual(100, negative['false_body_load_bytes'])
+        self.assertEqual(1, negative['false_body_load_case_count'])
+        self.assertEqual(0.5, negative['false_body_load_rate']['rate'])
+        self.assertEqual(analyzer.wilson(1, 2), negative['false_body_load_rate']['wilson95'])
+        self.assertEqual(0.5, negative['repeat_consistency']['rate'])
 
     def test_case_cluster_bootstrap_does_not_count_repeats_as_cases(self) -> None:
         analyzer = load_analyzer_module()
@@ -1799,13 +2111,14 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
                         'case_id': case_id, 'repeat': repeat, 'variant': variant,
                         'valid': True, 'task_pass': task_pass,
                     })
-        paired = analyzer.paired_summary(records, 'baseline', 'candidate')
-        summary = analyzer.summarize_case_differences(
-            paired['case_difference_vectors']['task_pass'], confidence_level=0.95,
+        summary = analyzer.summarize_paired_metric(
+            records, comparator='baseline', candidate='candidate', metric='task_pass_rate',
+            direction='higher_is_better', effect='absolute', confidence_level=0.95,
             bootstrap_iterations=500, random_seed=7,
         )
-        self.assertEqual(paired['run_pair_count'], 20)
-        self.assertEqual(summary['paired_case_count'], 2)
+        self.assertEqual(summary['case_count'], 2)
+        self.assertEqual(summary['repeat_count'], 10)
+        self.assertEqual(['case-a', 'case-b'], [row['case_id'] for row in summary['case_differences']])
 
     def test_summarize_case_differences_is_importable_and_deterministic(self) -> None:
         analyzer = load_analyzer_module()
@@ -1830,7 +2143,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
         kwargs = dict(confidence_level=0.95, bootstrap_iterations=500, random_seed=17)
         no_effect = analyzer.summarize_case_differences([0.0] * 8, **kwargs)
         clear_effect = analyzer.summarize_case_differences([1.0] * 8, **kwargs)
-        self.assertEqual(no_effect['paired_case_count'], 8)
+        self.assertEqual(no_effect['case_count'], 8)
         self.assertLess(no_effect['lower'], 0.10)
         self.assertGreaterEqual(clear_effect['lower'], 0.10)
 
@@ -1842,36 +2155,28 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
         )
         self.assertGreater(summary['point'], 0.10)
         self.assertLess(summary['lower'], 0.10)
-        spec = make_minimal_spec('L2')
-        spec['hard_gates'] = [{
-            'id': 'minimum-task-lift', 'metric': 'paired_task_pass_lift_lower_bound',
-            'operator': '>=', 'value': 0.10,
-        }]
-        paired = {'case_intervals': {'task_pass': {'status': 'complete', **summary}}}
-        gate = analyzer.evaluate_hard_gates(
-            spec, {}, [], None, paired, None, None, None, None,
-        )[0]
-        self.assertEqual(gate['status'], 'not_evaluable')
+        benefit = analyzer.evaluate_benefit({'status': 'complete', **summary}, 0.10)
+        self.assertEqual(benefit['status'], 'not_evaluable')
         self.assertEqual(
             analyzer.derive_usefulness_status(
-                level='L2', evidence_status='complete', benefit_gate_status=gate['status'],
+                level='L2', evidence_status='complete', primary_benefit_status=benefit['status'],
                 guardrail_statuses=['pass'], protected_outcome_failures=0,
                 material_harm=False, candidate_hard_failures=0,
             ),
             'inconclusive',
         )
 
-    def test_non_task_benefit_requires_exact_task_noninferiority_gate_id(self) -> None:
+    def test_non_task_primary_benefit_requires_task_noninferiority(self) -> None:
         analyzer = load_analyzer_module()
         spec = make_minimal_spec('L2')
-        spec['hard_gates'] = [
-            {'id': 'process-benefit', 'metric': 'paired_process_score_lift_lower_bound', 'operator': '>=', 'value': 0.10},
-        ]
-        spec['metrics'] = ['paired_process_score_lift_lower_bound']
-        spec['analysis']['usefulness_benefit_gate_id'] = 'process-benefit'
+        spec['analysis']['primary_benefit'] = {
+            'metric': 'process_score_normalized', 'comparator': 'baseline',
+            'direction': 'higher_is_better', 'effect': 'absolute', 'minimum_benefit': 0.02,
+        }
+        spec['metrics'] = ['process_score_normalized']
         errors: list[str] = []
         analyzer.check_spec(spec, errors, [])
-        self.assertTrue(any('task_noninferiority_gate_id' in error for error in errors), errors)
+        self.assertTrue(any('task_pass_rate noninferiority' in error for error in errors), errors)
 
     def test_protected_outcome_failures_counts_missing_invalid_and_failed_arm_repeat_rows(self) -> None:
         analyzer = load_analyzer_module()
@@ -2219,7 +2524,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
         analyzer = load_analyzer_module()
         self.assertEqual(
             analyzer.derive_usefulness_status(
-                level='L2', evidence_status='complete', benefit_gate_status='fail',
+                level='L2', evidence_status='complete', primary_benefit_status='fail',
                 guardrail_statuses=['pass', 'pass'], protected_outcome_failures=0,
                 material_harm=False, candidate_hard_failures=0,
             ),
@@ -2700,10 +3005,10 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             self.assertIn('selection, order, and composition receipts', text, name)
             self.assertIn('must not claim library-scale multi-Skill orchestration evidence', text, name)
 
-    def test_method_source_map_uses_spec_v3_receipt_v2_and_requirement_owners(self) -> None:
+    def test_method_source_map_uses_spec_v4_receipt_v3_and_requirement_owners(self) -> None:
         source_map = (ROOT / 'references/source-map.md').read_text(encoding='utf-8')
         for token in (
-            'schema_version=3', 'requirements[]', 'receipt v2',
+            'schema_version=4', 'requirements[]', 'receipt v3',
             'analyze_runs.py::summarize_case_differences',
             'analyze_runs.py::summarize_skill_context',
             'analyze_runs.py::derive_usefulness_status',
@@ -2913,7 +3218,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             spec = make_minimal_spec('L1')
             rows = make_minimal_cases()
             rows[0]['requirements'][0]['owner'] = 'model'
-            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            spec_path, cases_path = write_spec_bundle(root, spec, rows)
             mismatch = self.run_cmd(
                 'scripts/validate_eval_suite.py', str(spec_path), str(cases_path),
             )
@@ -2921,7 +3226,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             rows[0]['requirements'][0]['owner'] = 'deterministic'
             rows[0]['requirements'].append(dict(rows[0]['requirements'][0]))
             rows[0]['requirements'][1]['id'] = 'task-complete-duplicate-owner'
-            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            spec_path, cases_path = write_spec_bundle(root, spec, rows)
             duplicate = self.run_cmd(
                 'scripts/validate_eval_suite.py', str(spec_path), str(cases_path),
             )
@@ -2974,12 +3279,12 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             rows = make_minimal_cases()
             profile = rows[0]['applicable_variant_profiles'][0]
             rows[0]['requirements'][0]['applicable_variant_profiles'] = [profile]
-            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            spec_path, cases_path = write_spec_bundle(root, spec, rows)
             valid = self.run_cmd(
                 'scripts/validate_eval_suite.py', str(spec_path), str(cases_path),
             )
             rows[0]['requirements'][0]['applicable_variant_profiles'] = ['prior/force_loaded']
-            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            spec_path, cases_path = write_spec_bundle(root, spec, rows)
             invalid = self.run_cmd(
                 'scripts/validate_eval_suite.py', str(spec_path), str(cases_path),
             )
@@ -2991,7 +3296,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
     def test_v2_identity_bindings_are_required_before_execution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            spec_path, cases_path = write_v3_bundle(
+            spec_path, cases_path = write_spec_bundle(
                 root, make_minimal_spec('L1'), make_minimal_cases(),
             )
             original = json.loads(spec_path.read_text(encoding='utf-8'))

@@ -23,7 +23,7 @@ Store a new cycle. Never overwrite prior evidence or compare metrics across chan
 
 ## Comparable version matrix
 
-Use the same receipt-index v1 and receipt v2 contract as L1–L3. For each compared version, bind candidate revision/source/plugin identity plus package, catalog, treatment, fixture set, grader set/schedule, artifact, provenance, routing, usage, and context evidence.
+Use the same receipt-index v1 and receipt v3 contract as L1–L3. For each compared version, bind candidate revision/source/plugin identity plus package, catalog, treatment, fixture set, grader set/schedule, artifact, provenance, routing, usage, and context evidence.
 
 The comparison is evaluable only when:
 
