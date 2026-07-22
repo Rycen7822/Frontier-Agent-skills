@@ -1,6 +1,6 @@
 ---
 name: writing-plans
-description: "Create brief plans, executable handoffs, migration plans, or resumable programs after decisions."
+description: "Create brief plans, handoffs, migration plans, or resumable programs after decisions."
 license: MIT
 metadata:
   version: 8.0.0
@@ -30,8 +30,8 @@ Never invent facts; return unresolved inputs to their owner.
 
 ## Profiles
 
-- **Brief**: one bounded outcome in the current context with no owner/session/migration/release transition. State goal, non-goals, writes/effects, steps, verification, and real risk/rollback. Return directly or write one requested Markdown file; never open a template or profile reference or create state. Brief loads no profile reference.
-- **Handoff**: one transfer must cross a context boundary: owner, session, environment, staged migration, or release; no ongoing program state. State goal/non-goals and allowed writes/effects. Produce one [Executable Handoff](templates/executable-handoff.md) and load [Handoff](references/profiles/handoff.md). Load exactly one of [Outcome slices](references/slicing/outcome-slices.md) or [Context capsules](references/slicing/context-capsules.md) only for independent outcomes, dependency order, or a proven context budget.
+- **Brief**: one bounded outcome in the current context with no owner/session/migration/release transition. State goal, steps, verification, and real risk/rollback. Return directly or write one requested Markdown file; never open a template or profile reference or create state. Brief loads no profile reference.
+- **Handoff**: one transfer must cross a context boundary: owner, session, environment, staged migration, or release; no ongoing program state. Produce one [Executable Handoff](templates/executable-handoff.md) and load [Handoff](references/profiles/handoff.md). Load exactly one of [Outcome slices](references/slicing/outcome-slices.md) or [Context capsules](references/slicing/context-capsules.md) only for independent outcomes, dependency order, or a proven context budget.
 - **Program**: a resumable multi-milestone effort with a changing frontier; never select it merely because one handoff has ordered migration/rollout stages. Create/update one [Program Plan](templates/program-plan.md), load [Program](references/profiles/program.md), and load [Deprecation and rollout](references/migration/deprecation-and-rollout.md) only for a real migration/rollout.
 - **Large source**: when carrying source ranges, sections, and final path, load only [Long-document handoff](references/bridges/long-document-handoff.md), transfer to `$long-document-segmented-writing`, and load no other Writing Plans reference.
 
@@ -40,6 +40,8 @@ Use the lightest profile preserving continuation and proof.
 ## Output rules
 
 Produce one canonical deliverable, not hidden state plus a projection. Handoff and Program are single Markdown documents; update Program in place. A context capsule is one section containing only goal, source pointers, locked decisions, frontier, blockers, and exact next action.
+
+Every profile states non-goals, allowed writes/effects, and an exact next action.
 
 Place every unresolved prerequisite before dependent slices, make its resolution the exact next action, and mark the dependent work blocked.
 
