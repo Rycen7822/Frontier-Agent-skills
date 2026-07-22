@@ -1,6 +1,6 @@
 ---
 name: writing-plans
-description: "Use after software decisions are settled to create a brief plan, executable handoff, migration plan, or resumable program."
+description: "Create brief plans, executable handoffs, migration plans, or resumable programs after software decisions settle."
 license: MIT
 metadata:
   version: 8.0.0
@@ -18,35 +18,37 @@ Explicit invocation is this full body. Never reopen `SKILL.md`, inventory worksp
 
 ## Scope
 
-Compile settled decisions into the lightest executable deliverable. Own state, order, authority, dependencies, recovery, and acceptance evidence. Do not rediscover intent, diagnose unknown causes, resolve architecture, execute, or claim verification.
+Compile settled decisions into the lightest executable deliverable with order, authority, dependencies, recovery, and acceptance evidence. Never rediscover intent, diagnose causes, resolve architecture, execute, or claim verification.
 
-Use only for an explicit plan request, cross-context handoff, or resumable migration/program. Routine same-session changes remain with `$software-quality-workflows`.
+Use for explicit planning, handoff, or resumable migration/program. Routine same-session changes stay with `$software-quality-workflows`.
 
 ## Required inputs
 
-Require a settled goal, non-goals, scope, authority, protected work, selected decisions, and acceptance evidence. Handoff and Program also require source freshness, authority, dependencies, rollback conditions, blockers, and an exact next action.
+Require settled goal/non-goals, scope, authority, protected work, decisions, and acceptance evidence. Handoff/Program also require source freshness, dependencies, rollback, blockers, and exact next action.
 
-Do not invent missing facts. Return unresolved inputs to their owning workflow.
+Never invent facts; return unresolved inputs to their owner.
 
 ## Profiles
 
-- **Brief**: one bounded outcome in the current context. Include goal, smallest change scope, ordered steps, verification, and only actual risks/rollback. Return it directly. When requested, write one Markdown file; never open a template or profile reference. Create no state.
-- **Handoff**: work must cross a context boundary. Produce one canonical [Executable Handoff](templates/executable-handoff.md) and load [Handoff](references/profiles/handoff.md). Load exactly one of [Outcome slices](references/slicing/outcome-slices.md) or [Context capsules](references/slicing/context-capsules.md) only when independent outcomes, explicit dependency order, or a real target-context budget requires it.
-- **Program**: a resumable multi-milestone program, migration, or rollout. Create and update one canonical [Program Plan](templates/program-plan.md), loading [Program](references/profiles/program.md). Load [Deprecation, migration, and rollout](references/migration/deprecation-and-rollout.md) only when a real migration or rollout exists.
-- **Large source**: when the plan must carry source ranges, required sections, and a final document path, load only [Long-document handoff](references/bridges/long-document-handoff.md), then transfer explicitly to `$long-document-segmented-writing`. Load no other Writing Plans reference for that route.
+- **Brief**: one bounded outcome in the current context with no owner/session/migration/release transition. State goal, non-goals, writes/effects, steps, verification, and real risk/rollback. Return directly or write one requested Markdown file; never open a template or profile reference or create state. Brief loads no profile reference.
+- **Handoff**: one transfer must cross a context boundary: owner, session, environment, staged migration, or release; it needs no ongoing program state. Produce one [Executable Handoff](templates/executable-handoff.md) and load [Handoff](references/profiles/handoff.md). Load exactly one of [Outcome slices](references/slicing/outcome-slices.md) or [Context capsules](references/slicing/context-capsules.md) only for independent outcomes, dependency order, or a proven target-context budget.
+- **Program**: a resumable multi-milestone effort with a changing frontier; never select it merely because one handoff has ordered migration/rollout stages. Create/update one [Program Plan](templates/program-plan.md), load [Program](references/profiles/program.md), and load [Deprecation and rollout](references/migration/deprecation-and-rollout.md) only for a real migration/rollout.
+- **Large source**: when a plan must carry source ranges, sections, and final path, load only [Long-document handoff](references/bridges/long-document-handoff.md), transfer to `$long-document-segmented-writing`, and load no other Writing Plans reference.
 
-Use the lightest profile that preserves continuation and proof. Brief loads no profile reference.
+Use the lightest profile preserving continuation and proof.
 
 ## Output rules
 
-Produce one canonical deliverable, not a hidden state plus a projection. Handoff and Program remain single Markdown documents; update Program in place. A context capsule is a section inside that document and contains only current goal, essential source pointers, locked decisions, frontier, blockers, and exact next action.
+Produce one canonical deliverable, not hidden state plus a projection. Handoff and Program are single Markdown documents; update Program in place. A context capsule is one section containing only goal, source pointers, locked decisions, frontier, blockers, and exact next action.
 
-Follow an explicitly requested JSON, YAML, or table format as the sole user deliverable. Create no sidecar, receipt, schema instance, renderer output, workflow root, or compatibility copy.
+Place every unresolved prerequisite before dependent slices, make its resolution the exact next action, and mark the dependent work blocked.
+
+Use any requested JSON, YAML, or table as the sole deliverable. Create no sidecar, receipt, schema instance, renderer output, workflow root, or compatibility copy.
 
 ## Return unresolved work
 
-Return unclear intent, unknown root cause, unresolved architecture, authority gaps, and feasibility work to `$software-quality-workflows`. SQW owns feasibility spikes through [Prototype lifecycle](../software-quality-workflows/references/workspace/prototype-lifecycle.md). Record the blocker and the exact missing decision; do not plan around guesses.
+Return unclear intent, unknown root cause, unresolved architecture, authority gaps, and feasibility to `$software-quality-workflows`. SQW owns feasibility spikes through [Prototype lifecycle](../software-quality-workflows/references/workspace/prototype-lifecycle.md). Record the blocker and missing decision; never plan around guesses.
 
 ## Completion boundary
 
-Planning is complete only when the chosen deliverable is internally consistent, source-bound where required, executable without rediscovery, and explicit about remaining blockers. This proves no implementation, test result, review verdict, release readiness, publication, deployment, or task completion.
+Planning is complete when the deliverable is consistent, source-bound where required, executable without rediscovery, and explicit about blockers. This proves no implementation, test, review, release readiness, publication, deployment, or task completion.
