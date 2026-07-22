@@ -45,7 +45,7 @@ If benefit is process, quality, or safety rather than task outcome, `analysis.ta
 
 ## Target-Skill context guardrail
 
-`analyze_runs.py::summarize_skill_context` freezes every intended-trigger candidate/natural `case × repeat` key as the denominator. Missing, duplicate, invalid, or `paired_total_only` rows reduce attribution coverage; candidate failures cannot look efficient by disappearing.
+`analyze_runs.py::summarize_skill_context` freezes every intended-trigger selected-candidate-treatment `case × repeat` key as the denominator. Missing, duplicate, invalid, or `context_capture.status=missing` rows reduce attribution coverage; a verified `captured` zero-component run remains attributed, and candidate failures cannot look efficient by disappearing.
 
 For every run, derive `unique_static_content_bytes`, `repeated_static_content_bytes`, `protocol_output_bytes`, and `failed_command_output_bytes` from the ordered component artifacts. Static uniqueness is the first `(source_path, content_sha256)` occurrence per run; later identical occurrences are repeated bytes. Their sum must equal total attributed bytes.
 

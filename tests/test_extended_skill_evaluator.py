@@ -33,9 +33,36 @@ HASHES = {
     name: 'sha256:' + digit * 64
     for name, digit in {
         'candidate': '1', 'package': '2', 'catalog': '3', 'treatment': '4',
-        'system': '5', 'tools': '6', 'skills': '7',
+        'system': '5', 'tools': '6', 'skills': '7', 'source': '8',
+        'plugin': '9', 'cases': 'a', 'contracts': 'b', 'fixtures': 'c', 'batch': 'd',
     }.items()
 }
+
+
+def canonical_hash(value: object) -> str:
+    payload = json.dumps(
+        value, sort_keys=True, separators=(',', ':'), ensure_ascii=False,
+    ).encode('utf-8')
+    return 'sha256:' + hashlib.sha256(payload).hexdigest()
+
+
+def bind_suite_hashes(spec: dict, rows: list[dict]) -> None:
+    spec['suite'].update({
+        'cases_content_hash': canonical_hash(rows),
+        'case_contracts_content_hash': canonical_hash([
+            {'case_id': row['case_id'], 'requirements': row['requirements']} for row in rows
+        ]),
+        'fixture_manifest_set_hash': canonical_hash([
+            {'case_id': row['case_id'], 'fixture': row['fixture']} for row in rows
+        ]),
+        'grader_batch_schedule_hash': canonical_hash([
+            {
+                'case_id': row['case_id'],
+                'grader_ids': sorted({item['grader_id'] for item in row['requirements']}),
+            }
+            for row in rows
+        ]),
+    })
 
 
 def make_minimal_spec(level: str) -> dict:
@@ -58,6 +85,11 @@ def make_minimal_spec(level: str) -> dict:
     if level == 'L0':
         return spec
 
+    spec['target'].update({
+        'candidate_revision': 'candidate-revision-test',
+        'candidate_source_tree_hash': HASHES['source'],
+        'candidate_plugin_tree_hash': HASHES['plugin'],
+    })
     spec['target']['candidate_hash'] = HASHES['candidate']
     spec['environment'] = {
         'agent': 'test-agent',
@@ -70,6 +102,10 @@ def make_minimal_spec(level: str) -> dict:
     }
     spec['suite'] = {
         'cases_file': 'cases.jsonl',
+        'cases_content_hash': HASHES['cases'],
+        'case_contracts_content_hash': HASHES['contracts'],
+        'fixture_manifest_set_hash': HASHES['fixtures'],
+        'grader_batch_schedule_hash': HASHES['batch'],
         'repeats': 1,
         'reset_strategy': 'fresh_workspace',
         'retry_policy': 'no_retry',
@@ -173,6 +209,7 @@ def make_minimal_cases(*, comparative: bool = False) -> list[dict]:
                 'id': 'task-complete',
                 'dimension': 'outcome',
                 'required': True,
+                'owner': 'deterministic',
                 'grader_id': 'focused-check',
                 'check_id': 'task-complete',
             }],
@@ -219,14 +256,13 @@ def write_case_bundle(rows: list[dict], directory: Path, spec: dict) -> Path:
     public_path.write_text('\n'.join(json.dumps(row, separators=(',', ':')) for row in public) + '\n', encoding='utf-8')
     payload_path.write_text('\n'.join(json.dumps(row, separators=(',', ':')) for row in holdout) + ('\n' if holdout else ''), encoding='utf-8')
     file_hash = lambda path: 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()
-    canonical = lambda value: 'sha256:' + hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     manifest = {
         'schema_version': 1,
         'payload_file': payload_path.name,
         'payload_sha256': file_hash(payload_path),
         'case_count': len(holdout),
         'case_ids': [row['case_id'] for row in holdout],
-        'cases': [{'case_id': row['case_id'], 'tags': row['tags'], 'case_sha256': canonical(row)} for row in holdout],
+        'cases': [{'case_id': row['case_id'], 'tags': row['tags'], 'case_sha256': canonical_hash(row)} for row in holdout],
     }
     manifest_path.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     spec['suite']['cases_file'] = public_path.name
@@ -236,6 +272,7 @@ def write_case_bundle(rows: list[dict], directory: Path, spec: dict) -> Path:
         'manifest_hash': file_hash(manifest_path),
         'payload_hash': file_hash(payload_path),
     })
+    bind_suite_hashes(spec, rows)
     return public_path
 
 
@@ -297,6 +334,7 @@ def write_v3_bundle(root: Path, spec: dict, rows: list[dict], *, ready: bool = F
                 'sha256': 'sha256:' + hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
             }
 
+    bind_suite_hashes(spec, rows)
     spec_path = root / 'spec.json'
     cases_path = root / 'cases.jsonl'
     spec_path.write_text(json.dumps(spec), encoding='utf-8')
@@ -340,19 +378,29 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
     spec_path.write_text(json.dumps(spec), encoding='utf-8')
     case = json.loads(cases_path.read_text(encoding='utf-8').strip())
 
-    canonical = lambda value: 'sha256:' + hashlib.sha256(
-        json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
-    ).hexdigest()
     file_hash = lambda path: 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()
     grader = spec['graders'][0]
-    grader_digest = canonical({'declaration': grader})
-    grader_set_digest = canonical([{'id': grader['id'], 'sha256': grader_digest}])
+    grader_digest = canonical_hash({'declaration': grader})
+    grader_set_digest = canonical_hash([{'id': grader['id'], 'sha256': grader_digest}])
 
     artifact_dir = root / spec['artifacts']['root'] / 'runs' / case['case_id'] / 'candidate_forced' / '1'
     verifier_dir = artifact_dir / 'verifier'
     verifier_dir.mkdir(parents=True)
     trace_path = artifact_dir / 'trace.jsonl'
-    trace_path.write_text('{"event":"task complete"}\n', encoding='utf-8')
+    trace_events = [
+        {'event_seq': 1, 'event': 'skill_retrieved'},
+        {'event_seq': 2, 'event': 'skill_selected'},
+        {'event_seq': 3, 'event': 'host_body_injected'},
+        {'event_seq': 4, 'event': 'skill_incorporated'},
+        {'event_seq': 5, 'event': 'assistant_deliverable'},
+    ]
+    trace_path.write_text(
+        ''.join(json.dumps(item, separators=(',', ':')) + '\n' for item in trace_events),
+        encoding='utf-8',
+    )
+    body_path = artifact_dir / 'context' / 'body.txt'
+    body_path.parent.mkdir()
+    body_path.write_text((package_root / 'SKILL.md').read_text(encoding='utf-8'), encoding='utf-8')
     stdout_path = verifier_dir / 'stdout.json'
     stdout = {
         'overall_pass': True,
@@ -377,12 +425,26 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
     stderr_path.write_bytes(b'')
     artifacts = [
         {'path': 'trace.jsonl', 'sha256': file_hash(trace_path), 'encoding': 'utf-8'},
+        {'path': 'context/body.txt', 'sha256': file_hash(body_path), 'encoding': 'utf-8'},
         {'path': 'verifier/stdout.json', 'sha256': file_hash(stdout_path), 'encoding': 'utf-8'},
         {'path': 'verifier/stderr.bin', 'sha256': file_hash(stderr_path), 'encoding': 'binary'},
     ]
     artifact_root = artifact_dir.relative_to(root).as_posix()
+
+    def routing_stage(value: object, line: int) -> dict:
+        return {
+            'status': 'observed',
+            'value': value,
+            'evidence': [{
+                'artifact': 'trace.jsonl',
+                'locator': {'start_line': line, 'end_line': line},
+                'observation': f'Frozen event {line} owns this routing stage.',
+            }],
+        }
+
     receipt = {
-        'schema_version': 1,
+        'schema_version': 2,
+        'receipt_hash': None,
         'run': {
             'run_id': f"{case['case_id']}:candidate_forced:1",
             'case_id': case['case_id'],
@@ -392,35 +454,62 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
             'error_type': None,
             'invalid_reason': None,
             'provenance': {
-                'spec_sha256': file_hash(spec_path),
-                'case_sha256': canonical(case),
-                'grader_set_sha256': grader_set_digest,
-                'environment_sha256': canonical(spec['environment']),
+                'candidate_revision': spec['target']['candidate_revision'],
+                'candidate_source_tree_hash': spec['target']['candidate_source_tree_hash'],
+                'candidate_plugin_tree_hash': spec['target']['candidate_plugin_tree_hash'],
+                'spec_content_hash': file_hash(spec_path),
+                'case_content_hash': canonical_hash(case),
+                'case_contracts_content_hash': spec['suite']['case_contracts_content_hash'],
+                'fixture_manifest_set_hash': spec['suite']['fixture_manifest_set_hash'],
+                'grader_set_hash': grader_set_digest,
+                'grader_batch_schedule_hash': spec['suite']['grader_batch_schedule_hash'],
+                'environment_hash': canonical_hash(spec['environment']),
                 'package_hash': package_hash,
-                'fixture_hash': case['fixture']['sha256'],
                 'catalog_hash': spec['variants'][0]['catalog_hash'],
                 'treatment_hash': spec['variants'][0]['treatment_hash'],
             },
         },
         'artifacts': artifacts,
+        'trace': {
+            'artifact': 'trace.jsonl',
+            'sha256': file_hash(trace_path),
+            'event_count': len(trace_events),
+            'context_capture': {'status': 'captured', 'source': 'replay_manifest'},
+        },
         'routing': {
-            'retrieved_skill_ids': ['target-skill'],
-            'selected_skill_id': 'target-skill',
-            'skill_body_loaded': True,
+            'retrieved': routing_stage(['target-skill'], 1),
+            'selected': routing_stage('target-skill', 2),
+            'body_loaded': routing_stage(True, 3),
+            'incorporated': routing_stage(True, 4),
+            'applied': routing_stage(True, 5),
             'resources_loaded': [],
-            'skill_incorporated': True,
-            'skill_applied': True,
-            'evidence': [{
-                'artifact': 'trace.jsonl',
-                'locator': {'start_line': 1, 'end_line': 1},
-                'observation': 'The run trace records the selected task.',
-            }],
+        },
+        'boundaries': {
+            'first_successful_source_write_seq': None,
+            'first_deliverable_seq': 5,
+        },
+        'bytes': {
+            'unique_static_content_bytes': body_path.stat().st_size,
+            'repeated_static_content_bytes': 0,
+            'protocol_output_bytes': 0,
+            'failed_command_output_bytes': 0,
+            'prewrite_tool_output_bytes': 0,
+        },
+        'counts': {
+            'host_injected_body_count': 1,
+            'model_initiated_body_read_count': 0,
+            'body_load_count': 1,
+            'reference_load_count': 0,
+            'skill_load_tool_calls': 0,
+            'skill_protocol_tool_calls': 0,
+            'prewrite_task_tool_calls': 0,
+            'task_tool_calls': 0,
+            'workflow_artifact_count': 0,
         },
         'usage': {
             'tokens_in': 10,
             'tokens_out': 5,
             'latency_ms': 20,
-            'tool_calls': 0,
             'retries': 0,
             'evidence': [{
                 'artifact': 'trace.jsonl',
@@ -429,8 +518,13 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
             }],
         },
         'context_usage': {
-            'measurement_source': 'paired_total_only',
-            'components': [],
+            'measurement_source': 'replay_manifest',
+            'components': [{
+                'kind': 'body',
+                'source_path': 'SKILL.md',
+                'artifact': 'context/body.txt',
+                'tokens': None,
+            }],
         },
         'grader_outputs': [{
             'grader_id': grader['id'],
@@ -438,13 +532,19 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
                 'grader_sha256': grader_digest,
                 'selected_check_ids': ['task-complete'],
                 'artifact_root': artifact_root,
-                'input_artifacts': [{'path': 'trace.jsonl', 'sha256': file_hash(trace_path)}],
+                'input_artifacts': [
+                    {'path': 'context/body.txt', 'sha256': file_hash(body_path)},
+                    {'path': 'trace.jsonl', 'sha256': file_hash(trace_path)},
+                ],
                 'stdout_artifact': 'verifier/stdout.json',
                 'stderr_artifact': 'verifier/stderr.bin',
                 'exit_code': 0,
             },
         }],
     }
+    receipt['receipt_hash'] = canonical_hash({
+        key: value for key, value in receipt.items() if key != 'receipt_hash'
+    })
     receipt_path = artifact_dir / 'receipt.json'
     receipt_path.write_text(json.dumps(receipt, separators=(',', ':')) + '\n', encoding='utf-8')
     index = {
@@ -470,6 +570,16 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
 
 def rewrite_bound_receipt(bundle: dict[str, Path], receipt: dict) -> None:
     receipt_path = bundle['receipt']
+    if receipt.get('schema_version') == 2 and 'receipt_hash' in receipt:
+        receipt['receipt_hash'] = 'sha256:' + hashlib.sha256(
+            json.dumps(
+                {key: value for key, value in receipt.items() if key != 'receipt_hash'},
+                sort_keys=True,
+                separators=(',', ':'),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode('utf-8')
+        ).hexdigest()
     receipt_path.write_text(json.dumps(receipt, separators=(',', ':')) + '\n', encoding='utf-8')
     index = json.loads(bundle['index'].read_text(encoding='utf-8'))
     index['receipt']['sha256'] = 'sha256:' + hashlib.sha256(receipt_path.read_bytes()).hexdigest()
@@ -486,7 +596,7 @@ def add_manual_review_receipt(bundle: dict[str, Path]) -> dict[str, Path | str]:
     }
     bundle['spec'].write_text(json.dumps(spec), encoding='utf-8')
     run_receipt = json.loads(bundle['receipt'].read_text(encoding='utf-8'))
-    run_receipt['run']['provenance']['spec_sha256'] = file_hash(bundle['spec'])
+    run_receipt['run']['provenance']['spec_content_hash'] = file_hash(bundle['spec'])
     rewrite_bound_receipt(bundle, run_receipt)
 
     artifacts_root = bundle['spec'].parent / spec['artifacts']['root']
@@ -524,18 +634,58 @@ def add_context_component(
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_text(content or f'frozen {kind} context\n', encoding='utf-8')
     reference = artifact.relative_to(bundle['artifact_dir']).as_posix()
-    receipt['artifacts'].append({
-        'path': reference, 'sha256': file_hash(artifact), 'encoding': 'utf-8',
-    })
+    artifact_entry = {'path': reference, 'sha256': file_hash(artifact), 'encoding': 'utf-8'}
+    existing_artifact = next(
+        (item for item in receipt['artifacts'] if item['path'] == reference), None,
+    )
+    if existing_artifact is None:
+        receipt['artifacts'].append(artifact_entry)
+    else:
+        existing_artifact.update(artifact_entry)
     components = receipt['context_usage']['components'] if append else []
     components.append({
         'kind': kind, 'source_path': source_path,
         'artifact': reference, 'tokens': tokens,
     })
     receipt['context_usage'] = {'measurement_source': measurement_source, 'components': components}
-    if kind == 'reference' and source_path not in receipt['routing']['resources_loaded']:
-        receipt['routing']['resources_loaded'].append(source_path)
+    receipt['trace']['context_capture']['source'] = (
+        'host_trace' if measurement_source == 'host_receipt' else 'replay_manifest'
+    )
+    receipt['routing']['resources_loaded'] = sorted({
+        item['source_path'] for item in components if item['kind'] == 'reference'
+    })
+    body_count = sum(item['kind'] == 'body' for item in components)
+    receipt['counts'].update({
+        'host_injected_body_count': min(body_count, 1),
+        'model_initiated_body_read_count': max(body_count - 1, 0),
+        'body_load_count': body_count,
+        'reference_load_count': sum(item['kind'] == 'reference' for item in components),
+    })
+    receipt['routing']['body_loaded']['value'] = body_count > 0
+
+    context_bytes = {field: 0 for field in (
+        'unique_static_content_bytes', 'repeated_static_content_bytes',
+        'protocol_output_bytes', 'failed_command_output_bytes',
+    )}
+    static_seen: set[tuple[str, str]] = set()
+    for item in components:
+        component_path = bundle['artifact_dir'] / item['artifact']
+        size = component_path.stat().st_size
+        if item['kind'] in {'metadata', 'body', 'reference'}:
+            identity = (item['source_path'], file_hash(component_path))
+            field = (
+                'repeated_static_content_bytes' if identity in static_seen
+                else 'unique_static_content_bytes'
+            )
+            static_seen.add(identity)
+        elif item['kind'] == 'protocol_output':
+            field = 'protocol_output_bytes'
+        else:
+            field = 'failed_command_output_bytes'
+        context_bytes[field] += size
+    receipt['bytes'].update(context_bytes)
     inputs = receipt['grader_outputs'][0]['invocation']['input_artifacts']
+    inputs[:] = [item for item in inputs if item['path'] != reference]
     inputs.append({'path': reference, 'sha256': file_hash(artifact)})
     inputs.sort(key=lambda item: item['path'])
     rewrite_bound_receipt(bundle, receipt)
@@ -569,15 +719,11 @@ def stamp_provenance(rows: list[dict], spec_path: Path, cases_path: Path) -> lis
                 for row in (json.loads(line) for line in payload_path.read_text(encoding='utf-8').splitlines() if line.strip())
             })
 
-    def canonical(value: object) -> str:
-        payload = json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
-        return 'sha256:' + hashlib.sha256(payload).hexdigest()
-
     shared = {
         'evaluation_id': spec['evaluation_id'],
         'spec_sha256': 'sha256:' + hashlib.sha256(spec_path.read_bytes()).hexdigest(),
-        'grader_set_sha256': canonical(spec['graders']),
-        'environment_sha256': canonical(spec['environment']),
+        'grader_set_sha256': canonical_hash(spec['graders']),
+        'environment_sha256': canonical_hash(spec['environment']),
     }
     variants = {variant['id']: variant for variant in spec['variants']}
     stamped = []
@@ -589,7 +735,7 @@ def stamp_provenance(rows: list[dict], spec_path: Path, cases_path: Path) -> lis
             'package_hash': variants[row['variant']]['package_hash'],
             'catalog_hash': variants[row['variant']]['catalog_hash'],
             'treatment_hash': variants[row['variant']]['treatment_hash'],
-            'case_sha256': canonical(case),
+            'case_sha256': canonical_hash(case),
             'fixture': case['fixture'],
         }
         stamped.append(row)
@@ -941,6 +1087,116 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('scored-ready fixture manifest placeholder is forbidden', result.stdout)
 
+    def test_receipt_and_report_v2_bind_capture_routing_boundaries_and_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = write_receipt_bundle(Path(tmp))
+            receipt = json.loads(bundle['receipt'].read_text(encoding='utf-8'))
+            self.assertEqual(receipt['schema_version'], 2)
+            self.assertTrue(load_analyzer_module().verify_self_hash(receipt, 'receipt_hash'))
+            self.assertEqual(
+                receipt['trace']['context_capture'],
+                {'status': 'captured', 'source': 'replay_manifest'},
+            )
+            self.assertEqual(receipt['counts']['host_injected_body_count'], 1)
+            self.assertEqual(receipt['counts']['model_initiated_body_read_count'], 0)
+            self.assertEqual(receipt['boundaries']['first_successful_source_write_seq'], None)
+            self.assertEqual(receipt['boundaries']['first_deliverable_seq'], 5)
+            self.assertEqual(
+                set(receipt['routing']),
+                {'retrieved', 'selected', 'body_loaded', 'incorporated', 'applied', 'resources_loaded'},
+            )
+
+            report = self.assert_valid_receipt_bundle(bundle)
+            self.assertEqual(report['schema_version'], 2)
+            self.assertTrue(load_analyzer_module().verify_self_hash(report, 'report_hash'))
+            for field in (
+                'candidate_revision', 'candidate_source_tree_hash', 'candidate_plugin_tree_hash',
+                'spec_content_hash', 'cases_content_hash', 'case_contracts_content_hash',
+                'fixture_manifest_set_hash', 'grader_set_hash', 'grader_batch_schedule_hash',
+                'treatment_hash', 'environment_hash', 'receipt_index_content_hash',
+            ):
+                self.assertIn(field, report)
+
+    def test_receipt_v2_separates_host_injection_model_reread_and_routing_stages(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            missing_host = write_receipt_bundle(root / 'missing-host')
+            receipt = json.loads(missing_host['receipt'].read_text(encoding='utf-8'))
+            receipt['counts']['host_injected_body_count'] = 0
+            receipt['counts']['model_initiated_body_read_count'] = 1
+            rewrite_bound_receipt(missing_host, receipt)
+            result = self.run_receipt_analysis(missing_host)
+            self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+            self.assertIn('requires exactly one host body injection', result.stdout)
+
+            duplicate_host = write_receipt_bundle(root / 'duplicate-host')
+            add_context_component(
+                duplicate_host, artifact_name='body-reread.txt', append=True,
+                content=(duplicate_host['artifact_dir'] / 'context/body.txt').read_text(encoding='utf-8'),
+            )
+            receipt = json.loads(duplicate_host['receipt'].read_text(encoding='utf-8'))
+            receipt['counts']['host_injected_body_count'] = 2
+            receipt['counts']['model_initiated_body_read_count'] = 0
+            rewrite_bound_receipt(duplicate_host, receipt)
+            result = self.run_receipt_analysis(duplicate_host)
+            self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+            self.assertIn('requires exactly one host body injection', result.stdout)
+
+            model_reread = write_receipt_bundle(root / 'model-reread')
+            add_context_component(
+                model_reread, artifact_name='body-reread.txt', append=True,
+                content=(model_reread['artifact_dir'] / 'context/body.txt').read_text(encoding='utf-8'),
+            )
+            report = self.assert_valid_receipt_bundle(model_reread)
+            self.assertEqual(report['evidence_status'], 'complete')
+            self.assertEqual(report['run_matrix'][0]['counts']['model_initiated_body_read_count'], 1)
+            self.assertGreater(report['run_matrix'][0]['bytes']['repeated_static_content_bytes'], 0)
+
+            not_inferred = write_receipt_bundle(root / 'not-inferred')
+            receipt = json.loads(not_inferred['receipt'].read_text(encoding='utf-8'))
+            for stage in ('incorporated', 'applied'):
+                receipt['routing'][stage] = {
+                    'status': 'not_evaluable', 'value': None, 'evidence': [],
+                }
+            rewrite_bound_receipt(not_inferred, receipt)
+            record = self.assert_valid_receipt_bundle(not_inferred)['run_matrix'][0]
+            self.assertIsNone(record['skill_incorporated'])
+            self.assertIsNone(record['skill_applied'])
+
+    def test_receipt_v2_rejects_self_hash_identity_and_boundary_tampering(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            self_hash = write_receipt_bundle(root / 'self-hash')
+            receipt = json.loads(self_hash['receipt'].read_text(encoding='utf-8'))
+            receipt['counts']['workflow_artifact_count'] = 1
+            self_hash['receipt'].write_text(json.dumps(receipt) + '\n', encoding='utf-8')
+            index = json.loads(self_hash['index'].read_text(encoding='utf-8'))
+            index['receipt']['sha256'] = 'sha256:' + hashlib.sha256(
+                self_hash['receipt'].read_bytes()
+            ).hexdigest()
+            self_hash['index'].write_text(json.dumps(index) + '\n', encoding='utf-8')
+            result = self.run_receipt_analysis(self_hash)
+            self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+            self.assertIn('receipt self-hash mismatch', result.stdout)
+
+            identity = write_receipt_bundle(root / 'identity')
+            receipt = json.loads(identity['receipt'].read_text(encoding='utf-8'))
+            receipt['run']['provenance']['candidate_source_tree_hash'] = 'sha256:' + '0' * 64
+            rewrite_bound_receipt(identity, receipt)
+            result = self.run_receipt_analysis(identity)
+            self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+            self.assertIn('candidate_source_tree_hash mismatch', result.stdout)
+
+            boundary = write_receipt_bundle(root / 'boundary')
+            receipt = json.loads(boundary['receipt'].read_text(encoding='utf-8'))
+            receipt['boundaries']['first_deliverable_seq'] = 4
+            rewrite_bound_receipt(boundary, receipt)
+            result = self.run_receipt_analysis(boundary)
+            self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+            self.assertIn('first_deliverable_seq does not match ordered trace', result.stdout)
+
     def test_missing_or_tampered_receipt_and_artifact_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -994,7 +1250,7 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             receipt = json.loads(bad_span['receipt'].read_text(encoding='utf-8'))
             stdout_path = bad_span['artifact_dir'] / 'verifier/stdout.json'
             stdout = json.loads(stdout_path.read_text(encoding='utf-8'))
-            stdout['checks'][0]['evidence'][0]['locator']['end_line'] = 2
+            stdout['checks'][0]['evidence'][0]['locator']['end_line'] = 6
             stdout_path.write_text(json.dumps(stdout) + '\n', encoding='utf-8')
             stdout_hash = 'sha256:' + hashlib.sha256(stdout_path.read_bytes()).hexdigest()
             next(item for item in receipt['artifacts'] if item['path'] == 'verifier/stdout.json')['sha256'] = stdout_hash
@@ -1722,33 +1978,15 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             self.assertEqual(replay['measurement_source'], 'replay_manifest')
             self.assertGreater(replay['bytes'], 0)
 
-    def test_paired_total_only_cannot_satisfy_skill_context_gate(self) -> None:
+    def test_missing_context_capture_is_invalid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             bundle = write_receipt_bundle(Path(tmp))
             receipt = json.loads(bundle['receipt'].read_text(encoding='utf-8'))
-            receipt['context_usage'] = {
-                'measurement_source': 'paired_total_only', 'components': [],
-            }
+            receipt['trace']['context_capture']['status'] = 'missing'
             rewrite_bound_receipt(bundle, receipt)
-            report = self.assert_valid_receipt_bundle(bundle)
-            self.assertFalse(report['run_matrix'][0]['context_usage']['attributed'])
-            analyzer = load_analyzer_module()
-            context_summary = analyzer.summarize_skill_context(
-                [{
-                    **report['run_matrix'][0], 'variant': 'candidate', 'case_id': 'case-a',
-                }],
-                {'case-a': {
-                    'should_trigger': True,
-                    'attribution_evaluable': True,
-                    'applicable_variant_profiles': ['candidate/natural_routing'],
-                }},
-                {'variants': [{
-                    'id': 'candidate', 'role': 'candidate', 'mode': 'natural_routing',
-                }]},
-                1,
-            )
-            self.assertEqual(context_summary['attribution_rate'], 0)
-            self.assertFalse(analyzer.compare_gate(context_summary['attribution_rate'], '==', 1))
+            result = self.run_receipt_analysis(bundle)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertIn('context capture is missing', result.stdout)
 
     def test_prior_context_delta_is_variant_scoped_and_fail_closed(self) -> None:
         analyzer = load_analyzer_module()
@@ -2462,10 +2700,10 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             self.assertIn('selection, order, and composition receipts', text, name)
             self.assertIn('must not claim library-scale multi-Skill orchestration evidence', text, name)
 
-    def test_method_source_map_uses_v3_receipt_and_requirement_owners(self) -> None:
+    def test_method_source_map_uses_spec_v3_receipt_v2_and_requirement_owners(self) -> None:
         source_map = (ROOT / 'references/source-map.md').read_text(encoding='utf-8')
         for token in (
-            'schema_version=3', 'requirements[]', 'receipt v1',
+            'schema_version=3', 'requirements[]', 'receipt v2',
             'analyze_runs.py::summarize_case_differences',
             'analyze_runs.py::summarize_skill_context',
             'analyze_runs.py::derive_usefulness_status',
@@ -2668,6 +2906,114 @@ class SkillEvaluatorScriptsTest(unittest.TestCase):
             result = self.run_cmd('scripts/audit_skill_package.py', str(skill))
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('unsafe Markdown link scheme', result.stderr)
+
+    def test_requirement_owner_must_match_exactly_one_grader_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            spec = make_minimal_spec('L1')
+            rows = make_minimal_cases()
+            rows[0]['requirements'][0]['owner'] = 'model'
+            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            mismatch = self.run_cmd(
+                'scripts/validate_eval_suite.py', str(spec_path), str(cases_path),
+            )
+
+            rows[0]['requirements'][0]['owner'] = 'deterministic'
+            rows[0]['requirements'].append(dict(rows[0]['requirements'][0]))
+            rows[0]['requirements'][1]['id'] = 'task-complete-duplicate-owner'
+            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            duplicate = self.run_cmd(
+                'scripts/validate_eval_suite.py', str(spec_path), str(cases_path),
+            )
+
+        self.assertEqual(mismatch.returncode, 1, mismatch.stdout + mismatch.stderr)
+        self.assertIn('owner model does not match grader type deterministic', mismatch.stdout)
+        self.assertEqual(duplicate.returncode, 1, duplicate.stdout + duplicate.stderr)
+        self.assertIn('duplicate grader/check binding', duplicate.stdout)
+
+    def test_model_grader_output_is_bound_to_one_jsonl_batch_item(self) -> None:
+        analyzer = load_analyzer_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = {
+                'overall_pass': True, 'score': 100, 'checks': [],
+                'missing_evidence': [], 'grader_failure': False,
+                'grader_failure_reason': None,
+            }
+            line = json.dumps({
+                'schema_version': 1,
+                'batch_id': 'batch-001',
+                'items': [
+                    {'item_id': 'run-a:rubric', 'grader_id': 'rubric', 'output': output},
+                    {'item_id': 'run-b:rubric', 'grader_id': 'rubric', 'output': output},
+                ],
+            }, sort_keys=True, separators=(',', ':'))
+            path = root / 'grader-batches.jsonl'
+            path.write_text(line + '\n', encoding='utf-8')
+            reference = {
+                'artifact': 'grader-batches.jsonl',
+                'line': 1,
+                'line_sha256': 'sha256:' + hashlib.sha256(line.encode()).hexdigest(),
+                'batch_id': 'batch-001',
+                'item_id': 'run-b:rubric',
+            }
+            loaded = analyzer.load_batched_grader_output(
+                reference, root, expected_grader_id='rubric',
+            )
+            self.assertEqual(loaded, output)
+            reference['line_sha256'] = 'sha256:' + '0' * 64
+            with self.assertRaisesRegex(ValueError, 'batch line sha256 mismatch'):
+                analyzer.load_batched_grader_output(
+                    reference, root, expected_grader_id='rubric',
+                )
+
+    def test_requirement_owner_can_be_scoped_to_declared_variant_profiles(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            spec = make_minimal_spec('L1')
+            rows = make_minimal_cases()
+            profile = rows[0]['applicable_variant_profiles'][0]
+            rows[0]['requirements'][0]['applicable_variant_profiles'] = [profile]
+            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            valid = self.run_cmd(
+                'scripts/validate_eval_suite.py', str(spec_path), str(cases_path),
+            )
+            rows[0]['requirements'][0]['applicable_variant_profiles'] = ['prior/force_loaded']
+            spec_path, cases_path = write_v3_bundle(root, spec, rows)
+            invalid = self.run_cmd(
+                'scripts/validate_eval_suite.py', str(spec_path), str(cases_path),
+            )
+
+        self.assertEqual(valid.returncode, 0, valid.stdout + valid.stderr)
+        self.assertEqual(invalid.returncode, 1, invalid.stdout + invalid.stderr)
+        self.assertIn('requirement profiles are outside the case profiles', invalid.stdout)
+
+    def test_v2_identity_bindings_are_required_before_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            spec_path, cases_path = write_v3_bundle(
+                root, make_minimal_spec('L1'), make_minimal_cases(),
+            )
+            original = json.loads(spec_path.read_text(encoding='utf-8'))
+            fields = (
+                ('target', 'candidate_revision'),
+                ('target', 'candidate_source_tree_hash'),
+                ('target', 'candidate_plugin_tree_hash'),
+                ('suite', 'cases_content_hash'),
+                ('suite', 'case_contracts_content_hash'),
+                ('suite', 'fixture_manifest_set_hash'),
+                ('suite', 'grader_batch_schedule_hash'),
+            )
+            for owner, field in fields:
+                with self.subTest(field=field):
+                    mutated = json.loads(json.dumps(original))
+                    mutated[owner].pop(field)
+                    spec_path.write_text(json.dumps(mutated), encoding='utf-8')
+                    result = self.run_cmd(
+                        'scripts/validate_eval_suite.py', str(spec_path), str(cases_path),
+                    )
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    self.assertIn(f'spec.{owner}.{field}', result.stdout)
 
     def test_all_cli_output_path_errors_return_two(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

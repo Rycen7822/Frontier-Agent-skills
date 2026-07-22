@@ -21,10 +21,10 @@ These fields remain separate. `supported` is not a release decision; `eligible` 
 
 ## 1. Identity and scope
 
-- Target package/source/inventory hash:
+- Candidate revision/source-tree/plugin-tree and target package hash:
 - Treatment and catalog identities:
 - Model, harness, system configuration, and environment fingerprint:
-- Spec/schema, cases, fixtures, graders, and analyzer revisions:
+- Spec/schema, cases, case contracts, fixture set, grader set/schedule, and analyzer revisions:
 - Authority, permissions, network, and credentials boundary:
 - Declared variants/repeats and claim ceiling:
 - L3/L4 only — holdout manifest/payload custody and exposure:
@@ -48,7 +48,8 @@ These fields remain separate. `supported` is not a release decision; `eligible` 
 
 ## 4. Receipt integrity and run accounting — L1+
 
-- Receipt-index version and immutable path/hash:
+- Receipt-index version and immutable raw-bytes path/hash:
+- Receipt v2 and arm-report v2 self-hash verification:
 - Receipt verification status and checked-run count:
 - Recomputed fixture/package/artifact/grader/provenance/invocation bindings:
 - Trust boundaries still externally attested or unverified:
@@ -100,8 +101,9 @@ Repeats are not independent inferential samples.
 - Host-receipt component tokens, when present:
 - Skill-context bytes/tokens p95 and frozen budget gate:
 - Context-budget authority reference and verification boundary:
-- Paired-total-only rows excluded from attribution:
-- End-to-end input/output tokens, latency, calls, retries, and residue:
+- Captured-zero versus missing context rows:
+- Host/model body loads, reference/load/protocol/prewrite/task calls, workflow artifacts, and prewrite output bytes:
+- End-to-end input/output tokens, latency, retries, and residue:
 
 Report Target-Skill context separately from total prompt/run usage. Do not derive token counts from replay-manifest bytes.
 
@@ -151,6 +153,6 @@ Do not infer this record from analyzer eligibility.
 - Spec and public/holdout case bindings:
 - Receipt index, receipts, artifacts, and grader outputs:
 - Package inventory and environment fingerprint:
-- Analyzer JSON/Markdown and package audit:
+- Analyzer arm-report v2 JSON/Markdown, raw report hash, and package audit:
 - Manual-review receipt when declared:
 - Cleanup verification:

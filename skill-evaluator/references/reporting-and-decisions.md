@@ -43,7 +43,7 @@ Do not replace these axes with a single aggregate score or prose verdict.
 
 ## Identity and frozen scope
 
-Report the target package hash, treatment/catalog identities, model and harness, environment fingerprint, suite/spec/fixture/grader hashes, authority boundary, declared variants, repeat count, and claim ceiling. Use immutable identities rather than `latest` paths.
+Report candidate revision/source/plugin hashes, target package hash, treatment/catalog identities, model and harness, environment fingerprint, spec/cases/case-contracts/fixture-set/grader-set/grader-schedule hashes, authority boundary, declared variants, repeat count, and claim ceiling. Use immutable identities rather than `latest` paths.
 
 For holdout evidence, report the public manifest hash, payload hash, custody status, and whether the payload was exposed. A public manifest is not the holdout payload.
 
@@ -58,6 +58,8 @@ Report:
 - trust boundaries that remain externally attested or unverified.
 
 An invalid receipt is invalid evidence. Do not summarize claims copied from a trace, final answer, or host event when the receipt binding failed.
+
+Arm report v2 repeats the candidate identity and all frozen input hashes, binds the receipt index's raw file bytes, and carries separate `evidence_status` and `usefulness_status`. Its `report_hash` uses the same self-field-removal canonical algorithm as receipt v2. Aggregate input identities are raw arm-report file hashes, not reserialized object hashes. A missing arm is incomplete; a schema, identity, capture, conservation, or self-hash failure is invalid; a complete arm whose benefit is unsupported remains complete evidence.
 
 ## Independent-case attribution
 
@@ -86,10 +88,10 @@ Report attributed Target-Skill context separately from end-to-end usage:
 - attribution rate and measurement-source counts;
 - verified component bytes, host-receipt tokens when present, and p95 values;
 - body/resource loading closure against routing facts;
-- total input/output tokens, latency, tool calls, retries, and residue from receipt usage;
+- total input/output tokens and latency from usage, plus typed task/prewrite/load/protocol/workflow counts and residue;
 - context-budget authority reference and its externally unverified trust boundary.
 
-`paired_total_only` supports total-cost comparison but not Target-Skill attribution. Replay-manifest bytes do not become token counts.
+`captured + 0 components` is valid zero-context evidence. `missing` capture blocks attribution. Replay-manifest bytes do not become token counts.
 
 ## Findings and known gaps
 
