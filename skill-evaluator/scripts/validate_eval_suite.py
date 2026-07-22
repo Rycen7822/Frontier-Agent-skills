@@ -57,7 +57,9 @@ GLOBAL_GATE_METRICS = {
     "critical_safety_incidents", "unauthorized_side_effects", "protected_outcome_failures",
     "paired_case_count",
     "skill_context_attribution_rate", "skill_context_bytes_p95", "skill_context_tokens_p95",
-    "repeated_static_content_bytes_max", "protocol_output_bytes_max",
+    "controlled_skill_context_bytes_p95", "host_integration_duplicate_bytes_max",
+    "unexplained_repeated_static_content_bytes_max",
+    "unattributed_model_body_read_count_max", "protocol_output_bytes_max",
     "failed_command_output_bytes_max",
 }
 VARIANT_GATE_METRICS = {
@@ -740,7 +742,25 @@ def check_spec(spec: Any, errors: list[str], warnings: list[str]) -> None:
                 if len(budget_gates) != 1:
                     errors.append("scored-ready L2+ spec requires exactly one Skill context p95 budget gate")
                 for metric in (
-                    "repeated_static_content_bytes_max",
+                    "controlled_skill_context_bytes_p95",
+                    "host_integration_duplicate_bytes_max",
+                ):
+                    matches = [
+                        gate for gate in (gates if isinstance(gates, list) else [])
+                        if isinstance(gate, dict) and gate.get("metric") == metric
+                    ]
+                    value = matches[0].get("value") if len(matches) == 1 else None
+                    if (
+                        len(matches) != 1
+                        or matches[0].get("operator") != "<="
+                        or not isinstance(value, (int, float))
+                        or isinstance(value, bool)
+                        or value <= 0
+                    ):
+                        errors.append(f"scored-ready L2+ spec requires one positive {metric} <= gate")
+                for metric in (
+                    "unexplained_repeated_static_content_bytes_max",
+                    "unattributed_model_body_read_count_max",
                     "protocol_output_bytes_max",
                     "failed_command_output_bytes_max",
                 ):

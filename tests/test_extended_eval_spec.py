@@ -415,8 +415,11 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
         spec['hard_gates'].extend([
             {'id': 'context-attribution', 'metric': 'skill_context_attribution_rate', 'operator': '==', 'value': 1},
             {'id': 'skill-context-budget', 'metric': 'skill_context_bytes_p95', 'operator': '<=', 'value': 4096},
+            {'id': 'controlled-context-budget', 'metric': 'controlled_skill_context_bytes_p95', 'operator': '<=', 'value': 4096},
+            {'id': 'host-duplicate-budget', 'metric': 'host_integration_duplicate_bytes_max', 'operator': '<=', 'value': 4096},
             {'id': 'protected', 'metric': 'protected_outcome_failures', 'operator': '==', 'value': 0},
-            {'id': 'repeated-static', 'metric': 'repeated_static_content_bytes_max', 'operator': '==', 'value': 0},
+            {'id': 'unexplained-repeated', 'metric': 'unexplained_repeated_static_content_bytes_max', 'operator': '==', 'value': 0},
+            {'id': 'unattributed-reread', 'metric': 'unattributed_model_body_read_count_max', 'operator': '==', 'value': 0},
             {'id': 'protocol-output', 'metric': 'protocol_output_bytes_max', 'operator': '==', 'value': 0},
             {'id': 'failed-output', 'metric': 'failed_command_output_bytes_max', 'operator': '==', 'value': 0},
         ])

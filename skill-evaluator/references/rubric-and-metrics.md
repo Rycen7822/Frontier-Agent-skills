@@ -49,15 +49,18 @@ Any non-task primary benefit requires a task-pass noninferiority gate against th
 
 `analyze_runs.py::summarize_skill_context` freezes every intended-trigger selected-candidate-treatment `case × repeat` key as the budget denominator. Missing, duplicate, invalid, or `context_capture.status=missing` rows reduce attribution coverage; a verified `captured` zero-component run remains attributed, and candidate failures cannot look efficient by disappearing.
 
-For every valid run, derive `unique_static_content_bytes`, `repeated_static_content_bytes`, `protocol_output_bytes`, and `failed_command_output_bytes` from the ordered component artifacts. Static uniqueness is the first `(source_path, content_sha256)` occurrence per run; later identical occurrences are repeated bytes. Their sum must equal total attributed bytes. For the negative cohort, separately report body-component bytes, case-level false-load count/rate with Wilson interval, and repeat consistency.
+For every valid run, derive `unique_static_content_bytes`, `repeated_static_content_bytes`, `protocol_output_bytes`, and `failed_command_output_bytes` from the ordered component artifacts. Static uniqueness is the first `(source_path, content_sha256)` occurrence per run; later identical occurrences are repeated bytes. Their sum must equal total attributed bytes. In a force-loaded run with one host injection, a later body with the same path and hash is `host_integration_duplicate_bytes`; all other repeated static bytes remain `unexplained_repeated_static_content_bytes`, and nonmatching model body reads remain `unattributed_model_body_read_count`. `controlled_bytes` is total attributed bytes minus only the verified host duplicate. For the negative cohort, separately report body-component bytes, case-level false-load count/rate with Wilson interval, and repeat consistency.
 
-Report the four fields in every run and as an exact four-key `context_efficiency` map of nearest-rank p50, p95, and max. Byte/token p95 and aggregate context efficiency are complete only at 100% attribution coverage. Necessary unique static content has no separate size gate; total context p95 remains authoritative. End-to-end `tokens_in/out`, latency, calls, and retries remain a separate total-cost view.
+Report the four raw byte fields plus the two derived host byte fields in every run and as an exact six-key `context_efficiency` map of nearest-rank p50, p95, and max. Also report controlled-context p95 and unmatched model-body-read max. Byte/token p95 and aggregate context efficiency are complete only at 100% attribution coverage. Total context always retains host duplicate bytes; controlled context removes only the mechanically verified host duplicate. End-to-end `tokens_in/out`, latency, calls, and retries remain a separate total-cost view.
 
 Every scored-ready L2+ spec has:
 
 - one `skill_context_attribution_rate == 1` gate;
 - exactly one `skill_context_bytes_p95` or `skill_context_tokens_p95` budget gate;
-- one `repeated_static_content_bytes_max == 0` gate;
+- one positive `controlled_skill_context_bytes_p95 <= ...` gate;
+- one positive `host_integration_duplicate_bytes_max <= ...` gate;
+- one `unexplained_repeated_static_content_bytes_max == 0` gate;
+- one `unattributed_model_body_read_count_max == 0` gate;
 - one `protocol_output_bytes_max == 0` gate;
 - one `failed_command_output_bytes_max == 0` gate;
 - `analysis.context_budget_gate_id` pointing to it;

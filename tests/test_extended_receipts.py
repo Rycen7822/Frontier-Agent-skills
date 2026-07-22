@@ -90,8 +90,40 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
             )
             report = self.assert_valid_receipt_bundle(model_reread)
             self.assertEqual(report['evidence_status'], 'complete')
-            self.assertEqual(report['run_matrix'][0]['counts']['model_initiated_body_read_count'], 1)
-            self.assertGreater(report['run_matrix'][0]['bytes']['repeated_static_content_bytes'], 0)
+            record = report['run_matrix'][0]
+            self.assertEqual(record['counts']['model_initiated_body_read_count'], 1)
+            context = record['context_usage']
+            self.assertGreater(context['repeated_static_content_bytes'], 0)
+            self.assertEqual(
+                context['host_integration_duplicate_bytes'],
+                context['repeated_static_content_bytes'],
+            )
+            self.assertEqual(context['unexplained_repeated_static_content_bytes'], 0)
+            self.assertEqual(context['unattributed_model_body_read_count'], 0)
+            self.assertEqual(
+                context['controlled_bytes'],
+                context['bytes'] - context['host_integration_duplicate_bytes'],
+            )
+
+            mismatched_reread = write_receipt_bundle(root / 'mismatched-reread')
+            add_context_component(
+                mismatched_reread, artifact_name='other-body.txt', append=True,
+                source_path='different/SKILL.md', content='different body bytes\n',
+            )
+            mismatch_context = self.assert_valid_receipt_bundle(
+                mismatched_reread,
+            )['run_matrix'][0]['context_usage']
+            self.assertEqual(mismatch_context['host_integration_duplicate_bytes'], 0)
+            self.assertEqual(mismatch_context['unattributed_model_body_read_count'], 1)
+            self.assertEqual(mismatch_context['controlled_bytes'], mismatch_context['bytes'])
+            self.assertEqual(
+                (0, 0),
+                load_analyzer_module().classify_host_body_reads(
+                    {'host_injected_body_count': 0, 'model_initiated_body_read_count': 1},
+                    [{'artifact': 'body', 'bytes': 10}],
+                    {'body': ('SKILL.md', 'sha256:body')},
+                ),
+            )
 
             not_inferred = write_receipt_bundle(root / 'not-inferred')
             receipt = json.loads(not_inferred['receipt'].read_text(encoding='utf-8'))

@@ -222,8 +222,14 @@
       "value": 0
     },
     {
-      "id": "zero-repeated-static-content",
-      "metric": "repeated_static_content_bytes_max",
+      "id": "zero-unexplained-repeated-static-content",
+      "metric": "unexplained_repeated_static_content_bytes_max",
+      "operator": "==",
+      "value": 0
+    },
+    {
+      "id": "zero-unattributed-model-body-reads",
+      "metric": "unattributed_model_body_read_count_max",
       "operator": "==",
       "value": 0
     },
@@ -250,7 +256,10 @@
     "skill_context_attribution_rate",
     "skill_context_bytes_p95",
     "skill_context_tokens_p95",
-    "repeated_static_content_bytes_max",
+    "controlled_skill_context_bytes_p95",
+    "host_integration_duplicate_bytes_max",
+    "unexplained_repeated_static_content_bytes_max",
+    "unattributed_model_body_read_count_max",
     "protocol_output_bytes_max",
     "failed_command_output_bytes_max",
     "process_score",

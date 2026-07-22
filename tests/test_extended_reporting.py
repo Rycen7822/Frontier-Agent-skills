@@ -261,6 +261,10 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                         'unique_static_content_bytes': body_bytes,
                         'repeated_static_content_bytes': 0,
                         'protocol_output_bytes': 0, 'failed_command_output_bytes': 0,
+                        'host_integration_duplicate_bytes': 0,
+                        'unexplained_repeated_static_content_bytes': 0,
+                        'unattributed_model_body_read_count': 0,
+                        'controlled_bytes': body_bytes,
                         'components': ([{'kind': 'body', 'bytes': body_bytes, 'tokens': body_bytes // 4}]
                                        if loaded else []),
                     },
@@ -383,6 +387,13 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(context['repeated_static_content_bytes'], len(repeated.read_bytes()))
             self.assertEqual(context['protocol_output_bytes'], len(protocol.read_bytes()))
             self.assertEqual(context['failed_command_output_bytes'], len(failed.read_bytes()))
+            self.assertEqual(context['host_integration_duplicate_bytes'], len(repeated.read_bytes()))
+            self.assertEqual(context['unexplained_repeated_static_content_bytes'], 0)
+            self.assertEqual(context['unattributed_model_body_read_count'], 0)
+            self.assertEqual(
+                context['controlled_bytes'],
+                context['bytes'] - context['host_integration_duplicate_bytes'],
+            )
             self.assertEqual(
                 context['bytes'],
                 sum(context[field] for field in (
@@ -394,10 +405,13 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 {
                     'unique_static_content_bytes', 'repeated_static_content_bytes',
                     'protocol_output_bytes', 'failed_command_output_bytes',
+                    'host_integration_duplicate_bytes',
+                    'unexplained_repeated_static_content_bytes',
                 },
                 set(report['context_efficiency']),
             )
             self.assertTrue(all(set(value) == {'p50', 'p95', 'max'} for value in report['context_efficiency'].values()))
+            self.assertIn('controlled_skill_context_bytes_p95', report['skill_context'])
 
             receipt = json.loads(bundle['receipt'].read_text(encoding='utf-8'))
             next(
@@ -440,6 +454,10 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                     'repeated_static_content_bytes': 0,
                     'protocol_output_bytes': 0,
                     'failed_command_output_bytes': 0,
+                    'host_integration_duplicate_bytes': 0,
+                    'unexplained_repeated_static_content_bytes': 0,
+                    'unattributed_model_body_read_count': 0,
+                    'controlled_bytes': size,
                 },
             }
 
@@ -454,9 +472,20 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             {'p50': 100, 'p95': 200, 'max': 200},
             default_summary['context_efficiency']['unique_static_content_bytes'],
         )
+        self.assertEqual(200, default_summary['controlled_skill_context_bytes_p95'])
+        self.assertEqual(0, default_summary['unattributed_model_body_read_count_max'])
+        resolve = lambda metric: analyzer.resolve_gate_metric(  # noqa: E731
+            metric, {}, {}, [], None, None, None, None, cases, 1,
+            context_summary=default_summary,
+        )
+        self.assertEqual(200, resolve('controlled_skill_context_bytes_p95'))
+        self.assertEqual(0, resolve('host_integration_duplicate_bytes_max'))
+        self.assertEqual(0, resolve('unexplained_repeated_static_content_bytes_max'))
+        self.assertEqual(0, resolve('unattributed_model_body_read_count_max'))
         for field in (
             'repeated_static_content_bytes', 'protocol_output_bytes',
-            'failed_command_output_bytes',
+            'failed_command_output_bytes', 'host_integration_duplicate_bytes',
+            'unexplained_repeated_static_content_bytes',
         ):
             self.assertEqual({'p50': 0, 'p95': 0, 'max': 0}, default_summary['context_efficiency'][field])
         self.assertIsNone(analyzer.summarize_prior_skill_context(
@@ -567,6 +596,10 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                     'repeated_static_content_bytes': 0,
                     'protocol_output_bytes': 0,
                     'failed_command_output_bytes': 0,
+                    'host_integration_duplicate_bytes': 0,
+                    'unexplained_repeated_static_content_bytes': 0,
+                    'unattributed_model_body_read_count': 0,
+                    'controlled_bytes': size,
                 },
             }
 
