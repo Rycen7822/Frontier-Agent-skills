@@ -49,7 +49,7 @@ Use any requested JSON, YAML, or table as the sole deliverable. Create no sideca
 
 ## Return unresolved work
 
-Return unclear intent, unknown root cause, unresolved architecture, authority gaps, and feasibility to `$software-quality-workflows`. SQW owns feasibility spikes through [Prototype lifecycle](../software-quality-workflows/references/workspace/prototype-lifecycle.md). Record the blocker and missing decision; never plan around guesses.
+Return unclear intent, unknown root cause, unresolved architecture, authority gaps, and feasibility to `$software-quality-workflows`. SQW owns feasibility spikes and the prototype lifecycle. Record the blocker and missing decision; never plan around guesses.
 
 ## Completion boundary
 
