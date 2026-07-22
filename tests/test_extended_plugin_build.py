@@ -16,7 +16,7 @@ BUILDER_PATH = ROOT / "scripts" / "build_codex_plugin.py"
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": True,
+    "software-quality-workflows": False,
     "writing-plans": False,
 }
 

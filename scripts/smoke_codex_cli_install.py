@@ -35,7 +35,7 @@ EXPECTED_SKILLS = [
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": True,
+    "software-quality-workflows": False,
     "writing-plans": False,
 }
 MAX_CLI_OUTPUT = 1024 * 1024

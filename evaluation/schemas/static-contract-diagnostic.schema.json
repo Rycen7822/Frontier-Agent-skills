@@ -48,7 +48,7 @@
       "properties": {
         "long-document-segmented-writing": {"const": true},
         "skill-evaluator": {"const": false},
-        "software-quality-workflows": {"const": true},
+        "software-quality-workflows": {"const": false},
         "writing-plans": {"const": false}
       }
     },

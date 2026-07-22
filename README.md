@@ -10,7 +10,7 @@ The indivisible release unit is bundle version 5.0.0 at schema epoch 4. The gene
 {
   "long-document-segmented-writing": true,
   "skill-evaluator": false,
-  "software-quality-workflows": true,
+  "software-quality-workflows": false,
   "writing-plans": false
 }
 ```
