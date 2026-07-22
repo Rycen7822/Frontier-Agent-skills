@@ -38,6 +38,8 @@ class QuickWritingPlansTests(unittest.TestCase):
         self.assertRegex(profiles, r"(?s)Brief.*never open a template or profile reference")
         self.assertRegex(profiles, r"(?s)Handoff.*cross a context boundary.*references/profiles/handoff\.md")
         self.assertRegex(profiles, r"(?s)Program.*multi-milestone.*references/profiles/program\.md")
+        self.assertIn("owner, session, environment, staged migration, or release", profiles)
+        self.assertIn("never select it merely because one handoff", profiles)
 
     def test_templates_have_only_the_required_plan_sections(self) -> None:
         expected = {
@@ -63,6 +65,7 @@ class QuickWritingPlansTests(unittest.TestCase):
         output = text.split("## Output rules", 1)[1].split("\n## ", 1)[0]
         unresolved = text.split("## Return unresolved work", 1)[1].split("\n## ", 1)[0]
         self.assertIn("one canonical deliverable", output)
+        self.assertIn("unresolved prerequisite before dependent slices", output)
         for item in ("unclear intent", "unknown root cause", "unresolved architecture", "authority gaps", "feasibility"):
             self.assertIn(item, unresolved)
         self.assertIn("$software-quality-workflows", unresolved)
