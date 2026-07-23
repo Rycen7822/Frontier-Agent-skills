@@ -1,11 +1,11 @@
 ---
 name: writing-plans
-description: "Write source-bound Handoffs and Programs from settled decisions."
+description: "Write source-bound software implementation Handoffs and multi-session Programs from settled decisions; not diagnosis or execution."
 metadata:
   version: 8.0.0
 ---
 
-Handoff crosses context; Program tracks a changing frontier across contexts; otherwise stay native. Never decide, diagnose, execute, verify, or claim.
+Handoff crosses context; Program tracks a changing frontier across contexts; otherwise stay native. Do not load a skill-authoring workflow unless the requested source change actually authors a skill. Never decide, diagnose, execute, verify, or claim.
 
 ## Bind
 
@@ -17,6 +17,8 @@ Read named source and slice owner/test; across contexts add HEAD/status. Update 
 - First-slice owner files/symbols:
 
 Stated facts/authority/evidence are fixed. Later unknowns block later only; missing intent/write/irreversible approval blocks its slice.
+
+Use the minimal sufficient form: bind the root once, then use repo-relative paths; state each fact, decision, and evidence once; combine overlapping items and omit generic rationale or empty subitems.
 
 ## Fields
 
@@ -43,6 +45,8 @@ Program adds:
 - Update-in-place rule:
 
 Preflight checks identity/freshness/dirty paths; next action names first edit/result/check—not inspection unless blocked.
+
+Batch compatible preflight and proof checks. Name each source read, status/diff check, and acceptance command once; later sections reference that evidence instead of restating it.
 
 Review the complete plan before writing it. After writing a file plan, do not reopen, print, or diff its contents; confirm only the named path with non-content checks such as status, hash/bytes, or `git diff --check`.
 

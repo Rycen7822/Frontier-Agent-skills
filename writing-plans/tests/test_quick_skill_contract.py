@@ -51,8 +51,8 @@ class QuickWritingPlansTests(unittest.TestCase):
         metadata = frontmatter(SKILL_PATH)
         self.assertEqual("8.0.0", metadata["metadata"]["version"])
         description = metadata["description"].casefold()
-        self.assertGreaterEqual(len(description), 40)
-        for term in ("source-bound", "handoff", "program"):
+        self.assertGreaterEqual(len(description), 80)
+        for term in ("source-bound", "software implementation", "handoff", "program"):
             self.assertIn(term, description)
         self.assertLessEqual(len(SKILL_PATH.read_bytes()), 4096)
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
@@ -89,6 +89,17 @@ class QuickWritingPlansTests(unittest.TestCase):
     def test_postwrite_checks_do_not_reemit_the_plan(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
         for contract in ("before writing", "do not reopen", "git diff --check"):
+            self.assertIn(contract, body)
+
+    def test_minimal_sufficient_plan_and_execution_contract(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        for contract in (
+            "minimal sufficient form",
+            "repo-relative paths",
+            "state each fact",
+            "batch compatible preflight and proof checks",
+            "skill-authoring workflow",
+        ):
             self.assertIn(contract, body)
 
     def test_no_brief_surface(self) -> None:
