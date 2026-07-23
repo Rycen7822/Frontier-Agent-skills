@@ -73,6 +73,9 @@ PAIRED_METRIC_SOURCES = {
         "bytes", "host_preflight_tool_output_bytes", "native",
     ),
     "skill_context_bytes": ("context_usage", "bytes", "native"),
+    "controlled_skill_context_bytes": (
+        "context_usage", "controlled_bytes", "native",
+    ),
     "host_injected_body_count": ("counts", "host_injected_body_count", "native"),
     "model_initiated_body_read_count": ("counts", "model_initiated_body_read_count", "native"),
     "reference_load_count": ("counts", "reference_load_count", "native"),

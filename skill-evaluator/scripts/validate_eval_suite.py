@@ -34,6 +34,7 @@ PAIRED_METRIC_DIRECTIONS = {
     "executor_prewrite_tool_output_bytes": "lower_is_better",
     "host_preflight_tool_output_bytes": "lower_is_better",
     "skill_context_bytes": "lower_is_better",
+    "controlled_skill_context_bytes": "lower_is_better",
     "host_injected_body_count": "lower_is_better",
     "model_initiated_body_read_count": "lower_is_better",
     "reference_load_count": "lower_is_better",
@@ -48,6 +49,7 @@ COST_METRICS = {
 }
 RELATIVE_EFFECT_METRICS = {
     "tokens_in", "tokens_out", "skill_context_bytes",
+    "controlled_skill_context_bytes",
 }
 CANONICAL_VARIANT_PROFILES = {
     "baseline/skill_disabled",

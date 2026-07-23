@@ -170,6 +170,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 "host_preflight_tool_output_bytes": 900,
                 "executor_prewrite_tool_output_bytes": 120,
             },
+            "context_usage": {"controlled_bytes": 345},
             "counts": {"executor_prewrite_task_tool_calls": 2},
         }
         self.assertEqual(
@@ -186,6 +187,12 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             (2.0, 2.0),
             analyzer.paired_metric_value(
                 record, "executor_prewrite_task_tool_calls"
+            ),
+        )
+        self.assertEqual(
+            (345.0, 345.0),
+            analyzer.paired_metric_value(
+                record, "controlled_skill_context_bytes"
             ),
         )
 
