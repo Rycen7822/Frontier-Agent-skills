@@ -40,10 +40,6 @@ def frontmatter(path: Path) -> dict:
     return value
 
 
-def field_labels(text: str) -> list[str]:
-    return re.findall(r"(?m)^- ([^:\n]+):$", text)
-
-
 class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_explicit_activation(self) -> None:
         metadata = frontmatter(SKILL_PATH)
@@ -64,13 +60,20 @@ class QuickWritingPlansTests(unittest.TestCase):
             self.assertFalse((SKILL_ROOT / name).exists())
 
     def test_handoff_and_program_contracts_are_inline(self) -> None:
-        labels = set(field_labels(SKILL_PATH.read_text(encoding="utf-8")))
-        self.assertLessEqual(HANDOFF_FIELDS | PROGRAM_FIELDS, labels)
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        for field in HANDOFF_FIELDS | PROGRAM_FIELDS:
+            self.assertIn(field, body)
 
     def test_source_binding_and_first_source_change_are_distinct(self) -> None:
-        labels = field_labels(SKILL_PATH.read_text(encoding="utf-8"))
-        self.assertLess(labels.index("Revision or explicit non-Git source identity"), labels.index("Resume preflight"))
-        self.assertLess(labels.index("Resume preflight"), labels.index("Exact next source-changing action"))
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        self.assertLess(
+            body.index("Revision or explicit non-Git source identity"),
+            body.index("Resume preflight"),
+        )
+        self.assertLess(
+            body.index("Resume preflight"),
+            body.index("Exact next source-changing action"),
+        )
 
     def test_one_canonical_deliverable_and_no_sidecars(self) -> None:
         files = {
@@ -100,6 +103,12 @@ class QuickWritingPlansTests(unittest.TestCase):
             "at most one combined non-content confirmation",
             "do not expand one sentence into its own heading",
             "skill-authoring workflow",
+            "portable identity",
+            "one compact contract table",
+            "no word/byte reduction target",
+            "exclude the named plan deliverable itself",
+            "never compare against the original absolute root",
+            "globally clean status",
         ):
             self.assertIn(contract, body)
 

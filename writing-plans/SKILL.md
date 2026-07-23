@@ -9,40 +9,25 @@ Handoff crosses context; Program tracks a changing frontier across contexts; oth
 
 ## Bind
 
-Use one combined prewrite inspection for the named owner/test and, across contexts, root/HEAD/status; split only after a failed command or newly discovered dependency. Update Program in place; ignore skill/Git internals.
+Use one combined prewrite inspection for the named plan path, owner/test and, across contexts, root/HEAD/status; split only after a failed command or newly discovered dependency. Update Program in place; ignore skill/Git internals.
 
-- Source root:
 - Revision or explicit non-Git source identity:
-- Relevant dirty/protected paths:
+- Repo-relative dirty/protected paths:
 - First-slice owner files/symbols:
 
 Stated facts/authority/evidence are fixed. Later unknowns block later only; missing intent/write/irreversible approval blocks its slice.
 
-Use the minimal sufficient form: bind the root once, then use repo-relative paths; state each fact, decision, and evidence once; combine overlapping items and omit generic rationale or empty subitems. Prefer compact bullets/tables; do not expand one sentence into its own heading.
+Resolve the current root once for inspection, but bind portable identity, not its absolute path: a Handoff may resume in another workspace. Use repo-relative paths; never persist a temporary/home path or require a future `pwd` to equal it.
 
-## Fields
+Use the minimal sufficient form: state each fact, decision, and evidence once; combine overlapping items and omit generic rationale or empty subitems. Prefer compact bullets/tables; do not expand one sentence into its own heading. There is no word/byte reduction target: never delete a needed fact to shorten the plan.
 
-No repeats. Handoff:
+## Contract
 
-- Goal / non-goals:
-- Bound source identity:
-- Protected work and allowed effects:
-- Settled decisions:
-- First source-changing slice and files/symbols:
-- Acceptance and verification:
-- Rollback/cleanup when material:
-- Later blockers and dependencies:
-- Resume preflight:
-- Exact next source-changing action:
+Default to a title and one compact contract table or bullet block; do not render one heading per label. It covers Goal / non-goals; Bound source identity; Protected work and allowed effects; Settled decisions; First source-changing slice and files/symbols; Acceptance and verification; Rollback/cleanup when material; Later blockers and dependencies; Resume preflight; and Exact next source-changing action. One row may cover related labels, but do not copy its facts elsewhere.
 
-Program adds:
+Program adds Milestones in dependency order, each with acceptance; Current frontier; Migration/deprecation owner and removal condition when applicable; and Update-in-place rule. Use one milestone table only when more than one milestone exists. Each milestone owns those facts; do not repeat them in a second frontier, acceptance, blocker, or next-action narrative.
 
-- Milestones in dependency order, each with acceptance:
-- Current frontier:
-- Migration/deprecation owner and removal condition when applicable:
-- Update-in-place rule:
-
-Preflight checks identity/freshness/dirty paths; next action names first edit/result/check—not inspection unless blocked.
+Preflight checks identity/freshness/dirty paths after resolving the current root anew. Exclude the named plan deliverable itself from dirty-path comparison—an attached `PLAN.md` may be untracked—then reject any other unrecorded dirt. Never compare against the original absolute root or require globally clean status. The next action names first edit/result/check, not inspection unless blocked.
 
 The resume preflight is one combined bounded inspection, and each slice names one combined final proof command when the host can express it; split only for failure or an independent long-running check. Name every source read, status/diff check, and acceptance command once.
 
