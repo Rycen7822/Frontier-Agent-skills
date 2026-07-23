@@ -1,6 +1,6 @@
 ---
 name: software-quality-workflows
-description: "Use for software work only when a material boundary requires explicit evidence, authority, test-lifecycle, recovery, migration/release/install, multi-writer coordination, source freshness, or high-risk review. Skip routine known-seam edits, ordinary refactors, coding questions, prose planning, and routine documentation."
+description: "Use when software work has a material boundary in evidence, authority, ownership, source, or effects."
 license: MIT
 metadata:
   version: 9.0.0
@@ -16,29 +16,31 @@ metadata:
 
 ## Scope
 
-At a described material boundary, preserve user work, identity, scope, and authority; never invent intent or treat local proof as release proof.
-
-Use `$writing-plans`, `$long-document-segmented-writing`, or `$skill-evaluator` for their named work; hosted owners retain remote authority.
+At material boundaries preserve work, scope, and authority; never invent intent or equate local with release proof.
 
 ## Default execution
 
-Routine work stays Direct: no reference, workflow/router/card/state, JSON receipt, or ledger.
+Known-seam work stays Direct: no reference, workflow/router/card/state, JSON receipt, or ledger.
 
-At a trigger, derive current and required behavior from bounded evidence; unknown cause permits diagnosis, not a guessed fix. Change only the owner seam: no parallel abstractions, speculative compatibility, or unrelated cleanup. Match proof to risk; strict RED is optional.
+Owner seam means the smallest code/API/config/test/component controlling behavior, not Git authorship, filesystem owner, repo objects, or ancestry unless provenance is requested.
 
-Ask only for outcome-changing intent/authority, irreversible effects, unavailable facts, or an unsound route.
+For a bound read-only/local-only target and forbidden effects, inspect minimal evidence inside it. Do not load [authority](references/control/scope-authority-and-effects.md), inspect Git authors/config/refs/objects, or widen inventory unless provenance or source identity is material.
+
+Load authority only for unresolved write scope; protected/dirty/concurrent work; destructive/external/privileged effects; material source root/revision; multiple owners/writers; or authorization for the proposed effect.
+
+Otherwise derive current and required behavior from bounded evidence; unknown cause permits diagnosis, not a guessed fix. Change only the owner seam: no parallel abstraction, speculative compatibility, or unrelated cleanup. Match proof to risk. No routine owner inventory or fixed process/RED/report. Ask only for outcome-changing authority, irreversible effects, unavailable facts, or an unsound route.
 
 ## Evidence and test retention
 
-Never weaken an oracle or keep temporary, duplicate, or implementation-coupled tests. Migration tests need an owner, observable removal condition, and gate. Load [test lifecycle](references/test/test-suite-lifecycle.md) only for material retention risk.
+Keep only durable-contract, confirmed-regression, or risk-boundary tests; remove temporary, duplicate, or implementation-coupled tests without weakening oracles. Migration tests need an owner, observable removal condition, and gate. Load [test lifecycle](references/test/test-suite-lifecycle.md) only for material retention risk.
 
 ## Durable escalation
 
-Durable state is only for context boundaries, destructive/external effects, staged migration/release, or multiple writers. Prefer host/repo state; otherwise one controller may use the [fallback ledger](references/control/durable-work-ledger.md). No leases, daemons, event stores, or compatibility readers.
+Use durable state only across contexts, for destructive/external effects, staged migration/release, or multiple writers. Prefer host/repo state; otherwise use one controller's [fallback ledger](references/control/durable-work-ledger.md). No leases, daemons, event stores, or compatibility readers.
 
 ## Optional specialist references
 
-Load at most one owner: [authority](references/control/scope-authority-and-effects.md), [tests](references/test/test-suite-lifecycle.md), [recovery](references/recovery/repository-recovery.md), [release/install](references/domain/plugin/package-registration-and-installed-proof.md), or [review](references/review/tier-selection.md). Use the [index](references/index.md) only for another material risk. A second reference needs a separate material risk; never scan.
+For one material risk load at most one: [tests](references/test/test-suite-lifecycle.md), [recovery](references/recovery/repository-recovery.md), [release/install](references/domain/plugin/package-registration-and-installed-proof.md), or [review](references/review/tier-selection.md). Use the [index](references/index.md) only if none fits; never scan. A second needs a distinct risk.
 
 ## Completion truth
 

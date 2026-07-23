@@ -4,11 +4,11 @@
 
 Bundle 5.0.0 removes the standalone `brainstorming` package and publishes exactly four owners: Long Document 1.0.0, Skill Evaluator 2.0.0, Software Quality Workflows 9.0.0, and Writing Plans 8.0.0. SQW now owns proportionate design discovery inside its Direct-first software workflow.
 
-SQW and Writing Plans delete their card, receipt, router, registry, and state runtimes instead of retaining adapters. Direct same-session work creates no workflow artifacts. Writing Plans is explicit-only and produces one canonical Handoff/Program Markdown; routine same-session plans remain model-native, and unresolved intent, cause, architecture, authority, and feasibility returns to SQW.
+SQW and Writing Plans delete their card, receipt, router, registry, and state runtimes instead of retaining adapters. Direct same-session work creates no workflow artifacts. SQW accepts a declared read-only/local boundary without loading authority guidance or inventorying Git provenance unless source identity is material. Writing Plans is explicit-only and produces one canonical Handoff/Program Markdown; routine same-session plans remain model-native, and unresolved intent, cause, architecture, authority, and feasibility returns to SQW.
 
 Behavior work is distinction-first rather than strict-RED-first. Closeout classifies only tests added or materially changed in the current diff, retains durable/risk protection, removes temporary or duplicate probes, and gives migration tests an observable deterministic removal contract.
 
-Activation is intentionally mixed: Long Document and SQW remain implicit-local; Skill Evaluator and Writing Plans are explicit-only. Remote writes remain false. Quick, Extended, and Release are distinct profiles, and real CLI installation remains isolated and model-free.
+Activation is intentionally mixed: Long Document remains implicit-local; Skill Evaluator, SQW, and Writing Plans are explicit-only. Remote writes remain false. Quick, Extended, and Release are distinct profiles, and real CLI installation remains isolated and model-free.
 
 Bundle source schema advances to 3.0 and generated schema epoch advances to 4. Build, static-smoke, CLI-smoke, and release evidence advance to 3.0. The tracked deterministic artifact is now a static contract diagnostic; scored L2, longitudinal L4, and activation authority remain in an external revision-bound run root. Version 4 state is neither read nor migrated: finish under 4.x or restart from current source truth.
 
