@@ -14,8 +14,7 @@ HANDOFF_FIELDS = {
     "Bound source identity",
     "Protected work and allowed effects",
     "Settled decisions",
-    "First source-changing slice",
-    "Files/symbols to change",
+    "First source-changing slice and files/symbols",
     "Acceptance and verification",
     "Rollback/cleanup when material",
     "Later blockers and dependencies",
@@ -23,9 +22,8 @@ HANDOFF_FIELDS = {
     "Exact next source-changing action",
 }
 PROGRAM_FIELDS = {
-    "Milestones in dependency order",
+    "Milestones in dependency order, each with acceptance",
     "Current frontier",
-    "Per-milestone acceptance",
     "Migration/deprecation owner and removal condition when applicable",
     "Update-in-place rule",
 }
@@ -97,7 +95,10 @@ class QuickWritingPlansTests(unittest.TestCase):
             "minimal sufficient form",
             "repo-relative paths",
             "state each fact",
-            "batch compatible preflight and proof checks",
+            "one combined prewrite inspection",
+            "one combined final proof command",
+            "at most one combined non-content confirmation",
+            "do not expand one sentence into its own heading",
             "skill-authoring workflow",
         ):
             self.assertIn(contract, body)
