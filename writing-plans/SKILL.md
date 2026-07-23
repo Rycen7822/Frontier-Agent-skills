@@ -26,7 +26,9 @@ Write a title plus one compact contract table or bullet block with four merged r
 - State — Bound source identity; Protected work and allowed effects; Settled decisions; Later blockers and dependencies.
 - Resume — Resume preflight.
 - Slice — Goal / non-goals; First source-changing slice and files/symbols; Exact next source-changing action.
-- Proof — Acceptance and verification; Rollback/cleanup when material.
+- Proof — Acceptance and verification as one combined proof; Rollback/cleanup when material.
+
+Fill the rows directly from settled facts; do not compare formats or narrate planning rationale. In Proof, name acceptance and verification once as one combined command/evidence statement.
 
 Program with multiple milestones uses one table: Milestones in dependency order, each with acceptance; Current frontier; Migration/deprecation owner and removal condition when applicable; Update-in-place rule.
 
