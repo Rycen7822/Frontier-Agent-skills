@@ -86,6 +86,12 @@ PAIRED_METRIC_SOURCES = {
     "skill_protocol_tool_calls": ("counts", "skill_protocol_tool_calls", "native"),
     "workflow_artifact_count": ("counts", "workflow_artifact_count", "native"),
 }
+CONTEXT_PAIRED_METRICS = {
+    "skill_context_bytes",
+    "controlled_skill_context_bytes",
+    "controlled_core_skill_context_bytes",
+}
+TASK_PASS_FILTERED_COST_METRICS = COST_METRICS - CONTEXT_PAIRED_METRICS
 
 
 def canonical_sha256(value: Any) -> str:
@@ -1995,7 +2001,7 @@ def summarize_paired_metric(
         candidate_row = indexed[(candidate, case_id, repeat)][0]
         if comparator_row.get("valid") is not True or candidate_row.get("valid") is not True:
             return {**base, "reason": "paired run is invalid"}
-        if metric in COST_METRICS and (
+        if metric in TASK_PASS_FILTERED_COST_METRICS and (
             comparator_row.get("task_pass") is not True or candidate_row.get("task_pass") is not True
         ):
             task_failures.append({
@@ -2555,8 +2561,6 @@ def summarize_prior_skill_context(
         if (
             candidate_row.get("valid") is not True
             or prior_row.get("valid") is not True
-            or candidate_row.get("task_pass") is not True
-            or prior_row.get("task_pass") is not True
             or candidate_row.get("context_usage", {}).get("attributed") is not True
             or prior_row.get("context_usage", {}).get("attributed") is not True
             or candidate_row["context_usage"].get("measurement_source")

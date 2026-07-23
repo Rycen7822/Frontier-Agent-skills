@@ -803,6 +803,27 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(160, forced_comparison['prior_skill_context']['bytes_p95'])
         self.assertEqual(40, forced_comparison['candidate_minus_prior_bytes_p95'])
 
+        failed_candidate_rows = [
+            row('candidate', 'case-a', 100, task_pass=False),
+            candidate_rows[1],
+        ]
+        failed_summary = analyzer.summarize_skill_context(
+            failed_candidate_rows + prior_rows, cases, spec, 1,
+        )
+        failed_comparison = analyzer.summarize_prior_skill_context(
+            failed_candidate_rows + prior_rows, cases, spec, 1, failed_summary,
+        )
+        self.assertEqual(40, failed_comparison['candidate_minus_prior_bytes_p95'])
+        paired_context = analyzer.summarize_paired_metric(
+            failed_candidate_rows + prior_rows,
+            comparator='prior', candidate='candidate',
+            metric='controlled_core_skill_context_bytes',
+            direction='lower_is_better', effect='relative',
+            confidence_level=0.95, bootstrap_iterations=100, random_seed=1729,
+        )
+        self.assertEqual(2, paired_context['case_count'])
+        self.assertEqual([], paired_context['task_failures'])
+
         unavailable_inputs = {
             'missing receipt': candidate_rows + prior_rows[:1],
             'duplicate receipt': candidate_rows + prior_rows + [prior_rows[0]],
@@ -815,9 +836,6 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             'measurement mismatch': candidate_rows + [
                 row('prior', 'case-a', 150, source='host_receipt'),
                 row('prior', 'case-b', 160, source='host_receipt'),
-            ],
-            'early candidate failure': [
-                row('candidate', 'case-a', 10, task_pass=False), candidate_rows[1], *prior_rows,
             ],
         }
         for label, rows in unavailable_inputs.items():

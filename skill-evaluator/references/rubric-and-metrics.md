@@ -53,6 +53,8 @@ For every valid run, derive `unique_static_content_bytes`, `repeated_static_cont
 
 Report the four raw byte fields plus the two derived host byte fields in every run and as an exact six-key `context_efficiency` map of nearest-rank p50, p95, and max. Report `unique_reference_bytes` and `controlled_core_bytes` at row level, plus controlled-context p95 and unmatched model-body-read max. Byte/token p95 and aggregate context efficiency are complete only at 100% attribution coverage. Total and controlled context retain unique references for absolute budgets; only paired core comparisons omit their first occurrence. End-to-end `tokens_in/out`, latency, calls, and retries remain a separate total-cost view.
 
+Context-byte comparisons use every valid, fully attributed pair even when either task outcome fails; task failure gates remain independent. Other lower-is-better cost metrics exclude failed task pairs so an incomplete task cannot look efficient.
+
 Every scored-ready L2+ spec has:
 
 - one `skill_context_attribution_rate == 1` gate;
