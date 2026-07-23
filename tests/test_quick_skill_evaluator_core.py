@@ -91,6 +91,10 @@ class QuickSkillEvaluatorCoreTests(unittest.TestCase):
             "controlled_core_skill_context_bytes",
             validator.RELATIVE_EFFECT_METRICS,
         )
+        self.assertIn(
+            "controlled_core_skill_context_bytes",
+            analyzer.CONTEXT_PAIRED_METRICS,
+        )
 
 
 if __name__ == "__main__":
