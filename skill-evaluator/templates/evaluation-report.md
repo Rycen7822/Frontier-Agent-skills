@@ -7,7 +7,7 @@
 ```yaml
 level: {{L0|L1|L2|L3|L4}}
 evidence_status: {{complete|incomplete|invalid}}
-usefulness_status: {{not_applicable|supported|not_supported|inconclusive}}
+usefulness_status: {{supported|not_supported|inconclusive_ceiling|not_evaluable}}
 final_authority_status: {{eligible|blocked}}
 decision_signal: {{analyzer decision signal}}
 evaluation_id: {{immutable ID}}
@@ -22,7 +22,7 @@ These fields remain separate. `supported` is not a release decision; `eligible` 
 ## 1. Identity and scope
 
 - Candidate revision/source-tree/plugin-tree and target package hash:
-- Treatment and catalog identities:
+- Treatment-contract and receipt-to-treatment-index hashes:
 - Model, harness, system configuration, and environment fingerprint:
 - Spec/schema, cases, case contracts, fixture set, grader set/schedule, and analyzer revisions:
 - Authority, permissions, network, and credentials boundary:
@@ -49,7 +49,7 @@ These fields remain separate. `supported` is not a release decision; `eligible` 
 ## 4. Receipt integrity and run accounting — L1+
 
 - Receipt-index version and immutable raw-bytes path/hash:
-- Receipt v3 and arm-report v3 self-hash verification:
+- Receipt v3, `p3-arm-report/2.0`, and aggregate raw-byte/self-hash verification:
 - Receipt verification status and checked-run count:
 - Recomputed fixture/package/artifact/grader/provenance/invocation bindings:
 - Trust boundaries still externally attested or unverified:
@@ -78,7 +78,7 @@ These fields remain separate. `supported` is not a release decision; `eligible` 
 - Benefit point / lower / upper:
 - Confidence level / iterations / seed / case-cluster resampling:
 - Cost pairs excluded by comparator/candidate task failures:
-- Missing fields, zero relative comparator, or attribution limits:
+- Missing fields, relative-zero handling, executor-prewrite absolute-delta upper bound, or attribution limits:
 
 Repeats are not independent inferential samples.
 
@@ -103,7 +103,8 @@ Repeats are not independent inferential samples.
 - Context-budget authority reference and verification boundary:
 - Captured-zero versus missing context rows:
 - Negative-cohort false body-load bytes, case rate/Wilson interval, and repeat consistency:
-- Host/model body loads, reference/load/protocol/prewrite/task calls, workflow artifacts, and prewrite output bytes:
+- Host/model body loads, reference/load/protocol/executor-prewrite/task calls, workflow artifacts, host-preflight bytes, and executor-prewrite output bytes:
+- Writing Plans matched planner+executor total-token cases and relative reduction:
 - End-to-end input/output tokens, latency, retries, and residue:
 
 Report Target-Skill context separately from total prompt/run usage. Do not derive token counts from replay-manifest bytes.

@@ -13,7 +13,7 @@ Evaluation permission never grants permission to install dependencies, expose se
 `schema_version=4` is the only accepted behavioral contract. It binds:
 
 - evaluation identity, level, risk, decision, and claim scope;
-- candidate path/inventory hash, revision, source-tree hash, plugin-tree hash, and every declared variant's package, catalog, and treatment hashes;
+- candidate path/inventory hash, revision, source-tree hash, plugin-tree hash, every declared variant's package/catalog/treatment hashes, and one suite `treatment_contract_hash` over the exact variant contracts;
 - agent/model/harness, environment and tool/catalog identities, timeout, reset, seed, and network/credential policy;
 - case and optional holdout assets, repeats, ordering, retry policy, graders, metrics, gates, authority, and artifact retention;
 - `ready_for_scored_run`, which is `false` for public L1/L2 templates and must be explicitly closed before scored execution.
@@ -60,7 +60,7 @@ Repeats never increase `case_count`. Fewer than two complete independent cases c
 
 ## Isolation and provenance
 
-Every run index points to one hashed receipt under `spec.artifacts.root`. The analyzer recomputes spec, case, environment, package, fixture set, grader, artifact, and invocation bindings before deriving any result, and matches the receipt to the frozen candidate revision/source/plugin identity. Catalog/treatment IDs and private contract/schedule/controller hashes remain external attestations, not cryptographic proof.
+Every run index points to one hashed receipt under `spec.artifacts.root`. The analyzer recomputes spec, case, environment, package, fixture set, grader, artifact, invocation, suite treatment contract, and receipt-local treatment hash before deriving any result. The local treatment hash binds the exact case/prompt, variant package/catalog contract, and native input shape; one variant-level hash cannot stand in for all receipts. Private contract/schedule/controller hashes remain external attestations, not cryptographic proof.
 
 Keep cases, hidden graders, holdout payloads, and evaluation-controller instructions outside the tested executor context unless the deployment contract genuinely supplies them. Preserve invalid apparatus rows, treatment failures, retries, timeouts, and raw artifacts under their declared semantics.
 

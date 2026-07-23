@@ -54,6 +54,41 @@ def canonical_hash(value: object) -> str:
     return 'sha256:' + hashlib.sha256(payload).hexdigest()
 
 
+def treatment_contract_hash(variants: list[dict]) -> str:
+    return canonical_hash([
+        {
+            field: variant[field]
+            for field in (
+                'id', 'role', 'mode', 'package_hash', 'catalog_hash',
+                'treatment_hash',
+            )
+        }
+        for variant in sorted(variants, key=lambda item: item['id'])
+    ])
+
+
+def receipt_local_treatment_hash(case: dict, variant: dict) -> str:
+    mode = variant['mode']
+    return canonical_hash({
+        'variant_id': variant['id'],
+        'role': variant['role'],
+        'mode': mode,
+        'package_hash': variant['package_hash'],
+        'catalog_hash': variant['catalog_hash'],
+        'variant_treatment_hash': variant['treatment_hash'],
+        'case_content_hash': canonical_hash(case),
+        'task_text_content_hash': (
+            'sha256:' + hashlib.sha256(case['prompt'].encode('utf-8')).hexdigest()
+        ),
+        'input_shape': {
+            'native_skill_input_count': int(mode == 'force_loaded'),
+            'task_text_input_count': 1,
+            'manual_skill_body_copy_count': 0,
+            'catalog_registered': mode != 'skill_disabled',
+        },
+    })
+
+
 def bind_suite_hashes(spec: dict, rows: list[dict]) -> None:
     spec['suite'].update({
         'cases_content_hash': canonical_hash(rows),
@@ -70,6 +105,7 @@ def bind_suite_hashes(spec: dict, rows: list[dict]) -> None:
             }
             for row in rows
         ]),
+        'treatment_contract_hash': treatment_contract_hash(spec['variants']),
     })
 
 
@@ -144,6 +180,7 @@ def make_minimal_spec(level: str) -> dict:
         },
     }]
     spec['ready_for_scored_run'] = False
+    spec['suite']['treatment_contract_hash'] = treatment_contract_hash(spec['variants'])
     if level == 'L1':
         return spec
 
@@ -163,6 +200,7 @@ def make_minimal_spec(level: str) -> dict:
         'catalog_hash': HASHES['catalog'],
         'treatment_hash': HASHES['treatment'],
     })
+    spec['suite']['treatment_contract_hash'] = treatment_contract_hash(spec['variants'])
     spec['analysis'] = {
         'confidence_level': 0.95,
         'paired_bootstrap_iterations': 100,
@@ -378,6 +416,7 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
     spec['target']['candidate_path'] = str(package_root)
     spec['target']['candidate_hash'] = RECEIPT_PACKAGE_HASH
     spec['variants'][0]['package_hash'] = RECEIPT_PACKAGE_HASH
+    spec['suite']['treatment_contract_hash'] = treatment_contract_hash(spec['variants'])
     spec_path.write_text(json.dumps(spec), encoding='utf-8')
     case = json.loads(cases_path.read_text(encoding='utf-8').strip())
 
@@ -469,7 +508,7 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
                 'environment_hash': canonical_hash(spec['environment']),
                 'package_hash': RECEIPT_PACKAGE_HASH,
                 'catalog_hash': spec['variants'][0]['catalog_hash'],
-                'treatment_hash': spec['variants'][0]['treatment_hash'],
+                'treatment_hash': receipt_local_treatment_hash(case, spec['variants'][0]),
             },
         },
         'artifacts': artifacts,
@@ -478,6 +517,9 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
             'sha256': file_hash(trace_path),
             'event_count': len(trace_events),
             'context_capture': {'status': 'captured', 'source': 'replay_manifest'},
+            'command_projection_classification_hash': canonical_hash([]),
+            'private_skill_access_count': 0,
+            'task_evidence_visible_count': 0,
         },
         'routing': {
             'retrieved': routing_stage(['target-skill'], 1),
@@ -496,7 +538,8 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
             'repeated_static_content_bytes': 0,
             'protocol_output_bytes': 0,
             'failed_command_output_bytes': 0,
-            'prewrite_tool_output_bytes': 0,
+            'executor_prewrite_tool_output_bytes': 0,
+            'host_preflight_tool_output_bytes': 0,
         },
         'counts': {
             'host_injected_body_count': 1,
@@ -505,7 +548,7 @@ def write_receipt_bundle(root: Path) -> dict[str, Path]:
             'reference_load_count': 0,
             'skill_load_tool_calls': 0,
             'skill_protocol_tool_calls': 0,
-            'prewrite_task_tool_calls': 0,
+            'executor_prewrite_task_tool_calls': 0,
             'task_tool_calls': 0,
             'workflow_artifact_count': 0,
         },
@@ -707,6 +750,18 @@ def load_analyzer_module():
     return module
 
 
+def load_validator_module():
+    spec = importlib.util.spec_from_file_location(
+        'skill_evaluator_validate_eval_suite',
+        ROOT / 'scripts/validate_eval_suite.py',
+    )
+    if spec is None or spec.loader is None:
+        raise AssertionError('cannot load validate_eval_suite.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_auditor_module():
     spec = importlib.util.spec_from_file_location(
         'skill_evaluator_audit_skill_package', ROOT / 'scripts/audit_skill_package.py',
@@ -744,11 +799,12 @@ def stamp_provenance(rows: list[dict], spec_path: Path, cases_path: Path) -> lis
     for source in rows:
         row = dict(source)
         case = cases[row['case_id']]
+        variant = variants[row['variant']]
         row['provenance'] = {
             **shared,
-            'package_hash': variants[row['variant']]['package_hash'],
-            'catalog_hash': variants[row['variant']]['catalog_hash'],
-            'treatment_hash': variants[row['variant']]['treatment_hash'],
+            'package_hash': variant['package_hash'],
+            'catalog_hash': variant['catalog_hash'],
+            'treatment_hash': receipt_local_treatment_hash(case, variant),
             'case_sha256': canonical_hash(case),
             'fixture': case['fixture'],
         }

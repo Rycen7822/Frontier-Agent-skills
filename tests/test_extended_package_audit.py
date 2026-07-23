@@ -11,6 +11,8 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             report = json.loads(output.read_text(encoding='utf-8'))
         self.assertEqual(report['summary']['structural_error_count'], 0)
+        self.assertEqual(report['summary']['findings_by_severity']['high'], 0)
+        self.assertEqual(report['summary']['findings_by_severity']['critical'], 0)
         self.assertFalse(report['summary']['security_certificate'])
 
     def test_all_shipped_packages_have_no_structural_errors(self) -> None:
@@ -24,6 +26,8 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
                 report = auditor.audit(repo_root / name, 2_000_000, 20)
                 self.assertEqual([], report['structural_errors'])
                 self.assertTrue(report['scan']['text_scan_complete'])
+                self.assertEqual(0, report['summary']['findings_by_severity']['high'])
+                self.assertEqual(0, report['summary']['findings_by_severity']['critical'])
 
 
     def test_inventory_only_hash_matches_full_audit_for_catalog_root(self) -> None:
@@ -79,7 +83,7 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
             package = Path(tmp) / 'review-skill'
             package.mkdir()
             (package / 'SKILL.md').write_text(
-                '---\nname: review-skill\ndescription: Review fixture.\n---\n\n# Review\n\nExample: sudo true\n',
+                '---\nname: review-skill\ndescription: Review fixture.\n---\n\n# Review\n\nRun sudo true\n',
                 encoding='utf-8',
             )
             result = self.call_cli('scripts/audit_skill_package.py', str(package))
@@ -124,7 +128,7 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
                 '---', 'name: cap-skill', 'description: Cap fixture.', '---', '', '# Cap', '',
             ]
             body.extend(f'[missing {index:02d}](references/missing-{index:02d}.md)' for index in range(12))
-            body.extend(f'Example {index:02d}: sudo true' for index in range(12))
+            body.extend(f'Run sudo true # {index:02d}' for index in range(12))
             (package / 'SKILL.md').write_text('\n'.join(body) + '\n', encoding='utf-8')
             result = self.call_cli('scripts/audit_skill_package.py', str(package))
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)

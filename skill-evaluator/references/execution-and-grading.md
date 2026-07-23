@@ -48,7 +48,7 @@ One receipt owns all captured evidence:
   "receipt_hash": "sha256:<64 lowercase hex>",
   "run": {"run_id": "...", "case_id": "...", "variant": "...", "repeat": 1, "valid": true, "error_type": null, "invalid_reason": null, "provenance": {}},
   "artifacts": [{"path": "ordered-trace.jsonl", "sha256": "sha256:<64 hex>", "encoding": "utf-8"}],
-  "trace": {"artifact": "ordered-trace.jsonl", "sha256": "sha256:<64 hex>", "event_count": 1, "context_capture": {"status": "captured", "source": "replay_manifest"}},
+  "trace": {"artifact": "ordered-trace.jsonl", "sha256": "sha256:<64 hex>", "event_count": 1, "context_capture": {"status": "captured", "source": "replay_manifest"}, "command_projection_classification_hash": "sha256:<64 hex>", "private_skill_access_count": 0, "task_evidence_visible_count": 1},
   "routing": {},
   "boundaries": {},
   "bytes": {},
@@ -61,7 +61,9 @@ One receipt owns all captured evidence:
 
 The analyzer requires exact shapes. It normalizes POSIX-relative paths, rejects absolute/backslash/parent traversal, proves lexical and symlink-resolved containment, recomputes bytes/hashes, and rejects duplicate normalized or resolved artifacts. Routing, usage, context, grader evidence, and invocations must reference the allowlist's exact canonical spellings.
 
-Provenance binds candidate revision/source/plugin identities plus spec, case, case-contract, fixture-set, selected-grader-set, grader-schedule, environment, package, catalog, and treatment hashes. Candidate package inventory, suite assets, grader declarations, verifier bytes, model prompt, and model schema are recomputed locally where the spec provides their bytes. Catalog, treatment, controller, private-contract, and grader-schedule claims remain hash-bound external attestations.
+Provenance binds candidate revision/source/plugin identities plus spec, case, case-contract, fixture-set, selected-grader-set, grader-schedule, environment, package, catalog, and receipt-local treatment hashes. The analyzer recomputes that treatment hash from the case, raw task text, variant contract, and native input shape, then binds the canonical receipt-to-treatment index in the report. Candidate package inventory, suite assets, grader declarations, verifier bytes, model prompt, and model schema are recomputed locally where the spec provides their bytes.
+
+Handoff/Program planner receipts additionally bind deterministic base `HEAD`/source-manifest identity and the exact file-or-reply deliverable hash. Transfer executor receipts bind the verified base identity, raw plan hash, and exact initial status `?? PLAN.md`. `PLAN.md` is attached after the base commit and remains protected and untracked. A transfer preflight mismatch produces `evaluation_apparatus_invalid`, no executor call, and no model-budget increment.
 
 `receipt_hash` removes only itself, then hashes UTF-8 JSON with sorted keys, compact separators, `allow_nan=false`, and a `sha256:` prefix. No older receipt is accepted or silently upgraded.
 
@@ -71,7 +73,7 @@ Retrieval, selection, body load, incorporation, and application are five indepen
 
 The ordered trace assigns every received host event a contiguous one-based `event_seq`. After each completed event that may mutate the workspace, the controller records a compact typed manifest delta in that trace. The analyzer derives the first successful source write whose case-declared delta remains visible in the final manifest and the first reply/file deliverable; it rejects declared boundary values that disagree with event order. Whether either boundary may be null belongs to the frozen case contract.
 
-Usage records non-negative input/output tokens, latency, retries, and evidence. Counts separately report task tools, prewrite task tools, host/model body loads, references, skill-load tools, skill-protocol tools, and workflow artifacts. Bytes separately report unique/repeated static context, protocol/failed output, and prewrite tool output. Turn-level tokens are never fabricated into component or tool-output token counts.
+Usage records non-negative input/output tokens, latency, retries, and evidence. Counts separately report task tools, executor-prewrite task tools, host/model body loads, references, skill-load tools, skill-protocol tools, and workflow artifacts. Bytes separately report unique/repeated static context, protocol/failed output, host-preflight output, and executor-prewrite output. Host preflight is apparatus cost and never enters the executor rediscovery metric. Turn-level tokens are never fabricated into component or tool-output token counts.
 
 Evidence locators are one-based inclusive `{start_line,end_line}` spans into allowlisted UTF-8 artifacts. The analyzer proves that cited bytes/lines exist; the selected grader owns their meaning.
 

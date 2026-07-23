@@ -4,6 +4,53 @@ from skill_evaluator_test_support import *  # noqa: F403
 
 
 class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
+    def test_executor_prewrite_relative_effect_is_rejected(self) -> None:
+        validator = load_validator_module()
+        errors: list[str] = []
+        validator.check_benefit_definition(
+            {
+                "metric": "executor_prewrite_tool_output_bytes",
+                "comparator": "baseline",
+                "direction": "lower_is_better",
+                "effect": "relative",
+                "minimum_benefit": 0.0,
+            },
+            errors,
+            prefix="analysis.primary_benefit",
+            allow_negative_threshold=False,
+        )
+        self.assertIn(
+            "analysis.primary_benefit.effect must be absolute for metric "
+            "executor_prewrite_tool_output_bytes",
+            errors,
+        )
+
+    def test_transfer_contract_requires_one_owned_source_slice(self) -> None:
+        validator = load_validator_module()
+        contract = {
+            "allowed_effects": [{
+                "path": "generated.py",
+                "operation": "created",
+                "required": True,
+            }],
+            "allowed_paths": ["generated.py"],
+            "required_paths": ["generated.py"],
+            "protected_paths": ["test_generated.py"],
+            "path_owners": {
+                "generated.py": "generator",
+                "test_generated.py": "source-fixture",
+            },
+            "source_changing_slices": [{
+                "id": "first-source-changing-slice",
+                "required_paths": ["generated.py"],
+            }],
+        }
+        self.assertEqual([], validator.validate_transfer_contract(contract))
+        contract["required_paths"] = ["missing.py"]
+        errors = validator.validate_transfer_contract(contract)
+        self.assertTrue(any("subset" in error for error in errors))
+        self.assertTrue(any("exactly one" in error for error in errors))
+
     def test_validator_cli_accepts_public_l0_smoke(self) -> None:
         result = self.run_cmd(
             'scripts/validate_eval_suite.py', 'templates/eval-spec.l0.example.json',
@@ -467,6 +514,10 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
 
             def validate(name: str, spec: dict, cases: list[dict] | None = None):
                 spec = json.loads(json.dumps(spec))
+                if "suite" in spec and spec.get("variants"):
+                    spec["suite"]["treatment_contract_hash"] = treatment_contract_hash(
+                        spec["variants"]
+                    )
                 cases_path = None
                 if cases is not None:
                     cases_path = root / f'{name}.jsonl'

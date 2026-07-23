@@ -30,8 +30,9 @@ PAIRED_METRIC_DIRECTIONS = {
     "tokens_in": "lower_is_better",
     "tokens_out": "lower_is_better",
     "task_tool_calls": "lower_is_better",
-    "prewrite_task_tool_calls": "lower_is_better",
-    "prewrite_tool_output_bytes": "lower_is_better",
+    "executor_prewrite_task_tool_calls": "lower_is_better",
+    "executor_prewrite_tool_output_bytes": "lower_is_better",
+    "host_preflight_tool_output_bytes": "lower_is_better",
     "skill_context_bytes": "lower_is_better",
     "host_injected_body_count": "lower_is_better",
     "model_initiated_body_read_count": "lower_is_better",
@@ -45,7 +46,9 @@ COST_METRICS = {
     metric for metric, direction in PAIRED_METRIC_DIRECTIONS.items()
     if direction == "lower_is_better"
 }
-RELATIVE_EFFECT_METRICS = {"tokens_in", "tokens_out", "skill_context_bytes"}
+RELATIVE_EFFECT_METRICS = {
+    "tokens_in", "tokens_out", "skill_context_bytes",
+}
 CANONICAL_VARIANT_PROFILES = {
     "baseline/skill_disabled",
     "candidate/force_loaded",
@@ -105,6 +108,70 @@ NONREADY_FIXTURE_SENTINEL = {
 def canonical_sha256(value: Any) -> str:
     payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def treatment_contract_hash(variants: list[dict[str, Any]]) -> str:
+    return canonical_sha256([
+        {
+            field: variant[field]
+            for field in (
+                "id", "role", "mode", "package_hash", "catalog_hash",
+                "treatment_hash",
+            )
+        }
+        for variant in sorted(variants, key=lambda item: item["id"])
+    ])
+
+
+def validate_transfer_contract(contract: Any) -> list[str]:
+    if not isinstance(contract, dict):
+        return ["transfer contract must be an object"]
+    allowed = contract.get("allowed_paths")
+    required = contract.get("required_paths")
+    protected = contract.get("protected_paths")
+    owners = contract.get("path_owners")
+    slices = contract.get("source_changing_slices")
+    errors = []
+    for label, value in (
+        ("allowed_paths", allowed),
+        ("required_paths", required),
+        ("protected_paths", protected),
+    ):
+        if (
+            not isinstance(value, list)
+            or any(not nonempty_string(path) for path in value)
+            or len(value) != len(set(value))
+        ):
+            errors.append(f"transfer {label} must be a unique non-empty string array")
+    if errors:
+        return errors
+    if not required or not set(required).issubset(allowed):
+        errors.append("transfer required_paths must be a non-empty subset of allowed_paths")
+    if set(protected) & set(allowed):
+        errors.append("transfer protected_paths must not overlap allowed_paths")
+    if (
+        not isinstance(slices, list)
+        or len(slices) != 1
+        or not isinstance(slices[0], dict)
+        or set(slices[0]) != {"id", "required_paths"}
+        or not nonempty_string(slices[0].get("id"))
+        or slices[0].get("required_paths") != required
+    ):
+        errors.append("transfer must declare exactly one source-changing slice")
+    if (
+        not isinstance(owners, dict)
+        or any(
+            not nonempty_string(owners.get(path))
+            for path in set(protected) | {
+                effect.get("path")
+                for effect in contract.get("allowed_effects", [])
+                if isinstance(effect, dict) and effect.get("operation") == "created"
+            }
+        )
+        or any(not nonempty_string(owner) for owner in owners.values())
+    ):
+        errors.append("transfer generated/protected paths must have one owner")
+    return errors
 
 
 def load_json(path: Path) -> Any:
@@ -353,12 +420,28 @@ def check_spec(spec: Any, errors: list[str], warnings: list[str]) -> None:
         for field in (
             "cases_content_hash", "case_contracts_content_hash",
             "fixture_manifest_set_hash", "grader_batch_schedule_hash",
+            "treatment_contract_hash",
         ):
             value = suite.get(field)
             if not nonempty_string(value):
                 errors.append(f"spec.suite.{field} must be a non-empty SHA-256 value")
             elif not PLACEHOLDER_RE.search(value) and not SHA256_RE.fullmatch(value):
                 errors.append(f"spec.suite.{field} must be sha256:<64 hex>")
+        if (
+            isinstance(variants, list)
+            and variants
+            and all(
+                isinstance(variant, dict)
+                and {
+                    "id", "role", "mode", "package_hash", "catalog_hash",
+                    "treatment_hash",
+                }.issubset(variant)
+                for variant in variants
+            )
+            and not PLACEHOLDER_RE.search(str(suite.get("treatment_contract_hash", "")))
+            and suite.get("treatment_contract_hash") != treatment_contract_hash(variants)
+        ):
+            errors.append("spec.suite.treatment_contract_hash does not bind spec.variants")
         if level in {"L2", "L3", "L4"} and repeats == 1:
             warnings.append("L2+ spec uses one repeat; label deterministic evidence or increase repetitions")
         for field in ("development_split", "regression_split", "holdout_split"):

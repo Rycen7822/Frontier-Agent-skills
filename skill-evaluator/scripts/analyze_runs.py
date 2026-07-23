@@ -63,8 +63,15 @@ PAIRED_METRIC_SOURCES = {
     "tokens_in": (None, "tokens_in", "native"),
     "tokens_out": (None, "tokens_out", "native"),
     "task_tool_calls": ("counts", "task_tool_calls", "native"),
-    "prewrite_task_tool_calls": ("counts", "prewrite_task_tool_calls", "native"),
-    "prewrite_tool_output_bytes": ("bytes", "prewrite_tool_output_bytes", "native"),
+    "executor_prewrite_task_tool_calls": (
+        "counts", "executor_prewrite_task_tool_calls", "native",
+    ),
+    "executor_prewrite_tool_output_bytes": (
+        "bytes", "executor_prewrite_tool_output_bytes", "native",
+    ),
+    "host_preflight_tool_output_bytes": (
+        "bytes", "host_preflight_tool_output_bytes", "native",
+    ),
     "skill_context_bytes": ("context_usage", "bytes", "native"),
     "host_injected_body_count": ("counts", "host_injected_body_count", "native"),
     "model_initiated_body_read_count": ("counts", "model_initiated_body_read_count", "native"),
@@ -84,6 +91,56 @@ def canonical_sha256(value: Any) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def raw_text_sha256(value: str) -> str:
+    return "sha256:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def treatment_contract_hash(variants: list[dict[str, Any]]) -> str:
+    return canonical_sha256([
+        {
+            field: variant[field]
+            for field in (
+                "id", "role", "mode", "package_hash", "catalog_hash",
+                "treatment_hash",
+            )
+        }
+        for variant in sorted(variants, key=lambda item: item["id"])
+    ])
+
+
+def receipt_local_treatment_hash(
+    case: dict[str, Any],
+    variant: dict[str, Any],
+) -> str:
+    mode = variant["mode"]
+    return canonical_sha256({
+        "variant_id": variant["id"],
+        "role": variant["role"],
+        "mode": mode,
+        "package_hash": variant["package_hash"],
+        "catalog_hash": variant["catalog_hash"],
+        "variant_treatment_hash": variant["treatment_hash"],
+        "case_content_hash": canonical_sha256(case),
+        "task_text_content_hash": raw_text_sha256(case["prompt"]),
+        "input_shape": {
+            "native_skill_input_count": int(mode == "force_loaded"),
+            "task_text_input_count": 1,
+            "manual_skill_body_copy_count": 0,
+            "catalog_registered": mode != "skill_disabled",
+        },
+    })
+
+
+def receipt_treatment_index_content_hash(records: list[dict[str, Any]]) -> str:
+    return canonical_sha256([
+        {
+            "receipt_id": record["run_id"],
+            "treatment_hash": record["provenance"]["treatment_hash"],
+        }
+        for record in sorted(records, key=lambda item: item["run_id"])
+    ])
 
 
 def canonical_self_hash(value: dict[str, Any], field: str) -> str:
@@ -285,7 +342,12 @@ def verify_locator_reference(
 def verify_ordered_trace(
     trace: Any, artifacts: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    expected = {"artifact", "sha256", "event_count", "context_capture"}
+    expected = {
+        "artifact", "sha256", "event_count", "context_capture",
+        "command_projection_classification_hash",
+        "private_skill_access_count",
+        "task_evidence_visible_count",
+    }
     if not isinstance(trace, dict) or set(trace) != expected:
         raise ValueError("receipt trace fields do not match receipt v3")
     artifact = trace.get("artifact")
@@ -296,6 +358,14 @@ def verify_ordered_trace(
     lines = artifacts[artifact]["lines"]
     if trace.get("event_count") != len(lines):
         raise ValueError("ordered trace event_count does not match artifact lines")
+    if not SHA256_RE.fullmatch(
+        str(trace.get("command_projection_classification_hash", ""))
+    ):
+        raise ValueError("trace command projection classification hash is invalid")
+    for field in ("private_skill_access_count", "task_evidence_visible_count"):
+        value = trace.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"trace {field} must be a non-negative integer")
     events: list[dict[str, Any]] = []
     for index, line in enumerate(lines, 1):
         try:
@@ -593,10 +663,10 @@ def report_identity_fields(
         if strict:
             raise
         grader_set_hash = None
-    treatment_hashes = {
-        variant["treatment_hash"] for variant in spec["variants"]
-        if variant["role"] == "candidate"
-    }
+    computed_treatment_contract_hash = treatment_contract_hash(spec["variants"])
+    declared_treatment_contract_hash = spec["suite"].get("treatment_contract_hash")
+    if strict and declared_treatment_contract_hash != computed_treatment_contract_hash:
+        raise ValueError("suite treatment_contract_hash mismatch")
     return {
         "candidate_revision": spec["target"]["candidate_revision"],
         "candidate_source_tree_hash": spec["target"]["candidate_source_tree_hash"],
@@ -607,7 +677,11 @@ def report_identity_fields(
         "fixture_manifest_set_hash": spec["suite"]["fixture_manifest_set_hash"],
         "grader_set_hash": grader_set_hash,
         "grader_batch_schedule_hash": spec["suite"]["grader_batch_schedule_hash"],
-        "treatment_hash": next(iter(treatment_hashes)) if len(treatment_hashes) == 1 else None,
+        "treatment_contract_hash": (
+            computed_treatment_contract_hash
+            if declared_treatment_contract_hash == computed_treatment_contract_hash
+            else None
+        ),
         "environment_hash": canonical_sha256(spec["environment"]),
         "receipt_index_content_hash": file_sha256(receipt_index_path),
     }
@@ -672,12 +746,59 @@ def derive_verified_run(
         "schema_version", "receipt_hash", "run", "artifacts", "trace", "routing",
         "boundaries", "bytes", "counts", "usage", "context_usage", "grader_outputs",
     }
-    if not isinstance(receipt, dict) or set(receipt) != receipt_fields:
+    allowed_receipt_fields = receipt_fields | {
+        "transfer_source_identity", "deliverable", "transfer_preflight",
+    }
+    if (
+        not isinstance(receipt, dict)
+        or not receipt_fields.issubset(receipt)
+        or not set(receipt).issubset(allowed_receipt_fields)
+    ):
         raise ValueError("receipt fields do not match receipt v3")
     if receipt.get("schema_version") != 3:
         raise ValueError("receipt schema_version must equal 3")
     if not verify_self_hash(receipt, "receipt_hash"):
         raise ValueError("receipt self-hash mismatch")
+    is_transfer_planner = bool({"handoff", "program"} & set(case.get("tags", [])))
+    is_transfer_executor = "transfer-executor" in case.get("tags", [])
+    expected_optional_fields = (
+        {"transfer_source_identity", "deliverable"} if is_transfer_planner
+        else {"transfer_preflight"} if is_transfer_executor
+        else set()
+    )
+    if set(receipt) - receipt_fields != expected_optional_fields:
+        raise ValueError("receipt transfer identity fields do not match case role")
+    if is_transfer_planner:
+        source_identity = receipt["transfer_source_identity"]
+        deliverable = receipt["deliverable"]
+        if (
+            not isinstance(source_identity, dict)
+            or set(source_identity) != {"base_head", "source_manifest_hash"}
+            or not re.fullmatch(r"[0-9a-f]{40}", str(source_identity.get("base_head", "")))
+            or not SHA256_RE.fullmatch(
+                str(source_identity.get("source_manifest_hash", ""))
+            )
+            or not isinstance(deliverable, dict)
+            or set(deliverable) != {"path", "content_hash", "delivery"}
+            or deliverable.get("delivery") not in {"file", "reply"}
+            or deliverable.get("path") not in {None, "PLAN.md"}
+            or not SHA256_RE.fullmatch(str(deliverable.get("content_hash", "")))
+        ):
+            raise ValueError("planner transfer identity is invalid")
+    if is_transfer_executor:
+        preflight = receipt["transfer_preflight"]
+        if (
+            not isinstance(preflight, dict)
+            or set(preflight)
+            != {"base_head", "source_manifest_hash", "plan_hash", "status"}
+            or not re.fullmatch(r"[0-9a-f]{40}", str(preflight.get("base_head", "")))
+            or not SHA256_RE.fullmatch(
+                str(preflight.get("source_manifest_hash", ""))
+            )
+            or not SHA256_RE.fullmatch(str(preflight.get("plan_hash", "")))
+            or preflight.get("status") != "?? PLAN.md"
+        ):
+            raise ValueError("executor transfer preflight identity is invalid")
 
     run = receipt.get("run")
     run_fields = {
@@ -752,7 +873,7 @@ def derive_verified_run(
         "environment_hash": canonical_sha256(spec["environment"]),
         "package_hash": package_hash,
         "catalog_hash": variant["catalog_hash"],
-        "treatment_hash": variant["treatment_hash"],
+        "treatment_hash": receipt_local_treatment_hash(case, variant),
     }
     for field, expected in expected_provenance.items():
         if provenance.get(field) != expected:
@@ -822,7 +943,10 @@ def derive_verified_run(
     if boundaries["first_deliverable_seq"] != derived_deliverable_seq:
         raise ValueError("first_deliverable_seq does not match ordered trace")
 
-    byte_fields = set(CONTEXT_EFFICIENCY_FIELDS) | {"prewrite_tool_output_bytes"}
+    byte_fields = set(CONTEXT_EFFICIENCY_FIELDS) | {
+        "executor_prewrite_tool_output_bytes",
+        "host_preflight_tool_output_bytes",
+    }
     byte_counts = receipt.get("bytes")
     if not isinstance(byte_counts, dict) or set(byte_counts) != byte_fields:
         raise ValueError("receipt bytes fields do not match receipt v3")
@@ -832,7 +956,8 @@ def derive_verified_run(
     count_fields = {
         "host_injected_body_count", "model_initiated_body_read_count", "body_load_count",
         "reference_load_count", "skill_load_tool_calls", "skill_protocol_tool_calls",
-        "prewrite_task_tool_calls", "task_tool_calls", "workflow_artifact_count",
+        "executor_prewrite_task_tool_calls", "task_tool_calls",
+        "workflow_artifact_count",
     }
     counts = receipt.get("counts")
     if not isinstance(counts, dict) or set(counts) != count_fields:
@@ -993,8 +1118,10 @@ def derive_verified_run(
         event.get("tool_output_bytes", 0)
         for event in ordered_events if event["event_seq"] < prewrite_boundary
     )
-    if byte_counts["prewrite_tool_output_bytes"] != derived_prewrite_bytes:
-        raise ValueError("prewrite_tool_output_bytes does not match ordered trace")
+    if byte_counts["executor_prewrite_tool_output_bytes"] != derived_prewrite_bytes:
+        raise ValueError(
+            "executor_prewrite_tool_output_bytes does not match ordered trace"
+        )
 
     grader_outputs = receipt.get("grader_outputs")
     if not isinstance(grader_outputs, list):
@@ -1515,6 +1642,178 @@ def summarize_variant(
     }
 
 
+def summarize_material_failure_cases(
+    records: list[dict[str, Any]],
+    *,
+    baseline: str,
+    candidate: str,
+    case_ids: set[str],
+    repeats: int,
+    material_failure_ids: set[str],
+) -> dict[str, Any]:
+    indexed: dict[tuple[str, str, int], list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        if record.get("case_id") in case_ids:
+            indexed[
+                (record["variant"], record["case_id"], record["repeat"])
+            ].append(record)
+
+    complete = True
+    failures: dict[str, set[str]] = {baseline: set(), candidate: set()}
+    for variant in (baseline, candidate):
+        for case_id in case_ids:
+            for repeat in range(1, repeats + 1):
+                rows = indexed.get((variant, case_id, repeat), [])
+                if len(rows) != 1 or rows[0].get("valid") is not True:
+                    complete = False
+                    continue
+                row = rows[0]
+                hard_failures = set(row.get("hard_gate_failures", []))
+                always_material = any(
+                    "no-overclaim" in failure
+                    or "authority" in failure
+                    for failure in hard_failures
+                )
+                if (
+                    row.get("task_pass") is False
+                    or row.get("safety_pass") is False
+                    or always_material
+                    or bool(hard_failures & material_failure_ids)
+                ):
+                    failures[variant].add(case_id)
+
+    baseline_failures = failures[baseline]
+    candidate_failures = failures[candidate]
+    resolved = baseline_failures - candidate_failures
+    candidate_only = candidate_failures - baseline_failures
+    if not complete:
+        usefulness_status = "not_evaluable"
+    elif len(baseline_failures) < 3:
+        usefulness_status = "inconclusive_ceiling"
+    elif (
+        len(resolved) >= 2
+        and not candidate_only
+        and len(candidate_failures) <= len(baseline_failures) // 2
+    ):
+        usefulness_status = "supported"
+    else:
+        usefulness_status = "not_supported"
+    return {
+        "evidence_complete": complete,
+        "baseline_material_failure_cases": len(baseline_failures),
+        "candidate_material_failure_cases": len(candidate_failures),
+        "resolved_baseline_failure_cases": len(resolved),
+        "candidate_only_failure_cases": len(candidate_only),
+        "baseline_failure_case_ids": sorted(baseline_failures),
+        "candidate_failure_case_ids": sorted(candidate_failures),
+        "resolved_case_ids": sorted(resolved),
+        "candidate_only_case_ids": sorted(candidate_only),
+        "usefulness_status": usefulness_status,
+    }
+
+
+def matched_planner_executor_tokens(
+    planner_records: list[dict[str, Any]],
+    executor_records: list[dict[str, Any]],
+    arm_map: dict[str, dict[str, Any]],
+    *,
+    baseline_planner: str,
+    candidate_planner: str,
+    baseline_executor: str,
+    candidate_executor: str,
+    case_ids: set[str],
+    repeats: int,
+) -> dict[str, Any]:
+    planners: dict[tuple[str, str, int], dict[str, Any]] = {}
+    duplicate_planner_keys = False
+    for record in planner_records:
+        key = (record["variant"], record["case_id"], record["repeat"])
+        if key in planners:
+            duplicate_planner_keys = True
+        planners[key] = record
+    executors: dict[tuple[str, str, int], dict[str, Any]] = {}
+    duplicate_executor_keys = False
+    for record in executor_records:
+        arm = arm_map.get(record["case_id"])
+        if not isinstance(arm, dict):
+            continue
+        key = (
+            record["variant"],
+            arm["source_case_id"],
+            arm["planner_repeat"],
+        )
+        if key in executors:
+            duplicate_executor_keys = True
+        executors[key] = record
+
+    case_totals = []
+    for case_id in sorted(case_ids):
+        repeat_totals: dict[str, list[int]] = {
+            "baseline": [],
+            "candidate": [],
+        }
+        for repeat in range(1, repeats + 1):
+            paired_rows = {
+                "baseline": (
+                    planners.get((baseline_planner, case_id, repeat)),
+                    executors.get((baseline_executor, case_id, repeat)),
+                ),
+                "candidate": (
+                    planners.get((candidate_planner, case_id, repeat)),
+                    executors.get((candidate_executor, case_id, repeat)),
+                ),
+            }
+            for arm_name, rows in paired_rows.items():
+                if any(
+                    row is None
+                    or row.get("valid") is not True
+                    or row.get("task_pass") is not True
+                    or not isinstance(row.get("tokens_in"), int)
+                    or isinstance(row.get("tokens_in"), bool)
+                    or row["tokens_in"] < 0
+                    or not isinstance(row.get("tokens_out"), int)
+                    or isinstance(row.get("tokens_out"), bool)
+                    or row["tokens_out"] < 0
+                    for row in rows
+                ):
+                    continue
+                repeat_totals[arm_name].append(sum(
+                    row["tokens_in"] + row["tokens_out"]
+                    for row in rows
+                ))
+        if all(len(values) == repeats for values in repeat_totals.values()):
+            baseline_total = statistics.fmean(repeat_totals["baseline"])
+            candidate_total = statistics.fmean(repeat_totals["candidate"])
+            case_totals.append({
+                "case_id": case_id,
+                "baseline_total_tokens": baseline_total,
+                "candidate_total_tokens": candidate_total,
+                "relative_reduction": (
+                    (baseline_total - candidate_total) / baseline_total
+                    if baseline_total > 0 else None
+                ),
+            })
+    reductions = [
+        row["relative_reduction"]
+        for row in case_totals if row["relative_reduction"] is not None
+    ]
+    return {
+        "eligible_case_count": len(case_totals),
+        "expected_case_count": len(case_ids),
+        "complete": (
+            not duplicate_planner_keys
+            and not duplicate_executor_keys
+            and len(case_totals) == len(case_ids)
+        ),
+        "duplicate_planner_keys": duplicate_planner_keys,
+        "duplicate_executor_keys": duplicate_executor_keys,
+        "median_relative_reduction": (
+            statistics.median(reductions) if reductions else None
+        ),
+        "cases": case_totals,
+    }
+
+
 def paired_summary(
     records: list[dict[str, Any]],
     baseline: str,
@@ -1706,17 +2005,22 @@ def summarize_paired_metric(
         candidate_raw = statistics.fmean(item[1] for item in values)
         comparator_value = statistics.fmean(item[2] for item in values)
         candidate_value = statistics.fmean(item[3] for item in values)
-        if effect == "relative" and comparator_value == 0:
+        signed_difference = (
+            candidate_value - comparator_value
+            if direction == "higher_is_better" else comparator_value - candidate_value
+        )
+        if effect == "absolute":
+            benefit = signed_difference
+        elif comparator_value > 0:
+            benefit = signed_difference / comparator_value
+        elif direction == "lower_is_better":
+            benefit = 0.0 if candidate_value == 0 else -1.0
+        else:
             return {
                 **base,
                 "reason": f"comparator value is zero for case {case_id}",
                 "task_failures": task_failures,
             }
-        signed_difference = (
-            candidate_value - comparator_value
-            if direction == "higher_is_better" else comparator_value - candidate_value
-        )
-        benefit = signed_difference if effect == "absolute" else signed_difference / comparator_value
         case_differences.append({
             "case_id": case_id,
             "comparator_raw_value": comparator_raw,
@@ -1750,6 +2054,45 @@ def summarize_paired_metric(
         "upper": uncertainty["upper"],
         "case_differences": case_differences,
         "task_failures": task_failures,
+    }
+
+
+def summarize_paired_cost_delta(
+    records: list[dict[str, Any]], *, comparator: str, candidate: str,
+    metric: str, confidence_level: float, bootstrap_iterations: int,
+    random_seed: int, eligible_case_ids: set[str] | None = None,
+) -> dict[str, Any]:
+    result = summarize_paired_metric(
+        records,
+        comparator=comparator,
+        candidate=candidate,
+        metric=metric,
+        direction="lower_is_better",
+        effect="absolute",
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed,
+        eligible_case_ids=eligible_case_ids,
+    )
+    if result["status"] != "complete":
+        return result
+    return {
+        **result,
+        "estimand": f"candidate_minus_{comparator}:{metric}",
+        "point": -result["point"],
+        "lower": -result["upper"],
+        "upper": -result["lower"],
+        "case_differences": [
+            {
+                **{
+                    key: value
+                    for key, value in row.items()
+                    if key != "benefit"
+                },
+                "delta": -row["benefit"],
+            }
+            for row in result["case_differences"]
+        ],
     }
 
 
@@ -2211,9 +2554,9 @@ def derive_usefulness_status(
     candidate_hard_failures: int,
 ) -> str:
     if level in {"L0", "L1"}:
-        return "not_applicable"
+        return "not_evaluable"
     if evidence_status != "complete":
-        return "inconclusive"
+        return "not_evaluable"
     if (
         candidate_hard_failures > 0
         or material_harm
@@ -2225,7 +2568,7 @@ def derive_usefulness_status(
         return "not_supported"
     if primary_benefit_status == "pass" and all(status == "pass" for status in guardrail_statuses):
         return "supported"
-    return "inconclusive"
+    return "not_evaluable"
 
 
 def derive_evidence_status(
@@ -2823,8 +3166,8 @@ def main() -> int:
     identity_failures = []
     if report_identity["grader_set_hash"] is None:
         identity_failures.append("grader set identity cannot be reproduced")
-    if report_identity["treatment_hash"] is None:
-        identity_failures.append("candidate variants do not bind one treatment_hash")
+    if report_identity["treatment_contract_hash"] is None:
+        identity_failures.append("suite treatment_contract_hash is absent or invalid")
     for issue in identity_failures:
         evidence_issues.append({
             "run_id": "<report-identity>",
@@ -2836,6 +3179,9 @@ def main() -> int:
         incomplete_matrix=False,
         duplicate_pairs=False,
         identity_invalid=bool(identity_failures),
+    )
+    report_identity["receipt_treatment_index_content_hash"] = (
+        receipt_treatment_index_content_hash(records)
     )
 
     if evidence_status != "complete":
@@ -2860,7 +3206,7 @@ def main() -> int:
             "report_hash": None,
             **report_identity,
             "evidence_status": evidence_status,
-            "usefulness_status": "not_applicable" if level == "L1" else "inconclusive",
+            "usefulness_status": "not_evaluable",
             "primary_benefit": (
                 {**spec["analysis"]["primary_benefit"], "status": "not_evaluable"}
                 if level in {"L2", "L3", "L4"} else None

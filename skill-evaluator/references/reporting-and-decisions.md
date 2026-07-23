@@ -30,7 +30,7 @@ Start with the analyzer-owned facts:
 evaluation_id: {{immutable evaluation ID}}
 level: {{L0|L1|L2|L3|L4}}
 evidence_status: {{complete|incomplete|invalid}}
-usefulness_status: {{not_applicable|supported|not_supported|inconclusive}}
+usefulness_status: {{supported|not_supported|inconclusive_ceiling|not_evaluable}}
 final_authority_status: {{eligible|blocked}}
 decision_signal: {{analyzer decision signal}}
 target: {{package identity and hash}}
@@ -43,7 +43,7 @@ Do not replace these axes with a single aggregate score or prose verdict.
 
 ## Identity and frozen scope
 
-Report candidate revision/source/plugin hashes, target package hash, treatment/catalog identities, model and harness, environment fingerprint, spec/cases/case-contracts/fixture-set/grader-set/grader-schedule hashes, authority boundary, declared variants, repeat count, and claim ceiling. Use immutable identities rather than `latest` paths.
+Report candidate revision/source/plugin hashes, target package hash, suite treatment-contract hash, receipt-to-treatment index hash, model and harness, environment fingerprint, spec/cases/case-contracts/fixture-set/grader-set/grader-schedule hashes, authority boundary, declared variants, repeat count, and claim ceiling. Use immutable identities rather than `latest` paths.
 
 For holdout evidence, report the public manifest hash, payload hash, custody status, and whether the payload was exposed. A public manifest is not the holdout payload.
 
@@ -59,7 +59,7 @@ Report:
 
 An invalid receipt is invalid evidence. Do not summarize claims copied from a trace, final answer, or host event when the receipt binding failed.
 
-Arm report v3 repeats the candidate identity and all frozen input hashes, binds the receipt index's raw file bytes, and carries separate `evidence_status` and `usefulness_status`. Its `report_hash` uses the same self-field-removal canonical algorithm as receipt v3. Invalid/incomplete reports retain these bindings; an already-corrupt grader surface is represented by a null grader-set hash plus its evidence issue, not by an unhandled second failure. Aggregate input identities are raw arm-report file hashes, not reserialized object hashes. A missing arm is incomplete; a schema, identity, capture, conservation, or self-hash failure is invalid; a complete arm whose benefit is unsupported remains complete evidence.
+`p3-arm-report/2.0` repeats the candidate identity and frozen input hashes, binds the decision contract raw bytes, the receipt index, the receipt-to-treatment index, and the exact task/planner/transfer analysis inputs, then carries separate `evidence_status` and `usefulness_status`. `p3-aggregate-report/2.0` fixes the ordered evaluated skill IDs, binds each arm's raw file bytes, and is `passed` only when every arm is complete and supported. Both self-hash by removing only `report_hash` and hashing canonical UTF-8 JSON. Missing evidence is incomplete; identity, schema, apparatus, capture, conservation, or self-hash failure is invalid; complete unsupported or ceiling-inconclusive evidence blocks the aggregate.
 
 ## Independent-case attribution
 
@@ -71,13 +71,13 @@ Use the report's keyed `paired_metrics` map:
 - every difference names its `case_id` and retains comparator/candidate raw and reported-scale values;
 - `paired_task_failures` discloses cost pairs excluded because either arm failed the task.
 
-Never present repeats as independent statistical samples. Report comparator, metric, direction, effect, estimand, scale, threshold, interval, and keyed contrary cases. If the matrix or required field coverage is incomplete, or a relative comparator is zero, report the interval as not evaluable.
+Never present repeats as independent statistical samples. Report comparator, metric, direction, effect, estimand, scale, threshold, interval, and keyed contrary cases. If the matrix or required field coverage is incomplete, report the interval as not evaluable. For lower-is-better relative cost only, encode comparator/candidate `0/0` as zero benefit and `0/positive` as `-1`; other relative zero-comparator cases remain not evaluable. Report executor-prewrite as the absolute `candidate - comparator` byte delta with a one-sided upper bound.
 
 ## Gates and usefulness
 
 List the single `primary_benefit` separately, then every frozen hard gate with metric, comparator when comparative, direction/effect, threshold, observed value, and status.
 
-Usefulness is `supported` only when evidence is complete, the benefit lower-bound gate passes, every guardrail passes, protected outcomes have no failure, and no material safety harm was observed. Report `not_supported`, `inconclusive`, or `not_applicable` exactly as derived; do not repair the status in prose.
+Usefulness is `supported` only when evidence is complete, the benefit gate passes, every guardrail passes, protected outcomes have no failure, and no material safety harm was observed. Report `not_supported`, `inconclusive_ceiling`, or `not_evaluable` exactly as derived; do not repair the status in prose.
 
 Show routing and task outcomes by declared slice. Preserve decisive case-level failures even when aggregates pass.
 
@@ -89,7 +89,8 @@ Report attributed Target-Skill context separately from end-to-end usage:
 - attribution rate and measurement-source counts;
 - verified component bytes, host-receipt tokens when present, and p95 values;
 - body/resource loading closure against routing facts;
-- total input/output tokens and latency from usage, plus typed task/prewrite/load/protocol/workflow counts and residue;
+- total input/output tokens and latency from usage, plus typed task/executor-prewrite/load/protocol/workflow counts and residue;
+- transfer host-preflight bytes separately from executor-prewrite bytes, plus matched planner+executor total tokens;
 - context-budget authority reference and its externally unverified trust boundary.
 
 `captured + 0 components` is valid zero-context evidence. `missing` capture blocks attribution. Replay-manifest bytes do not become token counts.
