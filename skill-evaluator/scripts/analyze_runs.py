@@ -76,6 +76,9 @@ PAIRED_METRIC_SOURCES = {
     "controlled_skill_context_bytes": (
         "context_usage", "controlled_bytes", "native",
     ),
+    "controlled_core_skill_context_bytes": (
+        "context_usage", "controlled_core_bytes", "native",
+    ),
     "host_injected_body_count": ("counts", "host_injected_body_count", "native"),
     "model_initiated_body_read_count": ("counts", "model_initiated_body_read_count", "native"),
     "reference_load_count": ("counts", "reference_load_count", "native"),
@@ -1010,6 +1013,7 @@ def derive_verified_run(
     dynamic_sources: set[str] = set()
     static_content_seen: set[tuple[str, str]] = set()
     context_efficiency = {field: 0 for field in CONTEXT_EFFICIENCY_FIELDS}
+    unique_reference_bytes = 0
     for index, component in enumerate(components):
         if not isinstance(component, dict) or set(component) != {
             "kind", "source_path", "artifact", "tokens",
@@ -1053,6 +1057,8 @@ def derive_verified_run(
             component_identities[artifact] = identity
             field = "repeated_static_content_bytes" if identity in static_content_seen else "unique_static_content_bytes"
             static_content_seen.add(identity)
+            if kind == "reference" and field == "unique_static_content_bytes":
+                unique_reference_bytes += byte_count
         elif kind == "protocol_output":
             field = "protocol_output_bytes"
         else:
@@ -1089,19 +1095,23 @@ def derive_verified_run(
         raise ValueError("context reference sources do not match routing.resources_loaded")
     if len(reference_components) != counts["reference_load_count"]:
         raise ValueError("context reference components do not conserve reference_load_count")
+    total_context_bytes = sum(item["bytes"] for item in verified_components)
+    controlled_context_bytes = total_context_bytes - host_duplicate_bytes
+    if unique_reference_bytes > controlled_context_bytes:
+        raise ValueError("unique reference bytes exceed controlled context bytes")
     derived_context_usage = {
         "measurement_source": measurement_source,
         "capture": dict(context_capture),
         "attributed": True,
-        "bytes": sum(item["bytes"] for item in verified_components),
+        "bytes": total_context_bytes,
         "tokens": (
             sum(item["tokens"] for item in verified_components)
             if measurement_source == "host_receipt" else None
         ),
         "components": verified_components,
-        "controlled_bytes": (
-            sum(item["bytes"] for item in verified_components) - host_duplicate_bytes
-        ),
+        "controlled_bytes": controlled_context_bytes,
+        "unique_reference_bytes": unique_reference_bytes,
+        "controlled_core_bytes": controlled_context_bytes - unique_reference_bytes,
         "host_integration_duplicate_bytes": host_duplicate_bytes,
         "unexplained_repeated_static_content_bytes": unexplained_repeated_bytes,
         "unattributed_model_body_read_count": unattributed_model_body_reads,
@@ -2338,6 +2348,8 @@ def summarize_skill_context(
         host_duplicate = context.get("host_integration_duplicate_bytes") if isinstance(context, dict) else None
         unexplained_repeated = context.get("unexplained_repeated_static_content_bytes") if isinstance(context, dict) else None
         controlled = context.get("controlled_bytes") if isinstance(context, dict) else None
+        unique_reference = context.get("unique_reference_bytes") if isinstance(context, dict) else None
+        controlled_core = context.get("controlled_core_bytes") if isinstance(context, dict) else None
         unattributed_reads = context.get("unattributed_model_body_read_count") if isinstance(context, dict) else None
         if (
             len(values) != len(CONTEXT_EFFICIENCY_FIELDS)
@@ -2346,9 +2358,15 @@ def summarize_skill_context(
             or not isinstance(host_duplicate, int) or isinstance(host_duplicate, bool)
             or not isinstance(unexplained_repeated, int) or isinstance(unexplained_repeated, bool)
             or not isinstance(controlled, int) or isinstance(controlled, bool)
+            or not isinstance(unique_reference, int) or isinstance(unique_reference, bool)
+            or not isinstance(controlled_core, int) or isinstance(controlled_core, bool)
             or not isinstance(unattributed_reads, int) or isinstance(unattributed_reads, bool)
-            or min(host_duplicate, unexplained_repeated, controlled, unattributed_reads) < 0
+            or min(
+                host_duplicate, unexplained_repeated, controlled,
+                unique_reference, controlled_core, unattributed_reads,
+            ) < 0
             or controlled != context.get("bytes") - host_duplicate
+            or controlled_core != controlled - unique_reference
             or unexplained_repeated != context.get("repeated_static_content_bytes") - host_duplicate
         ):
             conservation_failures += 1
@@ -2414,9 +2432,16 @@ def summarize_skill_context(
         if context.get("bytes") != sum(context[field] for field in CONTEXT_EFFICIENCY_FIELDS):
             raise ValueError("context efficiency fields do not conserve total skill context bytes")
         controlled = context.get("controlled_bytes")
+        unique_reference = context.get("unique_reference_bytes")
+        controlled_core = context.get("controlled_core_bytes")
         unattributed_reads = context.get("unattributed_model_body_read_count")
         if (
             not isinstance(controlled, int) or isinstance(controlled, bool) or controlled < 0
+            or not isinstance(unique_reference, int)
+            or isinstance(unique_reference, bool) or unique_reference < 0
+            or not isinstance(controlled_core, int)
+            or isinstance(controlled_core, bool) or controlled_core < 0
+            or controlled_core != controlled - unique_reference
             or not isinstance(unattributed_reads, int) or isinstance(unattributed_reads, bool)
             or unattributed_reads < 0
         ):
