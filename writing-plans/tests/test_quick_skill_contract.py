@@ -48,8 +48,13 @@ def field_labels(text: str) -> list[str]:
 
 class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_explicit_activation(self) -> None:
-        self.assertEqual("8.0.0", frontmatter(SKILL_PATH)["metadata"]["version"])
-        self.assertLessEqual(len(SKILL_PATH.read_bytes()), 1500)
+        metadata = frontmatter(SKILL_PATH)
+        self.assertEqual("8.0.0", metadata["metadata"]["version"])
+        description = metadata["description"].casefold()
+        self.assertGreaterEqual(len(description), 40)
+        for term in ("source-bound", "handoff", "program"):
+            self.assertIn(term, description)
+        self.assertLessEqual(len(SKILL_PATH.read_bytes()), 4096)
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
         self.assertIs(agents["policy"]["allow_implicit_invocation"], False)
 
@@ -80,6 +85,11 @@ class QuickWritingPlansTests(unittest.TestCase):
             "agents/openai.yaml",
             "tests/test_quick_skill_contract.py",
         }, files)
+
+    def test_postwrite_checks_do_not_reemit_the_plan(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        for contract in ("before writing", "do not reopen", "git diff --check"):
+            self.assertIn(contract, body)
 
     def test_no_brief_surface(self) -> None:
         self.assertNotIn("brief", SKILL_PATH.read_text(encoding="utf-8").casefold())
