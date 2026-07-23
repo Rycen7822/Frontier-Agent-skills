@@ -44,4 +44,6 @@ Program adds:
 
 Preflight checks identity/freshness/dirty paths; next action names first edit/result/check—not inspection unless blocked.
 
+Review the complete plan before writing it. After writing a file plan, do not reopen, print, or diff its contents; confirm only the named path with non-content checks such as status, hash/bytes, or `git diff --check`.
+
 Reply only with plan or named Markdown; update Program in place. No sidecar/state/copy, hard wraps, source edits, or completion claims.
