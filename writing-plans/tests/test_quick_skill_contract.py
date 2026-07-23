@@ -63,6 +63,8 @@ class QuickWritingPlansTests(unittest.TestCase):
         body = SKILL_PATH.read_text(encoding="utf-8")
         for field in HANDOFF_FIELDS | PROGRAM_FIELDS:
             self.assertIn(field, body)
+        rows = ("- State —", "- Resume —", "- Slice —", "- Proof —")
+        self.assertEqual(list(rows), sorted(rows, key=body.index))
 
     def test_source_binding_and_first_source_change_are_distinct(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8")
@@ -111,6 +113,12 @@ class QuickWritingPlansTests(unittest.TestCase):
             "globally clean status",
         ):
             self.assertIn(contract, body)
+
+    def test_injected_body_is_not_loaded_twice(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        self.assertIn("complete body in the invocation", body)
+        self.assertIn("do not reopen `skill.md`", body)
+        self.assertIn("read it once", body)
 
     def test_no_brief_surface(self) -> None:
         self.assertNotIn("brief", SKILL_PATH.read_text(encoding="utf-8").casefold())
