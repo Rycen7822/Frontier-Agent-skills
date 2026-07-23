@@ -170,12 +170,21 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 "host_preflight_tool_output_bytes": 900,
                 "executor_prewrite_tool_output_bytes": 120,
             },
-            "context_usage": {"controlled_bytes": 345},
+            "context_usage": {
+                "controlled_bytes": 345,
+                "controlled_core_bytes": 123,
+            },
             "counts": {"executor_prewrite_task_tool_calls": 2},
         }
         self.assertEqual(
             (900.0, 900.0),
             analyzer.paired_metric_value(record, "host_preflight_tool_output_bytes"),
+        )
+        self.assertEqual(
+            (123.0, 123.0),
+            analyzer.paired_metric_value(
+                record, "controlled_core_skill_context_bytes",
+            ),
         )
         self.assertEqual(
             (120.0, 120.0),
@@ -502,6 +511,8 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                         'unexplained_repeated_static_content_bytes': 0,
                         'unattributed_model_body_read_count': 0,
                         'controlled_bytes': body_bytes,
+                        'unique_reference_bytes': 0,
+                        'controlled_core_bytes': body_bytes,
                         'components': ([{'kind': 'body', 'bytes': body_bytes, 'tokens': body_bytes // 4}]
                                        if loaded else []),
                     },
@@ -618,18 +629,45 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 bundle, kind='failed_command_output', source_path='failed-command:helper:1',
                 artifact_name='failed.txt', content='failed bytes\n', append=True,
             )
+            first_reference = add_context_component(
+                bundle, kind='reference', source_path='references/release.md',
+                artifact_name='reference-1.txt', content='same reference bytes\n',
+                append=True,
+            )
+            repeated_reference = add_context_component(
+                bundle, kind='reference', source_path='references/release.md',
+                artifact_name='reference-2.txt', content='same reference bytes\n',
+                append=True,
+            )
             report = self.assert_valid_receipt_bundle(bundle)
             context = report['run_matrix'][0]['context_usage']
-            self.assertEqual(context['unique_static_content_bytes'], len(first.read_bytes()))
-            self.assertEqual(context['repeated_static_content_bytes'], len(repeated.read_bytes()))
+            self.assertEqual(
+                context['unique_static_content_bytes'],
+                len(first.read_bytes()) + len(first_reference.read_bytes()),
+            )
+            self.assertEqual(
+                context['repeated_static_content_bytes'],
+                len(repeated.read_bytes()) + len(repeated_reference.read_bytes()),
+            )
             self.assertEqual(context['protocol_output_bytes'], len(protocol.read_bytes()))
             self.assertEqual(context['failed_command_output_bytes'], len(failed.read_bytes()))
             self.assertEqual(context['host_integration_duplicate_bytes'], len(repeated.read_bytes()))
-            self.assertEqual(context['unexplained_repeated_static_content_bytes'], 0)
+            self.assertEqual(
+                context['unexplained_repeated_static_content_bytes'],
+                len(repeated_reference.read_bytes()),
+            )
             self.assertEqual(context['unattributed_model_body_read_count'], 0)
             self.assertEqual(
                 context['controlled_bytes'],
                 context['bytes'] - context['host_integration_duplicate_bytes'],
+            )
+            self.assertEqual(
+                context['unique_reference_bytes'],
+                len(first_reference.read_bytes()),
+            )
+            self.assertEqual(
+                context['controlled_core_bytes'],
+                context['controlled_bytes'] - len(first_reference.read_bytes()),
             )
             self.assertEqual(
                 context['bytes'],
@@ -695,6 +733,8 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                     'unexplained_repeated_static_content_bytes': 0,
                     'unattributed_model_body_read_count': 0,
                     'controlled_bytes': size,
+                    'unique_reference_bytes': 0,
+                    'controlled_core_bytes': size,
                 },
             }
 
@@ -837,6 +877,8 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                     'unexplained_repeated_static_content_bytes': 0,
                     'unattributed_model_body_read_count': 0,
                     'controlled_bytes': size,
+                    'unique_reference_bytes': 0,
+                    'controlled_core_bytes': size,
                 },
             }
 

@@ -83,6 +83,14 @@ class QuickSkillEvaluatorCoreTests(unittest.TestCase):
             "unattributed_model_body_read_count_max", "protocol_output_bytes_max",
             "failed_command_output_bytes_max",
         } <= validator.GLOBAL_GATE_METRICS)
+        self.assertEqual(
+            ("context_usage", "controlled_core_bytes", "native"),
+            analyzer.PAIRED_METRIC_SOURCES["controlled_core_skill_context_bytes"],
+        )
+        self.assertIn(
+            "controlled_core_skill_context_bytes",
+            validator.RELATIVE_EFFECT_METRICS,
+        )
 
 
 if __name__ == "__main__":
