@@ -25,6 +25,23 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
             errors,
         )
 
+    def test_controlled_context_relative_effect_is_supported(self) -> None:
+        validator = load_validator_module()
+        errors: list[str] = []
+        validator.check_benefit_definition(
+            {
+                "metric": "controlled_skill_context_bytes",
+                "comparator": "prior",
+                "direction": "lower_is_better",
+                "effect": "relative",
+                "minimum_benefit": 0.5,
+            },
+            errors,
+            prefix="analysis.primary_benefit",
+            allow_negative_threshold=False,
+        )
+        self.assertEqual([], errors)
+
     def test_transfer_contract_requires_one_owned_source_slice(self) -> None:
         validator = load_validator_module()
         contract = {
