@@ -49,8 +49,6 @@ MODEL_FACING_DIRS = (
     "software-quality-workflows/references",
     "software-quality-workflows/operator",
     "software-quality-workflows/templates",
-    "writing-plans/references",
-    "writing-plans/templates",
 )
 LEGACY_RUNTIME_PATHS = (
     "brainstorming",
@@ -64,6 +62,8 @@ LEGACY_RUNTIME_PATHS = (
     "writing-plans/scripts/card_cycle.py",
     "writing-plans/scripts/assess_plan_mode.py",
     "writing-plans/scripts/_plan_state.py",
+    "writing-plans/references",
+    "writing-plans/templates",
     "writing-plans/registries",
     "writing-plans/schemas",
     "evaluation/offline-route-replay.json",

@@ -83,6 +83,15 @@ class ExtendedPluginBuildTests(unittest.TestCase):
                 source = ROOT / relative
                 staged = output / record["path"]
                 self.assertEqual(source.read_bytes(), staged.read_bytes(), relative)
+            writing_plans = output / "skills" / "writing-plans"
+            self.assertEqual({
+                "SKILL.md",
+                "agents/openai.yaml",
+                "tests/test_quick_skill_contract.py",
+            }, {
+                path.relative_to(writing_plans).as_posix()
+                for path in writing_plans.rglob("*") if path.is_file()
+            })
 
     def test_static_smoke_is_hash_bound_and_preserves_mixed_activation(self) -> None:
         smoke = load_static_smoke()

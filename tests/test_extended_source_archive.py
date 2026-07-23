@@ -89,14 +89,14 @@ class ExtendedSourceArchiveTests(unittest.TestCase):
             shutil.copytree(ROOT, copied, ignore=shutil.ignore_patterns(
                 ".git", ".work", "CODEX_STATE.md", "__pycache__", ".pytest_cache", "dist",
             ))
-            target = copied / "writing-plans" / "references" / "profiles" / "handoff.md"
+            target = copied / "writing-plans" / "tests" / "test_quick_skill_contract.py"
             target.unlink()
             target.symlink_to(copied / "README.md")
             with self.assertRaisesRegex(ValueError, "symlink"):
                 self.archiver.build_archive(copied, root / "symlink.zip", root / "symlink.json", "bundle")
 
             target.unlink()
-            shutil.copy2(ROOT / "writing-plans" / "references" / "profiles" / "handoff.md", target)
+            shutil.copy2(ROOT / "writing-plans" / "tests" / "test_quick_skill_contract.py", target)
             original_copy = self.archiver.shutil.copy2
             changed = False
 

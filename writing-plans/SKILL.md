@@ -14,42 +14,61 @@ metadata:
 
 # Writing Plans
 
-Explicit invocation is this full body. Never reopen `SKILL.md`, inventory workspace/skill/Git internals, or size references; read only files named by the selected profile or bridge.
-
 ## Scope
 
-Compile settled decisions into the lightest executable deliverable with order, authority, dependencies, recovery, and acceptance evidence. Never rediscover intent, diagnose causes, resolve architecture, execute, or claim verification.
+Compile settled decisions into one source-bound Markdown plan. Use Handoff when execution crosses a context; use Program only when a multi-milestone frontier changes across contexts. Same-session planning stays model-native.
 
-Use for explicit planning that must survive a context boundary, or for a resumable migration/program. Routine same-session changes stay with `$software-quality-workflows`.
+Do not brainstorm intent, diagnose causes, select architecture, implement, run verification, or claim completion.
 
-## Required inputs
+## Source binding
 
-Require settled goal/non-goals, scope, authority, protected work, decisions, acceptance evidence, source freshness, dependencies, rollback, blockers, and exact next action.
+Before planning, read only user-named sources, minimum owner files for the first source-changing slice, `HEAD` and `git status --short` only for cross-session freshness, and the existing plan only when updating a Program. Never inspect skill/package internals or sizes, Git authors/refs/objects, unrelated repository inventory, or files used only to fill a format.
 
-Never invent facts; return unresolved inputs to their owner.
+Every plan binds:
 
-## Profiles
+- Source root:
+- Revision or explicit non-Git source identity:
+- Relevant dirty/protected paths:
+- First-slice owner files/symbols:
 
-- **Handoff**: one transfer must cross a context boundary: owner, session, environment, staged migration, or release; no ongoing program state. Produce one [Executable Handoff](templates/executable-handoff.md) and load [Handoff](references/profiles/handoff.md). Load exactly one of [Outcome slices](references/slicing/outcome-slices.md) or [Context capsules](references/slicing/context-capsules.md) only for independent outcomes, dependency order, or a proven context budget.
-- **Program**: a resumable multi-milestone effort with a changing frontier; never select it merely because one handoff has ordered migration/rollout stages. Create/update one [Program Plan](templates/program-plan.md), load [Program](references/profiles/program.md), and load [Deprecation and rollout](references/migration/deprecation-and-rollout.md) only for a real migration/rollout.
-- **Large source**: when carrying source ranges, sections, and final path, load only [Long-document handoff](references/bridges/long-document-handoff.md), transfer to `$long-document-segmented-writing`, and load no other Writing Plans reference.
+## Settled and unresolved
 
-Select the profile that matches the continuation boundary.
+Treat user-stated goal, non-goals, first slice, target files, authority, acceptance evidence, and observed source facts as settled; never invent current facts.
 
-## Output rules
+Unknown later rollout, telemetry, ownership, or deprecation facts block only dependent milestones, not an authorized local first slice. Missing outcome-changing intent, current write authority, or irreversible approval blocks the affected slice. Record and return the blocker to the caller or owner; do not hard-code another skill dependency.
 
-Produce one canonical deliverable, not hidden state plus a projection. Handoff and Program are single Markdown documents; update Program in place. A context capsule is one section containing only goal, source pointers, locked decisions, frontier, blockers, and exact next action.
+## Inline contracts
 
-Every Handoff or Program states non-goals, allowed writes/effects, and an exact next action.
+A Handoff contains:
 
-Place every unresolved prerequisite before dependent slices, make its resolution the exact next action, and mark the dependent work blocked.
+- Goal / non-goals:
+- Bound source identity:
+- Protected work and allowed effects:
+- Settled decisions:
+- First source-changing slice:
+- Files/symbols to change:
+- Acceptance and verification:
+- Rollback/cleanup when material:
+- Later blockers and dependencies:
+- Resume preflight:
+- Exact next source-changing action:
 
-Use any requested JSON, YAML, or table as the sole deliverable. Create no sidecar, receipt, schema instance, renderer output, workflow root, or compatibility copy.
+A Program contains every Handoff field plus:
 
-## Return unresolved work
+- Milestones in dependency order:
+- Current frontier:
+- Per-milestone acceptance:
+- Migration/deprecation owner and removal condition when applicable:
+- Update-in-place rule:
 
-Return unclear intent, unknown root cause, unresolved architecture, authority gaps, and feasibility to `$software-quality-workflows`. SQW owns feasibility spikes and the prototype lifecycle. Record the blocker and missing decision; never plan around guesses.
+Multiple steps alone do not create a Program; the frontier must change across contexts.
 
-## Completion boundary
+## Preflight and first change
 
-Planning is complete when the deliverable is consistent, source-bound where required, executable without rediscovery, and explicit about blockers. This proves no implementation, test, review, release readiness, publication, deployment, or task completion.
+`Resume preflight` checks revision, relevant dirty/protected paths, and freshness. `Exact next source-changing action` names the first file or symbol to modify afterward and its expected behavior. It cannot be inspection, reading, ownership confirmation, or requirement collection unless the plan is blocked with no authorized source-changing slice.
+
+## Output boundary
+
+For a reply task, the final answer is the only plan. For a file task, create or update only the user-named Markdown file; update a Program in place. Create no `PHASE0.md`, sidecar, receipt, state, schema instance, renderer output, or compatibility copy.
+
+Break Markdown lines only at paragraph, list-item, quote, or structural boundaries; never hard-wrap a sentence to terminal width. Do not implement source. Planning completion proves only that the single plan is consistent, source-bound, executable without rediscovery, and honest about blockers—not that implementation, verification, review, release, publication, or deployment occurred.

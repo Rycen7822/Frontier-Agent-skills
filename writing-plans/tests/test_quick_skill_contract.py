@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+from pathlib import Path
+import re
+import unittest
+
+import yaml
+
+
+SKILL_ROOT = Path(__file__).resolve().parents[1]
+SKILL_PATH = SKILL_ROOT / "SKILL.md"
+HANDOFF_FIELDS = {
+    "Goal / non-goals",
+    "Bound source identity",
+    "Protected work and allowed effects",
+    "Settled decisions",
+    "First source-changing slice",
+    "Files/symbols to change",
+    "Acceptance and verification",
+    "Rollback/cleanup when material",
+    "Later blockers and dependencies",
+    "Resume preflight",
+    "Exact next source-changing action",
+}
+PROGRAM_FIELDS = {
+    "Milestones in dependency order",
+    "Current frontier",
+    "Per-milestone acceptance",
+    "Migration/deprecation owner and removal condition when applicable",
+    "Update-in-place rule",
+}
+
+
+def frontmatter(path: Path) -> dict:
+    text = path.read_text(encoding="utf-8")
+    match = re.match(r"\A---\n(.*?)\n---\n", text, flags=re.DOTALL)
+    if not match:
+        raise AssertionError("missing YAML frontmatter")
+    value = yaml.safe_load(match.group(1))
+    if not isinstance(value, dict):
+        raise AssertionError("invalid YAML frontmatter")
+    return value
+
+
+def field_labels(text: str) -> list[str]:
+    return re.findall(r"(?m)^- ([^:\n]+):$", text)
+
+
+class QuickWritingPlansTests(unittest.TestCase):
+    def test_metadata_budget_and_explicit_activation(self) -> None:
+        self.assertEqual("8.0.0", frontmatter(SKILL_PATH)["metadata"]["version"])
+        self.assertLessEqual(len(SKILL_PATH.read_bytes()), 4096)
+        agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
+        self.assertIs(agents["policy"]["allow_implicit_invocation"], False)
+
+    def test_package_has_single_runtime_body(self) -> None:
+        self.assertEqual([SKILL_PATH], sorted(SKILL_ROOT.rglob("*.md")))
+
+    def test_no_reference_template_script_schema_or_operator_tree(self) -> None:
+        for name in ("references", "templates", "scripts", "schemas", "operator"):
+            self.assertFalse((SKILL_ROOT / name).exists())
+
+    def test_handoff_and_program_contracts_are_inline(self) -> None:
+        labels = set(field_labels(SKILL_PATH.read_text(encoding="utf-8")))
+        self.assertLessEqual(HANDOFF_FIELDS | PROGRAM_FIELDS, labels)
+
+    def test_source_binding_and_first_source_change_are_distinct(self) -> None:
+        labels = field_labels(SKILL_PATH.read_text(encoding="utf-8"))
+        self.assertLess(labels.index("Revision or explicit non-Git source identity"), labels.index("Resume preflight"))
+        self.assertLess(labels.index("Resume preflight"), labels.index("Exact next source-changing action"))
+
+    def test_one_canonical_deliverable_and_no_sidecars(self) -> None:
+        files = {
+            path.relative_to(SKILL_ROOT).as_posix()
+            for path in SKILL_ROOT.rglob("*")
+            if path.is_file()
+        }
+        self.assertEqual({
+            "SKILL.md",
+            "agents/openai.yaml",
+            "tests/test_quick_skill_contract.py",
+        }, files)
+
+    def test_no_brief_surface(self) -> None:
+        self.assertNotIn("brief", SKILL_PATH.read_text(encoding="utf-8").casefold())
+        self.assertFalse(any("brief" in path.name.casefold() for path in SKILL_ROOT.rglob("*")))
+
+    def test_no_hard_dependency_on_sqw(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").split("---\n", 2)[2]
+        self.assertNotIn("$software-quality-workflows", body)
+
+    def test_local_links_do_not_escape_package(self) -> None:
+        root = SKILL_ROOT.resolve()
+        for target in re.findall(r"\[[^\]]*\]\(([^)]+)\)", SKILL_PATH.read_text(encoding="utf-8")):
+            if "://" in target or target.startswith("mailto:"):
+                continue
+            resolved = (SKILL_PATH.parent / target.split("#", 1)[0]).resolve()
+            self.assertTrue(resolved.is_relative_to(root), resolved)
+            self.assertTrue(resolved.is_file(), resolved)
+
+
+if __name__ == "__main__":
+    unittest.main()
