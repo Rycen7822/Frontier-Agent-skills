@@ -8,7 +8,7 @@ SKILL = Path(__file__).resolve().parents[1] / "SKILL.md"
 
 
 class QuickTestRetentionContractTests(unittest.TestCase):
-    def test_no_retention_registry_or_retired_event_fixture(self) -> None:
+    def test_no_machine_retention_registry(self) -> None:
         skill_root = SKILL.parent
         machine_retention = [
             path for path in skill_root.rglob("*")
@@ -17,7 +17,15 @@ class QuickTestRetentionContractTests(unittest.TestCase):
             and path.suffix in {".json", ".jsonl", ".yaml", ".yml"}
         ]
         self.assertEqual([], machine_retention)
-        self.assertFalse((skill_root / "tests/fixtures/workflow-events/valid-events.jsonl").exists())
+
+    def test_retention_package_has_no_runtime_state(self) -> None:
+        fixtures = SKILL.parent / "tests" / "fixtures"
+        runtime_state = [
+            path for name in ("workflow-events", "workflow-state")
+            for path in (fixtures / name).rglob("*")
+            if path.is_file()
+        ]
+        self.assertEqual([], runtime_state)
 
 
 if __name__ == "__main__":

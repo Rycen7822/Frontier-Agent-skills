@@ -1,6 +1,6 @@
 interface:
   display_name: "Software Quality Workflows"
   short_description: "Execute and verify software changes with minimal process overhead"
-  default_prompt: "Use $software-quality-workflows to inspect, implement, and verify this software task directly unless a concrete risk requires durable coordination."
+  default_prompt: "Use $software-quality-workflows on the named software seam; stay inside declared read-only or local boundaries and load authority guidance only for an unresolved scope or effect."
 policy:
   allow_implicit_invocation: false

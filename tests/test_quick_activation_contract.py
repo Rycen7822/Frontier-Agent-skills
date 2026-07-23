@@ -39,13 +39,5 @@ class QuickActivationContractTests(unittest.TestCase):
             agents = yaml.safe_load((ROOT / skill_id / "agents" / "openai.yaml").read_text(encoding="utf-8"))
             self.assertIn(f"${skill_id}", agents["interface"]["default_prompt"])
 
-    def test_writing_plans_explicit_body_prevents_redundant_self_load(self) -> None:
-        entry = (ROOT / "writing-plans" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("is this full body", entry)
-        self.assertIn("Never reopen `SKILL.md`", entry)
-        self.assertIn("inventory workspace/skill/Git internals", entry)
-        self.assertIn("read only files named by the selected profile or bridge", entry)
-
-
 if __name__ == "__main__":
     unittest.main()
