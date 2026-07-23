@@ -49,7 +49,7 @@ def field_labels(text: str) -> list[str]:
 class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_explicit_activation(self) -> None:
         self.assertEqual("8.0.0", frontmatter(SKILL_PATH)["metadata"]["version"])
-        self.assertLessEqual(len(SKILL_PATH.read_bytes()), 4096)
+        self.assertLessEqual(len(SKILL_PATH.read_bytes()), 1500)
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
         self.assertIs(agents["policy"]["allow_implicit_invocation"], False)
 
