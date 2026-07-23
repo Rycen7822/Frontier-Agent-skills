@@ -84,29 +84,87 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
             "candidate_source_tree_hash": SOURCE_HASH,
             "candidate_plugin_tree_hash": PLUGIN_HASH,
         }
-        sqw = {**identity, "evidence_status": "complete", "usefulness_status": "supported"}
-        sqw["report_hash"] = self_hash(sqw)
-        wp = {**identity, "evidence_status": "complete", "usefulness_status": "supported"}
-        wp["report_hash"] = self_hash(wp)
-        sqw_bytes = write_json(run / "l2" / "sqw" / "report.json", sqw)
-        wp_bytes = write_json(run / "l2" / "writing-plans" / "report.json", wp)
-        aggregate = {
+        evaluated_skill_ids = [
+            "software-quality-workflows",
+            "writing-plans",
+        ]
+        decision_contract = {
             **identity,
-            "aggregate_status": "passed",
-            "sqw_report_content_hash": digest(sqw_bytes),
-            "writing_plans_report_content_hash": digest(wp_bytes),
+            "evaluated_skill_ids": evaluated_skill_ids,
         }
+        decision_contract["decision_contract_hash"] = self_hash(decision_contract)
+        decision_bytes = write_json(
+            run / "l2" / "p3-decision-contract.json",
+            decision_contract,
+        )
+        decision_hash = digest(decision_bytes)
+
+        def arm(study: str, analysis_keys: tuple[str, ...]) -> dict:
+            report = {
+                "schema_version": "p3-arm-report/2.0",
+                "study": study,
+                **identity,
+                "decision_contract_content_hash": decision_hash,
+                "spec_content_hash": "sha256:" + "3" * 64,
+                "cases_content_hash": "sha256:" + "4" * 64,
+                "case_contracts_content_hash": "sha256:" + "5" * 64,
+                "fixture_manifest_set_hash": "sha256:" + "6" * 64,
+                "grader_set_hash": "sha256:" + "7" * 64,
+                "grader_batch_schedule_hash": "sha256:" + "8" * 64,
+                "treatment_contract_hash": "sha256:" + "9" * 64,
+                "environment_hash": "sha256:" + "a" * 64,
+                "receipt_index_content_hash": "sha256:" + "b" * 64,
+                "receipt_treatment_index_content_hash": "sha256:" + "c" * 64,
+                "analysis_input_content_hashes": {
+                    key: "sha256:" + "d" * 64 for key in analysis_keys
+                },
+                "evidence_status": "complete",
+                "usefulness_status": "supported",
+                "metrics": {},
+                "gates": [],
+            }
+            report["report_hash"] = self_hash(report)
+            return report
+
+        sqw = arm("software-quality-workflows", ("task_analysis",))
+        wp = arm(
+            "writing-plans",
+            ("planner_analysis", "transfer_analysis"),
+        )
+        sqw_bytes = write_json(
+            run / "l2" / "software-quality-workflows" / "report.json",
+            sqw,
+        )
+        wp_bytes = write_json(run / "l2" / "writing-plans" / "report.json", wp)
+        arm_hashes = {
+            "software-quality-workflows": digest(sqw_bytes),
+            "writing-plans": digest(wp_bytes),
+        }
+        aggregate = {
+            "schema_version": "p3-aggregate-report/2.0",
+            **identity,
+            "decision_contract_content_hash": decision_hash,
+            "evaluated_skill_ids": evaluated_skill_ids,
+            "arm_report_content_hashes": arm_hashes,
+            "aggregate_status": "passed",
+            "scored_model_calls": 206,
+            "apparatus_model_calls": 4,
+            "total_provider_calls": 210,
+            "retries": 0,
+            "gates": [],
+        }
+        aggregate["report_hash"] = self_hash(aggregate)
         aggregate_bytes = write_json(run / "l2" / "aggregate-report.json", aggregate)
         longitudinal = {**identity, "longitudinal_status": "passed"}
         longitudinal_bytes = write_json(run / "longitudinal" / "report.json", longitudinal)
         activation = {
-            "schema_version": "activation-decision/1.0",
+            "schema_version": "activation-decision/2.0",
             "bundle_id": "frontier-engineering/5.0.0",
             "candidate_revision": REVISION,
             "source_tree_hash": SOURCE_HASH,
             "candidate_plugin_tree_hash": PLUGIN_HASH,
-            "sqw_l2_report_hash": digest(sqw_bytes),
-            "writing_plans_l2_report_hash": digest(wp_bytes),
+            "p3_decision_contract_hash": decision_hash,
+            "scored_arm_report_hashes": arm_hashes,
             "aggregate_l2_report_hash": digest(aggregate_bytes),
             "longitudinal_report_hash": digest(longitudinal_bytes),
             "approved_skill_activation": dict(ACTIVATION),
@@ -116,7 +174,7 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
         }
         activation_bytes = write_json(run / "activation-decision.json", activation)
         evidence = {
-            "schema_version": "release-evidence/3.0",
+            "schema_version": "release-evidence/4.0",
             "bundle_id": "frontier-engineering/5.0.0",
             "bundle_version": "5.0.0",
             "source_tree_hash": SOURCE_HASH,
@@ -125,6 +183,9 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
             "source_revision_signed": True,
             "source_clean": True,
             "deterministic_report_hash": static["report_hash"],
+            "p3_decision_contract_hash": decision_hash,
+            "evaluated_skill_ids": evaluated_skill_ids,
+            "arm_report_content_hashes": arm_hashes,
             "l2_scored_report_hash": digest(aggregate_bytes),
             "longitudinal_report_hash": digest(longitudinal_bytes),
             "activation_decision_hash": digest(activation_bytes),
@@ -154,12 +215,45 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
     def test_tampered_arm_report_fails_even_with_a_recomputed_self_hash(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source, evidence_path, _ = self.make_contract(Path(directory))
-            sqw_path = evidence_path.parent / "l2" / "sqw" / "report.json"
+            sqw_path = (
+                evidence_path.parent / "l2"
+                / "software-quality-workflows" / "report.json"
+            )
             sqw = json.loads(sqw_path.read_text(encoding="utf-8"))
             sqw["new_unbound_claim"] = True
             sqw["report_hash"] = self_hash(sqw)
             write_json(sqw_path, sqw)
-            with self.assertRaisesRegex(ValueError, "aggregate L2 status or arm content hash"):
+            with self.assertRaisesRegex(ValueError, "P3 arm report is invalid or unbound"):
+                self.validate(source, evidence_path)
+
+    def test_missing_arm_candidate_identity_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source, evidence_path, _ = self.make_contract(Path(directory))
+            arm_path = (
+                evidence_path.parent / "l2"
+                / "software-quality-workflows" / "report.json"
+            )
+            arm = json.loads(arm_path.read_text(encoding="utf-8"))
+            arm.pop("candidate_revision")
+            arm["report_hash"] = self_hash(arm)
+            write_json(arm_path, arm)
+            with self.assertRaisesRegex(ValueError, "P3 arm report is invalid"):
+                self.validate(source, evidence_path)
+
+    def test_decision_contract_raw_bytes_are_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source, evidence_path, _ = self.make_contract(Path(directory))
+            contract = evidence_path.parent / "l2" / "p3-decision-contract.json"
+            contract.write_bytes(contract.read_bytes() + b" ")
+            with self.assertRaisesRegex(ValueError, "arm report is invalid or unbound"):
+                self.validate(source, evidence_path)
+
+    def test_arm_keys_equal_frozen_evaluated_skill_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source, evidence_path, evidence = self.make_contract(Path(directory))
+            evidence["arm_report_content_hashes"].pop("writing-plans")
+            write_json(evidence_path, evidence)
+            with self.assertRaisesRegex(ValueError, "schema is invalid"):
                 self.validate(source, evidence_path)
 
     def test_wrong_activation_map_and_symlinked_input_fail_closed(self) -> None:
@@ -196,7 +290,7 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
 
         malformed = (
             "source/evaluation/static-contract-diagnostic.json",
-            "run/l2/sqw/report.json",
+            "run/l2/software-quality-workflows/report.json",
             "run/longitudinal/report.json",
             "run/activation-decision.json",
         )

@@ -12,6 +12,6 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/evaluate_static_contracts.py --check
 
 There is no tracked router replay. Scored L2 specs, cases, fixtures, graders, run records, receipts, SQW and Writing Plans reports, and their aggregate remain in an external run root bound to one clean signed candidate revision and one immutable plugin tree. Longitudinal L4 sequences, variants, receipts, product hashes, and metrics remain under the same external identity.
 
-`release-evidence/3.0` records only the candidate identity, plugin tree hash, static self-hash, aggregate L2 raw-byte hash, longitudinal raw-byte hash, activation-decision raw-byte hash, exact activation matrix, and passed release gate. It does not copy evaluation cases or receipts into the candidate repository.
+`release-evidence/4.0` binds the signed clean candidate, plugin tree, static diagnostic, P3 decision-contract raw bytes, the fixed evaluated-skill arm raw bytes, aggregate, longitudinal report, activation decision, exact activation matrix, and passed release gate. It does not copy evaluation cases or receipts into the candidate repository.
 
 Static package shrink, fewer files, or a lower entrypoint byte count does not establish usefulness, task quality, context efficiency, or token savings. Those claims require the external scored and longitudinal gates.

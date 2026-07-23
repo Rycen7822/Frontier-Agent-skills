@@ -34,8 +34,32 @@ TEXT_SUFFIXES = {".md", ".json", ".yaml", ".yml", ".py", ".template"}
 RELEASE_FIELDS = {
     "schema_version", "bundle_id", "bundle_version", "source_tree_hash", "plugin_tree_hash", "source_revision",
     "source_revision_signed", "source_clean", "deterministic_report_hash",
+    "p3_decision_contract_hash", "evaluated_skill_ids", "arm_report_content_hashes",
     "l2_scored_report_hash", "longitudinal_report_hash", "activation_decision_hash",
     "approved_skill_activation", "remote_writes", "release_gate",
+}
+EVALUATED_SKILL_IDS = [
+    "software-quality-workflows",
+    "writing-plans",
+]
+P3_ARM_FIELDS = {
+    "schema_version", "study", "candidate_revision",
+    "candidate_source_tree_hash", "candidate_plugin_tree_hash",
+    "decision_contract_content_hash", "spec_content_hash",
+    "cases_content_hash", "case_contracts_content_hash",
+    "fixture_manifest_set_hash", "grader_set_hash",
+    "grader_batch_schedule_hash", "treatment_contract_hash",
+    "environment_hash", "receipt_index_content_hash",
+    "receipt_treatment_index_content_hash", "analysis_input_content_hashes",
+    "evidence_status", "usefulness_status", "metrics", "gates",
+    "report_hash",
+}
+P3_AGGREGATE_FIELDS = {
+    "schema_version", "candidate_revision", "candidate_source_tree_hash",
+    "candidate_plugin_tree_hash", "decision_contract_content_hash",
+    "evaluated_skill_ids", "arm_report_content_hashes", "aggregate_status",
+    "scored_model_calls", "apparatus_model_calls", "total_provider_calls",
+    "retries", "gates", "report_hash",
 }
 EXPECTED_SKILLS = {
     "long-document-segmented-writing": "1.0.0",
@@ -146,9 +170,9 @@ def skill_activation(path: Path) -> bool:
     return activation
 
 
-def _self_hash(report: dict[str, Any]) -> str:
+def _self_hash_field(report: dict[str, Any], field: str) -> str:
     value = dict(report)
-    value.pop("report_hash", None)
+    value.pop(field, None)
     encoded = json.dumps(
         value,
         ensure_ascii=False,
@@ -157,6 +181,10 @@ def _self_hash(report: dict[str, Any]) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return "sha256:" + sha256(encoded).hexdigest()
+
+
+def _self_hash(report: dict[str, Any]) -> str:
+    return _self_hash_field(report, "report_hash")
 
 
 def _validate_exact_bundle_identity(source_root: Path) -> None:
@@ -275,7 +303,7 @@ def validate_release_evidence(
     schema = _strict_json(source_root / "packaging" / "schemas" / "release-evidence.schema.json")
     Draft202012Validator.check_schema(schema)
     errors = list(Draft202012Validator(schema).iter_errors(evidence))
-    if errors or set(evidence) != RELEASE_FIELDS or evidence.get("schema_version") != "release-evidence/3.0":
+    if errors or set(evidence) != RELEASE_FIELDS or evidence.get("schema_version") != "release-evidence/4.0":
         raise ValueError("release evidence schema is invalid")
     bundle = _strict_json(source_root / "frontier-engineering.bundle.json")
     if (
@@ -310,38 +338,98 @@ def validate_release_evidence(
         raise ValueError("static contract diagnostic identity or report hash does not match")
 
     evidence_root = path.absolute().parent
+    l2_root = evidence_root / "l2"
+    aggregate_path = l2_root / "aggregate-report.json"
+    aggregate_bytes = _regular_bytes(aggregate_path, 16 * 1024 * 1024)
+    aggregate = _decode_json(aggregate_bytes, aggregate_path)
+    if (
+        set(aggregate) != P3_AGGREGATE_FIELDS
+        or aggregate.get("schema_version") != "p3-aggregate-report/2.0"
+        or aggregate.get("report_hash") != _self_hash(aggregate)
+        or aggregate.get("evaluated_skill_ids") != EVALUATED_SKILL_IDS
+        or set(aggregate.get("arm_report_content_hashes", {}))
+        != set(EVALUATED_SKILL_IDS)
+    ):
+        raise ValueError("aggregate L2 schema, self-hash, or arm inventory is invalid")
+    arm_paths = {
+        skill_id: l2_root / skill_id / "report.json"
+        for skill_id in aggregate["evaluated_skill_ids"]
+    }
+    expected_l2_entries = {
+        "p3-decision-contract.json",
+        "aggregate-report.json",
+        *aggregate["evaluated_skill_ids"],
+    }
+    if {item.name for item in l2_root.iterdir()} != expected_l2_entries:
+        raise ValueError("release evidence L2 inventory has missing or extra arms")
     external_paths = {
-        "sqw": evidence_root / "l2" / "sqw" / "report.json",
-        "writing_plans": evidence_root / "l2" / "writing-plans" / "report.json",
-        "aggregate": evidence_root / "l2" / "aggregate-report.json",
+        **arm_paths,
+        "decision_contract": l2_root / "p3-decision-contract.json",
+        "aggregate": aggregate_path,
         "longitudinal": evidence_root / "longitudinal" / "report.json",
         "activation": evidence_root / "activation-decision.json",
     }
     external_bytes = {name: _regular_bytes(item, 16 * 1024 * 1024) for name, item in external_paths.items()}
+    if external_bytes["aggregate"] != aggregate_bytes:
+        raise ValueError("aggregate L2 report changed during validation")
     external = {name: _decode_json(value, external_paths[name]) for name, value in external_bytes.items()}
     hashes = {name: _bytes_hash(value) for name, value in external_bytes.items()}
-    sqw = external["sqw"]
-    writing_plans = external["writing_plans"]
+    arms = {skill_id: external[skill_id] for skill_id in EVALUATED_SKILL_IDS}
+    decision_contract = external["decision_contract"]
     aggregate = external["aggregate"]
     longitudinal = external["longitudinal"]
     activation = external["activation"]
 
-    if sqw.get("report_hash") != _self_hash(sqw) or writing_plans.get("report_hash") != _self_hash(writing_plans):
-        raise ValueError("L2 scored report self-hash mismatch")
-    if (sqw.get("evidence_status"), sqw.get("usefulness_status")) != ("complete", "supported"):
-        raise ValueError("SQW L2 report is not complete and supported")
-    if (writing_plans.get("evidence_status"), writing_plans.get("usefulness_status")) != ("complete", "supported"):
-        raise ValueError("Writing Plans L2 report is not complete and supported")
+    if (
+        decision_contract.get("decision_contract_hash")
+        != _self_hash_field(decision_contract, "decision_contract_hash")
+        or decision_contract.get("candidate_revision") != revision
+        or decision_contract.get("candidate_source_tree_hash") != source_tree_hash
+        or decision_contract.get("candidate_plugin_tree_hash")
+        != evidence.get("plugin_tree_hash")
+        or decision_contract.get("evaluated_skill_ids") != EVALUATED_SKILL_IDS
+    ):
+        raise ValueError("P3 decision contract identity or self-hash is invalid")
+    for skill_id, arm in arms.items():
+        expected_analysis_keys = (
+            {"task_analysis"} if skill_id == "software-quality-workflows"
+            else {"planner_analysis", "transfer_analysis"}
+        )
+        analysis_hashes = arm.get("analysis_input_content_hashes")
+        if (
+            set(arm) != P3_ARM_FIELDS
+            or arm.get("schema_version") != "p3-arm-report/2.0"
+            or arm.get("study") != skill_id
+            or arm.get("report_hash") != _self_hash(arm)
+            or (arm.get("evidence_status"), arm.get("usefulness_status"))
+            != ("complete", "supported")
+            or arm.get("decision_contract_content_hash")
+            != hashes["decision_contract"]
+            or not isinstance(analysis_hashes, dict)
+            or set(analysis_hashes) != expected_analysis_keys
+            or any(
+                not isinstance(value, str)
+                or not re.fullmatch(r"sha256:[0-9a-f]{64}", value)
+                for value in analysis_hashes.values()
+            )
+            or aggregate["arm_report_content_hashes"].get(skill_id)
+            != hashes[skill_id]
+        ):
+            raise ValueError(f"{skill_id} P3 arm report is invalid or unbound")
     if (
         aggregate.get("aggregate_status") != "passed"
-        or aggregate.get("sqw_report_content_hash") != hashes["sqw"]
-        or aggregate.get("writing_plans_report_content_hash") != hashes["writing_plans"]
+        or aggregate.get("decision_contract_content_hash")
+        != hashes["decision_contract"]
+        or evidence.get("evaluated_skill_ids") != EVALUATED_SKILL_IDS
+        or evidence.get("arm_report_content_hashes")
+        != aggregate["arm_report_content_hashes"]
     ):
         raise ValueError("aggregate L2 status or arm content hash does not match")
     if longitudinal.get("longitudinal_status") != "passed":
         raise ValueError("longitudinal report is not passed")
 
     expected_hashes = {
+        "p3_decision_contract_hash": hashes["decision_contract"],
         "l2_scored_report_hash": hashes["aggregate"],
         "longitudinal_report_hash": hashes["longitudinal"],
         "activation_decision_hash": hashes["activation"],
@@ -351,28 +439,30 @@ def validate_release_evidence(
 
     activation_fields = {
         "schema_version", "bundle_id", "candidate_revision", "source_tree_hash",
-        "candidate_plugin_tree_hash", "sqw_l2_report_hash", "writing_plans_l2_report_hash",
+        "candidate_plugin_tree_hash", "p3_decision_contract_hash",
+        "scored_arm_report_hashes",
         "aggregate_l2_report_hash", "longitudinal_report_hash", "approved_skill_activation",
         "remote_writes", "decision", "blocking_observations",
     }
     if (
         set(activation) != activation_fields
-        or activation.get("schema_version") != "activation-decision/1.0"
+        or activation.get("schema_version") != "activation-decision/2.0"
         or activation.get("bundle_id") != bundle.get("bundle_id")
         or activation.get("decision") != "approve"
         or activation.get("blocking_observations") != []
         or activation.get("approved_skill_activation") != EXPECTED_APPROVED_ACTIVATION
         or activation.get("remote_writes") is not False
-        or activation.get("sqw_l2_report_hash") != hashes["sqw"]
-        or activation.get("writing_plans_l2_report_hash") != hashes["writing_plans"]
+        or activation.get("p3_decision_contract_hash")
+        != hashes["decision_contract"]
+        or activation.get("scored_arm_report_hashes")
+        != aggregate["arm_report_content_hashes"]
         or activation.get("aggregate_l2_report_hash") != hashes["aggregate"]
         or activation.get("longitudinal_report_hash") != hashes["longitudinal"]
     ):
         raise ValueError("activation decision is not an exact unblocked approval")
 
     for label, report in (
-        ("SQW", sqw),
-        ("Writing Plans", writing_plans),
+        *[(skill_id, arms[skill_id]) for skill_id in EVALUATED_SKILL_IDS],
         ("aggregate", aggregate),
         ("longitudinal", longitudinal),
     ):

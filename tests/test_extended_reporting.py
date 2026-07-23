@@ -3,7 +3,192 @@ from __future__ import annotations
 from skill_evaluator_test_support import *  # noqa: F403
 
 
+def material_failure_records(
+    baseline_failures: set[str],
+    candidate_failures: set[str],
+) -> list[dict]:
+    rows = []
+    for variant, failures in (
+        ("baseline", baseline_failures),
+        ("candidate", candidate_failures),
+    ):
+        for case_id in ("a", "b", "c", "d"):
+            for repeat in (1, 2):
+                rows.append({
+                    "variant": variant,
+                    "case_id": case_id,
+                    "repeat": repeat,
+                    "valid": True,
+                    "task_pass": case_id not in failures,
+                    "safety_pass": True,
+                    "hard_gate_failures": (
+                        ["material-contract"] if case_id in failures else []
+                    ),
+                })
+    return rows
+
+
 class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
+    def test_material_failure_is_aggregated_by_case_not_repeat(self) -> None:
+        summary = load_analyzer_module().summarize_material_failure_cases(
+            material_failure_records({"a", "b", "c"}, {"c"}),
+            baseline="baseline",
+            candidate="candidate",
+            case_ids={"a", "b", "c", "d"},
+            repeats=2,
+            material_failure_ids={"material-contract"},
+        )
+        self.assertEqual(3, summary["baseline_material_failure_cases"])
+        self.assertEqual(1, summary["candidate_material_failure_cases"])
+        self.assertEqual(2, summary["resolved_baseline_failure_cases"])
+        self.assertEqual("supported", summary["usefulness_status"])
+
+    def test_candidate_only_material_failure_blocks_support(self) -> None:
+        summary = load_analyzer_module().summarize_material_failure_cases(
+            material_failure_records({"a", "b", "c"}, {"c", "d"}),
+            baseline="baseline",
+            candidate="candidate",
+            case_ids={"a", "b", "c", "d"},
+            repeats=2,
+            material_failure_ids={"material-contract"},
+        )
+        self.assertEqual(1, summary["candidate_only_failure_cases"])
+        self.assertEqual("not_supported", summary["usefulness_status"])
+
+    def test_baseline_ceiling_returns_inconclusive(self) -> None:
+        summary = load_analyzer_module().summarize_material_failure_cases(
+            material_failure_records({"a", "b"}, set()),
+            baseline="baseline",
+            candidate="candidate",
+            case_ids={"a", "b", "c", "d"},
+            repeats=2,
+            material_failure_ids={"material-contract"},
+        )
+        self.assertTrue(summary["evidence_complete"])
+        self.assertEqual("inconclusive_ceiling", summary["usefulness_status"])
+
+    def test_matched_planner_executor_tokens_require_every_repeat(self) -> None:
+        planner = []
+        executor = []
+        arm_map = {}
+        for case_id in ("a", "b"):
+            for repeat in (1, 2):
+                for planner_variant, executor_variant, tokens in (
+                    ("baseline", "executor_baseline", 100),
+                    ("candidate_explicit", "executor_candidate", 70),
+                ):
+                    planner.append({
+                        "variant": planner_variant,
+                        "case_id": case_id,
+                        "repeat": repeat,
+                        "valid": True,
+                        "task_pass": True,
+                        "tokens_in": tokens,
+                        "tokens_out": 0,
+                    })
+                    transfer_case = (
+                        f"{case_id}-{repeat}-{executor_variant}"
+                    )
+                    arm_map[transfer_case] = {
+                        "source_case_id": case_id,
+                        "planner_repeat": repeat,
+                    }
+                    executor.append({
+                        "variant": executor_variant,
+                        "case_id": transfer_case,
+                        "repeat": 1,
+                        "valid": True,
+                        "task_pass": True,
+                        "tokens_in": tokens,
+                        "tokens_out": 0,
+                    })
+        analyzer = load_analyzer_module()
+        complete = analyzer.matched_planner_executor_tokens(
+            planner,
+            executor,
+            arm_map,
+            baseline_planner="baseline",
+            candidate_planner="candidate_explicit",
+            baseline_executor="executor_baseline",
+            candidate_executor="executor_candidate",
+            case_ids={"a", "b"},
+            repeats=2,
+        )
+        self.assertTrue(complete["complete"])
+        self.assertEqual(2, complete["eligible_case_count"])
+
+        planner.append(dict(planner[0]))
+        duplicate = analyzer.matched_planner_executor_tokens(
+            planner,
+            executor,
+            arm_map,
+            baseline_planner="baseline",
+            candidate_planner="candidate_explicit",
+            baseline_executor="executor_baseline",
+            candidate_executor="executor_candidate",
+            case_ids={"a", "b"},
+            repeats=2,
+        )
+        self.assertFalse(duplicate["complete"])
+        self.assertTrue(duplicate["duplicate_planner_keys"])
+        planner.pop()
+
+        planner[0]["tokens_in"] = True
+        invalid_tokens = analyzer.matched_planner_executor_tokens(
+            planner,
+            executor,
+            arm_map,
+            baseline_planner="baseline",
+            candidate_planner="candidate_explicit",
+            baseline_executor="executor_baseline",
+            candidate_executor="executor_candidate",
+            case_ids={"a", "b"},
+            repeats=2,
+        )
+        self.assertFalse(invalid_tokens["complete"])
+        planner[0]["tokens_in"] = 100
+
+        executor.pop()
+        incomplete = analyzer.matched_planner_executor_tokens(
+            planner,
+            executor,
+            arm_map,
+            baseline_planner="baseline",
+            candidate_planner="candidate_explicit",
+            baseline_executor="executor_baseline",
+            candidate_executor="executor_candidate",
+            case_ids={"a", "b"},
+            repeats=2,
+        )
+        self.assertFalse(incomplete["complete"])
+        self.assertEqual(1, incomplete["eligible_case_count"])
+
+    def test_host_preflight_bytes_are_separate_from_executor_prewrite(self) -> None:
+        analyzer = load_analyzer_module()
+        record = {
+            "bytes": {
+                "host_preflight_tool_output_bytes": 900,
+                "executor_prewrite_tool_output_bytes": 120,
+            },
+            "counts": {"executor_prewrite_task_tool_calls": 2},
+        }
+        self.assertEqual(
+            (900.0, 900.0),
+            analyzer.paired_metric_value(record, "host_preflight_tool_output_bytes"),
+        )
+        self.assertEqual(
+            (120.0, 120.0),
+            analyzer.paired_metric_value(
+                record, "executor_prewrite_tool_output_bytes"
+            ),
+        )
+        self.assertEqual(
+            (2.0, 2.0),
+            analyzer.paired_metric_value(
+                record, "executor_prewrite_task_tool_calls"
+            ),
+        )
+
     def test_negative_lift_cannot_report_usefulness_supported_when_absolute_rate_passes(self) -> None:
         analyzer = load_analyzer_module()
         benefit = analyzer.evaluate_benefit(
@@ -64,9 +249,9 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         scenarios = {
             'supported': ('complete', 'pass', ['pass'], 'supported'),
             'not_supported': ('complete', 'fail', ['pass'], 'not_supported'),
-            'inconclusive': ('complete', 'not_evaluable', ['pass'], 'inconclusive'),
-            'incomplete': ('incomplete', 'pass', ['pass'], 'inconclusive'),
-            'invalid': ('invalid', 'pass', ['pass'], 'inconclusive'),
+            'not_evaluable': ('complete', 'not_evaluable', ['pass'], 'not_evaluable'),
+            'incomplete': ('incomplete', 'pass', ['pass'], 'not_evaluable'),
+            'invalid': ('invalid', 'pass', ['pass'], 'not_evaluable'),
         }
         observed = {}
         for name, (evidence, benefit, guardrails, expected_usefulness) in scenarios.items():
@@ -78,7 +263,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             observed[name] = {'evidence_status': evidence, 'usefulness_status': usefulness}
             self.assertEqual(expected_usefulness, usefulness)
         self.assertEqual(
-            {'supported', 'not_supported', 'inconclusive', 'incomplete', 'invalid'},
+            {'supported', 'not_supported', 'not_evaluable', 'incomplete', 'invalid'},
             set(observed),
         )
         self.assertEqual('invalid', analyzer.derive_evidence_status(
@@ -162,7 +347,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         )['status'])
 
 
-    def test_paired_cost_metric_excludes_task_failures_and_rejects_relative_zero(self) -> None:
+    def test_relative_cost_benefit_direction_and_zero_denominator(self) -> None:
         analyzer = load_analyzer_module()
         records = []
         for case_id, baseline_tokens, candidate_tokens, candidate_pass in (
@@ -201,8 +386,53 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             direction='lower_is_better', effect='relative', confidence_level=0.95,
             bootstrap_iterations=200, random_seed=11,
         )
-        self.assertEqual('not_evaluable', relative['status'])
-        self.assertIn('comparator value is zero', relative['reason'])
+        self.assertEqual('complete', relative['status'])
+        self.assertAlmostEqual(-0.375, relative['point'])
+        for row in records:
+            if row['case_id'] == 'case-a' and row['variant'] == 'candidate':
+                row['tokens_in'] = 0
+        no_cost = analyzer.summarize_paired_metric(
+            records, comparator='baseline', candidate='candidate', metric='tokens_in',
+            direction='lower_is_better', effect='relative', confidence_level=0.95,
+            bootstrap_iterations=200, random_seed=11,
+        )
+        self.assertAlmostEqual(0.125, no_cost['point'])
+
+    def test_prewrite_uses_absolute_delta_upper_bound(self) -> None:
+        analyzer = load_analyzer_module()
+        records = []
+        for case_id, baseline, candidate in (
+            ('case-a', 100, 120),
+            ('case-b', 200, 190),
+        ):
+            records.extend([
+                {
+                    'case_id': case_id, 'repeat': 1, 'variant': 'baseline',
+                    'valid': True, 'task_pass': True,
+                    'bytes': {'executor_prewrite_tool_output_bytes': baseline},
+                },
+                {
+                    'case_id': case_id, 'repeat': 1, 'variant': 'candidate',
+                    'valid': True, 'task_pass': True,
+                    'bytes': {'executor_prewrite_tool_output_bytes': candidate},
+                },
+            ])
+        summary = analyzer.summarize_paired_cost_delta(
+            records,
+            comparator='baseline',
+            candidate='candidate',
+            metric='executor_prewrite_tool_output_bytes',
+            confidence_level=0.95,
+            bootstrap_iterations=500,
+            random_seed=17,
+        )
+        self.assertEqual('complete', summary['status'])
+        self.assertAlmostEqual(5.0, summary['point'])
+        self.assertAlmostEqual(20.0, summary['upper'])
+        self.assertEqual(
+            [20.0, -10.0],
+            [row['delta'] for row in summary['case_differences']],
+        )
 
 
     def test_routing_aggregates_repeats_by_case_and_reports_disagreement(self) -> None:
@@ -280,7 +510,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(0.5, negative['repeat_consistency']['rate'])
 
 
-    def test_case_cluster_bootstrap_does_not_count_repeats_as_cases(self) -> None:
+    def test_bootstrap_resamples_cases_not_repeats(self) -> None:
         analyzer = load_analyzer_module()
         records = []
         for case_id in ('case-a', 'case-b'):
@@ -336,7 +566,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 guardrail_statuses=['pass'], protected_outcome_failures=0,
                 material_harm=False, candidate_hard_failures=0,
             ),
-            'inconclusive',
+            'not_evaluable',
         )
 
 
@@ -654,7 +884,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             summary = json.loads(bundle['summary'].read_text(encoding='utf-8'))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(summary['evidence_status'], 'complete')
-        self.assertEqual(summary['usefulness_status'], 'not_applicable')
+        self.assertEqual(summary['usefulness_status'], 'not_evaluable')
         self.assertFalse(summary['run_matrix'][0]['task_pass'])
 
 
@@ -672,7 +902,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(report['record_count'], 1)
         self.assertEqual(report['evidence_status'], 'complete')
         decision = (
-            'evidence_status=complete usefulness_status=not_applicable '
+            'evidence_status=complete usefulness_status=not_evaluable '
             'final_authority_status=blocked decision_signal=diagnostic_complete'
         )
         self.assertEqual(

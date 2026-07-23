@@ -59,7 +59,10 @@ PATTERNS = [
     (
         "privilege-escalation",
         "high",
-        re.compile(r"\b(?:sudo|doas)\b|\bchmod\s+(?:-R\s+)?777\b", re.I),
+        re.compile(
+            r"(?im)(?:^|[`$>]\s*|\b(?:run|execute|invoke|use)\s+)"
+            r"(?:sudo|doas)\s+\S|\bchmod\s+(?:-R\s+)?777\b"
+        ),
         "Package requests privilege escalation or broad permissions.",
     ),
     (
@@ -71,19 +74,37 @@ PATTERNS = [
     (
         "sensitive-path-or-secret",
         "medium",
-        re.compile(r"(?:~?/)?\.(?:ssh|aws|gnupg)(?:/|\\)|\b(?:AWS_SECRET_ACCESS_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN|PRIVATE_KEY)\b", re.I),
+        re.compile(
+            r"(?:~?/)?\.(?:ssh|aws|gnupg)(?:/|\\)|"
+            r"(?:^|\bexport\s+|\bos\.(?:getenv|environ\.get)\s*\(|"
+            r"\bos\.environ\s*\[)\s*[\"']?"
+            r"(?:AWS_SECRET_ACCESS_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|"
+            r"GITHUB_TOKEN|PRIVATE_KEY)\b",
+            re.I | re.M,
+        ),
         "Text references a sensitive path or secret name; verify necessity and handling.",
     ),
     (
         "persistence-surface",
         "medium",
-        re.compile(r"\b(?:crontab|systemctl\s+enable|launchctl|schtasks|startup|autorun)\b|(?:^|[\\/])\.config[\\/](?:autostart|systemd)", re.I),
+        re.compile(
+            r"(?:^|[`$>]\s*|\b(?:run|execute|invoke)\s+)"
+            r"(?:crontab|launchctl|schtasks)\b|\bsystemctl\s+enable\b|"
+            r"(?:^|[\\/])\.config[\\/](?:autostart|systemd)",
+            re.I | re.M,
+        ),
         "Package may create persistent or scheduled behavior.",
     ),
     (
         "network-upload",
         "medium",
-        re.compile(r"\b(?:curl|wget)\b[^\n]{0,180}(?:--upload-file|-T\s|--data-binary|--form|-F\s)|\brequests\.(?:post|put|patch)\s*\(", re.I),
+        re.compile(
+            r"(?:^|[`$>]\s*|\b(?:run|execute|invoke)\s+)"
+            r"(?:curl|wget)\b[^\n]{0,180}"
+            r"(?:--upload-file|-T\s|--data-binary|--form|-F\s)|"
+            r"\brequests\.(?:post|put|patch)\s*\(",
+            re.I | re.M,
+        ),
         "Code or instructions may upload data or perform a remote write.",
     ),
     (

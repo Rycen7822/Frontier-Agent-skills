@@ -26,6 +26,19 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
         self.assertIn('receipt schema_version must equal 3', result.stdout)
 
+    def test_receipt_treatment_hash_is_case_local(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = write_receipt_bundle(Path(tmp))
+            receipt = json.loads(bundle['receipt'].read_text(encoding='utf-8'))
+            spec = json.loads(bundle['spec'].read_text(encoding='utf-8'))
+            receipt['run']['provenance']['treatment_hash'] = (
+                spec['variants'][0]['treatment_hash']
+            )
+            rewrite_bound_receipt(bundle, receipt)
+            result = self.run_receipt_analysis(bundle)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertIn('receipt provenance treatment_hash mismatch', result.stdout)
+
     def test_receipt_and_report_v3_bind_capture_routing_boundaries_and_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             bundle = write_receipt_bundle(Path(tmp))
@@ -52,7 +65,8 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
                 'candidate_revision', 'candidate_source_tree_hash', 'candidate_plugin_tree_hash',
                 'spec_content_hash', 'cases_content_hash', 'case_contracts_content_hash',
                 'fixture_manifest_set_hash', 'grader_set_hash', 'grader_batch_schedule_hash',
-                'treatment_hash', 'environment_hash', 'receipt_index_content_hash',
+                'treatment_contract_hash', 'receipt_treatment_index_content_hash',
+                'environment_hash', 'receipt_index_content_hash',
             ):
                 self.assertIn(field, report)
 
@@ -196,20 +210,24 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
             self.assertIn('evidence_status=incomplete', result.stdout)
 
-            ambiguous = write_receipt_bundle(root / 'ambiguous-identity')
-            spec = json.loads(ambiguous['spec'].read_text(encoding='utf-8'))
+            heterogeneous = write_receipt_bundle(root / 'heterogeneous-treatments')
+            spec = json.loads(heterogeneous['spec'].read_text(encoding='utf-8'))
             second_candidate = copy.deepcopy(spec['variants'][0])
             second_candidate.update({
                 'id': 'candidate_forced_2',
                 'treatment_hash': 'sha256:' + 'e' * 64,
             })
             spec['variants'].append(second_candidate)
-            ambiguous['spec'].write_text(json.dumps(spec), encoding='utf-8')
-            ambiguous['receipt'].unlink()
-            result = self.run_receipt_analysis(ambiguous)
-            self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
-            self.assertIn('evidence_status=invalid', result.stdout)
-            self.assertIn('candidate variants do not bind one treatment_hash', result.stdout)
+            spec['suite']['treatment_contract_hash'] = treatment_contract_hash(spec['variants'])
+            heterogeneous['spec'].write_text(json.dumps(spec), encoding='utf-8')
+            receipt = json.loads(heterogeneous['receipt'].read_text(encoding='utf-8'))
+            receipt['run']['provenance']['spec_content_hash'] = (
+                'sha256:' + hashlib.sha256(heterogeneous['spec'].read_bytes()).hexdigest()
+            )
+            rewrite_bound_receipt(heterogeneous, receipt)
+            result = self.run_receipt_analysis(heterogeneous)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertNotIn('one treatment_hash', result.stdout)
 
             tampered = write_receipt_bundle(root / 'tampered')
             tampered['receipt'].write_text('{}\n', encoding='utf-8')
@@ -628,7 +646,7 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
             ('required-quality', 'quality', True, 'complete', [], ['quality'], 'not_supported', 'blocked'),
             ('optional-quality', 'quality', False, 'complete', [], [], 'supported', 'eligible'),
             ('external-blocker', 'quality', False, 'complete', ['unresolved evidence owner'], [], 'supported', 'blocked'),
-            ('incomplete-process', 'process', True, 'incomplete', ['run matrix evidence is incomplete'], ['process'], 'inconclusive', 'blocked'),
+            ('incomplete-process', 'process', True, 'incomplete', ['run matrix evidence is incomplete'], ['process'], 'not_evaluable', 'blocked'),
         )
         for name, dimension, required, evidence, extra_blockers, expected_failures, expected_usefulness, expected_authority in scenarios:
             with self.subTest(name=name):

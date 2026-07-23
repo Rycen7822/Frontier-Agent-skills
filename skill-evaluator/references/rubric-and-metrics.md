@@ -22,20 +22,20 @@ Report candidate/baseline pass rates, process/quality/safety distributions, inva
 
 ## Independent-case intervals
 
-Pair rows by `(case_id,repeat)` to find missing, invalid, excluded, duplicate, and arm-specific failures. The finite comparative metric set is task/safety rate, normalized process/quality score, input/output tokens, task/prewrite calls and output bytes, Skill-context bytes, host/model body loads, reference/load/protocol calls, and workflow artifacts. For each predeclared metric:
+Pair rows by `(case_id,repeat)` to find missing, invalid, excluded, duplicate, and arm-specific failures. The finite comparative metric set is task/safety rate, normalized process/quality score, input/output tokens, task/executor-prewrite calls and output bytes, fixed host-preflight output bytes, Skill-context bytes, host/model body loads, reference/load/protocol calls, and workflow artifacts. For each predeclared metric:
 
 1. map binary task/safety to `[0,1]`; divide raw `0..100` process/quality scores by 100 while retaining both scales;
 2. average comparator and candidate repeat values inside each distinct case;
 3. compute higher-is-better as `candidate-comparator` or lower-is-better as `comparator-candidate`; divide by comparator only for a declared relative effect;
 4. canonical-sort the keyed case differences and resample case IDs with the frozen confidence, iterations, and seed.
 
-`paired_metrics.<metric>` carries comparator, direction, effect, estimand, scale, case/repeat count, point/lower/upper, and `case_differences[]` with an explicit `case_id`. Relative effects with a zero comparator are unavailable. Cost superiority uses only pairs where both arms pass the task and separately reports every excluded task failure; failure or early exit cannot become an efficiency win. Fewer than two complete distinct cases, missing/invalid rows, or duplicate keys make the interval unavailable.
+`paired_metrics.<metric>` carries comparator, direction, effect, estimand, scale, case/repeat count, point/lower/upper, and `case_differences[]` with an explicit `case_id`. For lower-is-better relative cost, comparator/candidate `0/0` has benefit `0`, while `0/positive` has benefit `-1`; a zero comparator remains unavailable for higher-is-better relative effects. Cost superiority uses only pairs where both arms pass the task and separately reports every excluded task failure; failure or early exit cannot become an efficiency win. Fewer than two complete distinct cases, missing/invalid rows, or duplicate keys make the interval unavailable.
 
 ## Benefit and noninferiority gates
 
 Every L2+ spec declares exactly one finite-enum `analysis.primary_benefit` with `metric`, `baseline|prior` comparator, canonical direction, `absolute|relative` effect, and non-negative `minimum_benefit`.
 
-Relative effects are allowed only for input/output tokens and Skill-context bytes. Binary scores, normalized rubric scores, counts, and other zero-common metrics use absolute effects.
+Relative effects are allowed only for input/output tokens and Skill-context bytes. Executor-prewrite output bytes use the absolute `candidate - comparator` byte delta and its one-sided upper bound. Binary scores, normalized rubric scores, counts, fixed host-preflight cost, and other zero-common metrics use absolute effects.
 
 - lower bound `>= δ > 0` → benefit passes;
 - upper bound `< δ` → benefit fails;
@@ -78,6 +78,10 @@ Critical incidents, unauthorized effects, and required safety failures remain vi
 
 Report all-run operational cost and success-conditioned deltas separately. A failure that loads less context or exits early is not an efficiency win. Useful fields are input/output tokens, latency, tool calls, retries, repeated actions, captured Skill context, network transfer when in scope, and cleanup residue/time.
 
+For Writing Plans transfer, compute `end_to_end_total_tokens` only from matched source-case/repeat pairs where planner and executor both pass on comparator and candidate. Sum planner input/output plus executor input/output, average repeats inside each source case, and require all eight eligible source cases. Planner-only tokens remain diagnostic. Report host-preflight bytes separately from executor-prewrite bytes and calls; gate executor-prewrite with the one-sided upper bound of the absolute `candidate - comparator` byte delta.
+
+For ceiling-prone SQW specialist evidence, aggregate predeclared material failures by case: any failing repeat makes that arm fail the case. Report baseline, candidate, resolved-baseline, and candidate-only failure counts. Support requires at least three baseline failure cases, at least two resolved cases, zero candidate-only cases, and candidate failures no greater than half the baseline count. Fewer than three baseline failures yields complete evidence with `inconclusive_ceiling`; it never becomes a candidate failure or a release pass.
+
 Predeclare meaningful routing, domain, difficulty, state, safety, environment, model, modality, and holdout slices. Show `n` and the worst material slice; do not turn many near-duplicate trajectories into independent cases.
 
 ## Empirical usefulness status
@@ -86,8 +90,9 @@ Predeclare meaningful routing, domain, difficulty, state, safety, environment, m
 
 | Evidence and gates | `usefulness_status` |
 |---|---|
-| L0/L1 | `not_applicable` |
-| Evidence incomplete/invalid, interval overlap, or required metric unavailable | `inconclusive` |
+| L0/L1 | `not_evaluable` |
+| Evidence incomplete/invalid, interval overlap, or required metric unavailable | `not_evaluable` |
+| Complete ceiling-safe evidence lacks baseline headroom | `inconclusive_ceiling` |
 | Benefit interval wholly below threshold, verified guardrail/context failure, protected failure, or material harm | `not_supported` |
 | Benefit passes and every required guardrail passes | `supported` |
 

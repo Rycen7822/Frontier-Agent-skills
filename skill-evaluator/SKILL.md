@@ -60,7 +60,7 @@ Without selection, order, and composition receipts, L4 must not claim library-sc
 - A prior context delta is available only for one same-mode prior variant, complete 100% attributed paired rows, matching measurement sources, and successful outcomes; otherwise it is null.
 - Safety and protected outcomes are unweighted guardrails. Utility cannot offset a material safety or protected-case failure.
 - Static audit findings are provisional review locators. They never authorize deleting package resources, hiding matched text, weakening rules, or treating scanner silence as safety evidence.
-- Empirical usefulness is `supported`, `not_supported`, `inconclusive`, or `not_applicable`. Manual review and deployment authority are separate final gates.
+- Empirical usefulness is `supported`, `not_supported`, `inconclusive_ceiling`, or `not_evaluable`. Manual review and deployment authority are separate final gates.
 - Public templates contain placeholders. They are not live receipts, host evidence, or scored usefulness evidence.
 
 ## Run the owners
