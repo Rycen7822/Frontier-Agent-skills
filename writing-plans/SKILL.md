@@ -5,8 +5,6 @@ metadata:
   version: 8.0.0
 ---
 
-Complete body in the invocation: do not reopen `SKILL.md`; with metadata/path only, read it once.
-
 Handoff crosses contexts; Program tracks a changing frontier; otherwise stay native. Use a skill-authoring workflow only for skill-source changes. Do not decide, diagnose, execute, verify or claim.
 
 ## Bind

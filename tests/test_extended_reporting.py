@@ -115,7 +115,11 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             repeats=2,
         )
         self.assertTrue(complete["complete"])
-        self.assertEqual(2, complete["eligible_case_count"])
+        self.assertEqual("complete", complete["status"])
+        self.assertEqual(2, complete["case_count"])
+        self.assertAlmostEqual(0.30, complete["point"])
+        self.assertAlmostEqual(0.30, complete["lower"])
+        self.assertAlmostEqual(0.30, complete["upper"])
 
         planner.append(dict(planner[0]))
         duplicate = analyzer.matched_planner_executor_tokens(
@@ -146,6 +150,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             repeats=2,
         )
         self.assertFalse(invalid_tokens["complete"])
+        self.assertEqual("invalid_tokens", invalid_tokens["excluded_pairs"][0]["reason"])
         planner[0]["tokens_in"] = 100
 
         executor.pop()
@@ -161,7 +166,8 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             repeats=2,
         )
         self.assertFalse(incomplete["complete"])
-        self.assertEqual(1, incomplete["eligible_case_count"])
+        self.assertEqual("incomplete", incomplete["status"])
+        self.assertEqual(1, incomplete["case_count"])
 
     def test_host_preflight_bytes_are_separate_from_executor_prewrite(self) -> None:
         analyzer = load_analyzer_module()
