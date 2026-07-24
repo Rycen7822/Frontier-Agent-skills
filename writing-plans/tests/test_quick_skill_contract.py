@@ -120,6 +120,9 @@ class QuickWritingPlansTests(unittest.TestCase):
             "protected immutable input",
             "do not instruct execution to modify the plan",
             "repository's test owner",
+            "not an example or alternative",
+            "pythondontwritebytecode=1 python -m unittest <repo-test>",
+            "never use bare `pytest`",
             "leaves no cache/state artifact",
             "exact cleanup",
         ):
