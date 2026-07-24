@@ -117,6 +117,9 @@ class QuickWritingPlansTests(unittest.TestCase):
             "only a later planning invocation updates the program",
             "protected immutable input",
             "do not instruct execution to modify the plan",
+            "repository's test owner",
+            "leaves no cache/state artifact",
+            "exact cleanup",
         ):
             self.assertIn(contract, body)
 
