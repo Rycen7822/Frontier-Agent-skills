@@ -66,7 +66,7 @@ class QuickWritingPlansTests(unittest.TestCase):
         rows = ("- State —", "- Resume —", "- Slice —", "- Proof —")
         self.assertEqual(list(rows), sorted(rows, key=body.index))
         self.assertIn("directly from settled facts", body)
-        self.assertIn("one combined command/evidence statement", body)
+        self.assertIn("Acceptance and verification: one command verifies every condition", body)
 
     def test_source_binding_and_first_source_change_are_distinct(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8")

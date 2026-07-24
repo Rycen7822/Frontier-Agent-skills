@@ -24,7 +24,7 @@ Write a title and only one compact contract table or four-row bullets:
 - State — Bound source identity; Protected work and allowed effects; Settled decisions; Exact first-slice inputs, outputs, values, invariants; Later blockers and dependencies.
 - Resume — Resume preflight.
 - Slice — Goal / non-goals; First source-changing slice and files/symbols; Exact next source-changing action.
-- Proof — Acceptance and verification once as one combined command/evidence statement; Rollback/cleanup when material.
+- Proof — Acceptance and verification: one command verifies every condition; Rollback/cleanup when material.
 
 Fill rows directly from settled facts once; state behavior, not just a symbol/test. No format comparison or planning rationale.
 
