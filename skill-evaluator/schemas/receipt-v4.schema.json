@@ -1,0 +1,456 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/receipt-v4.schema.json",
+  "title": "Skill Evaluator receipt v4",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "receipt_hash",
+    "attempt_start",
+    "run",
+    "provenance",
+    "artifacts",
+    "host_protocol",
+    "routing",
+    "principals",
+    "handoffs",
+    "actions",
+    "observations",
+    "state",
+    "faults",
+    "usage",
+    "context_usage",
+    "grader_outputs",
+    "cleanup"
+  ],
+  "properties": {
+    "schema_version": {"const": 4},
+    "receipt_hash": {"$ref": "#/$defs/sha256"},
+    "attempt_start": {"$ref": "#/$defs/attempt_start"},
+    "run": {"$ref": "#/$defs/run"},
+    "provenance": {"$ref": "#/$defs/provenance"},
+    "artifacts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/artifact"}
+    },
+    "host_protocol": {"$ref": "#/$defs/host_protocol"},
+    "routing": {"$ref": "#/$defs/routing"},
+    "principals": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/principal"}
+    },
+    "handoffs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/handoff"}
+    },
+    "actions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/action_trace"}
+    },
+    "observations": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/observation"}
+    },
+    "state": {"$ref": "#/$defs/state"},
+    "faults": {"$ref": "#/$defs/faults"},
+    "usage": {"$ref": "#/$defs/usage"},
+    "context_usage": {"$ref": "#/$defs/context_usage"},
+    "grader_outputs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/grader_output"}
+    },
+    "cleanup": {"$ref": "#/$defs/cleanup"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "run": {
+            "properties": {
+              "completion_origin": {"const": "normal"}
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "host_protocol": {
+            "properties": {
+              "requests": {"minItems": 1},
+              "results": {"minItems": 1}
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "rfc3339_seconds": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["path", "sha256", "encoding"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relative_path"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "encoding": {"enum": ["utf-8", "binary"]}
+      },
+      "additionalProperties": false
+    },
+    "host_request": {
+      "$ref": "host-manifest-v1.schema.json#/$defs/host_request"
+    },
+    "host_event": {
+      "$ref": "host-manifest-v1.schema.json#/$defs/host_event"
+    },
+    "host_result": {
+      "$ref": "host-manifest-v1.schema.json#/$defs/host_result"
+    },
+    "checkpoint": {
+      "$ref": "host-manifest-v1.schema.json#/$defs/checkpoint"
+    },
+    "protocol_error": {
+      "$ref": "host-manifest-v1.schema.json#/$defs/protocol_error"
+    },
+    "principal": {
+      "$ref": "host-manifest-v1.schema.json#/$defs/principal"
+    },
+    "handoff": {
+      "$ref": "host-manifest-v1.schema.json#/$defs/handoff"
+    },
+    "authorization_decision": {
+      "$ref": "host-manifest-v1.schema.json#/$defs/authorization_decision"
+    },
+    "action_trace": {
+      "$ref": "host-manifest-v1.schema.json#/$defs/action_trace"
+    },
+    "attempt_start": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "marker_hash",
+        "plan_hash",
+        "plan_id",
+        "entry_ordinal",
+        "entry_id",
+        "attempt",
+        "run_id",
+        "ownership_token"
+      ],
+      "properties": {
+        "schema_version": {"const": 1},
+        "marker_hash": {"$ref": "#/$defs/sha256"},
+        "plan_hash": {"$ref": "#/$defs/sha256"},
+        "plan_id": {"$ref": "#/$defs/safe_id"},
+        "entry_ordinal": {"type": "integer", "minimum": 0},
+        "entry_id": {"$ref": "#/$defs/safe_id"},
+        "attempt": {"type": "integer", "minimum": 1, "maximum": 9999},
+        "run_id": {"$ref": "#/$defs/safe_id"},
+        "ownership_token": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "run": {
+      "type": "object",
+      "required": [
+        "plan_hash",
+        "plan_id",
+        "entry_ordinal",
+        "entry_id",
+        "run_id",
+        "case_id",
+        "treatment_id",
+        "repeat",
+        "attempt",
+        "completion_origin",
+        "clock_source",
+        "started_at",
+        "ended_at",
+        "valid",
+        "error",
+        "terminal"
+      ],
+      "properties": {
+        "plan_hash": {"$ref": "#/$defs/sha256"},
+        "plan_id": {"$ref": "#/$defs/safe_id"},
+        "entry_ordinal": {"type": "integer", "minimum": 0},
+        "entry_id": {"$ref": "#/$defs/safe_id"},
+        "run_id": {"$ref": "#/$defs/safe_id"},
+        "case_id": {"$ref": "#/$defs/safe_id"},
+        "treatment_id": {"$ref": "#/$defs/safe_id"},
+        "repeat": {"type": "integer", "minimum": 1},
+        "attempt": {"type": "integer", "minimum": 1, "maximum": 9999},
+        "completion_origin": {"enum": ["normal", "resume_seal"]},
+        "clock_source": {"type": "string", "minLength": 1},
+        "started_at": {"$ref": "#/$defs/rfc3339_seconds"},
+        "ended_at": {"$ref": "#/$defs/rfc3339_seconds"},
+        "valid": {"type": "boolean"},
+        "error": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
+        "terminal": {"enum": ["completed", "failed", "cancelled", "timeout", "interrupted"]}
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "spec_hash",
+        "scenario_corpus_hash",
+        "scenario_hash",
+        "plan_hash",
+        "host_manifest_hash",
+        "package_hash",
+        "catalog_hash",
+        "treatment_hash",
+        "fixture_hash",
+        "grader_set_hash",
+        "calibration_hash",
+        "suite_quality_hash"
+      ],
+      "properties": {
+        "spec_hash": {"$ref": "#/$defs/sha256"},
+        "scenario_corpus_hash": {"$ref": "#/$defs/sha256"},
+        "scenario_hash": {"$ref": "#/$defs/sha256"},
+        "plan_hash": {"$ref": "#/$defs/sha256"},
+        "host_manifest_hash": {"$ref": "#/$defs/sha256"},
+        "package_hash": {"$ref": "#/$defs/sha256"},
+        "catalog_hash": {"$ref": "#/$defs/sha256"},
+        "treatment_hash": {"$ref": "#/$defs/sha256"},
+        "fixture_hash": {"$ref": "#/$defs/sha256"},
+        "grader_set_hash": {"$ref": "#/$defs/sha256"},
+        "calibration_hash": {
+          "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        },
+        "suite_quality_hash": {
+          "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        }
+      },
+      "additionalProperties": false
+    },
+    "host_protocol": {
+      "type": "object",
+      "required": ["requests", "events", "results", "checkpoints", "errors", "raw_stdout", "raw_stderr"],
+      "properties": {
+        "requests": {"type": "array", "items": {"$ref": "#/$defs/host_request"}},
+        "events": {"type": "array", "items": {"$ref": "#/$defs/host_event"}},
+        "results": {"type": "array", "items": {"$ref": "#/$defs/host_result"}},
+        "checkpoints": {"type": "array", "items": {"$ref": "#/$defs/checkpoint"}},
+        "errors": {"type": "array", "items": {"$ref": "#/$defs/protocol_error"}},
+        "raw_stdout": {"$ref": "#/$defs/artifact"},
+        "raw_stderr": {"$ref": "#/$defs/artifact"}
+      },
+      "additionalProperties": false
+    },
+    "routing": {
+      "type": "object",
+      "required": ["catalog", "declared", "discovered", "loaded", "model_visible", "selected", "invoked", "applied", "order", "composition"],
+      "properties": {
+        "catalog": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "declared": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "discovered": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "loaded": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "model_visible": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "selected": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "invoked": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "applied": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "order": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "composition": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}}
+      },
+      "additionalProperties": false
+    },
+    "observation": {
+      "type": "object",
+      "required": ["observation_id", "artifact", "locator", "schema_hash", "integrity", "temporal_validity", "reason"],
+      "properties": {
+        "observation_id": {"$ref": "#/$defs/safe_id"},
+        "artifact": {"$ref": "#/$defs/artifact"},
+        "locator": {"$ref": "failure-index-v1.schema.json#/$defs/locator"},
+        "schema_hash": {
+          "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        },
+        "integrity": {"enum": ["pass", "fail", "not_evaluable"]},
+        "temporal_validity": {"enum": ["pass", "stale", "not_evaluable"]},
+        "reason": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "required": ["before", "after", "checkpoints", "transitions", "obligations", "terminal", "cleanup"],
+      "properties": {
+        "before": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]},
+        "after": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]},
+        "checkpoints": {"type": "array", "items": {"$ref": "#/$defs/checkpoint"}},
+        "transitions": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "obligations": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "terminal": {"type": "string", "minLength": 1},
+        "cleanup": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "faults": {
+      "type": "object",
+      "required": ["injected", "observed", "recovered"],
+      "properties": {
+        "injected": {"type": "array", "items": {"$ref": "#/$defs/fault_observation"}},
+        "observed": {"type": "array", "items": {"$ref": "#/$defs/fault_observation"}},
+        "recovered": {"type": "array", "items": {"$ref": "#/$defs/fault_observation"}}
+      },
+      "additionalProperties": false
+    },
+    "fault_observation": {
+      "type": "object",
+      "required": ["fault_id", "locator"],
+      "properties": {
+        "fault_id": {"$ref": "#/$defs/safe_id"},
+        "locator": {"$ref": "failure-index-v1.schema.json#/$defs/locator"}
+      },
+      "additionalProperties": false
+    },
+    "usage": {
+      "type": "object",
+      "required": ["pricing_identity", "records"],
+      "properties": {
+        "pricing_identity": {"type": "string", "minLength": 1},
+        "records": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/usage_record"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "usage_record": {
+      "type": "object",
+      "required": [
+        "principal_id",
+        "turn_id",
+        "phase",
+        "call_id",
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "queue_ms",
+        "runtime_ms",
+        "tool_calls",
+        "retries",
+        "rework",
+        "network_calls",
+        "residue_count",
+        "requested_effort",
+        "effective_effort"
+      ],
+      "properties": {
+        "principal_id": {"$ref": "#/$defs/safe_id"},
+        "turn_id": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
+        "phase": {"$ref": "#/$defs/safe_id"},
+        "call_id": {"$ref": "#/$defs/safe_id"},
+        "input_tokens": {"type": "integer", "minimum": 0},
+        "output_tokens": {"type": "integer", "minimum": 0},
+        "cache_read_tokens": {"type": "integer", "minimum": 0},
+        "cache_write_tokens": {"type": "integer", "minimum": 0},
+        "queue_ms": {"type": "number", "minimum": 0},
+        "runtime_ms": {"type": "number", "minimum": 0},
+        "tool_calls": {"type": "integer", "minimum": 0},
+        "retries": {"type": "integer", "minimum": 0},
+        "rework": {"type": "integer", "minimum": 0},
+        "network_calls": {"type": "integer", "minimum": 0},
+        "residue_count": {"type": "integer", "minimum": 0},
+        "requested_effort": {"type": "number", "minimum": 0},
+        "effective_effort": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "context_usage": {
+      "type": "object",
+      "required": ["status", "bytes", "tokens", "controlled_bytes", "unique_reference_bytes", "controlled_core_bytes", "components"],
+      "properties": {
+        "status": {"enum": ["captured", "missing"]},
+        "bytes": {"type": "integer", "minimum": 0},
+        "tokens": {
+          "anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]
+        },
+        "controlled_bytes": {"type": "integer", "minimum": 0},
+        "unique_reference_bytes": {"type": "integer", "minimum": 0},
+        "controlled_core_bytes": {"type": "integer", "minimum": 0},
+        "components": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/context_component"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "context_component": {
+      "type": "object",
+      "required": ["component_id", "kind", "source_path", "content_sha256", "artifact", "bytes", "tokens", "occurrence"],
+      "properties": {
+        "component_id": {"$ref": "#/$defs/safe_id"},
+        "kind": {"enum": ["metadata", "body", "reference", "protocol_output", "failed_command_output"]},
+        "source_path": {"type": "string", "minLength": 1},
+        "content_sha256": {"$ref": "#/$defs/sha256"},
+        "artifact": {"$ref": "#/$defs/artifact"},
+        "bytes": {"type": "integer", "minimum": 0},
+        "tokens": {
+          "anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]
+        },
+        "occurrence": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "grader_output": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "grader_id", "invocation", "output"],
+          "properties": {
+            "kind": {"const": "deterministic"},
+            "grader_id": {"$ref": "#/$defs/safe_id"},
+            "invocation": {"$ref": "#/$defs/artifact"},
+            "output": {"$ref": "#/$defs/artifact"}
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "grader_id", "schedule_hash", "blinded_input", "raw_batch"],
+          "properties": {
+            "kind": {"const": "model"},
+            "grader_id": {"$ref": "#/$defs/safe_id"},
+            "schedule_hash": {"$ref": "#/$defs/sha256"},
+            "blinded_input": {"$ref": "#/$defs/artifact"},
+            "raw_batch": {"$ref": "#/$defs/artifact"}
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "cleanup": {
+      "type": "object",
+      "required": ["process", "workspace", "service", "state", "residue", "errors"],
+      "properties": {
+        "process": {"enum": ["clean", "failed", "not_applicable"]},
+        "workspace": {"enum": ["clean", "retained", "failed"]},
+        "service": {"enum": ["clean", "failed", "not_applicable"]},
+        "state": {"enum": ["clean", "failed", "not_applicable"]},
+        "residue": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "errors": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      },
+      "additionalProperties": false
+    }
+  }
+}

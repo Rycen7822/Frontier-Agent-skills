@@ -33,13 +33,34 @@ class QuickSkillEvaluatorCoreTests(unittest.TestCase):
         match = re.match(r"\A---\n(.*?)\n---\n", text, flags=re.DOTALL)
         self.assertIsNotNone(match)
         frontmatter = yaml.safe_load(match.group(1))
-        self.assertEqual("2.0.0", frontmatter["metadata"]["version"])
+        self.assertEqual("3.0.0", frontmatter["metadata"]["version"])
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
         self.assertIs(agents["policy"]["allow_implicit_invocation"], False)
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "validate_eval_suite.py"),
+             "contract",
              str(SKILL_ROOT / "templates" / "eval-spec.example.json"),
-             str(SKILL_ROOT / "templates" / "cases.example.jsonl")],
+             str(SKILL_ROOT / "templates" / "scenarios.example.jsonl"),
+             str(SKILL_ROOT / "templates" / "host-manifest.example.json")],
+            cwd=SKILL_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_public_l1_template_is_valid(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPTS / "validate_eval_suite.py"),
+                "contract",
+                str(SKILL_ROOT / "templates" / "eval-spec.l1.example.json"),
+                str(SKILL_ROOT / "templates" / "scenarios.l1.example.jsonl"),
+                str(SKILL_ROOT / "templates" / "host-manifest.example.json"),
+            ],
             cwd=SKILL_ROOT,
             capture_output=True,
             text=True,

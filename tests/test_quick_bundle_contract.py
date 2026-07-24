@@ -12,7 +12,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_VERSIONS = {
     "long-document-segmented-writing": "1.0.0",
-    "skill-evaluator": "2.0.0",
+    "skill-evaluator": "3.0.0",
     "software-quality-workflows": "9.0.0",
     "writing-plans": "8.0.0",
 }
@@ -31,7 +31,7 @@ class QuickBundleContractTests(unittest.TestCase):
     def test_source_and_generated_bundle_are_exact_and_deterministic(self) -> None:
         source = json.loads((ROOT / "bundle-manifest.json").read_text(encoding="utf-8"))
         self.assertEqual("3.0", source["bundle_schema_version"])
-        self.assertEqual("5.0.0", source["bundle_version"])
+        self.assertEqual("6.0.0", source["bundle_version"])
         self.assertEqual(EXPECTED_VERSIONS, {item["id"]: item["version"] for item in source["skills"]})
         self.assertEqual({"quick", "extended", "release"}, set(source["test_profiles"]))
         self.assertEqual(3, len({tuple(commands) for commands in source["test_profiles"].values()}))
@@ -40,7 +40,7 @@ class QuickBundleContractTests(unittest.TestCase):
         generated = json.loads((ROOT / "frontier-engineering.bundle.json").read_text(encoding="utf-8"))
         self.assertEqual(builder.build_manifest(), generated)
         self.assertEqual("frontier-engineering-bundle/2.0", generated["schema_version"])
-        self.assertEqual(4, generated["compatible_schema_epoch"])
+        self.assertEqual(5, generated["compatible_schema_epoch"])
         self.assertEqual(EXPECTED_VERSIONS, {key: value["version"] for key, value in generated["skills"].items()})
         self.assertEqual(
             {"version", "allow_implicit_invocation", "root_hash"},
@@ -70,6 +70,18 @@ class QuickBundleContractTests(unittest.TestCase):
             self.assertNotIn('frontier-engineering/4.0.0', text, name)
 
     def test_builder_check_passes_without_mutating_output(self) -> None:
+        help_result = subprocess.run(
+            [sys.executable, str(ROOT / "bundle" / "build_bundle_manifest.py"), "--help"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        self.assertEqual(0, help_result.returncode, help_result.stdout + help_result.stderr)
+        self.assertIn("Frontier 6.0", help_result.stdout)
+        self.assertNotIn("Frontier 5.0", help_result.stdout)
         result = subprocess.run(
             [sys.executable, str(ROOT / "bundle" / "build_bundle_manifest.py"), "--check"],
             cwd=ROOT,

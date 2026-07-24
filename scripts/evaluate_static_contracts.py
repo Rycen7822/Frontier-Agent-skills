@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build or verify the deterministic Frontier 5.0 static contract report."""
+"""Build or verify the deterministic Frontier 6.0 static contract report."""
 
 from __future__ import annotations
 
@@ -48,7 +48,6 @@ MODEL_FACING_EXACT = (
 MODEL_FACING_DIRS = (
     "software-quality-workflows/references",
     "software-quality-workflows/operator",
-    "software-quality-workflows/templates",
 )
 LEGACY_RUNTIME_PATHS = (
     "brainstorming",

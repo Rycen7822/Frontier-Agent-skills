@@ -49,9 +49,9 @@
     "check": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "pass", "evidence", "notes", "uncertainty"],
+      "required": ["check_id", "pass", "evidence", "notes", "uncertainty"],
       "properties": {
-        "id": {"type": "string", "minLength": 1},
+        "check_id": {"type": "string", "minLength": 1},
         "pass": {"type": "boolean"},
         "evidence": {
           "type": "array",

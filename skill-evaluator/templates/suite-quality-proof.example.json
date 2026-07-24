@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "evaluation_id": "public-l2-template",
+  "authority": "suite-quality-owner",
+  "thresholds": {
+    "minimum_detection": 1.0
+  },
+  "golden": {
+    "case_ids": [
+      "case-basic"
+    ],
+    "passed_ids": [
+      "case-basic"
+    ]
+  },
+  "known_bad": {
+    "case_ids": [
+      "known-bad"
+    ],
+    "detected_ids": [
+      "known-bad"
+    ]
+  },
+  "mutations": {
+    "mutation_ids": [
+      "mutation-basic"
+    ],
+    "detected_ids": [
+      "mutation-basic"
+    ]
+  },
+  "case_classes": [
+    {
+      "case_id": "case-basic",
+      "class": "positive"
+    },
+    {
+      "case_id": "case-boundary",
+      "class": "boundary_or_failure"
+    }
+  ],
+  "duplicate_groups": [
+    {
+      "group_id": "shared-fixture",
+      "kind": "fixture_overlap",
+      "case_ids": [
+        "case-basic",
+        "case-boundary"
+      ],
+      "status": "allowed",
+      "review_locator": null
+    }
+  ],
+  "provenance_clusters": [
+    {
+      "cluster_id": "cluster-core",
+      "case_ids": [
+        "case-basic",
+        "case-boundary"
+      ],
+      "source_hashes": [
+        "sha256:6833a6b044cd14eb99d387d643c626f5287e58cabc2b27c1e0d02978bfbbd674"
+      ],
+      "status": "closed",
+      "review_locator": {
+        "kind": "text_lines",
+        "artifact": "grader-output.schema.json",
+        "start_line": 1,
+        "end_line": 1
+      }
+    }
+  ],
+  "leakage_probes": [
+    {
+      "probe_id": "holdout-leakage",
+      "surface": "holdout",
+      "status": "pass",
+      "artifact": {
+        "path": "grader-output.schema.json",
+        "sha256": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d"
+      },
+      "locator": {
+        "kind": "text_lines",
+        "artifact": "grader-output.schema.json",
+        "start_line": 1,
+        "end_line": 1
+      }
+    }
+  ],
+  "custody": {
+    "split_hashes": {
+      "dev": "sha256:d8a57d5ec91b8e8b296521badfc8ecc719cdcf1d63e32fbba8fdfe7fb9762f66",
+      "regression": "sha256:a32a40e19a980d1ecfa9e8cc3049f1bccd9071305bc299fa4d4f0ba6bd940ad9",
+      "heldout": null
+    },
+    "custodian": "evaluation-owner",
+    "exposure_status": "not_applicable",
+    "author_visible_paths": [
+      "scenarios.example.jsonl"
+    ],
+    "executor_visible_paths": [
+      "scenarios.example.jsonl"
+    ]
+  },
+  "boundary_coverage": [],
+  "review_status": {
+    "duplicate_and_provenance_review": "pass",
+    "leakage_review": "pass"
+  }
+}

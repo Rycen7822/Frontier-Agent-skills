@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/failure-index-v1.schema.json",
+  "title": "Skill Evaluator failure index v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "view",
+    "failure_index_hash",
+    "evaluation_id",
+    "plan_id",
+    "item_count",
+    "shown_count",
+    "omitted_count",
+    "truncated",
+    "family_counts",
+    "severity_counts",
+    "failures"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "view": {"enum": ["index", "full"]},
+    "failure_index_hash": {"$ref": "#/$defs/sha256"},
+    "evaluation_id": {"$ref": "#/$defs/safe_id"},
+    "plan_id": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
+    "item_count": {"type": "integer", "minimum": 0},
+    "shown_count": {"type": "integer", "minimum": 0},
+    "omitted_count": {"type": "integer", "minimum": 0},
+    "truncated": {"type": "boolean"},
+    "family_counts": {
+      "type": "object",
+      "propertyNames": {"enum": ["contract", "integrity", "apparatus", "treatment", "grader", "gate", "authority", "reporting"]},
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    },
+    "severity_counts": {
+      "type": "object",
+      "propertyNames": {"enum": ["low", "medium", "high", "critical"]},
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    },
+    "failures": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/failure_item"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "nullable_safe_id": {
+      "anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]
+    },
+    "nullable_positive_integer": {
+      "anyOf": [
+        {"type": "integer", "minimum": 1},
+        {"type": "null"}
+      ]
+    },
+    "locator": {
+      "oneOf": [
+        {"$ref": "#/$defs/text_locator"},
+        {"$ref": "#/$defs/json_pointer_locator"},
+        {"$ref": "#/$defs/byte_locator"}
+      ]
+    },
+    "text_locator": {
+      "type": "object",
+      "required": ["kind", "artifact", "start_line", "end_line"],
+      "properties": {
+        "kind": {"const": "text_lines"},
+        "artifact": {"$ref": "#/$defs/relative_path"},
+        "start_line": {"type": "integer", "minimum": 1},
+        "end_line": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "json_pointer_locator": {
+      "type": "object",
+      "required": ["kind", "artifact", "json_pointer"],
+      "properties": {
+        "kind": {"const": "json_pointer"},
+        "artifact": {"$ref": "#/$defs/relative_path"},
+        "json_pointer": {
+          "type": "string",
+          "pattern": "^(?:/(?:[^~/]|~0|~1)*)*$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "byte_locator": {
+      "type": "object",
+      "required": ["kind", "artifact", "start_byte", "end_byte_exclusive"],
+      "properties": {
+        "kind": {"const": "byte_range"},
+        "artifact": {"$ref": "#/$defs/relative_path"},
+        "start_byte": {"type": "integer", "minimum": 0},
+        "end_byte_exclusive": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "failure_item": {
+      "type": "object",
+      "required": [
+        "failure_id",
+        "family",
+        "code",
+        "severity",
+        "evidence_state",
+        "evaluation_id",
+        "plan_id",
+        "entry_id",
+        "case_id",
+        "treatment_id",
+        "repeat",
+        "attempt",
+        "dimension",
+        "requirement_id",
+        "fault_id",
+        "gate_id",
+        "principal_id",
+        "handoff_id",
+        "action_id",
+        "observation_id",
+        "finding_id",
+        "reason_key",
+        "locator",
+        "occurrence_count",
+        "observed",
+        "expected",
+        "impact",
+        "retest"
+      ],
+      "properties": {
+        "failure_id": {
+          "type": "string",
+          "pattern": "^sf-[0-9a-f]{24}$"
+        },
+        "family": {
+          "enum": ["contract", "integrity", "apparatus", "treatment", "grader", "gate", "authority", "reporting"]
+        },
+        "code": {
+          "enum": ["contract.invalid", "integrity.invalid", "apparatus.incomplete", "treatment.failed", "grader.invalid", "gate.failed", "authority.blocked", "reporting.invalid"]
+        },
+        "severity": {"enum": ["low", "medium", "high", "critical"]},
+        "evidence_state": {"enum": ["verified", "missing", "invalid", "external_attestation"]},
+        "evaluation_id": {"$ref": "#/$defs/safe_id"},
+        "plan_id": {"$ref": "#/$defs/nullable_safe_id"},
+        "entry_id": {"$ref": "#/$defs/nullable_safe_id"},
+        "case_id": {"$ref": "#/$defs/nullable_safe_id"},
+        "treatment_id": {"$ref": "#/$defs/nullable_safe_id"},
+        "repeat": {"$ref": "#/$defs/nullable_positive_integer"},
+        "attempt": {"$ref": "#/$defs/nullable_positive_integer"},
+        "dimension": {"$ref": "#/$defs/nullable_safe_id"},
+        "requirement_id": {"$ref": "#/$defs/nullable_safe_id"},
+        "fault_id": {"$ref": "#/$defs/nullable_safe_id"},
+        "gate_id": {"$ref": "#/$defs/nullable_safe_id"},
+        "principal_id": {"$ref": "#/$defs/nullable_safe_id"},
+        "handoff_id": {"$ref": "#/$defs/nullable_safe_id"},
+        "action_id": {"$ref": "#/$defs/nullable_safe_id"},
+        "observation_id": {"$ref": "#/$defs/nullable_safe_id"},
+        "finding_id": {"$ref": "#/$defs/nullable_safe_id"},
+        "reason_key": {"$ref": "#/$defs/safe_id"},
+        "locator": {"$ref": "#/$defs/locator"},
+        "occurrence_count": {"type": "integer", "minimum": 1},
+        "observed": {"type": "string", "minLength": 1},
+        "expected": {"type": "string", "minLength": 1},
+        "impact": {"type": "string", "minLength": 1},
+        "retest": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"family": {"const": "contract"}}},
+          "then": {"properties": {"code": {"const": "contract.invalid"}}}
+        },
+        {
+          "if": {"properties": {"family": {"const": "integrity"}}},
+          "then": {"properties": {"code": {"const": "integrity.invalid"}}}
+        },
+        {
+          "if": {"properties": {"family": {"const": "apparatus"}}},
+          "then": {"properties": {"code": {"const": "apparatus.incomplete"}}}
+        },
+        {
+          "if": {"properties": {"family": {"const": "treatment"}}},
+          "then": {"properties": {"code": {"const": "treatment.failed"}}}
+        },
+        {
+          "if": {"properties": {"family": {"const": "grader"}}},
+          "then": {"properties": {"code": {"const": "grader.invalid"}}}
+        },
+        {
+          "if": {"properties": {"family": {"const": "gate"}}},
+          "then": {"properties": {"code": {"const": "gate.failed"}}}
+        },
+        {
+          "if": {"properties": {"family": {"const": "authority"}}},
+          "then": {"properties": {"code": {"const": "authority.blocked"}}}
+        },
+        {
+          "if": {"properties": {"family": {"const": "reporting"}}},
+          "then": {"properties": {"code": {"const": "reporting.invalid"}}}
+        }
+      ]
+    }
+  }
+}

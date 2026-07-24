@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/run-index-row-v2.schema.json",
+  "title": "Skill Evaluator run-index row v2",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "plan_hash",
+    "plan_id",
+    "entry_ordinal",
+    "entry_id",
+    "run_id",
+    "case_id",
+    "treatment_id",
+    "repeat",
+    "attempt",
+    "artifact_dir",
+    "receipt"
+  ],
+  "properties": {
+    "schema_version": {"const": 2},
+    "plan_hash": {"$ref": "#/$defs/sha256"},
+    "plan_id": {"$ref": "#/$defs/safe_id"},
+    "entry_ordinal": {"type": "integer", "minimum": 0},
+    "entry_id": {"$ref": "#/$defs/safe_id"},
+    "run_id": {"$ref": "#/$defs/safe_id"},
+    "case_id": {"$ref": "#/$defs/safe_id"},
+    "treatment_id": {"$ref": "#/$defs/safe_id"},
+    "repeat": {"type": "integer", "minimum": 1},
+    "attempt": {"type": "integer", "minimum": 1, "maximum": 9999},
+    "artifact_dir": {"$ref": "#/$defs/relative_path"},
+    "receipt": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relative_path"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    }
+  }
+}

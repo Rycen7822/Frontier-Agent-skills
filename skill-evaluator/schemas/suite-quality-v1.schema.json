@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/suite-quality-v1.schema.json",
+  "title": "Skill Evaluator suite quality v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "suite_quality_id",
+    "suite_quality_hash",
+    "evaluation_id",
+    "quality_contract_hash",
+    "scenario_hash",
+    "holdout_hash",
+    "fixture_set_hash",
+    "grader_set_hash",
+    "treatment_contract_hash",
+    "calibration_hash",
+    "raw_proofs",
+    "duplicate_groups",
+    "provenance_clusters",
+    "leakage_probes",
+    "custody",
+    "coverage",
+    "grader_sensitivity",
+    "boundary_coverage",
+    "thresholds",
+    "authority",
+    "gates"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "suite_quality_id": {"$ref": "#/$defs/safe_id"},
+    "suite_quality_hash": {"$ref": "#/$defs/sha256"},
+    "evaluation_id": {"$ref": "#/$defs/safe_id"},
+    "quality_contract_hash": {"$ref": "#/$defs/sha256"},
+    "scenario_hash": {"$ref": "#/$defs/sha256"},
+    "holdout_hash": {"$ref": "#/$defs/nullable_sha256"},
+    "fixture_set_hash": {"$ref": "#/$defs/sha256"},
+    "grader_set_hash": {"$ref": "#/$defs/sha256"},
+    "treatment_contract_hash": {"$ref": "#/$defs/sha256"},
+    "calibration_hash": {"$ref": "#/$defs/nullable_sha256"},
+    "raw_proofs": {"$ref": "#/$defs/raw_proofs"},
+    "duplicate_groups": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/duplicate_group"}
+    },
+    "provenance_clusters": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/provenance_cluster"}
+    },
+    "leakage_probes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/leakage_probe"}
+    },
+    "custody": {"$ref": "#/$defs/custody"},
+    "coverage": {"$ref": "#/$defs/coverage"},
+    "grader_sensitivity": {"$ref": "#/$defs/grader_sensitivity"},
+    "boundary_coverage": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/boundary_coverage"}
+    },
+    "thresholds": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"$ref": "#/$defs/safe_id"},
+      "additionalProperties": {"type": "number"}
+    },
+    "authority": {"type": "string", "minLength": 1},
+    "gates": {"$ref": "#/$defs/gates"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "nullable_sha256": {
+      "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+    },
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "artifact_binding": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relative_path"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "raw_proofs": {
+      "type": "object",
+      "required": ["golden", "known_bad", "mutations", "reviews"],
+      "properties": {
+        "golden": {"$ref": "#/$defs/artifact_binding"},
+        "known_bad": {"$ref": "#/$defs/artifact_binding"},
+        "mutations": {"$ref": "#/$defs/artifact_binding"},
+        "reviews": {"$ref": "#/$defs/artifact_binding"}
+      },
+      "additionalProperties": false
+    },
+    "duplicate_group": {
+      "type": "object",
+      "required": ["group_id", "kind", "case_ids", "status", "review_locator"],
+      "properties": {
+        "group_id": {"$ref": "#/$defs/safe_id"},
+        "kind": {"enum": ["exact", "prompt_overlap", "fixture_overlap", "semantic"]},
+        "case_ids": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/safe_id"}},
+        "status": {"enum": ["allowed", "blocked", "reviewed_distinct"]},
+        "review_locator": {
+          "anyOf": [
+            {"$ref": "failure-index-v1.schema.json#/$defs/locator"},
+            {"type": "null"}
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "provenance_cluster": {
+      "type": "object",
+      "required": ["cluster_id", "case_ids", "source_hashes", "status", "review_locator"],
+      "properties": {
+        "cluster_id": {"$ref": "#/$defs/safe_id"},
+        "case_ids": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/safe_id"}},
+        "source_hashes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/sha256"}},
+        "status": {"enum": ["closed", "open", "not_evaluable"]},
+        "review_locator": {"$ref": "failure-index-v1.schema.json#/$defs/locator"}
+      },
+      "additionalProperties": false
+    },
+    "leakage_probe": {
+      "type": "object",
+      "required": ["probe_id", "surface", "status", "artifact", "locator"],
+      "properties": {
+        "probe_id": {"$ref": "#/$defs/safe_id"},
+        "surface": {"enum": ["holdout", "executor_context", "calibration", "suite_quality", "success_criteria"]},
+        "status": {"enum": ["pass", "fail", "not_evaluable"]},
+        "artifact": {"$ref": "#/$defs/artifact_binding"},
+        "locator": {"$ref": "failure-index-v1.schema.json#/$defs/locator"}
+      },
+      "additionalProperties": false
+    },
+    "custody": {
+      "type": "object",
+      "required": ["split_hashes", "custodian", "exposure_status", "author_visible_paths", "executor_visible_paths"],
+      "properties": {
+        "split_hashes": {
+          "type": "object",
+          "required": ["dev", "regression", "heldout"],
+          "properties": {
+            "dev": {"$ref": "#/$defs/nullable_sha256"},
+            "regression": {"$ref": "#/$defs/nullable_sha256"},
+            "heldout": {"$ref": "#/$defs/nullable_sha256"}
+          },
+          "additionalProperties": false
+        },
+        "custodian": {"type": "string", "minLength": 1},
+        "exposure_status": {"enum": ["sealed", "exposed", "not_applicable"]},
+        "author_visible_paths": {"type": "array", "items": {"$ref": "#/$defs/relative_path"}},
+        "executor_visible_paths": {"type": "array", "items": {"$ref": "#/$defs/relative_path"}}
+      },
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["slices", "claims", "modules", "treatments", "checks"],
+      "properties": {
+        "slices": {"$ref": "#/$defs/coverage_map"},
+        "claims": {"$ref": "#/$defs/coverage_map"},
+        "modules": {"$ref": "#/$defs/coverage_map"},
+        "treatments": {"$ref": "#/$defs/coverage_map"},
+        "checks": {"$ref": "#/$defs/coverage_map"}
+      },
+      "additionalProperties": false
+    },
+    "coverage_map": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/safe_id"},
+      "additionalProperties": {
+        "type": "object",
+        "required": ["positive", "boundary_or_failure"],
+        "properties": {
+          "positive": {"type": "integer", "minimum": 0},
+          "boundary_or_failure": {"type": "integer", "minimum": 0}
+        },
+        "additionalProperties": false
+      }
+    },
+    "grader_sensitivity": {
+      "type": "object",
+      "required": ["known_good_pass", "known_bad_detection", "mutation_detection", "sample_count"],
+      "properties": {
+        "known_good_pass": {"type": "number", "minimum": 0, "maximum": 1},
+        "known_bad_detection": {"type": "number", "minimum": 0, "maximum": 1},
+        "mutation_detection": {"type": "number", "minimum": 0, "maximum": 1},
+        "sample_count": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "boundary_coverage": {
+      "type": "object",
+      "required": ["surface", "case_classes", "status"],
+      "properties": {
+        "surface": {"enum": ["coordination", "action", "security", "review", "independence", "observation", "grounding"]},
+        "case_classes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/safe_id"}
+        },
+        "status": {"enum": ["pass", "fail", "not_applicable"]}
+      },
+      "additionalProperties": false
+    },
+    "gate_status": {
+      "enum": ["pass", "fail", "not_evaluable"]
+    },
+    "gates": {
+      "type": "object",
+      "required": ["golden_solvability", "required_mutation_detection", "duplicate_and_provenance_review", "leakage_review", "required_slice_coverage", "grader_sensitivity"],
+      "properties": {
+        "golden_solvability": {"$ref": "#/$defs/gate_status"},
+        "required_mutation_detection": {"$ref": "#/$defs/gate_status"},
+        "duplicate_and_provenance_review": {"$ref": "#/$defs/gate_status"},
+        "leakage_review": {"$ref": "#/$defs/gate_status"},
+        "required_slice_coverage": {"$ref": "#/$defs/gate_status"},
+        "grader_sensitivity": {"$ref": "#/$defs/gate_status"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

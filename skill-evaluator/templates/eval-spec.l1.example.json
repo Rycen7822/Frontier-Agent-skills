@@ -1,92 +1,386 @@
 {
-  "schema_version": 4,
-  "evaluation_id": "diagnostic-smoke-v1",
-  "decision": "diagnose routing and execution behavior without a comparative claim",
-  "claim_scope": "three focused diagnostic cases in the declared local harness",
+  "schema_version": 5,
+  "evaluation_id": "public-l1-template",
   "level": "L1",
   "risk_tier": "standard",
-  "target": {
-    "name": "example-skill",
-    "candidate_path": "./path-to-example-skill",
-    "candidate_hash": "sha256:replace-with-candidate-package-hash",
-    "candidate_revision": "replace-with-candidate-revision",
-    "candidate_source_tree_hash": "sha256:replace-with-candidate-source-tree-hash",
-    "candidate_plugin_tree_hash": "sha256:replace-with-candidate-plugin-tree-hash"
+  "decision": {
+    "kind": "compare",
+    "owner": "evaluation-owner",
+    "question": "Does the candidate improve the fixture task?",
+    "maximum_claim": "scoped incremental usefulness",
+    "external_authority_boundary": [
+      "release"
+    ]
   },
-  "environment": {
-    "agent": "diagnostic-agent",
-    "model": "diagnostic-model",
-    "harness": "diagnostic-harness",
-    "timeout_seconds": 120,
-    "random_seed": null,
+  "subject": {
+    "skill_id": "skill-evaluator",
+    "name": "Skill Evaluator",
+    "version": "3.0.0",
+    "shape": "single_skill",
+    "mechanisms": [
+      "procedure_workflow",
+      "script_cli"
+    ],
+    "principal_mode": "single",
+    "claimed_hosts": [
+      "replace-host"
+    ],
+    "package": {
+      "path": "replace-with-skill-package",
+      "package_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "repository_revision": "0000000000000000000000000000000000000000",
+      "repository_tree": "0000000000000000000000000000000000000000",
+      "dirty_state": "clean"
+    },
+    "claims": [
+      "scoped-evaluation"
+    ]
+  },
+  "applicability": [
+    {
+      "module": "core_outcome",
+      "status": "required",
+      "reason": "core behavior is measured",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l1.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "natural_routing",
+      "status": "not_applicable",
+      "reason": "excluded by fixture claim",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l1.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "catalog_routing",
+      "status": "not_applicable",
+      "reason": "excluded by fixture claim",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l1.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "declared_composition",
+      "status": "not_applicable",
+      "reason": "excluded by fixture claim",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l1.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "multi_principal_coordination",
+      "status": "not_applicable",
+      "reason": "excluded by fixture claim",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l1.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "multi_turn_state",
+      "status": "not_applicable",
+      "reason": "excluded by fixture claim",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l1.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "tool_faults",
+      "status": "not_applicable",
+      "reason": "excluded by fixture claim",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l1.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "host_conformance",
+      "status": "not_applicable",
+      "reason": "excluded by fixture claim",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l1.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "dynamic_security",
+      "status": "not_applicable",
+      "reason": "excluded by fixture claim",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l1.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "longitudinal",
+      "status": "not_applicable",
+      "reason": "excluded by fixture claim",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l1.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    }
+  ],
+  "execution": {
+    "mode": "diagnostic",
+    "ready": false,
+    "as_of": "2026-01-01T00:00:00Z",
+    "timeout_seconds": 30,
+    "reset_policy": "fresh-workspace",
+    "retry_policy": {
+      "max_attempts": 1,
+      "retryable_apparatus_classes": [],
+      "backoff_seconds": 0
+    },
+    "order_policy": "counterbalanced",
     "network_policy": "disabled",
-    "credentials_policy": "no-real-credentials"
+    "credential_policy": "none",
+    "max_parallel": 1
   },
   "suite": {
-    "cases_file": "cases.l1.example.jsonl",
-    "cases_content_hash": "sha256:replace-with-cases-content-hash",
-    "case_contracts_content_hash": "sha256:replace-with-case-contracts-content-hash",
-    "fixture_manifest_set_hash": "sha256:replace-with-fixture-manifest-set-hash",
-    "grader_batch_schedule_hash": "sha256:replace-with-grader-batch-schedule-hash",
+    "scenarios": {
+      "path": "scenarios.l1.example.jsonl",
+      "sha256": "sha256:53f5ae5eb56ee8f0af021928e666a9b58f5b37b1b5b020736575efaf111842a3"
+    },
+    "public_scenarios": {
+      "path": "scenarios.l1.example.jsonl",
+      "sha256": "sha256:53f5ae5eb56ee8f0af021928e666a9b58f5b37b1b5b020736575efaf111842a3"
+    },
+    "holdout": null,
+    "fixture_set_hash": "sha256:fa9229b923249d69da40032997029c649d82c23a99da19d5e26ccefbfc4808d3",
+    "grader_set_hash": "sha256:a53067c8251433c6b5c31adeeae12f3dc38f3003f6eeaa154972c413edae3cf3",
+    "grader_schedule_hash": "sha256:df677835f0bbc5a30dd906fa85e8c037fca704c28b4df1060228908f85e09f9f",
+    "treatment_contract_hash": "sha256:cd1ef42cbeda659104fd3143846adec1ec8c06026596d2a79cd3583be5f3c53a",
     "repeats": 1,
-    "reset_strategy": "fresh_workspace_per_run",
-    "retry_policy": "no_retry",
-    "run_order": "case_order"
+    "order_seed": 7,
+    "reset_policy": "fresh-workspace",
+    "retry_policy": "apparatus-only"
   },
-  "variants": [
+  "host": {
+    "manifest": {
+      "path": "host-manifest.example.json",
+      "sha256": "sha256:09a7336cba2cbcd4940c18216fdafd2bb201ed9badde482b10b2275c6d395eb8"
+    },
+    "required_capabilities": [
+      "force_load"
+    ]
+  },
+  "treatments": [
     {
-      "id": "candidate_natural",
-      "role": "candidate",
-      "mode": "natural_routing",
-      "package_hash": "sha256:replace-with-candidate-package-hash",
-      "catalog_hash": "sha256:replace-with-skill-catalog-hash",
-      "treatment_hash": "sha256:replace-with-natural-treatment-hash"
+      "treatment_id": "baseline",
+      "profile": "baseline/skill_disabled",
+      "causal_role": "baseline",
+      "prompt_variant_group_id": "prompt-group",
+      "intervention_axes": [
+        "target-skill"
+      ],
+      "model_identity": "sha256:0f2932e42ff4a364f5f9ff3b849257df786dd8362c81ca916087624ac9df0a48",
+      "harness_identity": "sha256:04ebc1267fab4654790c4dc4cc092b70e4545e4e6a6007a597ec11347fe93dac",
+      "host_identity": "sha256:720e1497762680d6cd714001fd471ac68a73fb8f96b562e6b692d9ec23c26ef2",
+      "implementation_hash": "sha256:34bf02e9d82363b2749a04ee745126d6eb9bf8e87d0082bd314b943e4f44e7e6",
+      "base_catalog_hash": "sha256:aa55b4fc409e67dc808ef32a9d7d7f5ebe63b68c59ea3bd4d75d3d7d12a18135",
+      "delivery_transform_hash": "sha256:12fc35510f716ca102a1498ececb6f9725931ec6bbe3b6e044083e0702b1b01d",
+      "tool_policy_hash": "sha256:6522f1b6f4bdf771f17878686721107dba84304ddfa0e2b8e1e8f5905d66f1db",
+      "permission_policy_hash": "sha256:d158ea0717bc436f050c6792d8b52cc08216c3866c0f22d626826fefb32c6b51",
+      "network_policy_hash": "sha256:064c876c4f965debe645b6598584f83762022dfc10f7a70e7d54a566105e06c6",
+      "context_policy_hash": "sha256:27781ec361e455f5ab4cba8dff996e6adf9b0411ba7c6f87d0d8993db74dc8ed",
+      "expected_capabilities": [
+        "force_load"
+      ],
+      "scenario_ids": [
+        "case-basic"
+      ],
+      "scenario_tags": [
+        "core"
+      ],
+      "exclusions": [],
+      "exclusion_reason": null
+    },
+    {
+      "treatment_id": "candidate",
+      "profile": "candidate/force_loaded",
+      "causal_role": "candidate",
+      "prompt_variant_group_id": "prompt-group",
+      "intervention_axes": [
+        "target-skill"
+      ],
+      "model_identity": "sha256:0f2932e42ff4a364f5f9ff3b849257df786dd8362c81ca916087624ac9df0a48",
+      "harness_identity": "sha256:04ebc1267fab4654790c4dc4cc092b70e4545e4e6a6007a597ec11347fe93dac",
+      "host_identity": "sha256:720e1497762680d6cd714001fd471ac68a73fb8f96b562e6b692d9ec23c26ef2",
+      "implementation_hash": "sha256:2830a2858b12b7bd66fcb5f5f47db1a3641ca185f91cb7fc5d0df2c83ae05d92",
+      "base_catalog_hash": "sha256:aa55b4fc409e67dc808ef32a9d7d7f5ebe63b68c59ea3bd4d75d3d7d12a18135",
+      "delivery_transform_hash": "sha256:36751f6d45e24c993d035591be2ea834af44a350d006af12136f1fa0226362e1",
+      "tool_policy_hash": "sha256:6522f1b6f4bdf771f17878686721107dba84304ddfa0e2b8e1e8f5905d66f1db",
+      "permission_policy_hash": "sha256:d158ea0717bc436f050c6792d8b52cc08216c3866c0f22d626826fefb32c6b51",
+      "network_policy_hash": "sha256:064c876c4f965debe645b6598584f83762022dfc10f7a70e7d54a566105e06c6",
+      "context_policy_hash": "sha256:27781ec361e455f5ab4cba8dff996e6adf9b0411ba7c6f87d0d8993db74dc8ed",
+      "expected_capabilities": [
+        "force_load"
+      ],
+      "scenario_ids": [
+        "case-basic"
+      ],
+      "scenario_tags": [
+        "core"
+      ],
+      "exclusions": [],
+      "exclusion_reason": null
     }
   ],
   "graders": [
     {
-      "id": "focused-check",
+      "grader_id": "fixture-grader",
       "type": "deterministic",
-      "hard_gate": false,
-      "version": "2",
       "checks": [
-        {"id": "task_complete", "pass_condition": "The requested task is complete."},
-        {"id": "skill_loaded", "pass_condition": "The target Skill is loaded when the case requires it."},
-        {"id": "adjacent_task_preserved", "pass_condition": "The adjacent task remains correct without target-Skill application."}
+        {
+          "check_id": "outcome-check",
+          "dimension": "outcome",
+          "required": true,
+          "pass_condition": "Fixture outcome is complete."
+        },
+        {
+          "check_id": "safety-check",
+          "dimension": "safety",
+          "required": true,
+          "pass_condition": "No external effect occurred."
+        }
       ],
       "verifier": {
-        "path": "graders/focused-check.py",
-        "sha256": "sha256:replace-before-scored-run",
-        "argv": ["python3", "graders/focused-check.py"],
-        "pass_exit_codes": [0]
-      }
-    },
-    {
-      "id": "safety-runtime",
-      "type": "deterministic",
-      "hard_gate": true,
-      "version": "2",
-      "checks": [
-        {"id": "example_skill_loaded", "pass_condition": "The target Skill is not loaded for the negative control."}
-      ],
-      "verifier": {
-        "path": "graders/safety-runtime.py",
-        "sha256": "sha256:replace-before-scored-run",
-        "argv": ["python3", "graders/safety-runtime.py"],
-        "pass_exit_codes": [0]
+        "argv": [
+          "replace-with-deterministic-grader"
+        ],
+        "path": "grader-output.schema.json",
+        "sha256": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d",
+        "cwd": ".",
+        "env_allowlist": [],
+        "timeout_seconds": 10,
+        "input_allowlist": [
+          "result.json"
+        ],
+        "pass_exit_codes": [
+          0
+        ]
       }
     }
   ],
+  "analysis": {
+    "estimands": [
+      {
+        "estimand_id": "task-benefit",
+        "metric": "task_pass_rate",
+        "candidate_treatment_id": "candidate",
+        "comparator_treatment_id": "baseline",
+        "direction": "higher_is_better",
+        "effect": "absolute",
+        "minimum_benefit": 0.0,
+        "eligible_modules": [
+          "core_outcome"
+        ]
+      }
+    ],
+    "confidence_level": 0.95,
+    "bootstrap_iterations": 100,
+    "resampling_unit": "case",
+    "slices": [
+      "core"
+    ],
+    "reliability": [
+      "observed_consistency"
+    ],
+    "materiality": {
+      "minimum_cases": 2
+    }
+  },
+  "hard_gates": [
+    {
+      "gate_id": "task-gate",
+      "kind": "benefit",
+      "metric": "task_pass_rate",
+      "direction": "at_least",
+      "threshold": 0.0,
+      "authority": "evaluation-owner",
+      "required": true
+    }
+  ],
   "authority": {
-    "allow_file_writes": true,
-    "allow_network_read": false,
-    "allow_process_execution": true
+    "runner_capabilities": [
+      "local_execution"
+    ],
+    "manual_review": {
+      "required": false,
+      "role": "evaluation-owner",
+      "decision_contract_hash": null
+    },
+    "install": false,
+    "publish": false,
+    "deploy": false,
+    "release": false,
+    "external_writes": false
   },
   "artifacts": {
-    "root": "artifacts/diagnostic-smoke-v1",
-    "retain_raw_traces": true,
-    "redact_secrets": true,
-    "manifest_required": true
-  },
-  "ready_for_scored_run": false
+    "root": "artifacts",
+    "index_relpath": "index.jsonl",
+    "retention": "retain-fixture",
+    "redaction": "no-secrets",
+    "manifest_required": true,
+    "cleanup_required": true,
+    "failure_index_budget": 100
+  }
 }
