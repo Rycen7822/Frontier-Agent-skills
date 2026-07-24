@@ -11,7 +11,7 @@ Handoff crosses contexts; Program tracks a changing frontier; otherwise stay nat
 
 ## Bind
 
-Use one combined prewrite inspection for plan path, owner/test and, across contexts, root/HEAD/status; split on failure or a new dependency.
+Use exact source evidence already bound in the invocation; do not reread it. Resolve any missing plan path, owner/test or, across contexts, root/HEAD/status in one combined prewrite inspection; split on failure/new dependency.
 
 Bind portable identity—Revision or explicit non-Git source identity; Repo-relative dirty/protected paths; First-slice owner files/symbols. Resolve root once; use repo-relative paths, never temporary/home paths or future `pwd` equality.
 
@@ -30,7 +30,7 @@ Write a title plus one compact contract table or bullet block with four merged r
 
 Fill the rows directly from settled facts; do not compare formats or narrate planning rationale. In Proof, name acceptance and verification once as one combined command/evidence statement.
 
-Program with multiple milestones uses one table: Milestones in dependency order, each with acceptance; Current frontier; Migration/deprecation owner and removal condition when applicable; Update-in-place rule.
+Program with multiple milestones uses one table: Milestones in dependency order, each with acceptance; Current frontier; Migration/deprecation owner and removal condition when applicable; Update-in-place rule: only a later planning invocation updates the Program; an executor treats it as protected immutable input.
 
 Resume preflight resolves root anew; combine identity/freshness/dirty checks. Exclude the named plan deliverable itself (including untracked `PLAN.md`) and reject other dirt. Never compare against the original absolute root or require globally clean status.
 
@@ -38,4 +38,4 @@ The next action names first edit/result/check, not inspection unless blocked. Ea
 
 Review the whole plan before writing. After file write, perform at most one combined non-content confirmation such as status/hash/`git diff --check`; do not reopen, print, or diff its contents.
 
-Reply only with plan/named Markdown; update Program in place. No sidecar/state/copy, hard wraps, source edits, or completion claims.
+Reply only with plan/named Markdown; do not instruct execution to modify the plan. No sidecar/state/copy, hard wraps, source edits, or completion claims.
