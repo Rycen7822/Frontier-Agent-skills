@@ -1742,7 +1742,13 @@ def matched_planner_executor_tokens(
     candidate_executor: str,
     case_ids: set[str],
     repeats: int,
+    confidence_level: float = 0.95,
+    bootstrap_iterations: int = 10000,
+    random_seed: int = 2735,
 ) -> dict[str, Any]:
+    def valid_token_count(value: Any) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
     planners: dict[tuple[str, str, int], dict[str, Any]] = {}
     duplicate_planner_keys = False
     for record in planner_records:
@@ -1766,6 +1772,7 @@ def matched_planner_executor_tokens(
         executors[key] = record
 
     case_totals = []
+    excluded_pairs = []
     for case_id in sorted(case_ids):
         repeat_totals: dict[str, list[int]] = {
             "baseline": [],
@@ -1783,18 +1790,26 @@ def matched_planner_executor_tokens(
                 ),
             }
             for arm_name, rows in paired_rows.items():
-                if any(
-                    row is None
-                    or row.get("valid") is not True
-                    or row.get("task_pass") is not True
-                    or not isinstance(row.get("tokens_in"), int)
-                    or isinstance(row.get("tokens_in"), bool)
-                    or row["tokens_in"] < 0
-                    or not isinstance(row.get("tokens_out"), int)
-                    or isinstance(row.get("tokens_out"), bool)
-                    or row["tokens_out"] < 0
+                reason = None
+                if any(row is None for row in rows):
+                    reason = "missing"
+                elif any(row.get("valid") is not True for row in rows):
+                    reason = "invalid"
+                elif any(row.get("task_pass") is not True for row in rows):
+                    reason = "task_failure"
+                elif any(
+                    not valid_token_count(row.get(field))
                     for row in rows
+                    for field in ("tokens_in", "tokens_out")
                 ):
+                    reason = "invalid_tokens"
+                if reason is not None:
+                    excluded_pairs.append({
+                        "case_id": case_id,
+                        "repeat": repeat,
+                        "arm": arm_name,
+                        "reason": reason,
+                    })
                     continue
                 repeat_totals[arm_name].append(sum(
                     row["tokens_in"] + row["tokens_out"]
@@ -1816,19 +1831,32 @@ def matched_planner_executor_tokens(
         row["relative_reduction"]
         for row in case_totals if row["relative_reduction"] is not None
     ]
+    complete = (
+        not duplicate_planner_keys
+        and not duplicate_executor_keys
+        and len(case_totals) == len(case_ids)
+        and len(reductions) == len(case_ids)
+    )
+    if len(reductions) >= 2:
+        uncertainty = summarize_case_differences(
+            reductions,
+            confidence_level=confidence_level,
+            bootstrap_iterations=bootstrap_iterations,
+            random_seed=random_seed,
+        )
+    else:
+        uncertainty = {"point": None, "lower": None, "upper": None}
     return {
-        "eligible_case_count": len(case_totals),
+        "status": "complete" if complete else "incomplete",
+        "case_count": len(reductions),
         "expected_case_count": len(case_ids),
-        "complete": (
-            not duplicate_planner_keys
-            and not duplicate_executor_keys
-            and len(case_totals) == len(case_ids)
-        ),
+        "complete": complete,
         "duplicate_planner_keys": duplicate_planner_keys,
         "duplicate_executor_keys": duplicate_executor_keys,
-        "median_relative_reduction": (
-            statistics.median(reductions) if reductions else None
-        ),
+        "excluded_pairs": excluded_pairs,
+        "point": uncertainty["point"],
+        "lower": uncertainty["lower"],
+        "upper": uncertainty["upper"],
         "cases": case_totals,
     }
 

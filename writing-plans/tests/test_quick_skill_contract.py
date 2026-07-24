@@ -130,11 +130,15 @@ class QuickWritingPlansTests(unittest.TestCase):
         self.assertIn("state contains current frontier and later blockers", body)
         self.assertIn("slice contains milestones in dependency order", body)
 
-    def test_injected_body_is_not_loaded_twice(self) -> None:
+    def test_no_host_injection_reread_workaround(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
-        self.assertIn("complete body in the invocation", body)
-        self.assertIn("do not reopen `skill.md`", body)
-        self.assertIn("read it once", body)
+        for workaround in (
+            "complete body in the invocation",
+            "metadata/path only",
+            "host-injected",
+            "host injected",
+        ):
+            self.assertNotIn(workaround, body)
 
     def test_no_brief_surface(self) -> None:
         self.assertNotIn("brief", SKILL_PATH.read_text(encoding="utf-8").casefold())
