@@ -1,6 +1,6 @@
 # Evaluation Contract
 
-This file owns spec schema v4, evaluation levels, canonical variants, fairness, and claim ceilings. Freeze it before collecting runtime evidence.
+This file owns eval-spec v5 semantics, evaluation levels, applicability, treatments, preparation, fairness, and claim ceilings. JSON Schema owns shape; `validate_eval_suite.py` owns cross-field and cross-file semantics. Freeze both before compiling a plan.
 
 ## Decision and claim ceiling
 
@@ -8,17 +8,20 @@ Record one decision: static audit, diagnosis, scoped incremental usefulness, rel
 
 Evaluation permission never grants permission to install dependencies, expose secrets, use networks, mutate persistent state, publish, deploy, or perform destructive, privileged, financial, or sensitive actions. Freeze those permissions separately.
 
-## Spec v4 owner
+## Spec v5 owner
 
-`schema_version=4` is the only accepted behavioral contract. It binds:
+`schema_version=5` is the only accepted contract. It binds:
 
-- evaluation identity, level, risk, decision, and claim scope;
-- candidate path/inventory hash, revision, source-tree hash, plugin-tree hash, every declared variant's package/catalog/treatment hashes, and one suite `treatment_contract_hash` over the exact variant contracts;
-- agent/model/harness, environment and tool/catalog identities, timeout, reset, seed, and network/credential policy;
-- case and optional holdout assets, repeats, ordering, retry policy, graders, metrics, gates, authority, and artifact retention;
-- `ready_for_scored_run`, which is `false` for public L1/L2 templates and must be explicitly closed before scored execution.
+- immutable evaluation, decision, subject, risk, claim, package, source, plugin, model, harness, host, catalog, policy, and authority identities;
+- one decision for every applicability module, with evidence and approver;
+- `execution.mode`, owner-supplied `as_of`, readiness, timeout, reset, retry, order, network, credential, and parallelism boundaries;
+- scenario, holdout, fixture, grader, treatment, calibration, suite-quality, analysis, gate, artifact, retention, redaction, and cleanup contracts.
 
-L0 omits behavioral ceremony. L1 has cases, graders, one diagnostic candidate variant, and `ready_for_scored_run=false`, but no comparative analysis/metrics/gates. L2+ owns comparative analysis and guardrails. L3/high-risk adds holdout and manual-review authority.
+L0 permits only the static subset and keeps `execution.ready=false`. L1–L4 add the behavioral fields. `execution.ready=true` means preparation is closed enough to compile; it does not mean every host capability is supported or that an evaluation passed. Public L1/L2 templates intentionally keep `execution.ready=false`. The deleted `ready_for_scored_run` field has no v5 reader.
+
+Each spec declares exactly one decision for every module: `core_outcome`, `natural_routing`, `catalog_routing`, `declared_composition`, `multi_principal_coordination`, `multi_turn_state`, `tool_faults`, `host_conformance`, `dynamic_security`, and `longitudinal`. A `not_applicable` decision requires a reason, evidence, and approval and never means that the candidate passed. Subject shape and mechanisms determine which modules must be required.
+
+Selected model graders require a bound, unexpired blinded calibration artifact. L2–L4 require a bound suite-quality artifact; L1 may bind one. `quality_contract_hash` excludes the quality artifact path/hash, readiness, outputs, timestamps, and candidate results, so the spec-to-quality binding is acyclic. Validator-produced calibration and quality artifacts are preparation evidence, never candidate score evidence.
 
 Placeholders are valid only in their exact non-ready forms. A public example that validates with warnings is a template, not a run receipt or usefulness result.
 
@@ -34,7 +37,7 @@ Placeholders are valid only in their exact non-ready forms. A public example tha
 
 L4 is limited to version and cycle monitoring. Without selection, order, and composition receipts, it must not claim library-scale multi-Skill orchestration evidence.
 
-## Canonical variants
+## Treatment registry
 
 | Profile | Purpose |
 |---|---|
@@ -43,12 +46,17 @@ L4 is limited to version and cycle monitoring. Without selection, order, and com
 | `candidate/force_loaded` | Explicit-invocation contribution without a routing claim; the other valid L2+ candidate treatment |
 | `prior/natural_routing` | Optional natural-routing revision comparator |
 | `prior/force_loaded` | Optional explicit-invocation revision comparator |
+| `comparator/raw_instructions` | Equivalent instruction content without Skill packaging/routing |
+| `comparator/alternative_intervention` | Immutable script, CLI, hook, linter, or host-native comparator |
+| `comparator/raw_model_upgrade` | Different model without the Skill; a separate, non-causal stratum |
 
-Declare only candidate treatments required by the decision. Natural routing is the default comparison when both candidate modes are present; selecting forced loading requires an explicit analyzer candidate. A force-loaded arm can establish incremental value for an explicit-only Skill only when the task text is byte-identical across arms, the native Skill selection is outside that text, and baseline exposes no Skill name, path, body, catalog hint, or treatment label. It cannot prove natural routing. A prior variant must match the selected candidate treatment and is not a substitute for the no-Skill baseline when the question is incremental value over the frontier model.
+Declare only treatments required by the decision. L2+ has `baseline/skill_disabled` and exactly one primary candidate for each causal estimand. Natural routing and forced loading are different claims and are never merged. A force-loaded treatment can establish incremental value for an explicit-only Skill only when the task text is byte-identical across treatments, selection is outside that text, and baseline exposes no Skill name, path, body, catalog hint, or treatment label. It cannot prove natural routing. A prior treatment matches the selected candidate mode and does not replace the no-Skill baseline for an incremental-value question.
+
+Every treatment freezes `treatment_id`, profile, causal role, prompt group, intervention axes, model/harness/host, implementation, catalog, delivery, tool, permission, network, context, scenario coverage, capabilities, and exclusions. A causal pair changes exactly one declared intervention axis; a different model, harness, or host cannot enter the same-model causal interval.
 
 ## Fair case and repeat design
 
-Run the same frozen case, fixture, agent/model, harness, tools, permissions, timeout, reset, graders, and capture policy in each comparable arm. Keep candidate bytes and cache effects out of baseline context. Counterbalance order when time, service drift, quotas, or caching can favor an arm.
+Run the same frozen scenario, fixture, agent/model, harness, host, tools, permissions, timeout, reset, graders, and capture policy in each comparable treatment. Keep candidate bytes and cache effects out of baseline context. Counterbalance order when time, service drift, quotas, or caching can favor a treatment.
 
 Repeats and cases have different roles:
 
@@ -60,7 +68,9 @@ Repeats never increase `case_count`. Fewer than two complete independent cases c
 
 ## Isolation and provenance
 
-Every run index points to one hashed receipt under `spec.artifacts.root`. The analyzer recomputes spec, case, environment, package, fixture set, grader, artifact, invocation, suite treatment contract, and receipt-local treatment hash before deriving any result. The local treatment hash binds the exact case/prompt, variant package/catalog contract, and native input shape; one variant-level hash cannot stand in for all receipts. Private contract/schedule/controller hashes remain external attestations, not cryptographic proof.
+The compiler consumes the exact spec v5, scenario corpus, host manifest, and any bound calibration/quality artifacts and emits one deterministic execution plan v1. Each plan entry fixes its disposition (`execute`, `unsupported`, or `not_evaluable`) from verified capability probes. Unsupported or unknown capability evidence is feasibility evidence and produces no attempt.
+
+Every run-index row v2 joins one execute attempt to the plan/entry/case/treatment/repeat and a hashed receipt v4 under `spec.artifacts.root`. The analyzer recompiles the plan, verifies index and receipt identities, and recomputes spec, scenario, host, package, catalog, treatment, fixture, grader, artifact, invocation, calibration, and quality bindings before deriving a result. Index rows contain no pass, score, routing, usage, grader, or provenance claims.
 
 Keep cases, hidden graders, holdout payloads, and evaluation-controller instructions outside the tested executor context unless the deployment contract genuinely supplies them. Preserve invalid apparatus rows, treatment failures, retries, timeouts, and raw artifacts under their declared semantics.
 
@@ -72,4 +82,4 @@ When manual review is required, the sole authority input is one contained, hashe
 
 ## Contract changes
 
-Changing cases, fixtures, requirements, graders, thresholds, environment, model, harness, catalog, reset, or capture semantics creates a new evidence contract. Record the reason, identify invalidated comparisons, rerun every affected arm, preserve the prior cycle, and disclose the boundary. Never tune acceptance after observing only the candidate.
+Changing scenarios, fixtures, requirements, graders, thresholds, environment, model, harness, catalog, reset, or capture semantics creates a new evidence contract. Record the reason, identify invalidated comparisons, rerun every affected treatment, preserve the prior cycle, and disclose the boundary. Never tune acceptance after observing only the candidate.

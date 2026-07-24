@@ -2,7 +2,7 @@
 name: skill-evaluator
 description: "Evaluate, benchmark, compare, regression-test, or security-audit an Agent Skill package. Use when deciding whether a skill triggers correctly, improves task outcomes over a no-skill or prior-version baseline, follows its intended process, remains efficient and safe, generalizes beyond development examples, or is ready to install, publish, or deploy."
 metadata:
-  version: 2.0.0
+  version: 3.0.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -43,8 +43,8 @@ Keep scored evidence immutable for the spec retention period. Read the analyzer 
 | Level | Required evidence | Maximum claim |
 |---|---|---|
 | L0 | Whole-package inventory and static review | Static findings only |
-| L1 | Focused cases with verified run receipts | Diagnostic behavior only |
-| L2 | Frozen baseline/candidate cases, independent-case intervals, benefit and context guardrails | Scoped incremental usefulness |
+| L1 | Focused scenarios with verified run receipts | Diagnostic behavior only |
+| L2 | Frozen baseline/candidate scenarios, independent-case intervals, benefit and context guardrails | Scoped incremental usefulness |
 | L3 | L2 plus sequestered holdout, adversarial controls, environment binding, and required manual-review receipt | Readiness for the tested scope only |
 | L4 | Version lineage and repeated evaluation cycles | Version and cycle monitoring only |
 
@@ -52,12 +52,11 @@ Without selection, order, and composition receipts, L4 must not claim library-sc
 
 ## Non-negotiable invariants
 
-- Spec schema v4, canonical `requirements[]`, one receipt index, and one hashed receipt are the only decision inputs. Never accept inline run scores or legacy oracle fields.
-- L2+ contribution requires the same cases and controls for a no-Skill baseline and a candidate treatment: natural routing for a routing claim, or forced loading for explicit-invocation value. When both are declared, natural routing remains the default comparison unless the analyzer caller selects the forced arm; a prior comparator matches the selected mode.
+- Spec v5, scenario v1 `requirements[]`, host manifest v1, one compiled plan v1, one run index v2, and self-hashed receipts v4 are the only runtime decision path. Never accept inline run scores, legacy case wires, or parallel oracle fields.
+- L2+ contribution requires the same scenarios and controls for a no-Skill baseline and a candidate treatment: natural routing for a routing claim, or forced loading for explicit-invocation value. When both are declared, natural routing is the default comparison unless the analyzer caller selects the forced treatment; a prior comparator matches that mode.
 - Repeats diagnose run variability; inference resamples distinct case means. Point lift or absolute pass rate cannot replace the declared positive lower-bound benefit gate.
 - Missing, invalid, duplicate, or tampered evidence remains outside metric denominators and makes usefulness inconclusive. Treatment-attributable failures with complete host evidence remain valid outcome failures.
 - Target-Skill context is verified from captured component artifacts. The frozen intended-trigger candidate plan is the attribution denominator; total input tokens cannot substitute for attributed body/reference cost.
-- A prior context delta is available only for one same-mode prior variant, complete 100% attributed paired rows, matching measurement sources, and successful outcomes; otherwise it is null.
 - Safety and protected outcomes are unweighted guardrails. Utility cannot offset a material safety or protected-case failure.
 - Static audit findings are provisional review locators. They never authorize deleting package resources, hiding matched text, weakening rules, or treating scanner silence as safety evidence.
 - Empirical usefulness is `supported`, `not_supported`, `inconclusive_ceiling`, or `not_evaluable`. Manual review and deployment authority are separate final gates.
@@ -71,29 +70,50 @@ Run the matching CLI before opening its implementation source. Read implementati
 python3 "$SKILL_EVALUATOR_DIR/scripts/audit_skill_package.py" /path/to/skill
 ```
 
-The L0 default is a bounded, package-relative triage summary and creates no sidecar files. Add `--json audit.json` only when a frozen evaluation or release contract requires the complete report; `--json -` reserves stdout for JSON and sends compact triage to stderr. `clean`, `review_required`, and `structural_invalid` are queue states, not safety approval.
+L0 emits bounded triage without sidecars. Add `--json audit.json` for a frozen report; `--json -` reserves stdout. Its states route review, never safety approval.
 
 ```bash
-python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" eval-spec.json cases.jsonl
+python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" contract eval-spec.l0.json
+python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" contract eval-spec.json scenarios.jsonl host-manifest.json
+```
+
+For a selected model grader, normalize blinded calibration evidence before suite quality. Deterministic-grader-only specs omit calibration.
+
+```bash
+python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" calibration --spec draft-eval-spec.json \
+  --ratings calibration-ratings.jsonl --labels calibration-gold.jsonl --output grader-calibration.json
+
+python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" suite-quality \
+  --spec draft-eval-spec.json --proof suite-quality-proof.json --output suite-quality.json
+```
+
+Compile only a final `execution.ready=true` spec; compilation starts no host or grader. The runner executes only `execute` entries, `--resume` seals recoverable attempts, and `--index` must equal the plan-declared path.
+
+```bash
+python3 "$SKILL_EVALUATOR_DIR/scripts/compile_eval_plan.py" eval-spec.ready.json scenarios.jsonl host-manifest.json --output execution-plan.json
+python3 "$SKILL_EVALUATOR_DIR/scripts/run_eval_plan.py" execution-plan.json --index artifacts/index.jsonl
 ```
 
 ```bash
-python3 "$SKILL_EVALUATOR_DIR/scripts/analyze_runs.py" receipt-index.jsonl \
-  --spec eval-spec.json --json summary.json --markdown summary.md
+python3 "$SKILL_EVALUATOR_DIR/scripts/analyze_runs.py" artifacts/index.jsonl \
+  --spec eval-spec.ready.json --json summary.json --failure-index failures.json \
+  --markdown summary.md
 ```
 
-The analyzer returns `0` for a completed supported/diagnostic result, `1` for verified not-supported or authority-blocked evidence, `2` for CLI/spec/case/index/I/O contract errors, and `3` for incomplete, invalid, or inconclusive evidence. Supply one `--manual-review-receipt <relative-path>` only when the frozen contract requires it. `--report-only` changes the process exit, never the reported states.
+Analyzer exits: `0` complete supported/eligible or L0/L1 diagnostic; `1` verified not-supported or manual `hold|reject`; `2` contract/I/O error; `3` incomplete, invalid, unsupported, not-evaluable, inconclusive, or authority-ineligible. A required manual receipt is spec-relative. `--report-only` converts only `1` to `0`, never the states.
 
 ## Owner index
 
-- [Evaluation contract](references/evaluation-contract.md): schema v4, levels, variants, fairness, and claim ceilings.
-- [Task-suite design](references/task-suite-design.md): frontier-model filter, requirements, protected controls, and holdout boundaries.
-- [Execution and grading](references/execution-and-grading.md): receipt v3, artifacts, routing, usage, context, graders, and failure classification.
+- [Evaluation contract](references/evaluation-contract.md): spec v5, levels, treatments, preparation gates, fairness, and claim ceilings.
+- [Task-suite design](references/task-suite-design.md): scenario v1, frontier-model filter, requirements, protected controls, and holdout boundaries.
+- [Execution and grading](references/execution-and-grading.md): host protocol, execution plan, receipt v4, artifacts, routing, usage, context, graders, and failure classification.
 - [Rubric and metrics](references/rubric-and-metrics.md): independent-case intervals, benefit/context gates, and usefulness states.
 - [Reporting and decisions](references/reporting-and-decisions.md): evidence, usefulness, manual authority, and external-decision boundaries.
 - [Longitudinal evaluation](references/longitudinal-evaluation.md): version and cycle monitoring.
 - [Source map](references/source-map.md): source provenance and exact implementation owners.
+- [Contract schemas](schemas/README.md): Draft 2020-12 owners for the 3.0 wire contracts.
 - [Evaluation report](templates/evaluation-report.md): the single conditional report template.
-- Executable owners: [package audit](scripts/audit_skill_package.py), [suite validator](scripts/validate_eval_suite.py), and [receipt analyzer](scripts/analyze_runs.py).
-- Spec fixtures: [L0](templates/eval-spec.l0.example.json), [L1](templates/eval-spec.l1.example.json), and [L2](templates/eval-spec.example.json); public cases: [L1](templates/cases.l1.example.jsonl) and [L2](templates/cases.example.jsonl).
-- Evidence fixtures: [receipt index](templates/runs.example.jsonl), [grader schema](templates/grader-output.schema.json), [grader prompt](templates/llm-grader-prompt.md), [holdout manifest](templates/holdout-manifest.example.json), and [public holdout placeholder](templates/holdout-cases.example.jsonl).
+- Executable owners: [audit](scripts/audit_skill_package.py), [validator](scripts/validate_eval_suite.py), [compiler](scripts/compile_eval_plan.py), [runner](scripts/run_eval_plan.py), [analyzer](scripts/analyze_runs.py), and [I/O](scripts/evidence_io.py).
+- Spec fixtures: [L0](templates/eval-spec.l0.example.json), [L1](templates/eval-spec.l1.example.json), and [L2](templates/eval-spec.example.json); public scenarios: [L1](templates/scenarios.l1.example.jsonl) and [L2](templates/scenarios.example.jsonl); [host manifest](templates/host-manifest.example.json).
+- Preparation fixtures: [calibration ratings](templates/calibration-ratings.example.jsonl), [calibration gold](templates/calibration-gold.example.jsonl), and [suite-quality proof](templates/suite-quality-proof.example.json).
+- Evidence fixtures: [run index](templates/runs.example.jsonl), [grader schema](templates/grader-output.schema.json), [grader prompt](templates/llm-grader-prompt.md), [holdout manifest](templates/holdout-manifest.example.json), and [holdout scenarios](templates/holdout-scenarios.example.jsonl).

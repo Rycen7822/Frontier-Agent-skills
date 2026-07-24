@@ -1,98 +1,90 @@
 # Execution and Grading
 
-This file owns run isolation, run index v1, receipt v3, artifact/provenance verification, routing/usage/context capture, grader transport/semantics, and apparatus failure classification.
+This file owns deterministic plan compilation, bounded runner behavior, host protocol, run-index row v2, receipt v4, artifact/provenance verification, grader execution/verification boundaries, resume, and apparatus failure classification.
 
 ## Preflight and isolation
 
 Before execution:
 
-1. audit the complete package and validate the frozen spec/cases;
-2. prove the harness can disable and naturally load the candidate without cross-arm leakage;
-3. freeze agent/model/harness, catalogs, tools, permissions, environment, fixture, graders, reset, retry, and artifact root;
-4. keep evaluator instructions, hidden expectations, and grader material outside the tested executor;
-5. test reset and cleanup before the first scored run.
+1. audit the complete package and validate the frozen spec v5, scenario corpus, host manifest, and required preparation artifacts;
+2. prove required host capabilities with bound `pass|unsupported|unknown` probes;
+3. freeze execution identity, treatment intervention axes, catalogs, tools, permissions, fixtures, graders, reset, retry, clocks, and artifact root;
+4. compile one plan v1 and verify its schema, self-hash, compiler identity, dispositions, counts, authority, and output paths;
+5. keep evaluator instructions, hidden expectations, calibration, suite-quality proof, and grader material outside the tested executor.
 
-Use one fresh or deterministically restored workspace per `case × variant × repeat`. Counterbalance arm order when caches, time, services, or quotas can drift. Never flow generated files, conversation state, loaded Skills, or service state into another arm unless persistent state is the declared object.
+Use one fresh or deterministically restored workspace per execute entry. Counterbalance treatment order when caches, time, services, or quotas can drift. Never flow generated files, conversation state, loaded Skills, or service state into another entry unless persistent state is the declared object.
 
 Capture observable events and artifacts, never private chain-of-thought: retrieval/selection/load/application, tool and command status, permissions/network, retries/recovery, termination, stdout/stderr/exit, file/state diffs, verifier outputs, usage, and cleanup.
 
-## Run index v1
+## Compiler and dispositions
 
-The analyzer accepts one identity/location record per JSONL line:
+`compile_eval_plan.py` is a pure projection. It starts no host, grader, verifier, or subject; reads no prior runtime result; and uses no wall clock, PID, process hash, or temporary path. It validates all bound inputs, rejects non-ready/placeholder contracts and failed preparation gates, expands the exact scenario × treatment × repeat matrix, counterbalances deterministically, derives capability-based dispositions, and writes one schema-valid, self-hashed plan.
 
-```json
-{
-  "run_schema_version": 1,
-  "run_id": "case-001:candidate_natural:1",
-  "case_id": "case-001",
-  "variant": "candidate_natural",
-  "repeat": 1,
-  "artifact_dir": "runs/case-001/candidate_natural/1",
-  "receipt": {"path": "receipt.json", "sha256": "sha256:<64 lowercase hex>"}
-}
-```
+Every entry is exactly `execute`, `unsupported`, or `not_evaluable`. Unknown required capability evidence takes precedence over unsupported evidence. Non-execute entries preserve their feasibility facts but receive no workspace, request, attempt, receipt, or index row. Plan and entry IDs are stable locators derived from full bound projections; the complete plan hash remains the collision and integrity authority.
 
-The index contains no pass, score, routing, usage, grader, or provenance claim. Paths resolve in this order: spec directory → `spec.artifacts.root` → row `artifact_dir` → receipt/artifact path.
+## Runner and host protocol
+
+`run_eval_plan.py` revalidates the plan and every current bound byte before action. For an execute entry it restores the fixture, proves reset, sends one canonical `execute_case` request to the manifest argv with `shell=False`, captures ordered host events and one terminal result, runs selected deterministic graders, sends only blinded bound `model_grade` requests, performs cleanup, validates receipt v4, then appends index v2.
+
+Host stdout is protocol JSONL; stderr is an artifact. Non-UTF-8 output, event-sequence gaps, duplicate/missing terminal results, events after terminal, or request/identity/hash mismatch are apparatus failures. The runner never chooses a treatment, scenario, grader, module, or usefulness result.
+
+Attempts run in task-owned process groups and isolated workspaces. Effective parallelism is the minimum of CLI, spec, and host limits. A single writer commits only the canonical continuous prefix ordered by `(entry_ordinal, attempt)`, so parallel completion and resume do not change final index bytes.
+
+## Run-index row v2
+
+Each JSONL row contains only `schema_version`, plan/entry/run identity, case/treatment/repeat/attempt, artifact directory, and receipt path/hash. It describes execute attempts only and contains no pass, score, routing, usage, grader, feasibility, or provenance claim. The runner requires `--index` to resolve to the plan-declared path under `artifacts.root`.
 
 ## Default evidence traversal
 
 Raw scored receipts and their artifacts stay immutable for the frozen retention period, but they are not the model's default reading surface. Read analyzer summary → failure index → the spec-limited representative receipts. Open raw artifacts only through one named receipt for a named failure, grader disagreement, or integrity audit. Do not walk the artifact tree first, create per-step worknotes or per-notice JSON, or copy receipt data into parallel model-authored files. A short early failure remains a failed outcome and cannot establish an efficiency advantage.
 
-## Receipt v3
+## Receipt v4
 
-One receipt owns all captured evidence:
+One receipt owns the complete attempt evidence: run/provenance identity, artifacts, host protocol, routing, principals, handoffs, actions, observations, state, faults, usage, context usage, grader outputs, and cleanup. It binds plan, entry, scenario, host, package, catalog, treatment, fixture, grader, and conditionally calibration/quality identities.
 
-```json
-{
-  "schema_version": 3,
-  "receipt_hash": "sha256:<64 lowercase hex>",
-  "run": {"run_id": "...", "case_id": "...", "variant": "...", "repeat": 1, "valid": true, "error_type": null, "invalid_reason": null, "provenance": {}},
-  "artifacts": [{"path": "ordered-trace.jsonl", "sha256": "sha256:<64 hex>", "encoding": "utf-8"}],
-  "trace": {"artifact": "ordered-trace.jsonl", "sha256": "sha256:<64 hex>", "event_count": 1, "context_capture": {"status": "captured", "source": "replay_manifest"}, "command_projection_classification_hash": "sha256:<64 hex>", "private_skill_access_count": 0, "task_evidence_visible_count": 1},
-  "routing": {},
-  "boundaries": {},
-  "bytes": {},
-  "counts": {},
-  "usage": {},
-  "context_usage": {},
-  "grader_outputs": []
-}
-```
+The analyzer requires exact shapes. It normalizes POSIX-relative paths, rejects absolute/backslash/parent traversal, proves lexical and symlink-resolved containment, recomputes bytes/hashes, and rejects duplicate normalized or resolved artifacts. Every evidence locator and invocation references the exact artifact allowlist.
 
-The analyzer requires exact shapes. It normalizes POSIX-relative paths, rejects absolute/backslash/parent traversal, proves lexical and symlink-resolved containment, recomputes bytes/hashes, and rejects duplicate normalized or resolved artifacts. Routing, usage, context, grader evidence, and invocations must reference the allowlist's exact canonical spellings.
+`receipt_hash` removes only itself and hashes canonical JSON. `completion_origin=resume_seal` is valid only for the schema-declared recovered-attempt form. No older receipt is accepted or silently upgraded.
 
-Provenance binds candidate revision/source/plugin identities plus spec, case, case-contract, fixture-set, selected-grader-set, grader-schedule, environment, package, catalog, and receipt-local treatment hashes. The analyzer recomputes that treatment hash from the case, raw task text, variant contract, and native input shape, then binds the canonical receipt-to-treatment index in the report. Candidate package inventory, suite assets, grader declarations, verifier bytes, model prompt, and model schema are recomputed locally where the spec provides their bytes.
+## Routing, composition, and usage
 
-Handoff/Program planner receipts additionally bind deterministic base `HEAD`/source-manifest identity and the exact file-or-reply deliverable hash. Transfer executor receipts bind the verified base identity, raw plan hash, and exact initial status `?? PLAN.md`. `PLAN.md` is attached after the base commit and remains protected and untracked. A transfer preflight mismatch produces `evaluation_apparatus_invalid`, no executor call, and no model-budget increment.
+For each declared treatment × turn cell, routing records declared, discovered, loaded, model-visible, selected, invoked, and applied Skill IDs, plus full catalog order and the declared composition shape. Every stage has its own evidence; no stage follows from a preceding stage. Exact no-match is evidence, not a failed target load. The runner compares raw host facts to the scenario routing contract, while the analyzer aggregates the same exact cells.
 
-`receipt_hash` removes only itself, then hashes UTF-8 JSON with sorted keys, compact separators, `allow_nan=false`, and a `sha256:` prefix. No older receipt is accepted or silently upgraded.
+Catalog routing uses the host manifest's ordered base catalog plus the scenario overlay. Natural-routing comparators keep that effective catalog identical and change only the declared target delivery intervention. Composition is limited to one declared unordered pair, ordered sequence, or typed handoff edge; loading multiple Skills cannot establish composition by itself.
 
-## Routing and usage
-
-Retrieval, selection, body load, incorporation, and application are five independent stages. Each stage is exactly `{status,value,evidence}`: `observed` requires its own non-reused locator, while `not_evaluable` requires `value=null` and no evidence. No stage may be inferred from a preceding stage. `resources_loaded` is the unique reference source set. Eligibility is derived from case and variant mode, never supplied as a denominator switch.
-
-The ordered trace assigns every received host event a contiguous one-based `event_seq`. After each completed event that may mutate the workspace, the controller records a compact typed manifest delta in that trace. The analyzer derives the first successful source write whose case-declared delta remains visible in the final manifest and the first reply/file deliverable; it rejects declared boundary values that disagree with event order. Whether either boundary may be null belongs to the frozen case contract.
-
-Usage records non-negative input/output tokens, latency, retries, and evidence. Counts separately report task tools, executor-prewrite task tools, host/model body loads, references, skill-load tools, skill-protocol tools, and workflow artifacts. Bytes separately report unique/repeated static context, protocol/failed output, host-preflight output, and executor-prewrite output. Host preflight is apparatus cost and never enters the executor rediscovery metric. Turn-level tokens are never fabricated into component or tool-output token counts.
+Usage preserves input, output, and cache token classes; queue/runtime latency; tool/network calls; retries/rework; requested/effective effort; artifacts/checkpoints/residue; pricing identity; and per-principal/turn/phase/call attribution. Provider cache tokens and application-cache behavior are separate facts. Host preflight is apparatus cost, and failed treatment execution never becomes an efficiency win.
 
 Evidence locators are one-based inclusive `{start_line,end_line}` spans into allowlisted UTF-8 artifacts. The analyzer proves that cited bytes/lines exist; the selected grader owns their meaning.
 
 ## Context receipt
 
-`context_usage.measurement_source` is exactly one of:
+`context_usage.status` is `captured|missing`. Captured with zero components is valid proof of zero target-Skill context; missing capture invalidates attribution. Receipt totals keep bytes, nullable tokens, controlled bytes, unique reference bytes, and controlled-core bytes separate.
 
-- `host_receipt`: each component has non-negative integer tokens; bytes are still recomputed;
-- `replay_manifest`: each component has `tokens=null`; only captured bytes are claimed.
+Each component has a stable ID, kind, source path, content hash, allowlisted artifact, bytes, nullable tokens, and occurrence. Kind is `metadata`, `body`, `reference`, `protocol_output`, or `failed_command_output`. Static paths are canonical package-relative POSIX paths; dynamic paths are redacted protocol/failure identities, never command arguments or local machine paths.
 
-`trace.context_capture` independently records `captured|missing` and `host_trace|replay_manifest`. `captured` with zero components is valid proof of zero target-Skill context; `missing` invalidates attribution. This prevents an empty baseline capture from being confused with absent evidence.
+Component order is model-visible event order. Failure, timeout, and partial output use `failed_command_output`; other successful helper output uses `protocol_output` unless it exactly equals a bound static file or deterministic continuous byte slice. The controller captures every skill-attributed visible event exactly once and distinguishes host activation from model-initiated reads. `force_loaded` requires exactly one host body injection; zero or multiple injections are apparatus-invalid. A later model reread stays evidence-complete and increments repeated load cost. The analyzer hashes artifact bytes and rejects any run whose components, routing, totals, or controlled-byte projections do not conserve. All projections stay in one receipt and its bound artifacts; parallel event/check sidecars are forbidden.
 
-Each component remains exactly `{kind,source_path,artifact,tokens}`. `kind` is `metadata`, `body`, `reference`, `protocol_output`, or `failed_command_output`; artifact names one unique UTF-8 allowlisted file. Static source paths are canonical plugin-relative POSIX paths. Dynamic paths are redacted `protocol:<tool_id>:<ordinal>` or `failed-command:<tool_family>:<ordinal>` identifiers, never command arguments or local paths. Body presence must agree with body loading, and the unique reference source set must equal `routing.resources_loaded`.
+## Principals, handoffs, and state
 
-Component order is model-visible event order. Failure, timeout, and partial output use `failed_command_output`; other successful helper output uses `protocol_output` unless it exactly equals a bound static file or deterministic continuous byte slice. The controller captures every skill-attributed visible event exactly once and distinguishes host activation from model-initiated reads. `force_loaded` requires exactly one host body injection; zero or multiple injections are apparatus-invalid. A later model reread stays evidence-complete and increments repeated load cost. The analyzer hashes artifact bytes, derives the four context byte projections, and rejects any run whose components, counts, routing, or bytes do not conserve. All machine projections stay in one receipt and one ordered trace; event/check sidecars are forbidden.
+When multi-principal coordination is required, every actual principal maps to one plan slot and binds parent, role, model/session/workspace, context mode/proof, Skill/catalog/tool/policy/authority identities, requested/effective budget, and terminal status. Unknown or duplicate principals, parent cycles, and width/depth/budget/authority violations fail closed. The evaluator verifies host-owned coordination; it never spawns, routes, cancels, or synthesizes principals.
+
+Fresh, forked, and scoped-handoff context modes require different evidence. Causal ancestry is reconstructed independently from wall-clock delivery order, so asynchronous return order cannot rewrite dependency order. Every handoff preserves exact payload/schema/hash, scope, success criteria, supplied/omitted context, transferred authority, raw result, status, and any summary/filter/truncation transform. A summary without its raw result cannot support worker-level attribution.
+
+State receipts preserve ordered turns/checkpoints, before/after state, opened/due/closed obligations, transitions, persisted-state identity, terminal state, and cleanup state. Resume must prove the declared durable state instead of relying on hidden conversation context.
+
+## Actions, authorization, observations, and faults
+
+Each effect-capable action uses one stable ID across declared/discovered/loaded/model-visible/selected/invoked, authorization request/resolution, executed input, raw backend result, model delivery, rendering, observed effect, and confirmed effect. Stages may terminate early and never imply a later stage.
+
+Authorization preserves every policy/human/source decision and the deterministic resolution to `allow|deny|allow_with_changes`. Executed input must equal the approved input after any allowed changes. A denial/containment can pass safety prevention while leaving the task effect absent; reported success never substitutes for confirmed effect.
+
+Observations separately close artifact bytes/schema/locator and temporal validity. Raw backend, model-delivered, and rendered content remain distinct, especially for untrusted tool errors. Grounding requires claim correctness, source existence, source support, locator attribution, and freshness.
+
+Fault evidence joins the declared injection, trigger, typed effect, target call, observed response, recovery attempts, terminal resolution, and safety limit. Only plan-declared faults may be activated. Failure to reach a valid trigger because the treatment already failed remains a treatment result; host failure to inject a reached trigger is apparatus-invalid.
 
 ## Deterministic grader receipt
 
-Every case-selected deterministic grader appears once as `{grader_id,invocation}`. The invocation binds exactly:
+Every scenario-selected deterministic grader appears once as `{grader_id,invocation}`. The invocation binds exactly:
 
 - the digest of the full grader declaration and verifier bytes;
 - sorted selected check IDs;
@@ -102,13 +94,13 @@ Every case-selected deterministic grader appears once as `{grader_id,invocation}
 
 All deterministic stdout/stderr paths are removed globally before computing the input set. Inputs cannot include any grader output or the receipt. The analyzer does not import or execute the verifier; it verifies the frozen invocation, parses the single stdout, and requires exit-code pass semantics to agree with `overall_pass`.
 
-Model rubric output appears once as `{grader_id,batch}`. The batch reference binds one item ID and the raw hash/line of the study-level `grader-batches.jsonl`; batches contain one to four distinct case IDs and no arm labels. Deterministic output cannot be supplied inline. Both paths feed the same semantic validator.
+Model rubric output appears once as `{grader_id,batch}`. The batch reference binds the blinded request/item, frozen schedule/order, raw host-protocol batch artifact, and one normalized output artifact. Treatment labels never enter the blinded payload. Deterministic output cannot be supplied inline. Both paths feed the same semantic validator.
 
 ## Grader semantic owner
 
 The JSON Schema owns transport shape only. The analyzer also enforces:
 
-- exactly the case-selected check IDs, each once;
+- exactly the scenario-selected check IDs, each once;
 - allowlisted evidence and valid line spans;
 - structured missing evidence mapped to selected checks;
 - required-only `overall_pass` (optional failures do not change it);
@@ -121,15 +113,21 @@ Every requirement declares one `owner` matching its grader type, and one grader/
 
 - Skill retrieval proves retrieval only; entry reading proves body loading only; a CLI or card reference proves an attempt only.
 - A behavioral process check passes only when bound evidence proves exit 0, a successfully parsed receipt, the expected state transition, and every required owner, delivery, anchor, or cleanup fact. Final prose and task-code success cannot replace these facts.
-- A pure routing case may use the exact owner load set as its final process oracle because no workflow transition is required.
+- A pure routing scenario may use its exact declared load set as the terminal process contract because no workflow transition is required.
 
 ## Validity and failure ownership
 
-`valid=false` is reserved for evaluation apparatus failure: provider/controller unavailable before attributable execution, broken fixture/capture, corrupt receipt, or grader failure. It requires `error_type="evaluation_apparatus"` and an invalid reason.
+`valid=false` is reserved for evaluation apparatus failure: provider/controller unavailable before attributable execution, broken fixture/capture, corrupt receipt, or grader failure. It requires a non-empty `run.error`.
 
 Treatment-attributable refusal, timeout, empty output, tool/dependency error, nonzero task process, unsafe action, or malformed artifact remains `valid=true` when the host captured complete evidence. Normal grader requirements make it an outcome/process/safety failure in the denominator. Do not convert a negative treatment result into inconclusive evidence.
 
 Preserve original attempts. Retry only predeclared apparatus failures; never retry until success and discard failures. Missing/tampered receipt evidence is incomplete/invalid, not a candidate hard failure.
+
+## Retry and resume
+
+Attempt numbers, run IDs, start markers, directories, receipts, and index rows follow the plan's deterministic projection. Treatment failures are never retried. A retryable apparatus failure keeps its receipt/index evidence before the next bounded attempt.
+
+`--resume` first verifies that the existing index is the unique continuous execute-attempt prefix and that every referenced receipt remains valid. A verified complete receipt is skipped. A valid start marker without a receipt is sealed only into the schema-declared interrupted apparatus receipt; no task outcome is invented. An unowned, missing, mismatched, or tampered marker/index/receipt fails closed. Resume never creates evidence for non-execute dispositions.
 
 ## Manual-review receipt
 

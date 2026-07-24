@@ -1,32 +1,34 @@
 # Skill Evaluation Report: {{EVALUATION_ID}}
 
 > Keep only sections supported by the selected level and declared controls. Delete inapplicable sections. Put missing required evidence under **Known gaps**; placeholders never count as evidence.
+> Copy analyzer facts exactly. This file is an interpretation and external-decision overlay, not a second schema or evidence source.
 
 ## Status
 
 ```yaml
-level: {{L0|L1|L2|L3|L4}}
+schema_version: 4
+evaluation_id: {{immutable evaluation ID}}
+plan_id: {{compiled plan ID}}
+analysis_ready: {{true|false}}
+applicability_status: {{applicable|not_applicable}}
+feasibility_status: {{feasible|unsupported|not_evaluable}}
 evidence_status: {{complete|incomplete|invalid}}
 usefulness_status: {{supported|not_supported|inconclusive_ceiling|not_evaluable}}
 final_authority_status: {{eligible|blocked}}
-decision_signal: {{analyzer decision signal}}
-evaluation_id: {{immutable ID}}
-target: {{skill version + package hash}}
-baseline: {{declared baseline identity; L2+ only}}
-claim_scope: {{model/harness/suite/environment}}
+subject: {{skill ID/version/shape/package hash}}
+counts: {{plan/execute/unsupported/not-evaluable/attempt/valid/invalid/missing}}
 blocking_observations: []
 ```
 
-These fields remain separate. `supported` is not a release decision; `eligible` means only that the frozen evidence may proceed to its declared external authority.
+These five axes remain separate. `supported` is not a release decision; `eligible` means only that the frozen evidence may proceed to its declared external authority.
 
 ## 1. Identity and scope
 
-- Candidate revision/source-tree/plugin-tree and target package hash:
-- Treatment-contract and receipt-to-treatment-index hashes:
-- Model, harness, system configuration, and environment fingerprint:
-- Spec/schema, cases, case contracts, fixture set, grader set/schedule, and analyzer revisions:
-- Authority, permissions, network, and credentials boundary:
-- Declared variants/repeats and claim ceiling:
+- Summary/spec/scenario/host/plan hashes:
+- Subject package and declared treatment identities/intervention axes:
+- Model, harness, host, catalog, tool/policy, compiler, clock, tokenizer/pricing identities:
+- Required/not-applicable modules and evidence:
+- Authority, permissions, network, credentials, artifacts, retention, and claim ceiling:
 - L3/L4 only — holdout manifest/payload custody and exposure:
 
 ## 2. Package audit — L0+
@@ -39,75 +41,63 @@ These fields remain separate. `supported` is not a release decision; `eligible` 
 
 ## 3. Method — L1+
 
-- Frozen cases, variants, repeats, run order, reset, and isolation:
-- Canonical `requirements[]` and declared grader ownership:
-- Deterministic/model/manual graders actually used:
-- Safety containment and protected cases:
-- L2+ — case-cluster interval configuration and declared primary benefit:
+- Frozen scenario × treatment × repeat plan, dispositions, order, reset, isolation, and host protocol:
+- Scenario v1 `requirements[]`, state/fault/routing/coordination/observation contracts:
+- Deterministic/model graders and preparation artifacts actually used:
+- Safety containment, protected scenarios, and host boundaries:
+- L2+ — case-cluster estimand, interval configuration, and hard gates:
 - Contract changes or invalidated evidence:
 
 ## 4. Receipt integrity and run accounting — L1+
 
-- Receipt-index version and immutable raw-bytes path/hash:
-- Receipt v3, `p3-arm-report/2.0`, and aggregate raw-byte/self-hash verification:
-- Receipt verification status and checked-run count:
-- Recomputed fixture/package/artifact/grader/provenance/invocation bindings:
+- Plan v1, run-index row v2, receipt v4, summary v4, and failure-index v1 verification:
+- Planned/execute/unsupported/not-evaluable entry counts:
+- Attempts, valid terminal attempts, invalid attempts, and missing entries:
+- Recomputed scenario/host/package/catalog/treatment/fixture/grader/calibration/quality/artifact/invocation bindings:
+- Output-manifest paths, view versions, counts, truncation, and raw-byte hashes:
 - Trust boundaries still externally attested or unverified:
+- Representative failure IDs and exact locators:
 
-| Variant | Planned | Present | Valid | Invalid | Timed out | Missing |
-|---|---:|---:|---:|---:|---:|---:|
-| | | | | | | |
+## 5. Modules and stages — L1+
 
-- Duplicate or mismatched `variant × case_id × repeat` keys:
-- Missing/invalid key sample and affected claim:
-
-## 5. Routing and outcome — L1+
-
-- Explicit/implicit/contextual/negative routing slices:
-- False positives, false negatives, and stage localization:
-- Deterministic required-outcome and case-grader failures:
-- Process, recovery, termination, cleanup, and residue:
-- Decisive case IDs and evidence locators:
+- Module status/planned/present/valid/invalid/missing/eligible/pass-rate/consistency:
+- Plan exists/contract-quality/compliance/execution/outcome stages:
+- Applicable routing, state, fault, coordination, action/safety, observation/grounding, critique, independence, and host stages:
+- Hard requirement IDs, failure mechanisms, worst slices, and reason keys:
+- Decisive failure IDs and evidence locators:
 
 ## 6. Independent-case attribution — L2+
 
 - Candidate/comparator identities:
-- Primary metric / direction / effect / minimum benefit:
-- Distinct `case_count` / descriptive `repeat_count`:
-- Keyed case differences with raw/reported scales:
+- Primary estimand/metric/direction/effect/minimum benefit:
+- Distinct `case_count` / `excluded_pairs`:
+- Keyed direction-normalized `case_differences`:
 - Benefit point / lower / upper:
 - Confidence level / iterations / seed / case-cluster resampling:
-- Cost pairs excluded by comparator/candidate task failures:
-- Missing fields, relative-zero handling, executor-prewrite absolute-delta upper bound, or attribution limits:
+- Missing fields, relative-zero handling, or attribution limits:
 
 Repeats are not independent inferential samples.
 
 ## 7. Frozen gates and usefulness — L2+
 
-| Gate | Role | Metric | Rule | Observed | Status |
-|---|---|---|---|---:|---|
-| | primary/guardrail | | | | pass/fail/not_evaluable |
-
-- Protected-outcome failure count and affected keys:
-- Material safety harm:
-- Exact derivation of `usefulness_status`:
-- Contrary cases that remain after aggregate gates:
+- `primary_benefit` status and interval:
+- Required gate-family failure IDs, expected/observed facts, and locators:
+- Quality, calibration, module, host, context, protected, safety, noninferiority, and manual boundaries:
+- Exact derivation of `usefulness_status` and `final_authority_status`:
+- Contrary cases that remain after passing summary rates:
 
 ## 8. Skill context and total cost — L1+
 
-- Intended-trigger denominator / complete attributed runs:
-- Attribution rate and measurement-source counts:
-- Verified Skill body/resource component bytes:
-- Host-receipt component tokens, when present:
-- Skill-context bytes/tokens p95 and frozen budget gate:
-- Context-budget authority reference and verification boundary:
-- Captured-zero versus missing context rows:
-- Negative-cohort false body-load bytes, case rate/Wilson interval, and repeat consistency:
-- Host/model body loads, reference/load/protocol/executor-prewrite/task calls, workflow artifacts, host-preflight bytes, and executor-prewrite output bytes:
-- Writing Plans matched planner+executor total-token cases and relative reduction:
-- End-to-end input/output tokens, latency, retries, and residue:
+- Attribution coverage:
+- Paired total, controlled, and controlled-core Skill-context byte metrics:
+- Input/output/cache token classes and pricing identities:
+- Queue/runtime latency and per-principal/turn/phase/call totals:
+- Tool/network calls, retries/rework, requested/effective effort:
+- Workflow artifacts, checkpoints, residue, and failure/recovery overhead:
+- Provider-cache versus application-cache status:
+- Frozen context gates and external authority boundary:
 
-Report Target-Skill context separately from total prompt/run usage. Do not derive token counts from replay-manifest bytes.
+Report Target-Skill context separately from total run usage. Do not derive token counts from bytes.
 
 ## 9. Manual authority — only when declared
 
@@ -120,20 +110,19 @@ Report Target-Skill context separately from total prompt/run usage. Do not deriv
 ## 10. Version/cycle monitoring — L4 only
 
 - Prior/candidate package and cycle identities:
-- Contract/environment comparability:
-- Protected regression, context, cost, safety, and drift results:
+- Contract/plan/host/module/environment comparability:
+- Protected regression, context, cost, safety, host, and drift results:
 - Rollback target and incident/retest triggers:
 - Orchestration boundary: no library-scale claim without verified selection/order/composition receipts:
 
 ## 11. Findings
 
-### {{FINDING-ID}} — {{title}}
+### {{FAILURE-ID}} — {{family/code}}
 
-- Severity, dimension, and cases:
-- Evidence status and confidence basis:
-- Observed fact and exact locators:
-- Impact and root-cause status:
-- Required action and retest:
+- Severity, reason key, and evidence state:
+- Typed case/treatment/entry/attempt/requirement/principal/handoff/action/observation/fault/gate/finding joins:
+- Expected/observed facts and exact locator:
+- Impact, retest, and occurrence count:
 
 ## 12. Known gaps
 
@@ -152,9 +141,10 @@ Do not infer this record from analyzer eligibility.
 
 ## 14. Artifact manifest
 
-- Spec and public/holdout case bindings:
-- Receipt index, receipts, artifacts, and grader outputs:
-- Package inventory and environment fingerprint:
-- Analyzer arm-report v3 JSON/Markdown, raw report hash, and package audit:
+- Summary v4 self-hash and sibling `output_manifest`:
+- Failure index v1 and full details when emitted:
+- Markdown view when emitted:
+- Bound spec/plan/scenario/host/index/receipt/artifact/package/grader/preparation hashes:
+- Package audit and environment identity:
 - Manual-review receipt when declared:
 - Cleanup verification:

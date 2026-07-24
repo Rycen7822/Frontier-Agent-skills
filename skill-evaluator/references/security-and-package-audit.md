@@ -22,6 +22,19 @@ At minimum, consider:
 
 Static review identifies potential behavior. Runtime containment and probes show whether the agent attempts it. Neither alone certifies permanent safety.
 
+## Evidence ladder
+
+| Level | Evidence | Maximum claim |
+|---|---|---|
+| S0 | Package inventory, provenance, links, schemas, and executables | Static surface |
+| S1 | Instruction, code, dependency, permission, and side-effect threat model | Reachable risk hypothesis |
+| S2 | Isolated inert permission, canary, injection, cleanup, and resource probes | Contained behavior |
+| S3 | Plan-bound runner receipts plus state/artifact/network/process/action evidence | Tested runtime safety |
+| S4 | Declared conformance plan plus verified receipts from each named real host | Tested host-specific boundary |
+| S5 | External adaptive red-team or operational evidence | External authority input only |
+
+Scored L2+ with `dynamic_security` required closes at least S0–S3. A cross-host readiness claim needs separate S4 receipts for every named host; host metadata or a plan without receipts remains not evaluable. This package does not implement S5.
+
 ## 2. Establish provenance and trust
 
 Record:
@@ -39,7 +52,7 @@ Treat missing provenance as uncertainty, not proof of malice. Treat a trusted so
 
 ## 3. Audit the package boundary
 
-Inventory all regular files, hidden files, symlinks, nested archives, executables, binaries, scripts, templates, references, assets, and generated-install hooks.
+Inventory all regular files, hidden files, symlinks, nested archives, executables, binaries, scripts, schemas, templates, references, assets, and generated-install hooks. Reachable schemas are formal package support, not untrusted generated output.
 
 Check:
 

@@ -15,6 +15,52 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(report['summary']['findings_by_severity']['critical'], 0)
         self.assertFalse(report['summary']['security_certificate'])
 
+    def test_schema_support_is_inventoried_scanned_and_reachable(self) -> None:
+        auditor = load_auditor_module()
+        report = auditor.audit(ROOT, 2_000_000, 20)
+        schema_paths = {
+            item['path']
+            for item in report['inventory']
+            if item['path'].startswith('schemas/')
+        }
+        self.assertEqual(
+            schema_paths,
+            {
+                'schemas/README.md',
+                *{
+                    'schemas/' + name
+                    for name in make_v5_schema_examples()
+                },
+            },
+        )
+        self.assertTrue(report['scan']['text_scan_complete'])
+        self.assertFalse(any(
+            'schemas/' in error and 'unreachable' in error
+            for error in report['structural_errors']
+        ))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            isolated = Path(tmp) / 'skill-evaluator'
+            shutil.copytree(ROOT, isolated)
+            skill_path = isolated / 'SKILL.md'
+            skill_path.write_text(
+                skill_path.read_text(encoding='utf-8').replace(
+                    '- [Contract schemas](schemas/README.md): Draft 2020-12 owners for the 3.0 wire contracts.\n',
+                    '',
+                ),
+                encoding='utf-8',
+            )
+            unlinked = auditor.audit(isolated, 2_000_000, 20)
+        self.assertIn(
+            'formal support file is unreachable from SKILL.md: schemas/README.md',
+            unlinked['structural_errors'],
+        )
+        self.assertTrue(any(
+            error.startswith('formal support file is unreachable from SKILL.md: schemas/')
+            and error.endswith('.schema.json')
+            for error in unlinked['structural_errors']
+        ))
+
     def test_all_shipped_packages_have_no_structural_errors(self) -> None:
         auditor = load_auditor_module()
         repo_root = ROOT.parent
@@ -31,7 +77,7 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
 
 
     def test_inventory_only_hash_matches_full_audit_for_catalog_root(self) -> None:
-        module = load_analyzer_module()
+        module = load_auditor_module()
         with tempfile.TemporaryDirectory() as tmp:
             catalog = Path(tmp) / 'skills'
             first = catalog / 'first-skill'
@@ -154,9 +200,18 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
         for path in (
             'scripts/audit_skill_package.py',
             'scripts/validate_eval_suite.py',
+            'scripts/compile_eval_plan.py',
+            'scripts/run_eval_plan.py',
             'scripts/analyze_runs.py',
         ):
             self.assertIn(path, skill_text)
+        for token in (
+            'execution.ready=true',
+            '--index artifacts/index.jsonl',
+            '--failure-index failures.json',
+            'summary first, then its failure index',
+        ):
+            self.assertIn(token, skill_text)
         for reference in (
             'references/evaluation-contract.md', 'references/task-suite-design.md',
             'references/execution-and-grading.md', 'references/rubric-and-metrics.md',
@@ -173,16 +228,25 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
         self.assertNotRegex(skill_text, r'(?i)read\s+`?scripts/(?:audit_skill_package|validate_eval_suite|analyze_runs)\.py')
 
 
-    def test_method_source_map_uses_spec_v4_receipt_v3_and_requirement_owners(self) -> None:
+    def test_method_source_map_uses_v5_plan_index_receipt_and_requirement_owners(self) -> None:
         source_map = (ROOT / 'references/source-map.md').read_text(encoding='utf-8')
         for token in (
-            'schema_version=4', 'requirements[]', 'receipt v3',
+            'schema_version=5', 'scenario v1 `requirements[]`',
+            'execution plan v1', 'run-index row v2', 'receipt v4',
+            'compile_eval_plan.py::compile_plan',
             'analyze_runs.py::summarize_case_differences',
             'analyze_runs.py::summarize_skill_context',
             'analyze_runs.py::derive_usefulness_status',
+            'tests/test_extended_eval_execution.py',
+            'tests/test_extended_module_e2e.py',
         ):
             self.assertIn(token, source_map)
-        for stale in ('case.oracle', 'runs.graders_run', 'runs.hard_gate_failures'):
+        for stale in (
+            'schema_version=4', 'receipt v3', 'case.oracle',
+            'runs.graders_run', 'runs.hard_gate_failures',
+            'analyze_runs.py::derive_run_fields',
+            'analyze_runs.py::summarize_variant',
+        ):
             self.assertNotIn(stale, source_map)
 
 
@@ -194,6 +258,10 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
             'case.oracle', 'runs.graders_run', 'runs.hard_gate_failures',
             'paired_nonparametric_percentile_bootstrap', 'normalized run JSONL',
             'hard_gates_pass_apply_full_contract_review',
+            'spec schema v4', 'Spec v4 owner', 'run index v1', 'receipt v3',
+            'p3-arm-report/2.0', 'p3-aggregate-report/2.0',
+            'analyze_runs.py::derive_run_fields',
+            'analyze_runs.py::summarize_variant',
         ):
             self.assertNotIn(stale, public_text)
 
@@ -236,7 +304,11 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
                 }
                 self.assertIn(expected_heading, headings, f'{method_id}: stale owner {filename} → {expected_heading}')
         reverse_section = source_map.split('### Reverse coverage:', 1)[1].split('## 5.', 1)[0]
-        for token in ('treatment_hash', 'routing_evaluable', 'summarize_case_differences', 'payload_sha256'):
+        for token in (
+            'treatment_id', 'routing_contract', 'compile_plan',
+            'summarize_case_differences', 'payload_sha256',
+            'independence_summary', 'grounding_summary',
+        ):
             self.assertIn(token, reverse_section)
 
 
@@ -292,13 +364,18 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
                 ('scripts/audit_skill_package.py', str(ROOT), '--json', str(missing / 'audit.json')),
                 (
                     'scripts/validate_eval_suite.py',
-                    'templates/eval-spec.example.json', 'templates/cases.example.jsonl',
+                    'contract',
+                    'templates/eval-spec.example.json',
+                    'templates/scenarios.example.jsonl',
+                    'templates/host-manifest.example.json',
                     '--json', str(missing / 'suite.json'),
                 ),
                 (
                     'scripts/analyze_runs.py', str(bundle['index']),
                     '--spec', str(bundle['spec']),
-                    '--json', str(missing / 'runs.json'), '--report-only',
+                    '--json', str(missing / 'runs.json'),
+                    '--failure-index', str(missing / 'failures.json'),
+                    '--report-only',
                 ),
             ]
             results = [self.call_cli(*command) for command in commands]

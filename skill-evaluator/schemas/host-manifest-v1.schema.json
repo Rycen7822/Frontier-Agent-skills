@@ -1,0 +1,673 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/host-manifest-v1.schema.json",
+  "title": "Skill Evaluator host manifest and normalized protocol v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "manifest_id",
+    "manifest_hash",
+    "identity",
+    "command",
+    "capabilities",
+    "catalog",
+    "policy",
+    "reset",
+    "capture"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "manifest_id": {"$ref": "#/$defs/safe_id"},
+    "manifest_hash": {"$ref": "#/$defs/sha256"},
+    "identity": {"$ref": "#/$defs/host_identity"},
+    "command": {"$ref": "#/$defs/command"},
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/capability"}
+    },
+    "catalog": {"$ref": "#/$defs/catalog"},
+    "policy": {"$ref": "#/$defs/policy"},
+    "reset": {"$ref": "#/$defs/reset"},
+    "capture": {"$ref": "#/$defs/capture"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "rfc3339_seconds": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["path", "sha256", "encoding"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relative_path"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "encoding": {"enum": ["utf-8", "binary"]}
+      },
+      "additionalProperties": false
+    },
+    "host_identity": {
+      "type": "object",
+      "required": [
+        "host_id",
+        "host_name",
+        "host_version",
+        "host_build",
+        "adapter",
+        "repository",
+        "session",
+        "platform",
+        "execution"
+      ],
+      "properties": {
+        "host_id": {"$ref": "#/$defs/safe_id"},
+        "host_name": {"type": "string", "minLength": 1},
+        "host_version": {"type": "string", "minLength": 1},
+        "host_build": {"type": "string", "minLength": 1},
+        "adapter": {
+          "type": "object",
+          "required": ["id", "version", "sha256"],
+          "properties": {
+            "id": {"$ref": "#/$defs/safe_id"},
+            "version": {"type": "string", "minLength": 1},
+            "sha256": {"$ref": "#/$defs/sha256"}
+          },
+          "additionalProperties": false
+        },
+        "repository": {
+          "type": "object",
+          "required": ["revision", "tree", "dirty", "worktree"],
+          "properties": {
+            "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "dirty": {"type": "boolean"},
+            "worktree": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        },
+        "session": {
+          "type": "object",
+          "required": ["topology", "session_id"],
+          "properties": {
+            "topology": {"enum": ["single", "centralized", "decentralized", "hybrid"]},
+            "session_id": {"$ref": "#/$defs/safe_id"}
+          },
+          "additionalProperties": false
+        },
+        "platform": {
+          "type": "object",
+          "required": ["os", "runtime"],
+          "properties": {
+            "os": {"type": "string", "minLength": 1},
+            "runtime": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        },
+        "execution": {
+          "type": "object",
+          "required": [
+            "provider",
+            "model",
+            "model_revision",
+            "harness",
+            "prompt_hash",
+            "skill_hash",
+            "catalog_hash",
+            "tool_schema_hash",
+            "policy_hash",
+            "tokenizer_id",
+            "pricing_id",
+            "utc_clock_id",
+            "monotonic_clock_id"
+          ],
+          "properties": {
+            "provider": {"type": "string", "minLength": 1},
+            "model": {"type": "string", "minLength": 1},
+            "model_revision": {"type": "string", "minLength": 1},
+            "harness": {"type": "string", "minLength": 1},
+            "prompt_hash": {"$ref": "#/$defs/sha256"},
+            "skill_hash": {"$ref": "#/$defs/sha256"},
+            "catalog_hash": {"$ref": "#/$defs/sha256"},
+            "tool_schema_hash": {"$ref": "#/$defs/sha256"},
+            "policy_hash": {"$ref": "#/$defs/sha256"},
+            "tokenizer_id": {"type": "string", "minLength": 1},
+            "pricing_id": {"type": "string", "minLength": 1},
+            "utc_clock_id": {"type": "string", "minLength": 1},
+            "monotonic_clock_id": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "command": {
+      "type": "object",
+      "required": ["argv", "resolved_executable", "executable_sha256", "protocol_version", "env_allowlist"],
+      "properties": {
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "resolved_executable": {"type": "string", "minLength": 1},
+        "executable_sha256": {"$ref": "#/$defs/sha256"},
+        "protocol_version": {"const": 1},
+        "env_allowlist": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "capability_name": {
+      "enum": [
+        "discovery",
+        "natural_routing",
+        "force_load",
+        "multi_turn",
+        "state_snapshot_reset",
+        "catalog_snapshot",
+        "composition",
+        "principal_tracing",
+        "handoff_capture",
+        "action_authorization_trace",
+        "tool_schema_model_visible_capture",
+        "render_effect_capture",
+        "fault_injection",
+        "usage_capture",
+        "context_capture",
+        "clock_capture",
+        "cleanup",
+        "model_grading",
+        "long_running"
+      ]
+    },
+    "probe": {
+      "type": "object",
+      "required": ["status", "artifact", "locator", "observed"],
+      "properties": {
+        "status": {"enum": ["pass", "unsupported", "unknown"]},
+        "artifact": {"$ref": "#/$defs/artifact"},
+        "locator": {"$ref": "failure-index-v1.schema.json#/$defs/locator"},
+        "observed": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "capability": {
+      "type": "object",
+      "required": ["capability", "declared", "probe"],
+      "properties": {
+        "capability": {"$ref": "#/$defs/capability_name"},
+        "declared": {"type": "boolean"},
+        "probe": {"$ref": "#/$defs/probe"}
+      },
+      "additionalProperties": false
+    },
+    "catalog": {
+      "type": "object",
+      "required": ["catalog_hash", "entries"],
+      "properties": {
+        "catalog_hash": {"$ref": "#/$defs/sha256"},
+        "entries": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/catalog_entry"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "catalog_entry": {
+      "type": "object",
+      "required": ["id", "name", "description", "scope", "source", "version", "root_hash"],
+      "properties": {
+        "id": {"$ref": "#/$defs/safe_id"},
+        "name": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "scope": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "root_hash": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "boundary": {
+      "type": "object",
+      "required": ["mode", "identity_hash", "rules"],
+      "properties": {
+        "mode": {"type": "string", "minLength": 1},
+        "identity_hash": {"$ref": "#/$defs/sha256"},
+        "rules": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
+      },
+      "additionalProperties": false
+    },
+    "policy": {
+      "type": "object",
+      "required": ["filesystem", "network", "credentials", "permissions", "sandbox", "approval"],
+      "properties": {
+        "filesystem": {"$ref": "#/$defs/boundary"},
+        "network": {"$ref": "#/$defs/boundary"},
+        "credentials": {"$ref": "#/$defs/boundary"},
+        "permissions": {"$ref": "#/$defs/boundary"},
+        "sandbox": {"$ref": "#/$defs/boundary"},
+        "approval": {"$ref": "#/$defs/boundary"}
+      },
+      "additionalProperties": false
+    },
+    "reset": {
+      "type": "object",
+      "required": ["strategy", "scopes", "probe"],
+      "properties": {
+        "strategy": {"type": "string", "minLength": 1},
+        "scopes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["session", "workspace", "service", "cache"]}
+        },
+        "probe": {"$ref": "#/$defs/probe"}
+      },
+      "additionalProperties": false
+    },
+    "capture_name": {
+      "enum": [
+        "events",
+        "stdout",
+        "stderr",
+        "state",
+        "artifacts",
+        "usage",
+        "context",
+        "principals",
+        "handoffs",
+        "actions",
+        "raw_results",
+        "model_delivery",
+        "render",
+        "effects",
+        "utc_start_end",
+        "monotonic_latency"
+      ]
+    },
+    "capture": {
+      "type": "object",
+      "required": ["available", "missing"],
+      "properties": {
+        "available": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/capture_name"}
+        },
+        "missing": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/capture_name"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "runtime_envelope": {
+      "type": "object",
+      "required": ["plan_id", "plan_hash", "entry_ordinal", "entry_id", "run_id", "attempt", "request_kind"],
+      "properties": {
+        "plan_id": {"$ref": "#/$defs/safe_id"},
+        "plan_hash": {"$ref": "#/$defs/sha256"},
+        "entry_ordinal": {"type": "integer", "minimum": 0},
+        "entry_id": {"$ref": "#/$defs/safe_id"},
+        "run_id": {"$ref": "#/$defs/safe_id"},
+        "attempt": {"type": "integer", "minimum": 1, "maximum": 9999},
+        "request_kind": {"enum": ["execute_case", "model_grade", "probe_capability", "cleanup"]}
+      },
+      "additionalProperties": false
+    },
+    "checkpoint": {
+      "type": "object",
+      "required": ["checkpoint_id", "turn_id", "seq", "state_artifact"],
+      "properties": {
+        "checkpoint_id": {"$ref": "#/$defs/safe_id"},
+        "turn_id": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
+        "seq": {"type": "integer", "minimum": 0},
+        "state_artifact": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]}
+      },
+      "additionalProperties": false
+    },
+    "protocol_error": {
+      "type": "object",
+      "required": ["kind", "message", "seq", "artifact"],
+      "properties": {
+        "kind": {
+          "enum": ["non_utf8", "sequence_gap", "duplicate_terminal", "post_terminal_event", "identity_mismatch", "malformed_record"]
+        },
+        "message": {"type": "string", "minLength": 1},
+        "seq": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "artifact": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]}
+      },
+      "additionalProperties": false
+    },
+    "principal": {
+      "type": "object",
+      "required": [
+        "principal_id",
+        "slot_id",
+        "parent_principal_id",
+        "role",
+        "provider",
+        "model",
+        "model_revision",
+        "session_id",
+        "worktree_id",
+        "sandbox_id",
+        "context_mode",
+        "inherited_context_hash",
+        "untrusted_input_hash",
+        "prompt_hash",
+        "skill_hash",
+        "catalog_hash",
+        "tool_schema_hash",
+        "policy_hash",
+        "authority_hash",
+        "requested_budget",
+        "effective_budget",
+        "started_at",
+        "ended_at",
+        "status",
+        "span_id",
+        "parent_span_id"
+      ],
+      "properties": {
+        "principal_id": {"$ref": "#/$defs/safe_id"},
+        "slot_id": {"$ref": "#/$defs/safe_id"},
+        "parent_principal_id": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
+        "role": {"type": "string", "minLength": 1},
+        "provider": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "model_revision": {"type": "string", "minLength": 1},
+        "session_id": {"$ref": "#/$defs/safe_id"},
+        "worktree_id": {"type": "string", "minLength": 1},
+        "sandbox_id": {"type": "string", "minLength": 1},
+        "context_mode": {"enum": ["single", "fresh", "forked", "scoped_handoff"]},
+        "inherited_context_hash": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "untrusted_input_hash": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "prompt_hash": {"$ref": "#/$defs/sha256"},
+        "skill_hash": {"$ref": "#/$defs/sha256"},
+        "catalog_hash": {"$ref": "#/$defs/sha256"},
+        "tool_schema_hash": {"$ref": "#/$defs/sha256"},
+        "policy_hash": {"$ref": "#/$defs/sha256"},
+        "authority_hash": {"$ref": "#/$defs/sha256"},
+        "requested_budget": {"$ref": "#/$defs/budget"},
+        "effective_budget": {"$ref": "#/$defs/budget"},
+        "started_at": {"$ref": "#/$defs/rfc3339_seconds"},
+        "ended_at": {"$ref": "#/$defs/rfc3339_seconds"},
+        "status": {"enum": ["completed", "failed", "cancelled", "timeout"]},
+        "span_id": {"$ref": "#/$defs/safe_id"},
+        "parent_span_id": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]}
+      },
+      "additionalProperties": false
+    },
+    "budget": {
+      "type": "object",
+      "required": ["turns", "tokens", "seconds", "tool_calls"],
+      "properties": {
+        "turns": {"type": "integer", "minimum": 0},
+        "tokens": {"type": "integer", "minimum": 0},
+        "seconds": {"type": "number", "minimum": 0},
+        "tool_calls": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "handoff": {
+      "type": "object",
+      "required": [
+        "handoff_id",
+        "span_id",
+        "sender_principal_id",
+        "receiver_principal_id",
+        "task",
+        "scope",
+        "success_criteria",
+        "deadline",
+        "payload",
+        "context_supplied",
+        "evidence_supplied",
+        "intentionally_omitted",
+        "authority_transferred",
+        "capabilities_transferred",
+        "expected_output_schema_hash",
+        "status",
+        "raw_result",
+        "transform"
+      ],
+      "properties": {
+        "handoff_id": {"$ref": "#/$defs/safe_id"},
+        "span_id": {"$ref": "#/$defs/safe_id"},
+        "sender_principal_id": {"$ref": "#/$defs/safe_id"},
+        "receiver_principal_id": {"$ref": "#/$defs/safe_id"},
+        "task": {"type": "string", "minLength": 1},
+        "scope": {"type": "string", "minLength": 1},
+        "success_criteria": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "deadline": {"anyOf": [{"$ref": "#/$defs/rfc3339_seconds"}, {"type": "null"}]},
+        "payload": {"$ref": "#/$defs/artifact"},
+        "context_supplied": {"type": "array", "items": {"$ref": "#/$defs/artifact"}},
+        "evidence_supplied": {"type": "array", "items": {"$ref": "#/$defs/artifact"}},
+        "intentionally_omitted": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "authority_transferred": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "capabilities_transferred": {"type": "array", "items": {"$ref": "#/$defs/capability_name"}},
+        "expected_output_schema_hash": {"$ref": "#/$defs/sha256"},
+        "status": {"enum": ["accepted", "rejected", "timeout", "cancelled", "result"]},
+        "raw_result": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]},
+        "transform": {
+          "type": "object",
+          "required": ["kind", "artifact"],
+          "properties": {
+            "kind": {"enum": ["none", "summary", "filter", "truncation"]},
+            "artifact": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "authorization_decision": {
+      "type": "object",
+      "required": ["source_id", "source_kind", "decision", "reason_keys", "policy_matcher", "policy_version", "artifact"],
+      "properties": {
+        "source_id": {"$ref": "#/$defs/safe_id"},
+        "source_kind": {"enum": ["policy", "human", "host", "external"]},
+        "decision": {"enum": ["allow", "deny", "allow_with_changes"]},
+        "reason_keys": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/safe_id"}},
+        "policy_matcher": {"type": "string", "minLength": 1},
+        "policy_version": {"type": "string", "minLength": 1},
+        "artifact": {"$ref": "#/$defs/artifact"}
+      },
+      "additionalProperties": false
+    },
+    "action_stage": {
+      "type": "object",
+      "required": ["stage", "seq", "artifact"],
+      "properties": {
+        "stage": {
+          "enum": ["declared", "discovered", "loaded", "model_visible", "selected", "invoked", "authorization_requested", "authorization_resolved", "executed", "raw_backend_result", "model_delivered_result", "rendered_or_displayed", "effect_observed", "effect_confirmed"]
+        },
+        "seq": {"type": "integer", "minimum": 0},
+        "artifact": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]}
+      },
+      "additionalProperties": false
+    },
+    "action_trace": {
+      "type": "object",
+      "required": [
+        "action_id",
+        "principal_id",
+        "tool_identity",
+        "entity",
+        "target",
+        "scope",
+        "privilege",
+        "intended_effect",
+        "proposed_input",
+        "authorization_decisions",
+        "resolution_algorithm",
+        "resolved_decision",
+        "executed_input",
+        "backend_request",
+        "backend_result",
+        "transport_error",
+        "model_delivered_result",
+        "delivery_transform",
+        "visible_result",
+        "confirmed_effect",
+        "rollback_cleanup_locator",
+        "stages"
+      ],
+      "properties": {
+        "action_id": {"$ref": "#/$defs/safe_id"},
+        "principal_id": {"$ref": "#/$defs/safe_id"},
+        "tool_identity": {
+          "type": "object",
+          "required": ["server", "name", "schema_hash", "description_hash", "annotation_hash"],
+          "properties": {
+            "server": {"type": "string", "minLength": 1},
+            "name": {"type": "string", "minLength": 1},
+            "schema_hash": {"$ref": "#/$defs/sha256"},
+            "description_hash": {"$ref": "#/$defs/sha256"},
+            "annotation_hash": {"$ref": "#/$defs/sha256"}
+          },
+          "additionalProperties": false
+        },
+        "entity": {"type": "string", "minLength": 1},
+        "target": {"type": "string", "minLength": 1},
+        "scope": {"type": "string", "minLength": 1},
+        "privilege": {"type": "string", "minLength": 1},
+        "intended_effect": {"type": "string", "minLength": 1},
+        "proposed_input": {"$ref": "#/$defs/artifact"},
+        "authorization_decisions": {"type": "array", "items": {"$ref": "#/$defs/authorization_decision"}},
+        "resolution_algorithm": {"type": "string", "minLength": 1},
+        "resolved_decision": {"enum": ["allow", "deny", "allow_with_changes"]},
+        "executed_input": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]},
+        "backend_request": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]},
+        "backend_result": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]},
+        "transport_error": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]},
+        "model_delivered_result": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]},
+        "delivery_transform": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]},
+        "visible_result": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]},
+        "confirmed_effect": {"anyOf": [{"$ref": "#/$defs/artifact"}, {"type": "null"}]},
+        "rollback_cleanup_locator": {
+          "anyOf": [
+            {"$ref": "failure-index-v1.schema.json#/$defs/locator"},
+            {"type": "null"}
+          ]
+        },
+        "stages": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/action_stage"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "host_request": {
+      "type": "object",
+      "required": ["record_type", "request_hash", "envelope", "payload"],
+      "properties": {
+        "record_type": {"const": "skill-evaluator-host-request/1"},
+        "request_hash": {"$ref": "#/$defs/sha256"},
+        "envelope": {"$ref": "#/$defs/runtime_envelope"},
+        "payload": {"type": "object", "minProperties": 1}
+      },
+      "additionalProperties": false
+    },
+    "host_event": {
+      "type": "object",
+      "required": ["record_type", "seq", "parent_seq", "principal_id", "event_type", "turn_id", "checkpoint", "payload", "artifact_locator", "action"],
+      "properties": {
+        "record_type": {"const": "skill-evaluator-host-event/1"},
+        "seq": {"type": "integer", "minimum": 0},
+        "parent_seq": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "principal_id": {"$ref": "#/$defs/safe_id"},
+        "event_type": {"$ref": "#/$defs/safe_id"},
+        "turn_id": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
+        "checkpoint": {"anyOf": [{"$ref": "#/$defs/checkpoint"}, {"type": "null"}]},
+        "payload": {"type": "object"},
+        "artifact_locator": {
+          "anyOf": [
+            {"$ref": "failure-index-v1.schema.json#/$defs/locator"},
+            {"type": "null"}
+          ]
+        },
+        "action": {"anyOf": [{"$ref": "#/$defs/action_trace"}, {"type": "null"}]}
+      },
+      "additionalProperties": false
+    },
+    "host_result": {
+      "type": "object",
+      "required": [
+        "record_type",
+        "terminal",
+        "terminal_status",
+        "envelope",
+        "request_hash",
+        "treatment_error",
+        "refusal",
+        "timeout",
+        "protocol_error",
+        "principals",
+        "handoffs",
+        "actions",
+        "artifacts",
+        "state",
+        "cleanup",
+        "usage",
+        "context",
+        "assertions"
+      ],
+      "properties": {
+        "record_type": {"const": "skill-evaluator-host-result/1"},
+        "terminal": {"const": true},
+        "terminal_status": {"enum": ["completed", "failed", "cancelled", "timeout", "protocol_error"]},
+        "envelope": {"$ref": "#/$defs/runtime_envelope"},
+        "request_hash": {"$ref": "#/$defs/sha256"},
+        "treatment_error": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
+        "refusal": {"type": "boolean"},
+        "timeout": {"type": "boolean"},
+        "protocol_error": {"anyOf": [{"$ref": "#/$defs/protocol_error"}, {"type": "null"}]},
+        "principals": {"type": "array", "items": {"$ref": "#/$defs/principal"}},
+        "handoffs": {"type": "array", "items": {"$ref": "#/$defs/handoff"}},
+        "actions": {"type": "array", "items": {"$ref": "#/$defs/action_trace"}},
+        "artifacts": {"type": "array", "items": {"$ref": "#/$defs/artifact"}},
+        "state": {"type": "array", "items": {"$ref": "#/$defs/checkpoint"}},
+        "cleanup": {"type": "object"},
+        "usage": {"type": "object"},
+        "context": {"type": "object"},
+        "assertions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["claim", "artifact", "locally_verifiable"],
+            "properties": {
+              "claim": {"type": "string", "minLength": 1},
+              "artifact": {"$ref": "#/$defs/artifact"},
+              "locally_verifiable": {"type": "boolean"}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

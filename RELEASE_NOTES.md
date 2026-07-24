@@ -1,6 +1,14 @@
 # Release Notes
 
-## Bundle 5.0.0 direct-first major cut
+## Bundle 6.0.0 Skill Evaluator 3.0 major cut
+
+Bundle 6.0.0 advances only Skill Evaluator from 2.0.0 to 3.0.0; Long Document remains 1.0.0, Software Quality Workflows 9.0.0, and Writing Plans 8.0.0. Compatible schema epoch advances to 5. The four-owner set, Direct-first boundary, mixed activation matrix, `implicit_local_pilot` ceiling, and `remote_writes=false` remain unchanged.
+
+Skill Evaluator 3.0 makes spec v5, scenario v1, execution plan v1, host manifest v1, run-index row v2, receipt v4, analysis summary v4, and failure index v1 the only active protocol. Preparation, deterministic compilation, bounded host execution/resume, evidence verification, compact five-axis reporting, package audit, and Pattern traceability have executable schema and test owners. Spec v4 and receipt v3 have no compatibility reader.
+
+This source cut proves deterministic package, bundle, static, staging, archive, and test contracts only. Scored usefulness, signed release, installation, publication, deployment, credentials, and remote writes remain separately authorized external gates. Rollback restores the frozen bundle 5.0.0 / Skill Evaluator 2.0.0 source identity rather than converting historical evidence.
+
+## Historical bundle 5.0.0 direct-first major cut
 
 Bundle 5.0.0 removes the standalone `brainstorming` package and publishes exactly four owners: Long Document 1.0.0, Skill Evaluator 2.0.0, Software Quality Workflows 9.0.0, and Writing Plans 8.0.0. SQW now owns proportionate design discovery inside its Direct-first software workflow.
 
@@ -56,11 +64,11 @@ The checked-in activation level remains `shadow`. Implicit routing and remote wr
 
 - Plugin folder and manifest name: `frontier-engineering-plugin`
 - Plugin display name: `Frontier Engineering`
-- Plugin version: `5.0.0`
+- Plugin version: `6.0.0`
 - Bundle archive root: `frontier-engineering-bundle`
 - Skills-only archive roots: `long-document-segmented-writing`, `skill-evaluator`, `software-quality-workflows`, `writing-plans`
 - Build evidence: `plugin-build-evidence/3.0`
-- Release evidence: `release-evidence/3.0`
+- Release evidence: `release-evidence/4.0`
 - Static smoke: `static-plugin-smoke/3.0`
 - CLI smoke: `cli-install-smoke/3.0`
 - Source archive evidence: `source-archive-evidence/2.0`

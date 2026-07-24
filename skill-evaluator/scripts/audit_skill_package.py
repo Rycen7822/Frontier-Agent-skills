@@ -445,10 +445,13 @@ def audit(root: Path, max_text_bytes: int, max_pattern_hits: int) -> dict[str, A
                 reachable.add(target)
                 if Path(target).suffix.lower() in {".md", ".markdown"}:
                     pending.append(target)
+    formal_roots = {"references", "templates", "scripts"}
+    if (root / "schemas" / "README.md").is_file():
+        formal_roots.add("schemas")
     formal_support = {
         item["path"] for item in inventory
         if item.get("type") in {"text", "binary"}
-        and item["path"].split("/", 1)[0] in {"references", "templates", "scripts"}
+        and item["path"].split("/", 1)[0] in formal_roots
         and not item["path"].endswith((".pyc", ".pyo"))
     }
     for orphan in sorted(formal_support - reachable):

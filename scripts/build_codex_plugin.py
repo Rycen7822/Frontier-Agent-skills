@@ -63,7 +63,7 @@ P3_AGGREGATE_FIELDS = {
 }
 EXPECTED_SKILLS = {
     "long-document-segmented-writing": "1.0.0",
-    "skill-evaluator": "2.0.0",
+    "skill-evaluator": "3.0.0",
     "software-quality-workflows": "9.0.0",
     "writing-plans": "8.0.0",
 }
@@ -210,7 +210,7 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     skills = manifest.get("skills")
     if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != set(EXPECTED_SKILLS):
         raise ValueError("manifest must declare exactly the four canonical skills")
-    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "5.0.0"):
+    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "6.0.0"):
         raise ValueError("manifest bundle schema/version is invalid")
     if {item.get("id"): item.get("version") for item in skills} != EXPECTED_SKILLS:
         raise ValueError("version mismatch: manifest skill versions do not match the four-skill release identity")
