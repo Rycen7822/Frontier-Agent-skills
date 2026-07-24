@@ -15,20 +15,20 @@ Record these inputs before execution:
 - cycle ID and timestamps;
 - accepted prior and candidate package hashes;
 - change reason and affected requirement IDs;
-- spec, public cases, holdout manifest/payload, fixtures, graders, model/harness, and environment hashes;
-- declared variants, repeats, gates, context authority, manual-review contract, and rollback target;
+- spec, public scenarios, holdout manifest/payload, fixtures, graders, model/harness, and environment hashes;
+- compiled plan/compiler, host manifest/probes, calibration/quality, declared treatments/modules, repeats, gates, context authority, manual-review contract, and rollback target;
 - protected case IDs and protected requirement IDs.
 
-Store a new cycle. Never overwrite prior evidence or compare metrics across changed contracts as though they were one experiment. When a material control changes, rerun the affected prior and candidate variants in the new frozen contract.
+Store a new cycle. Never overwrite prior evidence or compare metrics across changed contracts as though they were one experiment. When a material control changes, rerun the affected prior and candidate treatments in the new frozen contract.
 
 ## Comparable version matrix
 
-Use the same receipt-index v1 and receipt v3 contract as L1–L3. For each compared version, bind candidate revision/source/plugin identity plus package, catalog, treatment, fixture set, grader set/schedule, artifact, provenance, routing, usage, and context evidence.
+Use the same spec v5, execution plan v1, run-index row v2, and receipt v4 contract as L1–L3. For each compared version, bind candidate revision/source/plugin identity plus package, catalog, treatment, host, compiler, fixture, grader, calibration/quality, artifact, provenance, module/stage, routing, principal/handoff/action/state/fault, usage, context, and cleanup evidence.
 
 The comparison is evaluable only when:
 
 - version identities are immutable and distinct where the treatment changed;
-- declared cases, repeats, run order, authority, and environment are comparable;
+- declared scenarios, repeats, run order, authority, and environment are comparable;
 - receipt integrity and the required matrix are complete;
 - the case-level inferential denominator is explicit;
 - protected outcomes and required context gates are present;
@@ -51,7 +51,7 @@ Preserve one row per cycle:
 | Protected-outcome failures | Missing, invalid, or failed protected behavior |
 | Skill context and total cost | Attributed burden and end-to-end cost |
 | Safety and holdout status | Declared risk/generalization evidence only |
-| Usefulness/final-authority statuses | Analyzer signal and external decision eligibility |
+| Five status axes | Applicability, feasibility, evidence, usefulness, and external-decision eligibility |
 | Drift and rollback triggers | Required next evaluation action |
 
 Keep development, regression, and holdout results separate. Do not pool models, domains, or environments unless the frozen analysis contract explicitly defines that aggregation.
@@ -64,7 +64,7 @@ Count missing, duplicate, invalid, and failed protected keys as failures. A favo
 
 ## Context and package drift
 
-For every version, report package bytes, verified loaded component bytes, host-receipt tokens when available, measurement source, attribution coverage, p95 guardrail results, and end-to-end usage. Do not infer tokens from bytes or compare attributed context with paired-total-only data as though they were the same measure.
+For every version, report package bytes, verified loaded component bytes, captured tokens when present, attribution coverage, frozen context-gate results, and end-to-end usage. Do not infer tokens from bytes or compare attributed context with paired-total-only data as though they were the same measure.
 
 Re-audit package inventory, links, scripts, and security surfaces when their bytes change. A shorter package is not automatically a more useful Skill.
 
@@ -72,7 +72,7 @@ Re-audit package inventory, links, scripts, and security surfaces when their byt
 
 Open a new cycle when the Skill package, model/harness, relevant tool/API, fixture/grader, environment, neighboring catalog identity, authority policy, or exposed holdout state changes materially. The new cycle records which comparisons remain valid and which require rerun.
 
-Cross-model, cross-domain, and cross-environment evidence is required only when portability is part of the claim. Report each axis separately and retain a fixed reference executor where practical for attribution.
+Cross-model, cross-host, cross-domain, and cross-environment evidence is required only when portability is part of the claim. Report each host/module axis separately; one host's pass cannot compensate for another host's required failure. Retain a fixed reference executor where practical for attribution.
 
 ## Monitoring and rollback
 
@@ -82,7 +82,7 @@ After an external owner accepts a version, retain:
 - the prior rollback package and restoration procedure;
 - monitored failure classes and incident thresholds;
 - environment/dependency drift triggers;
-- the smallest sentinel case set that detects protected regressions;
+- the smallest sentinel scenario set that detects protected regressions;
 - the condition that requires quarantine, rollback, or a new full cycle.
 
 The evaluator reports these triggers and subsequent evidence. The external release authority owns deployment, promotion, rollback execution, and candidate creation.

@@ -1,0 +1,337 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/execution-plan-v1.schema.json",
+  "title": "Skill Evaluator execution plan v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "plan_id",
+    "plan_hash",
+    "evaluation_id",
+    "spec_hash",
+    "scenario_corpus_hash",
+    "host_manifest_hash",
+    "calibration_hash",
+    "suite_quality_hash",
+    "package_hashes",
+    "fixture_set_hash",
+    "grader_set_hash",
+    "compiler",
+    "subject_shape",
+    "module_decisions",
+    "treatments",
+    "catalog",
+    "execution_identity",
+    "ordering",
+    "expected_counts",
+    "dimension_coverage",
+    "entries",
+    "artifacts",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "plan_id": {"type": "string", "pattern": "^pl-[0-9a-f]{24}$"},
+    "plan_hash": {"$ref": "#/$defs/sha256"},
+    "evaluation_id": {"$ref": "#/$defs/safe_id"},
+    "spec_hash": {"$ref": "#/$defs/sha256"},
+    "scenario_corpus_hash": {"$ref": "#/$defs/sha256"},
+    "host_manifest_hash": {"$ref": "#/$defs/sha256"},
+    "calibration_hash": {"$ref": "#/$defs/nullable_sha256"},
+    "suite_quality_hash": {"$ref": "#/$defs/nullable_sha256"},
+    "package_hashes": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"$ref": "#/$defs/safe_id"},
+      "additionalProperties": {"$ref": "#/$defs/sha256"}
+    },
+    "fixture_set_hash": {"$ref": "#/$defs/sha256"},
+    "grader_set_hash": {"$ref": "#/$defs/sha256"},
+    "compiler": {"$ref": "#/$defs/compiler"},
+    "subject_shape": {"enum": ["single_skill", "skill_catalog", "ordered_pipeline", "handoff_graph"]},
+    "module_decisions": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {"$ref": "eval-spec-v5.schema.json#/$defs/module_decision"}
+    },
+    "treatments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "eval-spec-v5.schema.json#/$defs/treatment"}
+    },
+    "catalog": {
+      "type": "array",
+      "items": {"$ref": "host-manifest-v1.schema.json#/$defs/catalog_entry"}
+    },
+    "execution_identity": {"$ref": "#/$defs/execution_identity"},
+    "ordering": {"$ref": "#/$defs/ordering"},
+    "expected_counts": {"$ref": "#/$defs/expected_counts"},
+    "dimension_coverage": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/safe_id"},
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    },
+    "entries": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/entry"}
+    },
+    "artifacts": {"$ref": "#/$defs/artifacts"},
+    "authority": {"$ref": "#/$defs/authority"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "nullable_sha256": {
+      "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+    },
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "compiler": {
+      "type": "object",
+      "required": ["algorithm", "version", "source_hash", "python_executable", "python_version", "python_executable_hash"],
+      "properties": {
+        "algorithm": {"const": "skill-evaluator-plan"},
+        "version": {"const": 1},
+        "source_hash": {"$ref": "#/$defs/sha256"},
+        "python_executable": {"type": "string", "minLength": 1},
+        "python_version": {"type": "string", "minLength": 1},
+        "python_executable_hash": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "execution_identity": {
+      "type": "object",
+      "required": [
+        "repository_hash",
+        "subject_hash",
+        "host_hash",
+        "model_hash",
+        "harness_hash",
+        "prompt_hash",
+        "tool_surface_hash",
+        "policy_hash",
+        "runtime_hash",
+        "tokenizer_pricing_hash",
+        "clock_hash",
+        "as_of"
+      ],
+      "properties": {
+        "repository_hash": {"$ref": "#/$defs/sha256"},
+        "subject_hash": {"$ref": "#/$defs/sha256"},
+        "host_hash": {"$ref": "#/$defs/sha256"},
+        "model_hash": {"$ref": "#/$defs/sha256"},
+        "harness_hash": {"$ref": "#/$defs/sha256"},
+        "prompt_hash": {"$ref": "#/$defs/sha256"},
+        "tool_surface_hash": {"$ref": "#/$defs/sha256"},
+        "policy_hash": {"$ref": "#/$defs/sha256"},
+        "runtime_hash": {"$ref": "#/$defs/sha256"},
+        "tokenizer_pricing_hash": {"$ref": "#/$defs/sha256"},
+        "clock_hash": {"$ref": "#/$defs/sha256"},
+        "as_of": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"}
+      },
+      "additionalProperties": false
+    },
+    "ordering": {
+      "type": "object",
+      "required": ["algorithm", "version", "seed"],
+      "properties": {
+        "algorithm": {"const": "sha256-block-sort-treatment-rotation"},
+        "version": {"const": 1},
+        "seed": {"type": "integer"}
+      },
+      "additionalProperties": false
+    },
+    "expected_counts": {
+      "type": "object",
+      "required": ["total", "execute", "unsupported", "not_evaluable"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "execute": {"type": "integer", "minimum": 0},
+        "unsupported": {"type": "integer", "minimum": 0},
+        "not_evaluable": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "feasibility_evidence": {
+      "type": "object",
+      "required": ["required_capabilities", "probes", "derived_status"],
+      "properties": {
+        "required_capabilities": {
+          "type": "array",
+          "items": {"$ref": "host-manifest-v1.schema.json#/$defs/capability_name"}
+        },
+        "probes": {
+          "type": "array",
+          "items": {"$ref": "host-manifest-v1.schema.json#/$defs/probe"}
+        },
+        "derived_status": {"enum": ["feasible", "unsupported", "not_evaluable"]}
+      },
+      "additionalProperties": false
+    },
+    "attempt_policy": {
+      "type": "object",
+      "required": ["max_attempts", "retryable_apparatus_classes", "backoff_seconds"],
+      "properties": {
+        "max_attempts": {"type": "integer", "minimum": 1, "maximum": 9999},
+        "retryable_apparatus_classes": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "backoff_seconds": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "execute_case_payload": {
+      "type": "object",
+      "required": [
+        "case",
+        "treatment",
+        "repeat",
+        "workspace",
+        "fixture",
+        "catalog",
+        "execution_context",
+        "coordination",
+        "turns",
+        "fault_script",
+        "model_policy",
+        "tool_policy",
+        "network_policy",
+        "permission_policy",
+        "context_policy",
+        "observation_contracts",
+        "artifact_contract",
+        "capture_contract"
+      ],
+      "properties": {
+        "case": {"$ref": "scenario-v1.schema.json"},
+        "treatment": {"$ref": "eval-spec-v5.schema.json#/$defs/treatment"},
+        "repeat": {"type": "integer", "minimum": 1},
+        "workspace": {"$ref": "#/$defs/relative_path"},
+        "fixture": {"$ref": "scenario-v1.schema.json#/$defs/fixture"},
+        "catalog": {"type": "array", "items": {"$ref": "host-manifest-v1.schema.json#/$defs/catalog_entry"}},
+        "execution_context": {"$ref": "scenario-v1.schema.json#/$defs/execution_context"},
+        "coordination": {
+          "anyOf": [
+            {"$ref": "scenario-v1.schema.json#/$defs/coordination"},
+            {"type": "null"}
+          ]
+        },
+        "turns": {"type": "array", "items": {"$ref": "scenario-v1.schema.json#/$defs/turn"}},
+        "fault_script": {"type": "array", "items": {"$ref": "scenario-v1.schema.json#/$defs/fault"}},
+        "model_policy": {"$ref": "#/$defs/sha256"},
+        "tool_policy": {"$ref": "#/$defs/sha256"},
+        "network_policy": {"$ref": "#/$defs/sha256"},
+        "permission_policy": {"$ref": "#/$defs/sha256"},
+        "context_policy": {"$ref": "#/$defs/sha256"},
+        "observation_contracts": {"type": "array", "items": {"$ref": "scenario-v1.schema.json#/$defs/observation_contract"}},
+        "artifact_contract": {"type": "object"},
+        "capture_contract": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "model_grade_spec": {
+      "type": "object",
+      "required": ["grader_id", "blinded_projection", "prompt", "schema", "batch_hash", "schedule_hash"],
+      "properties": {
+        "grader_id": {"$ref": "#/$defs/safe_id"},
+        "blinded_projection": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "prompt": {"$ref": "eval-spec-v5.schema.json#/$defs/binding"},
+        "schema": {"$ref": "eval-spec-v5.schema.json#/$defs/binding"},
+        "batch_hash": {"$ref": "#/$defs/sha256"},
+        "schedule_hash": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "entry": {
+      "type": "object",
+      "required": [
+        "entry_id",
+        "entry_ordinal",
+        "disposition",
+        "feasibility",
+        "case_id",
+        "scenario_hash",
+        "treatment_id",
+        "treatment_hash",
+        "repeat",
+        "attempt_policy",
+        "execute_case_payload",
+        "model_grade_specs",
+        "fixture_hash",
+        "catalog_hash",
+        "fault_hash",
+        "grader_ids",
+        "check_ids",
+        "principal_slot_ids",
+        "handoff_ids",
+        "action_ids",
+        "observation_ids",
+        "timeout_seconds",
+        "reset_policy",
+        "cleanup_policy",
+        "required_authority",
+        "required_capabilities",
+        "artifact_relpath"
+      ],
+      "properties": {
+        "entry_id": {"type": "string", "pattern": "^pe-[0-9a-f]{24}$"},
+        "entry_ordinal": {"type": "integer", "minimum": 0},
+        "disposition": {"enum": ["execute", "unsupported", "not_evaluable"]},
+        "feasibility": {"$ref": "#/$defs/feasibility_evidence"},
+        "case_id": {"$ref": "#/$defs/safe_id"},
+        "scenario_hash": {"$ref": "#/$defs/sha256"},
+        "treatment_id": {"$ref": "#/$defs/safe_id"},
+        "treatment_hash": {"$ref": "#/$defs/sha256"},
+        "repeat": {"type": "integer", "minimum": 1},
+        "attempt_policy": {"$ref": "#/$defs/attempt_policy"},
+        "execute_case_payload": {"$ref": "#/$defs/execute_case_payload"},
+        "model_grade_specs": {"type": "array", "items": {"$ref": "#/$defs/model_grade_spec"}},
+        "fixture_hash": {"$ref": "#/$defs/sha256"},
+        "catalog_hash": {"$ref": "#/$defs/sha256"},
+        "fault_hash": {"$ref": "#/$defs/sha256"},
+        "grader_ids": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "check_ids": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "principal_slot_ids": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "handoff_ids": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "action_ids": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "observation_ids": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "timeout_seconds": {"type": "integer", "minimum": 1},
+        "reset_policy": {"type": "string", "minLength": 1},
+        "cleanup_policy": {"type": "string", "minLength": 1},
+        "required_authority": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "required_capabilities": {"type": "array", "items": {"$ref": "host-manifest-v1.schema.json#/$defs/capability_name"}},
+        "artifact_relpath": {"type": "string", "pattern": "^entries/pe-[0-9a-f]{24}$"}
+      },
+      "additionalProperties": false
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["root", "index_relpath", "retention", "immutable"],
+      "properties": {
+        "root": {"$ref": "#/$defs/relative_path"},
+        "index_relpath": {"$ref": "#/$defs/relative_path"},
+        "retention": {"type": "string", "minLength": 1},
+        "immutable": {"const": true}
+      },
+      "additionalProperties": false
+    },
+    "authority": {
+      "type": "object",
+      "required": ["runner_capabilities", "external_effects_allowed"],
+      "properties": {
+        "runner_capabilities": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "external_effects_allowed": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
+  }
+}
