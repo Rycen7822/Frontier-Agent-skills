@@ -34,7 +34,7 @@ Program with multiple milestones uses one table: Milestones in dependency order,
 
 Resume preflight resolves root anew; combine identity/freshness/dirty checks. Exclude the named plan deliverable itself (including untracked `PLAN.md`) and reject other dirt. Never compare against the original absolute root or require globally clean status.
 
-The next action names first edit/result/check, not inspection unless blocked. Each slice names one combined final proof command if expressible; split after failure or an independent long check. Name each source read, status/diff check, and acceptance command once.
+The next action names first edit/result/check, not inspection unless blocked. Each slice names one combined final proof command using the repository's test owner; it leaves no cache/state artifact by disabling it in-command or including exact cleanup. Split only after failure or an independent long check. Name each source read, status/diff check, and acceptance command once.
 
 Review the whole plan before writing. After file write, perform at most one combined non-content confirmation such as status/hash/`git diff --check`; do not reopen, print, or diff its contents.
 
