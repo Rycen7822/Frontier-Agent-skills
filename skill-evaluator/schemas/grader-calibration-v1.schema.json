@@ -1,0 +1,249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/grader-calibration-v1.schema.json",
+  "title": "Skill Evaluator grader calibration v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "calibration_id",
+    "calibration_hash",
+    "evaluation_id",
+    "grader",
+    "execution_identity",
+    "independence",
+    "dimensions",
+    "check_ids",
+    "labeled_examples",
+    "raw_ratings",
+    "examples",
+    "blinded_treatment_labels",
+    "ordering",
+    "adjudication_policy",
+    "metrics",
+    "scope",
+    "thresholds",
+    "created",
+    "expires",
+    "drift_triggers",
+    "reviewers"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "calibration_id": {"$ref": "#/$defs/safe_id"},
+    "calibration_hash": {"$ref": "#/$defs/sha256"},
+    "evaluation_id": {"$ref": "#/$defs/safe_id"},
+    "grader": {"$ref": "#/$defs/grader_identity"},
+    "execution_identity": {"$ref": "#/$defs/execution_identity"},
+    "independence": {"$ref": "#/$defs/independence"},
+    "dimensions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/safe_id"}
+    },
+    "check_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/safe_id"}
+    },
+    "labeled_examples": {"$ref": "#/$defs/artifact_binding"},
+    "raw_ratings": {"$ref": "#/$defs/artifact_binding"},
+    "examples": {
+      "type": "array",
+      "minItems": 4,
+      "items": {"$ref": "#/$defs/example"}
+    },
+    "blinded_treatment_labels": {"type": "boolean"},
+    "ordering": {"$ref": "#/$defs/ordering"},
+    "adjudication_policy": {"type": "string", "minLength": 1},
+    "metrics": {"$ref": "#/$defs/metrics"},
+    "scope": {"$ref": "#/$defs/scope"},
+    "thresholds": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"$ref": "#/$defs/safe_id"},
+      "additionalProperties": {"type": "number"}
+    },
+    "created": {"$ref": "#/$defs/rfc3339_seconds"},
+    "expires": {"$ref": "#/$defs/rfc3339_seconds"},
+    "drift_triggers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/drift_trigger"}
+    },
+    "reviewers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/reviewer"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "rfc3339_seconds": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+    },
+    "artifact_binding": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relative_path"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "grader_identity": {
+      "type": "object",
+      "required": ["grader_id", "model", "model_revision", "prompt_id", "prompt_hash", "schema_id", "schema_hash"],
+      "properties": {
+        "grader_id": {"$ref": "#/$defs/safe_id"},
+        "model": {"type": "string", "minLength": 1},
+        "model_revision": {"type": "string", "minLength": 1},
+        "prompt_id": {"$ref": "#/$defs/safe_id"},
+        "prompt_hash": {"$ref": "#/$defs/sha256"},
+        "schema_id": {"$ref": "#/$defs/safe_id"},
+        "schema_hash": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "execution_identity": {
+      "type": "object",
+      "required": ["host_hash", "harness_hash", "model_genealogy", "context_exposure", "evidence_source_hashes"],
+      "properties": {
+        "host_hash": {"$ref": "#/$defs/sha256"},
+        "harness_hash": {"$ref": "#/$defs/sha256"},
+        "model_genealogy": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "context_exposure": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "evidence_source_hashes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/sha256"}}
+      },
+      "additionalProperties": false
+    },
+    "independence": {
+      "type": "object",
+      "required": ["status", "principal_separation", "context_separation", "rationale_exposure", "genealogy_separation", "evidence_source_separation", "blinding_verified"],
+      "properties": {
+        "status": {"enum": ["independent", "dependent", "unknown"]},
+        "principal_separation": {"enum": ["pass", "fail", "unknown"]},
+        "context_separation": {"enum": ["pass", "fail", "unknown"]},
+        "rationale_exposure": {"enum": ["absent", "present", "unknown"]},
+        "genealogy_separation": {"enum": ["pass", "fail", "unknown"]},
+        "evidence_source_separation": {"enum": ["pass", "fail", "unknown"]},
+        "blinding_verified": {"enum": ["pass", "fail", "unknown"]}
+      },
+      "additionalProperties": false
+    },
+    "example": {
+      "type": "object",
+      "required": ["example_id", "class", "payload_hash", "source_support", "gold_label"],
+      "properties": {
+        "example_id": {"$ref": "#/$defs/safe_id"},
+        "class": {"enum": ["known_good", "known_bad", "boundary", "abstain"]},
+        "payload_hash": {"$ref": "#/$defs/sha256"},
+        "source_support": {
+          "enum": [
+            "supported",
+            "unsupported",
+            "unattributed",
+            "stale",
+            "not_applicable"
+          ]
+        },
+        "gold_label": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "ordering": {
+      "type": "object",
+      "required": ["method", "seed", "schedule_hash"],
+      "properties": {
+        "method": {"enum": ["randomized", "counterbalanced"]},
+        "seed": {"type": "integer"},
+        "schedule_hash": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "metric_cell": {
+      "type": "object",
+      "required": ["dimension", "confusion", "agreement", "abstention_rate", "severity_error", "position_delta", "sample_count"],
+      "properties": {
+        "dimension": {"$ref": "#/$defs/safe_id"},
+        "confusion": {
+          "type": "object",
+          "required": ["true_positive", "true_negative", "false_positive", "false_negative"],
+          "properties": {
+            "true_positive": {"type": "integer", "minimum": 0},
+            "true_negative": {"type": "integer", "minimum": 0},
+            "false_positive": {"type": "integer", "minimum": 0},
+            "false_negative": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": false
+        },
+        "agreement": {"type": "number", "minimum": 0, "maximum": 1},
+        "abstention_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "severity_error": {"type": "number", "minimum": 0},
+        "position_delta": {"type": "number"},
+        "sample_count": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "metrics": {
+      "type": "object",
+      "required": ["judge_to_gold", "human_to_human", "judge_to_human"],
+      "properties": {
+        "judge_to_gold": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/metric_cell"}},
+        "human_to_human": {"anyOf": [{"type": "array", "items": {"$ref": "#/$defs/metric_cell"}}, {"type": "null"}]},
+        "judge_to_human": {"type": "array", "items": {"$ref": "#/$defs/metric_cell"}}
+      },
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "object",
+      "required": ["tasks", "languages", "risks", "hosts", "models"],
+      "properties": {
+        "tasks": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "languages": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "risks": {"type": "array", "minItems": 1, "items": {"enum": ["low", "standard", "high"]}},
+        "hosts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/safe_id"}},
+        "models": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+      },
+      "additionalProperties": false
+    },
+    "drift_trigger": {
+      "type": "object",
+      "required": ["field", "expected", "observed", "status"],
+      "properties": {
+        "field": {"$ref": "#/$defs/safe_id"},
+        "expected": {"type": ["string", "number", "boolean"]},
+        "observed": {"type": ["string", "number", "boolean"]},
+        "status": {"enum": ["unchanged", "changed", "unknown"]}
+      },
+      "additionalProperties": false
+    },
+    "reviewer": {
+      "type": "object",
+      "required": ["reviewer_id", "role", "authority", "principal_id", "blinded"],
+      "properties": {
+        "reviewer_id": {"$ref": "#/$defs/safe_id"},
+        "role": {"type": "string", "minLength": 1},
+        "authority": {"type": "string", "minLength": 1},
+        "principal_id": {"$ref": "#/$defs/safe_id"},
+        "blinded": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

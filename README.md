@@ -1,10 +1,10 @@
 # Frontier Agent Skills
 
-This repository is the development source of truth for the dual-host `frontier-engineering/5.0.0` bundle. It contains exactly four skills: `long-document-segmented-writing` 1.0.0, `skill-evaluator` 2.0.0, `software-quality-workflows` 9.0.0, and `writing-plans` 8.0.0. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository never mutates an active installation.
+This repository is the development source of truth for the dual-host `frontier-engineering/6.0.0` bundle. It contains exactly four skills: `long-document-segmented-writing` 1.0.0, `skill-evaluator` 3.0.0, `software-quality-workflows` 9.0.0, and `writing-plans` 8.0.0. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository never mutates an active installation.
 
 ## Release identity
 
-The indivisible release unit is bundle version 5.0.0 at schema epoch 4. The generated identity binds the four exact versions, root hashes, and mixed activation matrix:
+The indivisible release unit is bundle version 6.0.0 at schema epoch 5. The generated identity binds the four exact versions, root hashes, and mixed activation matrix:
 
 ```json
 {
@@ -59,21 +59,21 @@ Use absent outputs under a task-owned evidence root. The builder is no-overwrite
 scripts/build_source_archive.py \
   --source-root . \
   --layout bundle \
-  --output <evidence-root>/frontier-engineering-bundle-5.0.0.zip \
-  --evidence-output <evidence-root>/frontier-engineering-bundle-5.0.0.evidence.json
+  --output <evidence-root>/frontier-engineering-bundle-6.0.0.zip \
+  --evidence-output <evidence-root>/frontier-engineering-bundle-6.0.0.evidence.json
 
 scripts/build_source_archive.py \
   --source-root . \
   --layout skills_only \
-  --output <evidence-root>/frontier-engineering-skills-5.0.0.zip \
-  --evidence-output <evidence-root>/frontier-engineering-skills-5.0.0.evidence.json
+  --output <evidence-root>/frontier-engineering-skills-6.0.0.zip \
+  --evidence-output <evidence-root>/frontier-engineering-skills-6.0.0.evidence.json
 ```
 
 The bundle layout uses root `frontier-engineering-bundle`. The skills-only layout contains exactly the four canonical skill roots.
 
 ## Isolated plugin staging
 
-The plugin identity is `frontier-engineering-plugin` version 5.0.0 with display name `Frontier Engineering`. Build only into an absent task-owned marketplace destination:
+The plugin identity is `frontier-engineering-plugin` version 6.0.0 with display name `Frontier Engineering`. Build only into an absent task-owned marketplace destination:
 
 ```bash
 scripts/build_codex_plugin.py \
@@ -91,7 +91,7 @@ The builder uses `<evidence-root>/plugin-build-staging` and atomically renames a
 
 The isolated CLI smoke requires a task-owned marketplace created by the installed `plugin-creator`, with source `./plugins/frontier-engineering-plugin`, installation policy `AVAILABLE`, authentication policy `ON_INSTALL`, and category `Developer Tools`. The smoke rehomes all Codex configuration under its work root, strips credential-bearing environment variables, validates staged and installed bytes, removes the plugin and marketplace from the isolated configuration, and never invokes a model.
 
-Release-mode output requires external `release-evidence/3.0` bound to a clean signed source revision, the tracked static diagnostic, both scored L2 reports and their aggregate, the longitudinal report, an unblocked activation decision, one candidate source identity, and the staged plugin tree hash. The builder recomputes every content and self-hash; no case, fixture, receipt, longitudinal run, or activation decision is stored in the candidate repository.
+Release-mode output requires external `release-evidence/4.0` bound to a clean signed source revision, the tracked static diagnostic, both scored L2 reports and their aggregate, the longitudinal report, an unblocked activation decision, one candidate source identity, and the staged plugin tree hash. The builder recomputes every content and self-hash; no case, fixture, receipt, longitudinal run, or activation decision is stored in the candidate repository.
 
 ## Same-thread Codex skill reload supervisor
 
@@ -137,6 +137,12 @@ Any CLI version drift, schema drift, thread/cwd mismatch, permission mismatch, p
 
 `evaluation/static-contract-diagnostic.json` proves only the checked source/package contract: exact paths, links, versions, activation, entry budgets, profile hashes, package size, and absence of retired runtime owners. It does not replay routing and cannot prove model behavior, usefulness, token efficiency, longitudinal test retention, release authority, or deployment readiness.
 
-Scored L2 specifications, cases, fixtures, graders, run records, receipts, aggregate reports, longitudinal L4 artifacts, and activation decisions remain in a revision-bound external run root. Release evidence binds their hashes without copying them into the candidate. A smaller static package is not evidence of model usefulness or lower host tokens. See [evaluation/README.md](evaluation/README.md).
+Scored L2 specs, scenarios, fixtures, graders, execution plans, index rows, receipts, analysis summaries/failure indexes, longitudinal L4 artifacts, and activation decisions remain in a revision-bound external run root. Release evidence binds their hashes without copying them into the candidate. A smaller static package is not evidence of model usefulness or lower host tokens. See [evaluation/README.md](evaluation/README.md).
+
+The [Skill Evaluator entrypoint](skill-evaluator/SKILL.md) owns the exact prepare → compile → run → analyze CLI and its L0–L4 claim ceilings. Public L1/L2 templates are valid non-ready contracts; only a separately prepared `execution.ready=true` contract may be compiled and executed.
+
+Repository `source-complete` means the declared Quick and Extended profiles, generated bundle/static checks, package audit, source-archive reproducibility, and clean-diff gates all pass for one exact source identity. It does not mean scored usefulness, activation, signed release, installation, publication, deployment, credentials, or remote writes are authorized. Those remain separate external gates.
+
+For the Skill Evaluator 3.0 upgrade, source rollback restores bundle 5.0.0 / Skill Evaluator 2.0.0 semantics at commit `d3824cfeb05ea8e37ec2c9013570b8405530bc89` through an ordinary revert or the frozen source archive; do not use a destructive worktree reset. Installed rollback uses only a verified bundle-5 staged plugin/archive through the isolated remove/install path and never implies publish or deploy authority.
 
 Version 4 workflow/card/plan state is not read, migrated, aliased, or dual-written. Finish an active 4.x task under 4.x, or terminate it explicitly and restart from current repository truth.

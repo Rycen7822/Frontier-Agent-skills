@@ -1,23 +1,220 @@
 {
-  "schema_version": 4,
-  "evaluation_id": "package-audit-v1",
-  "decision": "audit the package without making runtime claims",
-  "claim_scope": "static package structure, provenance, links, and review findings",
+  "schema_version": 5,
+  "evaluation_id": "public-l0-template",
   "level": "L0",
   "risk_tier": "standard",
-  "target": {
-    "name": "example-skill",
-    "candidate_path": "./path-to-example-skill"
+  "decision": {
+    "kind": "compare",
+    "owner": "evaluation-owner",
+    "question": "Does the candidate improve the fixture task?",
+    "maximum_claim": "scoped incremental usefulness",
+    "external_authority_boundary": [
+      "release"
+    ]
+  },
+  "subject": {
+    "skill_id": "skill-evaluator",
+    "name": "Skill Evaluator",
+    "version": "3.0.0",
+    "shape": "single_skill",
+    "mechanisms": [
+      "procedure_workflow",
+      "script_cli"
+    ],
+    "principal_mode": "single",
+    "claimed_hosts": [
+      "synthetic-host"
+    ],
+    "package": {
+      "path": "replace-with-skill-package",
+      "package_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "repository_revision": "0000000000000000000000000000000000000000",
+      "repository_tree": "0000000000000000000000000000000000000000",
+      "dirty_state": "clean"
+    },
+    "claims": [
+      "scoped-evaluation"
+    ]
+  },
+  "applicability": [
+    {
+      "module": "core_outcome",
+      "status": "not_applicable",
+      "reason": "Static template does not execute runtime modules.",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l0.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "natural_routing",
+      "status": "not_applicable",
+      "reason": "Static template does not execute runtime modules.",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l0.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "catalog_routing",
+      "status": "not_applicable",
+      "reason": "Static template does not execute runtime modules.",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l0.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "declared_composition",
+      "status": "not_applicable",
+      "reason": "Static template does not execute runtime modules.",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l0.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "multi_principal_coordination",
+      "status": "not_applicable",
+      "reason": "Static template does not execute runtime modules.",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l0.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "multi_turn_state",
+      "status": "not_applicable",
+      "reason": "Static template does not execute runtime modules.",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l0.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "tool_faults",
+      "status": "not_applicable",
+      "reason": "Static template does not execute runtime modules.",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l0.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "host_conformance",
+      "status": "not_applicable",
+      "reason": "Static template does not execute runtime modules.",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l0.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "dynamic_security",
+      "status": "not_applicable",
+      "reason": "Static template does not execute runtime modules.",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l0.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    },
+    {
+      "module": "longitudinal",
+      "status": "not_applicable",
+      "reason": "Static template does not execute runtime modules.",
+      "evidence": [
+        {
+          "kind": "text_lines",
+          "artifact": "eval-spec.l0.example.json",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "approved_by": "evaluation-owner"
+    }
+  ],
+  "execution": {
+    "mode": "static",
+    "ready": false,
+    "timeout_seconds": 30,
+    "reset_policy": "fresh-workspace",
+    "retry_policy": {
+      "max_attempts": 1,
+      "retryable_apparatus_classes": [],
+      "backoff_seconds": 0
+    },
+    "order_policy": "counterbalanced",
+    "network_policy": "disabled",
+    "credential_policy": "none",
+    "max_parallel": 1
   },
   "authority": {
-    "allow_file_writes": false,
-    "allow_network_read": false,
-    "allow_process_execution": false
+    "runner_capabilities": [
+      "local_execution"
+    ],
+    "manual_review": {
+      "required": false,
+      "role": "evaluation-owner",
+      "decision_contract_hash": null
+    },
+    "install": false,
+    "publish": false,
+    "deploy": false,
+    "release": false,
+    "external_writes": false
   },
   "artifacts": {
-    "root": "artifacts/package-audit-v1",
-    "retain_raw_traces": false,
-    "redact_secrets": true,
-    "manifest_required": true
+    "root": "artifacts",
+    "index_relpath": "index.jsonl",
+    "retention": "retain-fixture",
+    "redaction": "no-secrets",
+    "manifest_required": true,
+    "cleanup_required": true,
+    "failure_index_budget": 100
   }
 }

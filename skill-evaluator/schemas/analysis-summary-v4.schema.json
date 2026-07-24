@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/analysis-summary-v4.schema.json",
+  "title": "Skill Evaluator analysis summary v4",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "summary_hash",
+    "evaluation_id",
+    "plan_id",
+    "plan_hash",
+    "spec_hash",
+    "scenario_corpus_hash",
+    "host_manifest_hash",
+    "analysis_ready",
+    "subject",
+    "modules",
+    "treatments",
+    "applicability_status",
+    "feasibility_status",
+    "evidence_status",
+    "usefulness_status",
+    "final_authority_status",
+    "counts",
+    "primary_benefit",
+    "paired_metrics",
+    "module_summaries",
+    "stage_summaries",
+    "coordination_summary",
+    "action_summary",
+    "independence_summary",
+    "critique_summary",
+    "grounding_summary",
+    "context_cost",
+    "suite_quality_status",
+    "calibration_status",
+    "manual_authority",
+    "blocking_observations",
+    "output_manifest",
+    "trust_boundaries",
+    "representative_failure_ids"
+  ],
+  "properties": {
+    "schema_version": {"const": 4},
+    "summary_hash": {"$ref": "#/$defs/sha256"},
+    "evaluation_id": {"$ref": "#/$defs/safe_id"},
+    "plan_id": {"$ref": "#/$defs/safe_id"},
+    "plan_hash": {"$ref": "#/$defs/sha256"},
+    "spec_hash": {"$ref": "#/$defs/sha256"},
+    "scenario_corpus_hash": {"$ref": "#/$defs/sha256"},
+    "host_manifest_hash": {"$ref": "#/$defs/sha256"},
+    "analysis_ready": {"type": "boolean"},
+    "subject": {
+      "type": "object",
+      "required": ["skill_id", "version", "shape", "package_hash"],
+      "properties": {
+        "skill_id": {"$ref": "#/$defs/safe_id"},
+        "version": {"type": "string", "minLength": 1},
+        "shape": {"enum": ["single_skill", "skill_catalog", "ordered_pipeline", "handoff_graph"]},
+        "package_hash": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "modules": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {"$ref": "eval-spec-v5.schema.json#/$defs/module_decision"}
+    },
+    "treatments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "eval-spec-v5.schema.json#/$defs/treatment"}
+    },
+    "applicability_status": {"enum": ["applicable", "not_applicable", "not_evaluable"]},
+    "feasibility_status": {"enum": ["feasible", "unsupported", "not_evaluable"]},
+    "evidence_status": {"enum": ["complete", "incomplete", "invalid"]},
+    "usefulness_status": {"enum": ["supported", "not_supported", "inconclusive_ceiling", "not_evaluable", "not_applicable"]},
+    "final_authority_status": {"enum": ["eligible", "blocked"]},
+    "counts": {"$ref": "#/$defs/counts"},
+    "primary_benefit": {
+      "anyOf": [{"$ref": "#/$defs/metric_summary"}, {"type": "null"}]
+    },
+    "paired_metrics": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/safe_id"},
+      "additionalProperties": {"$ref": "#/$defs/metric_summary"}
+    },
+    "module_summaries": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/module_summary"}
+    },
+    "stage_summaries": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/stage_summary"}
+    },
+    "coordination_summary": {"$ref": "#/$defs/nullable_summary"},
+    "action_summary": {"$ref": "#/$defs/nullable_summary"},
+    "independence_summary": {"$ref": "#/$defs/nullable_summary"},
+    "critique_summary": {"$ref": "#/$defs/nullable_summary"},
+    "grounding_summary": {"$ref": "#/$defs/nullable_summary"},
+    "context_cost": {"$ref": "#/$defs/context_cost"},
+    "suite_quality_status": {"enum": ["pass", "fail", "not_evaluable", "not_applicable"]},
+    "calibration_status": {"enum": ["pass", "fail", "expired", "not_evaluable", "not_applicable"]},
+    "manual_authority": {"$ref": "#/$defs/manual_authority"},
+    "blocking_observations": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "output_manifest": {"$ref": "#/$defs/output_manifest"},
+    "trust_boundaries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/trust_boundary"}
+    },
+    "representative_failure_ids": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^sf-[0-9a-f]{24}$"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "counts": {
+      "type": "object",
+      "required": ["plan_entries", "execute_entries", "unsupported_entries", "not_evaluable_entries", "attempts", "valid_terminal_attempts", "invalid_attempts", "missing_entries"],
+      "properties": {
+        "plan_entries": {"type": "integer", "minimum": 0},
+        "execute_entries": {"type": "integer", "minimum": 0},
+        "unsupported_entries": {"type": "integer", "minimum": 0},
+        "not_evaluable_entries": {"type": "integer", "minimum": 0},
+        "attempts": {"type": "integer", "minimum": 0},
+        "valid_terminal_attempts": {"type": "integer", "minimum": 0},
+        "invalid_attempts": {"type": "integer", "minimum": 0},
+        "missing_entries": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "metric_summary": {
+      "type": "object",
+      "required": ["metric_id", "status", "direction", "effect", "point", "lower", "upper", "case_count", "excluded_pairs", "case_differences"],
+      "properties": {
+        "metric_id": {"$ref": "#/$defs/safe_id"},
+        "status": {"enum": ["pass", "fail", "not_evaluable", "inconclusive_ceiling"]},
+        "direction": {"enum": ["higher_is_better", "lower_is_better"]},
+        "effect": {"enum": ["absolute", "relative"]},
+        "point": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+        "lower": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+        "upper": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+        "case_count": {"type": "integer", "minimum": 0},
+        "excluded_pairs": {"type": "integer", "minimum": 0},
+        "case_differences": {
+          "type": "object",
+          "propertyNames": {"$ref": "#/$defs/safe_id"},
+          "additionalProperties": {"type": "number"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "module_summary": {
+      "type": "object",
+      "required": ["module", "eligible", "planned", "present", "valid", "invalid", "missing", "pass_rate", "lower", "upper", "repeat_consistency", "worst_slice", "failure_mechanisms", "hard_requirement_ids", "status"],
+      "properties": {
+        "module": {"$ref": "eval-spec-v5.schema.json#/$defs/module_name"},
+        "eligible": {"type": "integer", "minimum": 0},
+        "planned": {"type": "integer", "minimum": 0},
+        "present": {"type": "integer", "minimum": 0},
+        "valid": {"type": "integer", "minimum": 0},
+        "invalid": {"type": "integer", "minimum": 0},
+        "missing": {"type": "integer", "minimum": 0},
+        "pass_rate": {"anyOf": [{"type": "number", "minimum": 0, "maximum": 1}, {"type": "null"}]},
+        "lower": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+        "upper": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+        "repeat_consistency": {"anyOf": [{"type": "number", "minimum": 0, "maximum": 1}, {"type": "null"}]},
+        "worst_slice": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
+        "failure_mechanisms": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "hard_requirement_ids": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "status": {"enum": ["pass", "fail", "not_evaluable", "not_applicable"]}
+      },
+      "additionalProperties": false
+    },
+    "stage_summary": {
+      "type": "object",
+      "required": ["surface", "stage", "eligible", "reached", "passed", "status", "reason_key"],
+      "properties": {
+        "surface": {"enum": ["skill_tool_access", "action_effect", "plan", "review", "safety", "grounding"]},
+        "stage": {"$ref": "#/$defs/safe_id"},
+        "eligible": {"type": "integer", "minimum": 0},
+        "reached": {"type": "integer", "minimum": 0},
+        "passed": {"type": "integer", "minimum": 0},
+        "status": {"enum": ["pass", "fail", "not_reached_due_to_prior_treatment_failure", "not_reached_due_to_apparatus", "unsupported", "not_evaluable", "not_applicable"]},
+        "reason_key": {"$ref": "#/$defs/safe_id"}
+      },
+      "additionalProperties": false
+    },
+    "nullable_summary": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["status", "metrics", "reason"],
+          "properties": {
+            "status": {"enum": ["pass", "fail", "not_evaluable", "not_applicable"]},
+            "metrics": {
+              "type": "object",
+              "propertyNames": {"$ref": "#/$defs/safe_id"},
+              "additionalProperties": {"type": ["number", "integer", "string", "boolean", "null"]}
+            },
+            "reason": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        },
+        {"type": "null"}
+      ]
+    },
+    "context_cost": {
+      "type": "object",
+      "required": ["attribution_coverage", "skill_context_bytes", "controlled_skill_context_bytes", "controlled_core_skill_context_bytes", "tokens", "latency_ms", "calls", "retries", "workflow_artifacts", "failure_recovery_overhead", "cache"],
+      "properties": {
+        "attribution_coverage": {"type": "number", "minimum": 0, "maximum": 1},
+        "skill_context_bytes": {"$ref": "#/$defs/metric_summary"},
+        "controlled_skill_context_bytes": {"$ref": "#/$defs/metric_summary"},
+        "controlled_core_skill_context_bytes": {"$ref": "#/$defs/metric_summary"},
+        "tokens": {"$ref": "#/$defs/nullable_summary"},
+        "latency_ms": {"$ref": "#/$defs/nullable_summary"},
+        "calls": {"$ref": "#/$defs/nullable_summary"},
+        "retries": {"$ref": "#/$defs/nullable_summary"},
+        "workflow_artifacts": {"$ref": "#/$defs/nullable_summary"},
+        "failure_recovery_overhead": {"$ref": "#/$defs/nullable_summary"},
+        "cache": {"$ref": "#/$defs/nullable_summary"}
+      },
+      "additionalProperties": false
+    },
+    "manual_authority": {
+      "type": "object",
+      "required": ["required", "status", "decision", "receipt_hash"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "status": {"enum": ["complete", "missing", "invalid", "not_applicable"]},
+        "decision": {"anyOf": [{"enum": ["approve", "hold", "reject"]}, {"type": "null"}]},
+        "receipt_hash": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]}
+      },
+      "additionalProperties": false
+    },
+    "output_view": {
+      "type": "object",
+      "required": ["path", "sha256", "schema_or_view_version", "item_count", "shown_count", "omitted_count", "truncated", "family_counts", "severity_counts"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relative_path"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "schema_or_view_version": {"type": "string", "minLength": 1},
+        "item_count": {"type": "integer", "minimum": 0},
+        "shown_count": {"type": "integer", "minimum": 0},
+        "omitted_count": {"type": "integer", "minimum": 0},
+        "truncated": {"type": "boolean"},
+        "family_counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "severity_counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}
+      },
+      "additionalProperties": false
+    },
+    "output_manifest": {
+      "type": "object",
+      "required": ["details", "failure_index", "markdown"],
+      "properties": {
+        "details": {"anyOf": [{"$ref": "#/$defs/output_view"}, {"type": "null"}]},
+        "failure_index": {"$ref": "#/$defs/output_view"},
+        "markdown": {"anyOf": [{"$ref": "#/$defs/output_view"}, {"type": "null"}]}
+      },
+      "additionalProperties": false
+    },
+    "trust_boundary": {
+      "type": "object",
+      "required": ["surface", "status", "reason"],
+      "properties": {
+        "surface": {"type": "string", "minLength": 1},
+        "status": {"enum": ["locally_verified", "external_attestation", "not_verified"]},
+        "reason": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  }
+}

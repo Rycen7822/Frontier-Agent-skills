@@ -1,29 +1,22 @@
 {
   "schema_version": 1,
-  "payload_file": "holdout-cases.example.jsonl",
-  "payload_sha256": "sha256:6a8a3790a4f0c58bdb1b9d6914047a5e2db7f852c27169cc959e4b4f62b37223",
-  "case_count": 2,
-  "cases": [
+  "payload_file": "holdout-scenarios.example.jsonl",
+  "payload_sha256": "sha256:a3de0889d9bd5b0fd8c93aff0a479963363805439cdd76c6d2fa11f14959af5b",
+  "scenario_count": 1,
+  "scenarios": [
     {
-      "case_id": "heldout-paraphrase-01",
+      "case_id": "case-heldout",
+      "scenario_sha256": "sha256:9f81397b541fd3c5518c0798fef3c4372217fd4bab456b5f3927d095cbd7dd24",
+      "risk": "standard",
       "tags": [
-        "routing-implicit",
-        "utility",
-        "paraphrase"
-      ],
-      "case_sha256": "sha256:7bb8e16ad17522b72a6805a5eaa0c9205ccc0ffaa364117f19e2dd63a78f2f45"
-    },
-    {
-      "case_id": "heldout-adjacent-01",
-      "tags": [
-        "routing-negative",
-        "adjacent-intent"
-      ],
-      "case_sha256": "sha256:e61e30b8b62dd936f310b87ca17ddcd0ee55e64e85c8ca17dd975ab45324f5b8"
+        "core",
+        "positive"
+      ]
     }
   ],
-  "case_ids": [
-    "heldout-paraphrase-01",
-    "heldout-adjacent-01"
-  ]
+  "scenario_ids": [
+    "case-heldout"
+  ],
+  "custodian": "independent-evaluation-owner",
+  "exposure_status": "sealed"
 }

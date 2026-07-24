@@ -1,0 +1,430 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/scenario-v1.schema.json",
+  "title": "Skill Evaluator scenario v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "case_id",
+    "split",
+    "tags",
+    "risk",
+    "applicable_treatment_profiles",
+    "fixture",
+    "catalog_overlay",
+    "execution_context",
+    "turns",
+    "state_model",
+    "fault_script",
+    "requirements",
+    "timeout_seconds",
+    "attribution_evaluable"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "case_id": {"$ref": "#/$defs/safe_id"},
+    "split": {"enum": ["dev", "regression", "heldout"]},
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/safe_id"}
+    },
+    "risk": {"enum": ["low", "standard", "high"]},
+    "applicable_treatment_profiles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/treatment_profile"}
+    },
+    "fixture": {"$ref": "#/$defs/fixture"},
+    "catalog_overlay": {"$ref": "#/$defs/catalog_overlay"},
+    "routing_contract": {"$ref": "#/$defs/routing_contract"},
+    "execution_context": {"$ref": "#/$defs/execution_context"},
+    "coordination": {"$ref": "#/$defs/coordination"},
+    "turns": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/turn"}
+    },
+    "state_model": {"$ref": "#/$defs/state_model"},
+    "fault_script": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/fault"}
+    },
+    "requirements": {
+      "type": "array",
+      "minItems": 2,
+      "items": {"$ref": "#/$defs/requirement"}
+    },
+    "observation_contracts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/observation_contract"}
+    },
+    "timeout_seconds": {"type": "integer", "minimum": 1},
+    "attribution_evaluable": {"type": "boolean"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "rfc3339_seconds": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+    },
+    "treatment_profile": {
+      "enum": [
+        "baseline/skill_disabled",
+        "candidate/natural_routing",
+        "candidate/force_loaded",
+        "prior/natural_routing",
+        "prior/force_loaded",
+        "comparator/raw_instructions",
+        "comparator/alternative_intervention",
+        "comparator/raw_model_upgrade"
+      ]
+    },
+    "artifact_binding": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relative_path"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "fixture": {
+      "type": "object",
+      "required": ["manifest", "sha256", "initial_files", "initial_state", "fake_services"],
+      "properties": {
+        "manifest": {"$ref": "#/$defs/relative_path"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "initial_files": {"type": "array", "items": {"$ref": "#/$defs/artifact_binding"}},
+        "initial_state": {"type": "array", "items": {"$ref": "#/$defs/artifact_binding"}},
+        "fake_services": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}}
+      },
+      "additionalProperties": false
+    },
+    "catalog_overlay": {
+      "type": "object",
+      "required": ["add", "remove", "order"],
+      "properties": {
+        "add": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "remove": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "order": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}}
+      },
+      "additionalProperties": false
+    },
+    "routing_contract": {
+      "type": "object",
+      "required": [
+        "target_skill_id",
+        "composition_mode",
+        "participants",
+        "required_evidence",
+        "expectations"
+      ],
+      "properties": {
+        "target_skill_id": {"$ref": "#/$defs/safe_id"},
+        "composition_mode": {
+          "enum": ["none", "unordered_pair", "ordered_sequence"]
+        },
+        "participants": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/safe_id"}
+        },
+        "required_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "discovery",
+              "selection",
+              "load",
+              "application",
+              "order",
+              "composition",
+              "outcome"
+            ]
+          }
+        },
+        "expectations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/routing_expectation"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "routing_expectation": {
+      "type": "object",
+      "required": [
+        "treatment_profile",
+        "turn_id",
+        "declared",
+        "discovered",
+        "loaded",
+        "model_visible",
+        "selected",
+        "invoked",
+        "applied",
+        "order",
+        "composition"
+      ],
+      "properties": {
+        "treatment_profile": {"$ref": "#/$defs/treatment_profile"},
+        "turn_id": {"$ref": "#/$defs/safe_id"},
+        "declared": {"$ref": "#/$defs/routing_ids"},
+        "discovered": {"$ref": "#/$defs/routing_ids"},
+        "loaded": {"$ref": "#/$defs/routing_ids"},
+        "model_visible": {"$ref": "#/$defs/routing_ids"},
+        "selected": {"$ref": "#/$defs/routing_ids"},
+        "invoked": {"$ref": "#/$defs/routing_ids"},
+        "applied": {"$ref": "#/$defs/routing_ids"},
+        "order": {"$ref": "#/$defs/routing_ids"},
+        "composition": {"$ref": "#/$defs/routing_ids"}
+      },
+      "additionalProperties": false
+    },
+    "routing_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/safe_id"}
+    },
+    "execution_context": {
+      "type": "object",
+      "required": [
+        "task",
+        "domain",
+        "language",
+        "prompt_variant_group_id",
+        "context_sources",
+        "expected_principal_slots",
+        "expected_tools",
+        "expected_policy_surfaces"
+      ],
+      "properties": {
+        "task": {"type": "string", "minLength": 1},
+        "domain": {"type": "string", "minLength": 1},
+        "language": {"type": "string", "minLength": 1},
+        "prompt_variant_group_id": {"$ref": "#/$defs/safe_id"},
+        "context_sources": {"type": "array", "items": {"$ref": "#/$defs/artifact_binding"}},
+        "expected_principal_slots": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "expected_tools": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "expected_policy_surfaces": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}}
+      },
+      "additionalProperties": false
+    },
+    "coordination": {
+      "type": "object",
+      "required": [
+        "topology",
+        "coordination_pattern",
+        "task_graph_owner",
+        "decomposability",
+        "dependency_edges",
+        "principal_slots",
+        "max_width",
+        "max_depth",
+        "max_in_flight",
+        "join_policy",
+        "partial_result_policy",
+        "cancel_policy",
+        "timeout_policy",
+        "shared_state_contract",
+        "handoff_contract"
+      ],
+      "properties": {
+        "topology": {"enum": ["single", "centralized", "decentralized", "hybrid"]},
+        "coordination_pattern": {"enum": ["sequential", "fan_out", "map_reduce", "handoff", "debate", "vote", "custom_declared"]},
+        "task_graph_owner": {"$ref": "#/$defs/safe_id"},
+        "decomposability": {"enum": ["independent", "sparse_dependencies", "sequential", "unknown"]},
+        "dependency_edges": {"type": "array", "items": {"$ref": "#/$defs/dependency_edge"}},
+        "principal_slots": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/principal_slot"}},
+        "max_width": {"type": "integer", "minimum": 1},
+        "max_depth": {"type": "integer", "minimum": 1},
+        "max_in_flight": {"type": "integer", "minimum": 1},
+        "join_policy": {"type": "string", "minLength": 1},
+        "partial_result_policy": {"type": "string", "minLength": 1},
+        "cancel_policy": {"type": "string", "minLength": 1},
+        "timeout_policy": {"type": "string", "minLength": 1},
+        "shared_state_contract": {"$ref": "#/$defs/artifact_binding"},
+        "handoff_contract": {"$ref": "#/$defs/artifact_binding"}
+      },
+      "additionalProperties": false
+    },
+    "dependency_edge": {
+      "type": "object",
+      "required": ["from", "to"],
+      "properties": {
+        "from": {"$ref": "#/$defs/safe_id"},
+        "to": {"$ref": "#/$defs/safe_id"}
+      },
+      "additionalProperties": false
+    },
+    "principal_slot": {
+      "type": "object",
+      "required": ["slot_id", "role", "parent_slot_id", "allowed_model_class", "context_mode", "tool_schema_ceiling", "authority_ceiling", "budget_ceiling", "expected_return_schema_hash"],
+      "properties": {
+        "slot_id": {"$ref": "#/$defs/safe_id"},
+        "role": {"type": "string", "minLength": 1},
+        "parent_slot_id": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
+        "allowed_model_class": {"type": "string", "minLength": 1},
+        "context_mode": {"enum": ["single", "fresh", "forked", "scoped_handoff"]},
+        "tool_schema_ceiling": {"$ref": "#/$defs/sha256"},
+        "authority_ceiling": {"$ref": "#/$defs/sha256"},
+        "budget_ceiling": {
+          "type": "object",
+          "required": ["turns", "tokens", "seconds", "tool_calls"],
+          "properties": {
+            "turns": {"type": "integer", "minimum": 0},
+            "tokens": {"type": "integer", "minimum": 0},
+            "seconds": {"type": "number", "minimum": 0},
+            "tool_calls": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": false
+        },
+        "expected_return_schema_hash": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "turn": {
+      "type": "object",
+      "required": ["turn_id", "input", "activate_faults", "checkpoint", "open_obligations", "due_obligations"],
+      "properties": {
+        "turn_id": {"$ref": "#/$defs/safe_id"},
+        "input": {"$ref": "#/$defs/turn_input"},
+        "activate_faults": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "checkpoint": {"enum": ["after_input", "after_response", "final", "cleanup"]},
+        "open_obligations": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
+        "due_obligations": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}}
+      },
+      "additionalProperties": false
+    },
+    "turn_input": {
+      "type": "object",
+      "required": ["kind", "content"],
+      "properties": {
+        "kind": {"enum": ["user_message", "host_event", "tool_result", "interrupt", "resume", "compaction_boundary"]},
+        "content": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "state_model": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["scope"],
+          "properties": {"scope": {"const": "none"}},
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["scope", "initial_state", "stable_keys", "allowed_transition_ids", "terminal_states", "reset_strategy", "expected_cleanup_state", "persisted_state_authority", "retention"],
+          "properties": {
+            "scope": {"enum": ["turn", "session", "workspace", "external"]},
+            "initial_state": {"$ref": "#/$defs/artifact_binding"},
+            "stable_keys": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/safe_id"}},
+            "allowed_transition_ids": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/safe_id"}},
+            "terminal_states": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/safe_id"}},
+            "reset_strategy": {"type": "string", "minLength": 1},
+            "expected_cleanup_state": {"$ref": "#/$defs/safe_id"},
+            "persisted_state_authority": {"type": "string", "minLength": 1},
+            "retention": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "fault": {
+      "type": "object",
+      "required": ["fault_id", "surface", "trigger", "effect", "duration", "expected_recovery", "safety_limit"],
+      "properties": {
+        "fault_id": {"$ref": "#/$defs/safe_id"},
+        "surface": {"enum": ["tool", "api", "mcp", "host", "network", "credential", "quota", "state"]},
+        "trigger": {
+          "type": "object",
+          "required": ["turn_id", "call_ordinal", "tool_or_method", "state_predicate"],
+          "properties": {
+            "turn_id": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
+            "call_ordinal": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]},
+            "tool_or_method": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
+            "state_predicate": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]}
+          },
+          "additionalProperties": false
+        },
+        "effect": {
+          "enum": ["success", "structured_error", "malformed_result", "schema_version_drift", "timeout", "cancellation", "connection_drop", "retry_after_quota", "auth_expiry", "mcp_session_missing", "tool_list_changed", "partial_side_effect"]
+        },
+        "duration": {"type": "string", "minLength": 1},
+        "expected_recovery": {"enum": ["retry", "backoff", "re_auth", "relist", "abort", "escalate", "none"]},
+        "safety_limit": {
+          "type": "object",
+          "required": ["max_attempts", "max_seconds", "max_side_effects"],
+          "properties": {
+            "max_attempts": {"type": "integer", "minimum": 0},
+            "max_seconds": {"type": "number", "minimum": 0},
+            "max_side_effects": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "requirement": {
+      "type": "object",
+      "required": ["requirement_id", "dimension", "required", "owner", "grader_id", "check_id", "checkpoint", "obligation", "transition_id", "safety_severity", "safety_kind"],
+      "properties": {
+        "requirement_id": {"$ref": "#/$defs/safe_id"},
+        "dimension": {"enum": ["outcome", "activation", "composition", "process", "state", "recovery", "quality", "safety", "reliability", "cost", "compatibility", "grounding"]},
+        "required": {"type": "boolean"},
+        "owner": {"enum": ["deterministic", "model"]},
+        "grader_id": {"$ref": "#/$defs/safe_id"},
+        "check_id": {"$ref": "#/$defs/safe_id"},
+        "checkpoint": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
+        "obligation": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
+        "transition_id": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
+        "safety_severity": {"anyOf": [{"enum": ["low", "medium", "high", "critical"]}, {"type": "null"}]},
+        "safety_kind": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]}
+      },
+      "additionalProperties": false
+    },
+    "observation_contract": {
+      "type": "object",
+      "required": ["observation_id", "producer", "capture_authority", "artifact", "locator", "encoding", "schema_hash", "expected_hash", "predicate", "valid_from_seq", "valid_until_seq", "valid_from_utc", "valid_until_utc", "freshness_requirement", "clock_requirement", "consumer_requirement_ids"],
+      "properties": {
+        "observation_id": {"$ref": "#/$defs/safe_id"},
+        "producer": {"type": "string", "minLength": 1},
+        "capture_authority": {"type": "string", "minLength": 1},
+        "artifact": {"$ref": "#/$defs/relative_path"},
+        "locator": {"$ref": "failure-index-v1.schema.json#/$defs/locator"},
+        "encoding": {"enum": ["utf-8", "binary"]},
+        "schema_hash": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "expected_hash": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "predicate": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
+        "valid_from_seq": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "valid_until_seq": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "valid_from_utc": {"anyOf": [{"$ref": "#/$defs/rfc3339_seconds"}, {"type": "null"}]},
+        "valid_until_utc": {"anyOf": [{"$ref": "#/$defs/rfc3339_seconds"}, {"type": "null"}]},
+        "freshness_requirement": {"type": "string", "minLength": 1},
+        "clock_requirement": {"type": "string", "minLength": 1},
+        "consumer_requirement_ids": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/safe_id"}}
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -8,6 +8,7 @@ never treats its summary as a substitute for the frozen evaluation contract.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import math
@@ -16,17 +17,30 @@ import re
 import statistics
 import sys
 from collections import Counter, defaultdict
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any, Iterable
 
-from audit_skill_package import compute_inventory_hash
+import compile_eval_plan as compiler
+from evidence_io import (
+    atomic_write_bytes,
+    canonical_json_bytes,
+    canonical_self_hash,
+    canonical_sha256,
+    file_sha256,
+    load_json,
+    load_jsonl_objects,
+    normalize_relative_path,
+    resolve_contained_path,
+    validate_locator,
+    verify_artifact_records,
+    verify_self_hash,
+)
 from validate_eval_suite import (
     COST_METRICS,
     PAIRED_METRIC_DIRECTIONS,
-    check_cases,
-    check_spec,
-    load_json as load_contract_json,
-    load_jsonl as load_contract_jsonl,
+    load_v5_schema_registry,
+    validate_host_protocol_record,
+    validate_v5_schema,
 )
 
 Z_95 = 1.959963984540054
@@ -94,402 +108,6 @@ CONTEXT_PAIRED_METRICS = {
 TASK_PASS_FILTERED_COST_METRICS = COST_METRICS - CONTEXT_PAIRED_METRICS
 
 
-def canonical_sha256(value: Any) -> str:
-    payload = json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
-    return "sha256:" + hashlib.sha256(payload).hexdigest()
-
-
-def raw_text_sha256(value: str) -> str:
-    return "sha256:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-def treatment_contract_hash(variants: list[dict[str, Any]]) -> str:
-    return canonical_sha256([
-        {
-            field: variant[field]
-            for field in (
-                "id", "role", "mode", "package_hash", "catalog_hash",
-                "treatment_hash",
-            )
-        }
-        for variant in sorted(variants, key=lambda item: item["id"])
-    ])
-
-
-def receipt_local_treatment_hash(
-    case: dict[str, Any],
-    variant: dict[str, Any],
-) -> str:
-    mode = variant["mode"]
-    return canonical_sha256({
-        "variant_id": variant["id"],
-        "role": variant["role"],
-        "mode": mode,
-        "package_hash": variant["package_hash"],
-        "catalog_hash": variant["catalog_hash"],
-        "variant_treatment_hash": variant["treatment_hash"],
-        "case_content_hash": canonical_sha256(case),
-        "task_text_content_hash": raw_text_sha256(case["prompt"]),
-        "input_shape": {
-            "native_skill_input_count": int(mode == "force_loaded"),
-            "task_text_input_count": 1,
-            "manual_skill_body_copy_count": 0,
-            "catalog_registered": mode != "skill_disabled",
-        },
-    })
-
-
-def receipt_treatment_index_content_hash(records: list[dict[str, Any]]) -> str:
-    return canonical_sha256([
-        {
-            "receipt_id": record["run_id"],
-            "treatment_hash": record["provenance"]["treatment_hash"],
-        }
-        for record in sorted(records, key=lambda item: item["run_id"])
-    ])
-
-
-def canonical_self_hash(value: dict[str, Any], field: str) -> str:
-    if not isinstance(value, dict) or field not in value:
-        raise ValueError(f"{field} is required for self-hash verification")
-    payload = dict(value)
-    payload.pop(field)
-    return canonical_sha256(payload)
-
-
-def verify_self_hash(value: dict[str, Any], field: str) -> bool:
-    claimed = value.get(field) if isinstance(value, dict) else None
-    return isinstance(claimed, str) and bool(SHA256_RE.fullmatch(claimed)) and claimed == canonical_self_hash(value, field)
-
-
-def file_sha256(path: Path) -> str:
-    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def classify_host_body_reads(
-    counts: dict[str, int],
-    body_components: list[dict[str, Any]],
-    component_identities: dict[str, tuple[str, str]],
-) -> tuple[int, int]:
-    if counts["host_injected_body_count"] != 1 or not body_components:
-        return 0, 0
-    host_identity = component_identities[body_components[0]["artifact"]]
-    matching = [
-        component for component in body_components[1:]
-        if component_identities[component["artifact"]] == host_identity
-    ]
-    unattributed = counts["model_initiated_body_read_count"] - len(matching)
-    if unattributed < 0:
-        raise ValueError("attributed model body reads exceed observed count")
-    return sum(component["bytes"] for component in matching), unattributed
-
-
-def load_jsonl(path: Path) -> list[dict[str, Any]]:
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except FileNotFoundError:
-        raise ValueError(f"file not found: {path}") from None
-    records: list[dict[str, Any]] = []
-    seen_run_ids: set[str] = set()
-    expected_fields = {
-        "run_schema_version", "run_id", "case_id", "variant", "repeat",
-        "artifact_dir", "receipt",
-    }
-    for line_no, line in enumerate(lines, 1):
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"invalid JSONL at line {line_no}: {exc.msg}") from None
-        if not isinstance(record, dict):
-            raise ValueError(f"line {line_no}: record must be an object")
-        if set(record) != expected_fields:
-            missing = sorted(expected_fields - set(record))
-            extra = sorted(set(record) - expected_fields)
-            raise ValueError(f"line {line_no}: run index fields mismatch; missing={missing}, extra={extra}")
-        if record.get("run_schema_version") != 1:
-            raise ValueError(f"line {line_no}: run_schema_version must equal 1")
-        run_id = record["run_id"]
-        if not isinstance(run_id, str) or not run_id:
-            raise ValueError(f"line {line_no}: run_id must be a non-empty string")
-        if run_id in seen_run_ids:
-            raise ValueError(f"line {line_no}: duplicate run_id {run_id}")
-        seen_run_ids.add(run_id)
-        if not isinstance(record["case_id"], str) or not record["case_id"]:
-            raise ValueError(f"line {line_no}: case_id must be a non-empty string")
-        if not isinstance(record["variant"], str) or not record["variant"]:
-            raise ValueError(f"line {line_no}: variant must be a non-empty string")
-        if not isinstance(record["repeat"], int) or isinstance(record["repeat"], bool) or record["repeat"] < 1:
-            raise ValueError(f"line {line_no}: repeat must be an integer >= 1")
-        if not isinstance(record.get("artifact_dir"), str) or not record["artifact_dir"].strip():
-            raise ValueError(f"line {line_no}: artifact_dir must be a non-empty relative path")
-        receipt = record.get("receipt")
-        if not isinstance(receipt, dict) or set(receipt) != {"path", "sha256"}:
-            raise ValueError(f"line {line_no}: receipt must contain exactly path and sha256")
-        if not isinstance(receipt.get("path"), str) or not receipt["path"].strip():
-            raise ValueError(f"line {line_no}: receipt.path must be a non-empty relative path")
-        if not isinstance(receipt.get("sha256"), str) or not SHA256_RE.fullmatch(receipt["sha256"]):
-            raise ValueError(f"line {line_no}: receipt.sha256 must be sha256:<64 hex>")
-        records.append(record)
-    if not records:
-        raise ValueError("run file contains no records")
-    return records
-
-
-def normalize_relative_path(reference: Any, label: str) -> str:
-    if not isinstance(reference, str) or not reference or "\\" in reference:
-        raise ValueError(f"{label} must be a non-empty POSIX relative path")
-    if reference.startswith("/") or any(part == ".." for part in reference.split("/")):
-        raise ValueError(f"{label} path escapes its declared root")
-    normalized = PurePosixPath(reference).as_posix()
-    if normalized in {"", "."}:
-        raise ValueError(f"{label} must identify a file")
-    return normalized
-
-
-def resolve_bound_file(root: Path, reference: Any, label: str) -> tuple[str, Path]:
-    normalized = normalize_relative_path(reference, label)
-    resolved_root = root.resolve()
-    resolved = (resolved_root / normalized).resolve()
-    if not resolved.is_relative_to(resolved_root):
-        raise ValueError(f"{label} path escapes its declared root")
-    if not resolved.exists():
-        raise FileNotFoundError(f"{label} file is missing: {normalized}")
-    if not resolved.is_file():
-        raise ValueError(f"{label} is not a regular file: {normalized}")
-    return normalized, resolved
-
-
-def resolve_bound_dir(root: Path, reference: Any, label: str) -> tuple[str, Path]:
-    normalized = normalize_relative_path(reference, label)
-    resolved_root = root.resolve()
-    resolved = (resolved_root / normalized).resolve()
-    if not resolved.is_relative_to(resolved_root):
-        raise ValueError(f"{label} path escapes its declared root")
-    if not resolved.exists():
-        raise FileNotFoundError(f"{label} directory is missing: {normalized}")
-    if not resolved.is_dir():
-        raise ValueError(f"{label} is not a directory: {normalized}")
-    return normalized, resolved
-
-
-def verify_artifacts(items: Any, root: Path, label: str) -> dict[str, dict[str, Any]]:
-    if not isinstance(items, list):
-        raise ValueError(f"{label} artifacts must be an array")
-    verified: dict[str, dict[str, Any]] = {}
-    resolved_paths: set[Path] = set()
-    for index, item in enumerate(items):
-        prefix = f"{label} artifacts[{index}]"
-        if not isinstance(item, dict) or set(item) != {"path", "sha256", "encoding"}:
-            raise ValueError(f"{prefix} must contain exactly path, sha256, and encoding")
-        normalized = normalize_relative_path(item.get("path"), f"{label} artifact")
-        if normalized in verified:
-            raise ValueError(f"{label} duplicate normalized artifact path: {normalized}")
-        if item.get("path") != normalized:
-            raise ValueError(f"{label} artifact path is not canonical: {item.get('path')}")
-        if item.get("encoding") not in {"utf-8", "binary"}:
-            raise ValueError(f"{prefix}.encoding must be utf-8 or binary")
-        sha256 = item.get("sha256")
-        if not isinstance(sha256, str) or not SHA256_RE.fullmatch(sha256):
-            raise ValueError(f"{prefix}.sha256 must be sha256:<64 hex>")
-        try:
-            _, resolved = resolve_bound_file(root, normalized, f"{label} artifact")
-        except ValueError as exc:
-            raise ValueError(str(exc)) from None
-        if resolved in resolved_paths:
-            raise ValueError(f"{label} duplicate resolved artifact path: {normalized}")
-        resolved_paths.add(resolved)
-        actual = file_sha256(resolved)
-        if actual != sha256:
-            raise ValueError(f"{label} artifact sha256 mismatch for {normalized}: expected {sha256}, got {actual}")
-        entry = dict(item)
-        entry["resolved"] = resolved
-        if item["encoding"] == "utf-8":
-            try:
-                entry["lines"] = resolved.read_text(encoding="utf-8").splitlines()
-            except UnicodeDecodeError as exc:
-                raise ValueError(f"{label} UTF-8 artifact is not decodable: {normalized}: {exc}") from None
-        verified[normalized] = entry
-    return verified
-
-
-def verify_locator_reference(
-    evidence: Any, artifacts: dict[str, dict[str, Any]], *, label: str,
-) -> None:
-    if not isinstance(evidence, dict) or set(evidence) != {"artifact", "locator", "observation"}:
-        raise ValueError(f"{label} evidence must contain exactly artifact, locator, and observation")
-    artifact = evidence.get("artifact")
-    if artifact not in artifacts:
-        raise ValueError(f"{label} evidence references an artifact outside the allowlist: {artifact}")
-    entry = artifacts[artifact]
-    if isinstance(entry, list):
-        entry = {"encoding": "utf-8", "lines": entry}
-    if entry.get("encoding") != "utf-8":
-        raise ValueError(f"{label} evidence locator requires a UTF-8 artifact: {artifact}")
-    locator = evidence.get("locator")
-    if not isinstance(locator, dict) or set(locator) != {"start_line", "end_line"}:
-        raise ValueError(f"{label} locator must contain exactly start_line and end_line")
-    start = locator.get("start_line")
-    end = locator.get("end_line")
-    lines = entry.get("lines", [])
-    if (
-        not isinstance(start, int) or isinstance(start, bool)
-        or not isinstance(end, int) or isinstance(end, bool)
-        or start < 1 or end < start or end > len(lines)
-    ):
-        raise ValueError(f"{label} line locator is outside artifact bounds")
-    if not any(line.strip() for line in lines[start - 1:end]):
-        raise ValueError(f"{label} line locator resolves only to empty lines")
-    if not isinstance(evidence.get("observation"), str) or not evidence["observation"].strip():
-        raise ValueError(f"{label} observation must be a non-empty string")
-
-
-def verify_ordered_trace(
-    trace: Any, artifacts: dict[str, dict[str, Any]],
-) -> list[dict[str, Any]]:
-    expected = {
-        "artifact", "sha256", "event_count", "context_capture",
-        "command_projection_classification_hash",
-        "private_skill_access_count",
-        "task_evidence_visible_count",
-    }
-    if not isinstance(trace, dict) or set(trace) != expected:
-        raise ValueError("receipt trace fields do not match receipt v3")
-    artifact = trace.get("artifact")
-    if artifact not in artifacts or artifacts[artifact]["encoding"] != "utf-8":
-        raise ValueError("ordered trace must reference one allowlisted UTF-8 artifact")
-    if trace.get("sha256") != artifacts[artifact]["sha256"]:
-        raise ValueError("ordered trace sha256 does not match its artifact")
-    lines = artifacts[artifact]["lines"]
-    if trace.get("event_count") != len(lines):
-        raise ValueError("ordered trace event_count does not match artifact lines")
-    if not SHA256_RE.fullmatch(
-        str(trace.get("command_projection_classification_hash", ""))
-    ):
-        raise ValueError("trace command projection classification hash is invalid")
-    for field in ("private_skill_access_count", "task_evidence_visible_count"):
-        value = trace.get(field)
-        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-            raise ValueError(f"trace {field} must be a non-negative integer")
-    events: list[dict[str, Any]] = []
-    for index, line in enumerate(lines, 1):
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"ordered trace line {index} is invalid JSON: {exc.msg}") from None
-        if not isinstance(event, dict) or event.get("event_seq") != index:
-            raise ValueError("ordered trace event_seq must be contiguous and one-based")
-        events.append(event)
-    capture = trace.get("context_capture")
-    if (
-        not isinstance(capture, dict)
-        or set(capture) != {"status", "source"}
-        or capture.get("status") not in {"captured", "missing"}
-        or capture.get("source") not in {"host_trace", "replay_manifest"}
-    ):
-        raise ValueError("trace context_capture fields are invalid")
-    return events
-
-
-def verify_routing_stage(
-    stage: Any, *, label: str, value_type: str,
-    artifacts: dict[str, dict[str, Any]],
-) -> Any:
-    if not isinstance(stage, dict) or set(stage) != {"status", "value", "evidence"}:
-        raise ValueError(f"routing.{label} fields do not match receipt v3")
-    status = stage.get("status")
-    value = stage.get("value")
-    evidence = stage.get("evidence")
-    if status not in {"observed", "not_evaluable"} or not isinstance(evidence, list):
-        raise ValueError(f"routing.{label} status/evidence are invalid")
-    if status == "not_evaluable":
-        if value is not None or evidence:
-            raise ValueError(f"routing.{label} not_evaluable requires null value and empty evidence")
-        return None
-    if not evidence:
-        raise ValueError(f"routing.{label} observed value requires evidence")
-    for item in evidence:
-        verify_locator_reference(item, artifacts, label=f"routing.{label}")
-    if value_type == "ids":
-        if (
-            not isinstance(value, list)
-            or any(not isinstance(item, str) or not item.strip() for item in value)
-            or len(set(value)) != len(value)
-        ):
-            raise ValueError(f"routing.{label}.value must be a unique string array")
-    elif value_type == "id":
-        if value is not None and (not isinstance(value, str) or not value.strip()):
-            raise ValueError(f"routing.{label}.value must be null or a non-empty string")
-    elif value_type == "boolean" and not isinstance(value, bool):
-        raise ValueError(f"routing.{label}.value must be boolean when observed")
-    return value
-
-
-def load_batched_grader_output(
-    reference: Any,
-    artifacts_root: Path,
-    *,
-    expected_grader_id: str,
-) -> dict[str, Any]:
-    expected_fields = {
-        "artifact", "line", "line_sha256", "batch_id", "item_id",
-    }
-    if not isinstance(reference, dict) or set(reference) != expected_fields:
-        raise ValueError("model grader batch reference fields are invalid")
-    artifact = normalize_relative_path(reference["artifact"], "grader batch artifact")
-    if artifact != reference["artifact"]:
-        raise ValueError("grader batch artifact path is not canonical")
-    _, batch_path = resolve_bound_file(artifacts_root, artifact, "grader batch artifact")
-    lines = batch_path.read_bytes().splitlines()
-    line_number = reference["line"]
-    if (
-        not isinstance(line_number, int) or isinstance(line_number, bool)
-        or line_number < 1 or line_number > len(lines)
-    ):
-        raise ValueError("grader batch line is outside artifact bounds")
-    raw_line = lines[line_number - 1]
-    actual_hash = "sha256:" + hashlib.sha256(raw_line).hexdigest()
-    if reference["line_sha256"] != actual_hash:
-        raise ValueError("grader batch line sha256 mismatch")
-    try:
-        batch = json.loads(raw_line.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"grader batch line is invalid UTF-8 JSON: {exc}") from None
-    if not isinstance(batch, dict) or set(batch) != {"schema_version", "batch_id", "items"}:
-        raise ValueError("grader batch line fields are invalid")
-    if batch["schema_version"] != 1 or batch["batch_id"] != reference["batch_id"]:
-        raise ValueError("grader batch identity mismatch")
-    items = batch["items"]
-    if not isinstance(items, list) or not 1 <= len(items) <= 4:
-        raise ValueError("grader batch must contain one to four items")
-    item_ids: list[str] = []
-    selected = None
-    for item in items:
-        if not isinstance(item, dict) or set(item) != {"item_id", "grader_id", "output"}:
-            raise ValueError("grader batch item fields are invalid")
-        item_id = item["item_id"]
-        grader_id = item["grader_id"]
-        if not isinstance(item_id, str) or not item_id or not isinstance(grader_id, str) or not grader_id:
-            raise ValueError("grader batch item identity is invalid")
-        item_ids.append(item_id)
-        if item_id == reference["item_id"] and grader_id == expected_grader_id:
-            selected = item["output"]
-    if len(item_ids) != len(set(item_ids)):
-        raise ValueError("grader batch item_id values must be unique")
-    if selected is None:
-        raise ValueError("grader batch does not contain the referenced item")
-    if not isinstance(selected, dict):
-        raise ValueError("grader batch output must be an object")
-    return selected
-
-
 def validate_grader_output(
     output: Any, requirements: list[dict[str, Any]], artifacts: dict[str, Any],
 ) -> dict[str, Any]:
@@ -534,22 +152,41 @@ def validate_grader_output(
     check_results: dict[str, bool] = {}
     for index, check in enumerate(checks):
         prefix = f"grader checks[{index}]"
-        if not isinstance(check, dict) or set(check) != {"id", "pass", "evidence", "notes", "uncertainty"}:
+        if not isinstance(check, dict) or set(check) != {
+            "check_id", "pass", "evidence", "notes", "uncertainty",
+        }:
             raise ValueError(f"{prefix} fields do not match the transport shape")
-        check_id = check.get("id")
+        check_id = check.get("check_id")
         if not isinstance(check_id, str) or not check_id:
-            raise ValueError(f"{prefix}.id must be a non-empty string")
+            raise ValueError(f"{prefix}.check_id must be a non-empty string")
         if check_id in check_results:
             raise ValueError(f"duplicate grader check ID: {check_id}")
         if not isinstance(check.get("pass"), bool):
             raise ValueError(f"{prefix}.pass must be boolean")
-        if not isinstance(check.get("notes"), str) or check.get("uncertainty") not in {"none", "low", "medium", "high"}:
+        if not isinstance(check.get("notes"), str) or not isinstance(
+            check.get("uncertainty"), str,
+        ):
             raise ValueError(f"{prefix} notes/uncertainty are invalid")
         evidence_items = check.get("evidence")
         if not isinstance(evidence_items, list):
             raise ValueError(f"{prefix}.evidence must be an array")
         for evidence in evidence_items:
-            verify_locator_reference(evidence, artifacts, label=prefix)
+            if (
+                not isinstance(evidence, dict)
+                or set(evidence) != {"artifact", "locator", "observation"}
+                or not isinstance(evidence["locator"], dict)
+                or not isinstance(evidence["observation"], str)
+                or not evidence["observation"]
+            ):
+                raise ValueError(f"{prefix} evidence shape is invalid")
+            validate_locator(
+                {
+                    "kind": "text_lines",
+                    "artifact": evidence["artifact"],
+                    **evidence["locator"],
+                },
+                artifacts,
+            )
         check_ids.append(check_id)
         check_results[check_id] = check["pass"]
     if len(check_ids) != len(set(check_ids)):
@@ -598,785 +235,6 @@ def validate_grader_output(
         "score": computed_score,
         "checks": check_results,
         "grader_failure": False,
-    }
-
-
-def derive_run_fields(
-    case: dict[str, Any], graders: dict[str, dict[str, Any]], grader_results: dict[str, dict[str, Any]],
-) -> dict[str, Any]:
-    requirements = case["requirements"]
-
-    def passed(requirement: dict[str, Any]) -> bool:
-        return bool(grader_results[requirement["grader_id"]]["checks"][requirement["check_id"]])
-
-    def dimension_score(dimension: str) -> int | None:
-        selected = [requirement for requirement in requirements if requirement["dimension"] == dimension]
-        if not selected:
-            return None
-        if all("weight" in requirement for requirement in selected):
-            denominator = sum(float(requirement["weight"]) for requirement in selected)
-            raw = sum(float(requirement["weight"]) for requirement in selected if passed(requirement)) / denominator * 100
-        else:
-            raw = sum(1 for requirement in selected if passed(requirement)) / len(selected) * 100
-        return math.floor(raw + 0.5)
-
-    outcome = [requirement for requirement in requirements if requirement["dimension"] == "outcome" and requirement["required"]]
-    safety = [requirement for requirement in requirements if requirement["dimension"] == "safety"]
-    failed_safety = [requirement for requirement in safety if not passed(requirement)]
-    hard_failures = sorted(
-        requirement["id"] for requirement in requirements
-        if requirement["required"] and not passed(requirement)
-        and graders[requirement["grader_id"]]["hard_gate"] is True
-    )
-    return {
-        "task_pass": all(passed(requirement) for requirement in outcome),
-        "process_score": dimension_score("process"),
-        "quality_score": dimension_score("quality"),
-        "safety_pass": not failed_safety,
-        "critical_safety_incidents": sum(requirement.get("severity") == "critical" for requirement in failed_safety),
-        "unauthorized_side_effects": sum(
-            requirement.get("safety_kind") == "unauthorized_action" for requirement in failed_safety
-        ),
-        "hard_gate_failures": hard_failures,
-    }
-
-
-def compute_grader_digest(grader: dict[str, Any], spec_root: Path) -> str:
-    binding: dict[str, Any] = {"declaration": grader}
-    if grader["type"] == "deterministic":
-        verifier = grader["verifier"]
-        try:
-            _, verifier_path = resolve_bound_file(spec_root, verifier["path"], "deterministic verifier")
-        except FileNotFoundError:
-            raise
-        actual = file_sha256(verifier_path)
-        if actual != verifier["sha256"]:
-            raise ValueError(
-                f"deterministic verifier sha256 mismatch: expected {verifier['sha256']}, got {actual}"
-            )
-    else:
-        bound_files = {}
-        for field in ("prompt_path", "schema_path"):
-            _, path = resolve_bound_file(spec_root, grader[field], f"model rubric {field}")
-            bound_files[field] = file_sha256(path)
-        binding["bound_files"] = bound_files
-    return canonical_sha256(binding)
-
-
-def report_identity_fields(
-    spec: dict[str, Any], spec_path: Path, receipt_index_path: Path, *, strict: bool = True,
-) -> dict[str, Any]:
-    try:
-        grader_set_hash = canonical_sha256([
-            {"id": grader["id"], "sha256": compute_grader_digest(grader, spec_path.parent)}
-            for grader in sorted(spec["graders"], key=lambda item: item["id"])
-        ])
-    except (OSError, ValueError):
-        if strict:
-            raise
-        grader_set_hash = None
-    computed_treatment_contract_hash = treatment_contract_hash(spec["variants"])
-    declared_treatment_contract_hash = spec["suite"].get("treatment_contract_hash")
-    if strict and declared_treatment_contract_hash != computed_treatment_contract_hash:
-        raise ValueError("suite treatment_contract_hash mismatch")
-    return {
-        "candidate_revision": spec["target"]["candidate_revision"],
-        "candidate_source_tree_hash": spec["target"]["candidate_source_tree_hash"],
-        "candidate_plugin_tree_hash": spec["target"]["candidate_plugin_tree_hash"],
-        "spec_content_hash": file_sha256(spec_path),
-        "cases_content_hash": spec["suite"]["cases_content_hash"],
-        "case_contracts_content_hash": spec["suite"]["case_contracts_content_hash"],
-        "fixture_manifest_set_hash": spec["suite"]["fixture_manifest_set_hash"],
-        "grader_set_hash": grader_set_hash,
-        "grader_batch_schedule_hash": spec["suite"]["grader_batch_schedule_hash"],
-        "treatment_contract_hash": (
-            computed_treatment_contract_hash
-            if declared_treatment_contract_hash == computed_treatment_contract_hash
-            else None
-        ),
-        "environment_hash": canonical_sha256(spec["environment"]),
-        "receipt_index_content_hash": file_sha256(receipt_index_path),
-    }
-
-
-def verify_fixture(case: dict[str, Any], artifacts_root: Path) -> str:
-    fixture = case["fixture"]
-    _, manifest_path = resolve_bound_file(artifacts_root, fixture["manifest"], "fixture manifest")
-    actual_manifest_hash = file_sha256(manifest_path)
-    if actual_manifest_hash != fixture["sha256"]:
-        raise ValueError(
-            f"fixture manifest sha256 mismatch: expected {fixture['sha256']}, got {actual_manifest_hash}"
-        )
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"fixture manifest is not valid UTF-8 JSON: {exc}") from None
-    if not isinstance(manifest, dict) or set(manifest) != {"artifacts"}:
-        raise ValueError("fixture manifest must contain exactly artifacts")
-    verify_artifacts(manifest["artifacts"], manifest_path.parent, "fixture")
-    return actual_manifest_hash
-
-
-def resolve_candidate_package_hash(spec: dict[str, Any], spec_path: Path) -> str:
-    """Compute the candidate provenance binding once per analyzer invocation."""
-    candidate_path = Path(spec["target"]["candidate_path"])
-    if not candidate_path.is_absolute():
-        candidate_path = spec_path.parent.resolve() / candidate_path
-    try:
-        package_hash = "sha256:" + compute_inventory_hash(candidate_path)
-    except (OSError, ValueError) as exc:
-        raise ValueError(f"candidate package inventory failed: {exc}") from None
-    return package_hash
-
-
-def derive_verified_run(
-    row: dict[str, Any], spec: dict[str, Any], spec_path: Path,
-    case: dict[str, Any], variant: dict[str, Any], candidate_package_hash: str,
-) -> dict[str, Any]:
-    spec_root = spec_path.parent.resolve()
-    artifacts_reference, artifacts_root = resolve_bound_dir(
-        spec_root, spec["artifacts"]["root"], "spec artifacts root"
-    )
-    artifact_dir_reference = normalize_relative_path(row["artifact_dir"], "run artifact_dir")
-    if artifact_dir_reference != row["artifact_dir"]:
-        raise ValueError("run artifact_dir is not canonical")
-    _, artifact_dir = resolve_bound_dir(artifacts_root, artifact_dir_reference, "run artifact_dir")
-    receipt_reference = normalize_relative_path(row["receipt"]["path"], "receipt path")
-    if receipt_reference != row["receipt"]["path"]:
-        raise ValueError("receipt path is not canonical")
-    _, receipt_path = resolve_bound_file(artifact_dir, receipt_reference, "receipt")
-    actual_receipt_hash = file_sha256(receipt_path)
-    if actual_receipt_hash != row["receipt"]["sha256"]:
-        raise ValueError(
-            f"receipt sha256 mismatch: expected {row['receipt']['sha256']}, got {actual_receipt_hash}"
-        )
-    try:
-        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"receipt is not valid UTF-8 JSON: {exc}") from None
-    receipt_fields = {
-        "schema_version", "receipt_hash", "run", "artifacts", "trace", "routing",
-        "boundaries", "bytes", "counts", "usage", "context_usage", "grader_outputs",
-    }
-    allowed_receipt_fields = receipt_fields | {
-        "transfer_source_identity", "deliverable", "transfer_preflight",
-    }
-    if (
-        not isinstance(receipt, dict)
-        or not receipt_fields.issubset(receipt)
-        or not set(receipt).issubset(allowed_receipt_fields)
-    ):
-        raise ValueError("receipt fields do not match receipt v3")
-    if receipt.get("schema_version") != 3:
-        raise ValueError("receipt schema_version must equal 3")
-    if not verify_self_hash(receipt, "receipt_hash"):
-        raise ValueError("receipt self-hash mismatch")
-    is_transfer_planner = bool({"handoff", "program"} & set(case.get("tags", [])))
-    is_transfer_executor = "transfer-executor" in case.get("tags", [])
-    expected_optional_fields = (
-        {"transfer_source_identity", "deliverable"} if is_transfer_planner
-        else {"transfer_preflight"} if is_transfer_executor
-        else set()
-    )
-    if set(receipt) - receipt_fields != expected_optional_fields:
-        raise ValueError("receipt transfer identity fields do not match case role")
-    if is_transfer_planner:
-        source_identity = receipt["transfer_source_identity"]
-        deliverable = receipt["deliverable"]
-        if (
-            not isinstance(source_identity, dict)
-            or set(source_identity) != {"base_head", "source_manifest_hash"}
-            or not re.fullmatch(r"[0-9a-f]{40}", str(source_identity.get("base_head", "")))
-            or not SHA256_RE.fullmatch(
-                str(source_identity.get("source_manifest_hash", ""))
-            )
-            or not isinstance(deliverable, dict)
-            or set(deliverable) != {"path", "content_hash", "delivery"}
-            or deliverable.get("delivery") not in {"file", "reply"}
-            or deliverable.get("path") not in {None, "PLAN.md"}
-            or not SHA256_RE.fullmatch(str(deliverable.get("content_hash", "")))
-        ):
-            raise ValueError("planner transfer identity is invalid")
-    if is_transfer_executor:
-        preflight = receipt["transfer_preflight"]
-        if (
-            not isinstance(preflight, dict)
-            or set(preflight)
-            != {"base_head", "source_manifest_hash", "plan_hash", "status"}
-            or not re.fullmatch(r"[0-9a-f]{40}", str(preflight.get("base_head", "")))
-            or not SHA256_RE.fullmatch(
-                str(preflight.get("source_manifest_hash", ""))
-            )
-            or not SHA256_RE.fullmatch(str(preflight.get("plan_hash", "")))
-            or preflight.get("status") != "?? PLAN.md"
-        ):
-            raise ValueError("executor transfer preflight identity is invalid")
-
-    run = receipt.get("run")
-    run_fields = {
-        "run_id", "case_id", "variant", "repeat", "valid", "error_type",
-        "invalid_reason", "provenance",
-    }
-    if not isinstance(run, dict) or set(run) != run_fields:
-        raise ValueError("receipt run fields do not match receipt v3")
-    for field in ("run_id", "case_id", "variant", "repeat"):
-        if run.get(field) != row[field]:
-            raise ValueError(f"receipt/index identity mismatch for {field}")
-    if not isinstance(run.get("valid"), bool):
-        raise ValueError("receipt run.valid must be boolean")
-    error_type = run.get("error_type")
-    invalid_reason = run.get("invalid_reason")
-    if error_type is not None and (not isinstance(error_type, str) or not error_type.strip()):
-        raise ValueError("receipt run.error_type must be null or a non-empty string")
-    if invalid_reason is not None and (not isinstance(invalid_reason, str) or not invalid_reason.strip()):
-        raise ValueError("receipt run.invalid_reason must be null or a non-empty string")
-    if run["valid"] is False and (error_type != "evaluation_apparatus" or not invalid_reason):
-        raise ValueError("invalid run requires error_type=evaluation_apparatus and invalid_reason")
-    if run["valid"] is True and error_type == "evaluation_apparatus":
-        raise ValueError("valid run cannot claim an evaluation_apparatus failure")
-
-    artifacts = verify_artifacts(receipt["artifacts"], artifact_dir, "receipt")
-    verify_fixture(case, artifacts_root)
-    profile = f"{variant['role']}/{variant['mode']}"
-    selected_requirements = [
-        requirement for requirement in case["requirements"]
-        if profile in requirement.get(
-            "applicable_variant_profiles", case["applicable_variant_profiles"],
-        )
-    ]
-    if not selected_requirements:
-        raise ValueError("run profile selects no case requirements")
-    selected_grader_ids = sorted({requirement["grader_id"] for requirement in selected_requirements})
-    graders = {grader["id"]: grader for grader in spec["graders"]}
-    grader_digests = {
-        grader_id: compute_grader_digest(graders[grader_id], spec_root)
-        for grader_id in selected_grader_ids
-    }
-    grader_set_hash = canonical_sha256([
-        {"id": grader_id, "sha256": grader_digests[grader_id]}
-        for grader_id in selected_grader_ids
-    ])
-
-    package_hash = variant["package_hash"]
-    if variant["role"] == "candidate":
-        package_hash = candidate_package_hash
-        if package_hash != spec["target"]["candidate_hash"] or package_hash != variant["package_hash"]:
-            raise ValueError("candidate package inventory hash mismatch")
-
-    provenance = run.get("provenance")
-    provenance_fields = {
-        "candidate_revision", "candidate_source_tree_hash", "candidate_plugin_tree_hash",
-        "spec_content_hash", "case_content_hash", "case_contracts_content_hash",
-        "fixture_manifest_set_hash", "grader_set_hash", "grader_batch_schedule_hash",
-        "environment_hash", "package_hash", "catalog_hash", "treatment_hash",
-    }
-    if not isinstance(provenance, dict) or set(provenance) != provenance_fields:
-        raise ValueError("receipt provenance fields do not match receipt v3")
-    expected_provenance = {
-        "candidate_revision": spec["target"]["candidate_revision"],
-        "candidate_source_tree_hash": spec["target"]["candidate_source_tree_hash"],
-        "candidate_plugin_tree_hash": spec["target"]["candidate_plugin_tree_hash"],
-        "spec_content_hash": file_sha256(spec_path),
-        "case_content_hash": canonical_sha256(case),
-        "case_contracts_content_hash": spec["suite"]["case_contracts_content_hash"],
-        "fixture_manifest_set_hash": spec["suite"]["fixture_manifest_set_hash"],
-        "grader_set_hash": grader_set_hash,
-        "grader_batch_schedule_hash": spec["suite"]["grader_batch_schedule_hash"],
-        "environment_hash": canonical_sha256(spec["environment"]),
-        "package_hash": package_hash,
-        "catalog_hash": variant["catalog_hash"],
-        "treatment_hash": receipt_local_treatment_hash(case, variant),
-    }
-    for field, expected in expected_provenance.items():
-        if provenance.get(field) != expected:
-            raise ValueError(f"receipt provenance {field} mismatch")
-
-    ordered_events = verify_ordered_trace(receipt.get("trace"), artifacts)
-    context_capture = receipt["trace"]["context_capture"]
-    if context_capture["status"] == "missing":
-        raise ValueError("context capture is missing")
-
-    routing = receipt.get("routing")
-    routing_fields = {
-        "retrieved", "selected", "body_loaded", "incorporated", "applied",
-        "resources_loaded",
-    }
-    if not isinstance(routing, dict) or set(routing) != routing_fields:
-        raise ValueError("receipt routing fields do not match receipt v3")
-    retrieved_skill_ids = verify_routing_stage(
-        routing["retrieved"], label="retrieved", value_type="ids", artifacts=artifacts,
-    )
-    selected_skill_id = verify_routing_stage(
-        routing["selected"], label="selected", value_type="id", artifacts=artifacts,
-    )
-    skill_body_loaded = verify_routing_stage(
-        routing["body_loaded"], label="body_loaded", value_type="boolean", artifacts=artifacts,
-    )
-    skill_incorporated = verify_routing_stage(
-        routing["incorporated"], label="incorporated", value_type="boolean", artifacts=artifacts,
-    )
-    skill_applied = verify_routing_stage(
-        routing["applied"], label="applied", value_type="boolean", artifacts=artifacts,
-    )
-    resources_loaded = routing.get("resources_loaded")
-    if (
-        not isinstance(resources_loaded, list)
-        or any(not isinstance(value, str) or not value.strip() for value in resources_loaded)
-        or len(set(resources_loaded)) != len(resources_loaded)
-    ):
-        raise ValueError("receipt routing.resources_loaded must be a unique string array")
-    stage_locators: set[tuple[str, int, int]] = set()
-    for label in ("retrieved", "selected", "body_loaded", "incorporated", "applied"):
-        for evidence in routing[label]["evidence"]:
-            locator = evidence["locator"]
-            identity = (evidence["artifact"], locator["start_line"], locator["end_line"])
-            if identity in stage_locators:
-                raise ValueError("routing stages must not reuse one evidence locator")
-            stage_locators.add(identity)
-
-    boundaries = receipt.get("boundaries")
-    if not isinstance(boundaries, dict) or set(boundaries) != {
-        "first_successful_source_write_seq", "first_deliverable_seq",
-    }:
-        raise ValueError("receipt boundaries fields do not match receipt v3")
-    derived_source_seq = next((
-        event["event_seq"] for event in ordered_events
-        if event.get("event") == "source_write"
-        and event.get("success", True) is True
-        and event.get("final_delta_observed", True) is True
-    ), None)
-    derived_deliverable_seq = next((
-        event["event_seq"] for event in ordered_events
-        if event.get("event") in {"assistant_deliverable", "file_deliverable"}
-        and event.get("success", True) is True
-    ), None)
-    if boundaries["first_successful_source_write_seq"] != derived_source_seq:
-        raise ValueError("first_successful_source_write_seq does not match ordered trace")
-    if boundaries["first_deliverable_seq"] != derived_deliverable_seq:
-        raise ValueError("first_deliverable_seq does not match ordered trace")
-
-    byte_fields = set(CONTEXT_EFFICIENCY_FIELDS) | {
-        "executor_prewrite_tool_output_bytes",
-        "host_preflight_tool_output_bytes",
-    }
-    byte_counts = receipt.get("bytes")
-    if not isinstance(byte_counts, dict) or set(byte_counts) != byte_fields:
-        raise ValueError("receipt bytes fields do not match receipt v3")
-    if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in byte_counts.values()):
-        raise ValueError("receipt byte counts must be non-negative integers")
-
-    count_fields = {
-        "host_injected_body_count", "model_initiated_body_read_count", "body_load_count",
-        "reference_load_count", "skill_load_tool_calls", "skill_protocol_tool_calls",
-        "executor_prewrite_task_tool_calls", "task_tool_calls",
-        "workflow_artifact_count",
-    }
-    counts = receipt.get("counts")
-    if not isinstance(counts, dict) or set(counts) != count_fields:
-        raise ValueError("receipt counts fields do not match receipt v3")
-    if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in counts.values()):
-        raise ValueError("receipt counts must be non-negative integers")
-    if counts["body_load_count"] != (
-        counts["host_injected_body_count"] + counts["model_initiated_body_read_count"]
-    ):
-        raise ValueError("body_load_count does not conserve host and model body loads")
-    if skill_body_loaded is None or skill_body_loaded != (counts["body_load_count"] > 0):
-        raise ValueError("routing.body_loaded contradicts body load counts")
-    if variant["mode"] == "force_loaded" and counts["host_injected_body_count"] != 1:
-        raise ValueError("force_loaded treatment requires exactly one host body injection")
-    if variant["mode"] == "skill_disabled" and (
-        counts["host_injected_body_count"] != 0 or counts["model_initiated_body_read_count"] != 0
-    ):
-        raise ValueError("skill_disabled treatment requires zero body loads")
-
-    usage = receipt.get("usage")
-    usage_fields = {"tokens_in", "tokens_out", "latency_ms", "retries", "evidence"}
-    if not isinstance(usage, dict) or set(usage) != usage_fields:
-        raise ValueError("receipt usage fields do not match receipt v3")
-    for field in usage_fields - {"evidence"}:
-        value = usage.get(field)
-        if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(float(value)) or value < 0:
-            raise ValueError(f"receipt usage.{field} must be a finite non-negative number")
-    usage_evidence = usage.get("evidence")
-    if not isinstance(usage_evidence, list):
-        raise ValueError("receipt usage.evidence must be an array")
-    for evidence in usage_evidence:
-        verify_locator_reference(evidence, artifacts, label="usage")
-
-    context_usage = receipt.get("context_usage")
-    if (
-        not isinstance(context_usage, dict)
-        or set(context_usage) != {"measurement_source", "components"}
-        or context_usage.get("measurement_source") not in {"host_receipt", "replay_manifest"}
-        or not isinstance(context_usage.get("components"), list)
-    ):
-        raise ValueError("receipt context_usage fields are invalid")
-    measurement_source = context_usage["measurement_source"]
-    components = context_usage["components"]
-    verified_components: list[dict[str, Any]] = []
-    component_artifacts: set[str] = set()
-    component_identities: dict[str, tuple[str, str]] = {}
-    dynamic_sources: set[str] = set()
-    static_content_seen: set[tuple[str, str]] = set()
-    context_efficiency = {field: 0 for field in CONTEXT_EFFICIENCY_FIELDS}
-    unique_reference_bytes = 0
-    for index, component in enumerate(components):
-        if not isinstance(component, dict) or set(component) != {
-            "kind", "source_path", "artifact", "tokens",
-        }:
-            raise ValueError(f"context component {index} fields do not match receipt v3")
-        kind = component.get("kind")
-        source_path = component.get("source_path")
-        artifact = component.get("artifact")
-        tokens = component.get("tokens")
-        if kind not in CONTEXT_COMPONENT_KINDS:
-            raise ValueError(f"context component {index} kind is invalid")
-        if not isinstance(source_path, str) or not source_path.strip():
-            raise ValueError(f"context component {index} source_path must be non-empty")
-        if kind in STATIC_CONTEXT_KINDS:
-            if normalize_relative_path(source_path, f"context component {index} source_path") != source_path:
-                raise ValueError(f"context component {index} source_path is not canonical")
-        else:
-            expected_prefix = "protocol:" if kind == "protocol_output" else "failed-command:"
-            if not DYNAMIC_CONTEXT_SOURCE.fullmatch(source_path) or not source_path.startswith(expected_prefix):
-                raise ValueError(f"context component {index} dynamic source_path is invalid")
-            if source_path in dynamic_sources:
-                raise ValueError("dynamic context source paths must be unique")
-            dynamic_sources.add(source_path)
-        if not isinstance(artifact, str) or artifact not in artifacts:
-            raise ValueError(f"context component {index} artifact is not allowlisted")
-        if artifact in component_artifacts:
-            raise ValueError("context component artifacts must be unique")
-        component_artifacts.add(artifact)
-        artifact_item = artifacts[artifact]
-        if artifact_item["encoding"] != "utf-8":
-            raise ValueError("context components must reference UTF-8 artifacts")
-        if measurement_source == "host_receipt":
-            if not isinstance(tokens, int) or isinstance(tokens, bool) or tokens < 0:
-                raise ValueError("host_receipt context components require non-negative integer tokens")
-        elif tokens is not None:
-            raise ValueError("replay_manifest context component tokens must be null")
-        byte_count = artifact_item["resolved"].stat().st_size
-        content_sha256 = file_sha256(artifact_item["resolved"])
-        if kind in STATIC_CONTEXT_KINDS:
-            identity = (source_path, content_sha256)
-            component_identities[artifact] = identity
-            field = "repeated_static_content_bytes" if identity in static_content_seen else "unique_static_content_bytes"
-            static_content_seen.add(identity)
-            if kind == "reference" and field == "unique_static_content_bytes":
-                unique_reference_bytes += byte_count
-        elif kind == "protocol_output":
-            field = "protocol_output_bytes"
-        else:
-            field = "failed_command_output_bytes"
-        context_efficiency[field] += byte_count
-        verified_components.append({
-            "kind": kind,
-            "source_path": source_path,
-            "artifact": artifact,
-            "bytes": byte_count,
-            "tokens": tokens if measurement_source == "host_receipt" else None,
-        })
-    expected_measurement = (
-        "host_receipt" if context_capture["source"] == "host_trace" else "replay_manifest"
-    )
-    if measurement_source != expected_measurement:
-        raise ValueError("context measurement_source contradicts context_capture.source")
-    body_components = [item for item in verified_components if item["kind"] == "body"]
-    if bool(body_components) != skill_body_loaded:
-        raise ValueError("context body components contradict routing.body_loaded")
-    if len(body_components) != counts["body_load_count"]:
-        raise ValueError("context body components do not conserve body load counts")
-    host_duplicate_bytes, unattributed_model_body_reads = classify_host_body_reads(
-        counts, body_components, component_identities,
-    )
-    unexplained_repeated_bytes = (
-        context_efficiency["repeated_static_content_bytes"] - host_duplicate_bytes
-    )
-    if unexplained_repeated_bytes < 0:
-        raise ValueError("host duplicate bytes exceed repeated static bytes")
-    reference_components = [item for item in verified_components if item["kind"] == "reference"]
-    reference_sources = {item["source_path"] for item in reference_components}
-    if reference_sources != set(resources_loaded):
-        raise ValueError("context reference sources do not match routing.resources_loaded")
-    if len(reference_components) != counts["reference_load_count"]:
-        raise ValueError("context reference components do not conserve reference_load_count")
-    total_context_bytes = sum(item["bytes"] for item in verified_components)
-    controlled_context_bytes = total_context_bytes - host_duplicate_bytes
-    if unique_reference_bytes > controlled_context_bytes:
-        raise ValueError("unique reference bytes exceed controlled context bytes")
-    derived_context_usage = {
-        "measurement_source": measurement_source,
-        "capture": dict(context_capture),
-        "attributed": True,
-        "bytes": total_context_bytes,
-        "tokens": (
-            sum(item["tokens"] for item in verified_components)
-            if measurement_source == "host_receipt" else None
-        ),
-        "components": verified_components,
-        "controlled_bytes": controlled_context_bytes,
-        "unique_reference_bytes": unique_reference_bytes,
-        "controlled_core_bytes": controlled_context_bytes - unique_reference_bytes,
-        "host_integration_duplicate_bytes": host_duplicate_bytes,
-        "unexplained_repeated_static_content_bytes": unexplained_repeated_bytes,
-        "unattributed_model_body_read_count": unattributed_model_body_reads,
-        **context_efficiency,
-    }
-    if derived_context_usage["bytes"] != sum(context_efficiency.values()):
-        raise ValueError("context byte attribution does not conserve total skill context bytes")
-    for field in CONTEXT_EFFICIENCY_FIELDS:
-        if byte_counts[field] != context_efficiency[field]:
-            raise ValueError(f"receipt bytes.{field} does not match verified context artifacts")
-    prewrite_boundary = derived_source_seq or derived_deliverable_seq or (len(ordered_events) + 1)
-    for event in ordered_events:
-        output_bytes = event.get("tool_output_bytes", 0)
-        if not isinstance(output_bytes, int) or isinstance(output_bytes, bool) or output_bytes < 0:
-            raise ValueError("ordered trace tool_output_bytes must be a non-negative integer")
-    derived_prewrite_bytes = sum(
-        event.get("tool_output_bytes", 0)
-        for event in ordered_events if event["event_seq"] < prewrite_boundary
-    )
-    if byte_counts["executor_prewrite_tool_output_bytes"] != derived_prewrite_bytes:
-        raise ValueError(
-            "executor_prewrite_tool_output_bytes does not match ordered trace"
-        )
-
-    grader_outputs = receipt.get("grader_outputs")
-    if not isinstance(grader_outputs, list):
-        raise ValueError("receipt grader_outputs must be an array")
-    output_ids = [item.get("grader_id") for item in grader_outputs if isinstance(item, dict)]
-    if len(output_ids) != len(grader_outputs) or len(set(output_ids)) != len(output_ids):
-        raise ValueError("receipt grader_outputs contains a duplicate or malformed grader")
-    if set(output_ids) != set(selected_grader_ids):
-        raise ValueError("receipt grader_outputs do not match the case-derived grader set")
-
-    deterministic_output_paths: set[str] = set()
-    for item in grader_outputs:
-        grader = graders[item["grader_id"]]
-        if grader["type"] != "deterministic":
-            continue
-        if set(item) != {"grader_id", "invocation"} or not isinstance(item.get("invocation"), dict):
-            raise ValueError(f"selected deterministic grader {item['grader_id']} requires invocation")
-        invocation = item["invocation"]
-        for field in ("stdout_artifact", "stderr_artifact"):
-            reference = invocation.get(field)
-            if not isinstance(reference, str):
-                raise ValueError(f"deterministic invocation {field} must be a canonical artifact path")
-            deterministic_output_paths.add(reference)
-
-    expected_input_paths = sorted(set(artifacts) - deterministic_output_paths)
-    expected_artifact_root = PurePosixPath(artifacts_reference, artifact_dir_reference).as_posix()
-    grader_results: dict[str, dict[str, Any]] = {}
-    any_grader_failure = False
-    for item in grader_outputs:
-        grader_id = item["grader_id"]
-        grader = graders[grader_id]
-        requirements = [
-            requirement for requirement in selected_requirements
-            if requirement["grader_id"] == grader_id
-        ]
-        if grader["type"] == "deterministic":
-            invocation = item["invocation"]
-            invocation_fields = {
-                "grader_sha256", "selected_check_ids", "artifact_root", "input_artifacts",
-                "stdout_artifact", "stderr_artifact", "exit_code",
-            }
-            if set(invocation) != invocation_fields:
-                raise ValueError("deterministic invocation fields do not match receipt v3")
-            if invocation["grader_sha256"] != grader_digests[grader_id]:
-                raise ValueError("deterministic invocation grader_sha256 mismatch")
-            expected_checks = sorted(requirement["check_id"] for requirement in requirements)
-            if invocation.get("selected_check_ids") != expected_checks:
-                raise ValueError("deterministic invocation selected_check_ids mismatch")
-            if invocation.get("artifact_root") != expected_artifact_root:
-                raise ValueError("invocation artifact_root mismatch")
-            input_items = invocation.get("input_artifacts")
-            if not isinstance(input_items, list):
-                raise ValueError("deterministic invocation input_artifacts must be an array")
-            input_paths: list[str] = []
-            for input_item in input_items:
-                if not isinstance(input_item, dict) or set(input_item) != {"path", "sha256"}:
-                    raise ValueError("deterministic input artifact must contain exactly path and sha256")
-                path = input_item.get("path")
-                if path == receipt_reference or path in deterministic_output_paths:
-                    raise ValueError("input_artifacts must not reference receipt or grader outputs")
-                if path not in artifacts or input_item.get("sha256") != artifacts[path]["sha256"]:
-                    raise ValueError("deterministic input artifact is not bound by the receipt allowlist")
-                input_paths.append(path)
-            if input_paths != sorted(input_paths) or input_paths != expected_input_paths:
-                raise ValueError("invocation input_artifacts do not equal the frozen input set")
-            stdout_reference = invocation["stdout_artifact"]
-            stderr_reference = invocation["stderr_artifact"]
-            if stdout_reference == stderr_reference:
-                raise ValueError("deterministic stdout_artifact and stderr_artifact must differ")
-            if stdout_reference not in artifacts or artifacts[stdout_reference]["encoding"] != "utf-8":
-                raise ValueError("deterministic stdout_artifact must be an allowlisted UTF-8 artifact")
-            if stderr_reference not in artifacts:
-                raise ValueError("deterministic stderr_artifact must be allowlisted")
-            try:
-                output = json.loads(artifacts[stdout_reference]["resolved"].read_text(encoding="utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise ValueError(f"deterministic stdout is not valid UTF-8 JSON: {exc}") from None
-            validated = validate_grader_output(output, requirements, artifacts)
-            exit_code = invocation.get("exit_code")
-            if not isinstance(exit_code, int) or isinstance(exit_code, bool):
-                raise ValueError("deterministic invocation exit_code must be an integer")
-            if (exit_code in grader["verifier"]["pass_exit_codes"]) != validated["overall_pass"]:
-                raise ValueError("deterministic exit_code/pass result contradiction")
-        else:
-            if set(item) != {"grader_id", "batch"}:
-                raise ValueError("model_rubric grader output must contain exactly grader_id and batch")
-            output = load_batched_grader_output(
-                item["batch"], artifacts_root, expected_grader_id=grader_id,
-            )
-            validated = validate_grader_output(output, requirements, artifacts)
-        grader_results[grader_id] = validated
-        any_grader_failure = any_grader_failure or validated["grader_failure"]
-
-    if any_grader_failure and run["valid"] is True:
-        raise ValueError("grader failure requires run.valid=false")
-    if run["valid"] is False and not any_grader_failure:
-        raise ValueError("evaluation_apparatus invalid run requires a grader failure result")
-    selected_case = {**case, "requirements": selected_requirements}
-    derived = derive_run_fields(selected_case, graders, grader_results) if run["valid"] else {
-        "task_pass": None,
-        "process_score": None,
-        "quality_score": None,
-        "safety_pass": None,
-        "critical_safety_incidents": 0,
-        "unauthorized_side_effects": 0,
-        "hard_gate_failures": [],
-    }
-    return {
-        "run_id": run["run_id"],
-        "case_id": run["case_id"],
-        "variant": run["variant"],
-        "repeat": run["repeat"],
-        "artifact_dir": row["artifact_dir"],
-        "valid": run["valid"],
-        "error_type": error_type,
-        "invalid_reason": invalid_reason,
-        "split": case["split"],
-        "tags": list(case["tags"]),
-        "should_trigger": case["should_trigger"],
-        "routing_evaluable": variant["mode"] == "natural_routing" and profile in case["applicable_variant_profiles"],
-        "retrieved_skill_ids": list(retrieved_skill_ids),
-        "selected_skill_id": selected_skill_id,
-        "skill_body_loaded": skill_body_loaded,
-        "resources_loaded": list(resources_loaded),
-        "skill_incorporated": skill_incorporated,
-        "skill_applied": skill_applied,
-        "tokens_in": usage["tokens_in"],
-        "tokens_out": usage["tokens_out"],
-        "latency_ms": usage["latency_ms"],
-        "tool_calls": counts["task_tool_calls"],
-        "retries": usage["retries"],
-        "boundaries": dict(boundaries),
-        "bytes": dict(byte_counts),
-        "counts": dict(counts),
-        "context_usage": derived_context_usage,
-        "graders_run": selected_grader_ids,
-        "provenance": provenance,
-        **derived,
-    }
-
-
-def verify_receipt(
-    row: dict[str, Any], spec: dict[str, Any], spec_path: Path,
-    case: dict[str, Any], variant: dict[str, Any], candidate_package_hash: str,
-) -> dict[str, Any]:
-    try:
-        record = derive_verified_run(
-            row, spec, spec_path, case, variant, candidate_package_hash
-        )
-    except FileNotFoundError as exc:
-        return {"status": "incomplete", "issue": str(exc), "record": None}
-    except (OSError, ValueError, KeyError, TypeError) as exc:
-        return {"status": "invalid", "issue": str(exc), "record": None}
-    return {"status": "complete", "issue": None, "record": record}
-
-
-def verify_manual_review_receipt(
-    reference: str, spec: dict[str, Any], spec_path: Path,
-) -> dict[str, Any]:
-    spec_root = spec_path.parent.resolve()
-    _, artifacts_root = resolve_bound_dir(
-        spec_root, spec["artifacts"]["root"], "spec artifacts root"
-    )
-    normalized = normalize_relative_path(reference, "manual review receipt path")
-    if normalized != reference:
-        raise ValueError("manual review receipt path is not canonical")
-    lexical_receipt = artifacts_root / normalized
-    if lexical_receipt.is_symlink():
-        raise ValueError("manual review receipt must not be a symlink")
-    _, receipt_path = resolve_bound_file(
-        artifacts_root, normalized, "manual review receipt"
-    )
-    receipt_sha256 = file_sha256(receipt_path)
-    try:
-        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"manual review receipt is not valid UTF-8 JSON: {exc}") from None
-    if not isinstance(receipt, dict) or set(receipt) != {
-        "reviewer_role", "evidence", "decision", "signature",
-    }:
-        raise ValueError("manual review receipt fields do not match the exact contract")
-
-    config = spec.get("manual_review")
-    if not isinstance(config, dict):
-        raise ValueError("manual review receipt requires a spec.manual_review declaration")
-    if receipt.get("reviewer_role") != config.get("reviewer_role"):
-        raise ValueError("manual review reviewer_role mismatch")
-    if receipt.get("decision") not in {"approve", "hold", "reject"}:
-        raise ValueError("manual review decision must be approve, hold, or reject")
-    if not isinstance(receipt.get("signature"), str) or not receipt["signature"].strip():
-        raise ValueError("manual review signature must be non-empty")
-
-    evidence = receipt.get("evidence")
-    if not isinstance(evidence, list) or not evidence:
-        raise ValueError("manual review evidence must be a non-empty array")
-    evidence_types: list[str] = []
-    verified_evidence: list[dict[str, str]] = []
-    for item in evidence:
-        if not isinstance(item, dict) or set(item) != {"type", "artifact", "sha256"}:
-            raise ValueError("manual review evidence item fields do not match the exact contract")
-        evidence_type = item.get("type")
-        artifact = item.get("artifact")
-        if not isinstance(evidence_type, str) or not evidence_type.strip():
-            raise ValueError("manual review evidence type must be non-empty")
-        if not isinstance(artifact, str):
-            raise ValueError("manual review evidence artifact must be a canonical relative path")
-        normalized_artifact = normalize_relative_path(artifact, "manual review evidence artifact")
-        if normalized_artifact != artifact:
-            raise ValueError("manual review evidence artifact path is not canonical")
-        _, evidence_path = resolve_bound_file(
-            artifacts_root, normalized_artifact, "manual review evidence artifact"
-        )
-        actual_sha256 = file_sha256(evidence_path)
-        if item.get("sha256") != actual_sha256:
-            raise ValueError("manual review evidence sha256 mismatch")
-        evidence_types.append(evidence_type)
-        verified_evidence.append({
-            "type": evidence_type,
-            "artifact": normalized_artifact,
-            "sha256": actual_sha256,
-        })
-    if len(set(evidence_types)) != len(evidence_types):
-        raise ValueError("manual review evidence types must be unique")
-    expected_types = config.get("required_evidence")
-    if not isinstance(expected_types, list) or set(evidence_types) != set(expected_types):
-        raise ValueError("manual review evidence types do not match required_evidence")
-    return {
-        "required": config.get("required") is True,
-        "status": "complete",
-        "reviewer_role": receipt["reviewer_role"],
-        "evidence": verified_evidence,
-        "decision": receipt["decision"],
-        "signature_attested": True,
-        "signature_verification": "not_performed",
-        "receipt_path": normalized,
-        "receipt_sha256": receipt_sha256,
     }
 
 
@@ -1600,67 +458,6 @@ def routing_summary(
     }
 
 
-def summarize_variant(
-    records: list[dict[str, Any]],
-    target_skill_id: str | None,
-    routing_case_ids: set[str] | None = None,
-) -> dict[str, Any]:
-    valid = [record for record in records if record.get("valid") is True]
-    invalid = [record for record in records if record.get("valid") is not True]
-    task_values = [record["task_pass"] for record in valid if isinstance(record.get("task_pass"), bool)]
-    safety_values = [record["safety_pass"] for record in valid if isinstance(record.get("safety_pass"), bool)]
-
-    error_types = Counter(str(record.get("error_type")) for record in valid if record.get("error_type"))
-    gate_failures: Counter[str] = Counter()
-    for record in valid:
-        for failure in record.get("hard_gate_failures", []) or []:
-            gate_failures[str(failure)] += 1
-
-    critical_values = [record["critical_safety_incidents"] for record in valid if isinstance(record.get("critical_safety_incidents"), (int, float))]
-    critical = sum(critical_values) if len(critical_values) == len(valid) else None
-    split_records: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    tag_records: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for record in valid:
-        split_records[str(record.get("split", "unspecified"))].append(record)
-        for tag in record.get("tags", []) or []:
-            tag_records[str(tag)].append(record)
-
-    def pass_for(group: list[dict[str, Any]]) -> dict[str, Any]:
-        return proportion(record["task_pass"] for record in group if isinstance(record.get("task_pass"), bool))
-
-    numeric = {}
-    for field in sorted(NUMERIC_FIELDS - {"critical_safety_incidents"}):
-        numeric[field] = continuous(record[field] for record in valid if isinstance(record.get(field), (int, float)) and not isinstance(record.get(field), bool))
-
-    split_summaries = {name: pass_for(group) for name, group in sorted(split_records.items())}
-    tag_summaries = {name: pass_for(group) for name, group in sorted(tag_records.items())}
-    slice_candidates = [
-        {"kind": kind, "name": name, **summary}
-        for kind, summaries in (("split", split_summaries), ("tag", tag_summaries))
-        for name, summary in summaries.items()
-        if summary["rate"] is not None
-    ]
-    worst_slice = min(slice_candidates, key=lambda item: (item["rate"], -item["n"], item["kind"], item["name"])) if slice_candidates else None
-
-    return {
-        "records": len(records),
-        "valid_records": len(valid),
-        "invalid_records": len(invalid),
-        "task_pass": proportion(task_values),
-        "safety_pass": proportion(safety_values),
-        "safety_incident_rate": proportion(not value for value in safety_values),
-        "critical_safety_incidents": critical,
-        "critical_safety_incidents_n": len(critical_values),
-        "routing": routing_summary(valid, target_skill_id, routing_case_ids),
-        "numeric": numeric,
-        "errors": dict(error_types.most_common()),
-        "hard_gate_failures": dict(gate_failures.most_common()),
-        "splits": split_summaries,
-        "tags": tag_summaries,
-        "worst_slice_task_pass": worst_slice,
-    }
-
-
 def summarize_material_failure_cases(
     records: list[dict[str, Any]],
     *,
@@ -1830,49 +627,6 @@ def matched_planner_executor_tokens(
             statistics.median(reductions) if reductions else None
         ),
         "cases": case_totals,
-    }
-
-
-def paired_summary(
-    records: list[dict[str, Any]],
-    baseline: str,
-    candidate: str,
-    eligible_case_ids: set[str] | None = None,
-) -> dict[str, Any]:
-    by_variant_key: dict[str, dict[tuple[str, int], dict[str, Any]]] = defaultdict(dict)
-    duplicate_keys: list[str] = []
-    for record in records:
-        key = (record["case_id"], record["repeat"])
-        if eligible_case_ids is not None and record["case_id"] not in eligible_case_ids:
-            continue
-        variant = record["variant"]
-        if key in by_variant_key[variant]:
-            duplicate_keys.append(f"{variant}:{key[0]}:{key[1]}")
-        by_variant_key[variant][key] = record
-
-    base_rows = by_variant_key.get(baseline, {})
-    cand_rows = by_variant_key.get(candidate, {})
-    shared = sorted(set(base_rows) & set(cand_rows))
-    pairs = []
-    excluded = Counter()
-    for key in shared:
-        base = base_rows[key]
-        cand = cand_rows[key]
-        if base.get("valid") is not True or cand.get("valid") is not True:
-            excluded["invalid"] += 1
-            continue
-        if not isinstance(base.get("task_pass"), bool) or not isinstance(cand.get("task_pass"), bool):
-            excluded["missing_task_pass"] += 1
-            continue
-        pairs.append((key, base, cand))
-
-    return {
-        "baseline": baseline,
-        "candidate": candidate,
-        "shared_keys": len(shared),
-        "paired_valid": len(pairs),
-        "excluded": dict(excluded),
-        "duplicate_variant_keys": duplicate_keys,
     }
 
 
@@ -2113,53 +867,6 @@ def summarize_paired_cost_delta(
             for row in result["case_differences"]
         ],
     }
-
-
-def load_spec(path: Path) -> dict[str, Any]:
-    value = load_contract_json(path)
-    errors: list[str] = []
-    warnings: list[str] = []
-    check_spec(value, errors, warnings)
-    if errors:
-        raise ValueError("invalid evaluation spec: " + "; ".join(errors))
-    return value
-
-
-def infer_variant(
-    spec: dict[str, Any] | None,
-    preferred: str,
-    role: str,
-    mode: str,
-    available: set[str],
-) -> str | None:
-    if preferred in available:
-        return preferred
-    if spec:
-        variants = spec.get("variants")
-        for variant in variants if isinstance(variants, list) else []:
-            if (
-                isinstance(variant, dict)
-                and variant.get("role") == role
-                and variant.get("mode") == mode
-                and variant.get("id") in available
-            ):
-                return str(variant["id"])
-    return None
-
-
-def resolve_comparative_variant(
-    spec: dict[str, Any], role: str, *, variant_id: str | None = None,
-    mode: str | None = None, available: set[str] | None = None,
-) -> dict[str, Any] | None:
-    matches = [
-        variant for variant in spec["variants"]
-        if variant["role"] == role
-        and variant["mode"] in {"force_loaded", "natural_routing"}
-        and (variant_id is None or variant["id"] == variant_id)
-        and (mode is None or variant["mode"] == mode)
-        and (available is None or variant["id"] in available)
-    ]
-    return matches[0] if len(matches) == 1 else None
 
 
 def build_paired_metrics(
@@ -2614,53 +1321,6 @@ def derive_evidence_status(
     return "complete"
 
 
-def derive_final_authority_status(
-    *,
-    usefulness_status: str,
-    manual_gate_passed: bool,
-    candidate_hard_failures: int,
-    blocking_observations: list[str],
-) -> str:
-    if (
-        usefulness_status == "supported"
-        and manual_gate_passed
-        and candidate_hard_failures == 0
-        and not blocking_observations
-    ):
-        return "eligible"
-    return "blocked"
-
-
-def summarize_candidate_hard_failures(
-    hard_failures_by_variant: dict[str, int],
-    candidate_variant_ids: set[str],
-) -> tuple[int, list[str]]:
-    counts = {
-        variant_id: hard_failures_by_variant.get(variant_id, 0)
-        for variant_id in sorted(candidate_variant_ids)
-        if hard_failures_by_variant.get(variant_id, 0)
-    }
-    total = sum(counts.values())
-    blocking = [
-        f"{variant_id}: {count} case-level hard grader failure(s)"
-        for variant_id, count in counts.items()
-    ]
-    return total, blocking
-
-
-def derive_decision_signal(level: str, usefulness_status: str) -> str:
-    return "diagnostic_complete" if level == "L1" else f"usefulness_{usefulness_status}"
-
-
-def decision_status_text(report: dict[str, Any]) -> str:
-    return (
-        f"evidence_status={report['evidence_status']} "
-        f"usefulness_status={report['usefulness_status']} "
-        f"final_authority_status={report['final_authority_status']} "
-        f"decision_signal={report['decision_signal']}"
-    )
-
-
 def resolve_gate_metric(
     metric: str,
     spec: dict[str, Any],
@@ -2762,922 +1422,3341 @@ def resolve_gate_metric(
     return None
 
 
-def compare_gate(observed: float, operator: str, expected: Any) -> bool | None:
-    if not isinstance(expected, (int, float)) or isinstance(expected, bool):
-        return None
-    expected_value = float(expected)
-    operations = {
-        "==": lambda a, b: a == b,
-        "!=": lambda a, b: a != b,
-        ">=": lambda a, b: a >= b,
-        "<=": lambda a, b: a <= b,
-        ">": lambda a, b: a > b,
-        "<": lambda a, b: a < b,
-    }
-    function = operations.get(operator)
-    return function(observed, expected_value) if function else None
+def _first_v5_diagnostic(diagnostics: list[dict[str, str]]) -> str:
+    diagnostic = diagnostics[0]
+    path = diagnostic.get("path") or "/"
+    return f"{diagnostic['code']} {path}: {diagnostic['message']}"
 
 
-def evaluate_hard_gates(
-    spec: dict[str, Any],
-    variant_summaries: dict[str, dict[str, Any]],
-    records: list[dict[str, Any]],
-    candidate: str | None,
-    paired: dict[str, Any] | None,
-    target_skill_id: str | None,
-    prior: str | None,
-    cases_by_id: dict[str, dict[str, Any]] | None,
-    repeats: int | None,
-    context_summary: dict[str, Any] | None = None,
-    paired_metrics: dict[str, dict[str, Any]] | None = None,
-) -> list[dict[str, Any]]:
-    results: list[dict[str, Any]] = []
-    for index, gate in enumerate(spec.get("hard_gates", [])):
-        if not isinstance(gate, dict):
-            results.append({"id": f"invalid-gate-{index}", "status": "not_evaluable", "reason": "gate is not an object"})
+def _find_v5_plan(
+    spec_path: Path,
+    index_path: Path,
+    registry: dict[str, dict[str, Any]],
+) -> tuple[Path, dict[str, Any]]:
+    spec = load_json(spec_path)
+    spec_hash = canonical_sha256(compiler._normalize_spec(spec))
+    matches: list[tuple[Path, dict[str, Any]]] = []
+    for candidate in sorted(spec_path.parent.glob("*.json")):
+        if (
+            candidate == spec_path
+            or candidate.is_symlink()
+            or not candidate.is_file()
+        ):
             continue
-        metric = gate.get("metric")
-        if metric in PAIRED_METRIC_DIRECTIONS:
-            summary = paired_metrics.get(metric, {}) if paired_metrics else {}
-            benefit = evaluate_benefit(summary, gate["minimum_benefit"])
-            results.append({
-                "id": gate.get("id", f"gate-{index}"),
-                "metric": metric,
-                "comparator": gate["comparator"],
-                "direction": gate["direction"],
-                "effect": gate["effect"],
-                "operator": "benefit_lower_bound >=",
-                "threshold": gate["minimum_benefit"],
-                "observed": summary.get("lower"),
-                "status": benefit["status"],
-                "reason": benefit["reason"],
-            })
-            continue
-        operator = gate.get("operator")
-        expected = gate.get("value")
-        observed = resolve_gate_metric(
-            metric, spec, variant_summaries, records, candidate, paired, target_skill_id,
-            prior, cases_by_id, repeats, context_summary, paired_metrics,
-        )
-        reason = None
-        comparison = compare_gate(observed, str(operator), expected) if observed is not None else None
-        status = "pass" if comparison is True else "fail" if comparison is False else "not_evaluable"
-        if observed is None:
-            reason = "metric unavailable or incomplete in verified candidate runs"
-        results.append({
-            "id": gate.get("id", f"gate-{index}"),
-            "metric": metric,
-            "operator": operator,
-            "threshold": expected,
-            "observed": observed,
-            "status": status,
-            "reason": reason,
-        })
-    return results
-
-
-def fmt_rate(value: Any) -> str:
-    return "n/a" if value is None else f"{100 * float(value):.1f}%"
-
-
-def fmt_num(value: Any, digits: int = 2) -> str:
-    return "n/a" if value is None else f"{float(value):.{digits}f}"
-
-
-def markdown_report(report: dict[str, Any]) -> str:
-    lines = [
-        f"# Skill Evaluation Run Summary",
-        "",
-        f"- Records: {report['record_count']}",
-        f"- Variants: {', '.join(report['variants'])}",
-        f"- Decision status: `{decision_status_text(report)}`",
-        "- This analyzer summary does not replace the frozen evaluation contract or manual evidence review.",
-        "",
-        "## Variant scorecard",
-        "",
-        "| Variant | Valid/All | Task pass | Routing P/R/F1 | Safety pass | Critical incidents | Run-declared gate failures |",
-        "|---|---:|---:|---:|---:|---:|---:|",
-    ]
-    for name in report["variants"]:
-        data = report["variant_summaries"][name]
-        routing = data["routing"]
-        route_text = "/".join(fmt_rate(routing.get(key)) for key in ("precision", "recall", "f1"))
-        critical = "n/a" if data["critical_safety_incidents"] is None else str(data["critical_safety_incidents"])
-        lines.append(
-            f"| {name} | {data['valid_records']}/{data['records']} | {fmt_rate(data['task_pass']['rate'])} | {route_text} | {fmt_rate(data['safety_pass']['rate'])} | {critical} | {sum(data['hard_gate_failures'].values())} |"
-        )
-
-    lines.extend(["", "## Routing stage diagnostics", ""])
-    for name, data in report["variant_summaries"].items():
-        routing = data["routing"]
-        if routing.get("status") != "complete":
-            lines.append(f"- `{name}`: `{routing.get('status', 'not_evaluable')}` — {routing.get('reason', 'no routing evidence')}")
-            continue
-        lines.append(
-            f"- `{name}`: retrieval recall={fmt_rate(routing['retrieval']['positive_hit_rate']['rate'])}, "
-            f"MRR={fmt_num(routing['retrieval']['mrr_on_positive'])}, "
-            f"selection P/R/F1={fmt_rate(routing['precision'])}/"
-            f"{fmt_rate(routing['recall'])}/{fmt_rate(routing['f1'])}, "
-            f"body/incorporation/application recall="
-            f"{fmt_rate(routing['body_load']['positive_rate']['rate'])}/"
-            f"{fmt_rate(routing['incorporation']['positive_rate']['rate'])}/"
-            f"{fmt_rate(routing['application']['positive_rate']['rate'])}, "
-            f"false application={fmt_rate(routing['application']['negative_rate']['rate'])}; "
-            f"stage failures={routing['stage_failure_counts']}"
-        )
-
-    lines.extend(["", "## Worst observed task-pass slice", ""])
-    for name in report["variants"]:
-        worst = report["variant_summaries"][name].get("worst_slice_task_pass")
-        if worst:
-            lines.append(f"- `{name}`: {worst['kind']} `{worst['name']}` = {fmt_rate(worst['rate'])} (n={worst['n']})")
-        else:
-            lines.append(f"- `{name}`: n/a")
-
-    receipt_verification = report.get("receipt_verification")
-    if receipt_verification:
-        lines.extend([
-            "",
-            "## Receipt verification",
-            "",
-            f"- Status: `{receipt_verification['status']}`",
-            f"- Checked runs: {receipt_verification['checked_runs']}",
-            "- Identity, provenance, package, fixture, artifact, and grader bindings were recomputed locally.",
-        ])
-
-    completeness = report.get("run_matrix_completeness")
-    if completeness:
-        lines.extend([
-            "",
-            "## Run matrix completeness",
-            "",
-            f"- Declared variants: {completeness['declared_variant_count']}",
-            f"- Expected full-plan keys: {completeness['expected_plan_keys']}",
-            f"- Observed full-plan keys: {completeness['observed_plan_keys']}",
-            f"- Valid full-plan keys: {completeness['valid_plan_keys']}",
-            f"- Attribution-eligible cases: {completeness['attribution_case_count']}",
-            f"- Observed selected-pair keys: {completeness['observed_selected_pair_keys']}/{completeness['expected_selected_pair_keys']}",
-            f"- Missing expected keys: {completeness['missing_expected_keys_count']}",
-            f"- Invalid expected keys: {completeness['invalid_expected_keys_count']}",
-            f"- Timed-out expected keys: {completeness['timed_out_expected_keys_count']}",
-        ])
-        for variant, counts in completeness["by_variant"].items():
-            lines.append(
-                f"- `{variant}` planned/present/valid/invalid/timed-out/missing: "
-                f"{counts['planned']}/{counts['present']}/{counts['valid']}/"
-                f"{counts['invalid']}/{counts['timed_out']}/{counts['missing']}"
-            )
-        if completeness["missing_expected_keys"]:
-            sample = ", ".join("/".join(map(str, key)) for key in completeness["missing_expected_keys"][:10])
-            suffix = " …" if completeness["missing_expected_keys_count"] > 10 else ""
-            lines.append(f"- Missing sample (`variant/case/repeat`): {sample}{suffix}")
-        if completeness["invalid_expected_keys"]:
-            sample = ", ".join("/".join(map(str, key)) for key in completeness["invalid_expected_keys"][:10])
-            suffix = " …" if completeness["invalid_expected_keys_count"] > 10 else ""
-            lines.append(f"- Invalid sample (`variant/case/repeat`): {sample}{suffix}")
-
-    primary_benefit = report.get("primary_benefit")
-    paired_metrics = report.get("paired_metrics", {})
-    if primary_benefit:
-        lines.extend([
-            "",
-            "## Primary benefit and paired metrics",
-            "",
-            f"- Primary: `{primary_benefit['metric']}` vs `{primary_benefit['comparator']}` "
-            f"({primary_benefit['direction']}, {primary_benefit['effect']})",
-            f"- Threshold/status: lower >= {fmt_num(primary_benefit['minimum_benefit'], 4)} / "
-            f"`{primary_benefit['status']}`",
-        ])
-        for metric, summary in paired_metrics.items():
-            if summary.get("status") == "complete":
-                lines.append(
-                    f"- `{metric}` vs `{summary['comparator']}`: point/lower/upper="
-                    f"{summary['point']:.4f}/{summary['lower']:.4f}/{summary['upper']:.4f}; "
-                    f"cases={summary['case_count']}, repeats={summary['repeat_count']}, "
-                    f"scale={summary['scale']['reported']}"
-                )
-            else:
-                lines.append(
-                    f"- `{metric}` vs `{summary.get('comparator', 'n/a')}`: not evaluable — "
-                    f"{summary.get('reason', 'unspecified')}"
-                )
-        if report.get("paired_task_failures"):
-            lines.append(
-                f"- Cost exclusions caused by task failures: {len(report['paired_task_failures'])} pair(s)"
-            )
-
-    case_gate_evidence = report.get("case_gate_evidence")
-    if case_gate_evidence:
-        lines.extend([
-            "",
-            "## Case grader evidence",
-            "",
-            f"- Case-level hard failures by variant: `{json.dumps(case_gate_evidence['hard_failures_by_variant'], sort_keys=True)}`",
-        ])
-
-    manual_review = report.get("manual_review")
-    if manual_review:
-        evidence = manual_review.get("evidence", [])
-        lines.extend([
-            "",
-            "## Manual review",
-            "",
-            f"- Required: {manual_review['required']}",
-            f"- Status: `{manual_review['status']}`",
-            f"- Reviewer role: {manual_review.get('reviewer_role') or 'n/a'}",
-            f"- Decision: `{manual_review.get('decision') or 'n/a'}`",
-            f"- Evidence: {', '.join(item['artifact'] for item in evidence) or 'none'}",
-            f"- Receipt SHA-256: `{manual_review.get('receipt_sha256') or 'n/a'}`",
-            f"- Signature verification: `{manual_review.get('signature_verification') or 'n/a'}`",
-        ])
-
-    if report.get("hard_gates"):
-        lines.extend([
-            "",
-            "## Frozen hard gates",
-            "",
-            "| Gate | Metric | Rule | Observed | Status |",
-            "|---|---|---:|---:|---|",
-        ])
-        for gate in report["hard_gates"]:
-            observed = "n/a" if gate.get("observed") is None else fmt_num(gate["observed"], 4)
-            lines.append(f"| {gate.get('id')} | {gate.get('metric')} | {gate.get('operator')} {gate.get('threshold')} | {observed} | {gate.get('status')} |")
-
-    lines.extend(["", "## Gate and evidence warning", ""])
-    if report["blocking_observations"]:
-        for observation in report["blocking_observations"]:
-            lines.append(f"- {observation}")
-    else:
-        lines.append("- No blocking observation was encoded in the analyzed runs; complete the frozen contract and manual evidence review before any promotion decision.")
-    lines.append("")
-    return "\n".join(lines)
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("runs", help="Receipt index JSONL")
-    parser.add_argument("--spec", help="Frozen evaluation spec JSON whose hard gates should be evaluated")
-    parser.add_argument("--baseline", help="Variant ID used as paired baseline")
-    parser.add_argument("--candidate", help="Variant ID used as paired candidate")
-    parser.add_argument("--target-skill", help="Target skill ID for stage-separated routing metrics; inferred from spec.target.name")
-    parser.add_argument(
-        "--manual-review-receipt", action="append", default=[], metavar="RELATIVE_PATH",
-        help="Verified manual-review authority receipt relative to spec.artifacts.root",
-    )
-    parser.add_argument("--json", metavar="PATH", help="Write full summary JSON; use - for stdout")
-    parser.add_argument("--markdown", help="Write a Markdown summary")
-    parser.add_argument(
-        "--report-only", action="store_true",
-        help="Always exit 0 after a valid analysis; decision_signal still carries blocked/inconclusive status",
-    )
-    args = parser.parse_args()
-
-    if bool(args.baseline) != bool(args.candidate):
-        parser.error("--baseline and --candidate must be provided together")
-    if len(args.manual_review_receipt) > 1:
-        parser.error("--manual-review-receipt may be supplied at most once")
-
-    try:
-        spec_path = Path(args.spec).resolve() if args.spec else None
-        spec = load_spec(spec_path) if spec_path else None
-        if spec is None:
-            raise ValueError("--spec is required for receipt verification")
-        level = spec.get("level") if spec else None
-        if level == "L0":
-            raise ValueError("L0 specs are package audits; use audit_skill_package.py")
-        index_rows = load_jsonl(Path(args.runs))
-        cases_by_id = None
-        if spec and spec_path:
-            cases_ref = Path(spec["suite"]["cases_file"])
-            cases_path = cases_ref if cases_ref.is_absolute() else spec_path.parent / cases_ref
-            case_rows = load_contract_jsonl(cases_path.resolve())
-            public_heldout = [case.get("case_id") for case in case_rows if case.get("split") == "heldout"]
-            if public_heldout:
-                raise ValueError(f"public cases file contains heldout payload rows: {public_heldout}")
-            holdout = spec["suite"].get("holdout_control", {})
-            if holdout:
-                payload_path = (spec_path.parent / holdout["payload_file"]).resolve()
-                manifest_path = (spec_path.parent / holdout["manifest_file"]).resolve()
-                for bound_path, hash_field in ((payload_path, "payload_hash"), (manifest_path, "manifest_hash")):
-                    if not bound_path.is_file():
-                        raise ValueError(f"holdout artifact not found: {bound_path}")
-                    actual_hash = file_sha256(bound_path)
-                    if actual_hash != holdout.get(hash_field):
-                        raise ValueError(f"holdout {hash_field} mismatch: expected {holdout.get(hash_field)}, got {actual_hash}")
-                holdout_rows = load_contract_jsonl(payload_path)
-                non_holdout = [case.get("case_id") for case in holdout_rows if case.get("split") != "heldout"]
-                if non_holdout:
-                    raise ValueError(f"holdout payload contains non-heldout rows: {non_holdout}")
-                public_ids = {case.get("case_id") for case in case_rows}
-                overlap = sorted(public_ids & {case.get("case_id") for case in holdout_rows})
-                if overlap:
-                    raise ValueError(f"case IDs overlap between public and holdout payloads: {overlap}")
-                try:
-                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError) as exc:
-                    raise ValueError(f"holdout manifest is not valid JSON: {exc}") from exc
-                if not isinstance(manifest, dict):
-                    raise ValueError("holdout manifest must be a JSON object")
-                manifest_entries = manifest.get("cases", [])
-                clean_holdout = [
-                    {key: value for key, value in case.items() if key != "_line"}
-                    for case in holdout_rows
-                ]
-                payload_ids = [case.get("case_id") for case in clean_holdout]
-                if manifest.get("payload_sha256") != file_sha256(payload_path):
-                    raise ValueError("holdout manifest payload_sha256 does not match payload")
-                if manifest.get("case_count") != len(payload_ids) or manifest.get("case_ids") != payload_ids:
-                    raise ValueError("holdout manifest case count/order does not match payload")
-                if not isinstance(manifest_entries, list) or len(manifest_entries) != len(payload_ids):
-                    raise ValueError("holdout manifest entries do not match payload count")
-                for case, entry in zip(clean_holdout, manifest_entries):
-                    case_id = case.get("case_id")
-                    if not isinstance(entry, dict) or entry.get("case_id") != case_id:
-                        raise ValueError(f"holdout manifest entry ID mismatch for {case_id}")
-                    if entry.get("case_sha256") != canonical_sha256(case):
-                        raise ValueError(f"holdout manifest case_sha256 mismatch for {case_id}")
-                case_rows.extend(holdout_rows)
-
-            case_errors: list[str] = []
-            case_warnings: list[str] = []
-            check_cases(spec, case_rows, case_errors, case_warnings)
-            if case_errors:
-                raise ValueError("invalid evaluation cases: " + "; ".join(case_errors))
-            cases_by_id = {
-                case["case_id"]: {key: value for key, value in case.items() if key != "_line"}
-                for case in case_rows
-            }
-            if spec.get("ready_for_scored_run") is True and any(
-                PLACEHOLDER_RE.search(json.dumps(case, ensure_ascii=False))
-                for case in cases_by_id.values()
-            ):
-                raise ValueError("scored-ready case suite still contains template placeholders")
-            if spec.get("ready_for_scored_run") is not True:
-                raise ValueError("spec is not ready_for_scored_run")
-        candidate_package_hash = resolve_candidate_package_hash(spec, spec_path)
-    except ValueError as exc:
-        print(f"analysis error: {exc}", file=sys.stderr)
-        return 2
-
-    variants_by_id = {variant["id"]: variant for variant in spec["variants"]}
-    seen_run_ids: set[str] = set()
-    records: list[dict[str, Any]] = []
-    evidence_issues: list[dict[str, str]] = []
-    evidence_status = "complete"
-    for row in index_rows:
-        run_id = row["run_id"]
-        if run_id in seen_run_ids:
-            evidence_status = "invalid"
-            evidence_issues.append({"run_id": run_id, "status": "invalid", "issue": "duplicate run_id"})
-            continue
-        seen_run_ids.add(run_id)
-        case = cases_by_id.get(row["case_id"])
-        variant = variants_by_id.get(row["variant"])
-        if case is None or variant is None:
-            evidence_status = "invalid"
-            missing = "case_id" if case is None else "variant"
-            evidence_issues.append({
-                "run_id": run_id,
-                "status": "invalid",
-                "issue": f"run index references unknown {missing}",
-            })
-            continue
-        verification = verify_receipt(
-            row, spec, spec_path, case, variant, candidate_package_hash
-        )
-        if verification["status"] != "complete":
-            if verification["status"] == "invalid" or evidence_status == "complete":
-                evidence_status = verification["status"]
-            evidence_issues.append({
-                "run_id": run_id,
-                "status": verification["status"],
-                "issue": verification["issue"],
-            })
-            continue
-        records.append(verification["record"])
-
-    manual_config = spec.get("manual_review", {})
-    manual_required = isinstance(manual_config, dict) and manual_config.get("required") is True
-    manual_review_result: dict[str, Any] | None = None
-    manual_references = args.manual_review_receipt
-    if not manual_references:
-        manual_review_result = {
-            "required": manual_required,
-            "status": "incomplete" if manual_required else "not_required",
-            "decision": None,
-        }
-        if manual_required:
-            if evidence_status == "complete":
-                evidence_status = "incomplete"
-            evidence_issues.append({
-                "run_id": "<manual-review>",
-                "status": "incomplete",
-                "issue": "required --manual-review-receipt is missing",
-            })
-    else:
         try:
-            manual_review_result = verify_manual_review_receipt(
-                manual_references[0], spec, spec_path
+            value = load_json(candidate)
+        except ValueError:
+            continue
+        if (
+            not isinstance(value, dict)
+            or value.get("schema_version") != 1
+            or value.get("spec_hash") != spec_hash
+            or not isinstance(value.get("entries"), list)
+        ):
+            continue
+        diagnostics = validate_v5_schema(
+            value, "execution-plan-v1.schema.json", registry,
+        )
+        if diagnostics or not verify_self_hash(value, "plan_hash"):
+            continue
+        _, artifacts_root = resolve_contained_path(
+            candidate.parent,
+            value["artifacts"]["root"],
+            "plan artifacts root",
+        )
+        _, expected_index = resolve_contained_path(
+            artifacts_root,
+            value["artifacts"]["index_relpath"],
+            "plan index",
+        )
+        if expected_index == index_path:
+            matches.append((candidate.resolve(), value))
+    if len(matches) != 1:
+        raise ValueError(
+            "spec parent must contain exactly one validated plan projecting "
+            "the supplied index",
+        )
+    return matches[0]
+
+
+def _load_v5_analysis_inputs(
+    spec_path: Path,
+    index_path: Path,
+) -> tuple[
+    dict[str, Any],
+    list[dict[str, Any]],
+    dict[str, Any],
+    Path,
+    dict[str, Any],
+    dict[str, dict[str, Any]],
+]:
+    registry = load_v5_schema_registry()
+    plan_path, plan = _find_v5_plan(spec_path, index_path, registry)
+    spec_value = load_json(spec_path)
+    _, scenarios_path = resolve_contained_path(
+        spec_path.parent,
+        spec_value["suite"]["scenarios"]["path"],
+        "scenario corpus",
+        kind="file",
+    )
+    _, host_path = resolve_contained_path(
+        spec_path.parent,
+        spec_value["host"]["manifest"]["path"],
+        "host manifest",
+        kind="file",
+    )
+    spec, scenarios, host, registry = compiler._load_ready_contract(
+        spec_path, scenarios_path, host_path,
+    )
+    compiler.validate_compiled_plan(
+        plan,
+        spec,
+        scenarios,
+        host,
+        spec_path=spec_path,
+        source_path=Path(compiler.__file__).resolve(),
+        registry=registry,
+        runtime_override=plan["compiler"],
+    )
+    return spec, scenarios, host, plan_path, plan, registry
+
+
+def _load_v5_bound_artifact(
+    spec: dict[str, Any],
+    spec_path: Path,
+    *,
+    field: str,
+    schema_name: str,
+    hash_field: str,
+    registry: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    binding = spec["suite"].get(field)
+    if binding is None:
+        return None
+    _, path = resolve_contained_path(
+        spec_path.parent,
+        binding["path"],
+        f"suite {field}",
+        kind="file",
+    )
+    if file_sha256(path) != binding["sha256"]:
+        raise ValueError(f"suite {field} bytes differ from the spec binding")
+    artifact = load_json(path)
+    diagnostics = validate_v5_schema(artifact, schema_name, registry)
+    if diagnostics:
+        raise ValueError(_first_v5_diagnostic(diagnostics))
+    if not verify_self_hash(artifact, hash_field):
+        raise ValueError(f"suite {field} self-hash is invalid")
+    return artifact
+
+
+def _load_v5_bound_evidence(
+    spec: dict[str, Any],
+    spec_path: Path,
+    registry: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    quality = _load_v5_bound_artifact(
+        spec,
+        spec_path,
+        field="quality",
+        schema_name="suite-quality-v1.schema.json",
+        hash_field="suite_quality_hash",
+        registry=registry,
+    )
+    calibration = _load_v5_bound_artifact(
+        spec,
+        spec_path,
+        field="calibration",
+        schema_name="grader-calibration-v1.schema.json",
+        hash_field="calibration_hash",
+        registry=registry,
+    )
+    quality_status = "not_applicable"
+    if quality is not None:
+        statuses = set(quality["gates"].values())
+        quality_status = (
+            "fail"
+            if "fail" in statuses
+            else "not_evaluable"
+            if "not_evaluable" in statuses
+            else "pass"
+        )
+    return {
+        "quality": quality,
+        "quality_status": quality_status,
+        "calibration": calibration,
+        "calibration_status": (
+            "pass" if calibration is not None else "not_applicable"
+        ),
+    }
+
+
+def _load_v5_index(
+    index_path: Path,
+    plan: dict[str, Any],
+    registry: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not index_path.exists():
+        return []
+    records = load_jsonl_objects(index_path)
+    entries = {
+        entry["entry_id"]: entry for entry in plan["entries"]
+    }
+    rows: list[dict[str, Any]] = []
+    previous_key: tuple[int, int] | None = None
+    attempts: dict[str, int] = defaultdict(int)
+    for line_no, row in records:
+        diagnostics = validate_v5_schema(
+            row, "run-index-row-v2.schema.json", registry,
+        )
+        if diagnostics:
+            raise ValueError(
+                f"index line {line_no}: {_first_v5_diagnostic(diagnostics)}",
             )
-        except (OSError, ValueError, KeyError, TypeError) as exc:
-            evidence_status = "invalid"
-            manual_review_result = {
-                "required": manual_required,
-                "status": "invalid",
-                "decision": None,
+        entry = entries.get(row["entry_id"])
+        if entry is None or entry["disposition"] != "execute":
+            raise ValueError(
+                f"index line {line_no} does not name an execute plan entry",
+            )
+        expected = {
+            "plan_hash": plan["plan_hash"],
+            "plan_id": plan["plan_id"],
+            "entry_ordinal": entry["entry_ordinal"],
+            "case_id": entry["case_id"],
+            "treatment_id": entry["treatment_id"],
+            "repeat": entry["repeat"],
+        }
+        if any(row[field] != value for field, value in expected.items()):
+            raise ValueError(
+                f"index line {line_no} differs from its plan entry",
+            )
+        attempts[row["entry_id"]] += 1
+        if row["attempt"] != attempts[row["entry_id"]]:
+            raise ValueError(
+                f"index line {line_no} breaks the contiguous attempt sequence",
+            )
+        key = (row["entry_ordinal"], row["attempt"])
+        if previous_key is not None and key <= previous_key:
+            raise ValueError(
+                f"index line {line_no} breaks deterministic global order",
+            )
+        previous_key = key
+        rows.append(row)
+    return rows
+
+
+def _expected_v4_provenance(
+    plan: dict[str, Any],
+    entry: dict[str, Any],
+    spec: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "spec_hash": plan["spec_hash"],
+        "scenario_corpus_hash": plan["scenario_corpus_hash"],
+        "scenario_hash": entry["scenario_hash"],
+        "plan_hash": plan["plan_hash"],
+        "host_manifest_hash": plan["host_manifest_hash"],
+        "package_hash": plan["package_hashes"][spec["subject"]["skill_id"]],
+        "catalog_hash": entry["catalog_hash"],
+        "treatment_hash": entry["treatment_hash"],
+        "fixture_hash": entry["fixture_hash"],
+        "grader_set_hash": plan["grader_set_hash"],
+        "calibration_hash": plan["calibration_hash"],
+        "suite_quality_hash": plan["suite_quality_hash"],
+    }
+
+
+def _load_v4_receipt(
+    row: dict[str, Any],
+    *,
+    artifacts_root: Path,
+    plan: dict[str, Any],
+    entry: dict[str, Any],
+    spec: dict[str, Any],
+    registry: dict[str, dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    expected_dir = f"{entry['artifact_relpath']}/attempt-{row['attempt']:04d}"
+    expected_receipt = f"{expected_dir}/receipt.json"
+    if (
+        row["artifact_dir"] != expected_dir
+        or row["receipt"]["path"] != expected_receipt
+    ):
+        raise ValueError("index attempt paths differ from the plan projection")
+    _, attempt_dir = resolve_contained_path(
+        artifacts_root, expected_dir, "attempt directory", kind="directory",
+    )
+    _, receipt_path = resolve_contained_path(
+        artifacts_root, expected_receipt, "receipt", kind="file",
+    )
+    if file_sha256(receipt_path) != row["receipt"]["sha256"]:
+        raise ValueError("indexed receipt bytes do not match receipt.sha256")
+    receipt = load_json(receipt_path)
+    diagnostics = validate_v5_schema(
+        receipt, "receipt-v4.schema.json", registry,
+    )
+    if diagnostics:
+        raise ValueError(_first_v5_diagnostic(diagnostics))
+    if not verify_self_hash(receipt, "receipt_hash"):
+        raise ValueError("receipt_hash does not match canonical receipt bytes")
+
+    _, marker_path = resolve_contained_path(
+        attempt_dir, "attempt-start.json", "attempt marker", kind="file",
+    )
+    marker = load_json(marker_path)
+    if (
+        not verify_self_hash(marker, "marker_hash")
+        or marker != receipt["attempt_start"]
+    ):
+        raise ValueError("receipt attempt marker is invalid or mismatched")
+    run = receipt["run"]
+    expected_run = {
+        "plan_hash": plan["plan_hash"],
+        "plan_id": plan["plan_id"],
+        "entry_ordinal": entry["entry_ordinal"],
+        "entry_id": entry["entry_id"],
+        "case_id": entry["case_id"],
+        "treatment_id": entry["treatment_id"],
+        "repeat": entry["repeat"],
+        "attempt": row["attempt"],
+        "run_id": row["run_id"],
+    }
+    if any(run[field] != value for field, value in expected_run.items()):
+        raise ValueError("receipt run identity differs from plan/index identity")
+    if receipt["provenance"] != _expected_v4_provenance(plan, entry, spec):
+        raise ValueError("receipt provenance differs from the plan entry")
+    if receipt["routing"]["catalog"] != [
+        item["id"] for item in entry["execute_case_payload"]["catalog"]
+    ]:
+        raise ValueError("receipt routing catalog differs from the plan entry")
+    if {
+        principal["slot_id"] for principal in receipt["principals"]
+    } not in (set(), set(entry["principal_slot_ids"])):
+        raise ValueError("receipt principal slots differ from the plan entry")
+    for receipt_key, entry_key, identity_key in (
+        ("handoffs", "handoff_ids", "handoff_id"),
+        ("actions", "action_ids", "action_id"),
+        ("observations", "observation_ids", "observation_id"),
+    ):
+        identities = {item[identity_key] for item in receipt[receipt_key]}
+        if identities not in (set(), set(entry[entry_key])):
+            raise ValueError(
+                f"receipt {receipt_key} differ from the plan entry",
+            )
+    context = receipt["context_usage"]
+    if (
+        context["controlled_core_bytes"]
+        != context["controlled_bytes"] - context["unique_reference_bytes"]
+        or context["bytes"] != sum(
+            component["bytes"] for component in context["components"]
+        )
+    ):
+        raise ValueError("receipt context byte conservation failed")
+    artifacts = verify_artifact_records(
+        receipt["artifacts"], attempt_dir, label="receipt",
+    )
+    return receipt, artifacts
+
+
+def _verified_v4_artifact(
+    reference: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    label: str,
+) -> dict[str, Any]:
+    artifact = artifacts.get(reference["path"])
+    if artifact is None:
+        raise ValueError(f"{label} is absent from verified artifacts")
+    if any(
+        artifact[field] != reference[field]
+        for field in ("path", "sha256", "encoding")
+    ):
+        raise ValueError(f"{label} reference differs from verified artifacts")
+    return artifact
+
+
+def _model_v4_output(
+    receipt: dict[str, Any],
+    reference: dict[str, Any],
+    entry: dict[str, Any],
+    requirements: list[dict[str, Any]],
+    artifacts: dict[str, dict[str, Any]],
+    registry: dict[str, dict[str, Any]],
+) -> tuple[dict[str, Any], str]:
+    matching_specs = [
+        item for item in entry["model_grade_specs"]
+        if item["grader_id"] == reference["grader_id"]
+    ]
+    if len(matching_specs) != 1:
+        raise ValueError("model grader lacks one bound plan specification")
+    model_spec = matching_specs[0]
+    if reference["schedule_hash"] != model_spec["schedule_hash"]:
+        raise ValueError("model grader schedule hash differs from the plan")
+    blinded_artifact = _verified_v4_artifact(
+        reference["blinded_input"], artifacts, "model blinded input",
+    )
+    raw_artifact = _verified_v4_artifact(
+        reference["raw_batch"], artifacts, "model raw batch",
+    )
+    try:
+        blinded = json.loads(blinded_artifact["text"])
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"model blinded input is invalid JSON: {exc.msg}",
+        ) from None
+    if (
+        not isinstance(blinded, dict)
+        or sorted(blinded) != sorted(model_spec["blinded_projection"])
+    ):
+        raise ValueError("model blinded input differs from the plan projection")
+
+    requests = [
+        item for item in receipt["host_protocol"]["requests"]
+        if (
+            item["envelope"]["request_kind"] == "model_grade"
+            and item["payload"].get("grader_id") == reference["grader_id"]
+        )
+    ]
+    if len(requests) != 1:
+        raise ValueError("model grader requires one bound host request")
+    request = requests[0]
+    if (
+        request["payload"].get("batch_hash") != model_spec["batch_hash"]
+        or request["payload"].get("schedule_hash") != model_spec["schedule_hash"]
+        or request["payload"].get("blinded_input") != blinded
+    ):
+        raise ValueError("model grader host request differs from the plan/batch")
+
+    records: list[dict[str, Any]] = []
+    for line_no, line in enumerate(raw_artifact["text"].splitlines(), 1):
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"model raw batch line {line_no} is invalid JSON: {exc.msg}",
+            ) from None
+        if not isinstance(record, dict):
+            raise ValueError(f"model raw batch line {line_no} is not an object")
+        record_type = record.get("record_type")
+        schema_name = (
+            "host_event"
+            if record_type == "skill-evaluator-host-event/1"
+            else "host_result"
+            if record_type == "skill-evaluator-host-result/1"
+            else None
+        )
+        if schema_name is None:
+            raise ValueError("model raw batch contains an unknown record type")
+        diagnostics = validate_host_protocol_record(
+            schema_name, record, registry,
+        )
+        if diagnostics:
+            raise ValueError(_first_v5_diagnostic(diagnostics))
+        records.append(record)
+    results = [
+        item for item in records
+        if item["record_type"] == "skill-evaluator-host-result/1"
+    ]
+    if not records or len(results) != 1 or records[-1] is not results[0]:
+        raise ValueError("model raw batch requires one final terminal result")
+    result = results[0]
+    if (
+        result["envelope"] != request["envelope"]
+        or result["request_hash"] != request["request_hash"]
+        or result["terminal_status"] != "completed"
+        or result["protocol_error"] is not None
+    ):
+        raise ValueError("model raw batch terminal result is invalid or unbound")
+    if sum(
+        item == result for item in receipt["host_protocol"]["results"]
+    ) != 1:
+        raise ValueError("model raw batch result differs from receipt protocol")
+    if len(result["artifacts"]) != 1:
+        raise ValueError("model grader result requires one output artifact")
+    output_reference = result["artifacts"][0]
+    output_artifact = _verified_v4_artifact(
+        output_reference, artifacts, "model grader output",
+    )
+    try:
+        output = json.loads(output_artifact["text"])
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"model grader output is invalid JSON: {exc.msg}",
+        ) from None
+    return validate_grader_output(output, requirements, artifacts), output_reference[
+        "path"
+    ]
+
+
+def _deterministic_v4_output(
+    reference: dict[str, Any],
+    declaration: dict[str, Any],
+    requirements: list[dict[str, Any]],
+    artifacts: dict[str, dict[str, Any]],
+    credential_policy: str,
+) -> tuple[dict[str, Any], str]:
+    invocation_artifact = _verified_v4_artifact(
+        reference["invocation"], artifacts, "grader invocation",
+    )
+    output_artifact = _verified_v4_artifact(
+        reference["output"], artifacts, "grader output",
+    )
+    try:
+        invocation = json.loads(invocation_artifact["text"])
+        output = json.loads(output_artifact["text"])
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"grader artifact is invalid JSON: {exc.msg}") from None
+    expected_fields = {
+        "grader_id", "declared_argv", "resolved_argv",
+        "resolved_executable_sha256", "cwd", "env", "timeout_seconds",
+        "input_allowlist", "inputs", "exit_code", "pass_exit_codes",
+        "credential_policy", "shell", "start_new_session",
+    }
+    if not isinstance(invocation, dict) or set(invocation) != expected_fields:
+        raise ValueError("deterministic grader invocation fields are invalid")
+    verifier = declaration["verifier"]
+    expected = {
+        "grader_id": reference["grader_id"],
+        "declared_argv": verifier["argv"],
+        "cwd": verifier["cwd"],
+        "timeout_seconds": verifier["timeout_seconds"],
+        "input_allowlist": verifier["input_allowlist"],
+        "pass_exit_codes": verifier["pass_exit_codes"],
+        "credential_policy": credential_policy,
+        "shell": False,
+        "start_new_session": True,
+    }
+    if any(invocation[field] != value for field, value in expected.items()):
+        raise ValueError("deterministic grader invocation differs from the spec")
+    expected_inputs = []
+    prefix = f"graders/{reference['grader_id']}"
+    if verifier["cwd"] != ".":
+        prefix += "/" + verifier["cwd"]
+    for relative in verifier["input_allowlist"]:
+        expected_inputs.append(f"{prefix}/{relative}")
+    observed_inputs = [item["path"] for item in invocation["inputs"]]
+    if observed_inputs != expected_inputs:
+        raise ValueError("deterministic grader inputs differ from the allowlist")
+    for item in invocation["inputs"]:
+        _verified_v4_artifact(item, artifacts, "grader input")
+    normalized = validate_grader_output(output, requirements, artifacts)
+    if (
+        invocation["exit_code"] in invocation["pass_exit_codes"]
+    ) != normalized["overall_pass"]:
+        raise ValueError("deterministic grader exit/pass semantics contradict")
+    return normalized, reference["output"]["path"]
+
+
+def _read_v4_grades(
+    receipt: dict[str, Any],
+    entry: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    spec: dict[str, Any],
+    registry: dict[str, dict[str, Any]],
+) -> tuple[dict[str, bool], dict[str, dict[str, Any]]]:
+    scenario = entry["execute_case_payload"]["case"]
+    requirements = scenario["requirements"]
+    expected_graders = set(entry["grader_ids"])
+    observed_graders = [
+        output["grader_id"] for output in receipt["grader_outputs"]
+    ]
+    if (
+        len(observed_graders) != len(set(observed_graders))
+        or set(observed_graders) != expected_graders
+    ):
+        raise ValueError("receipt grader outputs differ from the plan entry")
+    declarations = {
+        item["grader_id"]: item for item in spec["graders"]
+    }
+    checks: dict[str, bool] = {}
+    locators: dict[str, dict[str, Any]] = {}
+    for reference in receipt["grader_outputs"]:
+        selected = [
+            requirement for requirement in requirements
+            if requirement["grader_id"] == reference["grader_id"]
+        ]
+        declaration = declarations.get(reference["grader_id"])
+        if declaration is None or declaration["type"] != reference["kind"]:
+            raise ValueError("receipt grader kind differs from the spec")
+        if reference["kind"] == "deterministic":
+            normalized, output_path = _deterministic_v4_output(
+                reference,
+                declaration,
+                selected,
+                artifacts,
+                spec["execution"]["credential_policy"],
+            )
+        else:
+            normalized, output_path = _model_v4_output(
+                receipt,
+                reference,
+                entry,
+                selected,
+                artifacts,
+                registry,
+            )
+        if normalized["grader_failure"]:
+            raise ValueError("grader output reports apparatus failure")
+        output = json.loads(artifacts[output_path]["text"])
+        output_indexes = {
+            item["check_id"]: index
+            for index, item in enumerate(output["checks"])
+        }
+        for check_id, passed in normalized["checks"].items():
+            if check_id in checks:
+                raise ValueError(f"duplicate normalized grader check: {check_id}")
+            checks[check_id] = passed
+            locators[check_id] = {
+                "kind": "json_pointer",
+                "artifact": output_path,
+                "json_pointer": f"/checks/{output_indexes[check_id]}/pass",
             }
-            evidence_issues.append({
-                "run_id": "<manual-review>",
+    expected_checks = {item["check_id"] for item in requirements}
+    if set(checks) != expected_checks:
+        raise ValueError("normalized grader checks do not cover the scenario")
+    return checks, locators
+
+
+def _v4_context_projection(context: dict[str, Any]) -> dict[str, Any]:
+    components = context["components"]
+    unique_static = sum(
+        item["bytes"]
+        for item in components
+        if item["kind"] in STATIC_CONTEXT_KINDS and item["occurrence"] == 1
+    )
+    repeated_static = sum(
+        item["bytes"]
+        for item in components
+        if item["kind"] in STATIC_CONTEXT_KINDS and item["occurrence"] > 1
+    )
+    protocol_output = sum(
+        item["bytes"] for item in components
+        if item["kind"] == "protocol_output"
+    )
+    failed_output = sum(
+        item["bytes"] for item in components
+        if item["kind"] == "failed_command_output"
+    )
+    first_host_static = {
+        (item["kind"], item["source_path"], item["content_sha256"])
+        for item in components
+        if (
+            item["kind"] in {"metadata", "body"}
+            and item["occurrence"] == 1
+        )
+    }
+    host_duplicate = sum(
+        item["bytes"] for item in components
+        if (
+            item["kind"] in {"metadata", "body"}
+            and item["occurrence"] > 1
+            and (
+                item["kind"],
+                item["source_path"],
+                item["content_sha256"],
+            ) in first_host_static
+        )
+    )
+    unique_reference = sum(
+        item["bytes"] for item in components
+        if item["kind"] == "reference" and item["occurrence"] == 1
+    )
+    if (
+        context["controlled_bytes"] != context["bytes"] - host_duplicate
+        or context["unique_reference_bytes"] != unique_reference
+    ):
+        raise ValueError("receipt context control-byte accounting failed")
+    return {
+        **context,
+        "attributed": context["status"] == "captured",
+        "measurement_source": "receipt-v4",
+        "unique_static_content_bytes": unique_static,
+        "repeated_static_content_bytes": repeated_static,
+        "protocol_output_bytes": protocol_output,
+        "failed_command_output_bytes": failed_output,
+        "host_integration_duplicate_bytes": host_duplicate,
+        "unexplained_repeated_static_content_bytes": (
+            repeated_static - host_duplicate
+        ),
+        "unattributed_model_body_read_count": 0,
+    }
+
+
+def _v5_utc(value: str) -> datetime:
+    return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=timezone.utc,
+    )
+
+
+def _record_from_v4_receipt(
+    receipt: dict[str, Any],
+    entry: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    spec: dict[str, Any],
+    registry: dict[str, dict[str, Any]],
+    bound_evidence: dict[str, Any],
+) -> dict[str, Any]:
+    run = receipt["run"]
+    usage = receipt["usage"]["records"]
+    valid = run["valid"] is True
+    if entry["model_grade_specs"]:
+        calibration = bound_evidence["calibration"]
+        if calibration is None:
+            raise ValueError("model grader receipt lacks bound calibration")
+        created = _v5_utc(calibration["created"])
+        started = _v5_utc(run["started_at"])
+        ended = _v5_utc(run["ended_at"])
+        expires = _v5_utc(calibration["expires"])
+        if not created <= started <= ended < expires:
+            raise ValueError(
+                "model grader attempt is outside the calibration window",
+            )
+    checks, check_locators = (
+        _read_v4_grades(receipt, entry, artifacts, spec, registry)
+        if valid else ({}, {})
+    )
+    requirements = entry["execute_case_payload"]["case"]["requirements"]
+
+    def required_pass(dimension: str) -> bool:
+        selected = [
+            requirement for requirement in requirements
+            if requirement["dimension"] == dimension
+            and requirement["required"] is True
+        ]
+        return bool(selected) and all(
+            checks[requirement["check_id"]] for requirement in selected
+        )
+
+    terminal_completed = run["terminal"] == "completed"
+    task_pass = terminal_completed and required_pass("outcome")
+    safety_requirements = [
+        item for item in requirements
+        if item["dimension"] == "safety" and item["required"] is True
+    ]
+    safety_pass = all(
+        checks[item["check_id"]] for item in safety_requirements
+    )
+    hard_failures = sorted({
+        item["requirement_id"]
+        for item in requirements
+        if item["required"] is True
+        and (
+            not checks.get(item["check_id"], False)
+            or (item["dimension"] == "outcome" and not terminal_completed)
+        )
+    })
+    routing = receipt["routing"]
+    return {
+        "run_id": run["run_id"],
+        "entry_id": run["entry_id"],
+        "variant": run["treatment_id"],
+        "case_id": run["case_id"],
+        "repeat": run["repeat"],
+        "valid": valid,
+        "task_pass": task_pass,
+        "safety_pass": safety_pass,
+        "process_score": (
+            100 if required_pass("process") else 0
+            if any(item["dimension"] == "process" for item in requirements)
+            else None
+        ),
+        "quality_score": (
+            100 if required_pass("quality") else 0
+            if any(item["dimension"] == "quality" for item in requirements)
+            else None
+        ),
+        "tokens_in": sum(item["input_tokens"] for item in usage),
+        "tokens_out": sum(item["output_tokens"] for item in usage),
+        "latency_ms": sum(item["runtime_ms"] for item in usage),
+        "tool_calls": sum(item["tool_calls"] for item in usage),
+        "retries": sum(item["retries"] for item in usage),
+        "pricing_identity": receipt["usage"]["pricing_identity"],
+        "usage_records": usage,
+        "critical_safety_incidents": (
+            0 if safety_pass else sum(
+                item["safety_severity"] in {"high", "critical"}
+                for item in safety_requirements
+            )
+        ),
+        "unauthorized_side_effects": 0,
+        "routing_evaluable": True,
+        "should_trigger": spec["subject"]["skill_id"] in routing["catalog"],
+        "skill_body_loaded": spec["subject"]["skill_id"] in routing["loaded"],
+        "skill_incorporated": spec["subject"]["skill_id"] in routing["invoked"],
+        "skill_applied": spec["subject"]["skill_id"] in routing["applied"],
+        "routing": routing,
+        "hard_gate_failures": hard_failures,
+        "grader_check_locators": check_locators,
+        "error_type": None if terminal_completed else run["terminal"],
+        "counts": {
+            "task_tool_calls": sum(item["tool_calls"] for item in usage),
+            "executor_prewrite_task_tool_calls": 0,
+            "host_injected_body_count": 0,
+            "model_initiated_body_read_count": 0,
+            "reference_load_count": sum(
+                item["kind"] == "reference"
+                for item in receipt["context_usage"]["components"]
+            ),
+            "skill_load_tool_calls": 0,
+            "skill_protocol_tool_calls": 0,
+            "workflow_artifact_count": len(receipt["artifacts"]),
+        },
+        "bytes": {
+            "executor_prewrite_tool_output_bytes": 0,
+            "host_preflight_tool_output_bytes": 0,
+        },
+        "context_usage": _v4_context_projection(
+            receipt["context_usage"],
+        ),
+        "receipt": receipt,
+    }
+
+
+def _collect_v5_evidence(
+    index_rows: list[dict[str, Any]],
+    *,
+    artifacts_root: Path,
+    plan: dict[str, Any],
+    spec: dict[str, Any],
+    registry: dict[str, dict[str, Any]],
+    bound_evidence: dict[str, Any],
+) -> dict[str, Any]:
+    entries = {entry["entry_id"]: entry for entry in plan["entries"]}
+    attempts: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    records: list[dict[str, Any]] = []
+    selected_attempts: dict[str, dict[str, Any]] = {}
+    receipt_issues: list[dict[str, Any]] = []
+    for row in index_rows:
+        entry = entries[row["entry_id"]]
+        try:
+            receipt, artifacts = _load_v4_receipt(
+                row,
+                artifacts_root=artifacts_root,
+                plan=plan,
+                entry=entry,
+                spec=spec,
+                registry=registry,
+            )
+            _, receipt_path = resolve_contained_path(
+                artifacts_root,
+                row["receipt"]["path"],
+                "indexed receipt",
+                kind="file",
+            )
+        except FileNotFoundError as exc:
+            receipt_issues.append({
+                "row": row,
+                "entry": entry,
+                "status": "incomplete",
+                "issue": str(exc),
+            })
+            continue
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            receipt_issues.append({
+                "row": row,
+                "entry": entry,
                 "status": "invalid",
                 "issue": str(exc),
             })
-
-    report_identity = report_identity_fields(
-        spec, spec_path, Path(args.runs).resolve(), strict=False,
-    )
-    identity_failures = []
-    if report_identity["grader_set_hash"] is None:
-        identity_failures.append("grader set identity cannot be reproduced")
-    if report_identity["treatment_contract_hash"] is None:
-        identity_failures.append("suite treatment_contract_hash is absent or invalid")
-    for issue in identity_failures:
-        evidence_issues.append({
-            "run_id": "<report-identity>",
-            "status": "invalid",
-            "issue": issue,
-        })
-    evidence_status = derive_evidence_status(
-        current_status=evidence_status,
-        incomplete_matrix=False,
-        duplicate_pairs=False,
-        identity_invalid=bool(identity_failures),
-    )
-    report_identity["receipt_treatment_index_content_hash"] = (
-        receipt_treatment_index_content_hash(records)
-    )
-
-    if evidence_status != "complete":
-        failed_candidate = (
-            resolve_comparative_variant(spec, "candidate", variant_id=args.candidate)
-            if args.candidate else None
-        ) or (
-            resolve_comparative_variant(spec, "candidate", mode="natural_routing")
-            or resolve_comparative_variant(spec, "candidate", mode="force_loaded")
-        )
-        failed_candidate_mode = failed_candidate["mode"] if failed_candidate else "natural_routing"
-        failed_context_summary = summarize_skill_context(
-            records, cases_by_id, spec, spec["suite"]["repeats"],
-            mode=failed_candidate_mode,
-        )
-        failed_prior_context = summarize_prior_skill_context(
-            records, cases_by_id, spec, spec["suite"]["repeats"], failed_context_summary,
-            mode=failed_candidate_mode,
-        )
-        failure_report = {
-            "schema_version": 3,
-            "report_hash": None,
-            **report_identity,
-            "evidence_status": evidence_status,
-            "usefulness_status": "not_evaluable",
-            "primary_benefit": (
-                {**spec["analysis"]["primary_benefit"], "status": "not_evaluable"}
-                if level in {"L2", "L3", "L4"} else None
-            ),
-            "paired_metrics": {},
-            "paired_task_failures": [],
-            "evidence_issues": evidence_issues,
-            "manual_review": manual_review_result,
-            "skill_context": failed_context_summary,
-            "context_efficiency": failed_context_summary["context_efficiency"],
+            continue
+        attempt = {
+            "row": row,
+            "receipt": receipt,
+            "receipt_path": receipt_path,
+            "artifacts": artifacts,
+            "record": None,
+            "analysis_error": None,
         }
-        if failed_prior_context is not None:
-            failure_report.update(failed_prior_context)
-        failure_report["report_hash"] = canonical_self_hash(failure_report, "report_hash")
-        payload = json.dumps(failure_report, indent=2, ensure_ascii=False) + "\n"
-        if args.json == "-":
-            print(payload, end="")
-        elif args.json:
-            Path(args.json).write_text(payload, encoding="utf-8")
-        print(f"evidence_status={evidence_status}")
-        for issue in evidence_issues:
-            print(f"{issue['run_id']}: {issue['issue']}")
-        return 3
+        if receipt["run"]["valid"] is True:
+            try:
+                attempt["record"] = _record_from_v4_receipt(
+                    receipt,
+                    entry,
+                    artifacts,
+                    spec,
+                    registry,
+                    bound_evidence,
+                )
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                attempt["analysis_error"] = str(exc)
+                receipt_issues.append({
+                    "row": row,
+                    "entry": entry,
+                    "status": "invalid",
+                    "issue": str(exc),
+                })
+        attempts[entry["entry_id"]].append(attempt)
 
-    by_variant: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for record in records:
-        by_variant[record["variant"]].append(record)
-    variants = sorted(by_variant)
-    available = set(variants)
-    baseline = args.baseline
-    candidate = args.candidate
-    comparative = level in {"L2", "L3", "L4"}
-    if spec and not comparative and (baseline is not None or candidate is not None):
-        print("analysis error: L1 diagnostics do not accept comparative baseline/candidate arguments", file=sys.stderr)
-        return 2
-    if spec and comparative and baseline is None and candidate is None:
-        baseline = infer_variant(spec, "baseline", "baseline", "skill_disabled", available)
-        candidate_definition = (
-            resolve_comparative_variant(
-                spec, "candidate", mode="natural_routing", available=available,
+    missing_entries: list[str] = []
+    duplicate_terminal_entries: list[str] = []
+    for entry in plan["entries"]:
+        if entry["disposition"] != "execute":
+            continue
+        terminal = [
+            item for item in attempts[entry["entry_id"]]
+            if (
+                item["receipt"]["run"]["valid"] is True
+                and item["analysis_error"] is None
             )
-            or resolve_comparative_variant(
-                spec, "candidate", mode="force_loaded", available=available,
+        ]
+        if not terminal:
+            missing_entries.append(entry["entry_id"])
+            continue
+        if len(terminal) != 1:
+            duplicate_terminal_entries.append(entry["entry_id"])
+            continue
+        selected = terminal[0]
+        selected_attempts[entry["entry_id"]] = selected
+        records.append(selected["record"])
+
+    return {
+        "attempts": attempts,
+        "selected_attempts": selected_attempts,
+        "records": records,
+        "missing_entries": missing_entries,
+        "duplicate_terminal_entries": duplicate_terminal_entries,
+        "receipt_issues": receipt_issues,
+        "attempt_count": len(index_rows),
+        "invalid_attempts": len({
+            (item["row"]["entry_id"], item["row"]["attempt"])
+            for values in attempts.values()
+            for item in values
+            if (
+                item["receipt"]["run"]["valid"] is not True
+                or item["analysis_error"] is not None
             )
-        )
-        candidate = candidate_definition["id"] if candidate_definition else None
-    else:
-        candidate_definition = (
-            resolve_comparative_variant(spec, "candidate", variant_id=candidate)
-            if spec and candidate else None
-        )
-    candidate_mode = (
-        candidate_definition["mode"] if candidate_definition is not None else "natural_routing"
-    )
-    prior = None
-    if spec:
-        prior_definition = resolve_comparative_variant(spec, "prior", mode=candidate_mode)
-        prior = prior_definition["id"] if prior_definition else None
-
-    if spec and comparative and (baseline is None or candidate is None):
-        print("analysis error: a spec-bound analysis requires resolvable baseline and candidate variants", file=sys.stderr)
-        return 2
-    if baseline is not None and baseline == candidate:
-        print("analysis error: baseline and candidate variants must be different", file=sys.stderr)
-        return 2
-
-    if baseline and baseline not in by_variant:
-        print(f"analysis error: baseline variant not found: {baseline}", file=sys.stderr)
-        return 2
-    if candidate and candidate not in by_variant:
-        print(f"analysis error: candidate variant not found: {candidate}", file=sys.stderr)
-        return 2
-
-    full_key_counts = Counter((record["variant"], record["case_id"], record["repeat"]) for record in records)
-    duplicate_full_keys = sorted(key for key, count in full_key_counts.items() if count > 1)
-    if duplicate_full_keys:
-        print(f"analysis error: duplicate variant/case/repeat keys: {duplicate_full_keys[:20]}", file=sys.stderr)
-        return 2
-
-    completeness = None
-    attribution_case_ids: set[str] | None = None
-    if spec and cases_by_id is not None:
-        allowed_cases = set(cases_by_id)
-        unknown_cases = sorted({record["case_id"] for record in records} - allowed_cases)
-        if unknown_cases:
-            print(f"analysis error: run file contains case IDs outside the bound suite: {unknown_cases}", file=sys.stderr)
-            return 2
-        variants_spec = spec["variants"]
-        variant_profiles = {
-            variant["id"]: f"{variant['role']}/{variant['mode']}" for variant in variants_spec
-        }
-        unknown_variants = sorted(set(by_variant) - set(variant_profiles))
-        if unknown_variants:
-            print(f"analysis error: run file contains variants outside the bound spec: {unknown_variants}", file=sys.stderr)
-            return 2
-        repeats = spec["suite"]["repeats"]
-        out_of_range = sorted({record["repeat"] for record in records if record["repeat"] > repeats})
-        if out_of_range:
-            print(f"analysis error: run file contains repeat values above suite.repeats={repeats}: {out_of_range}", file=sys.stderr)
-            return 2
-        expected_keys = {
-            (variant_id, case_id, repeat)
-            for variant_id, profile in variant_profiles.items()
-            for case_id, case in cases_by_id.items()
-            if profile in set(case.get("applicable_variant_profiles", []))
-            for repeat in range(1, repeats + 1)
-        }
-        observed_keys = {
-            (record["variant"], record["case_id"], record["repeat"])
-            for record in records
-        }
-        records_by_key = {
-            (record["variant"], record["case_id"], record["repeat"]): record
-            for record in records
-        }
-        unexpected_keys = sorted(observed_keys - expected_keys)
-        if unexpected_keys:
-            print(
-                "analysis error: run file contains case/variant/repeat keys outside the frozen plan: "
-                f"{unexpected_keys[:20]}",
-                file=sys.stderr,
-            )
-            return 2
-        missing_keys = sorted(expected_keys - observed_keys)
-        invalid_keys = sorted(
-            key for key in expected_keys & observed_keys
-            if records_by_key[key].get("valid") is not True
-        )
-        timed_out_keys = sorted(
-            key for key in expected_keys & observed_keys
-            if records_by_key[key].get("error_type") == "timeout"
-        )
-        valid_keys = sorted(
-            key for key in expected_keys & observed_keys
-            if records_by_key[key].get("valid") is True
-        )
-        attribution_case_ids = set()
-        if baseline and candidate:
-            attribution_case_ids = {
-                case_id for case_id, case in cases_by_id.items()
-                if case.get("attribution_evaluable") is True
-                and variant_profiles[baseline] in set(case.get("applicable_variant_profiles", []))
-                and variant_profiles[candidate] in set(case.get("applicable_variant_profiles", []))
-            }
-        selected_pair_expected = {
-            key for key in expected_keys
-            if key[0] in {baseline, candidate} and key[1] in attribution_case_ids
-        }
-        by_variant_completeness = {}
-        for variant_id in sorted(variant_profiles):
-            planned = {key for key in expected_keys if key[0] == variant_id}
-            present = planned & observed_keys
-            variant_invalid = {key for key in invalid_keys if key[0] == variant_id}
-            variant_timed_out = {key for key in timed_out_keys if key[0] == variant_id}
-            by_variant_completeness[variant_id] = {
-                "planned": len(planned),
-                "present": len(present),
-                "valid": len(present - variant_invalid),
-                "invalid": len(variant_invalid),
-                "timed_out": len(variant_timed_out),
-                "missing": len(planned - present),
-            }
-        completeness = {
-            "case_count": len(cases_by_id),
-            "attribution_case_count": len(attribution_case_ids),
-            "declared_variant_count": len(variant_profiles),
-            "repeats": repeats,
-            "expected_plan_keys": len(expected_keys),
-            "observed_plan_keys": len(expected_keys & observed_keys),
-            "valid_plan_keys": len(valid_keys),
-            "expected_selected_pair_keys": len(selected_pair_expected),
-            "observed_selected_pair_keys": len(selected_pair_expected & observed_keys),
-            "missing_expected_keys_count": len(missing_keys),
-            "missing_expected_keys": [list(key) for key in missing_keys[:100]],
-            "missing_expected_keys_truncated": len(missing_keys) > 100,
-            "invalid_expected_keys_count": len(invalid_keys),
-            "invalid_expected_keys": [list(key) for key in invalid_keys[:100]],
-            "invalid_expected_keys_truncated": len(invalid_keys) > 100,
-            "timed_out_expected_keys_count": len(timed_out_keys),
-            "timed_out_expected_keys": [list(key) for key in timed_out_keys[:100]],
-            "evidence_complete": not missing_keys and not invalid_keys,
-            "by_variant": by_variant_completeness,
-        }
-
-    target_skill_id = args.target_skill
-    if target_skill_id is None and spec and isinstance(spec.get("target"), dict):
-        target_skill_id = spec["target"].get("name")
-
-    routing_case_ids_by_variant: dict[str, set[str] | None] = {name: None for name in variants}
-    if spec and cases_by_id is not None:
-        for variant in spec["variants"]:
-            profile = f"{variant['role']}/{variant['mode']}"
-            routing_case_ids_by_variant[variant["id"]] = {
-                case_id for case_id, case in cases_by_id.items()
-                if variant["mode"] == "natural_routing"
-                and profile in case.get("applicable_variant_profiles", [])
-            }
-    variant_summaries = {
-        name: summarize_variant(by_variant[name], target_skill_id, routing_case_ids_by_variant.get(name))
-        for name in variants
+        } | {
+            (item["row"]["entry_id"], item["row"]["attempt"])
+            for item in receipt_issues
+            if item["status"] == "invalid"
+        }),
     }
-    paired = paired_summary(records, baseline, candidate, attribution_case_ids) if baseline and candidate else None
-    paired_metrics: dict[str, dict[str, Any]] = {}
-    paired_task_failures: list[dict[str, Any]] = []
-    primary_benefit = None
-    if comparative:
-        paired_metrics, paired_task_failures = build_paired_metrics(
-            records, spec, candidate=candidate,
-            comparator_variants={"baseline": baseline, "prior": prior},
-            cases_by_id=cases_by_id,
-        )
-        primary_definition = spec["analysis"]["primary_benefit"]
-        primary_benefit = {
-            **primary_definition,
-            **evaluate_benefit(
-                paired_metrics.get(primary_definition["metric"], {}),
-                primary_definition["minimum_benefit"],
-            ),
-        }
 
-    context_summary = summarize_skill_context(
-        records, cases_by_id, spec, spec["suite"]["repeats"], mode=candidate_mode
-    )
-    prior_context = summarize_prior_skill_context(
-        records, cases_by_id, spec, spec["suite"]["repeats"], context_summary,
-        mode=candidate_mode,
-    )
 
-    hard_gates = evaluate_hard_gates(
-        spec, variant_summaries, records, candidate, paired, target_skill_id,
-        prior, cases_by_id, spec["suite"]["repeats"], context_summary, paired_metrics,
-    ) if spec and comparative else []
-    hard_failures_by_variant: dict[str, int] = defaultdict(int)
-    for record in records:
-        if record["valid"]:
-            hard_failures_by_variant[record["variant"]] += len(record["hard_gate_failures"])
-    case_gate_evidence = {
-        "hard_failures_by_variant": dict(hard_failures_by_variant),
+def _empty_metric_summary(
+    metric_id: str,
+    *,
+    direction: str = "lower_is_better",
+    effect: str = "absolute",
+) -> dict[str, Any]:
+    return {
+        "metric_id": metric_id,
+        "status": "not_evaluable",
+        "direction": direction,
+        "effect": effect,
+        "point": None,
+        "lower": None,
+        "upper": None,
+        "case_count": 0,
+        "excluded_pairs": 0,
+        "case_differences": {},
     }
-    blocking: list[str] = []
-    observed_safety_block = False
-    no_valid_candidate_runs = False
-    candidate_variant_ids = {
-        variant["id"] for variant in spec["variants"] if variant.get("role") == "candidate"
-    } if spec else ({candidate} if candidate else set())
-    for name, summary in variant_summaries.items():
-        if name in candidate_variant_ids:
-            if summary["critical_safety_incidents"]:
-                observed_safety_block = True
-                blocking.append(f"{name}: {summary['critical_safety_incidents']} critical safety incident(s)")
-            failed_safety = summary["safety_incident_rate"]["successes"]
-            if failed_safety:
-                observed_safety_block = True
-                blocking.append(f"{name}: {failed_safety} valid run(s) failed the safety gate")
-            if summary["valid_records"] == 0:
-                no_valid_candidate_runs = True
-                blocking.append(f"{name}: no valid runs")
-    failed_gates = [gate for gate in hard_gates if gate["status"] == "fail"]
-    unknown_gates = [gate for gate in hard_gates if gate["status"] == "not_evaluable"]
-    for gate in failed_gates:
-        blocking.append(f"hard gate {gate['id']} failed: observed={gate['observed']} rule {gate['operator']} {gate['threshold']}")
-    for gate in unknown_gates:
-        blocking.append(f"hard gate {gate['id']} is not evaluable: {gate.get('reason')}")
-    candidate_case_failures, candidate_failure_blockers = summarize_candidate_hard_failures(
-        case_gate_evidence["hard_failures_by_variant"], candidate_variant_ids
-    )
-    blocking.extend(candidate_failure_blockers)
-    spec_ready = spec.get("ready_for_scored_run") is True if spec and comparative else None
-    if spec and comparative and not spec_ready:
-        blocking.append("evaluation spec is not marked ready_for_scored_run=true")
-    incomplete_matrix = bool(
-        completeness
-        and (
-            completeness["missing_expected_keys_count"]
-            or completeness["invalid_expected_keys_count"]
-        )
-    )
-    if incomplete_matrix:
-        blocking.append(
-            "run matrix evidence is incomplete: "
-            f"missing={completeness['missing_expected_keys_count']}, "
-            f"invalid={completeness['invalid_expected_keys_count']}, "
-            f"expected={completeness['expected_plan_keys']}"
-        )
-    manual_decision_blocks = bool(
-        manual_review_result
-        and manual_review_result.get("decision") in {"hold", "reject"}
-    )
-    if manual_decision_blocks:
-        blocking.append(
-            f"manual review authority decision is {manual_review_result['decision']}"
-        )
-    duplicate_pairs = bool(paired and paired["duplicate_variant_keys"])
-    if duplicate_pairs:
-        blocking.append(f"duplicate variant/case/repeat keys make pairing ambiguous: {paired['duplicate_variant_keys']}")
-    if paired and paired["paired_valid"] == 0:
-        blocking.append("no valid paired candidate/baseline outcomes")
 
-    effective_evidence_status = derive_evidence_status(
-        current_status=evidence_status,
-        incomplete_matrix=incomplete_matrix,
-        duplicate_pairs=duplicate_pairs,
-        identity_invalid=bool(identity_failures),
-    )
-    if primary_benefit and primary_benefit["status"] == "fail":
-        blocking.append(
-            f"primary benefit {primary_benefit['metric']} failed: lower={primary_benefit.get('lower')} "
-            f"threshold={primary_benefit['minimum_benefit']}"
-        )
-    elif primary_benefit and primary_benefit["status"] == "not_evaluable":
-        blocking.append(
-            f"primary benefit {primary_benefit['metric']} is not evaluable: "
-            f"{primary_benefit.get('reason')}"
-        )
-    protected_gate = next(
-        (gate for gate in hard_gates if gate["metric"] == "protected_outcome_failures"),
-        None,
-    )
-    protected_failures = int(protected_gate["observed"]) if protected_gate and protected_gate["observed"] is not None else 0
-    usefulness_status = derive_usefulness_status(
-        level=level,
-        evidence_status=effective_evidence_status,
-        primary_benefit_status=primary_benefit["status"] if primary_benefit else "not_evaluable",
-        guardrail_statuses=[gate["status"] for gate in hard_gates],
-        protected_outcome_failures=protected_failures,
-        material_harm=observed_safety_block,
-        candidate_hard_failures=candidate_case_failures,
-    )
-    decision_signal = derive_decision_signal(level, usefulness_status)
-    manual_gate_passed = not manual_required or bool(
-        manual_review_result and manual_review_result.get("decision") == "approve"
-    )
-    final_authority_status = derive_final_authority_status(
-        usefulness_status=usefulness_status,
-        manual_gate_passed=manual_gate_passed,
-        candidate_hard_failures=candidate_case_failures,
-        blocking_observations=blocking,
-    )
 
-    report: dict[str, Any] = {
-        "schema_version": 3,
-        "report_hash": None,
-        **report_identity,
-        "evidence_status": effective_evidence_status,
-        "usefulness_status": usefulness_status,
-        "final_authority_status": final_authority_status,
-        "record_count": len(records),
-        "run_matrix": records,
-        "variants": variants,
-        "variant_summaries": variant_summaries,
-        "primary_benefit": primary_benefit,
-        "paired_metrics": paired_metrics,
-        "paired_task_failures": paired_task_failures,
-        "skill_context": context_summary,
-        "context_efficiency": context_summary["context_efficiency"],
-        "evaluation_id": spec.get("evaluation_id") if spec else None,
-        "spec_ready_for_scored_run": spec_ready,
-        "hard_gates": hard_gates,
-        "manual_review": manual_review_result if manual_config or manual_references else None,
-        "case_gate_evidence": case_gate_evidence,
-        "receipt_verification": {"status": "pass", "checked_runs": len(records)},
-        "trust_boundaries": {
-            "controller": "external_controller_attested",
-            "fixture_producer": "local_fixture_producer_attested",
-            "catalog_and_treatment": "external_identity_unverified",
-            "context_budget_authority": "external_authority_reference_unverified"
+def _v5_estimand_metric(
+    spec: dict[str, Any],
+    plan: dict[str, Any],
+    records: list[dict[str, Any]],
+    estimand: dict[str, Any],
+) -> dict[str, Any]:
+    raw = summarize_paired_metric(
+        records,
+        comparator=estimand["comparator_treatment_id"],
+        candidate=estimand["candidate_treatment_id"],
+        metric=estimand["metric"],
+        direction=estimand["direction"],
+        effect=estimand["effect"],
+        confidence_level=float(spec["analysis"]["confidence_level"]),
+        bootstrap_iterations=int(spec["analysis"]["bootstrap_iterations"]),
+        random_seed=int(plan["ordering"]["seed"]),
+        eligible_case_ids=None,
+    )
+    evaluated = evaluate_benefit(raw, estimand["minimum_benefit"])
+    return {
+        "metric_id": estimand["estimand_id"],
+        "status": evaluated["status"],
+        "direction": estimand["direction"],
+        "effect": estimand["effect"],
+        "point": raw.get("point"),
+        "lower": raw.get("lower"),
+        "upper": raw.get("upper"),
+        "case_count": raw.get("case_count", 0),
+        "excluded_pairs": len(raw.get("task_failures", [])),
+        "case_differences": {
+            item["case_id"]: item["benefit"]
+            for item in raw.get("case_differences", [])
         },
-        "run_matrix_completeness": completeness,
-        "blocking_observations": blocking,
-        "decision_signal": decision_signal,
-        "claim_boundary": (
-            "L1 diagnostic evidence describes the bound candidate runs only; it does not support comparative or readiness claims."
-            if level == "L1"
-            else "Apply the frozen evaluation spec, hard gates, calibration, and manual evidence review before a promote/hold/reject decision."
+    }
+
+
+def _v5_gate_status(gate: dict[str, Any], observed: Any) -> str:
+    if observed is None:
+        return "not_evaluable"
+    direction = gate["direction"]
+    threshold = gate["threshold"]
+    if direction == "present":
+        return "pass"
+    if direction == "equal":
+        return "pass" if observed == threshold else "fail"
+    if (
+        not isinstance(observed, (int, float))
+        or isinstance(observed, bool)
+        or not isinstance(threshold, (int, float))
+        or isinstance(threshold, bool)
+    ):
+        return "not_evaluable"
+    if direction == "at_least":
+        return "pass" if observed >= threshold else "fail"
+    if direction == "at_most":
+        return "pass" if observed <= threshold else "fail"
+    return "not_evaluable"
+
+
+def _v5_protected_outcome_failures(
+    plan: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> int:
+    by_entry = {
+        record["entry_id"]: record
+        for record in records
+        if "entry_id" in record
+    }
+    failures = 0
+    for entry in plan.get("entries", []):
+        if (
+            entry["disposition"] != "execute"
+            or "protected" not in entry["execute_case_payload"]["case"]["tags"]
+        ):
+            continue
+        record = by_entry.get(entry["entry_id"])
+        outcome_requirements = {
+            item["requirement_id"]
+            for item in entry["execute_case_payload"]["case"]["requirements"]
+            if item["required"] is True and item["dimension"] == "outcome"
+        }
+        if (
+            record is None
+            or record["task_pass"] is not True
+            or bool(outcome_requirements & set(record["hard_gate_failures"]))
+        ):
+            failures += 1
+    return failures
+
+
+def _v5_metric_analysis(
+    spec: dict[str, Any],
+    plan: dict[str, Any],
+    records: list[dict[str, Any]],
+    *,
+    evidence_status: str,
+    feasibility_status: str,
+    manual_authority: dict[str, Any] | None = None,
+    suite_quality_status: str | None = None,
+    calibration_status: str | None = None,
+    module_summaries: list[dict[str, Any]] | None = None,
+    context_cost: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    estimands = spec["analysis"]["estimands"]
+    paired_metrics = {
+        estimand["estimand_id"]: _v5_estimand_metric(
+            spec, plan, records, estimand,
+        )
+        for estimand in estimands
+    }
+    primary_definition = estimands[0]
+    primary = dict(paired_metrics[primary_definition["estimand_id"]])
+    candidate_id = primary_definition["candidate_treatment_id"]
+    comparator_id = primary_definition["comparator_treatment_id"]
+    candidate_failure_cases = {
+        record["case_id"]
+        for record in records
+        if (
+            record["variant"] == candidate_id
+            and record.get("valid") is True
+            and (
+                record.get("task_pass") is not True
+                or record.get("safety_pass") is not True
+                or bool(record.get("hard_gate_failures"))
+            )
+        )
+    }
+    comparator_failure_cases = {
+        record["case_id"]
+        for record in records
+        if (
+            record["variant"] == comparator_id
+            and record.get("valid") is True
+            and (
+                record.get("task_pass") is not True
+                or record.get("safety_pass") is not True
+                or bool(record.get("hard_gate_failures"))
+            )
+        )
+    }
+    minimum_headroom = int(
+        spec["analysis"]["materiality"].get("minimum_cases", 0),
+    )
+    baseline_ceiling = (
+        spec["level"] not in {"L0", "L1"}
+        and evidence_status == "complete"
+        and feasibility_status == "feasible"
+        and not candidate_failure_cases
+        and len(comparator_failure_cases) < minimum_headroom
+    )
+    candidate_records = [
+        record for record in records
+        if record["variant"] == candidate_id and record.get("valid") is True
+    ]
+    absolute_metrics: dict[str, Any] = {
+        "critical_safety_incidents": sum(
+            record.get("critical_safety_incidents", 0)
+            for record in candidate_records
+        ),
+        "unauthorized_side_effects": sum(
+            record.get("unauthorized_side_effects", 0)
+            for record in candidate_records
+        ),
+        "protected_outcome_failures": _v5_protected_outcome_failures(
+            plan, records,
         ),
     }
-    if prior_context is not None:
-        report.update(prior_context)
-    report["report_hash"] = canonical_self_hash(report, "report_hash")
+    if context_cost is not None:
+        absolute_metrics["skill_context_attribution_rate"] = context_cost[
+            "attribution_coverage"
+        ]
+    module_metrics: dict[str, dict[str, Any]] = {}
+    for summary in module_summaries or []:
+        module_metrics[summary["module"]] = {
+            "status": summary["status"],
+            "point": summary["pass_rate"],
+            "lower": summary["lower"],
+            "upper": summary["upper"],
+        }
+        module_metrics[f"{summary['module']}_pass_rate"] = module_metrics[
+            summary["module"]
+        ]
+    gate_results: list[dict[str, Any]] = []
+    for gate in spec["hard_gates"]:
+        matching = [
+            paired_metrics[item["estimand_id"]]
+            for item in estimands
+            if item["metric"] == gate["metric"]
+        ]
+        metric = matching[0] if len(matching) == 1 else None
+        status = "not_evaluable"
+        observed: Any = None
+        if (
+            gate["kind"] in {
+                "benefit", "noninferiority", "safety", "protected",
+                "context", "module",
+            }
+            and (
+                evidence_status != "complete"
+                or feasibility_status != "feasible"
+            )
+        ):
+            pass
+        elif gate["kind"] == "manual" and manual_authority is not None:
+            observed = manual_authority["decision"]
+            status = (
+                "pass"
+                if (
+                    manual_authority["status"] == "complete"
+                    and observed == "approve"
+                )
+                else "fail"
+                if (
+                    manual_authority["status"] == "complete"
+                    and observed in {"hold", "reject"}
+                )
+                else "not_evaluable"
+            )
+        elif gate["kind"] == "quality" and suite_quality_status is not None:
+            observed = suite_quality_status
+            status = (
+                "pass" if observed == "pass"
+                else "fail" if observed == "fail"
+                else "not_evaluable"
+            )
+        elif gate["kind"] == "calibration" and calibration_status is not None:
+            observed = calibration_status
+            status = (
+                "pass" if observed == "pass"
+                else "fail" if observed in {"fail", "expired"}
+                else "not_evaluable"
+            )
+        elif gate["kind"] == "host":
+            observed = feasibility_status
+            status = (
+                "pass" if observed == "feasible"
+                else "fail" if observed == "unsupported"
+                else "not_evaluable"
+            )
+        elif gate["kind"] in {"safety", "protected"}:
+            observed = absolute_metrics.get(gate["metric"])
+            status = _v5_gate_status(gate, observed)
+        elif gate["kind"] == "module":
+            module_metric = module_metrics.get(gate["metric"])
+            if module_metric is not None:
+                if gate["direction"] == "at_least":
+                    observed = module_metric["lower"]
+                elif gate["direction"] == "at_most":
+                    observed = module_metric["upper"]
+                elif gate["direction"] == "present":
+                    observed = module_metric["status"]
+                else:
+                    observed = module_metric["point"]
+                status = _v5_gate_status(gate, observed)
+        elif gate["kind"] == "context" and metric is None:
+            observed = absolute_metrics.get(gate["metric"])
+            status = _v5_gate_status(gate, observed)
+        elif metric is not None and metric["point"] is not None:
+            if gate["direction"] == "at_least":
+                observed = metric["lower"]
+                status = _v5_gate_status(gate, observed)
+            elif gate["direction"] == "at_most":
+                observed = metric["upper"]
+                status = _v5_gate_status(gate, observed)
+            elif gate["direction"] == "equal":
+                observed = metric["point"]
+                status = _v5_gate_status(gate, observed)
+            elif gate["direction"] == "present":
+                observed = metric["point"]
+                status = _v5_gate_status(gate, observed)
+        gate_results.append({
+            "gate": gate,
+            "status": status,
+            "observed": observed,
+        })
+
+    required_gate_statuses = [
+        item["status"] for item in gate_results
+        if (
+            item["gate"]["required"] is True
+            and item["gate"]["kind"] != "manual"
+        )
+    ]
+    if spec["level"] in {"L0", "L1"}:
+        usefulness = "not_evaluable"
+    elif evidence_status != "complete" or feasibility_status != "feasible":
+        usefulness = "not_evaluable"
+    elif candidate_failure_cases or "fail" in required_gate_statuses:
+        usefulness = "not_supported"
+    elif baseline_ceiling:
+        usefulness = "inconclusive_ceiling"
+        primary["status"] = "inconclusive_ceiling"
+        paired_metrics[primary_definition["estimand_id"]] = primary
+    elif (
+        primary["status"] == "pass"
+        and all(status == "pass" for status in required_gate_statuses)
+    ):
+        usefulness = "supported"
+    elif primary["status"] == "fail":
+        usefulness = "not_supported"
+    else:
+        usefulness = "not_evaluable"
+    return {
+        "primary_benefit": primary,
+        "paired_metrics": paired_metrics,
+        "gate_results": gate_results,
+        "candidate_failure_cases": sorted(candidate_failure_cases),
+        "comparator_failure_cases": sorted(comparator_failure_cases),
+        "baseline_ceiling": baseline_ceiling,
+        "usefulness_status": usefulness,
+    }
+
+
+def _module_entry_pass(
+    module: str,
+    entry: dict[str, Any],
+    attempt: dict[str, Any],
+    record: dict[str, Any],
+    *,
+    target_skill_id: str,
+    treatment: dict[str, Any],
+) -> bool:
+    receipt = attempt["receipt"]
+    case = entry["execute_case_payload"]["case"]
+    if record["task_pass"] is not True or record["safety_pass"] is not True:
+        return False
+    if module in {"natural_routing", "catalog_routing"}:
+        contract = case.get("routing_contract")
+        if contract is None:
+            return (
+                target_skill_id in receipt["routing"]["applied"]
+                if treatment["causal_role"] == "candidate"
+                else True
+            )
+        expected = {
+            field: [
+                value
+                for item in contract["expectations"]
+                if item["treatment_profile"] == treatment["profile"]
+                for value in item[field]
+            ]
+            for field in (
+                "declared", "discovered", "loaded", "model_visible",
+                "selected", "invoked", "applied", "order", "composition",
+            )
+        }
+        return all(
+            receipt["routing"][field] == values
+            for field, values in expected.items()
+        )
+    if module in {
+        "declared_composition", "multi_principal_coordination",
+    }:
+        coordination_pass = (
+            {item["slot_id"] for item in receipt["principals"]}
+            == set(entry["principal_slot_ids"])
+            and {item["handoff_id"] for item in receipt["handoffs"]}
+            == set(entry["handoff_ids"])
+            and all(
+                item["status"] == "result" for item in receipt["handoffs"]
+            )
+        )
+        if module == "multi_principal_coordination":
+            return coordination_pass
+        contract = case.get("routing_contract")
+        routing_pass = True
+        if contract is not None and contract["composition_mode"] != "none":
+            expected = [
+                value
+                for item in contract["expectations"]
+                if item["treatment_profile"] == treatment["profile"]
+                for value in item["composition"]
+            ]
+            routing_pass = receipt["routing"]["composition"] == expected
+        return routing_pass and coordination_pass
+    if module == "multi_turn_state":
+        return (
+            len(receipt["state"]["checkpoints"]) >= len(case["turns"])
+            and receipt["state"]["cleanup"] == "clean"
+        )
+    if module == "tool_faults":
+        expected = {
+            item["fault_id"] for item in case["fault_script"]
+        }
+        return all(
+            {item["fault_id"] for item in receipt["faults"][phase]}
+            == expected
+            for phase in ("injected", "observed", "recovered")
+        )
+    if module == "dynamic_security":
+        return all(
+            action["stages"]
+            and action["resolved_decision"]
+            in {"allow", "deny", "allow_with_changes"}
+            for action in receipt["actions"]
+        ) and all(
+            observation["integrity"] == "pass"
+            and observation["temporal_validity"] == "pass"
+            for observation in receipt["observations"]
+        )
+    if module == "longitudinal":
+        return (
+            receipt["state"]["terminal"] != ""
+            and receipt["cleanup"]["process"] == "clean"
+        )
+    return True
+
+
+def _v5_module_summaries(
+    spec: dict[str, Any],
+    plan: dict[str, Any],
+    evidence: dict[str, Any],
+    evidence_complete: bool,
+) -> list[dict[str, Any]]:
+    entries = {entry["entry_id"]: entry for entry in plan["entries"]}
+    treatments = {
+        item["treatment_id"]: item for item in plan["treatments"]
+    }
+    records = {
+        record["receipt"]["run"]["entry_id"]: record
+        for record in evidence["records"]
+    }
+    summaries: list[dict[str, Any]] = []
+    for decision in plan["module_decisions"]:
+        required = decision["status"] == "required"
+        selected: list[tuple[dict[str, Any], bool]] = []
+        for entry_id, attempt in evidence["selected_attempts"].items():
+            entry = entries[entry_id]
+            record = records[entry_id]
+            selected.append((
+                entry,
+                _module_entry_pass(
+                    decision["module"],
+                    entry,
+                    attempt,
+                    record,
+                    target_skill_id=spec["subject"]["skill_id"],
+                    treatment=treatments[entry["treatment_id"]],
+                ),
+            ))
+        case_results: dict[str, list[bool]] = defaultdict(list)
+        repeat_results: dict[tuple[str, str], list[bool]] = defaultdict(list)
+        for entry, passed in selected:
+            case_results[entry["case_id"]].append(passed)
+            repeat_results[
+                (entry["case_id"], entry["treatment_id"])
+            ].append(passed)
+        case_passes = [
+            all(values) for values in case_results.values()
+        ]
+        passed_cases = sum(case_passes)
+        interval = (
+            wilson(passed_cases, len(case_passes))
+            if case_passes else None
+        )
+        failure_ids = sorted({
+            requirement_id
+            for record in records.values()
+            for requirement_id in record["hard_gate_failures"]
+        })
+        summaries.append({
+            "module": decision["module"],
+            "eligible": len({
+                entry["case_id"] for entry in plan["entries"]
+                if entry["disposition"] == "execute"
+            }) if required else 0,
+            "planned": plan["expected_counts"]["execute"] if required else 0,
+            "present": len(selected) if required else 0,
+            "valid": len(selected) if required else 0,
+            "invalid": evidence["invalid_attempts"] if required else 0,
+            "missing": (
+                len(evidence["missing_entries"]) if required else 0
+            ),
+            "pass_rate": (
+                passed_cases / len(case_passes)
+                if required and case_passes else None
+            ),
+            "lower": interval[0] if required and interval else None,
+            "upper": interval[1] if required and interval else None,
+            "repeat_consistency": (
+                (
+                    sum(len(set(values)) == 1 for values in repeat_results.values())
+                    / len(repeat_results)
+                )
+                if required and repeat_results else None
+            ),
+            "worst_slice": None,
+            "failure_mechanisms": (
+                ["module_evidence_failed"]
+                if required and case_passes and not all(case_passes)
+                else []
+            ),
+            "hard_requirement_ids": failure_ids if required else [],
+            "status": (
+                "not_applicable"
+                if not required
+                else "not_evaluable"
+                if not evidence_complete or not case_passes
+                else "pass"
+                if all(case_passes)
+                else "fail"
+            ),
+        })
+    return summaries
+
+
+def _v5_context_cost(
+    spec: dict[str, Any],
+    plan: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    captured = [
+        record for record in records
+        if record["context_usage"]["attributed"] is True
+    ]
+    coverage = len(captured) / len(records) if records else 0.0
+    summaries: dict[str, Any] = {}
+    primary = spec["analysis"]["estimands"][0]
+    for metric_id in (
+        "skill_context_bytes",
+        "controlled_skill_context_bytes",
+        "controlled_core_skill_context_bytes",
+    ):
+        raw = summarize_paired_metric(
+            captured,
+            comparator=primary["comparator_treatment_id"],
+            candidate=primary["candidate_treatment_id"],
+            metric=metric_id,
+            direction="lower_is_better",
+            effect="absolute",
+            confidence_level=float(spec["analysis"]["confidence_level"]),
+            bootstrap_iterations=int(spec["analysis"]["bootstrap_iterations"]),
+            random_seed=int(plan["ordering"]["seed"]),
+            eligible_case_ids=None,
+        )
+        summary = _empty_metric_summary(metric_id)
+        summary.update({
+            "status": (
+                "pass"
+                if raw["status"] == "complete" and coverage == 1.0
+                else "not_evaluable"
+            ),
+            "point": raw.get("point"),
+            "lower": raw.get("lower"),
+            "upper": raw.get("upper"),
+            "case_count": raw.get("case_count", 0),
+            "excluded_pairs": 0,
+            "case_differences": {
+                item["case_id"]: item["benefit"]
+                for item in raw.get("case_differences", [])
+            },
+        })
+        summaries[metric_id] = summary
+
+    usage = [
+        (record["run_id"], item)
+        for record in records
+        for item in record.get("usage_records", [])
+    ]
+    usage_fields = (
+        "input_tokens", "output_tokens", "cache_read_tokens",
+        "cache_write_tokens", "queue_ms", "runtime_ms", "tool_calls",
+        "retries", "rework", "network_calls", "residue_count",
+        "requested_effort", "effective_effort",
+    )
+
+    def grouped_usage_metrics() -> dict[str, Any]:
+        metrics: dict[str, Any] = {}
+        dimensions = (
+            ("principal", lambda run_id, item: item["principal_id"]),
+            (
+                "turn",
+                lambda run_id, item: (
+                    item["turn_id"] if item["turn_id"] is not None else "null"
+                ),
+            ),
+            ("phase", lambda run_id, item: item["phase"]),
+            (
+                "call",
+                lambda run_id, item: "|".join((
+                    run_id,
+                    item["principal_id"],
+                    item["turn_id"] or "null",
+                    item["phase"],
+                    item["call_id"],
+                )),
+            ),
+        )
+        for prefix, key_fn in dimensions:
+            grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+            for run_id, item in usage:
+                grouped[key_fn(run_id, item)].append(item)
+            metrics[f"{prefix}_count"] = len(grouped)
+            for index, identity in enumerate(sorted(grouped), 1):
+                values = grouped[identity]
+                metrics[f"{prefix}_{index}_id"] = identity
+                for field in usage_fields:
+                    metrics[f"{prefix}_{index}_{field}"] = sum(
+                        item[field] for item in values
+                    )
+        return metrics
+
+    def aggregate(reason: str, **values: Any) -> dict[str, Any] | None:
+        if not records:
+            return None
+        return {"status": "pass", "metrics": values, "reason": reason}
+
+    recovery_usage = [
+        item for _, item in usage
+        if (
+            item["retries"] > 0
+            or item["rework"] > 0
+            or item["residue_count"] > 0
+            or item["phase"] in {"fault", "recovery", "cleanup"}
+        )
+    ]
+    recovery_summary = (
+        None
+        if not records
+        else {
+            "status": "pass" if recovery_usage else "not_applicable",
+            "metrics": {
+                field: sum(item[field] for item in recovery_usage)
+                for field in usage_fields
+            },
+            "reason": (
+                "verified failure/recovery usage records"
+                if recovery_usage
+                else "no failure/recovery usage was recorded"
+            ),
+        }
+    )
+    return {
+        "attribution_coverage": coverage,
+        **summaries,
+        "tokens": aggregate(
+            "verified receipt usage totals",
+            input=sum(item["input_tokens"] for _, item in usage),
+            output=sum(item["output_tokens"] for _, item in usage),
+            cache_read=sum(item["cache_read_tokens"] for _, item in usage),
+            cache_write=sum(item["cache_write_tokens"] for _, item in usage),
+            pricing_identities=",".join(sorted({
+                record.get("pricing_identity", "unknown")
+                for record in records
+            })),
+        ),
+        "latency_ms": aggregate(
+            "verified queue and runtime totals",
+            queue=sum(item["queue_ms"] for _, item in usage),
+            runtime=sum(item["runtime_ms"] for _, item in usage),
+        ),
+        "calls": aggregate(
+            "verified per-principal, turn, phase, and call usage",
+            tool_calls=sum(item["tool_calls"] for _, item in usage),
+            network_calls=sum(item["network_calls"] for _, item in usage),
+            **grouped_usage_metrics(),
+        ),
+        "retries": aggregate(
+            "verified retry and rework totals",
+            retries=sum(item["retries"] for _, item in usage),
+            rework=sum(item["rework"] for _, item in usage),
+            requested_effort=sum(
+                item["requested_effort"] for _, item in usage
+            ),
+            effective_effort=sum(
+                item["effective_effort"] for _, item in usage
+            ),
+        ),
+        "workflow_artifacts": aggregate(
+            "verified artifact, checkpoint, and residue totals",
+            artifacts=sum(
+                record["counts"]["workflow_artifact_count"]
+                for record in records
+            ),
+            state_checkpoints=sum(
+                len(record["receipt"]["state"]["checkpoints"])
+                for record in records
+                if "receipt" in record
+            ),
+            residue=sum(item["residue_count"] for _, item in usage),
+        ),
+        "failure_recovery_overhead": recovery_summary,
+        "cache": (
+            None
+            if not records
+            else {
+                "status": "pass",
+                "metrics": {
+                    "provider_cache_read_tokens": sum(
+                        item["cache_read_tokens"] for _, item in usage
+                    ),
+                    "provider_cache_write_tokens": sum(
+                        item["cache_write_tokens"] for _, item in usage
+                    ),
+                    "application_cache_status": "not_evaluable",
+                },
+                "reason": (
+                    "provider token-cache classes are captured; application "
+                    "cache semantics are not asserted"
+                ),
+            }
+        ),
+    }
+
+
+def _stage_result(
+    surface: str,
+    stage: str,
+    *,
+    eligible: int,
+    reached: int,
+    passed: int,
+    apparatus_gap: bool = False,
+) -> dict[str, Any]:
+    if eligible == 0:
+        status = "not_applicable"
+        reason = "stage has no eligible evidence"
+    elif reached < eligible and apparatus_gap:
+        status = "not_reached_due_to_apparatus"
+        reason = "required terminal evidence is missing or invalid"
+    elif reached < eligible:
+        status = "not_reached_due_to_prior_treatment_failure"
+        reason = "an earlier treatment stage did not reach this stage"
+    elif passed == eligible:
+        status = "pass"
+        reason = "all eligible verified evidence passed"
+    else:
+        status = "fail"
+        reason = "verified stage evidence failed"
+    return {
+        "surface": surface,
+        "stage": stage,
+        "eligible": eligible,
+        "reached": reached,
+        "passed": passed,
+        "status": status,
+        "reason_key": reason.replace(" ", "_"),
+    }
+
+
+def _v5_stage_summaries(
+    spec: dict[str, Any],
+    plan: dict[str, Any],
+    evidence: dict[str, Any],
+) -> list[dict[str, Any]]:
+    selected = list(evidence["selected_attempts"].values())
+    records = evidence["records"]
+    apparatus_gap = bool(
+        evidence["missing_entries"]
+        or evidence["duplicate_terminal_entries"]
+        or evidence["receipt_issues"]
+    )
+    stages = [
+        _stage_result(
+            "plan", "exists", eligible=1, reached=1, passed=1,
+        ),
+        _stage_result(
+            "plan", "contract_quality", eligible=1, reached=1, passed=1,
+        ),
+        _stage_result(
+            "plan", "compliance", eligible=1, reached=1, passed=1,
+        ),
+        _stage_result(
+            "plan",
+            "execution",
+            eligible=plan["expected_counts"]["execute"],
+            reached=len(selected),
+            passed=len(records),
+            apparatus_gap=apparatus_gap,
+        ),
+        _stage_result(
+            "plan",
+            "outcome",
+            eligible=len(records),
+            reached=len(records),
+            passed=sum(
+                record["task_pass"] is True
+                and record["safety_pass"] is True
+                for record in records
+            ),
+        ),
+    ]
+    required_modules = {
+        item["module"] for item in plan["module_decisions"]
+        if item["status"] == "required"
+    }
+    if required_modules & {"natural_routing", "catalog_routing"}:
+        entries = {
+            entry["entry_id"]: entry for entry in plan["entries"]
+        }
+        for stage, field in (
+            ("declared", "declared"),
+            ("discovered", "discovered"),
+            ("loaded", "loaded"),
+            ("model_visible", "model_visible"),
+            ("selected", "selected"),
+            ("invoked", "invoked"),
+            ("executed", "applied"),
+        ):
+            eligible = 0
+            reached = 0
+            passed = 0
+            for entry_id, attempt in evidence["selected_attempts"].items():
+                entry = entries[entry_id]
+                case = entry["execute_case_payload"]["case"]
+                contract = case.get("routing_contract")
+                if contract is None:
+                    eligible += 1
+                    reached += 1
+                    target = spec["subject"]["skill_id"]
+                    passed += target in attempt["receipt"]["routing"][field]
+                    continue
+                profile = entry["execute_case_payload"]["treatment"][
+                    "profile"
+                ]
+                expected = {
+                    item["turn_id"]: item[field]
+                    for item in contract["expectations"]
+                    if item["treatment_profile"] == profile
+                }
+                observed = {
+                    event["turn_id"]: event["payload"]["routing"][field]
+                    for event in attempt["receipt"]["host_protocol"]["events"]
+                    if (
+                        event["turn_id"] in expected
+                        and "routing" in event["payload"]
+                    )
+                }
+                eligible += len(expected)
+                reached += len(observed)
+                passed += sum(
+                    observed.get(turn_id) == values
+                    for turn_id, values in expected.items()
+                )
+            stages.append(_stage_result(
+                "skill_tool_access",
+                stage,
+                eligible=eligible,
+                reached=reached,
+                passed=passed,
+                apparatus_gap=apparatus_gap,
+            ))
+
+    actions = [
+        action
+        for attempt in selected
+        for action in attempt["receipt"]["actions"]
+    ]
+    if actions or any(
+        entry["action_ids"] for entry in plan["entries"]
+    ):
+        mapping = (
+            ("proposed", "declared"),
+            ("authorized", "authorization_resolved"),
+            ("executed", "executed"),
+            ("raw_result", "raw_backend_result"),
+            ("model_delivery", "model_delivered_result"),
+            ("display", "rendered_or_displayed"),
+            ("observed", "effect_observed"),
+            ("confirmed", "effect_confirmed"),
+        )
+        for stage, receipt_stage in mapping:
+            eligible_actions = (
+                actions
+                if stage in {"proposed", "authorized"}
+                else [
+                    action for action in actions
+                    if action["resolved_decision"] != "deny"
+                ]
+            )
+            reached = sum(
+                receipt_stage
+                in {item["stage"] for item in action["stages"]}
+                for action in eligible_actions
+            )
+            stages.append(_stage_result(
+                "action_effect",
+                stage,
+                eligible=len(eligible_actions),
+                reached=reached,
+                passed=reached,
+                apparatus_gap=apparatus_gap,
+            ))
+        denied = [
+            action for action in actions
+            if action["resolved_decision"] == "deny"
+        ]
+        denied_clean = sum(
+            action["executed_input"] is None
+            and action["backend_request"] is None
+            for action in denied
+        )
+        stages.extend([
+            _stage_result(
+                "safety",
+                "hazard_detected",
+                eligible=len(denied),
+                reached=len(denied),
+                passed=len(denied),
+            ),
+            _stage_result(
+                "safety",
+                "unsafe_action_prevented",
+                eligible=len(denied),
+                reached=denied_clean,
+                passed=denied_clean,
+            ),
+            _stage_result(
+                "safety",
+                "blast_contained",
+                eligible=len(actions),
+                reached=len(actions),
+                passed=sum(
+                    (
+                        action["resolved_decision"] == "deny"
+                        and action["backend_request"] is None
+                    )
+                    or (
+                        action["resolved_decision"] != "deny"
+                        and action["confirmed_effect"] is not None
+                    )
+                    for action in actions
+                ),
+            ),
+            _stage_result(
+                "safety",
+                "evidence_auditable",
+                eligible=len(actions),
+                reached=sum(
+                    action["rollback_cleanup_locator"] is not None
+                    for action in actions
+                ),
+                passed=sum(
+                    action["rollback_cleanup_locator"] is not None
+                    for action in actions
+                ),
+            ),
+        ])
+
+    grounding_requirements = [
+        requirement
+        for entry in plan["entries"]
+        if entry["disposition"] == "execute"
+        for requirement in entry["execute_case_payload"]["case"]["requirements"]
+        if requirement["dimension"] == "grounding"
+    ]
+    if grounding_requirements:
+        failed = {
+            requirement_id
+            for record in records
+            for requirement_id in record["hard_gate_failures"]
+        }
+        observations = [
+            item for attempt in selected
+            for item in attempt["receipt"]["observations"]
+        ]
+        passed_requirements = sum(
+            item["requirement_id"] not in failed
+            for item in grounding_requirements
+        )
+        observation_eligible = len(observations)
+        stages.extend([
+            _stage_result(
+                "grounding", "source_retrieved",
+                eligible=len(grounding_requirements),
+                reached=observation_eligible,
+                passed=observation_eligible,
+                apparatus_gap=apparatus_gap,
+            ),
+            _stage_result(
+                "grounding", "source_exists",
+                eligible=observation_eligible,
+                reached=observation_eligible,
+                passed=observation_eligible,
+            ),
+            _stage_result(
+                "grounding", "source_supports_claim",
+                eligible=len(grounding_requirements),
+                reached=len(grounding_requirements),
+                passed=passed_requirements,
+            ),
+            _stage_result(
+                "grounding", "attribution_locator_correct",
+                eligible=observation_eligible,
+                reached=observation_eligible,
+                passed=sum(
+                    item["integrity"] == "pass" for item in observations
+                ),
+            ),
+            _stage_result(
+                "grounding", "source_temporally_valid",
+                eligible=observation_eligible,
+                reached=observation_eligible,
+                passed=sum(
+                    item["temporal_validity"] == "pass"
+                    for item in observations
+                ),
+            ),
+        ])
+    return stages
+
+
+def _nullable_summary(
+    status: str,
+    reason: str,
+    **metrics: Any,
+) -> dict[str, Any]:
+    return {"status": status, "metrics": metrics, "reason": reason}
+
+
+def _v5_special_summaries(
+    spec: dict[str, Any],
+    plan: dict[str, Any],
+    evidence: dict[str, Any],
+    bound_evidence: dict[str, Any],
+) -> dict[str, dict[str, Any] | None]:
+    selected = list(evidence["selected_attempts"].values())
+    receipts = [item["receipt"] for item in selected]
+    required_modules = {
+        item["module"] for item in plan["module_decisions"]
+        if item["status"] == "required"
+    }
+    coordination: dict[str, Any] | None = None
+    if required_modules & {
+        "declared_composition", "multi_principal_coordination",
+    }:
+        principals = sum(len(receipt["principals"]) for receipt in receipts)
+        handoffs = [
+            handoff for receipt in receipts
+            for handoff in receipt["handoffs"]
+        ]
+        complete = sum(
+            handoff["status"] == "result" for handoff in handoffs
+        )
+        coordination = _nullable_summary(
+            "pass" if complete == len(handoffs) else "fail",
+            "verified principal topology and typed handoff joins",
+            entries=len(receipts),
+            principals=principals,
+            handoffs=len(handoffs),
+            complete_handoffs=complete,
+        )
+
+    actions = [
+        action for receipt in receipts for action in receipt["actions"]
+    ]
+    action_summary: dict[str, Any] | None = None
+    if actions or any(entry["action_ids"] for entry in plan["entries"]):
+        allowed = [
+            item for item in actions
+            if item["resolved_decision"] != "deny"
+        ]
+        denied = [
+            item for item in actions
+            if item["resolved_decision"] == "deny"
+        ]
+        confirmed = sum(
+            item["confirmed_effect"] is not None for item in allowed
+        )
+        denied_without_execution = sum(
+            item["executed_input"] is None
+            and item["backend_request"] is None
+            for item in denied
+        )
+        action_summary = _nullable_summary(
+            (
+                "pass"
+                if confirmed == len(allowed)
+                and denied_without_execution == len(denied)
+                else "fail"
+            ),
+            "authorization and effect layers remain separate",
+            actions=len(actions),
+            allowed=len(allowed),
+            denied=len(denied),
+            confirmed_effects=confirmed,
+            denied_without_execution=denied_without_execution,
+        )
+
+    principals = [
+        principal for receipt in receipts
+        for principal in receipt["principals"]
+    ]
+    independence: dict[str, Any] | None = None
+    calibration = bound_evidence["calibration"]
+    if calibration is not None:
+        derived_status = calibration["independence"]["status"]
+        independence = _nullable_summary(
+            (
+                "pass"
+                if derived_status == "independent"
+                else "fail"
+                if derived_status == "dependent"
+                else "not_evaluable"
+            ),
+            "bound calibration supplies derived grader independence evidence",
+            calibration_bound=True,
+            principal_count=len(principals),
+            derived_status=derived_status,
+            **{
+                key: value
+                for key, value in calibration["independence"].items()
+                if key != "status"
+            },
+        )
+    elif len(principals) > len(receipts):
+        dependent = sum(
+            item["context_mode"] in {"forked", "scoped_handoff"}
+            for item in principals
+        )
+        independence = _nullable_summary(
+            "not_evaluable",
+            "task topology does not establish independent judging authority",
+            calibration_bound=False,
+            principal_count=len(principals),
+            context_dependent_principals=dependent,
+        )
+
+    critique_requirements = [
+        requirement
+        for entry in plan["entries"]
+        if entry["disposition"] == "execute"
+        for requirement in entry["execute_case_payload"]["case"]["requirements"]
+        if any(
+            token in requirement["requirement_id"].lower()
+            for token in ("critique", "review", "finding", "repair", "uptake")
+        )
+    ]
+    critique: dict[str, Any] | None = None
+    if critique_requirements:
+        failed = {
+            failure
+            for record in evidence["records"]
+            for failure in record["hard_gate_failures"]
+        }
+        passed = sum(
+            item["requirement_id"] not in failed
+            for item in critique_requirements
+        )
+        critique = _nullable_summary(
+            "pass" if passed == len(critique_requirements) else "fail",
+            "critique detection, uptake, and repair remain separate requirements",
+            requirements=len(critique_requirements),
+            passed=passed,
+            failed=len(critique_requirements) - passed,
+        )
+
+    grounding_requirements = [
+        requirement
+        for entry in plan["entries"]
+        if entry["disposition"] == "execute"
+        for requirement in entry["execute_case_payload"]["case"]["requirements"]
+        if requirement["dimension"] == "grounding"
+    ]
+    observations = [
+        observation for receipt in receipts
+        for observation in receipt["observations"]
+    ]
+    grounding: dict[str, Any] | None = None
+    if grounding_requirements or observations:
+        valid_observations = sum(
+            item["integrity"] == "pass"
+            and item["temporal_validity"] == "pass"
+            for item in observations
+        )
+        failed_requirements = {
+            failure
+            for record in evidence["records"]
+            for failure in record["hard_gate_failures"]
+        }
+        passed_requirements = sum(
+            item["requirement_id"] not in failed_requirements
+            for item in grounding_requirements
+        )
+        grounding = _nullable_summary(
+            (
+                "pass"
+                if valid_observations == len(observations)
+                and passed_requirements == len(grounding_requirements)
+                else "fail"
+            ),
+            "source integrity, temporal validity, and support are distinct",
+            observations=len(observations),
+            valid_observations=valid_observations,
+            requirements=len(grounding_requirements),
+            passed_requirements=passed_requirements,
+        )
+    return {
+        "coordination_summary": coordination,
+        "action_summary": action_summary,
+        "independence_summary": independence,
+        "critique_summary": critique,
+        "grounding_summary": grounding,
+    }
+
+
+_FAILURE_CODES = {
+    "contract": "contract.invalid",
+    "integrity": "integrity.invalid",
+    "apparatus": "apparatus.incomplete",
+    "treatment": "treatment.failed",
+    "grader": "grader.invalid",
+    "gate": "gate.failed",
+    "authority": "authority.blocked",
+    "reporting": "reporting.invalid",
+}
+_FAILURE_ID_FIELDS = (
+    "family", "code", "evaluation_id", "plan_id", "entry_id",
+    "case_id", "treatment_id", "repeat", "attempt", "dimension",
+    "requirement_id", "fault_id", "gate_id", "principal_id",
+    "handoff_id", "action_id", "observation_id", "finding_id",
+    "locator", "reason_key",
+)
+_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def _failure_projection(failure: dict[str, Any]) -> dict[str, Any]:
+    return {field: failure[field] for field in _FAILURE_ID_FIELDS}
+
+
+def _failure_id(projection: dict[str, Any]) -> str:
+    digest = hashlib.sha256(canonical_json_bytes(projection)).hexdigest()
+    return "sf-" + digest[:24]
+
+
+def _finalize_v5_failures(
+    failures: list[dict[str, Any]],
+    artifacts: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    finalized: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
+    for source in failures:
+        failure = dict(source)
+        family = failure.get("family")
+        if _FAILURE_CODES.get(family) != failure.get("code"):
+            raise ValueError("failure family/code pair is invalid")
+        occurrence = failure.get("occurrence_count")
+        if (
+            not isinstance(occurrence, int)
+            or isinstance(occurrence, bool)
+            or occurrence < 1
+        ):
+            raise ValueError("failure occurrence_count must be positive")
+        validate_locator(failure.get("locator"), artifacts)
+        projection = _failure_projection(failure)
+        identifier = _failure_id(projection)
+        failure["failure_id"] = identifier
+        prior = finalized.get(identifier)
+        if prior is None:
+            finalized[identifier] = (projection, failure)
+            continue
+        prior_projection, prior_failure = prior
+        if prior_projection != projection:
+            raise ValueError(f"failure ID collision: {identifier}")
+        conflict_fields = (
+            "severity", "evidence_state", "expected", "impact",
+        )
+        if any(
+            prior_failure[field] != failure[field]
+            for field in conflict_fields
+        ):
+            raise ValueError(
+                f"failure projection collision has conflicting facts: {identifier}",
+            )
+        prior_failure["occurrence_count"] += occurrence
+        for prose_field in ("observed", "retest"):
+            prior_failure[prose_field] = min(
+                prior_failure[prose_field], failure[prose_field],
+            )
+    return sorted(
+        (item for _, item in finalized.values()),
+        key=lambda item: (
+            _SEVERITY_ORDER[item["severity"]],
+            item["family"],
+            item["code"],
+            item["failure_id"],
+        ),
+    )
+
+
+def _local_artifact(path: Path, *, encoding: str) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "resolved": path.resolve(),
+        "encoding": encoding,
+    }
+    if encoding == "utf-8":
+        text = path.read_text(encoding="utf-8")
+        record.update({"text": text, "lines": text.splitlines()})
+    return record
+
+
+def _v5_failure_artifacts(
+    plan_path: Path,
+    evidence: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    artifacts = {
+        plan_path.name: _local_artifact(plan_path, encoding="utf-8"),
+    }
+    for attempts in evidence["attempts"].values():
+        for attempt in attempts:
+            row = attempt["row"]
+            artifacts[row["receipt"]["path"]] = _local_artifact(
+                attempt["receipt_path"], encoding="utf-8",
+            )
+            for relative, record in attempt["artifacts"].items():
+                logical = f"{row['artifact_dir']}/{relative}"
+                if logical in artifacts:
+                    raise ValueError(
+                        f"duplicate failure artifact identity: {logical}",
+                    )
+                artifacts[logical] = record
+    return artifacts
+
+
+def _failure_base(
+    *,
+    family: str,
+    severity: str,
+    evidence_state: str,
+    spec: dict[str, Any],
+    plan: dict[str, Any],
+    entry: dict[str, Any] | None,
+    attempt: int | None,
+    reason_key: str,
+    locator: dict[str, Any],
+    observed: str,
+    expected: str,
+    impact: str,
+    retest: str,
+) -> dict[str, Any]:
+    return {
+        "family": family,
+        "code": _FAILURE_CODES[family],
+        "severity": severity,
+        "evidence_state": evidence_state,
+        "evaluation_id": spec["evaluation_id"],
+        "plan_id": plan["plan_id"],
+        "entry_id": entry["entry_id"] if entry else None,
+        "case_id": entry["case_id"] if entry else None,
+        "treatment_id": entry["treatment_id"] if entry else None,
+        "repeat": entry["repeat"] if entry else None,
+        "attempt": attempt,
+        "dimension": None,
+        "requirement_id": None,
+        "fault_id": None,
+        "gate_id": None,
+        "principal_id": None,
+        "handoff_id": None,
+        "action_id": None,
+        "observation_id": None,
+        "finding_id": None,
+        "reason_key": reason_key,
+        "locator": locator,
+        "occurrence_count": 1,
+        "observed": observed,
+        "expected": expected,
+        "impact": impact,
+        "retest": retest,
+    }
+
+
+def _verify_v5_manual_review(
+    reference: Path | None,
+    spec: dict[str, Any],
+    spec_path: Path,
+) -> tuple[dict[str, Any], dict[str, str] | None]:
+    config = spec["authority"]["manual_review"]
+    required = config["required"] is True
+    if not required:
+        if reference is not None:
+            raise ValueError(
+                "manual-review receipt is not declared by the evaluation contract",
+            )
+        return {
+            "required": False,
+            "status": "not_applicable",
+            "decision": None,
+            "receipt_hash": None,
+        }, None
+    if reference is None:
+        return {
+            "required": True,
+            "status": "missing",
+            "decision": None,
+            "receipt_hash": None,
+        }, {
+            "reason_key": "required_manual_receipt_missing",
+            "evidence_state": "missing",
+            "observed": "no manual-review receipt was supplied",
+        }
 
     try:
-        if args.json:
-            payload = json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
-            if args.json == "-":
-                sys.stdout.write(payload)
-            else:
-                Path(args.json).write_text(payload, encoding="utf-8")
-        if args.markdown:
-            Path(args.markdown).write_text(markdown_report(report), encoding="utf-8")
-    except OSError as exc:
+        normalized = normalize_relative_path(
+            reference.as_posix(), "manual-review receipt",
+        )
+        _, artifacts_root = resolve_contained_path(
+            spec_path.parent,
+            spec["artifacts"]["root"],
+            "spec artifacts root",
+            kind="directory",
+        )
+        lexical_receipt = artifacts_root / normalized
+        if lexical_receipt.is_symlink():
+            raise ValueError("manual-review receipt must not be a symlink")
+        _, receipt_path = resolve_contained_path(
+            artifacts_root,
+            normalized,
+            "manual-review receipt",
+            kind="file",
+        )
+        receipt = load_json(receipt_path)
+        if set(receipt) != {
+            "reviewer_role", "evidence", "decision", "signature",
+        }:
+            raise ValueError(
+                "manual-review receipt fields differ from the exact contract",
+            )
+        if receipt["reviewer_role"] != config["role"]:
+            raise ValueError("manual-review reviewer role mismatches the contract")
+        if receipt["decision"] not in {"approve", "hold", "reject"}:
+            raise ValueError("manual-review decision is invalid")
+        if (
+            not isinstance(receipt["signature"], str)
+            or not receipt["signature"].strip()
+        ):
+            raise ValueError("manual-review signature attestation is empty")
+        evidence = receipt["evidence"]
+        if not isinstance(evidence, list) or not evidence:
+            raise ValueError("manual-review evidence must be a non-empty array")
+        evidence_types: list[str] = []
+        for item in evidence:
+            if not isinstance(item, dict) or set(item) != {
+                "type", "artifact", "sha256",
+            }:
+                raise ValueError(
+                    "manual-review evidence fields differ from the exact contract",
+                )
+            evidence_type = item["type"]
+            if not isinstance(evidence_type, str) or not evidence_type.strip():
+                raise ValueError("manual-review evidence type is empty")
+            artifact = normalize_relative_path(
+                item["artifact"], "manual-review evidence",
+            )
+            lexical_evidence = artifacts_root / artifact
+            if lexical_evidence.is_symlink():
+                raise ValueError("manual-review evidence must not be a symlink")
+            _, evidence_path = resolve_contained_path(
+                artifacts_root,
+                artifact,
+                "manual-review evidence",
+                kind="file",
+            )
+            if item["sha256"] != file_sha256(evidence_path):
+                raise ValueError("manual-review evidence hash mismatch")
+            evidence_types.append(evidence_type)
+        if len(evidence_types) != len(set(evidence_types)):
+            raise ValueError("manual-review evidence types are duplicated")
+        decision_projection = {
+            "reviewer_role": receipt["reviewer_role"],
+            "required_evidence": sorted(evidence_types),
+        }
+        if (
+            config["decision_contract_hash"]
+            != canonical_sha256(decision_projection)
+        ):
+            raise ValueError(
+                "manual-review evidence types mismatch decision_contract_hash",
+            )
+        return {
+            "required": True,
+            "status": "complete",
+            "decision": receipt["decision"],
+            "receipt_hash": file_sha256(receipt_path),
+        }, None
+    except (OSError, ValueError, TypeError) as exc:
+        return {
+            "required": True,
+            "status": "invalid",
+            "decision": None,
+            "receipt_hash": None,
+        }, {
+            "reason_key": "required_manual_receipt_invalid",
+            "evidence_state": "invalid",
+            "observed": str(exc),
+        }
+
+
+def _grader_failure_locator(
+    attempt: dict[str, Any],
+    requirement: dict[str, Any],
+) -> dict[str, Any]:
+    locator = attempt["record"]["grader_check_locators"].get(
+        requirement["check_id"],
+    )
+    if locator is None:
+        raise ValueError("failed requirement has no normalized grader check")
+    return {
+        **locator,
+        "artifact": (
+            f"{attempt['row']['artifact_dir']}/{locator['artifact']}"
+        ),
+    }
+
+
+def _derive_v5_failures(
+    spec: dict[str, Any],
+    plan: dict[str, Any],
+    plan_path: Path,
+    evidence: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    artifacts = _v5_failure_artifacts(plan_path, evidence)
+    raw: list[dict[str, Any]] = []
+    entries = {
+        entry["entry_id"]: (index, entry)
+        for index, entry in enumerate(plan["entries"])
+    }
+    issue_entry_ids = {
+        item["entry"]["entry_id"] for item in evidence["receipt_issues"]
+    }
+    for position, entry in enumerate(plan["entries"]):
+        if entry["disposition"] == "execute":
+            continue
+        reason_key = (
+            "capability_unsupported"
+            if entry["disposition"] == "unsupported"
+            else "capability_probe_unknown"
+        )
+        raw.append(_failure_base(
+            family="apparatus",
+            severity="medium",
+            evidence_state="verified",
+            spec=spec,
+            plan=plan,
+            entry=entry,
+            attempt=None,
+            reason_key=reason_key,
+            locator={
+                "kind": "json_pointer",
+                "artifact": plan_path.name,
+                "json_pointer": f"/entries/{position}/feasibility/derived_status",
+            },
+            observed=f"entry disposition is {entry['disposition']}",
+            expected="feasible execution for contribution inference",
+            impact="entry is excluded from the treatment denominator",
+            retest="satisfy the bound capability probe and recompile the plan",
+        ))
+    for entry_id in evidence["missing_entries"]:
+        if entry_id in issue_entry_ids:
+            continue
+        position, entry = entries[entry_id]
+        raw.append(_failure_base(
+            family="apparatus",
+            severity="high",
+            evidence_state="missing",
+            spec=spec,
+            plan=plan,
+            entry=entry,
+            attempt=None,
+            reason_key="required_execute_receipt_missing",
+            locator={
+                "kind": "json_pointer",
+                "artifact": plan_path.name,
+                "json_pointer": f"/entries/{position}",
+            },
+            observed="no valid terminal receipt is indexed",
+            expected="exactly one valid terminal receipt for the execute entry",
+            impact="the required execution matrix is incomplete",
+            retest="resume or rerun the bound execute entry",
+        ))
+    for issue in evidence["receipt_issues"]:
+        position, entry = entries[issue["entry"]["entry_id"]]
+        invalid = issue["status"] == "invalid"
+        raw.append(_failure_base(
+            family="integrity" if invalid else "apparatus",
+            severity="critical" if invalid else "high",
+            evidence_state="invalid" if invalid else "missing",
+            spec=spec,
+            plan=plan,
+            entry=entry,
+            attempt=issue["row"]["attempt"],
+            reason_key=(
+                "receipt_evidence_invalid"
+                if invalid
+                else "receipt_evidence_missing"
+            ),
+            locator={
+                "kind": "json_pointer",
+                "artifact": plan_path.name,
+                "json_pointer": f"/entries/{position}",
+            },
+            observed=issue["issue"],
+            expected="a schema-valid hash-bound terminal receipt",
+            impact="the attempt cannot enter treatment inference",
+            retest="restore or regenerate the immutable bound receipt evidence",
+        ))
+    for entry_id in evidence["duplicate_terminal_entries"]:
+        position, entry = entries[entry_id]
+        raw.append(_failure_base(
+            family="integrity",
+            severity="critical",
+            evidence_state="invalid",
+            spec=spec,
+            plan=plan,
+            entry=entry,
+            attempt=None,
+            reason_key="duplicate_valid_terminal_receipt",
+            locator={
+                "kind": "json_pointer",
+                "artifact": plan_path.name,
+                "json_pointer": f"/entries/{position}",
+            },
+            observed="multiple valid terminal receipts are indexed",
+            expected="one valid terminal receipt for the execute entry",
+            impact="the selected treatment outcome is ambiguous",
+            retest="repair the append-only attempt index before analysis",
+        ))
+    for entry_id, attempts in evidence["attempts"].items():
+        _, entry = entries[entry_id]
+        for attempt in attempts:
+            receipt = attempt["receipt"]
+            if receipt["run"]["valid"] is True:
+                continue
+            raw.append(_failure_base(
+                family="apparatus",
+                severity="high",
+                evidence_state="verified",
+                spec=spec,
+                plan=plan,
+                entry=entry,
+                attempt=attempt["row"]["attempt"],
+                reason_key="attempt_invalid",
+                locator={
+                    "kind": "json_pointer",
+                    "artifact": attempt["row"]["receipt"]["path"],
+                    "json_pointer": "/run/valid",
+                },
+                observed="attempt is retained with valid=false",
+                expected="a valid terminal attempt for the execute entry",
+                impact="attempt is excluded from treatment inference",
+                retest="inspect apparatus evidence and execute a declared retry",
+            ))
+    for entry_id, attempt in evidence["selected_attempts"].items():
+        _, entry = entries[entry_id]
+        record = next(
+            item for item in evidence["records"]
+            if item["run_id"] == attempt["receipt"]["run"]["run_id"]
+        )
+        requirements = {
+            item["requirement_id"]: item
+            for item in entry["execute_case_payload"]["case"]["requirements"]
+        }
+        for requirement_id in record["hard_gate_failures"]:
+            requirement = requirements[requirement_id]
+            locator = (
+                {
+                    "kind": "json_pointer",
+                    "artifact": attempt["row"]["receipt"]["path"],
+                    "json_pointer": "/run/terminal",
+                }
+                if (
+                    requirement["dimension"] == "outcome"
+                    and attempt["receipt"]["run"]["terminal"] != "completed"
+                )
+                else _grader_failure_locator(attempt, requirement)
+            )
+            failure = _failure_base(
+                family="treatment",
+                severity=(
+                    "critical"
+                    if requirement["dimension"] == "safety"
+                    and requirement["safety_severity"] == "critical"
+                    else "high"
+                ),
+                evidence_state="verified",
+                spec=spec,
+                plan=plan,
+                entry=entry,
+                attempt=attempt["row"]["attempt"],
+                reason_key="required_treatment_requirement_failed",
+                locator=locator,
+                observed=f"required {requirement['dimension']} evidence failed",
+                expected="required treatment evidence passes",
+                impact="candidate usefulness cannot be supported",
+                retest="rerun the frozen entry after correcting treatment behavior",
+            )
+            failure["dimension"] = requirement["dimension"]
+            failure["requirement_id"] = requirement_id
+            raw.append(failure)
+    return _finalize_v5_failures(raw, artifacts), artifacts
+
+
+def _derive_v5_gate_failures(
+    spec: dict[str, Any],
+    plan: dict[str, Any],
+    spec_path: Path,
+    metric_analysis: dict[str, Any],
+) -> list[dict[str, Any]]:
+    failures: list[dict[str, Any]] = []
+    for position, result in enumerate(metric_analysis["gate_results"]):
+        gate = result["gate"]
+        if gate["required"] is not True or result["status"] == "pass":
+            continue
+        if spec["level"] in {"L0", "L1"} and result["status"] == "not_evaluable":
+            continue
+        failure = _failure_base(
+            family="gate",
+            severity="high",
+            evidence_state="verified",
+            spec=spec,
+            plan=plan,
+            entry=None,
+            attempt=None,
+            reason_key=(
+                "required_gate_failed"
+                if result["status"] == "fail"
+                else "required_gate_not_evaluable"
+            ),
+            locator={
+                "kind": "json_pointer",
+                "artifact": spec_path.name,
+                "json_pointer": f"/hard_gates/{position}",
+            },
+            observed=(
+                f"gate status={result['status']}; "
+                f"observed={result['observed']!r}"
+            ),
+            expected=(
+                f"{gate['metric']} {gate['direction']} {gate['threshold']!r}"
+            ),
+            impact="the declared usefulness decision is blocked",
+            retest="produce complete bound evidence and reevaluate the frozen gate",
+        )
+        failure["gate_id"] = gate["gate_id"]
+        failures.append(failure)
+    if metric_analysis["baseline_ceiling"]:
+        primary = spec["analysis"]["estimands"][0]
+        failure = _failure_base(
+            family="gate",
+            severity="medium",
+            evidence_state="verified",
+            spec=spec,
+            plan=plan,
+            entry=None,
+            attempt=None,
+            reason_key="baseline_headroom_insufficient",
+            locator={
+                "kind": "json_pointer",
+                "artifact": spec_path.name,
+                "json_pointer": "/analysis/materiality/minimum_cases",
+            },
+            observed=(
+                f"baseline failure cases="
+                f"{len(metric_analysis['comparator_failure_cases'])}"
+            ),
+            expected=(
+                f"at least "
+                f"{spec['analysis']['materiality'].get('minimum_cases', 0)} "
+                f"baseline failure cases"
+            ),
+            impact="the candidate contribution is inconclusive at the ceiling",
+            retest="evaluate the frozen estimand on cases with declared headroom",
+        )
+        matching_gate = next(
+            (
+                gate for gate in spec["hard_gates"]
+                if gate["metric"] == primary["metric"]
+            ),
+            None,
+        )
+        failure["gate_id"] = (
+            matching_gate["gate_id"] if matching_gate else None
+        )
+        failures.append(failure)
+    return failures
+
+
+def _derive_v5_manual_failure(
+    spec: dict[str, Any],
+    plan: dict[str, Any],
+    spec_path: Path,
+    manual: dict[str, Any],
+    issue: dict[str, str] | None,
+) -> list[dict[str, Any]]:
+    if manual["required"] is not True:
+        return []
+    if issue is None and manual["decision"] == "approve":
+        return []
+    reason_key = (
+        issue["reason_key"]
+        if issue is not None
+        else f"manual_decision_{manual['decision']}"
+    )
+    evidence_state = (
+        issue["evidence_state"] if issue is not None else "verified"
+    )
+    observed = (
+        issue["observed"]
+        if issue is not None
+        else f"manual decision is {manual['decision']}"
+    )
+    failure = _failure_base(
+        family="authority",
+        severity="high",
+        evidence_state=evidence_state,
+        spec=spec,
+        plan=plan,
+        entry=None,
+        attempt=None,
+        reason_key=reason_key,
+        locator={
+            "kind": "json_pointer",
+            "artifact": spec_path.name,
+            "json_pointer": "/authority/manual_review",
+        },
+        observed=observed,
+        expected="a valid approving manual-authority receipt",
+        impact="the declared final authority remains blocked",
+        retest="supply a hash-bound receipt satisfying the frozen decision contract",
+    )
+    manual_gate = next(
+        (
+            gate for gate in spec["hard_gates"]
+            if gate["kind"] == "manual"
+        ),
+        None,
+    )
+    failure["gate_id"] = manual_gate["gate_id"] if manual_gate else None
+    return [failure]
+
+
+def _v5_failure_index(
+    spec: dict[str, Any],
+    plan: dict[str, Any],
+    failures: list[dict[str, Any]],
+    *,
+    view: str,
+) -> dict[str, Any]:
+    budget = (
+        len(failures)
+        if view == "full"
+        else spec["artifacts"]["failure_index_budget"]
+    )
+    shown = failures[:budget]
+    family_counts = dict(sorted(Counter(
+        failure["family"] for failure in failures
+    ).items()))
+    severity_counts = dict(sorted(Counter(
+        failure["severity"] for failure in failures
+    ).items()))
+    result = {
+        "schema_version": 1,
+        "view": view,
+        "failure_index_hash": "sha256:" + "0" * 64,
+        "evaluation_id": spec["evaluation_id"],
+        "plan_id": plan["plan_id"],
+        "item_count": len(failures),
+        "shown_count": len(shown),
+        "omitted_count": len(failures) - len(shown),
+        "truncated": len(shown) != len(failures),
+        "family_counts": family_counts,
+        "severity_counts": severity_counts,
+        "failures": shown,
+    }
+    result["failure_index_hash"] = canonical_self_hash(
+        result, "failure_index_hash",
+    )
+    return result
+
+
+def _v5_summary_base(
+    spec: dict[str, Any],
+    plan: dict[str, Any],
+    evidence: dict[str, Any],
+    failures: list[dict[str, Any]],
+    manual: dict[str, Any],
+    bound_evidence: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    dispositions = Counter(
+        entry["disposition"] for entry in plan["entries"]
+    )
+    evidence_complete = not (
+        evidence["missing_entries"]
+        or evidence["duplicate_terminal_entries"]
+        or evidence["receipt_issues"]
+    )
+    evidence_status = (
+        "invalid"
+        if (
+            evidence["duplicate_terminal_entries"]
+            or any(
+                item["status"] == "invalid"
+                for item in evidence["receipt_issues"]
+            )
+        )
+        else "incomplete"
+        if (
+            evidence["missing_entries"]
+            or evidence["receipt_issues"]
+        )
+        else "complete"
+    )
+    feasibility = (
+        "not_evaluable"
+        if dispositions["not_evaluable"]
+        else "unsupported"
+        if dispositions["unsupported"]
+        else "feasible"
+    )
+    manual_required = manual["required"]
+    records = evidence["records"]
+    module_summaries = _v5_module_summaries(
+        spec, plan, evidence, evidence_complete,
+    )
+    context_cost = _v5_context_cost(spec, plan, records)
+    metric_analysis = _v5_metric_analysis(
+        spec,
+        plan,
+        records,
+        evidence_status=evidence_status,
+        feasibility_status=feasibility,
+        manual_authority=manual,
+        suite_quality_status=bound_evidence["quality_status"],
+        calibration_status=bound_evidence["calibration_status"],
+        module_summaries=module_summaries,
+        context_cost=context_cost,
+    )
+    usefulness = metric_analysis["usefulness_status"]
+    final_authority = (
+        "eligible"
+        if (
+            spec["level"] in {"L0", "L1"}
+            and evidence_status == "complete"
+            and feasibility == "feasible"
+            and (
+                not manual_required
+                or (
+                    manual["status"] == "complete"
+                    and manual["decision"] == "approve"
+                )
+            )
+        )
+        or (
+            usefulness == "supported"
+            and feasibility == "feasible"
+            and (
+                not manual_required
+                or (
+                    manual["status"] == "complete"
+                    and manual["decision"] == "approve"
+                )
+            )
+        )
+        else "blocked"
+    )
+    special_summaries = _v5_special_summaries(
+        spec, plan, evidence, bound_evidence,
+    )
+    summary = {
+        "schema_version": 4,
+        "summary_hash": "sha256:" + "0" * 64,
+        "evaluation_id": spec["evaluation_id"],
+        "plan_id": plan["plan_id"],
+        "plan_hash": plan["plan_hash"],
+        "spec_hash": plan["spec_hash"],
+        "scenario_corpus_hash": plan["scenario_corpus_hash"],
+        "host_manifest_hash": plan["host_manifest_hash"],
+        "analysis_ready": evidence_complete,
+        "subject": {
+            "skill_id": spec["subject"]["skill_id"],
+            "version": spec["subject"]["version"],
+            "shape": spec["subject"]["shape"],
+            "package_hash": plan["package_hashes"][
+                spec["subject"]["skill_id"]
+            ],
+        },
+        "modules": plan["module_decisions"],
+        "treatments": plan["treatments"],
+        "applicability_status": (
+            "applicable"
+            if any(
+                item["status"] == "required"
+                for item in plan["module_decisions"]
+            )
+            else "not_applicable"
+        ),
+        "feasibility_status": feasibility,
+        "evidence_status": evidence_status,
+        "usefulness_status": usefulness,
+        "final_authority_status": final_authority,
+        "counts": {
+            "plan_entries": len(plan["entries"]),
+            "execute_entries": dispositions["execute"],
+            "unsupported_entries": dispositions["unsupported"],
+            "not_evaluable_entries": dispositions["not_evaluable"],
+            "attempts": evidence["attempt_count"],
+            "valid_terminal_attempts": len(records),
+            "invalid_attempts": evidence["invalid_attempts"],
+            "missing_entries": len(evidence["missing_entries"]),
+        },
+        "primary_benefit": metric_analysis["primary_benefit"],
+        "paired_metrics": metric_analysis["paired_metrics"],
+        "module_summaries": module_summaries,
+        "stage_summaries": _v5_stage_summaries(
+            spec, plan, evidence,
+        ),
+        **special_summaries,
+        "context_cost": context_cost,
+        "suite_quality_status": bound_evidence["quality_status"],
+        "calibration_status": bound_evidence["calibration_status"],
+        "manual_authority": manual,
+        "blocking_observations": sorted({
+            failure["reason_key"] for failure in failures
+        } | ({
+            "baseline_headroom_insufficient"
+        } if metric_analysis["baseline_ceiling"] else set())),
+        "output_manifest": {
+            "details": None,
+            "failure_index": {},
+            "markdown": None,
+        },
+        "trust_boundaries": [
+            {
+                "surface": "plan-index-receipt",
+                "status": "locally_verified",
+                "reason": "schema, identity, provenance, hashes, and artifacts verified",
+            },
+        ],
+        "representative_failure_ids": [
+            failure["failure_id"] for failure in failures[:10]
+        ],
+    }
+    return summary, metric_analysis
+
+
+def _relative_output_path(path: Path, root: Path) -> str:
+    try:
+        relative = path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        raise ValueError(
+            "all sibling report views must be contained by the summary directory",
+        ) from None
+    return normalize_relative_path(relative, "report view")
+
+
+def _output_view(
+    path: Path,
+    payload: bytes,
+    *,
+    root: Path,
+    version: str,
+    item_count: int,
+    shown_count: int,
+    omitted_count: int,
+    truncated: bool,
+    family_counts: dict[str, int],
+    severity_counts: dict[str, int],
+) -> dict[str, Any]:
+    return {
+        "path": _relative_output_path(path, root),
+        "sha256": "sha256:" + hashlib.sha256(payload).hexdigest(),
+        "schema_or_view_version": version,
+        "item_count": item_count,
+        "shown_count": shown_count,
+        "omitted_count": omitted_count,
+        "truncated": truncated,
+        "family_counts": family_counts,
+        "severity_counts": severity_counts,
+    }
+
+
+def _render_v5_markdown(
+    summary: dict[str, Any],
+    failure_index: dict[str, Any],
+) -> bytes:
+    lines = [
+        f"# Skill evaluation: {summary['evaluation_id']}",
+        "",
+        f"- Plan: `{summary['plan_id']}`",
+        f"- Analysis ready: `{str(summary['analysis_ready']).lower()}`",
+        f"- Applicability: `{summary['applicability_status']}`",
+        f"- Feasibility: `{summary['feasibility_status']}`",
+        f"- Evidence: `{summary['evidence_status']}`",
+        f"- Usefulness: `{summary['usefulness_status']}`",
+        f"- Final authority: `{summary['final_authority_status']}`",
+        "",
+        "## Failures",
+        "",
+    ]
+    if failure_index["failures"]:
+        lines.extend(
+            f"- `{item['failure_id']}` {item['code']}: {item['reason_key']}"
+            for item in failure_index["failures"]
+        )
+    else:
+        lines.append("- None.")
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def _write_immutable(path: Path, payload: bytes) -> None:
+    if path.exists():
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"output path is not a regular file: {path}")
+        if path.read_bytes() != payload:
+            raise FileExistsError(
+                f"refusing to overwrite different immutable output: {path}",
+            )
+        return
+    atomic_write_bytes(path, payload)
+
+
+def _commit_v5_outputs(
+    summary: dict[str, Any],
+    failure_index: dict[str, Any],
+    *,
+    failure_details: dict[str, Any] | None,
+    summary_path: Path,
+    failure_path: Path,
+    markdown_path: Path | None,
+    details_path: Path | None,
+    registry: dict[str, dict[str, Any]],
+) -> None:
+    root = summary_path.parent
+    failure_payload = canonical_json_bytes(failure_index)
+    details_payload = (
+        canonical_json_bytes(failure_details)
+        if failure_details is not None
+        else None
+    )
+    markdown_payload = (
+        _render_v5_markdown(summary, failure_index)
+        if markdown_path is not None
+        else None
+    )
+    index_counts = {
+        "item_count": failure_index["item_count"],
+        "shown_count": failure_index["shown_count"],
+        "omitted_count": failure_index["omitted_count"],
+        "truncated": failure_index["truncated"],
+        "family_counts": failure_index["family_counts"],
+        "severity_counts": failure_index["severity_counts"],
+    }
+    detail_counts = (
+        {
+            "item_count": failure_details["item_count"],
+            "shown_count": failure_details["shown_count"],
+            "omitted_count": failure_details["omitted_count"],
+            "truncated": failure_details["truncated"],
+            "family_counts": failure_details["family_counts"],
+            "severity_counts": failure_details["severity_counts"],
+        }
+        if failure_details is not None
+        else None
+    )
+    summary["output_manifest"] = {
+        "details": (
+            _output_view(
+                details_path,
+                details_payload,
+                root=root,
+                version="failure-index-v1/full",
+                **detail_counts,
+            )
+            if (
+                details_path is not None
+                and details_payload is not None
+                and detail_counts is not None
+            )
+            else None
+        ),
+        "failure_index": _output_view(
+            failure_path,
+            failure_payload,
+            root=root,
+            version="failure-index-v1/index",
+            **index_counts,
+        ),
+        "markdown": (
+            _output_view(
+                markdown_path,
+                markdown_payload,
+                root=root,
+                version="markdown-v1",
+                **index_counts,
+            )
+            if markdown_path is not None and markdown_payload is not None
+            else None
+        ),
+    }
+    summary["summary_hash"] = canonical_self_hash(summary, "summary_hash")
+    summary_payload = canonical_json_bytes(summary)
+    diagnostics = validate_v5_schema(
+        summary, "analysis-summary-v4.schema.json", registry,
+    )
+    if diagnostics:
+        raise ValueError(_first_v5_diagnostic(diagnostics))
+    for value in (failure_index, failure_details):
+        if value is None:
+            continue
+        diagnostics = validate_v5_schema(
+            value, "failure-index-v1.schema.json", registry,
+        )
+        if diagnostics:
+            raise ValueError(_first_v5_diagnostic(diagnostics))
+
+    outputs = [
+        pair for pair in (
+            (details_path, details_payload),
+            (failure_path, failure_payload),
+            (markdown_path, markdown_payload),
+            (summary_path, summary_payload),
+        )
+        if pair[0] is not None and pair[1] is not None
+    ]
+    resolved = [path.resolve() for path, _ in outputs]
+    if len(resolved) != len(set(resolved)):
+        raise ValueError("report output paths must be distinct")
+    for path, payload in outputs:
+        if path.exists() and (
+            path.is_symlink()
+            or not path.is_file()
+            or path.read_bytes() != payload
+        ):
+            raise FileExistsError(
+                f"refusing to overwrite different immutable output: {path}",
+            )
+    for path, payload in outputs:
+        _write_immutable(path, payload)
+
+
+def _v5_base_exit(level: str, summary: dict[str, Any]) -> int:
+    manual = summary["manual_authority"]
+    if (
+        summary["analysis_ready"] is not True
+        or summary["evidence_status"] in {"incomplete", "invalid"}
+        or (
+            manual["required"] is True
+            and manual["status"] in {"missing", "invalid"}
+        )
+    ):
+        return 3
+    if manual["decision"] in {"hold", "reject"}:
+        return 1
+    if level in {"L0", "L1"}:
+        return 0
+    if summary["usefulness_status"] in {
+        "not_evaluable", "inconclusive_ceiling",
+    }:
+        return 3
+    if (
+        summary["usefulness_status"] in {
+            "not_supported", "not_applicable",
+        }
+    ):
+        return 1
+    if (
+        summary["usefulness_status"] == "supported"
+        and summary["final_authority_status"] == "eligible"
+    ):
+        return 0
+    return 3
+
+
+def _v5_exit_code(
+    level: str,
+    summary: dict[str, Any],
+    *,
+    report_only: bool,
+) -> int:
+    base = _v5_base_exit(level, summary)
+    return 0 if report_only and base == 1 else base
+
+
+def _main_v5() -> int:
+    parser = argparse.ArgumentParser(
+        description="Analyze an execution plan from index/receipt v4 evidence.",
+    )
+    parser.add_argument("index", type=Path)
+    parser.add_argument("--spec", type=Path, required=True)
+    parser.add_argument("--json", type=Path, required=True)
+    parser.add_argument("--failure-index", type=Path, required=True)
+    parser.add_argument("--markdown", type=Path)
+    parser.add_argument("--details", type=Path)
+    parser.add_argument("--manual-review-receipt", type=Path)
+    parser.add_argument("--report-only", action="store_true")
+    args = parser.parse_args()
+
+    try:
+        summary_path = args.json.resolve()
+        failure_path = args.failure_index.resolve()
+        markdown_path = (
+            args.markdown.resolve() if args.markdown is not None else None
+        )
+        details_path = (
+            args.details.resolve() if args.details is not None else None
+        )
+        for output_path in (
+            summary_path, failure_path, markdown_path, details_path,
+        ):
+            if (
+                output_path is not None
+                and not output_path.parent.is_dir()
+            ):
+                raise ValueError(
+                    f"output parent must be a directory: {output_path.parent}",
+                )
+    except (OSError, ValueError) as exc:
         print(f"analysis output error: {exc}", file=sys.stderr)
         return 2
 
-    status_stream = sys.stderr if args.json == "-" else sys.stdout
-    print(f"Analyzed {len(records)} records across {len(variants)} variants.", file=status_stream)
-    for name in variants:
-        summary = variant_summaries[name]
-        routing = summary["routing"]
-        critical = "n/a" if summary["critical_safety_incidents"] is None else str(summary["critical_safety_incidents"])
-        print(
-            f"{name}: valid={summary['valid_records']}/{summary['records']} "
-            f"task_pass={fmt_rate(summary['task_pass']['rate'])} "
-            f"routing_f1={fmt_rate(routing.get('f1'))} "
-            f"critical_safety={critical}",
-            file=status_stream,
+    try:
+        spec_path = args.spec.resolve()
+        index_path = args.index.resolve()
+        spec, _, _, plan_path, plan, registry = _load_v5_analysis_inputs(
+            spec_path, index_path,
         )
-    if primary_benefit:
-        print(
-            f"primary_benefit {primary_benefit['metric']} vs {primary_benefit['comparator']}: "
-            f"status={primary_benefit['status']} point={fmt_num(primary_benefit.get('point'), 4)} "
-            f"lower={fmt_num(primary_benefit.get('lower'), 4)} "
-            f"threshold={fmt_num(primary_benefit['minimum_benefit'], 4)}",
-            file=status_stream,
+        bound_evidence = _load_v5_bound_evidence(
+            spec, spec_path, registry,
         )
-    if completeness:
-        print(
-            "run_matrix: "
-            f"observed={completeness['observed_plan_keys']}/"
-            f"{completeness['expected_plan_keys']} "
-            f"valid={completeness['valid_plan_keys']} "
-            f"invalid={completeness['invalid_expected_keys_count']} "
-            f"timed_out={completeness['timed_out_expected_keys_count']} "
-            f"missing={completeness['missing_expected_keys_count']}",
-            file=status_stream,
+        index_rows = _load_v5_index(index_path, plan, registry)
+        _, artifacts_root = resolve_contained_path(
+            plan_path.parent,
+            plan["artifacts"]["root"],
+            "plan artifacts root",
         )
-    if hard_gates:
-        statuses = Counter(gate["status"] for gate in hard_gates)
-        print(
-            "hard_gates: " + ", ".join(f"{key}={statuses.get(key, 0)}" for key in ("pass", "fail", "not_evaluable")),
-            file=status_stream,
+        evidence = _collect_v5_evidence(
+            index_rows,
+            artifacts_root=artifacts_root,
+            plan=plan,
+            spec=spec,
+            registry=registry,
+            bound_evidence=bound_evidence,
         )
-    print(f"Decision status: {decision_status_text(report)}", file=status_stream)
-    if args.report_only:
-        return 0
-    if level == "L1" or (usefulness_status == "supported" and final_authority_status == "eligible"):
-        return 0
-    if usefulness_status == "not_supported" or manual_decision_blocks:
-        return 1
-    return 3
+        failure_items, failure_artifacts = _derive_v5_failures(
+            spec, plan, plan_path, evidence,
+        )
+        manual, manual_issue = _verify_v5_manual_review(
+            args.manual_review_receipt, spec, spec_path,
+        )
+        summary, metric_analysis = _v5_summary_base(
+            spec, plan, evidence, failure_items, manual, bound_evidence,
+        )
+        if spec_path.name in failure_artifacts:
+            raise ValueError("spec and evidence artifact identities collide")
+        failure_artifacts[spec_path.name] = _local_artifact(
+            spec_path, encoding="utf-8",
+        )
+        failure_items = _finalize_v5_failures(
+            [
+                *failure_items,
+                *_derive_v5_gate_failures(
+                    spec, plan, spec_path, metric_analysis,
+                ),
+                *_derive_v5_manual_failure(
+                    spec,
+                    plan,
+                    spec_path,
+                    manual,
+                    manual_issue,
+                ),
+            ],
+            failure_artifacts,
+        )
+        summary["blocking_observations"] = sorted({
+            *summary["blocking_observations"],
+            *(item["reason_key"] for item in failure_items),
+        })
+        summary["representative_failure_ids"] = [
+            item["failure_id"] for item in failure_items[:10]
+        ]
+        failures = _v5_failure_index(
+            spec, plan, failure_items, view="index",
+        )
+        if failures["truncated"] and details_path is None:
+            details_path = failure_path.with_name(
+                f"{failure_path.stem}.details{failure_path.suffix}",
+            )
+        details = (
+            _v5_failure_index(spec, plan, failure_items, view="full")
+            if details_path is not None
+            else None
+        )
+        _commit_v5_outputs(
+            summary,
+            failures,
+            failure_details=details,
+            summary_path=summary_path,
+            failure_path=failure_path,
+            markdown_path=markdown_path,
+            details_path=details_path,
+            registry=registry,
+        )
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"analysis error: {exc}", file=sys.stderr)
+        return 2
+
+    print(
+        f"Analyzed {len(index_rows)} attempts for {len(plan['entries'])} plan entries.",
+    )
+    return _v5_exit_code(
+        spec["level"], summary, report_only=args.report_only,
+    )
+
+
+def main() -> int:
+    return _main_v5()
 
 
 if __name__ == "__main__":

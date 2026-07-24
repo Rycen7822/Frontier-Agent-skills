@@ -1,105 +1,106 @@
 # Reporting and Decisions
 
-Use this owner after `analyze_runs.py` has produced JSON or Markdown. The report explains verified evidence and bounded decision signals; it does not turn missing evidence into a favorable conclusion or make a deployment decision for the operator.
+Use this owner after `analyze_runs.py` has atomically produced summary v4, failure index v1, optional full details, and optional Markdown. These outputs are the report contract. Human prose may explain them but cannot replace fields, repair evidence, or change authority.
 
 ## Status model
 
-Keep these three axes separate:
+Keep all five analyzer axes separate:
 
-- `evidence_status`: whether the frozen run matrix is complete and valid;
-- `usefulness_status`: whether comparative evidence supports incremental benefit without a guardrail or protected-outcome failure;
-- `final_authority_status`: whether the evidence is eligible for the declared external decision path.
+- `applicability_status`: whether the frozen subject and claim make the selected modules applicable;
+- `feasibility_status`: whether bound capability evidence supports execution;
+- `evidence_status`: whether every disposition and required execute attempt is complete and valid;
+- `usefulness_status`: whether complete feasible comparative evidence crosses benefit and guardrail gates;
+- `final_authority_status`: whether the evidence is eligible for the declared external authority path.
 
-Use the analyzer's exact values. `supported` usefulness is not a promotion, and `eligible` authority is not an approval. Final authority is `eligible` only when usefulness is `supported`, every required manual gate passes, the candidate has zero required hard-grader failures, and `blocking_observations` is empty. Every other state is `blocked`.
+Use exact values. `supported` is not promotion, and `eligible` is not approval. Unsupported/non-evaluable feasibility, incomplete/invalid evidence, any blocking gate or observation, a required hard failure, or an unmet manual gate keeps final authority blocked.
 
 ## Applicability by level
 
 - L0 reports package audit findings and an `audit_only` claim boundary. It makes no runtime usefulness claim.
-- L1 reports candidate diagnostics, receipt integrity, run accounting, routing, outcome, and cost. It does not claim incremental benefit.
+- L1 reports plan dispositions, receipt integrity, diagnostics, modules/stages, outcome, and cost. It does not claim incremental benefit.
 - L2 adds a declared no-Skill baseline, independent-case uncertainty, benefit and guardrail gates, and usefulness status.
 - L3 adds only the declared holdout, safety, or manual-authority evidence required by the frozen contract.
-- L4 adds version/cycle comparisons under the same receipt, case, and authority rules.
+- L4 adds version/cycle comparisons under the same plan, scenario, receipt, and authority rules.
 
 Delete sections that do not apply. Put missing required evidence in **Known gaps**; never fill an inapplicable row with invented `N/A` evidence.
 
-## Executive block
+## Default reading order
 
-Start with the analyzer-owned facts:
+Read:
+
+1. summary v4 for identity, five axes, counts, modules/stages, gates, cost, and trust boundaries;
+2. failure index v1 for bounded stable failures and locators;
+3. full details only when the index says `truncated=true` or a named omitted failure is required;
+4. the representative receipt named by a failure ID;
+5. a raw receipt artifact only through that receipt's verified path/hash and locator.
+
+Do not begin with the artifact tree, construct a parallel run matrix, or copy receipts into model-authored evidence files.
+
+## Compact summary v4
+
+The summary's required top-level facts are:
 
 ```yaml
+schema_version: 4
 evaluation_id: {{immutable evaluation ID}}
-level: {{L0|L1|L2|L3|L4}}
+plan_id: {{compiled plan ID}}
+analysis_ready: {{true|false}}
+applicability_status: {{applicable|not_applicable}}
+feasibility_status: {{feasible|unsupported|not_evaluable}}
 evidence_status: {{complete|incomplete|invalid}}
 usefulness_status: {{supported|not_supported|inconclusive_ceiling|not_evaluable}}
 final_authority_status: {{eligible|blocked}}
-decision_signal: {{analyzer decision signal}}
-target: {{package identity and hash}}
-baseline: {{declared baseline identity, L2+ only}}
-claim_scope: {{model/harness/suite/environment}}
+subject: {{skill ID/version/shape/package hash}}
+counts: {{plan/execute/unsupported/not-evaluable/attempt/valid/invalid/missing counts}}
 blocking_observations: []
 ```
 
-Do not replace these axes with a single aggregate score or prose verdict.
+It also binds spec/scenario/host/plan identities, module decisions, treatments, primary benefit and paired metrics, module/stage summaries, coordination/action/independence/critique/grounding summaries, context cost, suite-quality/calibration/manual-authority status, representative failure IDs, sibling output manifest, and trust boundaries. The summary intentionally does not embed the full attempt/run matrix.
 
 ## Identity and frozen scope
 
-Report candidate revision/source/plugin hashes, target package hash, suite treatment-contract hash, receipt-to-treatment index hash, model and harness, environment fingerprint, spec/cases/case-contracts/fixture-set/grader-set/grader-schedule hashes, authority boundary, declared variants, repeat count, and claim ceiling. Use immutable identities rather than `latest` paths.
+Use the summary's subject, treatments, plan/spec/scenario/host hashes, package/catalog/policy identities, module evidence, and trust boundaries. Drill into the bound plan only when a named identity fact is outside the compact projection. Use immutable identities rather than `latest` paths.
 
 For holdout evidence, report the public manifest hash, payload hash, custody status, and whether the payload was exposed. A public manifest is not the holdout payload.
 
-## Receipt integrity and run accounting
+## Failure index and output transaction
 
-Report:
+Each failure has one stable ID derived from its factual projection, family/code/severity/reason, evidence state, expected/observed fact, impact/retest, typed optional joins, exact locator, and occurrence count. Prose and ordering do not change identity. An index may truncate to the spec budget; counts and representative IDs still bind the full failure set.
 
-- receipt verification status and checked-run count;
-- expected, observed, valid, invalid, timed-out, and missing `variant × case_id × repeat` keys;
-- duplicate keys and receipt/index identity mismatches;
-- fixture, package, artifact, grader, provenance, and deterministic-invocation binding failures;
-- trust boundaries that remain externally attested or unverified.
-
-An invalid receipt is invalid evidence. Do not summarize claims copied from a trace, final answer, or host event when the receipt binding failed.
-
-`p3-arm-report/2.0` repeats the candidate identity and frozen input hashes, binds the decision contract raw bytes, the receipt index, the receipt-to-treatment index, and the exact task/planner/transfer analysis inputs, then carries separate `evidence_status` and `usefulness_status`. `p3-aggregate-report/2.0` fixes the ordered evaluated skill IDs, binds each arm's raw file bytes, and is `passed` only when every arm is complete and supported. Both self-hash by removing only `report_hash` and hashing canonical UTF-8 JSON. Missing evidence is incomplete; identity, schema, apparatus, capture, conservation, or self-hash failure is invalid; complete unsupported or ceiling-inconclusive evidence blocks the aggregate.
+When any sibling is requested, the analyzer preflights the complete immutable transaction and writes details → failure index → Markdown → summary. `output_manifest` binds the raw bytes, view/version, counts, truncation, and hashes of every emitted sibling. A byte-identical retry is allowed; conflicting existing bytes are refused. Summary self-hash removes only `summary_hash`; failure-index self-hash removes only `failure_index_hash`.
 
 ## Independent-case attribution
 
-Use the report's keyed `paired_metrics` map:
+Use the summary's keyed `paired_metrics` map:
 
 - `case_count` is the number of distinct independent cases;
-- `repeat_count` describes repeats per case and never becomes inferential `n`;
 - point/lower/upper values come from one direction-normalized benefit per distinct case;
-- every difference names its `case_id` and retains comparator/candidate raw and reported-scale values;
-- `paired_task_failures` discloses cost pairs excluded because either arm failed the task.
+- `case_differences` maps each stable `case_id` to its direction-normalized difference;
+- `excluded_pairs` counts treatment pairs excluded by the metric contract.
 
-Never present repeats as independent statistical samples. Report comparator, metric, direction, effect, estimand, scale, threshold, interval, and keyed contrary cases. If the matrix or required field coverage is incomplete, report the interval as not evaluable. For lower-is-better relative cost only, encode comparator/candidate `0/0` as zero benefit and `0/positive` as `-1`; other relative zero-comparator cases remain not evaluable. Report executor-prewrite as the absolute `candidate - comparator` byte delta with a one-sided upper bound.
+Never present repeats as independent statistical samples. Recover comparator, minimum benefit, confidence/iterations, and eligible modules from the bound estimand only when needed. If matrix or field coverage is incomplete, the metric is not evaluable.
 
 ## Gates and usefulness
 
-List the single `primary_benefit` separately, then every frozen hard gate with metric, comparator when comparative, direction/effect, threshold, observed value, and status.
+Interpret `primary_benefit` first. Then use the bound plan and gate-family failures to account for every required hard gate; do not invent a second gate-results table inside the summary.
 
-Usefulness is `supported` only when evidence is complete, the benefit gate passes, every guardrail passes, protected outcomes have no failure, and no material safety harm was observed. Report `not_supported`, `inconclusive_ceiling`, or `not_evaluable` exactly as derived; do not repair the status in prose.
+Usefulness is `supported` only when applicability and feasibility permit the claim, evidence is complete, the benefit passes, and every required quality/calibration/module/host/context/protected/safety/noninferiority gate passes. Report all other states exactly; do not repair them in prose.
 
-Show routing and task outcomes by declared slice. Preserve decisive case-level failures even when aggregates pass.
+Use module and stage summaries to localize routing, state, fault, coordination, action, observation, critique, independence, grounding, and host failures. Preserve decisive case IDs through failure locators even when aggregates pass.
 
 ## Skill context and total cost
 
-Report attributed Target-Skill context separately from end-to-end usage:
-
-- intended-trigger denominator and complete attributed-run count;
-- attribution rate and measurement-source counts;
-- verified component bytes, host-receipt tokens when present, and p95 values;
-- body/resource loading closure against routing facts;
-- total input/output tokens and latency from usage, plus typed task/executor-prewrite/load/protocol/workflow counts and residue;
-- transfer host-preflight bytes separately from executor-prewrite bytes, plus matched planner+executor total tokens;
-- context-budget authority reference and its externally unverified trust boundary.
-
-`captured + 0 components` is valid zero-context evidence. `missing` capture blocks attribution. Replay-manifest bytes do not become token counts.
+`context_cost` reports attribution coverage; paired total, controlled, and controlled-core Skill-context byte metrics; tokens; queue/runtime latency; calls; retries/rework; workflow artifacts/checkpoints/residue; failure/recovery overhead; and cache facts. Keep provider token-cache classes separate from application-cache evidence. `captured + 0 components` is valid zero-context evidence; missing capture blocks attribution. Bytes never become token counts.
 
 ## Findings and known gaps
 
-Each finding records an ID, severity, affected dimension/cases, observed fact, evidence locator, confidence basis, impact, root-cause status, and required retest. Keep observed facts separate from root-cause inference.
+Each failure-index item records ID, family/code, severity, reason key, evidence state, typed joins, expected/observed facts, exact locator, impact, retest, and occurrence count. Keep observed facts separate from root-cause inference.
 
 List every missing, invalid, blocked, contaminated, or out-of-scope evidence item and state which claim it blocks. A model-only or static-heuristic finding remains provisional until the declared corroboration path completes.
+
+## Exit and immutable retry
+
+Analyzer exit `0` means a complete supported/eligible or L0/L1 diagnostic result; `1` means verified not-supported evidence or a manual `hold|reject`; `2` means CLI/spec/plan/index/I/O contract failure; `3` means incomplete, invalid, unsupported, not-evaluable, inconclusive, or otherwise authority-ineligible evidence. `--report-only` converts only exit `1` to `0`; it never changes summary states.
 
 ## Manual authority
 
@@ -109,8 +110,6 @@ When the spec declares manual review, report the verified receipt path/hash, rev
 
 L4 is limited to version and cycle monitoring. Without verified selection, order, and composition receipts, the report must not claim library-scale multi-Skill orchestration evidence. It may compare immutable versions/cycles and report drift, protected regressions, context change, and rollback triggers only.
 
-## Artifact manifest
+## External decision record
 
-End with immutable paths or hashes for the spec, case/holdout bindings, receipt index, receipts and bound artifacts, package inventory, environment fingerprint, grader outputs, analyzer JSON/Markdown, package audit, manual-review receipt when declared, and cleanup evidence.
-
-Use `templates/evaluation-report.md` as the conditional skeleton. Public examples and placeholders are not evaluation evidence.
+An external owner may record install, release, publication, deployment, rollback, or residual-risk decisions after reviewing the immutable analyzer transaction. That record names exact artifact hashes and never mutates or self-promotes the analyzer result. Use `templates/evaluation-report.md` only for this bounded interpretation/decision overlay. Its placeholders are not evidence.
