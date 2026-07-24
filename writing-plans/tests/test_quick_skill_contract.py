@@ -113,6 +113,10 @@ class QuickWritingPlansTests(unittest.TestCase):
             "exclude the named plan deliverable itself",
             "never compare against the original absolute root",
             "globally clean status",
+            "exact source evidence already bound in the invocation",
+            "only a later planning invocation updates the program",
+            "protected immutable input",
+            "do not instruct execution to modify the plan",
         ):
             self.assertIn(contract, body)
 
