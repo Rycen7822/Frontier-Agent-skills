@@ -113,7 +113,9 @@ class QuickWritingPlansTests(unittest.TestCase):
             "exclude the named plan deliverable itself",
             "never compare against the original absolute root",
             "globally clean status",
-            "exact source evidence already bound in the invocation",
+            "exact source content already bound in the invocation",
+            "prompt-named plan/owner/test/symbol paths as resolved",
+            "do not inventory files, search alternate owners, or check existence separately",
             "only a later planning invocation updates the program",
             "protected immutable input",
             "do not instruct execution to modify the plan",
@@ -122,6 +124,8 @@ class QuickWritingPlansTests(unittest.TestCase):
             "exact cleanup",
         ):
             self.assertIn(contract, body)
+        self.assertIn("state contains current frontier and later blockers", body)
+        self.assertIn("slice contains milestones in dependency order", body)
 
     def test_injected_body_is_not_loaded_twice(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()

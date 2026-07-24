@@ -11,7 +11,7 @@ Handoff crosses contexts; Program tracks a changing frontier; otherwise stay nat
 
 ## Bind
 
-Use exact source evidence already bound in the invocation; do not reread it. Resolve any missing plan path, owner/test or, across contexts, root/HEAD/status in one combined prewrite inspection; split on failure/new dependency.
+Use exact source content already bound in the invocation; do not reread it. Treat prompt-named plan/owner/test/symbol paths as resolved. Put any missing direct path reads and, across contexts, root/HEAD/status in one combined prewrite inspection; do not inventory files, search alternate owners, or check existence separately unless that command fails or contradicts the prompt.
 
 Bind portable identity—Revision or explicit non-Git source identity; Repo-relative dirty/protected paths; First-slice owner files/symbols. Resolve root once; use repo-relative paths, never temporary/home paths or future `pwd` equality.
 
@@ -30,7 +30,7 @@ Write a title plus one compact contract table or bullet block with four merged r
 
 Fill the rows directly from settled facts; do not compare formats or narrate planning rationale. In Proof, name acceptance and verification once as one combined command/evidence statement.
 
-Program with multiple milestones uses one table: Milestones in dependency order, each with acceptance; Current frontier; Migration/deprecation owner and removal condition when applicable; Update-in-place rule: only a later planning invocation updates the Program; an executor treats it as protected immutable input.
+Program keeps the same four rows: State contains Current frontier and later blockers; Slice contains Milestones in dependency order, each with acceptance, plus Migration/deprecation owner and removal condition when applicable. State each once. Update-in-place rule: only a later planning invocation updates the Program; an executor treats it as protected immutable input.
 
 Resume preflight resolves root anew; combine identity/freshness/dirty checks. Exclude the named plan deliverable itself (including untracked `PLAN.md`) and reject other dirt. Never compare against the original absolute root or require globally clean status.
 
