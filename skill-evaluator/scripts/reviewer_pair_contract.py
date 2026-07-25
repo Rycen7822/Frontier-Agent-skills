@@ -34,6 +34,11 @@ REQUESTED_CONFIGURATION = {
     "service_tier": "priority",
     "fork_turns": "none",
 }
+FORBIDDEN_PACKET_KEYS = {
+    "gold_label", "gold_severity", "expected_overall", "expected_checks",
+    "judge_output", "other_reviewer_output", "plan", "source_path",
+    "filesystem_locator",
+}
 SAFE_ID_CHARS = frozenset(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-",
 )
@@ -69,6 +74,18 @@ def _sha256(value: Any) -> bool:
         and value.startswith(SHA256_PREFIX)
         and all(character in "0123456789abcdef" for character in value[7:])
     )
+
+
+def _contains_forbidden_packet_key(value: Any) -> bool:
+    if isinstance(value, dict):
+        return any(
+            key in FORBIDDEN_PACKET_KEYS
+            or _contains_forbidden_packet_key(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, list):
+        return any(_contains_forbidden_packet_key(item) for item in value)
+    return False
 
 
 def _closed_object(
@@ -253,6 +270,7 @@ def _validate_packet(
     packet: dict[str, Any],
     *,
     campaign_id: str,
+    expected_checks: dict[str, str],
 ) -> list[dict[str, Any]]:
     fields = {"schema_version", "campaign_id", "examples", "packet_hash"}
     _closed_object(
@@ -270,12 +288,36 @@ def _validate_packet(
     for example in packet["examples"]:
         _closed_object(
             example,
-            {"opaque_example_id", "payload_hash"},
+            {"opaque_example_id", "payload", "payload_hash"},
             code="calibration.reviewer_packet",
             label="packet example",
         )
         opaque_id = example["opaque_example_id"]
-        if not _safe_id(opaque_id) or not _sha256(example["payload_hash"]) or opaque_id in seen:
+        payload = _closed_object(
+            example["payload"],
+            {"view", "check"},
+            code="calibration.reviewer_packet",
+            label="packet payload",
+        )
+        check = _closed_object(
+            payload["check"],
+            {"check_id", "pass_condition"},
+            code="calibration.reviewer_packet",
+            label="packet check",
+        )
+        if (
+            not _safe_id(opaque_id)
+            or opaque_id in seen
+            or not isinstance(payload["view"], dict)
+            or not payload["view"]
+            or not _safe_id(check["check_id"])
+            or not isinstance(check["pass_condition"], str)
+            or not check["pass_condition"].strip()
+            or expected_checks.get(check["check_id"])
+            != check["pass_condition"]
+            or _contains_forbidden_packet_key(payload)
+            or example["payload_hash"] != canonical_sha256(payload)
+        ):
             _fail("calibration.reviewer_packet", "packet examples are invalid or duplicated")
         seen.add(opaque_id)
     return packet["examples"]
@@ -341,8 +383,12 @@ def _validate_mapping(
         _fail("calibration.reviewer_mapping", "sealed mapping coverage or ordering differs")
     for packet_example in packet_examples:
         mapped = by_opaque[packet_example["opaque_example_id"]]
-        if mapped["payload_hash"] != packet_example["payload_hash"]:
-            _fail("calibration.reviewer_mapping", "packet and mapping payload hashes differ")
+        if (
+            mapped["payload_hash"] != packet_example["payload_hash"]
+            or mapped["check_id"]
+            != packet_example["payload"]["check"]["check_id"]
+        ):
+            _fail("calibration.reviewer_mapping", "packet and mapping payload/check binding differs")
     return by_opaque
 
 
@@ -597,6 +643,7 @@ def validate_reviewer_pair(
     judge_reviewer_ids: set[str],
     judge_principal_ids: set[str],
     judge_grader_id: str,
+    expected_checks: dict[str, str],
 ) -> dict[str, Any]:
     """Validate and map exactly two context-clean reviewer streams."""
     pair_binding, pair_raw, _ = read_nofollow_regular(
@@ -640,7 +687,9 @@ def validate_reviewer_pair(
     if output_schema != expected_ratings_schema():
         _fail("calibration.reviewer_schema", "reviewer output schema differs from product contract")
     packet_examples = _validate_packet(
-        packet, campaign_id=pair["campaign_id"],
+        packet,
+        campaign_id=pair["campaign_id"],
+        expected_checks=expected_checks,
     )
     labels = {row["example_id"]: row for row in label_rows}
     mapping_by_opaque = _validate_mapping(

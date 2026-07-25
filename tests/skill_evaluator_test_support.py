@@ -2706,13 +2706,39 @@ def materialize_v5_reviewer_pair(
         for line in paths['ratings'].read_text(encoding='utf-8').splitlines()
     ]
     judges_by_example = {row['example_id']: row for row in judge_rows}
-    packet_examples = [
-        {
-            'opaque_example_id': f'opaque-{index:03d}',
-            'payload_hash': label['payload_hash'],
+    spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+    pass_conditions = {
+        check['check_id']: check['pass_condition']
+        for grader in spec['graders']
+        if grader['type'] == 'model'
+        for check in grader['checks']
+    }
+    packet_examples = []
+    for index, label in enumerate(labels, start=1):
+        payload = {
+            'view': {
+                'candidate_evidence': (
+                    f'Blinded fixture evidence for example {index}.'
+                ),
+            },
+            'check': {
+                'check_id': label['check_id'],
+                'pass_condition': pass_conditions[label['check_id']],
+            },
         }
-        for index, label in enumerate(labels, start=1)
-    ]
+        label['payload_hash'] = canonical_hash(payload)
+        packet_examples.append({
+            'opaque_example_id': f'opaque-{index:03d}',
+            'payload': payload,
+            'payload_hash': label['payload_hash'],
+        })
+    paths['labels'].write_text(
+        ''.join(
+            json.dumps(row, sort_keys=True, separators=(',', ':')) + '\n'
+            for row in labels
+        ),
+        encoding='utf-8',
+    )
     packet = with_self_hash({
         'schema_version': 'context-clean-subagent-reviewer-packet/1.0',
         'campaign_id': campaign_id,

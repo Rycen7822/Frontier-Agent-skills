@@ -4324,6 +4324,21 @@ def _normalize_calibration_raw(
                 "calibration.reviewer_pair",
                 "reviewer pair validation requires an output root",
             )
+        judge_grader_id = next(iter(judge_grader_ids))
+        target_graders = [
+            grader for grader in spec.get("graders", [])
+            if grader.get("type") == "model"
+            and grader.get("grader_id") == judge_grader_id
+        ]
+        if len(target_graders) != 1:
+            return None, (
+                "calibration.grader_scope",
+                "reviewer packet must target one selected model grader",
+            )
+        expected_checks = {
+            check["check_id"]: check["pass_condition"]
+            for check in target_graders[0].get("checks", [])
+        }
         try:
             pair_result = validate_reviewer_pair(
                 reviewer_pair_path,
@@ -4332,7 +4347,8 @@ def _normalize_calibration_raw(
                 label_rows=label_rows,
                 judge_reviewer_ids=judge_reviewers,
                 judge_principal_ids=judge_principals,
-                judge_grader_id=next(iter(judge_grader_ids)),
+                judge_grader_id=judge_grader_id,
+                expected_checks=expected_checks,
             )
         except ReviewerPairError as exc:
             return None, (exc.code, exc.message)

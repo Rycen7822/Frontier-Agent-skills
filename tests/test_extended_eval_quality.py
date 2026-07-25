@@ -420,6 +420,88 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             artifact['reviewer_pair']['path'],
         )
 
+    def test_reviewer_packet_binds_blinded_semantic_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            packet = json.loads(
+                paths['reviewer_packet'].read_text(encoding='utf-8'),
+            )
+            for example in packet['examples']:
+                payload = example['payload']
+                self.assertEqual({'view', 'check'}, set(payload))
+                self.assertTrue(payload['view'])
+                self.assertEqual(
+                    {'check_id', 'pass_condition'}, set(payload['check']),
+                )
+                self.assertTrue(payload['check']['pass_condition'].strip())
+                self.assertEqual(
+                    canonical_hash(payload), example['payload_hash'],
+                )
+
+        for tamper in ('unbound-view', 'forbidden-gold'):
+            with self.subTest(tamper=tamper), tempfile.TemporaryDirectory() as tmp:
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                packet = json.loads(
+                    paths['reviewer_packet'].read_text(encoding='utf-8'),
+                )
+                payload = packet['examples'][0]['payload']
+                if tamper == 'unbound-view':
+                    payload['view']['candidate_evidence'] = 'tampered'
+                else:
+                    payload['view']['gold_label'] = 'pass'
+                    packet['examples'][0]['payload_hash'] = canonical_hash(payload)
+                self._close_self_hash(packet, 'packet_hash')
+                self._write_json(paths['reviewer_packet'], packet)
+                self._rebind_reviewer_graph(paths)
+                result = self._run_pair_calibration(paths)
+                self.assertEqual(
+                    1, result.returncode, result.stdout + result.stderr,
+                )
+                self.assertIn('calibration.reviewer_packet', result.stderr)
+
+    def test_reviewer_packet_pass_condition_is_spec_owned(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            packet = json.loads(
+                paths['reviewer_packet'].read_text(encoding='utf-8'),
+            )
+            payload = packet['examples'][0]['payload']
+            payload['check']['pass_condition'] = 'Tampered condition.'
+            payload_hash = canonical_hash(payload)
+            packet['examples'][0]['payload_hash'] = payload_hash
+            self._close_self_hash(packet, 'packet_hash')
+            self._write_json(paths['reviewer_packet'], packet)
+
+            mapping = json.loads(
+                paths['reviewer_mapping'].read_text(encoding='utf-8'),
+            )
+            mapping['examples'][0]['payload_hash'] = payload_hash
+            self._close_self_hash(mapping, 'mapping_hash')
+            self._write_json(paths['reviewer_mapping'], mapping)
+            example_id = mapping['examples'][0]['example_id']
+            labels = [
+                json.loads(line)
+                for line in paths['labels'].read_text(
+                    encoding='utf-8',
+                ).splitlines()
+            ]
+            next(
+                row for row in labels if row['example_id'] == example_id
+            )['payload_hash'] = payload_hash
+            paths['labels'].write_text(
+                ''.join(
+                    json.dumps(row, separators=(',', ':')) + '\n'
+                    for row in labels
+                ),
+                encoding='utf-8',
+            )
+            self._rebind_reviewer_graph(paths)
+            result = self._run_pair_calibration(paths)
+            self.assertEqual(
+                1, result.returncode, result.stdout + result.stderr,
+            )
+            self.assertIn('calibration.reviewer_packet', result.stderr)
+
     def test_reviewer_pair_disagreement_uses_abstain_consensus(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
