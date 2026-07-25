@@ -25,6 +25,11 @@ from evidence_io import (
     validate_locator,
     verify_self_hash,
 )
+from reviewer_pair_contract import (
+    ReviewerPairError,
+    read_nofollow_regular,
+    validate_reviewer_pair,
+)
 
 LEVELS = {"L0", "L1", "L2", "L3", "L4"}
 SPLITS = {"dev", "regression", "heldout"}
@@ -3838,14 +3843,31 @@ def _uniform_value(
 
 
 def _relative_artifact_binding(path: Path, root: Path) -> dict[str, str]:
-    resolved = path.resolve()
-    resolved_root = root.resolve()
-    if not resolved.is_relative_to(resolved_root):
-        raise ValueError(f"input artifact is outside output root: {path}")
-    return {
-        "path": resolved.relative_to(resolved_root).as_posix(),
-        "sha256": file_sha256(resolved),
-    }
+    binding, _, _ = read_nofollow_regular(
+        path, root, label="calibration input artifact",
+    )
+    return binding
+
+
+def _jsonl_objects_from_bytes(raw: bytes, label: str) -> list[dict[str, Any]]:
+    try:
+        lines = raw.decode("utf-8").splitlines()
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{label} is not valid UTF-8: {exc}") from None
+    records: list[dict[str, Any]] = []
+    for line_no, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"{label} line {line_no} is invalid JSON: {exc.msg}",
+            ) from None
+        if not isinstance(value, dict):
+            raise ValueError(f"{label} line {line_no} must be an object")
+        records.append(value)
+    return records
 
 
 def _derive_independence(
@@ -4027,13 +4049,11 @@ def _calibration_raw_shape_error(
             or not isinstance(row.get("blinded_treatment_labels"), bool)
             or not all(
                 isinstance(row.get(field), dict)
-                for field in (
-                    "reviewer", "grader_identity", "execution_identity",
-                    "independence_facts", "ordering", "thresholds",
-                )
+                for field in ("reviewer", "ordering", "thresholds")
             )
             or not isinstance(row.get("drift_triggers"), list)
-            or row["reviewer"].get("role") not in {"judge", "human"}
+            or row["reviewer"].get("role")
+            not in {"judge", "context_clean_subagent_reviewer"}
             or not all(
                 nonempty_string(row["reviewer"].get(field))
                 for field in (
@@ -4046,46 +4066,63 @@ def _calibration_raw_shape_error(
                 "calibration.ratings_shape",
                 f"ratings row {index + 1} has invalid field types or values",
             )
+        judge_specific = (
+            "grader_identity", "execution_identity", "independence_facts",
+        )
+        role = row["reviewer"]["role"]
+        if (
+            role == "judge"
+            and not all(isinstance(row.get(field), dict) for field in judge_specific)
+        ) or (
+            role == "context_clean_subagent_reviewer"
+            and any(row.get(field) is not None for field in judge_specific)
+        ):
+            return (
+                "calibration.ratings_shape",
+                f"ratings row {index + 1} has role-incompatible judge identity fields",
+            )
     return None
 
 
 def _calibration_normalized_fields(
     ratings: list[dict[str, Any]],
     label_rows: list[dict[str, Any]],
+    reviewer_pair_binding: dict[str, str] | None,
 ) -> dict[str, Any]:
     labels = {row["example_id"]: row for row in label_rows}
     judge_rows = [
         row for row in ratings if row["reviewer"]["role"] == "judge"
     ]
-    human_rows = [
-        row for row in ratings if row["reviewer"]["role"] == "human"
+    reviewer_rows = [
+        row for row in ratings
+        if row["reviewer"]["role"] == "context_clean_subagent_reviewer"
     ]
-    human_reviewers = sorted({
-        row["reviewer"]["reviewer_id"] for row in human_rows
+    reviewer_ids = sorted({
+        row["reviewer"]["reviewer_id"] for row in reviewer_rows
     })
-    human_to_human: list[dict[str, Any]] | None = None
-    judge_to_human: list[dict[str, Any]] = []
-    if len(human_reviewers) >= 2:
-        anchor_id = human_reviewers[0]
+    reviewer_to_reviewer: list[dict[str, Any]] | None = None
+    judge_to_reviewer: list[dict[str, Any]] = []
+    if len(reviewer_ids) == 2:
+        anchor_id = reviewer_ids[0]
         anchor = {
             row["example_id"]: {
                 **labels[row["example_id"]],
                 "gold_label": row["label"],
                 "gold_severity": row["severity"],
             }
-            for row in human_rows
+            for row in reviewer_rows
             if row["reviewer"]["reviewer_id"] == anchor_id
         }
         comparisons = [
-            row for row in human_rows
+            row for row in reviewer_rows
             if row["reviewer"]["reviewer_id"] != anchor_id
         ]
-        human_to_human = _calibration_metric_cells(anchor, comparisons)
+        reviewer_to_reviewer = _calibration_metric_cells(anchor, comparisons)
 
         consensus: dict[str, dict[str, Any]] = {}
         for example_id, label in labels.items():
             rows = [
-                row for row in human_rows
+                row for row in reviewer_rows
                 if row["example_id"] == example_id
             ]
             counts = Counter(row["label"] for row in rows)
@@ -4104,7 +4141,7 @@ def _calibration_normalized_fields(
                     sum(float(row["severity"]) for row in rows) / len(rows)
                 ),
             }
-        judge_to_human = _calibration_metric_cells(consensus, judge_rows)
+        judge_to_reviewer = _calibration_metric_cells(consensus, judge_rows)
     blinded = all(
         row["blinded_treatment_labels"] is True
         and row["reviewer"].get("blinded") is True
@@ -4112,15 +4149,15 @@ def _calibration_normalized_fields(
     )
     return {
         "grader": _uniform_value(
-            ratings, "grader_identity", code="calibration.grader_identity",
+            judge_rows, "grader_identity", code="calibration.grader_identity",
         ),
         "execution_identity": _uniform_value(
-            ratings, "execution_identity",
+            judge_rows, "execution_identity",
             code="calibration.execution_identity",
         ),
         "independence": _derive_independence(
             _uniform_value(
-                ratings, "independence_facts",
+                judge_rows, "independence_facts",
                 code="calibration.independence",
             ),
             blinded=blinded,
@@ -4147,9 +4184,10 @@ def _calibration_normalized_fields(
         ),
         "metrics": {
             "judge_to_gold": _calibration_metric_cells(labels, judge_rows),
-            "human_to_human": human_to_human,
-            "judge_to_human": judge_to_human,
+            "reviewer_to_reviewer": reviewer_to_reviewer,
+            "judge_to_reviewer": judge_to_reviewer,
         },
+        "reviewer_pair": reviewer_pair_binding,
         "scope": {
             "tasks": sorted({row["task"] for row in label_rows}),
             "languages": sorted({row["language"] for row in label_rows}),
@@ -4183,6 +4221,9 @@ def _normalize_calibration_raw(
     spec: dict[str, Any],
     ratings: list[Any],
     label_rows: list[Any],
+    *,
+    reviewer_pair_path: Path | None = None,
+    output_root: Path | None = None,
 ) -> tuple[dict[str, Any] | None, tuple[str, str] | None]:
     if not ratings or not label_rows:
         return None, (
@@ -4203,24 +4244,18 @@ def _normalize_calibration_raw(
             "example_id and rating_id values must be unique",
         )
     labels = {row["example_id"]: row for row in label_rows}
+    judge_rows = [
+        row for row in ratings if row["reviewer"]["role"] == "judge"
+    ]
     if any(
         row["example_id"] not in labels
         or row["dimension"] != labels[row["example_id"]]["dimension"]
         or row["check_id"] != labels[row["example_id"]]["check_id"]
-        for row in ratings
+        for row in judge_rows
     ):
         return None, (
             "calibration.example_join",
-            "ratings must join a labeled example with the same check and dimension",
-        )
-    reviewer_examples = [
-        (row["reviewer"]["reviewer_id"], row["example_id"])
-        for row in ratings
-    ]
-    if len(reviewer_examples) != len(set(reviewer_examples)):
-        return None, (
-            "calibration.duplicate_rating",
-            "each reviewer may rate each labeled example only once",
+            "judge ratings must join a labeled example with the same check and dimension",
         )
     reviewer_identities: dict[str, tuple[Any, ...]] = {}
     for row in ratings:
@@ -4241,9 +4276,15 @@ def _normalize_calibration_raw(
                 "each reviewer_id must bind one role, authority, principal, and blinding state",
             )
         reviewer_identities[reviewer_id] = identity
-    judge_rows = [
-        row for row in ratings if row["reviewer"]["role"] == "judge"
+    reviewer_examples = [
+        (row["reviewer"]["reviewer_id"], row["example_id"])
+        for row in ratings
     ]
+    if len(reviewer_examples) != len(set(reviewer_examples)):
+        return None, (
+            "calibration.duplicate_rating",
+            "each reviewer may rate each labeled example only once",
+        )
     judge_reviewers = {
         row["reviewer"]["reviewer_id"] for row in judge_rows
     }
@@ -4256,25 +4297,53 @@ def _normalize_calibration_raw(
             "calibration.judge_coverage",
             "one blinded judge must rate every labeled example exactly once",
         )
-    human_rows = [
-        row for row in ratings if row["reviewer"]["role"] == "human"
+    reviewer_rows = [
+        row for row in ratings
+        if row["reviewer"]["role"] == "context_clean_subagent_reviewer"
     ]
-    human_reviewers = {
-        row["reviewer"]["reviewer_id"] for row in human_rows
+    judge_principals = {
+        row["reviewer"]["principal_id"] for row in judge_rows
     }
-    for reviewer_id in human_reviewers:
-        rows = [
-            row for row in human_rows
-            if row["reviewer"]["reviewer_id"] == reviewer_id
-        ]
-        if (
-            len(rows) != len(label_rows)
-            or {row["example_id"] for row in rows} != set(label_ids)
-        ):
+    judge_grader_ids = {row["grader_id"] for row in judge_rows}
+    if len(judge_principals) != 1 or len(judge_grader_ids) != 1:
+        return None, (
+            "calibration.judge_identity",
+            "judge rows must bind one principal and target grader",
+        )
+    reviewer_pair_binding: dict[str, str] | None = None
+    effective_ratings: list[dict[str, Any]] = list(ratings)
+    if reviewer_pair_path is None:
+        if reviewer_rows:
             return None, (
-                "calibration.human_coverage",
-                "each human reviewer must rate every labeled example",
+                "calibration.reviewer_pair_missing",
+                "subagent reviewer rows require a reviewer pair binding",
             )
+    else:
+        if output_root is None:
+            return None, (
+                "calibration.reviewer_pair",
+                "reviewer pair validation requires an output root",
+            )
+        try:
+            pair_result = validate_reviewer_pair(
+                reviewer_pair_path,
+                output_root=output_root,
+                reviewer_rows=reviewer_rows,
+                label_rows=label_rows,
+                judge_reviewer_ids=judge_reviewers,
+                judge_principal_ids=judge_principals,
+                judge_grader_id=next(iter(judge_grader_ids)),
+            )
+        except ReviewerPairError as exc:
+            return None, (exc.code, exc.message)
+        reviewer_pair_binding = pair_result["binding"]
+        mapped_by_rating = {
+            row["rating_id"]: row for row in pair_result["mapped_rows"]
+        }
+        effective_ratings = [
+            mapped_by_rating.get(row["rating_id"], row)
+            for row in ratings
+        ]
     if any(
         row["blinded_treatment_labels"] is not True
         or row["reviewer"].get("blinded") is not True
@@ -4285,7 +4354,9 @@ def _normalize_calibration_raw(
             "all calibration ratings and reviewers must be blinded",
         )
     try:
-        normalized = _calibration_normalized_fields(ratings, label_rows)
+        normalized = _calibration_normalized_fields(
+            effective_ratings, label_rows, reviewer_pair_binding,
+        )
     except (KeyError, TypeError, ValueError) as exc:
         return None, ("calibration.ratings_shape", str(exc))
     positions = [row["position"] for row in ratings]
@@ -4408,22 +4479,11 @@ def _normalize_calibration_raw(
         spec.get("level") in {"L3", "L4"}
         or spec.get("risk_tier") == "high"
         or manual_required
-    ):
-        human_principals = {
-            row["reviewer"]["principal_id"] for row in human_rows
-        }
-        judge_principals = {
-            row["reviewer"]["principal_id"] for row in judge_rows
-        }
-        if (
-            len(human_reviewers) < 2
-            or len(human_principals) < 2
-            or not human_principals.isdisjoint(judge_principals)
-        ):
-            return None, (
-                "calibration.human_raters",
-                "L3/L4, high-risk, or manual calibration requires two independent human raters",
-            )
+    ) and reviewer_pair_binding is None:
+        return None, (
+            "calibration.reviewer_pair_required",
+            "L3/L4, high-risk, or manual calibration requires one exact reviewer pair",
+        )
     return normalized, None
 
 
@@ -4435,28 +4495,52 @@ def _validate_calibration_raw_normalization(
     errors: list[dict[str, str]],
     warnings: list[dict[str, str]],
 ) -> None:
-    paths: dict[str, Path] = {}
+    raw_inputs: dict[str, bytes] = {}
     for field in ("labeled_examples", "raw_ratings"):
-        resolved = _check_bound_file(
-            calibration.get(field, {}),
-            root=artifact_path.parent,
-            label=f"calibration {field}",
-            path=f"/calibration/{field}",
-            errors=errors,
-            warnings=warnings,
-            ready=True,
-        )
-        if resolved is not None:
-            paths[field] = resolved
-    if len(paths) != 2:
+        binding = calibration.get(field)
+        if (
+            not isinstance(binding, dict)
+            or not isinstance(binding.get("path"), str)
+        ):
+            _add_contract_error(
+                errors,
+                "calibration.raw_binding",
+                f"/calibration/{field}",
+                f"calibration {field} binding is invalid",
+            )
+            continue
+        try:
+            observed, raw, _ = read_nofollow_regular(
+                artifact_path.parent / binding["path"],
+                artifact_path.parent,
+                label=f"calibration {field}",
+            )
+        except (OSError, ReviewerPairError) as exc:
+            _add_contract_error(
+                errors,
+                "calibration.raw_binding",
+                f"/calibration/{field}",
+                str(exc),
+            )
+            continue
+        if observed != binding:
+            _add_contract_error(
+                errors,
+                "calibration.raw_binding",
+                f"/calibration/{field}",
+                f"calibration {field} binding does not match reopened bytes",
+            )
+            continue
+        raw_inputs[field] = raw
+    if len(raw_inputs) != 2:
         return
     try:
-        label_rows = [
-            row for _, row in load_jsonl_objects(paths["labeled_examples"])
-        ]
-        ratings = [
-            row for _, row in load_jsonl_objects(paths["raw_ratings"])
-        ]
+        label_rows = _jsonl_objects_from_bytes(
+            raw_inputs["labeled_examples"], "calibration labels",
+        )
+        ratings = _jsonl_objects_from_bytes(
+            raw_inputs["raw_ratings"], "calibration ratings",
+        )
     except (OSError, ValueError) as exc:
         _add_contract_error(
             errors,
@@ -4465,8 +4549,19 @@ def _validate_calibration_raw_normalization(
             f"cannot read bound calibration rows: {exc}",
         )
         return
+    reviewer_pair = calibration.get("reviewer_pair")
+    reviewer_pair_path = (
+        artifact_path.parent / reviewer_pair["path"]
+        if isinstance(reviewer_pair, dict)
+        and isinstance(reviewer_pair.get("path"), str)
+        else None
+    )
     expected, normalization_error = _normalize_calibration_raw(
-        spec, ratings, label_rows,
+        spec,
+        ratings,
+        label_rows,
+        reviewer_pair_path=reviewer_pair_path,
+        output_root=artifact_path.parent,
     )
     if normalization_error is not None or expected is None:
         code, message = normalization_error or (
@@ -4474,12 +4569,15 @@ def _validate_calibration_raw_normalization(
         )
         _add_contract_error(errors, code, "/calibration", message)
         return
-    expected_id = "cal-" + canonical_sha256({
+    identity = {
         "evaluation_id": spec.get("evaluation_id"),
         "grader": expected["grader"],
         "ratings": calibration["raw_ratings"]["sha256"],
         "labels": calibration["labeled_examples"]["sha256"],
-    }).removeprefix("sha256:")[:24]
+    }
+    if expected["reviewer_pair"] is not None:
+        identity["reviewer_pair"] = expected["reviewer_pair"]["sha256"]
+    expected_id = "cal-" + canonical_sha256(identity).removeprefix("sha256:")[:24]
     expected = {
         **expected,
         "calibration_id": expected_id,
@@ -4503,12 +4601,25 @@ def _calibration_command(args: argparse.Namespace) -> int:
     ratings_path = Path(args.ratings)
     labels_path = Path(args.labels)
     output_path = Path(args.output)
+    reviewer_pair_path = (
+        Path(args.reviewer_pair) if args.reviewer_pair is not None else None
+    )
     try:
         spec = load_json(spec_path)
-        ratings = [row for _, row in load_jsonl_objects(ratings_path)]
-        label_rows = [row for _, row in load_jsonl_objects(labels_path)]
+        _, ratings_raw, _ = read_nofollow_regular(
+            ratings_path, output_path.parent, label="calibration ratings",
+        )
+        _, labels_raw, _ = read_nofollow_regular(
+            labels_path, output_path.parent, label="calibration labels",
+        )
+        ratings = _jsonl_objects_from_bytes(
+            ratings_raw, "calibration ratings",
+        )
+        label_rows = _jsonl_objects_from_bytes(
+            labels_raw, "calibration labels",
+        )
         registry = load_v5_schema_registry()
-    except (OSError, ValueError) as exc:
+    except (OSError, ReviewerPairError, ValueError) as exc:
         print(f"calibration input error: {exc}", file=sys.stderr)
         return 2
 
@@ -4522,7 +4633,11 @@ def _calibration_command(args: argparse.Namespace) -> int:
             f"{diagnostic['path']}: {diagnostic['message']}",
         )
     normalized, normalization_error = _normalize_calibration_raw(
-        spec, ratings, label_rows,
+        spec,
+        ratings,
+        label_rows,
+        reviewer_pair_path=reviewer_pair_path,
+        output_root=output_path.parent,
     )
     if normalization_error is not None or normalized is None:
         return _calibration_failure(*(normalization_error or (
@@ -4612,17 +4727,22 @@ def _calibration_command(args: argparse.Namespace) -> int:
         ratings_binding = _relative_artifact_binding(
             ratings_path, output_path.parent,
         )
-    except (OSError, ValueError) as exc:
+    except (OSError, ReviewerPairError, ValueError) as exc:
         print(f"calibration output error: {exc}", file=sys.stderr)
         return 2
+    calibration_identity = {
+        "evaluation_id": spec["evaluation_id"],
+        "grader": grader_identity,
+        "ratings": ratings_binding["sha256"],
+        "labels": labeled_binding["sha256"],
+    }
+    if normalized["reviewer_pair"] is not None:
+        calibration_identity["reviewer_pair"] = normalized["reviewer_pair"]["sha256"]
     artifact: dict[str, Any] = {
         "schema_version": 1,
-        "calibration_id": "cal-" + canonical_sha256({
-            "evaluation_id": spec["evaluation_id"],
-            "grader": grader_identity,
-            "ratings": ratings_binding["sha256"],
-            "labels": labeled_binding["sha256"],
-        }).removeprefix("sha256:")[:24],
+        "calibration_id": "cal-" + canonical_sha256(
+            calibration_identity,
+        ).removeprefix("sha256:")[:24],
         "calibration_hash": "sha256:" + "0" * 64,
         "evaluation_id": spec["evaluation_id"],
         **normalized,
@@ -5496,6 +5616,7 @@ def main() -> int:
     calibration.add_argument("--spec", required=True)
     calibration.add_argument("--ratings", required=True)
     calibration.add_argument("--labels", required=True)
+    calibration.add_argument("--reviewer-pair")
     calibration.add_argument("--output", required=True)
     calibration.set_defaults(handler=_calibration_command)
 
