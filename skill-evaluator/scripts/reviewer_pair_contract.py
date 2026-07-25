@@ -289,10 +289,10 @@ def _validate_mapping(
     schema_binding: dict[str, str],
     packet_examples: list[dict[str, Any]],
     labels: dict[str, dict[str, Any]],
-) -> tuple[dict[str, dict[str, Any]], set[str]]:
+) -> dict[str, dict[str, Any]]:
     fields = {
         "schema_version", "campaign_id", "packet_hash", "output_schema_hash",
-        "examples", "partitions", "mapping_hash",
+        "examples", "mapping_hash",
     }
     _closed_object(
         mapping, fields, code="calibration.reviewer_mapping", label="sealed mapping",
@@ -304,8 +304,6 @@ def _validate_mapping(
         or mapping["output_schema_hash"] != schema_binding["sha256"]
         or not verify_self_hash(mapping, "mapping_hash")
         or not isinstance(mapping["examples"], list)
-        or not isinstance(mapping["partitions"], list)
-        or not mapping["partitions"]
     ):
         _fail("calibration.reviewer_mapping", "sealed mapping identity or hash is invalid")
     expected_opaque = [item["opaque_example_id"] for item in packet_examples]
@@ -330,59 +328,22 @@ def _validate_mapping(
             or not _safe_id(real_id)
             or opaque_id in by_opaque
             or real_id in real_ids
-            or not _safe_id(item["check_id"])
-            or not _safe_id(item["dimension"])
-            or not _sha256(item["payload_hash"])
-        ):
-            _fail("calibration.reviewer_mapping", "sealed mapping contains an invalid example")
-        if label is not None and (
-            item["check_id"] != label["check_id"]
+            or label is None
+            or item["check_id"] != label["check_id"]
             or item["dimension"] != label["dimension"]
             or item["payload_hash"] != label["payload_hash"]
         ):
-            _fail("calibration.reviewer_mapping", "sealed mapping differs from the label partition")
+            _fail("calibration.reviewer_mapping", "sealed mapping does not join labels exactly")
         observed_opaque.append(opaque_id)
         real_ids.add(real_id)
         by_opaque[opaque_id] = item
-    if observed_opaque != expected_opaque:
+    if observed_opaque != expected_opaque or set(real_ids) != set(labels):
         _fail("calibration.reviewer_mapping", "sealed mapping coverage or ordering differs")
     for packet_example in packet_examples:
         mapped = by_opaque[packet_example["opaque_example_id"]]
         if mapped["payload_hash"] != packet_example["payload_hash"]:
             _fail("calibration.reviewer_mapping", "packet and mapping payload hashes differ")
-
-    partition_ids: set[str] = set()
-    partition_opaque: list[list[str]] = []
-    for partition in mapping["partitions"]:
-        _closed_object(
-            partition,
-            {"partition_id", "opaque_example_ids"},
-            code="calibration.reviewer_mapping",
-            label="sealed mapping partition",
-        )
-        opaque_ids = partition["opaque_example_ids"]
-        if (
-            not _safe_id(partition["partition_id"])
-            or partition["partition_id"] in partition_ids
-            or not isinstance(opaque_ids, list)
-            or not opaque_ids
-            or any(not _safe_id(item) or item not in by_opaque for item in opaque_ids)
-            or len(opaque_ids) != len(set(opaque_ids))
-        ):
-            _fail("calibration.reviewer_mapping", "sealed mapping partition is invalid")
-        partition_ids.add(partition["partition_id"])
-        partition_opaque.append(opaque_ids)
-    if [item for partition in partition_opaque for item in partition] != expected_opaque:
-        _fail("calibration.reviewer_mapping", "mapping partitions do not exactly cover the packet")
-    label_ids = set(labels)
-    matching = [
-        opaque_ids
-        for opaque_ids in partition_opaque
-        if {by_opaque[item]["example_id"] for item in opaque_ids} == label_ids
-    ]
-    if len(matching) != 1:
-        _fail("calibration.reviewer_mapping", "labels do not equal one declared mapping partition")
-    return by_opaque, set(matching[0])
+    return by_opaque
 
 
 def _read_sibling_json(
@@ -414,7 +375,6 @@ def _validate_receipt(
     output_schema: dict[str, Any],
     schema_binding: dict[str, str],
     reviewer_rows: list[dict[str, Any]],
-    selected_opaque_ids: set[str],
 ) -> dict[str, Any]:
     _closed_object(
         receipt, RECEIPT_FIELDS,
@@ -574,18 +534,6 @@ def _validate_receipt(
             or not math.isfinite(float(rating["severity"]))
         ):
             _fail("calibration.reviewer_output", "reviewer output rating is invalid")
-    observed_opaque_ids = [
-        rating["opaque_example_id"] for rating in raw_response["ratings"]
-    ]
-    expected_opaque_ids = [
-        example["opaque_example_id"] for example in packet["examples"]
-    ]
-    if observed_opaque_ids != expected_opaque_ids:
-        _fail("calibration.reviewer_coverage", "reviewer output does not cover the campaign packet")
-    selected_ratings = [
-        rating for rating in raw_response["ratings"]
-        if rating["opaque_example_id"] in selected_opaque_ids
-    ]
     projected_rows = [
         {
             "opaque_example_id": row["example_id"],
@@ -594,9 +542,9 @@ def _validate_receipt(
         }
         for row in reviewer_rows
     ]
-    if selected_ratings != projected_rows:
-        _fail("calibration.reviewer_output", "reviewer output differs from the raw partition rows")
-    if receipt["parsed_ratings_hash"] != canonical_sha256(raw_response["ratings"]):
+    if raw_response["ratings"] != projected_rows:
+        _fail("calibration.reviewer_output", "reviewer output differs from raw rating rows")
+    if receipt["parsed_ratings_hash"] != canonical_sha256(projected_rows):
         _fail("calibration.reviewer_output", "parsed ratings hash differs")
 
     terminal, _ = _read_sibling_json(
@@ -695,7 +643,7 @@ def validate_reviewer_pair(
         packet, campaign_id=pair["campaign_id"],
     )
     labels = {row["example_id"]: row for row in label_rows}
-    mapping_by_opaque, selected_opaque_ids = _validate_mapping(
+    mapping_by_opaque = _validate_mapping(
         mapping,
         campaign_id=pair["campaign_id"],
         packet_binding=pair["packet"],
@@ -755,7 +703,6 @@ def validate_reviewer_pair(
                 output_schema=output_schema,
                 schema_binding=pair["output_schema"],
                 reviewer_rows=rows,
-                selected_opaque_ids=selected_opaque_ids,
             )
         )
 
@@ -778,10 +725,7 @@ def validate_reviewer_pair(
         if reviewer["principal_id"] != receipt["principal_id"]:
             _fail("calibration.reviewer_identity", "raw reviewer principal differs from receipt")
 
-    opaque_ids = [
-        item["opaque_example_id"] for item in packet_examples
-        if item["opaque_example_id"] in selected_opaque_ids
-    ]
+    opaque_ids = [item["opaque_example_id"] for item in packet_examples]
     mapped_rows: list[dict[str, Any]] = []
     for reviewer_id in sorted(rows_by_reviewer):
         rows = rows_by_reviewer[reviewer_id]
