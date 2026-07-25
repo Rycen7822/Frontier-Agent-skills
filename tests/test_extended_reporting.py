@@ -1452,6 +1452,182 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             with self.assertRaisesRegex(ValueError, 'binding hash mismatch'):
                 analyzer.project_release_estimands(bindings, join, **kwargs)
 
+    def test_release_join_excludes_mechanism_and_unmapped_planner_cases(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+
+            def receipt(name: str) -> tuple[Path, str]:
+                path = root / f'{name}.json'
+                path.write_text(f'{{"id":"{name}"}}\n', encoding='utf-8')
+                return (
+                    path,
+                    'sha256:'
+                    + hashlib.sha256(path.read_bytes()).hexdigest(),
+                )
+
+            def record(
+                entry_id: str,
+                variant: str,
+                case_id: str,
+                tokens: int,
+            ) -> dict:
+                return {
+                    'entry_id': entry_id,
+                    'variant': variant,
+                    'case_id': case_id,
+                    'repeat': 1,
+                    'valid': True,
+                    'tokens_in': tokens,
+                    'tokens_out': 1,
+                    'counts': {'reference_load_count': 0},
+                }
+
+            public = {
+                'identity': {},
+                'manual': {'required': False, 'status': 'not_applicable'},
+                'completeness': {'status': 'complete'},
+                'context_efficiency': {},
+            }
+            sqw_records = [
+                record(f'sqw-{arm}-{case}', arm, case, 10)
+                for arm in ('baseline', 'candidate')
+                for case in ('a', 'b')
+            ]
+            planner_records = [
+                *[
+                    record(f'planner-{arm}-{case}', arm, case, 10)
+                    for arm in ('baseline', 'candidate')
+                    for case in ('a', 'b')
+                ],
+                record(
+                    'planner-registered-only',
+                    'registered-baseline',
+                    'registered-only',
+                    10,
+                ),
+            ]
+            transfer_records = [
+                *[
+                    record(f'executor-{arm}-{case}', arm, f'x-{case}', 10)
+                    for arm in ('baseline', 'candidate')
+                    for case in ('a', 'b')
+                ],
+                record('executor-mechanism-a', 'mechanism', 'x-a', 10),
+            ]
+            planner_attempts = {}
+            transfer_attempts = {}
+            join = {}
+            for record_item in planner_records:
+                path, _ = receipt(record_item['entry_id'])
+                planner_attempts[record_item['entry_id']] = {
+                    'receipt_path': path,
+                }
+            for record_item in transfer_records:
+                path, _ = receipt(record_item['entry_id'])
+                transfer_attempts[record_item['entry_id']] = {
+                    'receipt_path': path,
+                }
+            for case in ('a', 'b'):
+                for arm in ('baseline', 'candidate'):
+                    planner_id = f'planner-{arm}-{case}'
+                    executor_id = f'executor-{arm}-{case}'
+                    join[executor_id] = {
+                        'source_case_id': case,
+                        'planner_repeat': 1,
+                        'planner_entry_id': planner_id,
+                        'planner_receipt_hash': (
+                            'sha256:'
+                            + hashlib.sha256(
+                                planner_attempts[planner_id][
+                                    'receipt_path'
+                                ].read_bytes(),
+                            ).hexdigest()
+                        ),
+                        'executor_receipt_hash': (
+                            'sha256:'
+                            + hashlib.sha256(
+                                transfer_attempts[executor_id][
+                                    'receipt_path'
+                                ].read_bytes(),
+                            ).hexdigest()
+                        ),
+                    }
+
+            treatments = [
+                {'treatment_id': 'baseline', 'causal_role': 'baseline'},
+                {'treatment_id': 'candidate', 'causal_role': 'candidate'},
+            ]
+            loaded = {
+                'software-quality-workflows': {
+                    'public': public,
+                    'spec': {'treatments': treatments},
+                    'evidence': {
+                        'records': sqw_records,
+                        'selected_attempts': {},
+                    },
+                },
+                'writing-plans-planner': {
+                    'public': public,
+                    'spec': {
+                        'treatments': [
+                            *treatments,
+                            {
+                                'treatment_id': 'registered-baseline',
+                                'causal_role': 'comparator',
+                            },
+                        ],
+                    },
+                    'evidence': {
+                        'records': planner_records,
+                        'selected_attempts': planner_attempts,
+                    },
+                },
+                'writing-plans-transfer': {
+                    'public': public,
+                    'spec': {
+                        'treatments': [
+                            *treatments,
+                            {
+                                'treatment_id': 'mechanism',
+                                'causal_role': 'comparator',
+                            },
+                        ],
+                    },
+                    'evidence': {
+                        'records': transfer_records,
+                        'selected_attempts': transfer_attempts,
+                    },
+                },
+            }
+            bindings = [
+                {'study_id': study_id}
+                for study_id in (
+                    'software-quality-workflows',
+                    'writing-plans-planner',
+                    'writing-plans-transfer',
+                )
+            ]
+            analyzer = load_analyzer_module()
+            with mock.patch.object(
+                analyzer,
+                '_load_release_study',
+                side_effect=lambda binding: loaded[binding['study_id']],
+            ):
+                projection = analyzer.project_release_estimands(
+                    bindings,
+                    join,
+                    confidence_level=0.90,
+                    bootstrap_iterations=10000,
+                    random_seed=2735,
+                )
+            self.assertEqual('complete', projection['status'])
+            self.assertEqual(
+                'complete',
+                projection['writing_plans']['status'],
+            )
+
     def test_v5_report_transaction_truncation_and_immutable_retry(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

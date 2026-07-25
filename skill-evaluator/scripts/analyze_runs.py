@@ -5073,14 +5073,19 @@ def project_release_estimands(
         item["treatment_id"]: item["causal_role"]
         for item in transfer["spec"]["treatments"]
     }
+    release_transfer_records = [
+        record
+        for record in transfer_records
+        if transfer_roles.get(record["variant"]) in {"baseline", "candidate"}
+    ]
     join_reason_codes: set[str] = set()
     expected_executor_entries = {
-        record["entry_id"] for record in transfer_records
+        record["entry_id"] for record in release_transfer_records
     }
     if set(writing_plans_join) != expected_executor_entries:
         join_reason_codes.add("writing_plans_join_inventory_mismatch")
     arm_map: dict[str, dict[str, Any]] = {}
-    for executor_record in transfer_records:
+    for executor_record in release_transfer_records:
         executor_entry_id = executor_record["entry_id"]
         item = writing_plans_join.get(executor_entry_id)
         if not isinstance(item, dict) or set(item) != {
@@ -5118,14 +5123,18 @@ def project_release_estimands(
         if previous != normalized:
             join_reason_codes.add("writing_plans_executor_case_ambiguous")
 
-    planner_case_ids = {record["case_id"] for record in planner_records}
-    repeat_values = {record["repeat"] for record in planner_records}
+    planner_case_ids = {
+        item["source_case_id"] for item in arm_map.values()
+    }
+    repeat_values = {
+        item["planner_repeat"] for item in arm_map.values()
+    }
     repeats = max(repeat_values, default=0)
     if repeat_values != set(range(1, repeats + 1)):
         join_reason_codes.add("writing_plans_repeat_matrix_invalid")
     matched = matched_planner_executor_tokens(
         planner_records,
-        transfer_records,
+        release_transfer_records,
         arm_map,
         baseline_planner=_release_treatment_id(planner["spec"], "baseline"),
         candidate_planner=_release_treatment_id(planner["spec"], "candidate"),
