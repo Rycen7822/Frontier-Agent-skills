@@ -2740,6 +2740,12 @@ def materialize_v5_reviewer_pair(
             }
             for packet_example, label in zip(packet_examples, labels, strict=True)
         ],
+        'partitions': [{
+            'partition_id': f'{campaign_id}-partition-1',
+            'opaque_example_ids': [
+                item['opaque_example_id'] for item in packet_examples
+            ],
+        }],
         'mapping_hash': None,
     }, 'mapping_hash')
     write_json(mapping_path, mapping)
