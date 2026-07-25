@@ -438,17 +438,33 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                     canonical_hash(payload), example['payload_hash'],
                 )
 
-        for tamper in ('unbound-view', 'forbidden-gold'):
+        forbidden_keys = (
+            'gold_label',
+            'gold_severity',
+            'expected_overall',
+            'expected_checks',
+            'judge_output',
+            'other_reviewer_output',
+            'plan',
+            'source_path',
+            'filesystem_locator',
+        )
+        for forbidden_key in (None, *forbidden_keys):
+            tamper = (
+                'unbound-view'
+                if forbidden_key is None
+                else f'forbidden-{forbidden_key}'
+            )
             with self.subTest(tamper=tamper), tempfile.TemporaryDirectory() as tmp:
                 paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
                 packet = json.loads(
                     paths['reviewer_packet'].read_text(encoding='utf-8'),
                 )
                 payload = packet['examples'][0]['payload']
-                if tamper == 'unbound-view':
+                if forbidden_key is None:
                     payload['view']['candidate_evidence'] = 'tampered'
                 else:
-                    payload['view']['gold_label'] = 'pass'
+                    payload['view'][forbidden_key] = 'forbidden'
                     packet['examples'][0]['payload_hash'] = canonical_hash(payload)
                 self._close_self_hash(packet, 'packet_hash')
                 self._write_json(paths['reviewer_packet'], packet)
