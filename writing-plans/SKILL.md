@@ -22,7 +22,7 @@ Minimal sufficient form: state each fact/decision/evidence once; omit generic/em
 Write a title and only one compact contract table or four-row bullets:
 
 - State — Bound source identity; Protected work and allowed effects; Settled decisions; Exact first-slice inputs, outputs, values, invariants; observed protected-test I/O and values, once; Later blockers and dependencies.
-- Resume — Resume preflight: consume a matching freshness-bound host attestation when root/revision/HEAD/dirty scope match, transfer it unchanged, and do not rerun it; if missing or mismatched, run one combined preflight.
+- Resume — Resume preflight: consume a matching freshness-bound host attestation when resolved root, bound source identity, freshness, and dirty scope match; transfer it unchanged and do not rerun it; if missing or mismatched, run one combined preflight.
 - Slice — Goal / non-goals; First source-changing slice and files/symbols; Exact next source-changing action.
 - Proof — Acceptance and verification: the one combined final proof command is the only post-edit command and covers behavior, diff scope, protected boundary, residue, and whitespace; Rollback/cleanup when material.
 

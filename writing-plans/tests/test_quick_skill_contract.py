@@ -109,12 +109,14 @@ class QuickWritingPlansTests(unittest.TestCase):
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
         for contract in (
             "consume a matching freshness-bound host attestation",
+            "resolved root, bound source identity, freshness, and dirty scope match",
             "transfer it unchanged",
             "missing or mismatched",
             "one combined preflight",
             "do not rerun it",
         ):
             self.assertIn(contract, body)
+        self.assertNotIn("root/revision/head/dirty scope", body)
 
     def test_verification_owner_is_observed_not_inferred(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
