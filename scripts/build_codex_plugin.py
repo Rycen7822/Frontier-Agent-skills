@@ -642,13 +642,18 @@ def validate_plugin_build(
 
 def _source_revision(source_root: Path) -> str:
     completed = subprocess.run(
-        ["git", "-C", str(source_root), "rev-parse", "HEAD"],
+        ["git", "-C", str(source_root), "rev-parse", "--show-toplevel", "HEAD"],
         text=True, capture_output=True, check=False, timeout=30,
     )
-    revision = completed.stdout.strip()
-    if completed.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", revision):
+    lines = completed.stdout.splitlines()
+    if (
+        completed.returncode != 0
+        or len(lines) != 2
+        or Path(lines[0]).resolve(strict=True) != source_root.resolve(strict=True)
+        or re.fullmatch(r"[0-9a-f]{40}", lines[1]) is None
+    ):
         raise ValueError("source root lacks a canonical Git revision")
-    return revision
+    return lines[1]
 
 
 def _reject_symlink_components(path: Path) -> None:

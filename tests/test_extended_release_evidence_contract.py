@@ -90,6 +90,11 @@ def gate_result(contract: dict) -> dict:
 class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.builder = load_builder()
+        revision = mock.patch.object(
+            self.builder, "_source_revision", return_value=REVISION,
+        )
+        revision.start()
+        self.addCleanup(revision.stop)
 
     def make_contract(self, root: Path) -> tuple[Path, Path, dict]:
         source = root / "source"
