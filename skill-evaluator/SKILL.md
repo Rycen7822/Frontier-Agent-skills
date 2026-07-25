@@ -113,7 +113,7 @@ Analyzer exits: `0` complete supported/eligible or L0/L1 diagnostic; `1` verifie
 - [Source map](references/source-map.md): source provenance and exact implementation owners.
 - [Contract schemas](schemas/README.md): Draft 2020-12 owners for the 3.0 wire contracts.
 - [Evaluation report](templates/evaluation-report.md): the single conditional report template.
-- Executable owners: [audit](scripts/audit_skill_package.py), [validator](scripts/validate_eval_suite.py), [compiler](scripts/compile_eval_plan.py), [runner](scripts/run_eval_plan.py), [analyzer](scripts/analyze_runs.py), and [I/O](scripts/evidence_io.py).
+- Executable owners: [audit](scripts/audit_skill_package.py), [validator](scripts/validate_eval_suite.py), [reviewer-pair contract](scripts/reviewer_pair_contract.py), [compiler](scripts/compile_eval_plan.py), [runner](scripts/run_eval_plan.py), [analyzer](scripts/analyze_runs.py), and [I/O](scripts/evidence_io.py).
 - Spec fixtures: [L0](templates/eval-spec.l0.example.json), [L1](templates/eval-spec.l1.example.json), and [L2](templates/eval-spec.example.json); public scenarios: [L1](templates/scenarios.l1.example.jsonl) and [L2](templates/scenarios.example.jsonl); [host manifest](templates/host-manifest.example.json).
 - Preparation fixtures: [calibration ratings](templates/calibration-ratings.example.jsonl), [calibration gold](templates/calibration-gold.example.jsonl), and [suite-quality proof](templates/suite-quality-proof.example.json).
 - Evidence fixtures: [run index](templates/runs.example.jsonl), [grader schema](templates/grader-output.schema.json), [grader prompt](templates/llm-grader-prompt.md), [holdout manifest](templates/holdout-manifest.example.json), and [holdout scenarios](templates/holdout-scenarios.example.jsonl).
