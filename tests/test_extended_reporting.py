@@ -99,7 +99,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             )
         if manual_required:
             role = 'independent-evaluator'
-            required_evidence = ['manual-review-input-binding']
+            required_evidence = ['frozen-study-input-binding']
             spec['authority']['manual_review'] = {
                 'required': True,
                 'role': role,
@@ -1134,7 +1134,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 encoding='utf-8',
             )
             evidence = {
-                'type': 'manual-review-input-binding',
+                'type': 'frozen-study-input-binding',
                 'artifact': 'manual/input-binding.json',
                 'sha256': (
                     'sha256:'
@@ -1212,7 +1212,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             )
             self.assertEqual('invalid', invalid_summary['manual_authority']['status'])
             binding = json.loads(evidence_path.read_text(encoding='utf-8'))
-            binding['spec']['sha256'] = 'sha256:' + '0' * 64
+            binding['spec_content_hash'] = 'sha256:' + '0' * 64
             binding['binding_hash'] = canonical_hash({
                 key: value for key, value in binding.items()
                 if key != 'binding_hash'

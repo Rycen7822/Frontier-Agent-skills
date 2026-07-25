@@ -3727,16 +3727,7 @@ def _manual_review_input_binding(
 ) -> dict[str, Any]:
     root = spec_path.parent.resolve(strict=True)
 
-    def local_file(path: Path, label: str) -> dict[str, str]:
-        resolved = path.resolve(strict=True)
-        if path.is_symlink() or not resolved.is_relative_to(root):
-            raise ValueError(f"{label} must be a non-symlink study-local file")
-        return {
-            "path": resolved.relative_to(root).as_posix(),
-            "sha256": file_sha256(resolved),
-        }
-
-    def suite_file(field: str) -> dict[str, str] | None:
+    def suite_file(field: str) -> tuple[Path, str] | None:
         reference = spec["suite"].get(field)
         if reference is None:
             return None
@@ -3751,18 +3742,43 @@ def _manual_review_input_binding(
             f"suite {field}",
             kind="file",
         )
-        observed = local_file(path, f"suite {field}")
-        if observed != reference:
+        observed_hash = file_sha256(path)
+        if observed_hash != reference["sha256"]:
             raise ValueError(f"suite {field} raw hash does not match")
-        return observed
+        return path, observed_hash
+
+    scenarios = suite_file("scenarios")
+    quality_reference = suite_file("quality")
+    calibration = suite_file("calibration")
+    if scenarios is None or quality_reference is None:
+        raise ValueError("manual review requires scenarios and suite quality")
+    quality = load_json(quality_reference[0])
+    proof_hashes: set[str] = set()
+    for item in quality["raw_proofs"].values():
+        if not isinstance(item, dict) or set(item) != {"path", "sha256"}:
+            raise ValueError("suite quality raw proof binding is invalid")
+        _, proof_path = resolve_contained_path(
+            root,
+            item["path"],
+            "suite quality raw proof",
+            kind="file",
+        )
+        if file_sha256(proof_path) != item["sha256"]:
+            raise ValueError("suite quality raw proof hash does not match")
+        proof_hashes.add(item["sha256"])
+    if len(proof_hashes) != 1:
+        raise ValueError("suite quality must bind one canonical raw proof")
 
     binding = {
         "schema_version": "manual-review-input-binding/1.0",
-        "spec": local_file(spec_path, "evaluation spec"),
-        "scenarios": suite_file("scenarios"),
-        "quality": suite_file("quality"),
-        "calibration": suite_file("calibration"),
-        "plan": local_file(plan_path, "execution plan"),
+        "study_id": spec["evaluation_id"],
+        "spec_content_hash": file_sha256(spec_path),
+        "scenarios_content_hash": scenarios[1],
+        "suite_quality_proof_content_hash": next(iter(proof_hashes)),
+        "grader_calibration_content_hash": (
+            calibration[1] if calibration is not None else None
+        ),
+        "execution_plan_content_hash": file_sha256(plan_path),
     }
     binding["binding_hash"] = canonical_sha256(binding)
     return binding
@@ -3840,7 +3856,7 @@ def _verify_v5_manual_review(
             or len(evidence) != 1
             or not isinstance(evidence[0], dict)
             or set(evidence[0]) != {"type", "artifact", "sha256"}
-            or evidence[0]["type"] != "manual-review-input-binding"
+            or evidence[0]["type"] != "frozen-study-input-binding"
         ):
             raise ValueError(
                 "manual-review evidence must contain exactly one input binding",
@@ -3869,7 +3885,7 @@ def _verify_v5_manual_review(
             raise ValueError("manual-review input binding owner mismatch")
         decision_projection = {
             "reviewer_role": receipt["reviewer_role"],
-            "required_evidence": ["manual-review-input-binding"],
+            "required_evidence": ["frozen-study-input-binding"],
         }
         if (
             config["decision_contract_hash"]
