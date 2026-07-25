@@ -44,6 +44,12 @@ class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_explicit_activation(self) -> None:
         metadata = frontmatter(SKILL_PATH)
         self.assertEqual("8.0.0", metadata["metadata"]["version"])
+        self.assertEqual(
+            "Write source-bound software implementation Handoffs and "
+            "multi-session Programs from settled decisions; not diagnosis "
+            "or execution.",
+            metadata["description"],
+        )
         description = metadata["description"].casefold()
         self.assertGreaterEqual(len(description), 80)
         for term in ("source-bound", "software implementation", "handoff", "program"):
@@ -66,7 +72,76 @@ class QuickWritingPlansTests(unittest.TestCase):
         rows = ("- State —", "- Resume —", "- Slice —", "- Proof —")
         self.assertEqual(list(rows), sorted(rows, key=body.index))
         self.assertIn("directly from settled facts", body)
-        self.assertIn("Acceptance and verification: one command verifies every condition", body)
+        self.assertIn(
+            "Acceptance and verification: the one combined final proof command",
+            body,
+        )
+
+    def test_rows_have_exclusive_ownership_without_fact_loss(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        row_markers = {
+            "- State —": (
+                "Bound source identity",
+                "Protected work and allowed effects",
+                "Settled decisions",
+                "Exact first-slice inputs, outputs, values, invariants",
+                "Later blockers and dependencies",
+            ),
+            "- Resume —": ("freshness-bound host attestation",),
+            "- Slice —": (
+                "Goal / non-goals",
+                "First source-changing slice and files/symbols",
+                "Exact next source-changing action",
+            ),
+            "- Proof —": (
+                "Acceptance and verification",
+                "Rollback/cleanup when material",
+            ),
+        }
+        for row, markers in row_markers.items():
+            line = next(line for line in body.splitlines() if line.startswith(row))
+            for marker in markers:
+                with self.subTest(row=row, marker=marker):
+                    self.assertIn(marker, line)
+                    self.assertEqual(1, body.count(marker))
+
+    def test_transfer_consumes_matching_preflight(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        for contract in (
+            "consume a matching freshness-bound host attestation",
+            "transfer it unchanged",
+            "missing or mismatched",
+            "one combined preflight",
+            "do not rerun it",
+        ):
+            self.assertIn(contract, body)
+
+    def test_verification_owner_is_observed_not_inferred(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        for contract in (
+            "prompt-bound verification command",
+            "one bounded authority inspection",
+            "never infer the runner",
+            "language, filename, or convention",
+        ):
+            self.assertIn(contract, body)
+
+    def test_protected_behavior_is_bound_once(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        self.assertIn("observed protected-test i/o and values", body)
+        self.assertIn("later slice and proof rows reference state", body)
+        self.assertEqual(1, body.count("observed protected-test i/o and values"))
+
+    def test_proof_is_the_only_post_edit_command(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        for contract in (
+            "only post-edit command",
+            "behavior, diff scope, protected boundary, residue, and whitespace",
+            "after proof passes, run no status, diff, test, or confirmation",
+            "planner-only non-content confirmation",
+            "never enters the executor plan",
+        ):
+            self.assertIn(contract, body)
 
     def test_source_binding_and_first_source_change_are_distinct(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8")
@@ -102,7 +177,7 @@ class QuickWritingPlansTests(unittest.TestCase):
             "minimal sufficient form",
             "repo-relative paths",
             "state each fact",
-            "one combined prewrite inspection",
+            "one combined preflight",
             "one combined final proof command",
             "at most one combined non-content confirmation",
             "do not expand one sentence into its own heading",
