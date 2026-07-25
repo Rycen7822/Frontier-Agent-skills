@@ -17,6 +17,8 @@ from typing import Any, Sequence
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = SCRIPT_DIR.parent
+RELEASE_VALIDATOR = SCRIPT_DIR / "build_codex_plugin.py"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
@@ -126,14 +128,26 @@ def _run_json(
 
 
 def _run_validator(
-    validator: Path,
     plugin_root: Path,
+    build_evidence_path: Path,
+    release_evidence_path: Path,
     *,
     environment: dict[str, str],
     cwd: Path,
 ) -> None:
     completed = subprocess.run(
-        [sys.executable, str(validator), str(plugin_root)],
+        [
+            sys.executable,
+            str(RELEASE_VALIDATOR),
+            "--source-root",
+            str(ROOT),
+            "--validate-plugin-root",
+            str(plugin_root),
+            "--build-evidence",
+            str(build_evidence_path),
+            "--release-evidence",
+            str(release_evidence_path),
+        ],
         cwd=cwd,
         env=environment,
         text=True,
@@ -143,7 +157,11 @@ def _run_validator(
     )
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()[:500]
-        raise ValueError(f"official plugin validation failed: {detail}")
+        suffix = f": {detail}" if detail else ""
+        raise ValueError(
+            f"repository release validation failed (exit {completed.returncode})"
+            f"{suffix}"
+        )
 
 
 def _resolve_codex(command: str) -> str:
@@ -295,10 +313,10 @@ def _verify_static_evidence(static_path: Path, build: dict[str, Any]) -> dict[st
 def run_cli_smoke(
     plugin_root: Path,
     build_evidence_path: Path,
+    release_evidence_path: Path,
     static_smoke_path: Path,
     marketplace_root: Path,
     work_root: Path,
-    plugin_validator: Path,
     codex_command: str = "codex",
 ) -> dict[str, Any]:
     if work_root.is_symlink():
@@ -328,9 +346,9 @@ def run_cli_smoke(
     source_records = _plugin_records(plugin_root)
     if tree_hash(source_records) != build.get("plugin_tree_hash"):
         raise ValueError("source plugin tree differs from build evidence")
-    validator = plugin_validator.resolve(strict=True)
-    if not validator.is_file():
-        raise ValueError("official plugin validator is not a file")
+    release_evidence_path = release_evidence_path.resolve(strict=True)
+    if not RELEASE_VALIDATOR.is_file() or RELEASE_VALIDATOR.is_symlink():
+        raise ValueError("repository release validator is missing or symlinked")
     codex_bin = _resolve_codex(codex_command)
     marketplace_manifest = marketplace_root / ".agents" / "plugins" / "marketplace.json"
     marketplace_content_hash = _content_hash(marketplace_manifest)
@@ -340,7 +358,13 @@ def run_cli_smoke(
         isolated_home = Path(directory).resolve(strict=True)
         (isolated_home / ".codex").mkdir(mode=0o700)
         environment = _safe_environment(isolated_home)
-        _run_validator(validator, plugin_root, environment=environment, cwd=marketplace_root)
+        _run_validator(
+            plugin_root,
+            build_evidence_path,
+            release_evidence_path,
+            environment=environment,
+            cwd=marketplace_root,
+        )
         version = subprocess.run(
             [codex_bin, "--version"],
             cwd=marketplace_root,
@@ -413,7 +437,13 @@ def run_cli_smoke(
         }
         if installed_activation != build.get("skill_activation"):
             raise ValueError("installed skill activation differs from build evidence")
-        _run_validator(validator, installed_root, environment=environment, cwd=marketplace_root)
+        _run_validator(
+            installed_root,
+            build_evidence_path,
+            release_evidence_path,
+            environment=environment,
+            cwd=marketplace_root,
+        )
 
         listed, commands["list_installed"] = _run_json(
             codex_bin,
@@ -563,10 +593,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plugin-root", type=Path, required=True)
     parser.add_argument("--build-evidence", type=Path, required=True)
+    parser.add_argument("--release-evidence", type=Path, required=True)
     parser.add_argument("--static-smoke", type=Path, required=True)
     parser.add_argument("--marketplace-root", type=Path, required=True)
     parser.add_argument("--work-root", type=Path, required=True)
-    parser.add_argument("--plugin-validator", type=Path, required=True)
     parser.add_argument("--codex-bin", default="codex")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -574,10 +604,10 @@ def main(argv: list[str] | None = None) -> int:
         result = run_cli_smoke(
             args.plugin_root,
             args.build_evidence,
+            args.release_evidence,
             args.static_smoke,
             args.marketplace_root,
             args.work_root,
-            args.plugin_validator,
             args.codex_bin,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)

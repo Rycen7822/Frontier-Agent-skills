@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/frontier-engineering/frontier-longitudinal-report-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "candidate_revision",
+    "candidate_source_tree_hash",
+    "candidate_plugin_tree_hash",
+    "controller_content_hash",
+    "evaluator_source_hash",
+    "decision_contract_content_hash",
+    "campaign_contract_content_hash",
+    "selected_receipt_set_hash",
+    "step_result_content_hashes",
+    "metrics",
+    "gate_results",
+    "evidence_status",
+    "usefulness_status",
+    "longitudinal_status",
+    "report_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "frontier-longitudinal-report/1.0"},
+    "candidate_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "candidate_source_tree_hash": {"$ref": "#/$defs/hash"},
+    "candidate_plugin_tree_hash": {"$ref": "#/$defs/hash"},
+    "controller_content_hash": {"$ref": "#/$defs/hash"},
+    "evaluator_source_hash": {"$ref": "#/$defs/hash"},
+    "decision_contract_content_hash": {"$ref": "#/$defs/hash"},
+    "campaign_contract_content_hash": {"$ref": "#/$defs/hash"},
+    "selected_receipt_set_hash": {"$ref": "#/$defs/hash"},
+    "step_result_content_hashes": {
+      "type": "object",
+      "minProperties": 12,
+      "maxProperties": 12,
+      "propertyNames": {"pattern": "^step-(0[1-9]|1[0-2])$"},
+      "additionalProperties": {"$ref": "#/$defs/hash"}
+    },
+    "metrics": {"type": "object"},
+    "gate_results": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/gateResult"}
+    },
+    "evidence_status": {"const": "complete"},
+    "usefulness_status": {"const": "supported"},
+    "longitudinal_status": {"const": "passed"},
+    "report_hash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "gateResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gate_id",
+        "metric_id",
+        "evidence_artifact_kind",
+        "observed",
+        "passed"
+      ],
+      "properties": {
+        "gate_id": {"type": "string", "minLength": 1},
+        "metric_id": {"type": "string", "minLength": 1},
+        "evidence_artifact_kind": {
+          "enum": ["native_artifact", "report_local"]
+        },
+        "observed": {},
+        "passed": {"const": true}
+      }
+    }
+  }
+}
