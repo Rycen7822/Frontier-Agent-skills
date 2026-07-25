@@ -2026,6 +2026,7 @@ def _read_v4_grades(
 
 def _v4_context_projection(context: dict[str, Any]) -> dict[str, Any]:
     components = context["components"]
+    component_bytes = sum(item["bytes"] for item in components)
     unique_static = sum(
         item["bytes"]
         for item in components
@@ -2085,6 +2086,7 @@ def _v4_context_projection(context: dict[str, Any]) -> dict[str, Any]:
         "unexplained_repeated_static_content_bytes": (
             repeated_static - host_duplicate
         ),
+        "unattributed_residue_bytes": context["bytes"] - component_bytes,
         "unattributed_model_body_read_count": 0,
     }
 
@@ -2153,6 +2155,7 @@ def _record_from_v4_receipt(
         )
     })
     routing = receipt["routing"]
+    context_components = receipt["context_usage"]["components"]
     return {
         "run_id": run["run_id"],
         "entry_id": run["entry_id"],
@@ -2198,11 +2201,14 @@ def _record_from_v4_receipt(
         "counts": {
             "task_tool_calls": sum(item["tool_calls"] for item in usage),
             "executor_prewrite_task_tool_calls": 0,
-            "host_injected_body_count": 0,
+            "host_injected_body_count": sum(
+                item["kind"] == "body" and item["occurrence"] == 1
+                for item in context_components
+            ),
             "model_initiated_body_read_count": 0,
             "reference_load_count": sum(
                 item["kind"] == "reference"
-                for item in receipt["context_usage"]["components"]
+                for item in context_components
             ),
             "skill_load_tool_calls": 0,
             "skill_protocol_tool_calls": 0,
@@ -4903,6 +4909,20 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
         spec,
         evidence["records"],
     )
+    _, candidate_entry = resolve_contained_path(
+        paths["spec"].parent,
+        f"{spec['subject']['package']['path']}/SKILL.md",
+        "release candidate skill entry",
+        kind="file",
+    )
+    if context is not None:
+        entry_bytes = candidate_entry.stat().st_size
+        context["candidate_entry_bytes"] = {
+            "evidence_artifact_kind": "native_artifact",
+            "p50": entry_bytes,
+            "p95": entry_bytes,
+            "max": entry_bytes,
+        }
     reason_codes = sorted({
         *({"missing_terminal_entry"} if evidence["missing_entries"] else set()),
         *(
@@ -4963,6 +4983,458 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
         "plan": plan,
         "evidence": evidence,
     }
+
+
+def _release_records_for_role(
+    loaded: dict[str, Any],
+    role: str,
+) -> list[dict[str, Any]]:
+    treatment_id = _release_treatment_id(loaded["spec"], role)
+    return [
+        record for record in loaded["evidence"]["records"]
+        if record["variant"] == treatment_id
+    ]
+
+
+def _release_max(
+    records: list[dict[str, Any]],
+    container: str,
+    field: str,
+) -> int:
+    values = []
+    for record in records:
+        value_container = record.get(container)
+        if not isinstance(value_container, dict) or field not in value_container:
+            raise ValueError(f"release metric {container}.{field} is missing")
+        values.append(value_container[field])
+    if any(
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value < 0
+        for value in values
+    ):
+        raise ValueError(f"release metric {container}.{field} is invalid")
+    return max(values, default=0)
+
+
+def _release_failure_cases(
+    records: list[dict[str, Any]],
+) -> set[str]:
+    by_case: dict[str, list[bool]] = defaultdict(list)
+    for record in records:
+        by_case[record["case_id"]].append(
+            record["valid"] is True and record["task_pass"] is True,
+        )
+    return {
+        case_id for case_id, values in by_case.items()
+        if not values or not all(values)
+    }
+
+
+def _release_context_scalars(public: dict[str, Any]) -> dict[str, int]:
+    context = public["context_efficiency"]
+    if not isinstance(context, dict):
+        raise ValueError("release context efficiency is unavailable")
+    fields = {
+        "candidate_entry_bytes_p95": ("candidate_entry_bytes", "p95"),
+        "controlled_context_bytes_p95": (
+            "controlled_context_bytes",
+            "p95",
+        ),
+        "total_context_bytes_p95": ("total_context_bytes", "p95"),
+        "host_integration_duplicate_bytes_max": (
+            "host_integration_duplicate_bytes",
+            "max",
+        ),
+        "unexplained_repeated_bytes_max": (
+            "unexplained_repeated_static_content_bytes",
+            "max",
+        ),
+        "protocol_output_bytes_max": ("protocol_output_bytes", "max"),
+        "failed_command_output_bytes_max": (
+            "failed_command_output_bytes",
+            "max",
+        ),
+    }
+    result = {}
+    for output, (metric, selector) in fields.items():
+        value = context.get(metric, {}).get(selector)
+        if (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < 0
+        ):
+            raise ValueError(f"release context metric is invalid: {metric}")
+        result[output] = value
+    return result
+
+
+def _sqw_release_metrics(
+    loaded: dict[str, Any],
+    *,
+    confidence_level: float,
+    bootstrap_iterations: int,
+    random_seed: int,
+) -> dict[str, Any]:
+    spec = loaded["spec"]
+    records = loaded["evidence"]["records"]
+    candidate_id = _release_treatment_id(spec, "candidate")
+    baseline_id = _release_treatment_id(spec, "baseline")
+    candidate = _release_records_for_role(loaded, "candidate")
+    baseline = _release_records_for_role(loaded, "baseline")
+    comparator_ids = {
+        item["treatment_id"]
+        for item in spec["treatments"]
+        if item["causal_role"] == "comparator"
+    }
+    non_target = [
+        record for record in records
+        if record["variant"] in comparator_ids
+    ]
+    baseline_failures = _release_failure_cases(baseline)
+    candidate_failures = _release_failure_cases(candidate)
+    task_effect = summarize_paired_metric(
+        records,
+        comparator=baseline_id,
+        candidate=candidate_id,
+        metric="task_pass_rate",
+        direction="higher_is_better",
+        effect="relative",
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed + 11,
+    )
+    prior_ids = [
+        item["treatment_id"]
+        for item in spec["treatments"]
+        if item["causal_role"] == "prior"
+    ]
+    prior_effect = (
+        summarize_paired_metric(
+            records,
+            comparator=prior_ids[0],
+            candidate=candidate_id,
+            metric="controlled_core_skill_context_bytes",
+            direction="lower_is_better",
+            effect="relative",
+            confidence_level=confidence_level,
+            bootstrap_iterations=bootstrap_iterations,
+            random_seed=random_seed + 10,
+        )
+        if len(prior_ids) == 1
+        else None
+    )
+    prewrite = summarize_paired_cost_delta(
+        records,
+        comparator=baseline_id,
+        candidate=candidate_id,
+        metric="executor_prewrite_tool_output_bytes",
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed + 12,
+    )
+    non_target_by_case: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for record in non_target:
+        non_target_by_case[record["case_id"]].append(record)
+    correct_no_load = sum(
+        bool(rows)
+        and all(
+            row["task_pass"] is True
+            and row["skill_body_loaded"] is False
+            and row["skill_incorporated"] is False
+            and row["skill_applied"] is False
+            for row in rows
+        )
+        for rows in non_target_by_case.values()
+    )
+    metrics = {
+        **_release_context_scalars(loaded["public"]),
+        "unattributed_residue_bytes_max": _release_max(
+            candidate,
+            "context_usage",
+            "unattributed_residue_bytes",
+        ),
+        "prior_controlled_context_reduction": prior_effect,
+        "critical_failures": sum(
+            record["critical_safety_incidents"] for record in candidate
+        ),
+        "candidate_only_failures": len(
+            candidate_failures - baseline_failures,
+        ),
+        "non_target_skill_loads": sum(
+            record["skill_body_loaded"]
+            or record["skill_incorporated"]
+            or record["skill_applied"]
+            for record in non_target
+        ),
+        "non_target_correct_no_load": {
+            "numerator": correct_no_load,
+            "denominator": len(non_target_by_case),
+        },
+        "baseline_failures": len(baseline_failures),
+        "resolved_baseline_failures": len(
+            baseline_failures - candidate_failures,
+        ),
+        "candidate_failures": len(candidate_failures),
+        "candidate_failure_ratio": (
+            len(candidate_failures) / len(baseline_failures)
+            if baseline_failures else 0.0
+        ),
+        "task_pass_relative_effect": task_effect,
+        "prewrite_overhead": prewrite,
+    }
+    return metrics
+
+
+def _writing_plans_release_metrics(
+    planner: dict[str, Any],
+    transfer: dict[str, Any],
+    arm_map: dict[str, dict[str, Any]],
+    *,
+    prior_context: dict[str, Any] | None,
+    matched_tokens: dict[str, Any],
+    confidence_level: float,
+    bootstrap_iterations: int,
+    random_seed: int,
+) -> dict[str, Any]:
+    planner_records = planner["evidence"]["records"]
+    planner_spec = planner["spec"]
+    candidate_planner_id = _release_treatment_id(
+        planner_spec,
+        "candidate",
+    )
+    baseline_planner_id = _release_treatment_id(
+        planner_spec,
+        "baseline",
+    )
+    candidate_planner = _release_records_for_role(planner, "candidate")
+    source_case_ids = {
+        item["source_case_id"] for item in arm_map.values()
+    }
+    candidate_source = [
+        record for record in candidate_planner
+        if record["case_id"] in source_case_ids
+    ]
+    candidate_source_by_case: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for record in candidate_source:
+        candidate_source_by_case[record["case_id"]].append(record)
+    prior_ids = [
+        item["treatment_id"]
+        for item in planner_spec["treatments"]
+        if item["causal_role"] == "prior"
+    ]
+    prior_profile: dict[str, list[bool]] = defaultdict(list)
+    if len(prior_ids) == 1:
+        for record in planner_records:
+            if (
+                record["variant"] == prior_ids[0]
+                and record["case_id"] in source_case_ids
+            ):
+                prior_profile[record["case_id"]].append(
+                    record["counts"]["reference_load_count"] > 0,
+                )
+    always_loaded = {
+        case_id for case_id, values in prior_profile.items()
+        if values and all(values)
+    }
+    mixed_prior = {
+        case_id for case_id, values in prior_profile.items()
+        if any(values) and not all(values)
+    }
+    all_context = (
+        summarize_paired_metric(
+            planner_records,
+            comparator=prior_ids[0],
+            candidate=candidate_planner_id,
+            metric="controlled_skill_context_bytes",
+            direction="lower_is_better",
+            effect="relative",
+            confidence_level=confidence_level,
+            bootstrap_iterations=bootstrap_iterations,
+            random_seed=random_seed + 21,
+            eligible_case_ids=source_case_ids,
+        )
+        if len(prior_ids) == 1
+        else {"status": "not_evaluable", "case_differences": []}
+    )
+    planner_quality = summarize_paired_metric(
+        planner_records,
+        comparator=baseline_planner_id,
+        candidate=candidate_planner_id,
+        metric="quality_score_normalized",
+        direction="higher_is_better",
+        effect="relative",
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed + 22,
+        eligible_case_ids=source_case_ids,
+    )
+
+    transfer_spec = transfer["spec"]
+    baseline_executor_id = _release_treatment_id(
+        transfer_spec,
+        "baseline",
+    )
+    candidate_executor_id = _release_treatment_id(
+        transfer_spec,
+        "candidate",
+    )
+    transfer_roles = {
+        item["treatment_id"]: item["causal_role"]
+        for item in transfer_spec["treatments"]
+    }
+    release_transfer = [
+        record for record in transfer["evidence"]["records"]
+        if transfer_roles.get(record["variant"]) in {"baseline", "candidate"}
+    ]
+    normalized_transfer = []
+    for record in release_transfer:
+        binding = arm_map.get(record["case_id"])
+        if binding is None:
+            continue
+        normalized_transfer.append({
+            **record,
+            "case_id": binding["source_case_id"],
+            "repeat": binding["planner_repeat"],
+        })
+    transfer_task = summarize_paired_metric(
+        normalized_transfer,
+        comparator=baseline_executor_id,
+        candidate=candidate_executor_id,
+        metric="task_pass_rate",
+        direction="higher_is_better",
+        effect="relative",
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed + 23,
+    )
+    prewrite = summarize_paired_cost_delta(
+        normalized_transfer,
+        comparator=baseline_executor_id,
+        candidate=candidate_executor_id,
+        metric="executor_prewrite_tool_output_bytes",
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed + 24,
+        eligible_case_ids=source_case_ids,
+    )
+    baseline_executor = [
+        record for record in normalized_transfer
+        if record["variant"] == baseline_executor_id
+    ]
+    candidate_executor = [
+        record for record in normalized_transfer
+        if record["variant"] == candidate_executor_id
+    ]
+    baseline_failures = {
+        (record["case_id"], record["repeat"])
+        for record in baseline_executor
+        if record["valid"] is not True or record["task_pass"] is not True
+    }
+    candidate_failures = {
+        (record["case_id"], record["repeat"])
+        for record in candidate_executor
+        if record["valid"] is not True or record["task_pass"] is not True
+    }
+    by_case: dict[str, dict[str, list[bool]]] = defaultdict(
+        lambda: {"baseline": [], "candidate": []},
+    )
+    for record in baseline_executor:
+        by_case[record["case_id"]]["baseline"].append(record["task_pass"])
+    for record in candidate_executor:
+        by_case[record["case_id"]]["candidate"].append(record["task_pass"])
+    candidate_not_worse = bool(by_case) and all(
+        sum(values["candidate"]) >= sum(values["baseline"])
+        for values in by_case.values()
+    )
+    improved_to_full = sum(
+        bool(values["candidate"])
+        and all(values["candidate"])
+        and not all(values["baseline"])
+        for values in by_case.values()
+    )
+    canonical_passes = sum(
+        record["valid"] is True
+        and "rubric-one-canonical-deliverable"
+        not in record["hard_gate_failures"]
+        for record in candidate_source
+    )
+    source_binding_cases = sum(
+        bool(candidate_source_by_case[case_id])
+        and all(
+            record["valid"] is True
+            and "rubric-scope-authority" not in record["hard_gate_failures"]
+            for record in candidate_source_by_case[case_id]
+        )
+        for case_id in source_case_ids
+    )
+    integrity_ids = {
+        "artifact-boundary",
+        "content-integrity",
+        "verification-contract",
+    }
+    content_integrity_errors = sum(
+        len(integrity_ids & set(record["hard_gate_failures"]))
+        for record in candidate_executor
+    )
+    preflight_passes = sum(
+        record["valid"] is True
+        and "transfer-preflight" not in record["hard_gate_failures"]
+        for record in release_transfer
+    )
+    case_benefits = [
+        item["benefit"] for item in all_context.get("case_differences", ())
+    ]
+    metrics = {
+        **_release_context_scalars(planner["public"]),
+        "authoritative_body_consumed_exactly_once": (
+            bool(candidate_source)
+            and all(
+                record["counts"]["host_injected_body_count"] == 1
+                for record in candidate_source
+            )
+        ),
+        "authority_reference_loads_max": _release_max(
+            candidate_source,
+            "counts",
+            "reference_load_count",
+        ),
+        "protocol_only_calls": _release_max(
+            candidate_source,
+            "counts",
+            "skill_protocol_tool_calls",
+        ),
+        "canonical_deliverable_rate": (
+            canonical_passes / len(candidate_source)
+            if candidate_source else 0.0
+        ),
+        "source_binding_score": source_binding_cases,
+        "content_integrity_error_scalar": content_integrity_errors,
+        "transfer_preflight": {
+            "numerator": preflight_passes,
+            "denominator": len(release_transfer),
+        },
+        "candidate_only_failures": len(
+            candidate_failures - baseline_failures,
+        ),
+        "all_context_sample_count": all_context.get("case_count", 0),
+        "all_context_minimum_relative_effect": min(
+            case_benefits,
+            default=None,
+        ),
+        "prior_reference_cases": len(always_loaded),
+        "mixed_prior_cases": len(mixed_prior),
+        "prior_controlled_context_reduction": prior_context,
+        "planner_quality_relative_effect": planner_quality,
+        "eligible_source_cases": len(source_case_ids),
+        "candidate_canonical_passes": canonical_passes,
+        "candidate_not_worse_every_case": candidate_not_worse,
+        "improved_to_full_cases": improved_to_full,
+        "transfer_task_relative_effect": transfer_task,
+        "matched_total_token_relative_reduction": matched_tokens,
+        "prewrite_overhead": prewrite,
+    }
+    return metrics
 
 
 def project_release_estimands(
@@ -5044,6 +5516,15 @@ def project_release_estimands(
         sqw_reason_codes.append("sqw_total_token_pairs_incomplete")
     if studies["software-quality-workflows"]["completeness"]["status"] != "complete":
         sqw_reason_codes.append("sqw_native_evidence_invalid")
+    sqw_metrics = {}
+    if studies["software-quality-workflows"]["completeness"]["status"] == "complete":
+        sqw_metrics = _sqw_release_metrics(
+            sqw,
+            confidence_level=confidence_level,
+            bootstrap_iterations=bootstrap_iterations,
+            random_seed=random_seed,
+        )
+    sqw_metrics["total_token_relative_reduction"] = sqw_tokens
     sqw_projection = {
         "status": "complete" if not sqw_reason_codes else "invalid",
         "reason_codes": sorted(set(sqw_reason_codes)),
@@ -5054,6 +5535,7 @@ def project_release_estimands(
             "lower": sqw_tokens["lower"],
             "upper": sqw_tokens["upper"],
         } if not sqw_reason_codes else None,
+        "release_metrics": sqw_metrics,
     }
 
     planner = loaded["writing-plans-planner"]
@@ -5168,7 +5650,10 @@ def project_release_estimands(
             prior_id = prior_ids[0]
             by_case: dict[str, list[bool]] = defaultdict(list)
             for record in planner_records:
-                if record["variant"] == prior_id:
+                if (
+                    record["variant"] == prior_id
+                    and record["case_id"] in planner_case_ids
+                ):
                     by_case[record["case_id"]].append(
                         record["counts"]["reference_load_count"] > 0,
                     )
@@ -5198,6 +5683,22 @@ def project_release_estimands(
                     "writing_plans_prior_context_pairs_incomplete",
                 )
 
+    writing_metrics = {}
+    if (
+        studies["writing-plans-planner"]["completeness"]["status"] == "complete"
+        and studies["writing-plans-transfer"]["completeness"]["status"]
+        == "complete"
+    ):
+        writing_metrics = _writing_plans_release_metrics(
+            planner,
+            transfer,
+            arm_map,
+            prior_context=prior_context,
+            matched_tokens=matched,
+            confidence_level=confidence_level,
+            bootstrap_iterations=bootstrap_iterations,
+            random_seed=random_seed,
+        )
     writing_projection = {
         "status": "complete" if not join_reason_codes else "invalid",
         "reason_codes": sorted(join_reason_codes),
@@ -5219,6 +5720,7 @@ def project_release_estimands(
             if prior_context is not None and not join_reason_codes
             else None
         ),
+        "release_metrics": writing_metrics,
     }
     status = (
         "complete"

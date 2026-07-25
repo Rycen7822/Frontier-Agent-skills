@@ -42,6 +42,12 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     ) -> dict[str, Path]:
         paths = materialize_v5_contract_fixture(root)
         spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+        package_root = root / spec['subject']['package']['path']
+        package_root.mkdir(parents=True, exist_ok=True)
+        (package_root / 'SKILL.md').write_text(
+            '# Evaluated skill\n',
+            encoding='utf-8',
+        )
         spec['level'] = level
         spec['execution']['mode'] = (
             'diagnostic' if level in {'L0', 'L1'} else 'scored'
@@ -1383,6 +1389,28 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 item['context_efficiency'] is not None
                 for item in first['studies'].values()
             ))
+            self.assertGreater(
+                first['software_quality_workflows']['release_metrics'][
+                    'candidate_entry_bytes_p95'
+                ],
+                0,
+            )
+            self.assertEqual(
+                0,
+                first['software_quality_workflows']['release_metrics'][
+                    'unattributed_residue_bytes_max'
+                ],
+            )
+            self.assertIn(
+                'transfer_preflight',
+                first['writing_plans']['release_metrics'],
+            )
+            with self.assertRaisesRegex(ValueError, 'is missing'):
+                analyzer._release_max(
+                    [{'context_usage': {}}],
+                    'context_usage',
+                    'unattributed_residue_bytes',
+                )
 
             incomplete_join = dict(join)
             incomplete_join.pop(next(iter(incomplete_join)))
@@ -1481,14 +1509,48 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                     'valid': True,
                     'tokens_in': tokens,
                     'tokens_out': 1,
-                    'counts': {'reference_load_count': 0},
+                    'task_pass': True,
+                    'quality_score': 100,
+                    'critical_safety_incidents': 0,
+                    'skill_body_loaded': False,
+                    'skill_incorporated': False,
+                    'skill_applied': False,
+                    'hard_gate_failures': [],
+                    'counts': {
+                        'reference_load_count': 0,
+                        'host_injected_body_count': 1,
+                        'skill_protocol_tool_calls': 0,
+                    },
+                    'bytes': {
+                        'executor_prewrite_tool_output_bytes': 0,
+                    },
+                    'context_usage': {
+                        'unattributed_residue_bytes': 0,
+                    },
                 }
 
+            context_efficiency = {
+                metric: {
+                    'evidence_artifact_kind': 'report_local',
+                    'p50': 1,
+                    'p95': 1,
+                    'max': 1 if metric.endswith('context_bytes') else 0,
+                }
+                for metric in (
+                    'candidate_entry_bytes',
+                    'controlled_context_bytes',
+                    'total_context_bytes',
+                    'host_integration_duplicate_bytes',
+                    'unexplained_repeated_static_content_bytes',
+                    'protocol_output_bytes',
+                    'failed_command_output_bytes',
+                )
+            }
             public = {
                 'identity': {},
                 'manual': {'required': False, 'status': 'not_applicable'},
                 'completeness': {'status': 'complete'},
-                'context_efficiency': {},
+                'context_efficiency': context_efficiency,
             }
             sqw_records = [
                 record(f'sqw-{arm}-{case}', arm, case, 10)
@@ -2337,11 +2399,11 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(
             8, projected['unexplained_repeated_static_content_bytes'],
         )
+        self.assertEqual(0, projected['unattributed_residue_bytes'])
         invalid = copy.deepcopy(context)
         invalid['controlled_bytes'] += 1
         with self.assertRaisesRegex(ValueError, 'accounting failed'):
             load_analyzer_module()._v4_context_projection(invalid)
-            self.assertIn('evidence_status=invalid', invalid.stdout)
 
 
     def test_prior_context_delta_is_variant_scoped_and_fail_closed(self) -> None:
