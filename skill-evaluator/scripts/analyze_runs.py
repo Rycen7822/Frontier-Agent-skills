@@ -36,7 +36,6 @@ from evidence_io import (
     verify_self_hash,
 )
 from validate_eval_suite import (
-    COST_METRICS,
     PAIRED_METRIC_DIRECTIONS,
     load_v5_schema_registry,
     validate_host_protocol_record,
@@ -100,14 +99,6 @@ PAIRED_METRIC_SOURCES = {
     "skill_protocol_tool_calls": ("counts", "skill_protocol_tool_calls", "native"),
     "workflow_artifact_count": ("counts", "workflow_artifact_count", "native"),
 }
-CONTEXT_PAIRED_METRICS = {
-    "skill_context_bytes",
-    "controlled_skill_context_bytes",
-    "controlled_core_skill_context_bytes",
-}
-TASK_PASS_FILTERED_COST_METRICS = COST_METRICS - CONTEXT_PAIRED_METRICS
-
-
 def validate_grader_output(
     output: Any, requirements: list[dict[str, Any]], artifacts: dict[str, Any],
 ) -> dict[str, Any]:
@@ -592,8 +583,6 @@ def matched_planner_executor_tokens(
                     reason = "missing"
                 elif any(row.get("valid") is not True for row in rows):
                     reason = "invalid"
-                elif any(row.get("task_pass") is not True for row in rows):
-                    reason = "task_failure"
                 elif any(
                     not valid_token_count(row.get(field))
                     for row in rows
@@ -783,16 +772,6 @@ def summarize_paired_metric(
         candidate_row = indexed[(candidate, case_id, repeat)][0]
         if comparator_row.get("valid") is not True or candidate_row.get("valid") is not True:
             return {**base, "reason": "paired run is invalid"}
-        if metric in TASK_PASS_FILTERED_COST_METRICS and (
-            comparator_row.get("task_pass") is not True or candidate_row.get("task_pass") is not True
-        ):
-            task_failures.append({
-                "case_id": case_id,
-                "repeat": repeat,
-                "comparator_task_pass": comparator_row.get("task_pass"),
-                "candidate_task_pass": candidate_row.get("task_pass"),
-            })
-            continue
         try:
             comparator_raw, comparator_value = paired_metric_value(comparator_row, metric)
             candidate_raw, candidate_value = paired_metric_value(candidate_row, metric)
@@ -3741,10 +3720,59 @@ def _failure_base(
     }
 
 
+def _manual_review_input_binding(
+    spec: dict[str, Any],
+    spec_path: Path,
+    plan_path: Path,
+) -> dict[str, Any]:
+    root = spec_path.parent.resolve(strict=True)
+
+    def local_file(path: Path, label: str) -> dict[str, str]:
+        resolved = path.resolve(strict=True)
+        if path.is_symlink() or not resolved.is_relative_to(root):
+            raise ValueError(f"{label} must be a non-symlink study-local file")
+        return {
+            "path": resolved.relative_to(root).as_posix(),
+            "sha256": file_sha256(resolved),
+        }
+
+    def suite_file(field: str) -> dict[str, str] | None:
+        reference = spec["suite"].get(field)
+        if reference is None:
+            return None
+        if not isinstance(reference, dict) or set(reference) != {
+            "path",
+            "sha256",
+        }:
+            raise ValueError(f"suite {field} binding is invalid")
+        _, path = resolve_contained_path(
+            root,
+            reference["path"],
+            f"suite {field}",
+            kind="file",
+        )
+        observed = local_file(path, f"suite {field}")
+        if observed != reference:
+            raise ValueError(f"suite {field} raw hash does not match")
+        return observed
+
+    binding = {
+        "schema_version": "manual-review-input-binding/1.0",
+        "spec": local_file(spec_path, "evaluation spec"),
+        "scenarios": suite_file("scenarios"),
+        "quality": suite_file("quality"),
+        "calibration": suite_file("calibration"),
+        "plan": local_file(plan_path, "execution plan"),
+    }
+    binding["binding_hash"] = canonical_sha256(binding)
+    return binding
+
+
 def _verify_v5_manual_review(
     reference: Path | None,
     spec: dict[str, Any],
     spec_path: Path,
+    plan_path: Path,
 ) -> tuple[dict[str, Any], dict[str, str] | None]:
     config = spec["authority"]["manual_review"]
     required = config["required"] is True
@@ -3807,39 +3835,41 @@ def _verify_v5_manual_review(
         ):
             raise ValueError("manual-review signature attestation is empty")
         evidence = receipt["evidence"]
-        if not isinstance(evidence, list) or not evidence:
-            raise ValueError("manual-review evidence must be a non-empty array")
-        evidence_types: list[str] = []
-        for item in evidence:
-            if not isinstance(item, dict) or set(item) != {
-                "type", "artifact", "sha256",
-            }:
-                raise ValueError(
-                    "manual-review evidence fields differ from the exact contract",
-                )
-            evidence_type = item["type"]
-            if not isinstance(evidence_type, str) or not evidence_type.strip():
-                raise ValueError("manual-review evidence type is empty")
-            artifact = normalize_relative_path(
-                item["artifact"], "manual-review evidence",
+        if (
+            not isinstance(evidence, list)
+            or len(evidence) != 1
+            or not isinstance(evidence[0], dict)
+            or set(evidence[0]) != {"type", "artifact", "sha256"}
+            or evidence[0]["type"] != "manual-review-input-binding"
+        ):
+            raise ValueError(
+                "manual-review evidence must contain exactly one input binding",
             )
-            lexical_evidence = artifacts_root / artifact
-            if lexical_evidence.is_symlink():
-                raise ValueError("manual-review evidence must not be a symlink")
-            _, evidence_path = resolve_contained_path(
-                artifacts_root,
-                artifact,
-                "manual-review evidence",
-                kind="file",
-            )
-            if item["sha256"] != file_sha256(evidence_path):
-                raise ValueError("manual-review evidence hash mismatch")
-            evidence_types.append(evidence_type)
-        if len(evidence_types) != len(set(evidence_types)):
-            raise ValueError("manual-review evidence types are duplicated")
+        item = evidence[0]
+        artifact = normalize_relative_path(
+            item["artifact"], "manual-review input binding",
+        )
+        lexical_evidence = artifacts_root / artifact
+        if lexical_evidence.is_symlink():
+            raise ValueError("manual-review input binding must not be a symlink")
+        _, evidence_path = resolve_contained_path(
+            artifacts_root,
+            artifact,
+            "manual-review input binding",
+            kind="file",
+        )
+        if item["sha256"] != file_sha256(evidence_path):
+            raise ValueError("manual-review input binding hash mismatch")
+        binding = load_json(evidence_path)
+        if binding != _manual_review_input_binding(
+            spec,
+            spec_path,
+            plan_path,
+        ):
+            raise ValueError("manual-review input binding owner mismatch")
         decision_projection = {
             "reviewer_role": receipt["reviewer_role"],
-            "required_evidence": sorted(evidence_types),
+            "required_evidence": ["manual-review-input-binding"],
         }
         if (
             config["decision_contract_hash"]
@@ -4609,6 +4639,584 @@ def _commit_v5_outputs(
         _write_immutable(path, payload)
 
 
+def _release_bound_path(
+    binding: dict[str, Any],
+    field: str,
+) -> Path:
+    reference = binding.get(field)
+    if (
+        not isinstance(reference, dict)
+        or set(reference) != {"path", "sha256"}
+        or not isinstance(reference["path"], (str, Path))
+        or not isinstance(reference["sha256"], str)
+        or SHA256_RE.fullmatch(reference["sha256"]) is None
+    ):
+        raise ValueError(f"{field} release binding is invalid")
+    path = Path(reference["path"])
+    if not path.is_absolute() or path.is_symlink():
+        raise ValueError(f"{field} release path must be absolute and non-symlinked")
+    resolved = path.resolve(strict=True)
+    if path.absolute() != resolved or not resolved.is_file():
+        raise ValueError(f"{field} release path contains a substituted component")
+    if file_sha256(resolved) != reference["sha256"]:
+        raise ValueError(f"{field} release binding hash mismatch")
+    return resolved
+
+
+def _release_treatment_id(spec: dict[str, Any], role: str) -> str:
+    matches = [
+        item["treatment_id"]
+        for item in spec["treatments"]
+        if item["causal_role"] == role
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"release study requires exactly one {role} treatment")
+    return matches[0]
+
+
+def _release_context_efficiency(
+    spec: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, int]:
+    candidate = _release_treatment_id(spec, "candidate")
+    selected = [
+        record
+        for record in records
+        if record["variant"] == candidate and record["should_trigger"] is True
+    ]
+    attributed = sum(
+        record["context_usage"]["attributed"] is True for record in selected
+    )
+    fields = {
+        "controlled_context_bytes": "controlled_bytes",
+        "total_context_bytes": "bytes",
+        "host_integration_duplicate_bytes": "host_integration_duplicate_bytes",
+        "unexplained_repeated_static_content_bytes": (
+            "unexplained_repeated_static_content_bytes"
+        ),
+        "protocol_output_bytes": "protocol_output_bytes",
+        "failed_command_output_bytes": "failed_command_output_bytes",
+    }
+    if not selected or attributed != len(selected):
+        return None, attributed
+    result: dict[str, Any] = {}
+    for output_field, source_field in fields.items():
+        values = [
+            record["context_usage"].get(source_field)
+            for record in selected
+        ]
+        if any(
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < 0
+            for value in values
+        ):
+            return None, attributed
+        result[output_field] = {
+            "evidence_artifact_kind": "report_local",
+            "p50": nearest_rank(values, 0.50),
+            "p95": nearest_rank(values, 0.95),
+            "max": max(values),
+        }
+    return result, attributed
+
+
+def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
+    expected_fields = {
+        "study_id",
+        "spec",
+        "plan",
+        "index",
+        "summary",
+        "failure_index",
+        "manual_receipt_locator",
+    }
+    if set(binding) != expected_fields or not isinstance(
+        binding["study_id"],
+        str,
+    ):
+        raise ValueError("release study binding fields are invalid")
+    locator = binding["manual_receipt_locator"]
+    if locator is not None and not isinstance(locator, str):
+        raise ValueError("manual receipt locator must be a relative POSIX string")
+
+    paths = {
+        field: _release_bound_path(binding, field)
+        for field in (
+            "spec",
+            "plan",
+            "index",
+            "summary",
+            "failure_index",
+        )
+    }
+    spec, _, _, discovered_plan_path, plan, registry = (
+        _load_v5_analysis_inputs(paths["spec"], paths["index"])
+    )
+    if discovered_plan_path != paths["plan"]:
+        raise ValueError("release plan binding is not the canonical index owner")
+    bound_evidence = _load_v5_bound_evidence(
+        spec,
+        paths["spec"],
+        registry,
+    )
+    index_rows = _load_v5_index(paths["index"], plan, registry)
+    _, artifacts_root = resolve_contained_path(
+        paths["plan"].parent,
+        plan["artifacts"]["root"],
+        "plan artifacts root",
+    )
+    evidence = _collect_v5_evidence(
+        index_rows,
+        artifacts_root=artifacts_root,
+        plan=plan,
+        spec=spec,
+        registry=registry,
+        bound_evidence=bound_evidence,
+    )
+    manual, _ = _verify_v5_manual_review(
+        Path(locator) if locator is not None else None,
+        spec,
+        paths["spec"],
+        paths["plan"],
+    )
+
+    summary = load_json(paths["summary"])
+    failure_index = load_json(paths["failure_index"])
+    for document, schema_name, hash_field, path in (
+        (
+            summary,
+            "analysis-summary-v4.schema.json",
+            "summary_hash",
+            paths["summary"],
+        ),
+        (
+            failure_index,
+            "failure-index-v1.schema.json",
+            "failure_index_hash",
+            paths["failure_index"],
+        ),
+    ):
+        diagnostics = validate_v5_schema(document, schema_name, registry)
+        if diagnostics or not verify_self_hash(document, hash_field):
+            raise ValueError(f"{schema_name} release artifact is invalid")
+        if path.read_bytes() != canonical_json_bytes(document):
+            raise ValueError(f"{schema_name} is not canonical JSON")
+
+    failure_view = summary["output_manifest"]["failure_index"]
+    _, manifested_failure = resolve_contained_path(
+        paths["summary"].parent,
+        failure_view["path"],
+        "summary failure-index view",
+        kind="file",
+    )
+    if (
+        summary["output_manifest"]["details"] is not None
+        or summary["output_manifest"]["markdown"] is not None
+        or manifested_failure != paths["failure_index"]
+        or failure_view["sha256"] != file_sha256(paths["failure_index"])
+        or failure_view["item_count"] != failure_index["item_count"]
+        or failure_view["shown_count"] != failure_index["shown_count"]
+        or failure_view["omitted_count"] != failure_index["omitted_count"]
+        or failure_view["truncated"] != failure_index["truncated"]
+        or failure_view["family_counts"] != failure_index["family_counts"]
+        or failure_view["severity_counts"] != failure_index["severity_counts"]
+    ):
+        raise ValueError("summary does not bind the canonical failure index")
+
+    expected_context_cost = _v5_context_cost(
+        spec,
+        plan,
+        evidence["records"],
+    )
+    expected_summary_counts = {
+        "plan_entries": len(plan["entries"]),
+        "execute_entries": sum(
+            entry["disposition"] == "execute" for entry in plan["entries"]
+        ),
+        "attempts": evidence["attempt_count"],
+        "valid_terminal_attempts": len(evidence["records"]),
+        "invalid_attempts": evidence["invalid_attempts"],
+        "missing_entries": len(evidence["missing_entries"]),
+    }
+    if (
+        summary["evaluation_id"] != spec["evaluation_id"]
+        or summary["plan_id"] != plan["plan_id"]
+        or summary["plan_hash"] != plan["plan_hash"]
+        or summary["spec_hash"] != plan["spec_hash"]
+        or failure_index["evaluation_id"] != spec["evaluation_id"]
+        or failure_index["plan_id"] != plan["plan_id"]
+        or any(
+            summary["counts"].get(field) != value
+            for field, value in expected_summary_counts.items()
+        )
+        or summary["manual_authority"] != manual
+        or summary["context_cost"] != expected_context_cost
+    ):
+        raise ValueError("release summary differs from verified native evidence")
+
+    retryable = set(
+        spec["execution"]["retry_policy"]["retryable_apparatus_classes"],
+    )
+    invalid_history = 0
+    retried_entries = 0
+    for entry_id, attempts in evidence["attempts"].items():
+        if len(attempts) > 1:
+            retried_entries += 1
+        selected = evidence["selected_attempts"].get(entry_id)
+        for attempt in attempts:
+            if attempt is selected:
+                continue
+            run = attempt["receipt"]["run"]
+            if (
+                attempt["analysis_error"] is not None
+                or run["valid"] is not False
+                or run["completion_origin"] != "resume_seal"
+                or run["terminal"] not in retryable
+            ):
+                invalid_history += 1
+
+    invalid_tokens = any(
+        not isinstance(record.get(field), int)
+        or isinstance(record.get(field), bool)
+        or record[field] < 0
+        for record in evidence["records"]
+        for field in ("tokens_in", "tokens_out")
+    )
+    context, attributed_count = _release_context_efficiency(
+        spec,
+        evidence["records"],
+    )
+    reason_codes = sorted({
+        *({"missing_terminal_entry"} if evidence["missing_entries"] else set()),
+        *(
+            {"duplicate_terminal_entry"}
+            if evidence["duplicate_terminal_entries"]
+            else set()
+        ),
+        *({"receipt_issue"} if evidence["receipt_issues"] else set()),
+        *({"invalid_retry_history"} if invalid_history else set()),
+        *({"invalid_token_usage"} if invalid_tokens else set()),
+        *({"context_attribution_incomplete"} if context is None else set()),
+        *(
+            {"manual_authority_invalid"}
+            if manual["status"] in {"missing", "invalid"}
+            else set()
+        ),
+    })
+    selected_receipts = [
+        {
+            "entry_id": entry_id,
+            "receipt_hash": file_sha256(attempt["receipt_path"]),
+        }
+        for entry_id, attempt in sorted(evidence["selected_attempts"].items())
+    ]
+    public = {
+        "identity": {
+            "evaluation_id": spec["evaluation_id"],
+            "plan_id": plan["plan_id"],
+            "plan_hash": plan["plan_hash"],
+            "spec_content_hash": binding["spec"]["sha256"],
+            "plan_content_hash": binding["plan"]["sha256"],
+            "index_content_hash": binding["index"]["sha256"],
+            "summary_content_hash": binding["summary"]["sha256"],
+            "failure_index_content_hash": binding["failure_index"]["sha256"],
+            "selected_receipt_set_hash": canonical_sha256(selected_receipts),
+        },
+        "manual": manual,
+        "completeness": {
+            "status": "complete" if not reason_codes else "invalid",
+            "expected_entry_count": expected_summary_counts["execute_entries"],
+            "selected_entry_count": len(evidence["selected_attempts"]),
+            "missing_entry_ids": sorted(evidence["missing_entries"]),
+            "duplicate_terminal_entry_ids": sorted(
+                evidence["duplicate_terminal_entries"],
+            ),
+            "invalid_attempt_count": evidence["invalid_attempts"],
+            "retried_entry_count": retried_entries,
+            "receipt_issue_count": len(evidence["receipt_issues"]),
+            "selected_record_count": len(evidence["records"]),
+            "attributed_context_record_count": attributed_count,
+            "reason_codes": reason_codes,
+        },
+        "context_efficiency": context if not reason_codes else None,
+    }
+    return {
+        "public": public,
+        "spec": spec,
+        "plan": plan,
+        "evidence": evidence,
+    }
+
+
+def project_release_estimands(
+    study_bindings: list[dict[str, Any]],
+    writing_plans_join: dict[str, dict[str, Any]],
+    *,
+    confidence_level: float,
+    bootstrap_iterations: int,
+    random_seed: int,
+) -> dict[str, Any]:
+    """Return the in-memory three-study release projection.
+
+    Bindings use the exact core fields checked by ``_load_release_study``.
+    ``writing_plans_join`` is keyed by executor entry ID and binds the source
+    case/repeat plus both selected receipt identities. Raw identity drift raises;
+    complete but unusable evidence returns a typed ``status=invalid`` projection.
+    """
+    if not all(isinstance(item, dict) for item in study_bindings):
+        raise ValueError("release study bindings must be objects")
+    study_ids = [item.get("study_id") for item in study_bindings]
+    expected_ids = [
+        "software-quality-workflows",
+        "writing-plans-planner",
+        "writing-plans-transfer",
+    ]
+    if study_ids != expected_ids:
+        raise ValueError("release study bindings must be sorted and exact-one")
+    if (
+        confidence_level != 0.90
+        or bootstrap_iterations != 10000
+        or not isinstance(random_seed, int)
+        or isinstance(random_seed, bool)
+        or random_seed < 0
+    ):
+        raise ValueError("release statistics must use 0.90, 10000, and a seed")
+    if not isinstance(writing_plans_join, dict):
+        raise ValueError("Writing Plans join must be an exact object")
+
+    loaded = {
+        binding["study_id"]: _load_release_study(binding)
+        for binding in study_bindings
+    }
+    studies = {
+        study_id: value["public"]
+        for study_id, value in loaded.items()
+    }
+
+    sqw = loaded["software-quality-workflows"]
+    sqw_records = sqw["evidence"]["records"]
+    sqw_spec = sqw["spec"]
+    sqw_reason_codes: list[str] = []
+    total_token_records: list[dict[str, Any]] = []
+    for record in sqw_records:
+        tokens = (record.get("tokens_in"), record.get("tokens_out"))
+        if any(
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < 0
+            for value in tokens
+        ):
+            sqw_reason_codes.append("invalid_token_usage")
+            break
+        total_token_records.append({
+            **record,
+            "tokens_in": tokens[0] + tokens[1],
+        })
+    sqw_tokens = summarize_paired_metric(
+        total_token_records,
+        comparator=_release_treatment_id(sqw_spec, "baseline"),
+        candidate=_release_treatment_id(sqw_spec, "candidate"),
+        metric="tokens_in",
+        direction="lower_is_better",
+        effect="relative",
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed,
+    )
+    if sqw_tokens["status"] != "complete":
+        sqw_reason_codes.append("sqw_total_token_pairs_incomplete")
+    if studies["software-quality-workflows"]["completeness"]["status"] != "complete":
+        sqw_reason_codes.append("sqw_native_evidence_invalid")
+    sqw_projection = {
+        "status": "complete" if not sqw_reason_codes else "invalid",
+        "reason_codes": sorted(set(sqw_reason_codes)),
+        "total_token_relative_reduction": {
+            "evidence_artifact_kind": "report_local",
+            "case_count": sqw_tokens["case_count"],
+            "point": sqw_tokens["point"],
+            "lower": sqw_tokens["lower"],
+            "upper": sqw_tokens["upper"],
+        } if not sqw_reason_codes else None,
+    }
+
+    planner = loaded["writing-plans-planner"]
+    transfer = loaded["writing-plans-transfer"]
+    planner_records = planner["evidence"]["records"]
+    transfer_records = transfer["evidence"]["records"]
+    planner_by_entry = {
+        record["entry_id"]: record for record in planner_records
+    }
+    planner_attempts = planner["evidence"]["selected_attempts"]
+    transfer_attempts = transfer["evidence"]["selected_attempts"]
+    planner_roles = {
+        item["treatment_id"]: item["causal_role"]
+        for item in planner["spec"]["treatments"]
+    }
+    transfer_roles = {
+        item["treatment_id"]: item["causal_role"]
+        for item in transfer["spec"]["treatments"]
+    }
+    join_reason_codes: set[str] = set()
+    expected_executor_entries = {
+        record["entry_id"] for record in transfer_records
+    }
+    if set(writing_plans_join) != expected_executor_entries:
+        join_reason_codes.add("writing_plans_join_inventory_mismatch")
+    arm_map: dict[str, dict[str, Any]] = {}
+    for executor_record in transfer_records:
+        executor_entry_id = executor_record["entry_id"]
+        item = writing_plans_join.get(executor_entry_id)
+        if not isinstance(item, dict) or set(item) != {
+            "source_case_id",
+            "planner_repeat",
+            "planner_entry_id",
+            "planner_receipt_hash",
+            "executor_receipt_hash",
+        }:
+            join_reason_codes.add("writing_plans_join_shape_invalid")
+            continue
+        planner_record = planner_by_entry.get(item["planner_entry_id"])
+        planner_attempt = planner_attempts.get(item["planner_entry_id"])
+        executor_attempt = transfer_attempts.get(executor_entry_id)
+        if (
+            planner_record is None
+            or planner_attempt is None
+            or executor_attempt is None
+            or item["source_case_id"] != planner_record["case_id"]
+            or item["planner_repeat"] != planner_record["repeat"]
+            or item["planner_receipt_hash"]
+            != file_sha256(planner_attempt["receipt_path"])
+            or item["executor_receipt_hash"]
+            != file_sha256(executor_attempt["receipt_path"])
+            or planner_roles.get(planner_record["variant"])
+            != transfer_roles.get(executor_record["variant"])
+        ):
+            join_reason_codes.add("writing_plans_join_identity_mismatch")
+            continue
+        normalized = {
+            "source_case_id": item["source_case_id"],
+            "planner_repeat": item["planner_repeat"],
+        }
+        previous = arm_map.setdefault(executor_record["case_id"], normalized)
+        if previous != normalized:
+            join_reason_codes.add("writing_plans_executor_case_ambiguous")
+
+    planner_case_ids = {record["case_id"] for record in planner_records}
+    repeat_values = {record["repeat"] for record in planner_records}
+    repeats = max(repeat_values, default=0)
+    if repeat_values != set(range(1, repeats + 1)):
+        join_reason_codes.add("writing_plans_repeat_matrix_invalid")
+    matched = matched_planner_executor_tokens(
+        planner_records,
+        transfer_records,
+        arm_map,
+        baseline_planner=_release_treatment_id(planner["spec"], "baseline"),
+        candidate_planner=_release_treatment_id(planner["spec"], "candidate"),
+        baseline_executor=_release_treatment_id(transfer["spec"], "baseline"),
+        candidate_executor=_release_treatment_id(transfer["spec"], "candidate"),
+        case_ids=planner_case_ids,
+        repeats=repeats,
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed,
+    )
+    if not matched["complete"]:
+        join_reason_codes.add("writing_plans_matched_pairs_incomplete")
+    if (
+        studies["writing-plans-planner"]["completeness"]["status"] != "complete"
+        or studies["writing-plans-transfer"]["completeness"]["status"]
+        != "complete"
+    ):
+        join_reason_codes.add("writing_plans_native_evidence_invalid")
+
+    prior_ids = [
+        item["treatment_id"]
+        for item in planner["spec"]["treatments"]
+        if item["causal_role"] == "prior"
+    ]
+    prior_context: dict[str, Any] | None = None
+    if prior_ids:
+        if len(prior_ids) != 1:
+            join_reason_codes.add("writing_plans_prior_treatment_ambiguous")
+        else:
+            prior_id = prior_ids[0]
+            by_case: dict[str, list[bool]] = defaultdict(list)
+            for record in planner_records:
+                if record["variant"] == prior_id:
+                    by_case[record["case_id"]].append(
+                        record["counts"]["reference_load_count"] > 0,
+                    )
+            if any(any(values) and not all(values) for values in by_case.values()):
+                join_reason_codes.add("writing_plans_prior_reference_mixed")
+            eligible = {
+                case_id for case_id, values in by_case.items()
+                if values and all(values)
+            }
+            prior_context = summarize_paired_metric(
+                planner_records,
+                comparator=prior_id,
+                candidate=_release_treatment_id(
+                    planner["spec"],
+                    "candidate",
+                ),
+                metric="controlled_core_skill_context_bytes",
+                direction="lower_is_better",
+                effect="relative",
+                confidence_level=confidence_level,
+                bootstrap_iterations=bootstrap_iterations,
+                random_seed=random_seed,
+                eligible_case_ids=eligible,
+            )
+            if prior_context["status"] != "complete":
+                join_reason_codes.add(
+                    "writing_plans_prior_context_pairs_incomplete",
+                )
+
+    writing_projection = {
+        "status": "complete" if not join_reason_codes else "invalid",
+        "reason_codes": sorted(join_reason_codes),
+        "matched_total_token_relative_reduction": {
+            "evidence_artifact_kind": "report_local",
+            "case_count": matched["case_count"],
+            "point": matched["point"],
+            "lower": matched["lower"],
+            "upper": matched["upper"],
+        } if not join_reason_codes else None,
+        "prior_controlled_context_relative_reduction": (
+            {
+                "evidence_artifact_kind": "report_local",
+                "case_count": prior_context["case_count"],
+                "point": prior_context["point"],
+                "lower": prior_context["lower"],
+                "upper": prior_context["upper"],
+            }
+            if prior_context is not None and not join_reason_codes
+            else None
+        ),
+    }
+    status = (
+        "complete"
+        if (
+            sqw_projection["status"] == "complete"
+            and writing_projection["status"] == "complete"
+        )
+        else "invalid"
+    )
+    return {
+        "schema_version": "project-release-estimands/1.0",
+        "status": status,
+        "statistics": {
+            "confidence_level": confidence_level,
+            "bootstrap_iterations": bootstrap_iterations,
+            "random_seed": random_seed,
+        },
+        "studies": studies,
+        "software_quality_workflows": sqw_projection,
+        "writing_plans": writing_projection,
+    }
+
+
 def _v5_base_exit(level: str, summary: dict[str, Any]) -> int:
     manual = summary["manual_authority"]
     if (
@@ -4716,7 +5324,10 @@ def _main_v5() -> int:
             spec, plan, plan_path, evidence,
         )
         manual, manual_issue = _verify_v5_manual_review(
-            args.manual_review_receipt, spec, spec_path,
+            args.manual_review_receipt,
+            spec,
+            spec_path,
+            plan_path,
         )
         summary, metric_analysis = _v5_summary_base(
             spec, plan, evidence, failure_items, manual, bound_evidence,
