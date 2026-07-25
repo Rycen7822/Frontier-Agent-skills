@@ -64,14 +64,14 @@
     "writing-plans/SKILL.md",
     "writing-plans/agents/openai.yaml"
   ],
-  "package_bytes": 1119857,
+  "package_bytes": 1120616,
   "package_file_count": 99,
   "profile_command_hashes": {
     "extended": "sha256:3f73165c0d95154cd0115a14fad3bc746697a8db0d9c864a2f371f2b73822679",
     "quick": "sha256:c895e68a59c34c1e2c98cfbedb132c79340a6856f08b76a1c7fc6f32dcb96236",
     "release": "sha256:796f0f9d60160f8c23a7c6e15a0fe95cf7e2676845a509f7803691363a746f77"
   },
-  "report_hash": "sha256:32736b7a916687ac527349c510ceabcd8f57670cb8f74c8e4bf0b93a19f0c8d4",
+  "report_hash": "sha256:4f35d44bc6d15f31e23d914ca6de675690d69655e76e39fc991a245f06803890",
   "schema_epoch": 5,
   "schema_version": "static-contract-diagnostic/1.0",
   "skill_activation": {
