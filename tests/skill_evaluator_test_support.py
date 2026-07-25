@@ -765,6 +765,21 @@ def load_validator_module():
     return module
 
 
+def load_reviewer_pair_contract_module():
+    scripts = str(ROOT / 'scripts')
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    spec = importlib.util.spec_from_file_location(
+        'skill_evaluator_reviewer_pair_contract',
+        ROOT / 'scripts/reviewer_pair_contract.py',
+    )
+    if spec is None or spec.loader is None:
+        raise AssertionError('cannot load reviewer_pair_contract.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_compiler_module():
     scripts = str(ROOT / 'scripts')
     if scripts not in sys.path:
@@ -2646,6 +2661,259 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
         ),
         encoding='utf-8',
     )
+    return paths
+
+
+def materialize_v5_reviewer_pair(
+    paths: dict[str, Path],
+) -> dict[str, Path]:
+    root = paths['calibration'].parent
+    pair_root = root / 'reviewer-pair'
+    pair_root.mkdir()
+    packet_path = pair_root / 'packet.json'
+    schema_path = pair_root / 'ratings.schema.json'
+    mapping_path = pair_root / 'sealed-mapping.json'
+    pair_path = pair_root / 'pair.json'
+    campaign_id = 'calibration-campaign'
+    contract = load_reviewer_pair_contract_module()
+
+    def with_self_hash(value: dict, field: str) -> dict:
+        closed = copy.deepcopy(value)
+        closed[field] = canonical_hash({
+            key: item for key, item in closed.items() if key != field
+        })
+        return closed
+
+    def write_json(path: Path, value: dict) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(value, sort_keys=True, separators=(',', ':')) + '\n',
+            encoding='utf-8',
+        )
+
+    def binding(path: Path) -> dict[str, str]:
+        return {
+            'path': path.relative_to(root).as_posix(),
+            'sha256': 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+
+    labels = [
+        json.loads(line)
+        for line in paths['labels'].read_text(encoding='utf-8').splitlines()
+    ]
+    judge_rows = [
+        json.loads(line)
+        for line in paths['ratings'].read_text(encoding='utf-8').splitlines()
+    ]
+    judges_by_example = {row['example_id']: row for row in judge_rows}
+    packet_examples = [
+        {
+            'opaque_example_id': f'opaque-{index:03d}',
+            'payload_hash': label['payload_hash'],
+        }
+        for index, label in enumerate(labels, start=1)
+    ]
+    packet = with_self_hash({
+        'schema_version': 'context-clean-subagent-reviewer-packet/1.0',
+        'campaign_id': campaign_id,
+        'examples': packet_examples,
+        'packet_hash': None,
+    }, 'packet_hash')
+    write_json(packet_path, packet)
+
+    output_schema = contract.expected_ratings_schema()
+    write_json(schema_path, output_schema)
+    packet_binding = binding(packet_path)
+    schema_binding = binding(schema_path)
+    mapping = with_self_hash({
+        'schema_version': 'context-clean-subagent-reviewer-mapping/1.0',
+        'campaign_id': campaign_id,
+        'packet_hash': packet_binding['sha256'],
+        'output_schema_hash': schema_binding['sha256'],
+        'examples': [
+            {
+                'opaque_example_id': packet_example['opaque_example_id'],
+                'example_id': label['example_id'],
+                'check_id': label['check_id'],
+                'dimension': label['dimension'],
+                'payload_hash': label['payload_hash'],
+            }
+            for packet_example, label in zip(packet_examples, labels, strict=True)
+        ],
+        'mapping_hash': None,
+    }, 'mapping_hash')
+    write_json(mapping_path, mapping)
+
+    reviewer_rows: list[dict] = []
+    receipt_paths: list[Path] = []
+    for ordinal in (1, 2):
+        reviewer_id = f'reviewer-{ordinal}'
+        principal_id = f'reviewer-principal-{ordinal}'
+        request_id = f'reviewer-request-{ordinal}'
+        agent_id = f'reviewer-agent-{ordinal}'
+        task_name = f'calibration-reviewer-{ordinal}'
+        reviewer_dir = pair_root / 'reviewers' / reviewer_id
+        receipt_path = reviewer_dir / 'receipt.json'
+        receipt_paths.append(receipt_path)
+        rows: list[dict] = []
+        output_ratings: list[dict] = []
+        for packet_example, label in zip(packet_examples, labels, strict=True):
+            source = judges_by_example[label['example_id']]
+            row = copy.deepcopy(source)
+            row['rating_id'] = (
+                f'{reviewer_id}-{packet_example["opaque_example_id"]}'
+            )
+            row['example_id'] = packet_example['opaque_example_id']
+            row['reviewer'] = {
+                'reviewer_id': reviewer_id,
+                'role': 'context_clean_subagent_reviewer',
+                'authority': 'calibration-owner',
+                'principal_id': principal_id,
+                'blinded': True,
+            }
+            row['grader_identity'] = None
+            row['execution_identity'] = None
+            row['independence_facts'] = None
+            rows.append(row)
+            output_ratings.append({
+                'opaque_example_id': row['example_id'],
+                'label': row['label'],
+                'severity': row['severity'],
+            })
+        reviewer_rows.extend(rows)
+
+        reservation = {
+            'schema_version': 'frontier-provider-reservation/2.0',
+            'campaign_id': campaign_id,
+            'request_id': request_id,
+            'family': 'reviewer_calibration',
+            'request_kind': 'context_isolated_review',
+            'entry_hash': _v5_hash(f'{request_id}-entry'),
+        }
+        prompt = {
+            'schema_version': 'context-clean-subagent-reviewer-prompt/1.0',
+            'reviewer_id': reviewer_id,
+            'instruction': 'Return typed JSON only.',
+            'packet': packet,
+            'output_schema': output_schema,
+        }
+        raw_response = {
+            'schema_version': 'context-clean-subagent-reviewer-ratings/1.0',
+            'reviewer_id': reviewer_id,
+            'ratings': output_ratings,
+        }
+        reservation_path = reviewer_dir / 'reservation.json'
+        prompt_path = reviewer_dir / 'prompt.json'
+        raw_response_path = reviewer_dir / 'raw-response.json'
+        write_json(reservation_path, reservation)
+        write_json(prompt_path, prompt)
+        write_json(raw_response_path, raw_response)
+
+        requested = {
+            'model': 'gpt-5.6-sol',
+            'reasoning_effort': 'max',
+            'service_tier': 'priority',
+            'fork_turns': 'none',
+        }
+        spawn_request = {
+            'schema_version': 'context-clean-subagent-spawn-request/1.0',
+            'request_id': request_id,
+            'reviewer_id': reviewer_id,
+            'task_name': task_name,
+            **requested,
+            'message_hash': binding(prompt_path)['sha256'],
+        }
+        spawn_ack = {
+            'schema_version': 'context-clean-subagent-spawn-ack/1.0',
+            'request_id': request_id,
+            'agent_id': agent_id,
+            'task_name': task_name,
+            'ack_sequence': ordinal,
+        }
+        terminal = {
+            'schema_version': 'context-clean-subagent-terminal-result/1.0',
+            'request_id': request_id,
+            'agent_id': agent_id,
+            'status': 'complete',
+            'result_consumed_sequence': ordinal + 2,
+            'observable_extra_turns': 0,
+            'observable_followups': 0,
+            'observable_tool_events': [],
+            'raw_response_hash': binding(raw_response_path)['sha256'],
+        }
+        spawn_request_path = reviewer_dir / 'spawn-request.json'
+        spawn_ack_path = reviewer_dir / 'spawn-ack.json'
+        terminal_path = reviewer_dir / 'terminal-result.json'
+        write_json(spawn_request_path, spawn_request)
+        write_json(spawn_ack_path, spawn_ack)
+        write_json(terminal_path, terminal)
+        receipt = with_self_hash({
+            'schema_version': 'context-clean-subagent-reviewer-receipt/1.0',
+            'receipt_id': f'reviewer-receipt-{ordinal}',
+            'campaign_id': campaign_id,
+            'request_id': request_id,
+            'reviewer_id': reviewer_id,
+            'principal_id': principal_id,
+            'agent_id': agent_id,
+            'task_name': task_name,
+            'requested_configuration': requested,
+            'reservation_hash': binding(reservation_path)['sha256'],
+            'prompt_hash': binding(prompt_path)['sha256'],
+            'packet_hash': packet_binding['sha256'],
+            'output_schema_hash': schema_binding['sha256'],
+            'spawn_request_hash': binding(spawn_request_path)['sha256'],
+            'spawn_ack_hash': binding(spawn_ack_path)['sha256'],
+            'terminal_result_hash': binding(terminal_path)['sha256'],
+            'raw_response_hash': binding(raw_response_path)['sha256'],
+            'parsed_ratings_hash': canonical_hash(output_ratings),
+            'terminal_status': 'complete',
+            'receipt_hash': None,
+        }, 'receipt_hash')
+        write_json(receipt_path, receipt)
+
+    ratings = judge_rows + reviewer_rows
+    for position, row in enumerate(ratings, start=1):
+        row['position'] = position
+    ordering = {
+        'method': 'counterbalanced',
+        'seed': 7,
+        'schedule_hash': canonical_hash([
+            {'example_id': row['example_id'], 'position': row['position']}
+            for row in ratings
+        ]),
+    }
+    for row in ratings:
+        row['ordering'] = ordering
+    paths['ratings'].write_text(
+        ''.join(
+            json.dumps(row, separators=(',', ':')) + '\n'
+            for row in ratings
+        ),
+        encoding='utf-8',
+    )
+
+    pair = with_self_hash({
+        'schema_version': 'context-clean-subagent-reviewer-pair/1.0',
+        'pair_id': 'calibration-reviewer-pair',
+        'campaign_id': campaign_id,
+        'packet': packet_binding,
+        'output_schema': schema_binding,
+        'sealed_mapping': binding(mapping_path),
+        'reviewer_receipts': [
+            binding(path) for path in sorted(receipt_paths)
+        ],
+        'both_spawns_acknowledged_before_first_result_consumed': True,
+        'pair_hash': None,
+    }, 'pair_hash')
+    write_json(pair_path, pair)
+    paths.update({
+        'reviewer_pair': pair_path,
+        'reviewer_packet': packet_path,
+        'reviewer_schema': schema_path,
+        'reviewer_mapping': mapping_path,
+        'reviewer_1': pair_root / 'reviewers/reviewer-1',
+        'reviewer_2': pair_root / 'reviewers/reviewer-2',
+    })
     return paths
 
 
