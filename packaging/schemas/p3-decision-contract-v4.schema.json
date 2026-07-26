@@ -10,6 +10,7 @@
     "candidate_plugin_tree_hash",
     "controller_content_hash",
     "evaluator_source_hash",
+    "request_manifest_content_hash",
     "evaluated_skill_ids",
     "budget_contract",
     "gate_contract",
@@ -22,6 +23,7 @@
     "candidate_plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "controller_content_hash": {"$ref": "#/$defs/hash"},
     "evaluator_source_hash": {"$ref": "#/$defs/hash"},
+    "request_manifest_content_hash": {"$ref": "#/$defs/hash"},
     "evaluated_skill_ids": {
       "const": ["software-quality-workflows", "writing-plans"]
     },
@@ -41,21 +43,17 @@
         "schema_version",
         "scheduled_provider_calls",
         "scored_call_hard_cap",
-        "calibration_call_hard_cap",
-        "provider_call_hard_cap",
-        "family_scored_call_hard_cap",
-        "family_calibration_call_hard_cap",
-        "family_provider_call_hard_cap"
+        "grader_calibration_call_hard_cap",
+        "reviewer_calibration_call_hard_cap",
+        "provider_call_hard_cap"
       ],
       "properties": {
         "schema_version": {"const": "provider-budget-contract/1.0"},
         "scheduled_provider_calls": {"type": "integer", "minimum": 1},
         "scored_call_hard_cap": {"type": "integer", "minimum": 1},
-        "calibration_call_hard_cap": {"type": "integer", "minimum": 0},
-        "provider_call_hard_cap": {"type": "integer", "minimum": 1},
-        "family_scored_call_hard_cap": {"type": "integer", "minimum": 1},
-        "family_calibration_call_hard_cap": {"type": "integer", "minimum": 0},
-        "family_provider_call_hard_cap": {"type": "integer", "minimum": 1}
+        "grader_calibration_call_hard_cap": {"type": "integer", "minimum": 0},
+        "reviewer_calibration_call_hard_cap": {"type": "integer", "minimum": 0},
+        "provider_call_hard_cap": {"type": "integer", "minimum": 1}
       }
     },
     "threshold": {
