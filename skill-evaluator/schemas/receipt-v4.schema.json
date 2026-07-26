@@ -327,10 +327,25 @@
       "required": ["pricing_identity", "records"],
       "properties": {
         "pricing_identity": {"type": "string", "minLength": 1},
+        "host_safety_review": {"$ref": "#/$defs/host_safety_review"},
         "records": {
           "type": "array",
           "items": {"$ref": "#/$defs/usage_record"}
         }
+      },
+      "additionalProperties": false
+    },
+    "host_safety_review": {
+      "type": "object",
+      "required": [
+        "capture_status",
+        "host_safety_review_count",
+        "host_safety_review_latency_ms"
+      ],
+      "properties": {
+        "capture_status": {"enum": ["captured", "missing"]},
+        "host_safety_review_count": {"type": "integer", "minimum": 0},
+        "host_safety_review_latency_ms": {"type": "number", "minimum": 0}
       },
       "additionalProperties": false
     },

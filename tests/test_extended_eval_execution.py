@@ -535,6 +535,14 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     for record in receipt['usage']['records']
                 ),
             )
+            self.assertEqual(
+                {
+                    'capture_status': 'missing',
+                    'host_safety_review_count': 1,
+                    'host_safety_review_latency_ms': 9.0,
+                },
+                receipt['usage']['host_safety_review'],
+            )
 
     def test_non_execute_model_entry_emits_no_model_grade_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1016,6 +1024,51 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 self.assertEqual(terminal, receipt['run']['terminal'])
                 self.assertEqual('clean', receipt['cleanup']['process'])
                 self.assertEqual([], receipt['cleanup']['residue'])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = materialize_v5_contract_fixture(root)
+            set_v5_synthetic_host_mode(paths, 'host-model-timeout')
+            plan_path = root / 'execution-plan.json'
+            compile_result = self._run_compiler(paths, plan_path)
+            self.assertEqual(
+                compile_result.returncode, 0,
+                compile_result.stdout + compile_result.stderr,
+            )
+            plan = json.loads(plan_path.read_text(encoding='utf-8'))
+            entry = plan['entries'][0]
+            index_path = (
+                root / plan['artifacts']['root']
+                / plan['artifacts']['index_relpath']
+            )
+            stopped = self._run_runner(
+                plan_path, index_path, '--entry-id', entry['entry_id'],
+            )
+            self.assertEqual(
+                stopped.returncode, 3,
+                stopped.stdout + stopped.stderr,
+            )
+            self.assertIn('model_task_timeout', stopped.stderr)
+            attempt_dir = (
+                root / plan['artifacts']['root']
+                / entry['artifact_relpath'] / 'attempt-0001'
+            )
+            result = json.loads(
+                (attempt_dir / 'host-stdout.jsonl').read_text(
+                    encoding='utf-8',
+                ).splitlines()[-1],
+            )
+            self.assertEqual(
+                'model_task_timeout',
+                result['failure_class'],
+            )
+            self.assertEqual(
+                'captured',
+                result['usage']['host_safety_review']['capture_status'],
+            )
+            self.assertFalse(index_path.exists())
+            self.assertFalse((attempt_dir / 'graders').exists())
+            self.assertFalse((attempt_dir / 'model-graders').exists())
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

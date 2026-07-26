@@ -639,6 +639,11 @@ def _host(request: dict[str, object], mode: str) -> int:
         "cleanup": {"status": "clean", "state": cleanup_state},
         "usage": {
             "pricing_identity": "fixture-pricing",
+            "host_safety_review": {
+                "capture_status": "captured",
+                "host_safety_review_count": 1,
+                "host_safety_review_latency_ms": 9,
+            },
             "records": [
                 {
                     "principal_id": principal["principal_id"],
@@ -684,6 +689,12 @@ def _host(request: dict[str, object], mode: str) -> int:
         result["terminal_status"] = "timeout"
         result["timeout"] = True
         result["treatment_error"] = "synthetic treatment timeout"
+    elif mode == "host-model-timeout":
+        result["terminal_status"] = "timeout"
+        result["timeout"] = True
+        result["treatment_error"] = "synthetic model-task timeout"
+        result["provider_error_code"] = None
+        result["failure_class"] = "model_task_timeout"
     elif mode == "treatment-cancel":
         result["terminal_status"] = "cancelled"
         result["treatment_error"] = "synthetic treatment cancellation"
@@ -737,6 +748,11 @@ def _model_grade(request: dict[str, object]) -> int:
         "cleanup": {"status": "clean"},
         "usage": {
             "pricing_identity": "fixture-pricing",
+            "host_safety_review": {
+                "capture_status": "missing",
+                "host_safety_review_count": 0,
+                "host_safety_review_latency_ms": 0,
+            },
             "records": [{
                 "principal_id": f"grader-{payload['grader_id']}",
                 "turn_id": None,

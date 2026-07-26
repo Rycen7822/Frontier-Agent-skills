@@ -1134,6 +1134,33 @@ def _capture_faults(
     return captured
 
 
+def _raise_for_host_infrastructure_failure(
+    result: dict[str, Any],
+    label: str,
+) -> None:
+    failure_class = result.get("failure_class")
+    provider_error_code = result.get("provider_error_code")
+    if failure_class is None:
+        if provider_error_code is not None:
+            raise RunnerFailure(
+                f"{label} has an unclassified provider error",
+            )
+        return
+    if failure_class == "model_task_timeout":
+        if (
+            result["terminal_status"] != "timeout"
+            or result["timeout"] is not True
+            or provider_error_code is not None
+        ):
+            raise RunnerFailure(f"{label} timeout classification is invalid")
+    elif (
+        result["terminal_status"] != "failed"
+        or not isinstance(provider_error_code, str)
+    ):
+        raise RunnerFailure(f"{label} provider classification is invalid")
+    raise ApparatusFailure(f"{label} stopped with {failure_class}")
+
+
 def _merged_usage(
     entry: dict[str, Any],
     result: dict[str, Any],
@@ -1178,7 +1205,46 @@ def _merged_usage(
         if identity in identities:
             raise RunnerFailure("usage record call identity is duplicated")
         identities.add(identity)
-    return {"pricing_identity": pricing_identity, "records": records}
+    safety_fields = {
+        "capture_status",
+        "host_safety_review_count",
+        "host_safety_review_latency_ms",
+    }
+    capture_status = "captured"
+    safety_count = 0
+    safety_latency_ms = 0.0
+    for source in sources:
+        observation = source.get("host_safety_review")
+        if observation is None:
+            capture_status = "missing"
+            continue
+        if not isinstance(observation, dict) or set(observation) != safety_fields:
+            raise RunnerFailure("host safety-review observation is invalid")
+        count = observation["host_safety_review_count"]
+        latency = observation["host_safety_review_latency_ms"]
+        if (
+            observation["capture_status"] not in {"captured", "missing"}
+            or not isinstance(count, int)
+            or isinstance(count, bool)
+            or count < 0
+            or not isinstance(latency, (int, float))
+            or isinstance(latency, bool)
+            or latency < 0
+        ):
+            raise RunnerFailure("host safety-review observation is invalid")
+        if observation["capture_status"] != "captured":
+            capture_status = "missing"
+        safety_count += count
+        safety_latency_ms += float(latency)
+    return {
+        "pricing_identity": pricing_identity,
+        "host_safety_review": {
+            "capture_status": capture_status,
+            "host_safety_review_count": safety_count,
+            "host_safety_review_latency_ms": safety_latency_ms,
+        },
+        "records": records,
+    }
 
 
 def _validate_grader_output(
@@ -1461,6 +1527,10 @@ def _run_model_graders(
             )
         batch_events, batch_result, _ = _parse_host_protocol(
             stdout, request=request, registry=registry,
+        )
+        _raise_for_host_infrastructure_failure(
+            batch_result,
+            f"model grader {grader_id}",
         )
         _host_artifact_paths(batch_result, attempt_dir)
         requests.append(request)
@@ -2297,6 +2367,7 @@ def _execute_entry(
     events, result, checkpoints = _parse_host_protocol(
         stdout, request=request, registry=registry,
     )
+    _raise_for_host_infrastructure_failure(result, "execute host")
     _validate_routing_contract(entry, events)
     _validate_state_contract(entry, events, result, checkpoints)
     _validate_runtime_records(entry, result, host, registry)
