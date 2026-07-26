@@ -140,6 +140,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_host.add_argument("--background", action="append", default=[])
     run_host.add_argument("--grader-prompt")
     run_host.add_argument("--grader-schema")
+    run_host.add_argument("--codex-bin")
+    run_host.add_argument("--codex-bin-sha256")
     run_host.add_argument("--synthetic", action="store_true")
     run_host.set_defaults(handler=_run_host)
     return parser
