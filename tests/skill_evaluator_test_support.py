@@ -2664,6 +2664,40 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
     return paths
 
 
+def compact_reviewer_prompt_packet(packet: dict) -> dict:
+    views: list[dict] = []
+    checks: list[dict] = []
+    examples: list[list[object]] = []
+    for example in packet['examples']:
+        payload = example['payload']
+        view = payload['view']
+        check = payload['check']
+        if view not in views:
+            views.append(view)
+        if check not in checks:
+            checks.append(check)
+        examples.append([
+            example['opaque_example_id'],
+            views.index(view),
+            checks.index(check),
+        ])
+    return {
+        'schema_version': (
+            'context-clean-subagent-reviewer-message-packet/1.0'
+        ),
+        'campaign_id': packet['campaign_id'],
+        'tuple_fields': [
+            'opaque_example_id',
+            'view_index',
+            'check_index',
+        ],
+        'views': views,
+        'checks': checks,
+        'examples': examples,
+        'source_packet_hash': packet['packet_hash'],
+    }
+
+
 def materialize_v5_reviewer_pair(
     paths: dict[str, Path],
 ) -> dict[str, Path]:
@@ -2817,10 +2851,15 @@ def materialize_v5_reviewer_pair(
             'entry_hash': _v5_hash(f'{request_id}-entry'),
         }
         prompt = {
-            'schema_version': 'context-clean-subagent-reviewer-prompt/1.0',
+            'schema_version': 'context-clean-subagent-reviewer-prompt/2.0',
             'reviewer_id': reviewer_id,
-            'instruction': 'Return typed JSON only.',
-            'packet': packet,
+            'instruction': (
+                'Return typed JSON only. Each example is '
+                '[opaque_example_id, view_index, check_index]; review '
+                'views[view_index] against checks[check_index] and rate '
+                'every opaque_example_id exactly once.'
+            ),
+            'packet': compact_reviewer_prompt_packet(packet),
             'output_schema': output_schema,
         }
         raw_response = {

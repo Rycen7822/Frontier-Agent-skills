@@ -12,6 +12,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from evidence_io import canonical_sha256, verify_self_hash
+from reviewer_prompt_contract import (
+    PromptContractError,
+    expand_prompt_packet,
+)
 
 
 PAIR_FIELDS = {
@@ -485,11 +489,24 @@ def _validate_receipt(
         code="calibration.reviewer_prompt",
         label="reviewer prompt",
     )
+    try:
+        expanded_prompt_packet = expand_prompt_packet(
+            prompt["packet"],
+            campaign_id=campaign_id,
+        )
+    except PromptContractError as exc:
+        _fail("calibration.reviewer_prompt", str(exc))
     if (
-        prompt["schema_version"] != "context-clean-subagent-reviewer-prompt/1.0"
+        prompt["schema_version"] != "context-clean-subagent-reviewer-prompt/2.0"
         or prompt["reviewer_id"] != receipt["reviewer_id"]
-        or prompt["instruction"] != "Return typed JSON only."
-        or prompt["packet"] != packet
+        or prompt["instruction"]
+        != (
+            "Return typed JSON only. Each example is "
+            "[opaque_example_id, view_index, check_index]; review "
+            "views[view_index] against checks[check_index] and rate "
+            "every opaque_example_id exactly once."
+        )
+        or expanded_prompt_packet != packet
         or prompt["output_schema"] != output_schema
     ):
         _fail("calibration.reviewer_prompt", "reviewer prompt exposes or changes context")
