@@ -655,3 +655,23 @@ def release_studies(root: Path) -> tuple[dict[str, Path], Path]:
     join = root / "join.json"
     artifacts.write_json(join, {})
     return roots, join
+
+
+def bundle_source_tree(root: Path) -> set[str]:
+    skills = {"alpha-skill", "beta-skill"}
+    root.mkdir()
+    for skill in skills:
+        path = root / skill / "SKILL.md"
+        path.parent.mkdir()
+        path.write_text(f"# {skill}\n", encoding="utf-8")
+    manifest = {
+        "skills": [
+            {"id": skill, "path": skill}
+            for skill in sorted(skills)
+        ],
+    }
+    (root / "bundle-manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return skills

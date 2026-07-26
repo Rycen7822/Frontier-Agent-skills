@@ -295,7 +295,7 @@ def bundle_source_hash(root: Path, expected_skills: set[str]) -> str:
         "bundle-manifest.json",
         "bundle manifest",
     )
-    manifest = load_json(manifest_path)
+    manifest = json_object(manifest_path.read_bytes(), manifest_path)
     skills = manifest.get("skills")
     if (
         not isinstance(skills, list)
