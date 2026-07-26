@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/context-clean-subagent-reviewer-receipt-v1.schema.json",
+  "$ref": "#/$defs/reviewer_receipt",
+  "$defs": {
+    "ratings_output": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://example.invalid/context-clean-subagent-reviewer-ratings-v2.schema.json",
+      "type": "object",
+      "required": [
+        "schema_version",
+        "ratings"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "context-clean-subagent-reviewer-ratings/2.0"
+        },
+        "ratings": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "severity"
+            ],
+            "properties": {
+              "label": {
+                "enum": [
+                  "pass",
+                  "fail",
+                  "abstain"
+                ]
+              },
+              "severity": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "reviewer_receipt": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "receipt_id",
+        "campaign_id",
+        "request_id",
+        "reviewer_id",
+        "principal_id",
+        "agent_id",
+        "task_name",
+        "requested_configuration",
+        "reservation_hash",
+        "prompt_hash",
+        "packet_hash",
+        "output_schema_hash",
+        "spawn_request_hash",
+        "spawn_ack_hash",
+        "terminal_result_hash",
+        "raw_response_hash",
+        "parsed_ratings_hash",
+        "terminal_status",
+        "receipt_hash"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "context-clean-subagent-reviewer-receipt/1.0"
+        },
+        "receipt_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "campaign_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "reviewer_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "principal_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "agent_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "task_name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "requested_configuration": {
+          "type": "object",
+          "required": [
+            "model",
+            "reasoning_effort",
+            "service_tier",
+            "fork_turns"
+          ],
+          "properties": {
+            "model": {
+              "const": "gpt-5.6-sol"
+            },
+            "reasoning_effort": {
+              "const": "max"
+            },
+            "service_tier": {
+              "const": "priority"
+            },
+            "fork_turns": {
+              "const": "none"
+            }
+          },
+          "additionalProperties": false
+        },
+        "reservation_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "prompt_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "packet_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "output_schema_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "spawn_request_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "spawn_ack_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "terminal_result_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "raw_response_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "parsed_ratings_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "terminal_status": {
+          "enum": [
+            "complete",
+            "failed"
+          ]
+        },
+        "receipt_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "pair_binding": {
+      "type": "object",
+      "$defs": {
+        "artifact_binding": {
+          "type": "object",
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema_version",
+        "pair_id",
+        "campaign_id",
+        "packet",
+        "output_schema",
+        "sealed_mapping",
+        "reviewer_receipts",
+        "both_spawns_acknowledged_before_first_result_consumed",
+        "pair_hash"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "context-clean-subagent-reviewer-pair/1.0"
+        },
+        "pair_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "campaign_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "packet": {
+          "$ref": "#/$defs/pair_binding/$defs/artifact_binding"
+        },
+        "output_schema": {
+          "$ref": "#/$defs/pair_binding/$defs/artifact_binding"
+        },
+        "sealed_mapping": {
+          "$ref": "#/$defs/pair_binding/$defs/artifact_binding"
+        },
+        "reviewer_receipts": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/pair_binding/$defs/artifact_binding"
+          }
+        },
+        "both_spawns_acknowledged_before_first_result_consumed": {
+          "const": true
+        },
+        "pair_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -2698,6 +2698,37 @@ def compact_reviewer_prompt_packet(packet: dict) -> dict:
     }
 
 
+def positional_reviewer_ratings_schema() -> dict:
+    return {
+        '$schema': 'https://json-schema.org/draft/2020-12/schema',
+        '$id': (
+            'https://example.invalid/'
+            'context-clean-subagent-reviewer-ratings-v2.schema.json'
+        ),
+        'type': 'object',
+        'required': ['schema_version', 'ratings'],
+        'properties': {
+            'schema_version': {
+                'const': 'context-clean-subagent-reviewer-ratings/2.0',
+            },
+            'ratings': {
+                'type': 'array',
+                'minItems': 1,
+                'items': {
+                    'type': 'object',
+                    'required': ['label', 'severity'],
+                    'properties': {
+                        'label': {'enum': ['pass', 'fail', 'abstain']},
+                        'severity': {'type': 'number'},
+                    },
+                    'additionalProperties': False,
+                },
+            },
+        },
+        'additionalProperties': False,
+    }
+
+
 def materialize_v5_reviewer_pair(
     paths: dict[str, Path],
 ) -> dict[str, Path]:
@@ -2709,8 +2740,6 @@ def materialize_v5_reviewer_pair(
     mapping_path = pair_root / 'sealed-mapping.json'
     pair_path = pair_root / 'pair.json'
     campaign_id = 'calibration-campaign'
-    contract = load_reviewer_pair_contract_module()
-
     def with_self_hash(value: dict, field: str) -> dict:
         closed = copy.deepcopy(value)
         closed[field] = canonical_hash({
@@ -2781,7 +2810,7 @@ def materialize_v5_reviewer_pair(
     }, 'packet_hash')
     write_json(packet_path, packet)
 
-    output_schema = contract.expected_ratings_schema()
+    output_schema = positional_reviewer_ratings_schema()
     write_json(schema_path, output_schema)
     packet_binding = binding(packet_path)
     schema_binding = binding(schema_path)
@@ -2817,6 +2846,7 @@ def materialize_v5_reviewer_pair(
         receipt_paths.append(receipt_path)
         rows: list[dict] = []
         output_ratings: list[dict] = []
+        parsed_ratings: list[dict] = []
         for packet_example, label in zip(packet_examples, labels, strict=True):
             source = judges_by_example[label['example_id']]
             row = copy.deepcopy(source)
@@ -2835,8 +2865,12 @@ def materialize_v5_reviewer_pair(
             row['execution_identity'] = None
             row['independence_facts'] = None
             rows.append(row)
-            output_ratings.append({
+            parsed_ratings.append({
                 'opaque_example_id': row['example_id'],
+                'label': row['label'],
+                'severity': row['severity'],
+            })
+            output_ratings.append({
                 'label': row['label'],
                 'severity': row['severity'],
             })
@@ -2851,7 +2885,7 @@ def materialize_v5_reviewer_pair(
             'entry_hash': _v5_hash(f'{request_id}-entry'),
         }
         prompt = {
-            'schema_version': 'context-clean-subagent-reviewer-prompt/2.0',
+            'schema_version': 'context-clean-subagent-reviewer-prompt/3.0',
             'reviewer_id': reviewer_id,
             'instruction': (
                 'Return typed JSON only. Each example is '
@@ -2865,14 +2899,15 @@ def materialize_v5_reviewer_pair(
                 'conflicting_candidate_snapshots, authoritative_snapshot='
                 'null, and two conflicting candidate snapshots, so neither '
                 'pass nor fail is supportable. Do not infer hidden gold or '
-                'unstated facts. Rate every opaque_example_id exactly once.'
+                'unstated facts. Return one rating per packet example in '
+                'the same order. Do not return reviewer or opaque example '
+                'identifiers.'
             ),
             'packet': compact_reviewer_prompt_packet(packet),
             'output_schema': output_schema,
         }
         raw_response = {
-            'schema_version': 'context-clean-subagent-reviewer-ratings/1.0',
-            'reviewer_id': reviewer_id,
+            'schema_version': 'context-clean-subagent-reviewer-ratings/2.0',
             'ratings': output_ratings,
         }
         reservation_path = reviewer_dir / 'reservation.json'
@@ -2938,7 +2973,7 @@ def materialize_v5_reviewer_pair(
             'spawn_ack_hash': binding(spawn_ack_path)['sha256'],
             'terminal_result_hash': binding(terminal_path)['sha256'],
             'raw_response_hash': binding(raw_response_path)['sha256'],
-            'parsed_ratings_hash': canonical_hash(output_ratings),
+            'parsed_ratings_hash': canonical_hash(parsed_ratings),
             'terminal_status': 'complete',
             'receipt_hash': None,
         }, 'receipt_hash')

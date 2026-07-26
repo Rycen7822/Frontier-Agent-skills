@@ -171,6 +171,17 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             self._write_json(spawn_path, spawn)
             response_path = reviewer / 'raw-response.json'
             response = json.loads(response_path.read_text(encoding='utf-8'))
+            parsed_ratings = [
+                {
+                    'opaque_example_id': example['opaque_example_id'],
+                    'label': rating['label'],
+                    'severity': rating['severity'],
+                }
+                for example, rating in zip(
+                    packet['examples'],
+                    response['ratings'],
+                )
+            ]
             response_sha = (
                 'sha256:' + hashlib.sha256(response_path.read_bytes()).hexdigest()
             )
@@ -203,7 +214,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                     ).hexdigest()
                 ),
                 'raw_response_hash': response_sha,
-                'parsed_ratings_hash': canonical_hash(response['ratings']),
+                'parsed_ratings_hash': canonical_hash(parsed_ratings),
             })
             self._close_self_hash(receipt, 'receipt_hash')
             self._write_json(receipt_path, receipt)
@@ -449,7 +460,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 ),
             )
             self.assertEqual(
-                'context-clean-subagent-reviewer-prompt/2.0',
+                'context-clean-subagent-reviewer-prompt/3.0',
                 prompt['schema_version'],
             )
             self.assertEqual(
@@ -466,7 +477,9 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                     'authoritative_snapshot=null, and two conflicting '
                     'candidate snapshots, so neither pass nor fail is '
                     'supportable. Do not infer hidden gold or unstated '
-                    'facts. Rate every opaque_example_id exactly once.'
+                    'facts. Return one rating per packet example in the '
+                    'same order. Do not return reviewer or opaque example '
+                    'identifiers.'
                 ),
                 prompt['instruction'],
             )
@@ -486,6 +499,24 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(
                 len(packet['examples']),
                 len(compact['examples']),
+            )
+            response = json.loads(
+                (paths['reviewer_1'] / 'raw-response.json').read_text(
+                    encoding='utf-8',
+                ),
+            )
+            self.assertEqual(
+                {'schema_version', 'ratings'},
+                set(response),
+            )
+            self.assertEqual(
+                'context-clean-subagent-reviewer-ratings/2.0',
+                response['schema_version'],
+            )
+            self.assertTrue(response['ratings'])
+            self.assertEqual(
+                {'label', 'severity'},
+                set(response['ratings'][0]),
             )
 
         forbidden_keys = (
@@ -542,15 +573,15 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                     prompt['packet']['examples'][0][1] = True
                 elif tamper == 'old-schema':
                     prompt['schema_version'] = (
-                        'context-clean-subagent-reviewer-prompt/1.0'
+                        'context-clean-subagent-reviewer-prompt/2.0'
                     )
                 else:
                     prompt['instruction'] = (
                         'Return typed JSON only. Each example is '
                         '[opaque_example_id, view_index, check_index]; '
                         'review views[view_index] against '
-                        'checks[check_index] and rate every '
-                        'opaque_example_id exactly once.'
+                        'checks[check_index] and return one rating per '
+                        'packet example.'
                     )
                 self._write_json(prompt_path, prompt)
                 self._rebind_reviewer_graph(
@@ -901,6 +932,30 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('calibration.reviewer_output', result.stderr)
 
+        for mutation in ('old_shape', 'extra', 'boolean', 'nonfinite'):
+            with (
+                self.subTest(mutation=mutation),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                response_path = paths['reviewer_1'] / 'raw-response.json'
+                response = json.loads(response_path.read_text(encoding='utf-8'))
+                if mutation == 'old_shape':
+                    response['reviewer_id'] = 'reviewer-1'
+                    for index, rating in enumerate(response['ratings'], start=1):
+                        rating['opaque_example_id'] = f'opaque-{index:03d}'
+                elif mutation == 'extra':
+                    response['ratings'].append(copy.deepcopy(response['ratings'][0]))
+                elif mutation == 'boolean':
+                    response['ratings'][0]['severity'] = True
+                else:
+                    response['ratings'][0]['severity'] = float('nan')
+                self._write_json(response_path, response)
+                self._rebind_reviewer_graph(paths)
+                result = self._run_pair_calibration(paths)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn('calibration.reviewer_output', result.stderr)
+
         with tempfile.TemporaryDirectory() as tmp:
             paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
             ratings = [
@@ -928,7 +983,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             self._rebind_reviewer_graph(paths)
             coverage = self._run_pair_calibration(paths)
         self.assertEqual(coverage.returncode, 1, coverage.stdout + coverage.stderr)
-        self.assertIn('calibration.reviewer_coverage', coverage.stderr)
+        self.assertIn('calibration.reviewer_output', coverage.stderr)
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = self._materialize_high_risk_reviewer_pair(Path(tmp))

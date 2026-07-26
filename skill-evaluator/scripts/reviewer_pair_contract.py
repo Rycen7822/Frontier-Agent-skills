@@ -237,28 +237,22 @@ def _read_binding(
 
 def expected_ratings_schema() -> dict[str, Any]:
     """Return the exact reviewer output schema independently owned by product."""
-    safe_id = {
-        "type": "string",
-        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
-    }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://example.invalid/context-clean-subagent-reviewer-ratings-v1.schema.json",
+        "$id": "https://example.invalid/context-clean-subagent-reviewer-ratings-v2.schema.json",
         "type": "object",
-        "required": ["schema_version", "reviewer_id", "ratings"],
+        "required": ["schema_version", "ratings"],
         "properties": {
             "schema_version": {
-                "const": "context-clean-subagent-reviewer-ratings/1.0",
+                "const": "context-clean-subagent-reviewer-ratings/2.0",
             },
-            "reviewer_id": safe_id,
             "ratings": {
                 "type": "array",
                 "minItems": 1,
                 "items": {
                     "type": "object",
-                    "required": ["opaque_example_id", "label", "severity"],
+                    "required": ["label", "severity"],
                     "properties": {
-                        "opaque_example_id": safe_id,
                         "label": {"enum": ["pass", "fail", "abstain"]},
                         "severity": {"type": "number"},
                     },
@@ -497,7 +491,7 @@ def _validate_receipt(
     except PromptContractError as exc:
         _fail("calibration.reviewer_prompt", str(exc))
     if (
-        prompt["schema_version"] != "context-clean-subagent-reviewer-prompt/2.0"
+        prompt["schema_version"] != "context-clean-subagent-reviewer-prompt/3.0"
         or prompt["reviewer_id"] != receipt["reviewer_id"]
         or prompt["instruction"]
         != (
@@ -512,7 +506,9 @@ def _validate_receipt(
             "conflicting_candidate_snapshots, authoritative_snapshot="
             "null, and two conflicting candidate snapshots, so neither "
             "pass nor fail is supportable. Do not infer hidden gold or "
-            "unstated facts. Rate every opaque_example_id exactly once."
+            "unstated facts. Return one rating per packet example in the "
+            "same order. Do not return reviewer or opaque example "
+            "identifiers."
         )
         or expanded_prompt_packet != packet
         or prompt["output_schema"] != output_schema
@@ -578,28 +574,30 @@ def _validate_receipt(
     )
     _closed_object(
         raw_response,
-        {"schema_version", "reviewer_id", "ratings"},
+        {"schema_version", "ratings"},
         code="calibration.reviewer_output",
         label="reviewer output",
     )
     if (
         raw_response["schema_version"]
-        != "context-clean-subagent-reviewer-ratings/1.0"
-        or raw_response["reviewer_id"] != receipt["reviewer_id"]
+        != "context-clean-subagent-reviewer-ratings/2.0"
         or not isinstance(raw_response["ratings"], list)
         or not raw_response["ratings"]
+        or len(raw_response["ratings"]) != len(reviewer_rows)
     ):
-        _fail("calibration.reviewer_output", "reviewer output identity or ratings are invalid")
+        _fail(
+            "calibration.reviewer_output",
+            "reviewer output schema or cardinality is invalid",
+        )
     for rating in raw_response["ratings"]:
         _closed_object(
             rating,
-            {"opaque_example_id", "label", "severity"},
+            {"label", "severity"},
             code="calibration.reviewer_output",
             label="reviewer output rating",
         )
         if (
-            not _safe_id(rating["opaque_example_id"])
-            or rating["label"] not in {"pass", "fail", "abstain"}
+            rating["label"] not in {"pass", "fail", "abstain"}
             or not isinstance(rating["severity"], (int, float))
             or isinstance(rating["severity"], bool)
             or not math.isfinite(float(rating["severity"]))
@@ -613,7 +611,14 @@ def _validate_receipt(
         }
         for row in reviewer_rows
     ]
-    if raw_response["ratings"] != projected_rows:
+    projected_raw = [
+        {
+            "label": row["label"],
+            "severity": row["severity"],
+        }
+        for row in reviewer_rows
+    ]
+    if raw_response["ratings"] != projected_raw:
         _fail("calibration.reviewer_output", "reviewer output differs from raw rating rows")
     if receipt["parsed_ratings_hash"] != canonical_sha256(projected_rows):
         _fail("calibration.reviewer_output", "parsed ratings hash differs")
