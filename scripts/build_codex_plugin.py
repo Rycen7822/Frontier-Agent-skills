@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 from hashlib import sha256
 import json
 import os
@@ -35,12 +37,49 @@ EVALUATED_SKILL_IDS = [
     "software-quality-workflows",
     "writing-plans",
 ]
+EXPECTED_FORMAL_ARM_USAGE = {
+    "software-quality-workflows": {
+        "scheduled": 160,
+        "observed": 160,
+        "graded": 64,
+        "missing": 0,
+        "duplicate": 0,
+        "retries": 0,
+        "provider_calls": 160,
+    },
+    "writing-plans": {
+        "scheduled": 136,
+        "observed": 136,
+        "graded": 48,
+        "missing": 0,
+        "duplicate": 0,
+        "retries": 0,
+        "provider_calls": 136,
+    },
+}
+EXPECTED_FORMAL_BUDGET = {
+    "schema_version": "provider-budget-contract/1.0",
+    "scheduled_provider_calls": 308,
+    "scored_call_hard_cap": 296,
+    "grader_calibration_call_hard_cap": 8,
+    "reviewer_calibration_call_hard_cap": 4,
+    "provider_call_hard_cap": 308,
+}
+EXPECTED_FORMAL_AGGREGATE_USAGE = {
+    "scored_model_calls": 296,
+    "grader_calibration_calls": 8,
+    "reviewer_calibration_calls": 4,
+    "apparatus_model_calls": 12,
+    "total_provider_calls": 308,
+    "retries": 0,
+}
 P3_AGGREGATE_FIELDS = {
     "schema_version", "candidate_revision", "candidate_source_tree_hash",
     "candidate_plugin_tree_hash", "decision_contract_content_hash",
     "evaluated_skill_ids", "arm_report_content_hashes", "aggregate_status",
-    "scored_model_calls", "apparatus_model_calls", "total_provider_calls",
-    "retries", "gates", "report_hash",
+    "scored_model_calls", "grader_calibration_calls",
+    "reviewer_calibration_calls", "apparatus_model_calls",
+    "total_provider_calls", "retries", "gates", "report_hash",
 }
 EXPECTED_SKILLS = {
     "long-document-segmented-writing": "1.0.0",
@@ -76,6 +115,7 @@ CANONICAL_MARKETPLACE = {
 
 
 def _regular_bytes(path: Path, maximum: int = 4 * 1024 * 1024) -> bytes:
+    _reject_symlink_components(path)
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(path, flags)
     try:
@@ -315,12 +355,19 @@ def validate_release_evidence(
         "release evidence",
     )
     bundle = _strict_json(source_root / "frontier-engineering.bundle.json")
+    evaluator_source_hash = (
+        bundle.get("skills", {})
+        .get("skill-evaluator", {})
+        .get("root_hash")
+    )
     if (
         evidence.get("bundle_id") != bundle.get("bundle_id")
         or evidence.get("bundle_version") != manifest.get("bundle_version")
         or evidence.get("source_tree_hash") != source_tree_hash
         or evidence.get("approved_skill_activation") != EXPECTED_APPROVED_ACTIVATION
         or evidence.get("remote_writes") is not False
+        or not isinstance(evaluator_source_hash, str)
+        or not re.fullmatch(r"sha256:[0-9a-f]{64}", evaluator_source_hash)
     ):
         raise ValueError("release evidence source, bundle, or activation identity does not match")
     if plugin_tree_hash is not None and evidence.get("plugin_tree_hash") != plugin_tree_hash:
@@ -347,7 +394,37 @@ def validate_release_evidence(
         raise ValueError("static contract diagnostic identity or report hash does not match")
 
     evidence_root = path.absolute().parent
+    _require_closed_directory(
+        evidence_root,
+        {
+            "activation-decision.json",
+            "release-evidence.json",
+            "l2",
+            "longitudinal",
+        },
+        "release evidence",
+    )
     l2_root = evidence_root / "l2"
+    _require_closed_directory(
+        l2_root,
+        {
+            "p3-decision-contract.json",
+            "aggregate-report.json",
+            *EVALUATED_SKILL_IDS,
+        },
+        "release evidence L2",
+    )
+    for skill_id in EVALUATED_SKILL_IDS:
+        _require_closed_directory(
+            l2_root / skill_id,
+            {"report.json"},
+            f"{skill_id} release arm",
+        )
+    _require_closed_directory(
+        evidence_root / "longitudinal",
+        {"report.json"},
+        "release longitudinal",
+    )
     aggregate_path = l2_root / "aggregate-report.json"
     aggregate_bytes = _regular_bytes(aggregate_path, 16 * 1024 * 1024)
     aggregate = _decode_json(aggregate_bytes, aggregate_path)
@@ -364,13 +441,6 @@ def validate_release_evidence(
         skill_id: l2_root / skill_id / "report.json"
         for skill_id in aggregate["evaluated_skill_ids"]
     }
-    expected_l2_entries = {
-        "p3-decision-contract.json",
-        "aggregate-report.json",
-        *aggregate["evaluated_skill_ids"],
-    }
-    if {item.name for item in l2_root.iterdir()} != expected_l2_entries:
-        raise ValueError("release evidence L2 inventory has missing or extra arms")
     external_paths = {
         **arm_paths,
         "decision_contract": l2_root / "p3-decision-contract.json",
@@ -408,6 +478,8 @@ def validate_release_evidence(
         or decision_contract.get("candidate_source_tree_hash") != source_tree_hash
         or decision_contract.get("candidate_plugin_tree_hash")
         != evidence.get("plugin_tree_hash")
+        or decision_contract.get("evaluator_source_hash")
+        != evaluator_source_hash
         or decision_contract.get("evaluated_skill_ids") != EVALUATED_SKILL_IDS
     ):
         raise ValueError("P3 decision contract identity or self-hash is invalid")
@@ -443,6 +515,8 @@ def validate_release_evidence(
             != decision_contract.get("controller_content_hash")
             or arm.get("evaluator_source_hash")
             != decision_contract.get("evaluator_source_hash")
+            or arm.get("usage_closure")
+            != EXPECTED_FORMAL_ARM_USAGE[skill_id]
             or actual_gates != expected_gates
             or aggregate["arm_report_content_hashes"].get(skill_id)
             != hashes[skill_id]
@@ -462,17 +536,23 @@ def validate_release_evidence(
         arm["usage_closure"]["provider_calls"] for arm in arms.values()
     )
     arm_retries = sum(arm["usage_closure"]["retries"] for arm in arms.values())
-    if (
-        aggregate.get("total_provider_calls")
-        != aggregate.get("scored_model_calls") + aggregate.get("apparatus_model_calls")
-        or aggregate.get("total_provider_calls")
-        != arm_provider_calls + aggregate.get("apparatus_model_calls")
-        or aggregate.get("retries") != arm_retries
-        or aggregate.get("scored_model_calls") > budget["scored_call_hard_cap"]
-        or aggregate.get("apparatus_model_calls") > budget["calibration_call_hard_cap"]
-        or aggregate.get("total_provider_calls") > budget["provider_call_hard_cap"]
+    usage = {
+        field: aggregate.get(field)
+        for field in EXPECTED_FORMAL_AGGREGATE_USAGE
+    }
+    if any(
+        type(value) is not int for value in usage.values()
     ):
-        raise ValueError("aggregate L2 provider usage does not close within the frozen budget")
+        raise ValueError("aggregate L2 provider usage fields must be integers")
+    if (
+        budget != EXPECTED_FORMAL_BUDGET
+        or usage != EXPECTED_FORMAL_AGGREGATE_USAGE
+        or arm_provider_calls != usage["scored_model_calls"]
+        or arm_retries != usage["retries"]
+    ):
+        raise ValueError(
+            "aggregate L2 provider usage does not match the frozen budget"
+        )
     if (
         longitudinal.get("report_hash") != _self_hash(longitudinal)
         or longitudinal.get("decision_contract_content_hash")
@@ -667,6 +747,122 @@ def _reject_symlink_components(path: Path) -> None:
             break
 
 
+def _rename_no_replace(source: Path, destination: Path) -> None:
+    try:
+        renameat2 = ctypes.CDLL(None, use_errno=True).renameat2
+    except AttributeError:
+        raise ValueError("atomic no-replace publication is unavailable") from None
+    renameat2.argtypes = (
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+    renameat2.restype = ctypes.c_int
+    if renameat2(
+        -100,
+        os.fsencode(source),
+        -100,
+        os.fsencode(destination),
+        1,
+    ) == 0:
+        return
+    error = ctypes.get_errno()
+    if error == errno.EEXIST:
+        raise ValueError(f"no-overwrite destination appeared: {destination}")
+    raise OSError(error, os.strerror(error), destination)
+
+
+def _directory_identity(path: Path) -> tuple[int, int]:
+    info = path.lstat()
+    if path.is_symlink() or not stat.S_ISDIR(info.st_mode):
+        raise ValueError(f"owned staging path is not a directory: {path}")
+    return info.st_dev, info.st_ino
+
+
+def _file_identity(path: Path) -> tuple[int, int]:
+    info = path.lstat()
+    if path.is_symlink() or not stat.S_ISREG(info.st_mode):
+        raise ValueError(f"owned staging path is not a file: {path}")
+    return info.st_dev, info.st_ino
+
+
+def _remove_owned_tree(path: Path, identity: tuple[int, int]) -> None:
+    if not path.exists() and not path.is_symlink():
+        return
+    if _directory_identity(path) != identity:
+        raise RuntimeError(f"owned staging inode changed: {path}")
+    shutil.rmtree(path)
+
+
+def _remove_owned_file(path: Path, identity: tuple[int, int]) -> None:
+    if not path.exists() and not path.is_symlink():
+        return
+    if _file_identity(path) != identity:
+        raise RuntimeError(f"owned staging inode changed: {path}")
+    path.unlink()
+
+
+def _plugin_publication_matches(
+    output: Path,
+    identity: tuple[int, int],
+    plugin_name: str,
+    records: list[dict[str, Any]],
+) -> bool:
+    try:
+        return (
+            _directory_identity(output) == identity
+            and _validate_staging(output, plugin_name) == records
+        )
+    except (OSError, ValueError):
+        return False
+
+
+def _marketplace_publication_matches(
+    marketplace_root: Path,
+    marketplace_identity: tuple[int, int],
+    manifest_identity: tuple[int, int],
+    manifest_bytes: bytes,
+    output: Path,
+    output_identity: tuple[int, int],
+    plugin_name: str,
+    records: list[dict[str, Any]],
+) -> bool:
+    manifest_path = (
+        marketplace_root / ".agents" / "plugins" / "marketplace.json"
+    )
+    try:
+        return (
+            _directory_identity(marketplace_root) == marketplace_identity
+            and _file_identity(manifest_path) == manifest_identity
+            and manifest_path.read_bytes() == manifest_bytes
+            and _plugin_publication_matches(
+                output,
+                output_identity,
+                plugin_name,
+                records,
+            )
+        )
+    except (OSError, ValueError):
+        return False
+
+
+def _require_closed_directory(
+    path: Path,
+    expected_entries: set[str],
+    label: str,
+) -> None:
+    _reject_symlink_components(path)
+    if path.is_symlink() or not path.is_dir():
+        raise ValueError(f"{label} is not a regular directory")
+    entries = {item.name: item for item in path.iterdir()}
+    if set(entries) != expected_entries or any(
+        item.is_symlink() for item in entries.values()
+    ):
+        raise ValueError(f"{label} inventory has missing, extra, or symlink entries")
+
+
 def build(
     source_root: Path,
     output: Path,
@@ -732,8 +928,44 @@ def build(
     ):
         raise ValueError("marketplace build staging path is no-overwrite")
     staging.mkdir(mode=0o700)
+    staging_identity = _directory_identity(staging)
+    marketplace_staging_identity: tuple[int, int] | None = None
+    marketplace_manifest_identity: tuple[int, int] | None = None
+    marketplace_manifest_bytes: bytes | None = None
     evidence_temporary: Path | None = None
+    evidence_identity: tuple[int, int] | None = None
+    evidence_bytes: bytes | None = None
     published = False
+    plugin_records: list[dict[str, Any]] | None = None
+
+    def publication_still_matches() -> bool:
+        if plugin_records is None:
+            return False
+        if is_release:
+            if (
+                marketplace_root is None
+                or marketplace_staging_identity is None
+                or marketplace_manifest_identity is None
+                or marketplace_manifest_bytes is None
+            ):
+                return False
+            return _marketplace_publication_matches(
+                marketplace_root,
+                marketplace_staging_identity,
+                marketplace_manifest_identity,
+                marketplace_manifest_bytes,
+                output,
+                staging_identity,
+                template["name"],
+                plugin_records,
+            )
+        return _plugin_publication_matches(
+            output,
+            staging_identity,
+            template["name"],
+            plugin_records,
+        )
+
     try:
         (staging / ".codex-plugin").mkdir()
         (staging / "skills").mkdir()
@@ -785,54 +1017,105 @@ def build(
         )
         descriptor, temporary_name = tempfile.mkstemp(prefix="plugin-build-evidence-", dir=evidence_output.parent)
         evidence_temporary = Path(temporary_name)
+        evidence_identity = _file_identity(evidence_temporary)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(evidence, handle, ensure_ascii=False, indent=2, sort_keys=True)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
+        if _file_identity(evidence_temporary) != evidence_identity:
+            raise RuntimeError("build evidence staging inode changed")
+        evidence_bytes = evidence_temporary.read_bytes()
         if is_release:
             assert marketplace_root is not None
             marketplace_staging.mkdir(mode=0o700)
+            marketplace_staging_identity = _directory_identity(
+                marketplace_staging
+            )
             (marketplace_staging / "plugins").mkdir()
             marketplace_manifest = (
                 marketplace_staging / ".agents" / "plugins" / "marketplace.json"
             )
             marketplace_manifest.parent.mkdir(parents=True)
-            marketplace_manifest.write_text(
+            marketplace_manifest_bytes = (
                 json.dumps(
                     CANONICAL_MARKETPLACE,
                     ensure_ascii=False,
                     indent=2,
                     sort_keys=True,
-                ) + "\n",
-                encoding="utf-8",
+                )
+                + "\n"
+            ).encode("utf-8")
+            marketplace_manifest.write_bytes(marketplace_manifest_bytes)
+            marketplace_manifest_identity = _file_identity(
+                marketplace_manifest
             )
             staging.rename(
                 marketplace_staging / "plugins" / template["name"],
             )
-            marketplace_staging.rename(marketplace_root)
+            _rename_no_replace(marketplace_staging, marketplace_root)
         else:
-            staging.rename(output)
+            _rename_no_replace(staging, output)
         published = True
+        if not publication_still_matches():
+            raise ValueError("published plugin tree changed during publication")
+        assert evidence_identity is not None
+        assert evidence_bytes is not None
         os.link(evidence_temporary, evidence_output)
-        evidence_temporary.unlink()
+        if (
+            _file_identity(evidence_output) != evidence_identity
+            or evidence_output.read_bytes() != evidence_bytes
+        ):
+            raise ValueError("published build evidence changed")
+        _remove_owned_file(evidence_temporary, evidence_identity)
         evidence_temporary = None
+        if (
+            _file_identity(evidence_output) != evidence_identity
+            or evidence_output.read_bytes() != evidence_bytes
+        ):
+            raise ValueError("published build evidence readback differs")
+        if not publication_still_matches():
+            raise ValueError(
+                "published plugin tree changed after evidence publication"
+            )
         return evidence
     except BaseException:
-        if published and not evidence_output.exists() and not staging.exists():
-            if is_release and marketplace_root is not None:
-                marketplace_root.rename(marketplace_staging)
-            elif output.exists() or output.is_symlink():
-                output.rename(staging)
+        if evidence_identity is not None and (
+            evidence_output.exists() or evidence_output.is_symlink()
+        ):
+            try:
+                if _file_identity(evidence_output) == evidence_identity:
+                    _remove_owned_file(
+                        evidence_output,
+                        evidence_identity,
+                    )
+            except (OSError, ValueError):
+                pass
+        if (
+            published
+            and not staging.exists()
+            and publication_still_matches()
+        ):
+            if is_release:
+                assert marketplace_root is not None
+                _rename_no_replace(marketplace_root, marketplace_staging)
+            else:
+                _rename_no_replace(output, staging)
         if is_release and marketplace_staging.exists():
             staged_plugin = (
                 marketplace_staging / "plugins" / template["name"]
             )
             if staged_plugin.exists() and not staging.exists():
-                staged_plugin.rename(staging)
-            shutil.rmtree(marketplace_staging)
-        if evidence_temporary is not None:
-            evidence_temporary.unlink(missing_ok=True)
+                _rename_no_replace(staged_plugin, staging)
+            assert marketplace_staging_identity is not None
+            _remove_owned_tree(
+                marketplace_staging,
+                marketplace_staging_identity,
+            )
+        if staging.exists() or staging.is_symlink():
+            _remove_owned_tree(staging, staging_identity)
+        if evidence_temporary is not None and evidence_identity is not None:
+            _remove_owned_file(evidence_temporary, evidence_identity)
         raise
 
 
