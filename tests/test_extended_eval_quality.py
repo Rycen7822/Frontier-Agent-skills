@@ -452,6 +452,24 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 'context-clean-subagent-reviewer-prompt/2.0',
                 prompt['schema_version'],
             )
+            self.assertEqual(
+                (
+                    'Return typed JSON only. Each example is '
+                    '[opaque_example_id, view_index, check_index]; review '
+                    'views[view_index] against checks[check_index]. Rate '
+                    'pass only when authoritative visible evidence '
+                    'satisfies the pass condition. Rate fail when '
+                    'authoritative evidence violates the condition or '
+                    'omits required evidence; an ordinary missing fact '
+                    'fails. Rate abstain only when the view explicitly has '
+                    'evidence_state=conflicting_candidate_snapshots, '
+                    'authoritative_snapshot=null, and two conflicting '
+                    'candidate snapshots, so neither pass nor fail is '
+                    'supportable. Do not infer hidden gold or unstated '
+                    'facts. Rate every opaque_example_id exactly once.'
+                ),
+                prompt['instruction'],
+            )
             compact = prompt['packet']
             self.assertEqual(
                 [
@@ -506,7 +524,12 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                     1, result.returncode, result.stdout + result.stderr,
                 )
                 self.assertIn('calibration.reviewer_packet', result.stderr)
-        for tamper in ('source-hash', 'boolean-index', 'old-schema'):
+        for tamper in (
+            'source-hash',
+            'boolean-index',
+            'old-schema',
+            'old-instruction',
+        ):
             with self.subTest(tamper=tamper), tempfile.TemporaryDirectory() as tmp:
                 paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
                 prompt_path = paths['reviewer_1'] / 'prompt.json'
@@ -517,9 +540,17 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                     )
                 elif tamper == 'boolean-index':
                     prompt['packet']['examples'][0][1] = True
-                else:
+                elif tamper == 'old-schema':
                     prompt['schema_version'] = (
                         'context-clean-subagent-reviewer-prompt/1.0'
+                    )
+                else:
+                    prompt['instruction'] = (
+                        'Return typed JSON only. Each example is '
+                        '[opaque_example_id, view_index, check_index]; '
+                        'review views[view_index] against '
+                        'checks[check_index] and rate every '
+                        'opaque_example_id exactly once.'
                     )
                 self._write_json(prompt_path, prompt)
                 self._rebind_reviewer_graph(

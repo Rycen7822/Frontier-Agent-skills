@@ -503,8 +503,16 @@ def _validate_receipt(
         != (
             "Return typed JSON only. Each example is "
             "[opaque_example_id, view_index, check_index]; review "
-            "views[view_index] against checks[check_index] and rate "
-            "every opaque_example_id exactly once."
+            "views[view_index] against checks[check_index]. Rate pass "
+            "only when authoritative visible evidence satisfies the "
+            "pass condition. Rate fail when authoritative evidence "
+            "violates the condition or omits required evidence; an "
+            "ordinary missing fact fails. Rate abstain only when the "
+            "view explicitly has evidence_state="
+            "conflicting_candidate_snapshots, authoritative_snapshot="
+            "null, and two conflicting candidate snapshots, so neither "
+            "pass nor fail is supportable. Do not infer hidden gold or "
+            "unstated facts. Rate every opaque_example_id exactly once."
         )
         or expanded_prompt_packet != packet
         or prompt["output_schema"] != output_schema

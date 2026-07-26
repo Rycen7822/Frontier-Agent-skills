@@ -2856,8 +2856,16 @@ def materialize_v5_reviewer_pair(
             'instruction': (
                 'Return typed JSON only. Each example is '
                 '[opaque_example_id, view_index, check_index]; review '
-                'views[view_index] against checks[check_index] and rate '
-                'every opaque_example_id exactly once.'
+                'views[view_index] against checks[check_index]. Rate pass '
+                'only when authoritative visible evidence satisfies the '
+                'pass condition. Rate fail when authoritative evidence '
+                'violates the condition or omits required evidence; an '
+                'ordinary missing fact fails. Rate abstain only when the '
+                'view explicitly has evidence_state='
+                'conflicting_candidate_snapshots, authoritative_snapshot='
+                'null, and two conflicting candidate snapshots, so neither '
+                'pass nor fail is supportable. Do not infer hidden gold or '
+                'unstated facts. Rate every opaque_example_id exactly once.'
             ),
             'packet': compact_reviewer_prompt_packet(packet),
             'output_schema': output_schema,
