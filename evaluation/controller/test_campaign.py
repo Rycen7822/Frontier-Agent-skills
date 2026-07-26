@@ -8,6 +8,7 @@ import pytest
 
 from . import artifacts, campaign, source_proof
 from .controller_testkit import (
+    bundle_source_tree,
     controller_tree,
     hash_value,
     initialize,
@@ -97,6 +98,19 @@ def test_controller_closure_requires_workspace_and_rejects_extra_files(
     (root / "unexpected.py").write_text("extra\n", encoding="utf-8")
     with pytest.raises(source_proof.ProofError, match="extra=.*unexpected"):
         source_proof.controller_sources(root)
+
+
+def test_bundle_source_hash_accepts_strict_formatted_manifest(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "bundle"
+    skills = bundle_source_tree(root)
+    first = artifacts.bundle_source_hash(root, skills)
+    second = artifacts.bundle_source_hash(root, skills)
+    assert first == second
+    assert first.startswith("sha256:")
+    with pytest.raises(artifacts.StateError, match="manifest differs"):
+        artifacts.bundle_source_hash(root, skills | {"missing-skill"})
 
 
 def test_p4_reserved_nonterminal_request_resumes_same_id(tmp_path: Path) -> None:
