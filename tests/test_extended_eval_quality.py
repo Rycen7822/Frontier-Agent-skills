@@ -127,7 +127,12 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
         self._write_json(receipt_path, receipt)
         self._rebind_pair(paths)
 
-    def _rebind_reviewer_graph(self, paths: dict[str, Path]) -> None:
+    def _rebind_reviewer_graph(
+        self,
+        paths: dict[str, Path],
+        *,
+        rebuild_prompt: bool = True,
+    ) -> None:
         packet = json.loads(paths['reviewer_packet'].read_text(encoding='utf-8'))
         output_schema = json.loads(
             paths['reviewer_schema'].read_text(encoding='utf-8'),
@@ -153,9 +158,10 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             reviewer = paths[f'reviewer_{ordinal}']
             prompt_path = reviewer / 'prompt.json'
             prompt = json.loads(prompt_path.read_text(encoding='utf-8'))
-            prompt['packet'] = packet
-            prompt['output_schema'] = output_schema
-            self._write_json(prompt_path, prompt)
+            if rebuild_prompt:
+                prompt['packet'] = compact_reviewer_prompt_packet(packet)
+                prompt['output_schema'] = output_schema
+                self._write_json(prompt_path, prompt)
             prompt_sha = (
                 'sha256:' + hashlib.sha256(prompt_path.read_bytes()).hexdigest()
             )
@@ -437,6 +443,32 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 self.assertEqual(
                     canonical_hash(payload), example['payload_hash'],
                 )
+            prompt = json.loads(
+                (paths['reviewer_1'] / 'prompt.json').read_text(
+                    encoding='utf-8',
+                ),
+            )
+            self.assertEqual(
+                'context-clean-subagent-reviewer-prompt/2.0',
+                prompt['schema_version'],
+            )
+            compact = prompt['packet']
+            self.assertEqual(
+                [
+                    'opaque_example_id',
+                    'view_index',
+                    'check_index',
+                ],
+                compact['tuple_fields'],
+            )
+            self.assertEqual(
+                packet['packet_hash'],
+                compact['source_packet_hash'],
+            )
+            self.assertEqual(
+                len(packet['examples']),
+                len(compact['examples']),
+            )
 
         forbidden_keys = (
             'gold_label',
@@ -474,6 +506,31 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                     1, result.returncode, result.stdout + result.stderr,
                 )
                 self.assertIn('calibration.reviewer_packet', result.stderr)
+        for tamper in ('source-hash', 'boolean-index', 'old-schema'):
+            with self.subTest(tamper=tamper), tempfile.TemporaryDirectory() as tmp:
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                prompt_path = paths['reviewer_1'] / 'prompt.json'
+                prompt = json.loads(prompt_path.read_text(encoding='utf-8'))
+                if tamper == 'source-hash':
+                    prompt['packet']['source_packet_hash'] = (
+                        'sha256:' + '0' * 64
+                    )
+                elif tamper == 'boolean-index':
+                    prompt['packet']['examples'][0][1] = True
+                else:
+                    prompt['schema_version'] = (
+                        'context-clean-subagent-reviewer-prompt/1.0'
+                    )
+                self._write_json(prompt_path, prompt)
+                self._rebind_reviewer_graph(
+                    paths,
+                    rebuild_prompt=False,
+                )
+                result = self._run_pair_calibration(paths)
+                self.assertEqual(
+                    1, result.returncode, result.stdout + result.stderr,
+                )
+                self.assertIn('calibration.reviewer_prompt', result.stderr)
 
     def test_reviewer_packet_pass_condition_is_spec_owned(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
