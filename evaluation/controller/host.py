@@ -1321,11 +1321,7 @@ def run_codex_turn(
                 trace_start,
                 timeout=timeout_seconds,
             )
-            terminal = (
-                completed.get("params", {}).get("turn", {})
-                if completed is not None
-                else {"status": "timeout"}
-            )
+            terminal = {"status": "timeout"} if completed is None else completed["params"]["turn"]
             trace, trace_times, answers, commands, usage = _turn_observation(
                 server,
                 trace_start,
@@ -1333,6 +1329,11 @@ def run_codex_turn(
                 thread_id=thread_id,
                 turn_id=turn_id,
             )
+            if completed is None:
+                methods = ",".join(sorted(
+                    item["method"] for item in trace if isinstance(item.get("method"), str)
+                ))
+                terminal["error"] = {"message": f"Codex model task timed out; app-server methods={methods}"}
             ended = time.monotonic()
             return {
                 "terminal": terminal,
