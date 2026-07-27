@@ -313,11 +313,13 @@ def test_app_server_preflight_validates_used_union_without_provider(
     waiting.process = mock.Mock()
     waiting.process.poll.return_value = None
     assert waiting.wait_for("turn/completed", 0, timeout=0) is None
-    waiting.process.stdout = [json.dumps({"id": 7, "method": "item/commandExecution/requestApproval"}), json.dumps({"id": 1, "result": {}})]
+    waiting.process.stdout = [json.dumps({"id": 7, "method": "item/commandExecution/requestApproval"}), json.dumps({"id": 1, "result": {}}), json.dumps({"method": "error", "params": {"turnId": "turn-a", "willRetry": False, "error": {"message": "stream ended", "codexErrorInfo": {"responseStreamDisconnected": {}}}}})]
     waiting.message_times, waiting.responses, waiting._send = [], {}, mock.Mock()
     waiting._read_stdout()
     waiting._send.assert_called_once_with({"jsonrpc": "2.0", "id": 7, "result": {"decision": "accept"}})
     assert 7 not in waiting.responses and 1 in waiting.responses
+    terminal = waiting.wait_for("turn/completed", 0, timeout=0)
+    assert (terminal["params"]["turn"]["error"]["message"], host.structured_host_failure_class(terminal["params"]["turn"])) == ("stream ended", "official_transient")
     assert host.server_request_result("item/commandExecution/requestApproval", {"additionalPermissions": {"network": {}}}) == {"decision": "decline"}
     assert host.server_request_result("item/permissions/requestApproval", {}) == {"permissions": {}}
     fake_server = mock.Mock()
@@ -345,7 +347,6 @@ def test_app_server_preflight_validates_used_union_without_provider(
         })
         fake_server.message_times.append(host.time.monotonic())
         return None
-
     fake_server.wait_for.side_effect = timed_out_wait
     with mock.patch.object(host, "AppServer", return_value=fake_server):
         timed_out = host.run_codex_turn(
@@ -364,7 +365,6 @@ def test_app_server_preflight_validates_used_union_without_provider(
     for call in fake_server.request.call_args_list:
         if call.args[0] in {"thread/start", "turn/start"}:
             assert call.args[1]["approvalPolicy"] == "on-request"
-
     cached = tmp_path / "cached-codex"
     cached.write_bytes(b"#!/bin/sh\nexit 0\n")
     cached.chmod(0o755)
