@@ -184,12 +184,8 @@ def test_fake_execution_has_single_principal_and_closed_context(
     assert workspace.content_contract_passes(tmp_path, requirements)
 
 
-def test_host_grader_exact_transport() -> None:
-    artifact = {
-        "path": "workspace/result-evidence.json",
-        "sha256": HASH,
-        "encoding": "utf-8",
-    }
+def test_host_grader_exact_transport(tmp_path: Path, monkeypatch) -> None:
+    artifact = {"path": "workspace/result-evidence.json", "sha256": HASH, "encoding": "utf-8"}
     result = {
         "terminal_status": "completed",
         "treatment_error": None,
@@ -205,16 +201,19 @@ def test_host_grader_exact_transport() -> None:
         result,
         ["outcome-check", "safety-check"],
     )
-    assert {item["check_id"] for item in output["checks"]} == {
-        "outcome-check",
-        "safety-check",
-    }
+    assert {item["check_id"] for item in output["checks"]} == {"outcome-check", "safety-check"}
     assert output["overall_pass"]
     assert set(output["checks"][0]["evidence"][0]) == {
-        "artifact",
-        "locator",
-        "observation",
-    }
+        "artifact", "locator", "observation"}
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[2]))
+    host_grader = __import__("evaluation.controller.host_grader", fromlist=["main"])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["host_grader.py", "--checks=outcome-check"])
+    (tmp_path / "result.json").write_text(json.dumps(result), encoding="utf-8")
+    assert host_grader.main() == 0
+    result["assertions"] = []
+    (tmp_path / "result.json").write_text(json.dumps(result), encoding="utf-8")
+    assert host_grader.main() == 1
     with pytest.raises(ValueError):
         host.selected_checks(["arbitrary.json", "--checks=outcome-check"])
 
