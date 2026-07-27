@@ -100,6 +100,13 @@ def test_controller_closure_requires_workspace_and_rejects_extra_files(
         source_proof.controller_sources(root)
 
 
+def test_tracked_controller_matches_frozen_inventory() -> None:
+    root = Path(__file__).parent
+    assert {
+        path.name for path in source_proof.controller_sources(root)
+    } == source_proof.CONTROLLER_FILES
+
+
 def test_bundle_source_hash_accepts_strict_formatted_manifest(
     tmp_path: Path,
 ) -> None:
