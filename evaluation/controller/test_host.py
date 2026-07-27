@@ -142,7 +142,7 @@ def test_fake_execution_has_single_principal_and_closed_context(
     request = host_request()
     records = host.pure_fake_records(request, host_manifest())
     result = records[-1]
-    assert [principal["slot_id"] for principal in result["principals"]] == ["main"]
+    assert [(p["slot_id"], "." in p["started_at"]) for p in result["principals"]] == [("main", False)]
     assert [event["checkpoint"] for event in records[:-1]] == result["state"]
     assert (
         result["context"]["controlled_core_bytes"]

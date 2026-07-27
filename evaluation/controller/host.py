@@ -82,7 +82,7 @@ def _state(function, /, *args, **kwargs):
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def all_strings(value: Any) -> Iterator[str]:
