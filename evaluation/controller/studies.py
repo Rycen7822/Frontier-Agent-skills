@@ -339,6 +339,23 @@ def _case_requirements(
     return requirements
 
 
+def rebuild_dynamic_requirements(
+    scenario: dict[str, Any],
+    case: CaseDefinition,
+    skill_id: str,
+) -> None:
+    """Replace copied dynamic requirements with current case-owned requirements."""
+    scenario["requirements"] = [
+        {**requirement, "grader_id": "host-contract"}
+        for requirement in scenario["requirements"]
+        if (
+            not requirement["requirement_id"].startswith("rubric-")
+            and requirement["requirement_id"] not in TRANSFER_REQUIREMENT_IDS
+        )
+    ]
+    scenario["requirements"].extend(_case_requirements(case, skill_id))
+
+
 def scenario_from_case(
     *,
     template: dict[str, Any],
@@ -386,17 +403,7 @@ def scenario_from_case(
         scenario["routing_contract"] = routing
     scenario["state_model"] = {"scope": "none"}
     scenario["fault_script"] = []
-    scenario["requirements"] = [
-        requirement
-        for requirement in scenario["requirements"]
-        if (
-            not requirement["requirement_id"].startswith("rubric-")
-            and requirement["requirement_id"] not in TRANSFER_REQUIREMENT_IDS
-        )
-    ]
-    for requirement in scenario["requirements"]:
-        requirement["grader_id"] = "host-contract"
-    scenario["requirements"].extend(_case_requirements(case, skill_id))
+    rebuild_dynamic_requirements(scenario, case, skill_id)
     if case.transfer_source is not None:
         consumers = [
             item["requirement_id"]
