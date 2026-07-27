@@ -18,6 +18,7 @@ import time
 from typing import Any, Iterator
 
 import compile_eval_plan as compiler
+import model_grade_transport as model_transport
 from evidence_io import (
     artifact_record,
     atomic_write_bytes,
@@ -1476,6 +1477,23 @@ def _run_model_graders(
             raise RunnerFailure("model grader blinded projection is incomplete")
         blinded_path = grader_dir / "blinded-input.json"
         atomic_write_json(blinded_path, blinded)
+        def read_evidence(record: dict[str, Any]) -> str:
+            _, path = resolve_contained_path(
+                attempt_dir, record["path"], "model grader evidence",
+                kind="file",
+            )
+            if artifact_record(path, attempt_dir, encoding="utf-8") != record:
+                raise RunnerFailure("model grader evidence binding differs")
+            try:
+                return path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                raise RunnerFailure("model grader evidence is not UTF-8") from None
+        batch = model_transport.execution_batch(
+            blinded,
+            grader_id=grader_id,
+            entry_id=entry["entry_id"],
+            read_artifact=read_evidence,
+        )
         request = _host_request(
             plan,
             entry,
@@ -1486,7 +1504,7 @@ def _run_model_graders(
                 "grader_id": grader_id,
                 "batch_hash": model_spec["batch_hash"],
                 "schedule_hash": model_spec["schedule_hash"],
-                "blinded_input": blinded,
+                "blinded_input": batch,
             },
         )
         diagnostics = validate_host_protocol_record(

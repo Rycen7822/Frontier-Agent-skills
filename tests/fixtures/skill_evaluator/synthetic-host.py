@@ -289,6 +289,17 @@ def _host(request: dict[str, object], mode: str) -> int:
     events = []
     checkpoints = []
     artifacts = []
+    if any(
+        item["owner"] == "model" for item in payload["case"]["requirements"]
+    ):
+        suffix = f"{envelope['entry_id']}-{envelope['attempt']}"
+        artifacts.extend([
+            _artifact(
+                f"host-observation-{suffix}.json",
+                {"changed_paths": [], "verification": {"exit_code": 0}},
+            ),
+            _artifact(f"final-answer-{suffix}.md", "synthetic completion"),
+        ])
     stateful = payload["case"]["state_model"]["scope"] != "none"
     for seq, turn in enumerate(payload["turns"]):
         state_artifact = (
@@ -710,24 +721,20 @@ def _model_grade(request: dict[str, object]) -> int:
     envelope = request["envelope"]
     payload = request["payload"]
     blinded = payload["blinded_input"]
+    item = blinded["items"][0]
     grade = _artifact(
         f"model-grade-{payload['grader_id']}.json",
         {
-            "overall_pass": True,
-            "score": 100,
-            "checks": [
-                {
-                    "check_id": requirement["check_id"],
+            "batch_id": blinded["batch_id"],
+            "items": [{
+                "item_id": item["item_id"],
+                "checks": [{
+                    "id": check["id"],
                     "pass": True,
-                    "evidence": [],
                     "notes": "synthetic model grade",
                     "uncertainty": "none",
-                }
-                for requirement in blinded["requirements"]
-            ],
-            "missing_evidence": [],
-            "grader_failure": False,
-            "grader_failure_reason": None,
+                } for check in item["checks"]],
+            }],
         },
     )
     result = {

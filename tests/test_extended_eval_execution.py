@@ -521,6 +521,16 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             self.assertNotIn('treatment_id', serialized)
             self.assertNotIn('causal_role', serialized)
             self.assertNotIn('profile', serialized)
+            batch = receipt['host_protocol']['requests'][-1]['payload'][
+                'blinded_input'
+            ]
+            self.assertEqual(entry['entry_id'], batch['batch_id'])
+            self.assertEqual(entry['entry_id'], batch['items'][0]['item_id'])
+            self.assertEqual(
+                {'captured_output', 'host_assessment', 'final_answer'},
+                set(batch['items'][0]['grader_view']),
+            )
+            self.assertNotIn('treatment_id', json.dumps(batch, sort_keys=True))
             self.assertEqual(
                 ['execute', 'model_grade'],
                 [
