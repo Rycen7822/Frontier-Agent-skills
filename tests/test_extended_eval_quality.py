@@ -134,9 +134,6 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
         rebuild_prompt: bool = True,
     ) -> None:
         packet = json.loads(paths['reviewer_packet'].read_text(encoding='utf-8'))
-        output_schema = json.loads(
-            paths['reviewer_schema'].read_text(encoding='utf-8'),
-        )
         packet_sha = (
             'sha256:' + hashlib.sha256(
                 paths['reviewer_packet'].read_bytes(),
@@ -159,8 +156,11 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             prompt_path = reviewer / 'prompt.json'
             prompt = json.loads(prompt_path.read_text(encoding='utf-8'))
             if rebuild_prompt:
-                prompt['packet'] = compact_reviewer_prompt_packet(packet)
-                prompt['output_schema'] = output_schema
+                compact = compact_reviewer_prompt_packet(packet)
+                prompt['packet'] = compact
+                prompt['response_contract'] = (
+                    reviewer_matrix_response_contract(compact, schema_sha)
+                )
                 self._write_json(prompt_path, prompt)
             prompt_sha = (
                 'sha256:' + hashlib.sha256(prompt_path.read_bytes()).hexdigest()
@@ -460,30 +460,58 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 ),
             )
             self.assertEqual(
-                'context-clean-subagent-reviewer-prompt/3.0',
+                'context-clean-subagent-reviewer-prompt/4.0',
                 prompt['schema_version'],
             )
             self.assertEqual(
                 (
-                    'Return typed JSON only. Each example is '
-                    '[opaque_example_id, view_index, check_index]; review '
-                    'views[view_index] against checks[check_index]. Rate '
-                    'pass only when authoritative visible evidence '
-                    'satisfies the pass condition. Rate fail when '
+                    'Return exactly {"matrix":[...]} with no other keys or '
+                    'text. Each [opaque_example_id, view_index, check_index] '
+                    'selects views[view_index] and checks[check_index]. Rate '
+                    'pass only when authoritative visible evidence satisfies '
+                    'the pass condition. Rate fail when '
                     'authoritative evidence violates the condition or '
                     'omits required evidence; an ordinary missing fact '
-                    'fails. Rate abstain only when the view explicitly has '
+                    'fails. When the view explicitly has '
                     'evidence_state=conflicting_candidate_snapshots, '
                     'authoritative_snapshot=null, and two conflicting '
-                    'candidate snapshots, so neither pass nor fail is '
-                    'supportable. Do not infer hidden gold or unstated '
-                    'facts. Return one rating per packet example in the '
-                    'same order. Do not return reviewer or opaque example '
-                    'identifiers.'
+                    'candidate snapshots, rate every example for that view '
+                    'abstain and do not assess its candidate snapshots '
+                    'check by check. Otherwise do not rate abstain. Arrange '
+                    'response_contract.rows strings with '
+                    'response_contract.columns P/F/A symbols; flattening '
+                    'those strings row-major must exactly follow '
+                    'packet.examples. Do not infer hidden gold or unstated '
+                    'facts. Do not return reviewer or opaque example '
+                    'identifiers, explanations, Markdown, or any other keys.'
                 ),
                 prompt['instruction'],
             )
             compact = prompt['packet']
+            self.assertNotIn('output_schema', prompt)
+            self.assertEqual(
+                {
+                    'schema_version': (
+                        'context-clean-subagent-reviewer-matrix/1.0'
+                    ),
+                    'rows': (
+                        len(compact['examples']) // len(compact['checks'])
+                    ),
+                    'columns': len(compact['checks']),
+                    'symbols': {
+                        'P': {'label': 'pass', 'severity': 0},
+                        'F': {'label': 'fail', 'severity': 1},
+                        'A': {'label': 'abstain', 'severity': 0},
+                    },
+                    'example_order': 'packet.examples row-major',
+                    'canonical_output_schema_hash': (
+                        'sha256:' + hashlib.sha256(
+                            paths['reviewer_schema'].read_bytes(),
+                        ).hexdigest()
+                    ),
+                },
+                prompt['response_contract'],
+            )
             self.assertEqual(
                 [
                     'opaque_example_id',
@@ -560,6 +588,8 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             'boolean-index',
             'old-schema',
             'old-instruction',
+            'response-schema-hash',
+            'response-columns',
         ):
             with self.subTest(tamper=tamper), tempfile.TemporaryDirectory() as tmp:
                 paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
@@ -575,7 +605,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                     prompt['schema_version'] = (
                         'context-clean-subagent-reviewer-prompt/2.0'
                     )
-                else:
+                elif tamper == 'old-instruction':
                     prompt['instruction'] = (
                         'Return typed JSON only. Each example is '
                         '[opaque_example_id, view_index, check_index]; '
@@ -583,6 +613,12 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                         'checks[check_index] and return one rating per '
                         'packet example.'
                     )
+                elif tamper == 'response-schema-hash':
+                    prompt['response_contract'][
+                        'canonical_output_schema_hash'
+                    ] = 'sha256:' + '0' * 64
+                else:
+                    prompt['response_contract']['columns'] += 1
                 self._write_json(prompt_path, prompt)
                 self._rebind_reviewer_graph(
                     paths,

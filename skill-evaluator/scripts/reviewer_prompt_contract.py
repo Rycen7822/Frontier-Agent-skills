@@ -11,7 +11,25 @@ COMPACT_PACKET_SCHEMA = (
     "context-clean-subagent-reviewer-message-packet/1.0"
 )
 FULL_PACKET_SCHEMA = "context-clean-subagent-reviewer-packet/1.0"
+PROMPT_SCHEMA = "context-clean-subagent-reviewer-prompt/4.0"
+MATRIX_RESPONSE_SCHEMA = "context-clean-subagent-reviewer-matrix/1.0"
 TUPLE_FIELDS = ["opaque_example_id", "view_index", "check_index"]
+REVIEWER_INSTRUCTION = (
+    'Return exactly {"matrix":[...]} with no other keys or text. Each '
+    "[opaque_example_id, view_index, check_index] selects views[view_index] "
+    "and checks[check_index]. Rate pass only when authoritative visible "
+    "evidence satisfies the pass condition. Rate fail when authoritative "
+    "evidence violates the condition or omits required evidence; an ordinary "
+    "missing fact fails. When the view explicitly has evidence_state="
+    "conflicting_candidate_snapshots, authoritative_snapshot=null, and two "
+    "conflicting candidate snapshots, rate every example for that view "
+    "abstain and do not assess its candidate snapshots check by check. "
+    "Otherwise do not rate abstain. Arrange response_contract.rows strings "
+    "with response_contract.columns P/F/A symbols; flattening those strings "
+    "row-major must exactly follow packet.examples. Do not infer hidden gold "
+    "or unstated facts. Do not return reviewer or opaque example identifiers, "
+    "explanations, Markdown, or any other keys."
+)
 
 
 class PromptContractError(ValueError):
@@ -148,3 +166,64 @@ def expand_prompt_packet(
             "compact reviewer source packet hash differs"
         )
     return packet
+
+
+def _matrix_response_contract(
+    compact: dict[str, Any],
+    output_schema_hash: str,
+) -> dict[str, Any]:
+    """Bind row-major compact output to the canonical expanded schema."""
+    columns = len(compact["checks"])
+    rows, remainder = divmod(len(compact["examples"]), columns)
+    if rows < 1 or columns < 1 or remainder:
+        raise PromptContractError(
+            "reviewer packet is not one canonical row-major matrix"
+        )
+    return {
+        "schema_version": MATRIX_RESPONSE_SCHEMA,
+        "rows": rows,
+        "columns": columns,
+        "symbols": {
+            "P": {"label": "pass", "severity": 0},
+            "F": {"label": "fail", "severity": 1},
+            "A": {"label": "abstain", "severity": 0},
+        },
+        "example_order": "packet.examples row-major",
+        "canonical_output_schema_hash": output_schema_hash,
+    }
+
+
+def validate_reviewer_prompt(
+    prompt: dict[str, Any],
+    *,
+    campaign_id: str,
+    reviewer_id: str,
+    output_schema_hash: str,
+) -> dict[str, Any]:
+    """Validate one closed prompt and return its expanded semantic packet."""
+    _closed(
+        prompt,
+        {
+            "schema_version",
+            "reviewer_id",
+            "instruction",
+            "packet",
+            "response_contract",
+        },
+        "reviewer prompt",
+    )
+    expanded = expand_prompt_packet(
+        prompt["packet"],
+        campaign_id=campaign_id,
+    )
+    if (
+        prompt["schema_version"] != PROMPT_SCHEMA
+        or prompt["reviewer_id"] != reviewer_id
+        or prompt["instruction"] != REVIEWER_INSTRUCTION
+        or prompt["response_contract"]
+        != _matrix_response_contract(prompt["packet"], output_schema_hash)
+    ):
+        raise PromptContractError(
+            "reviewer prompt exposes or changes context"
+        )
+    return expanded

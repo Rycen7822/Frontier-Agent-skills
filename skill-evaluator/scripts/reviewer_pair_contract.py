@@ -14,7 +14,7 @@ from typing import Any
 from evidence_io import canonical_sha256, verify_self_hash
 from reviewer_prompt_contract import (
     PromptContractError,
-    expand_prompt_packet,
+    validate_reviewer_prompt,
 )
 
 
@@ -477,42 +477,16 @@ def _validate_receipt(
         receipt_path, "prompt.json", receipt["prompt_hash"],
         output_root=output_root, code="calibration.reviewer_prompt",
     )
-    _closed_object(
-        prompt,
-        {"schema_version", "reviewer_id", "instruction", "packet", "output_schema"},
-        code="calibration.reviewer_prompt",
-        label="reviewer prompt",
-    )
     try:
-        expanded_prompt_packet = expand_prompt_packet(
-            prompt["packet"],
+        expanded_prompt_packet = validate_reviewer_prompt(
+            prompt,
             campaign_id=campaign_id,
+            reviewer_id=receipt["reviewer_id"],
+            output_schema_hash=schema_binding["sha256"],
         )
     except PromptContractError as exc:
         _fail("calibration.reviewer_prompt", str(exc))
-    if (
-        prompt["schema_version"] != "context-clean-subagent-reviewer-prompt/3.0"
-        or prompt["reviewer_id"] != receipt["reviewer_id"]
-        or prompt["instruction"]
-        != (
-            "Return typed JSON only. Each example is "
-            "[opaque_example_id, view_index, check_index]; review "
-            "views[view_index] against checks[check_index]. Rate pass "
-            "only when authoritative visible evidence satisfies the "
-            "pass condition. Rate fail when authoritative evidence "
-            "violates the condition or omits required evidence; an "
-            "ordinary missing fact fails. Rate abstain only when the "
-            "view explicitly has evidence_state="
-            "conflicting_candidate_snapshots, authoritative_snapshot="
-            "null, and two conflicting candidate snapshots, so neither "
-            "pass nor fail is supportable. Do not infer hidden gold or "
-            "unstated facts. Return one rating per packet example in the "
-            "same order. Do not return reviewer or opaque example "
-            "identifiers."
-        )
-        or expanded_prompt_packet != packet
-        or prompt["output_schema"] != output_schema
-    ):
+    if expanded_prompt_packet != packet:
         _fail("calibration.reviewer_prompt", "reviewer prompt exposes or changes context")
 
     spawn_request, _ = _read_sibling_json(
