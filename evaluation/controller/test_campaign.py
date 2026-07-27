@@ -276,6 +276,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+from evaluation.controller import campaign as imported_campaign
 
 p = argparse.ArgumentParser()
 p.add_argument("plan")

@@ -33,6 +33,7 @@ from .artifacts import (
 
 
 REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+SOURCE_ROOT = str(Path(__file__).resolve().parents[2])
 MANIFEST_FIELDS = {
     "schema_version",
     "campaign_id",
@@ -876,7 +877,10 @@ def execute_compiled_plan(
                 cwd=study_root,
                 capture_output=True,
                 text=True,
-                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+                env={
+                    **os.environ,
+                    "PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": SOURCE_ROOT,
+                },
                 check=False,
             )
             if completed_process.returncode:
