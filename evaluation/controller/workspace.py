@@ -410,7 +410,7 @@ def _context_artifact(
         payload,
     )
     return {
-        "kind": kind,
+        "component_id": f"{kind}-{ordinal:03d}", "kind": kind,
         "source_path": source_path,
         "artifact": artifact,
         "content_sha256": artifact["sha256"],
