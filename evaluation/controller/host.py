@@ -44,6 +44,11 @@ REVIEWER_EFFORT = "max"
 REVIEWER_SERVICE_TIER = "priority"
 REVIEWER_FORK_TURNS = "none"
 AUTH_SOURCE = Path.home() / ".codex" / "auth.json"
+APP_SERVER_ARGS = (
+    "app-server", "--stdio",
+    "--strict-config", "-c",
+    'approvals_reviewer="user"',
+)
 _CODEX_RUNTIME_HASH_CACHE: dict[
     tuple[str, str],
     tuple[int, int, int, int, int, int, int],
@@ -1040,7 +1045,7 @@ class AppServer:
         }
         environment.update({"CODEX_HOME": str(codex_home), "HOME": str(codex_home.parent), "PYTHONDONTWRITEBYTECODE": "1"})
         self.process = subprocess.Popen(
-            [runtime["executable"]["path"], "app-server", "--stdio"],
+            [runtime["executable"]["path"], *APP_SERVER_ARGS],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

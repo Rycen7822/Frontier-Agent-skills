@@ -305,7 +305,7 @@ def test_app_server_preflight_validates_used_union_without_provider(
     runtime = {"executable": {"path": str(executable), "sha256": artifacts.file_hash(executable)}}
     with mock.patch.object(host.subprocess, "Popen") as popen:
         host.AppServer(tmp_path, runtime)
-    assert popen.call_args.args[0] == [str(executable), "app-server", "--stdio"]
+    assert popen.call_args.args[0] == [str(executable), *host.APP_SERVER_ARGS]
     assert "PATH" not in popen.call_args.kwargs["env"]
     waiting = object.__new__(host.AppServer)
     waiting.messages = []
