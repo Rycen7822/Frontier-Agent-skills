@@ -22,6 +22,7 @@ def request_entry(
     request_kind: str = "execute",
     study: str = "study-01",
     family: str = "scored",
+    subject_id: str = "subject-01",
     attempt_index: int = 0,
     predecessor_request_id: str | None = None,
     activation: str | dict = "required",
@@ -33,7 +34,7 @@ def request_entry(
         "study": study,
         "family": family,
         "request_kind": request_kind,
-        "subject_id": "subject-01",
+        "subject_id": subject_id,
         "arm": "candidate",
         "input_binding_hash": hash_value("1"),
         "output_schema_hash": (

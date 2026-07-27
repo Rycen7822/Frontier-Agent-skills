@@ -19,11 +19,11 @@ from .controller_testkit import (
 
 
 EXPECTED_CALLS = {
-    "d0-sqw": (20, 12, 0),
-    "d0-writing-plans": (16, 16, 0),
-    "d0-writing-plans-transfer": (12, 0, 4),
-    "formal-sqw": (96, 64, 0),
-    "formal-writing-plans": (56, 48, 0),
+    "d0-sqw": (20, 4, 0),
+    "d0-writing-plans": (16, 4, 0),
+    "d0-writing-plans-transfer": (8, 0, 0),
+    "formal-sqw": (96, 12, 0),
+    "formal-writing-plans": (56, 10, 0),
     "formal-writing-plans-transfer": (32, 0, 0),
 }
 
@@ -54,11 +54,7 @@ def test_fixed_profiles_close_frozen_call_partitions(
         len(case.applicable_profiles) * study.repeats
         for case in study.cases
     )
-    assert study.expected_model_grade == sum(
-        len(case.applicable_profiles) * study.repeats
-        for case in study.cases
-        if case.model_grading
-    )
+    assert study.expected_model_grade == sum(case.model_grading for case in study.cases)
 
 
 @pytest.mark.parametrize("profile", EXPECTED_CALLS)
@@ -200,7 +196,7 @@ def test_planner_receipts_bind_transfer_design(tmp_path: Path) -> None:
         transfer.expected_mechanism,
         transfer.repeats,
         len(transfer.cases),
-    ) == (12, 0, 4, 1, 4)
+    ) == (8, 0, 0, 1, 4)
     assert all(len(case.transfer_source["bindings"]) == 2 for case in transfer.cases)
 
 
@@ -210,43 +206,46 @@ def test_compiled_plan_bindings_close_exact_scored_inventory() -> None:
     entries = []
     requests = []
     for case in study.cases:
+        case_entries = []
+        batch_id = f"batch-{case.case_id}"
         for repeat in range(1, study.repeats + 1):
             for treatment in case.applicable_profiles:
                 slug = treatment.replace("/", "-")
                 subject = f"{profile}.{case.case_id}.r{repeat}.{slug}"
-                entries.append({
+                plan_entry = {
                     "entry_id": f"pe-{len(entries)}",
                     "case_id": case.case_id,
                     "repeat": repeat,
                     "disposition": "execute",
                     "model_grade_specs": (
-                        [{"grader_id": "blind-rubric"}]
+                        [{"grader_id": "blind-rubric", "batch_id": batch_id,
+                          "batch_owner_entry_id": ""}]
                         if case.model_grading
                         else []
                     ),
-                    "execute_case_payload": {
-                        "treatment": {"profile": treatment},
-                    },
-                })
-                for kind in (
-                    ["execute", "model_grade"]
-                    if case.model_grading
-                    else ["execute"]
-                ):
-                    item = request_entry(
-                        f"d0.{subject}.{kind}",
-                        request_kind=kind,
-                        study=study.study_id,
-                    )
-                    item["subject_id"] = subject
-                    requests.append(item)
+                    "execute_case_payload": {"treatment": {"profile": treatment}},
+                }
+                entries.append(plan_entry)
+                case_entries.append(plan_entry)
+                requests.append(request_entry(
+                    f"d0.{subject}.execute", request_kind="execute",
+                    study=study.study_id, subject_id=subject,
+                ))
+        if case.model_grading:
+            owner = case_entries[-1]["entry_id"]
+            for plan_entry in case_entries:
+                plan_entry["model_grade_specs"][0]["batch_owner_entry_id"] = owner
+            requests.append(request_entry(
+                f"d0.{batch_id}.model-grade", request_kind="model_grade",
+                study=study.study_id, subject_id=batch_id,
+            ))
     bindings = studies.scored_plan_bindings(
         profile,
         {"entries": entries},
         {"required_requests": requests},
     )
     assert len(bindings) == study.expected_execute
-    assert sum(len(item["request_ids"]) for item in bindings) == 32
+    assert sum(len(item["request_ids"]) for item in bindings) == 20
     with pytest.raises(ValueError, match="provider partition differs"):
         studies.scored_plan_bindings(
             profile,
@@ -285,7 +284,7 @@ def test_transfer_plan_bindings_use_planner_case_identity() -> None:
         {"entries": entries},
         {"required_requests": requests},
     )
-    assert len(bindings) == 12
+    assert len(bindings) == 8
     assert all(len(item["request_ids"]) == 1 for item in bindings)
 
 
@@ -503,7 +502,7 @@ def test_count_pair_gate_compares_both_values() -> None:
 
 @pytest.mark.parametrize(
     ("phase", "counts"),
-    [("d0", (76, 8, 4)), ("formal", (296, 8, 4))],
+    [("d0", (52, 8, 4)), ("formal", (206, 8, 4))],
 )
 def test_provider_budget_contract_is_exact(
     tmp_path: Path,

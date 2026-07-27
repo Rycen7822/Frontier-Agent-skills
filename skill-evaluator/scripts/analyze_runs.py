@@ -1782,20 +1782,31 @@ def _verified_v4_artifact(
 
 
 def _model_v4_output(
-    receipt: dict[str, Any],
-    reference: dict[str, Any],
     entry: dict[str, Any],
     requirements: list[dict[str, Any]],
-    artifacts: dict[str, dict[str, Any]],
     registry: dict[str, dict[str, Any]],
-) -> tuple[dict[str, Any], str, dict[str, str]]:
+    attempts_by_entry: dict[str, dict[str, Any]],
+    grader_id: str,
+) -> tuple[dict[str, Any], str, dict[str, str], str]:
     matching_specs = [
         item for item in entry["model_grade_specs"]
-        if item["grader_id"] == reference["grader_id"]
+        if item["grader_id"] == grader_id
     ]
     if len(matching_specs) != 1:
         raise ValueError("model grader lacks one bound plan specification")
     model_spec = matching_specs[0]
+    owner = attempts_by_entry.get(model_spec["batch_owner_entry_id"])
+    if owner is None:
+        raise ValueError("model grader batch owner receipt is absent")
+    receipt = owner["receipt"]
+    artifacts = owner["artifacts"]
+    references = [
+        item for item in receipt["grader_outputs"]
+        if item["kind"] == "model" and item["grader_id"] == grader_id
+    ]
+    if len(references) != 1:
+        raise ValueError("model grader batch owner output is ambiguous")
+    reference = references[0]
     if reference["schedule_hash"] != model_spec["schedule_hash"]:
         raise ValueError("model grader schedule hash differs from the plan")
     blinded_artifact = _verified_v4_artifact(
@@ -1810,19 +1821,55 @@ def _model_v4_output(
         raise ValueError(
             f"model blinded input is invalid JSON: {exc.msg}",
         ) from None
-    if (
-        not isinstance(blinded, dict)
-        or sorted(blinded) != sorted(model_spec["blinded_projection"])
-    ):
-        raise ValueError("model blinded input differs from the plan projection")
+    batch_items = []
+    for member_id in model_spec["batch_entry_ids"]:
+        member = attempts_by_entry.get(member_id)
+        if member is None:
+            raise ValueError("model grader batch member receipt is absent")
+        member_entry = member["entry"]
+        member_specs = [
+            item for item in member_entry["model_grade_specs"]
+            if item["grader_id"] == grader_id
+        ]
+        if (
+            len(member_specs) != 1
+            or any(
+                member_specs[0][field] != model_spec[field]
+                for field in (
+                    "batch_id",
+                    "batch_entry_ids",
+                    "batch_owner_entry_id",
+                    "batch_hash",
+                    "schedule_hash",
+                )
+            )
+        ):
+            raise ValueError("model grader batch member differs from the plan")
+        result = model_transport.execution_result(member["receipt"])
+        member_blinded = model_transport.blinded_execution(
+            member_entry,
+            result,
+        )
+        if sorted(member_blinded) != sorted(model_spec["blinded_projection"]):
+            raise ValueError(
+                "model blinded input differs from the plan projection",
+            )
+        batch_items.append(model_transport.execution_item(
+            member_blinded,
+            grader_id=grader_id,
+            entry_id=member_id,
+            read_artifact=lambda item, bound=member: _verified_v4_artifact(
+                item,
+                bound["artifacts"],
+                "model grader evidence",
+            )["text"],
+        ))
     batch = model_transport.execution_batch(
-        blinded,
-        grader_id=reference["grader_id"],
-        entry_id=entry["entry_id"],
-        read_artifact=lambda item: _verified_v4_artifact(
-            item, artifacts, "model grader evidence",
-        )["text"],
+        batch_items,
+        batch_id=model_spec["batch_id"],
     )
+    if blinded != batch:
+        raise ValueError("model blinded batch differs from member receipts")
 
     requests = [
         item for item in receipt["host_protocol"]["requests"]
@@ -1900,12 +1947,16 @@ def _model_v4_output(
             f"model grader output is invalid JSON: {exc.msg}",
         ) from None
     normalized, pointers = model_transport.normalize_judgment(
-        output, batch=batch, requirements=requirements,
+        output,
+        batch=batch,
+        requirements=requirements,
+        item_id=entry["entry_id"],
     )
     return (
         validate_grader_output(normalized, requirements, artifacts),
         output_reference["path"],
         pointers,
+        owner["row"]["artifact_dir"],
     )
 
 
@@ -1977,32 +2028,37 @@ def _read_v4_grades(
     artifacts: dict[str, dict[str, Any]],
     spec: dict[str, Any],
     registry: dict[str, dict[str, Any]],
+    attempts_by_entry: dict[str, dict[str, Any]],
 ) -> tuple[dict[str, bool], dict[str, dict[str, Any]]]:
     scenario = entry["execute_case_payload"]["case"]
     requirements = scenario["requirements"]
     expected_graders = set(entry["grader_ids"])
-    observed_graders = [
-        output["grader_id"] for output in receipt["grader_outputs"]
-    ]
-    if (
-        len(observed_graders) != len(set(observed_graders))
-        or set(observed_graders) != expected_graders
-    ):
-        raise ValueError("receipt grader outputs differ from the plan entry")
     declarations = {
         item["grader_id"]: item for item in spec["graders"]
     }
     checks: dict[str, bool] = {}
     locators: dict[str, dict[str, Any]] = {}
-    for reference in receipt["grader_outputs"]:
+    consumed_references = 0
+    for grader_id in entry["grader_ids"]:
         selected = [
             requirement for requirement in requirements
-            if requirement["grader_id"] == reference["grader_id"]
+            if requirement["grader_id"] == grader_id
         ]
-        declaration = declarations.get(reference["grader_id"])
-        if declaration is None or declaration["type"] != reference["kind"]:
-            raise ValueError("receipt grader kind differs from the spec")
-        if reference["kind"] == "deterministic":
+        declaration = declarations.get(grader_id)
+        if declaration is None:
+            raise ValueError("plan grader is absent from the spec")
+        references = [
+            item for item in receipt["grader_outputs"]
+            if item["grader_id"] == grader_id
+        ]
+        artifact_dir = None
+        if declaration["type"] == "deterministic":
+            if len(references) != 1 or references[0]["kind"] != "deterministic":
+                raise ValueError(
+                    "receipt deterministic grader output differs from the plan",
+                )
+            reference = references[0]
+            consumed_references += 1
             normalized, output_path, pointers = _deterministic_v4_output(
                 reference,
                 declaration,
@@ -2011,13 +2067,34 @@ def _read_v4_grades(
                 spec["execution"]["credential_policy"],
             )
         else:
-            normalized, output_path, pointers = _model_v4_output(
-                receipt,
-                reference,
+            model_specs = [
+                item for item in entry["model_grade_specs"]
+                if item["grader_id"] == grader_id
+            ]
+            if len(model_specs) != 1:
+                raise ValueError("plan model grader batch is ambiguous")
+            owns_batch = (
+                model_specs[0]["batch_owner_entry_id"] == entry["entry_id"]
+            )
+            if (
+                len(references) != int(owns_batch)
+                or any(item["kind"] != "model" for item in references)
+            ):
+                raise ValueError(
+                    "receipt model grader output differs from batch ownership",
+                )
+            consumed_references += len(references)
+            (
+                normalized,
+                output_path,
+                pointers,
+                artifact_dir,
+            ) = _model_v4_output(
                 entry,
                 selected,
-                artifacts,
                 registry,
+                attempts_by_entry,
+                grader_id,
             )
         if normalized["grader_failure"]:
             raise ValueError("grader output reports apparatus failure")
@@ -2029,7 +2106,17 @@ def _read_v4_grades(
                 "kind": "json_pointer",
                 "artifact": output_path,
                 "json_pointer": pointers[check_id],
+                **(
+                    {"artifact_dir": artifact_dir}
+                    if artifact_dir is not None
+                    else {}
+                ),
             }
+    if (
+        len(entry["grader_ids"]) != len(expected_graders)
+        or consumed_references != len(receipt["grader_outputs"])
+    ):
+        raise ValueError("receipt grader outputs differ from the plan entry")
     expected_checks = {item["check_id"] for item in requirements}
     if set(checks) != expected_checks:
         raise ValueError("normalized grader checks do not cover the scenario")
@@ -2116,6 +2203,7 @@ def _record_from_v4_receipt(
     spec: dict[str, Any],
     registry: dict[str, dict[str, Any]],
     bound_evidence: dict[str, Any],
+    attempts_by_entry: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     run = receipt["run"]
     usage = receipt["usage"]["records"]
@@ -2133,7 +2221,14 @@ def _record_from_v4_receipt(
                 "model grader attempt is outside the calibration window",
             )
     checks, check_locators = (
-        _read_v4_grades(receipt, entry, artifacts, spec, registry)
+        _read_v4_grades(
+            receipt,
+            entry,
+            artifacts,
+            spec,
+            registry,
+            attempts_by_entry,
+        )
         if valid else ({}, {})
     )
     requirements = entry["execute_case_payload"]["case"]["requirements"]
@@ -2286,31 +2381,45 @@ def _collect_v5_evidence(
             continue
         attempt = {
             "row": row,
+            "entry": entry,
             "receipt": receipt,
             "receipt_path": receipt_path,
             "artifacts": artifacts,
             "record": None,
             "analysis_error": None,
         }
-        if receipt["run"]["valid"] is True:
+        attempts[entry["entry_id"]].append(attempt)
+
+    attempts_by_entry = {}
+    for entry_id, candidates in attempts.items():
+        valid = [
+            item for item in candidates
+            if item["receipt"]["run"]["valid"] is True
+        ]
+        if len(valid) == 1:
+            attempts_by_entry[entry_id] = valid[0]
+    for candidates in attempts.values():
+        for attempt in candidates:
+            if attempt["receipt"]["run"]["valid"] is not True:
+                continue
             try:
                 attempt["record"] = _record_from_v4_receipt(
-                    receipt,
-                    entry,
-                    artifacts,
+                    attempt["receipt"],
+                    attempt["entry"],
+                    attempt["artifacts"],
                     spec,
                     registry,
                     bound_evidence,
+                    attempts_by_entry,
                 )
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 attempt["analysis_error"] = str(exc)
                 receipt_issues.append({
-                    "row": row,
-                    "entry": entry,
+                    "row": attempt["row"],
+                    "entry": attempt["entry"],
                     "status": "invalid",
                     "issue": str(exc),
                 })
-        attempts[entry["entry_id"]].append(attempt)
 
     missing_entries: list[str] = []
     duplicate_terminal_entries: list[str] = []
@@ -3940,11 +4049,16 @@ def _grader_failure_locator(
     )
     if locator is None:
         raise ValueError("failed requirement has no normalized grader check")
+    artifact_dir = locator.get(
+        "artifact_dir",
+        attempt["row"]["artifact_dir"],
+    )
     return {
-        **locator,
-        "artifact": (
-            f"{attempt['row']['artifact_dir']}/{locator['artifact']}"
-        ),
+        **{
+            key: value for key, value in locator.items()
+            if key != "artifact_dir"
+        },
+        "artifact": f"{artifact_dir}/{locator['artifact']}",
     }
 
 

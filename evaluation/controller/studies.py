@@ -827,24 +827,23 @@ def scored_plan_bindings(
             if not marker or not planner_repeat.isdigit():
                 raise ValueError("transfer case identity is invalid")
             repeat = int(planner_repeat)
-        subject = (
-            f"{profile}.{case_id}.r{repeat}."
-            f"{profile_name.replace('/', '-')}"
-        )
+        subject = f"{profile}.{case_id}.r{repeat}.{profile_name.replace('/', '-')}"
         selected = by_subject.get(subject, [])
-        expected_kinds = ["execute"] + (["model_grade"] if item["model_grade_specs"] else [])
         indexed = {entry["request_kind"]: entry for entry in selected}
-        if (
-            len(indexed) != len(selected)
-            or set(indexed) != set(expected_kinds)
-        ):
+        if len(indexed) != len(selected) or set(indexed) != {"execute"}:
             raise ValueError("compiled entry provider partition differs")
-        request_ids = [indexed[kind]["request_id"] for kind in expected_kinds]
+        request_ids = [indexed["execute"]["request_id"]]
+        for spec in item["model_grade_specs"]:
+            if spec["batch_owner_entry_id"] != item["entry_id"]:
+                continue
+            batch_requests = by_subject.get(spec["batch_id"], [])
+            if len(batch_requests) != 1 or (
+                batch_requests[0]["request_kind"] != "model_grade"
+            ):
+                raise ValueError("compiled model-grade batch partition differs")
+            request_ids.append(batch_requests[0]["request_id"])
         observed.update(request_ids)
-        bindings.append({
-            "entry_id": item["entry_id"],
-            "request_ids": request_ids,
-        })
+        bindings.append({"entry_id": item["entry_id"], "request_ids": request_ids})
     expected_ids = {item["request_id"] for item in requests}
     if len(bindings) != design.expected_execute or observed != expected_ids:
         raise ValueError("compiled plan does not close scored request inventory")
