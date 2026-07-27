@@ -302,12 +302,7 @@ def test_app_server_preflight_validates_used_union_without_provider(
         source_proof.APP_SERVER_SCHEMA_REQUIREMENTS,
     )
     executable = Path(sys.executable).resolve()
-    runtime = {
-        "executable": {
-            "path": str(executable),
-            "sha256": artifacts.file_hash(executable),
-        },
-    }
+    runtime = {"executable": {"path": str(executable), "sha256": artifacts.file_hash(executable)}}
     with mock.patch.object(host.subprocess, "Popen") as popen:
         host.AppServer(tmp_path, runtime)
     assert popen.call_args.args[0] == [str(executable), "app-server", "--stdio"]
@@ -318,6 +313,13 @@ def test_app_server_preflight_validates_used_union_without_provider(
     waiting.process = mock.Mock()
     waiting.process.poll.return_value = None
     assert waiting.wait_for("turn/completed", 0, timeout=0) is None
+    waiting.process.stdout = [json.dumps({"id": 7, "method": "item/commandExecution/requestApproval"}), json.dumps({"id": 1, "result": {}})]
+    waiting.message_times, waiting.responses, waiting._send = [], {}, mock.Mock()
+    waiting._read_stdout()
+    waiting._send.assert_called_once_with({"jsonrpc": "2.0", "id": 7, "result": {"decision": "accept"}})
+    assert 7 not in waiting.responses and 1 in waiting.responses
+    assert host.server_request_result("item/commandExecution/requestApproval", {"additionalPermissions": {"network": {}}}) == {"decision": "decline"}
+    assert host.server_request_result("item/permissions/requestApproval", {}) == {"permissions": {}}
 
     fake_server = mock.Mock()
     fake_server.messages = []
@@ -363,12 +365,7 @@ def test_app_server_preflight_validates_used_union_without_provider(
     cached = tmp_path / "cached-codex"
     cached.write_bytes(b"#!/bin/sh\nexit 0\n")
     cached.chmod(0o755)
-    cached_runtime = {
-        "executable": {
-            "path": str(cached),
-            "sha256": artifacts.file_hash(cached),
-        },
-    }
+    cached_runtime = {"executable": {"path": str(cached), "sha256": artifacts.file_hash(cached)}}
     host.validate_codex_runtime(cached_runtime)
     cached.write_bytes(b"#!/bin/sh\nexit 1\n")
     with pytest.raises(host.HostError, match="identity differs"):

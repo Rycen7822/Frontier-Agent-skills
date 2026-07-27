@@ -85,6 +85,14 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def server_request_result(method: str, params: dict[str, Any]) -> dict[str, Any]:
+    if method == "item/permissions/requestApproval":
+        return {"permissions": {}}
+    approval = method in ("item/commandExecution/requestApproval", "item/fileChange/requestApproval")
+    escalation = any(params.get(key) for key in ("additionalPermissions", "networkApprovalContext", "grantRoot"))
+    return {"decision": "decline" if escalation else "accept"} if approval else {}
+
+
 def all_strings(value: Any) -> Iterator[str]:
     if isinstance(value, str):
         yield value
@@ -1030,11 +1038,7 @@ class AppServer:
             )
             if name in os.environ
         }
-        environment.update({
-            "CODEX_HOME": str(codex_home),
-            "HOME": str(codex_home.parent),
-            "PYTHONDONTWRITEBYTECODE": "1",
-        })
+        environment.update({"CODEX_HOME": str(codex_home), "HOME": str(codex_home.parent), "PYTHONDONTWRITEBYTECODE": "1"})
         self.process = subprocess.Popen(
             [runtime["executable"]["path"], "app-server", "--stdio"],
             stdin=subprocess.PIPE,
@@ -1068,7 +1072,10 @@ class AppServer:
             with self.condition:
                 self.messages.append(message)
                 self.message_times.append(time.monotonic())
-                if isinstance(message.get("id"), int):
+                if isinstance(message.get("id"), int) and isinstance(message.get("method"), str):
+                    params = message.get("params") if isinstance(message.get("params"), dict) else {}
+                    self._send({"jsonrpc": "2.0", "id": message["id"], "result": server_request_result(message["method"], params)})
+                elif isinstance(message.get("id"), int):
                     self.responses[message["id"]] = message
                 self.condition.notify_all()
 
@@ -1097,12 +1104,7 @@ class AppServer:
     ) -> dict[str, Any]:
         request_id = self.next_id
         self.next_id += 1
-        self._send({
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "method": method,
-            "params": params,
-        })
+        self._send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
         deadline = time.monotonic() + timeout
         with self.condition:
             while request_id not in self.responses:
@@ -1267,10 +1269,7 @@ def run_codex_turn(
                         "title": "Frontier SE3 Host",
                         "version": "1.0.0",
                     },
-                    "capabilities": {
-                        "experimentalApi": True,
-                        "requestAttestation": False,
-                    },
+                    "capabilities": {"experimentalApi": True, "requestAttestation": False},
                 },
             )
             server.notify("initialized")
@@ -1278,11 +1277,7 @@ def run_codex_turn(
             if explicit_skill is not None:
                 if explicit_skill.is_symlink() or not explicit_skill.is_file():
                     raise HostError("explicit skill entrypoint is unavailable")
-                inputs.append({
-                    "type": "skill",
-                    "name": explicit_skill.parent.name,
-                    "path": str(explicit_skill.resolve()),
-                })
+                inputs.append({"type": "skill", "name": explicit_skill.parent.name, "path": str(explicit_skill.resolve())})
             inputs.append({"type": "text", "text": prompt, "text_elements": []})
             thread = server.request(
                 "thread/start",
