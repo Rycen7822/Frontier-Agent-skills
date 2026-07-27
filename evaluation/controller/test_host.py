@@ -337,15 +337,11 @@ def test_app_server_preflight_validates_used_union_without_provider(
 
     def timed_out_wait(_method, _start, *, timeout):
         assert timeout == 600
-        fake_server.messages.append({
-            "method": "model/safetyBuffering/updated",
-            "params": {
-                "threadId": "thread-a",
-                "turnId": "turn-a",
-                "showBufferingUi": True,
-            },
-        })
-        fake_server.message_times.append(host.time.monotonic())
+        fake_server.messages.extend([
+            {"method": "model/safetyBuffering/updated", "params": {"threadId": "thread-a", "turnId": "turn-a", "showBufferingUi": True}},
+            {"method": "error", "params": {"turnId": "turn-a", "willRetry": True, "error": {"message": "retry stream disconnected", "codexErrorInfo": {"responseStreamDisconnected": {}}}}},
+        ])
+        fake_server.message_times.extend([host.time.monotonic()] * 2)
         return None
     fake_server.wait_for.side_effect = timed_out_wait
     with mock.patch.object(host, "AppServer", return_value=fake_server):
@@ -359,7 +355,7 @@ def test_app_server_preflight_validates_used_union_without_provider(
         )
     assert timed_out["timed_out"]
     assert timed_out["usage"] is None
-    assert timed_out["terminal"]["error"]["message"].endswith("model/safetyBuffering/updated")
+    assert ("last_error='retry stream disconnected'; willRetry=True" in timed_out["terminal"]["error"]["message"], timed_out["terminal"]["error"]["codexErrorInfo"]) == (True, {"responseStreamDisconnected": {}})
     assert timed_out["host_safety_review"]["host_safety_review_count"] == 1
     fake_server.close.assert_called_once_with()
     for call in fake_server.request.call_args_list:

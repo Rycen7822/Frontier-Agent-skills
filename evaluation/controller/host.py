@@ -1330,10 +1330,10 @@ def run_codex_turn(
                 turn_id=turn_id,
             )
             if completed is None:
-                methods = ",".join(sorted({
-                    item["method"] for item in trace if isinstance(item.get("method"), str)
-                }))
-                terminal["error"] = {"message": f"Codex model task timed out; app-server methods={methods}"}
+                errors = [item.get("params", {}) for item in trace if item.get("method") == "error"]
+                methods = ",".join(sorted({item["method"] for item in trace if isinstance(item.get("method"), str)}))
+                detail = errors[-1].get("error", {}) if errors else {}
+                terminal["error"] = {**detail, "message": f"Codex model task timed out; last_error={detail.get('message')!r}; willRetry={errors[-1].get('willRetry') if errors else None}; methods={methods}"}
             ended = time.monotonic()
             return {
                 "terminal": terminal,
