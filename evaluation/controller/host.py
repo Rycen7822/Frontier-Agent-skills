@@ -21,6 +21,7 @@ from .artifacts import (
     StateError,
     artifact_binding,
     assert_nofollow,
+    atomic_write,
     canonical_bytes,
     canonical_hash,
     file_hash,
@@ -674,9 +675,9 @@ def base_result(
 
 def _synthetic_artifact(
     request: dict[str, Any],
-    payload: dict[str, Any],
-    *,
+    payload: dict[str, Any], *,
     probe: bool = False,
+    artifact_root: Path | None = None,
 ) -> dict[str, str]:
     envelope = request["envelope"]
     name = (
@@ -686,6 +687,8 @@ def _synthetic_artifact(
         else
         f"host-observation-{envelope['entry_id']}-{envelope['attempt']}.json"
     )
+    if artifact_root is not None:
+        atomic_write(artifact_root / name, canonical_bytes(payload), replace=False)
     return {
         "path": f"workspace/{name}",
         "sha256": canonical_hash(payload),
@@ -774,6 +777,7 @@ def _fake_principal(
 def execute_fake(
     request: dict[str, Any],
     host: dict[str, Any],
+    artifact_root: Path | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     payload = request["payload"]
     turns = payload["turns"]
@@ -814,19 +818,11 @@ def execute_fake(
         "outcome": "complete",
         "safety": "preserved",
     }
-    artifact = _synthetic_artifact(request, observation)
-    claims = [
-        "outcome-complete",
-        "safety-preserved",
-        "artifact-contract",
-        "authority-preserved",
-        "content-contract",
-        "no-external-effect",
-        "no-test-tampering",
-        "no-workflow-residue",
-        "read-only-preserved",
-        "verification-passes",
-    ]
+    artifact = _synthetic_artifact(request, observation, artifact_root=artifact_root)
+    claims = (
+        "outcome-complete", "safety-preserved", "artifact-contract", "authority-preserved", "content-contract",
+        "no-external-effect", "no-test-tampering", "no-workflow-residue", "read-only-preserved", "verification-passes",
+    )
     result = base_result(
         request,
         artifacts=[artifact],
@@ -861,12 +857,16 @@ def execute_fake(
     return events, result
 
 
-def probe_result(request: dict[str, Any], host: dict[str, Any]) -> dict[str, Any]:
+def probe_result(
+    request: dict[str, Any], host: dict[str, Any], artifact_root: Path | None = None,
+) -> dict[str, Any]:
     payload = {
         "capability": request["payload"].get("capability", "cleanup"),
         "status": "pass",
     }
-    artifact = _synthetic_artifact(request, payload, probe=True)
+    artifact = _synthetic_artifact(
+        request, payload, probe=True, artifact_root=artifact_root,
+    )
     result = base_result(
         request,
         artifacts=[artifact],
@@ -887,12 +887,13 @@ def probe_result(request: dict[str, Any], host: dict[str, Any]) -> dict[str, Any
 def pure_fake_records(
     request: dict[str, Any],
     host: dict[str, Any],
+    artifact_root: Path | None = None,
 ) -> list[dict[str, Any]]:
     validate_request(request)
     if request["envelope"]["request_kind"] == "execute_case":
-        events, result = execute_fake(request, host)
+        events, result = execute_fake(request, host, artifact_root)
         return [*events, result]
-    return [probe_result(request, host)]
+    return [probe_result(request, host, artifact_root)]
 
 
 def structured_host_error_code(terminal: dict[str, Any]) -> str | None:

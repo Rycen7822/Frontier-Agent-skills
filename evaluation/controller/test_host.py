@@ -98,8 +98,8 @@ def test_transient_classification_uses_only_structured_host_codes() -> None:
     "kind",
     ["execute_case", "model_grade", "probe_capability", "cleanup"],
 )
-def test_four_host_request_kinds_have_one_terminal_result(kind: str) -> None:
-    records = host.pure_fake_records(host_request(kind), host_manifest())
+def test_four_host_request_kinds_have_one_terminal_result(kind: str, tmp_path: Path) -> None:
+    records = host.pure_fake_records(host_request(kind), host_manifest(), tmp_path)
     terminal = [
         item
         for item in records
@@ -109,6 +109,7 @@ def test_four_host_request_kinds_have_one_terminal_result(kind: str) -> None:
     assert terminal[0]["terminal"] is True
     assert terminal[0]["context"]["status"] == "captured"
     assert terminal[0]["cleanup"]["status"] == "clean"
+    assert all(artifacts.file_hash(tmp_path / Path(item["path"]).name) == item["sha256"] for item in terminal[0]["artifacts"])
 
 
 def test_identity_envelope_rejects_nul_without_shell_transport() -> None:

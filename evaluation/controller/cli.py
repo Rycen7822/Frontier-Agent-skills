@@ -36,7 +36,7 @@ def _run_host(arguments: argparse.Namespace) -> int:
     request = _request()
     manifest = load_json(Path(arguments.host_manifest))
     if arguments.synthetic:
-        records = host.pure_fake_records(request, manifest)
+        records = host.pure_fake_records(request, manifest, Path.cwd())
     elif request["envelope"]["request_kind"] == "execute_case":
         events, result = workspace.execute_codex(
             Path.cwd(),
@@ -62,7 +62,7 @@ def _run_host(arguments: argparse.Namespace) -> int:
             ),
         ]
     else:
-        records = host.pure_fake_records(request, manifest)
+        records = host.pure_fake_records(request, manifest, Path.cwd())
     for record in records:
         _emit(record)
     return 0
