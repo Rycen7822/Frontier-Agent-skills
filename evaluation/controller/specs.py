@@ -205,8 +205,6 @@ def sqw_cases() -> list[CaseDefinition]:
             protected_paths=(f"fixtures/sqw-{name}/test_app.py",),
             verification_argv=(
                 "python3",
-                "-m",
-                "unittest",
                 f"fixtures/sqw-{name}/test_app.py",
             ),
             split="dev" if index < 8 else "regression",
