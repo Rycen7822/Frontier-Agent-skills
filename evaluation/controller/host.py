@@ -1121,10 +1121,8 @@ class AppServer:
             raise HostError(f"Codex app-server rejected {method}")
         result = response.get("result")
         return result if isinstance(result, dict) else {}
-
     def notify(self, method: str) -> None:
         self._send({"jsonrpc": "2.0", "method": method})
-
     def wait_for(
         self,
         method: str,
@@ -1149,7 +1147,9 @@ class AppServer:
             for message in batch:
                 if message.get("method") == method:
                     return message
-
+                params = message.get("params", {})
+                if message.get("method") == "error" and params.get("turnId") and params.get("willRetry") is False:
+                    return {"params": {"turn": {"status": "failed", "error": params.get("error")}}}
     def close(self) -> None:
         if self.process.poll() is None:
             self.process.terminate()
@@ -1330,9 +1330,9 @@ def run_codex_turn(
                 turn_id=turn_id,
             )
             if completed is None:
-                methods = ",".join(sorted(
+                methods = ",".join(sorted({
                     item["method"] for item in trace if isinstance(item.get("method"), str)
-                ))
+                }))
                 terminal["error"] = {"message": f"Codex model task timed out; app-server methods={methods}"}
             ended = time.monotonic()
             return {
