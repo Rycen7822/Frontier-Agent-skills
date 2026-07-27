@@ -71,6 +71,7 @@ CONTROLLER_FILES = {
     "model_grader_prompt.md",
     "model_judgment.schema.json",
     "reports.py",
+    "reviewer_prompt.txt",
     "source_proof.py",
     "specs.py",
     "studies.py",
