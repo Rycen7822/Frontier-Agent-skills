@@ -1408,7 +1408,7 @@ def mapped_ratings(
     parsed = positional_ratings(response, mapping_items)
     return [
         {
-            "example_id": mapping["example_id"],
+            "example_id": mapping["opaque_example_id"],
             "reviewer_id": reviewer_id,
             "principal_id": principal_id,
             "label": rating["label"],
