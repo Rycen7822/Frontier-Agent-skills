@@ -204,3 +204,19 @@ def test_quality_proof_binds_tracked_adapter(tmp_path: Path) -> None:
     assert proof["leakage_probes"][0]["artifact"]["path"] == (
         "host/adapter-binding.json"
     )
+
+
+def test_mapped_ratings_preserve_opaque_reviewer_identity() -> None:
+    rows = studies.mapped_ratings(
+        {
+            "schema_version": studies.RATINGS_SCHEMA,
+            "ratings": [{"label": "pass", "severity": 0}],
+        },
+        [{
+            "opaque_example_id": "opaque-bound-id",
+            "example_id": "hidden-internal-id",
+        }],
+        reviewer_id="reviewer-one",
+        principal_id="principal-one",
+    )
+    assert rows[0]["example_id"] == "opaque-bound-id"
