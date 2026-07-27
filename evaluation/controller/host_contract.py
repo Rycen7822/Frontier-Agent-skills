@@ -286,3 +286,62 @@ def materialize(
         catalog_hash=catalog_hash,
     )
     return manifest
+
+
+def rebind_scenarios(
+    scenarios: list[dict[str, Any]],
+    host_manifest_hash: str,
+) -> list[dict[str, Any]]:
+    if not HASH_PATTERN.fullmatch(host_manifest_hash):
+        raise ValueError("host manifest hash is invalid")
+    rebound = copy.deepcopy(scenarios)
+    for scenario in rebound:
+        fixture = scenario.get("fixture")
+        if not isinstance(fixture, dict):
+            raise ValueError("scenario fixture is invalid")
+        fixture["manifest"] = "host-manifest-v1.json"
+        fixture["sha256"] = host_manifest_hash
+    return rebound
+
+
+def rebind_spec(
+    spec: dict[str, Any],
+    *,
+    host_manifest_hash: str,
+    scenarios_hash: str,
+    holdout_payload_hash: str,
+    holdout_manifest_hash: str,
+    host_asset_hashes: dict[str, str],
+) -> dict[str, Any]:
+    hashes = {
+        host_manifest_hash,
+        scenarios_hash,
+        holdout_payload_hash,
+        holdout_manifest_hash,
+        *host_asset_hashes.values(),
+    }
+    if (
+        set(host_asset_hashes) != set(HOST_ASSETS)
+        or any(not HASH_PATTERN.fullmatch(item) for item in hashes)
+    ):
+        raise ValueError("study host binding is invalid")
+    rebound = copy.deepcopy(spec)
+    rebound["host"]["manifest"]["sha256"] = host_manifest_hash
+    suite = rebound["suite"]
+    suite["scenarios"]["sha256"] = scenarios_hash
+    suite["public_scenarios"]["sha256"] = scenarios_hash
+    suite["holdout"]["payload"]["sha256"] = holdout_payload_hash
+    suite["holdout"]["manifest"]["sha256"] = holdout_manifest_hash
+    for grader in rebound["graders"]:
+        if grader["type"] == "deterministic":
+            grader["verifier"]["sha256"] = host_asset_hashes[
+                "host_grader.py"
+            ]
+        elif grader["type"] == "model":
+            grader["prompt"]["sha256"] = host_asset_hashes[
+                "model_grader_prompt.md"
+            ]
+            grader["output_schema"]["sha256"] = host_asset_hashes[
+                "model_judgment.schema.json"
+            ]
+    return rebound
