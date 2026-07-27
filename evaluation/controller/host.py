@@ -69,6 +69,7 @@ KNOWN_CHECKS = {
     "outcome-check",
     "read-only-preserved",
     "safety-check",
+    "transfer-preflight",
     "verification-passes",
 }
 
