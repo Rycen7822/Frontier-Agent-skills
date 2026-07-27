@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from . import artifacts, campaign, source_proof
+from . import artifacts, campaign, reports, source_proof
 from .controller_testkit import (
     bundle_source_tree,
     controller_tree,
@@ -105,6 +105,74 @@ def test_tracked_controller_matches_frozen_inventory() -> None:
     assert {
         path.name for path in source_proof.controller_sources(root)
     } == source_proof.CONTROLLER_FILES
+
+
+def test_controller_freeze_binds_live_codex_runtime(tmp_path: Path) -> None:
+    controller = controller_tree(tmp_path / "controller")
+    plugin = tmp_path / "plugin"
+    evaluator = tmp_path / "evaluator"
+    (evaluator / "scripts").mkdir(parents=True)
+    (evaluator / "scripts/analyze_runs.py").write_text(
+        "pass\n",
+        encoding="utf-8",
+    )
+    plugin.mkdir()
+    (plugin / "SKILL.md").write_text("skill\n", encoding="utf-8")
+    runtime_path = Path("/bin/true").resolve()
+    runtime = {
+        "executable": {
+            "path": str(runtime_path),
+            "sha256": artifacts.file_hash(runtime_path),
+        }
+    }
+    preflight = artifacts.self_hashed({
+        "schema_version": "frontier-app-server-preflight/2.0",
+        "codex_runtime": runtime,
+    }, "preflight_hash")
+    preflight_path = tmp_path / "app-server-preflight.json"
+    artifacts.write_json(preflight_path, preflight)
+    corpora = {}
+    for kind in ("formal", "p4"):
+        path = tmp_path / f"{kind}.json"
+        artifacts.write_json(path, {"kind": kind})
+        corpora[kind] = path
+    test_gate = {
+        "argv": [
+            "python",
+            "-m",
+            "pytest",
+            *[
+                f"evaluation/controller/{name}"
+                for name in sorted(source_proof.CONTROLLER_FILES)
+                if name.startswith("test_") and name.endswith(".py")
+            ],
+        ],
+        "cwd": ".worktrees/frontier-5.0",
+        "returncode": 0,
+        "stdout_bytes": 1,
+        "stdout_sha256": artifacts.canonical_hash("stdout"),
+        "stderr_bytes": 0,
+        "stderr_sha256": artifacts.canonical_hash("stderr"),
+    }
+    manifest = source_proof.freeze_controller(
+        controller_root=controller,
+        candidate_identity={
+            "candidate_revision": "a" * 40,
+            "candidate_source_tree_hash": artifacts.canonical_hash("source"),
+        },
+        candidate_plugin_root=plugin,
+        evaluator_root=evaluator,
+        app_server_preflight=preflight_path,
+        codex_runtime=runtime,
+        corpora=corpora,
+        controller_test_gate=test_gate,
+        output_root=tmp_path / "freeze",
+    )
+    assert manifest["app_server"]["codex_runtime"] == runtime
+    assert manifest["controller_test_gate"] == test_gate
+    assert reports.load_controller_manifest(
+        tmp_path / "freeze/controller-manifest.json"
+    ) == manifest
 
 
 def test_bundle_source_hash_accepts_strict_formatted_manifest(

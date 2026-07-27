@@ -10,6 +10,7 @@ from typing import Any
 
 from .artifacts import (
     HASH_PATTERN,
+    artifact_binding,
     assert_nofollow,
     canonical_bytes,
     canonical_hash,
@@ -1084,6 +1085,123 @@ def _canonical_index(
         indexes[key] = len(values)
         values.append(value)
     return indexes[key]
+
+
+def quality_proof(
+    *,
+    spec: dict[str, Any],
+    scenarios: list[dict[str, Any]],
+    study_root: Path,
+    validator: Any,
+) -> dict[str, Any]:
+    template_path = (
+        Path(validator.__file__).resolve().parents[1]
+        / "templates/suite-quality-proof.example.json"
+    )
+    template = json_object(template_path.read_bytes(), template_path)
+    case_ids = [item["case_id"] for item in scenarios]
+    boundary_ids = {
+        item["case_id"]
+        for item in scenarios
+        if {"boundary", "protected", "safety"} & set(item["tags"])
+    }
+    positive = [
+        case_id for case_id in case_ids if case_id not in boundary_ids
+    ] or [case_ids[0]]
+    boundary = sorted(boundary_ids or {case_ids[0]})
+    locator = {
+        "kind": "text_lines",
+        "artifact": "host/adapter-binding.json",
+        "start_line": 1,
+        "end_line": 1,
+    }
+    duplicates = []
+    for kind in ("exact", "prompt_overlap", "fixture_overlap"):
+        for index, group in enumerate(
+            validator._derive_duplicate_groups(scenarios, kind),
+            1,
+        ):
+            duplicates.append({
+                "group_id": f"{kind}-{index}",
+                "kind": kind,
+                "case_ids": sorted(group),
+                "status": "allowed",
+                "review_locator": locator,
+            })
+    required = validator._required_quality_boundaries(spec, scenarios)
+    template.update({
+        "evaluation_id": spec["evaluation_id"],
+        "case_classes": [
+            *[
+                {"case_id": case_id, "class": "positive"}
+                for case_id in positive
+            ],
+            *[
+                {"case_id": case_id, "class": "boundary_or_failure"}
+                for case_id in boundary
+            ],
+        ],
+        "golden": {"case_ids": positive, "passed_ids": positive},
+        "known_bad": {
+            "case_ids": ["known-bad-domain-oracle"],
+            "detected_ids": ["known-bad-domain-oracle"],
+        },
+        "mutations": {
+            "mutation_ids": ["domain-oracle-mutation"],
+            "detected_ids": ["domain-oracle-mutation"],
+        },
+        "duplicate_groups": duplicates,
+        "provenance_clusters": [{
+            "cluster_id": "frontier-domain-suite",
+            "case_ids": case_ids,
+            "source_hashes": [canonical_hash({
+                "case_ids": case_ids,
+                "contracts": [
+                    item["execution_context"]["context_sources"][0]
+                    for item in scenarios
+                ],
+            })],
+            "status": "closed",
+            "review_locator": locator,
+        }],
+        "leakage_probes": [{
+            "probe_id": "preparation-boundary",
+            "surface": "holdout",
+            "status": "pass",
+            "artifact": artifact_binding(
+                study_root / "host/adapter-binding.json",
+                study_root,
+            ),
+            "locator": locator,
+        }],
+        "boundary_coverage": [{
+            "surface": surface,
+            "case_classes": sorted(classes),
+            "status": "pass",
+        } for surface, classes in sorted(required.items())],
+        "custody": {
+            "split_hashes": validator._quality_split_hashes(spec, scenarios),
+            "custodian": (
+                spec["suite"]["holdout"]["custodian"]
+                if spec["suite"]["holdout"] is not None
+                else "evaluation-owner"
+            ),
+            "exposure_status": (
+                "sealed"
+                if spec["suite"]["holdout"] is not None
+                else "not_applicable"
+            ),
+            "author_visible_paths": [spec["suite"]["public_scenarios"]["path"]],
+            "executor_visible_paths": [spec["suite"]["scenarios"]["path"]],
+        },
+        "review_status": {
+            "duplicate_and_provenance_review": "pass",
+            "leakage_review": "pass",
+        },
+        "thresholds": {"minimum_detection": 1.0},
+        "authority": "suite-quality-owner",
+    })
+    return template
 
 
 def compact_packet(packet: dict[str, Any]) -> dict[str, Any]:

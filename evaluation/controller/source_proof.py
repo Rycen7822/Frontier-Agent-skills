@@ -13,6 +13,7 @@ import zipfile
 
 from . import host
 from .artifacts import (
+    HASH_PATTERN,
     artifact_binding,
     assert_nofollow,
     atomic_write,
@@ -130,6 +131,49 @@ def _controller_archive(
     return output.getvalue()
 
 
+def _controller_test_gate(
+    value: dict[str, Any],
+    sources: list[Path],
+    controller_root: Path,
+) -> dict[str, Any]:
+    tests = sorted(
+        (
+            Path("evaluation/controller")
+            / path.relative_to(controller_root)
+        ).as_posix()
+        for path in sources
+        if path.name.startswith("test_") and path.suffix == ".py"
+    )
+    expected = ["python", "-m", "pytest", *tests]
+    fields = {
+        "argv",
+        "cwd",
+        "returncode",
+        "stdout_bytes",
+        "stdout_sha256",
+        "stderr_bytes",
+        "stderr_sha256",
+    }
+    if (
+        not isinstance(value, dict)
+        or set(value) != fields
+        or value["argv"] != expected
+        or value["cwd"] != ".worktrees/frontier-5.0"
+        or value["returncode"] != 0
+        or any(
+            not isinstance(value[field], int) or value[field] < 0
+            for field in ("stdout_bytes", "stderr_bytes")
+        )
+        or any(
+            not isinstance(value[field], str)
+            or not HASH_PATTERN.fullmatch(value[field])
+            for field in ("stdout_sha256", "stderr_sha256")
+        )
+    ):
+        raise ProofError("controller test gate is invalid")
+    return value
+
+
 def freeze_controller(
     *,
     controller_root: Path,
@@ -137,8 +181,9 @@ def freeze_controller(
     candidate_plugin_root: Path,
     evaluator_root: Path,
     app_server_preflight: Path,
+    codex_runtime: dict[str, dict[str, Any]],
     corpora: dict[str, Path],
-    test_count: int,
+    controller_test_gate: dict[str, Any],
     output_root: Path,
 ) -> dict[str, Any]:
     sources = controller_sources(controller_root)
@@ -152,11 +197,21 @@ def freeze_controller(
     atomic_write(archive_path, first, mode=0o444, replace=False)
     preflight = load_json(app_server_preflight)
     verify_self_hash(preflight, "preflight_hash")
+    try:
+        runtime = host.validate_codex_runtime(codex_runtime)
+    except host.HostError as exc:
+        raise ProofError("Codex runtime binding is invalid") from exc
+    if preflight.get("codex_runtime") != runtime:
+        raise ProofError("app-server preflight runtime binding differs")
     manifest = self_hashed({
-        "schema_version": "frontier-controller-freeze/4.0",
+        "schema_version": "frontier-controller-freeze/5.0",
         **candidate_identity,
         "candidate_plugin_tree_hash": tree_hash(candidate_plugin_root),
-        "test_count": test_count,
+        "controller_test_gate": _controller_test_gate(
+            controller_test_gate,
+            sources,
+            controller_root,
+        ),
         "controller_inventory": inventory,
         "controller_content_hash": canonical_hash(inventory),
         "stable_analyzer_source_hash": file_hash(
@@ -169,6 +224,7 @@ def freeze_controller(
                 app_server_preflight.parent,
             ),
             "preflight_hash": preflight["preflight_hash"],
+            "codex_runtime": runtime,
         },
         "corpora": {
             kind: artifact_binding(path, path.parent)

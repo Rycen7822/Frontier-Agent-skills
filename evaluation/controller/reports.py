@@ -205,7 +205,7 @@ def load_controller_manifest(path: Path) -> dict[str, Any]:
         "candidate_revision",
         "candidate_source_tree_hash",
         "candidate_plugin_tree_hash",
-        "test_count",
+        "controller_test_gate",
         "controller_inventory",
         "controller_content_hash",
         "stable_analyzer_source_hash",
@@ -218,7 +218,7 @@ def load_controller_manifest(path: Path) -> dict[str, Any]:
     }
     if (
         set(value) != fields
-        or value["schema_version"] != "frontier-controller-freeze/4.0"
+        or value["schema_version"] != "frontier-controller-freeze/5.0"
     ):
         raise ReportError("controller manifest is invalid")
     try:
