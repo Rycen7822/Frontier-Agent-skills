@@ -2832,6 +2832,7 @@ def materialize_v5_reviewer_pair(
         'mapping_hash': None,
     }, 'mapping_hash')
     write_json(mapping_path, mapping)
+    mapping_binding = binding(mapping_path)
 
     reviewer_rows: list[dict] = []
     receipt_paths: list[Path] = []
@@ -2931,6 +2932,22 @@ def materialize_v5_reviewer_pair(
             **requested,
             'message_hash': binding(prompt_path)['sha256'],
         }
+        spawn_envelope = with_self_hash({
+            'schema_version': 'frontier-context-clean-reviewer-spawn-envelope/1.0',
+            'campaign_id': campaign_id,
+            'study_id': spec['evaluation_id'],
+            'request_id': request_id,
+            'reviewer_id': reviewer_id,
+            'task_name': task_name,
+            **requested,
+            'message': prompt_path.read_text(encoding='utf-8'),
+            'message_hash': binding(prompt_path)['sha256'],
+            'packet_hash': packet_binding['sha256'],
+            'output_schema_hash': schema_binding['sha256'],
+            'sealed_mapping_hash': mapping_binding['sha256'],
+            'entry_hash': canonical_hash(request_id),
+            'envelope_hash': None,
+        }, 'envelope_hash')
         spawn_ack = {
             'schema_version': 'context-clean-subagent-spawn-ack/1.0',
             'request_id': request_id,
@@ -2950,9 +2967,11 @@ def materialize_v5_reviewer_pair(
             'raw_response_hash': binding(raw_response_path)['sha256'],
         }
         spawn_request_path = reviewer_dir / 'spawn-request.json'
+        spawn_envelope_path = reviewer_dir / 'spawn-envelope.json'
         spawn_ack_path = reviewer_dir / 'spawn-ack.json'
         terminal_path = reviewer_dir / 'terminal-result.json'
         write_json(spawn_request_path, spawn_request)
+        write_json(spawn_envelope_path, spawn_envelope)
         write_json(spawn_ack_path, spawn_ack)
         write_json(terminal_path, terminal)
         receipt = with_self_hash({

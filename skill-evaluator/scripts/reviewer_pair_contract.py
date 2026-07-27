@@ -638,6 +638,46 @@ def _validate_receipt(
         code="calibration.reviewer_terminal",
         label="terminal result",
     )
+    tool_events = terminal["observable_tool_events"]
+    if tool_events:
+        if (
+            not isinstance(tool_events, list)
+            or len(tool_events) != 1
+            or not isinstance(tool_events[0], dict)
+            or set(tool_events[0]) != {
+                "tool", "purpose", "spawn_envelope_hash",
+            }
+            or tool_events[0]["tool"] != "exec_command"
+            or tool_events[0]["purpose"]
+            != "load_exact_bound_spawn_message"
+        ):
+            _fail(
+                "calibration.reviewer_terminal",
+                "reviewer tool observation is not the bound envelope load",
+            )
+        envelope, _ = _read_sibling_json(
+            receipt_path,
+            "spawn-envelope.json",
+            tool_events[0]["spawn_envelope_hash"],
+            output_root=output_root,
+            code="calibration.reviewer_terminal",
+        )
+        if (
+            not verify_self_hash(envelope, "envelope_hash")
+            or envelope.get("request_id") != receipt["request_id"]
+            or envelope.get("reviewer_id") != receipt["reviewer_id"]
+            or envelope.get("task_name") != receipt["task_name"]
+            or envelope.get("message_hash") != receipt["prompt_hash"]
+            or {
+                field: envelope.get(field)
+                for field in REQUESTED_CONFIGURATION
+            }
+            != REQUESTED_CONFIGURATION
+        ):
+            _fail(
+                "calibration.reviewer_terminal",
+                "reviewer envelope tool binding differs",
+            )
     if (
         terminal["schema_version"] != "context-clean-subagent-terminal-result/1.0"
         or terminal["request_id"] != receipt["request_id"]
@@ -654,7 +694,7 @@ def _validate_receipt(
         or not isinstance(terminal["observable_followups"], int)
         or isinstance(terminal["observable_followups"], bool)
         or terminal["observable_followups"] != 0
-        or terminal["observable_tool_events"] != []
+        or not isinstance(tool_events, list)
     ):
         _fail("calibration.reviewer_terminal", "terminal result is incomplete or has extra observations")
     return {

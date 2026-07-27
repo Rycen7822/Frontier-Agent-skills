@@ -896,6 +896,43 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn(expected, result.stderr)
 
+    def test_reviewer_pair_accepts_one_bound_envelope_load(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            reviewer = paths['reviewer_1']
+            terminal_path = reviewer / 'terminal-result.json'
+            terminal = json.loads(terminal_path.read_text(encoding='utf-8'))
+            terminal['observable_tool_events'] = [{
+                'tool': 'exec_command',
+                'purpose': 'load_exact_bound_spawn_message',
+                'spawn_envelope_hash': (
+                    'sha256:'
+                    + hashlib.sha256(
+                        (reviewer / 'spawn-envelope.json').read_bytes(),
+                    ).hexdigest()
+                ),
+            }]
+            self._write_json(terminal_path, terminal)
+            self._rebind_reviewer_graph(paths)
+            result = self._run_pair_calibration(paths)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_reviewer_pair_rejects_unbound_envelope_load(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            terminal_path = paths['reviewer_1'] / 'terminal-result.json'
+            terminal = json.loads(terminal_path.read_text(encoding='utf-8'))
+            terminal['observable_tool_events'] = [{
+                'tool': 'exec_command',
+                'purpose': 'load_exact_bound_spawn_message',
+                'spawn_envelope_hash': 'sha256:' + '0' * 64,
+            }]
+            self._write_json(terminal_path, terminal)
+            self._rebind_reviewer_graph(paths)
+            result = self._run_pair_calibration(paths)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('calibration.reviewer_terminal', result.stderr)
+
     def test_reviewer_pair_rejects_output_coverage_and_parsed_hash_tamper(self) -> None:
         for mutation in ('truncated', 'schema_invalid'):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
