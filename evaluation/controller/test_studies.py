@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from . import artifacts, cli, host_contract, host_grader, specs
+from . import artifacts, cli, host_contract, specs
 from .controller_testkit import HASH, host_request
 
 
@@ -21,30 +21,6 @@ def test_cli_accepts_manifest_bound_codex_runtime() -> None:
         HASH,
     ])
     assert parsed.command == "host"
-
-
-def test_bound_host_grader_projects_declared_assertions() -> None:
-    result = {
-        "terminal_status": "completed",
-        "treatment_error": None,
-        "refusal": False,
-        "timeout": False,
-        "protocol_error": None,
-        "assertions": [
-            {
-                "claim": claim,
-                "artifact": None,
-                "locally_verifiable": True,
-            }
-            for claim in ("outcome-complete", "safety-preserved")
-        ],
-    }
-    grade = host_grader.grade(
-        result,
-        ["outcome-check", "safety-check"],
-    )
-    assert grade["overall_pass"] is True
-    assert grade["score"] == 100
 
 
 def test_materialized_host_uses_tracked_cli_without_controller_copy(

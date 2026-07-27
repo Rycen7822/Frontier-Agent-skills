@@ -65,6 +65,8 @@ CONTROLLER_FILES = {
     "context-clean-subagent-reviewer-receipt-v1.schema.json",
     "controller_testkit.py",
     "host.py",
+    "host_contract.py",
+    "host_grader.py",
     "model_grader_prompt.md",
     "model_judgment.schema.json",
     "reports.py",
@@ -74,6 +76,7 @@ CONTROLLER_FILES = {
     "test_campaign.py",
     "test_host.py",
     "test_reports.py",
+    "test_studies.py",
     "workspace.py",
 }
 
