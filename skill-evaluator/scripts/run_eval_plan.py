@@ -1421,8 +1421,48 @@ def _run_deterministic_graders(
     return outputs, artifacts
 
 
+def _batch_member(
+    *,
+    entry_id: str,
+    plan_path: Path,
+    plan: dict[str, Any],
+    prior_rows: list[dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any], Path]:
+    entries = {item["entry_id"]: item for item in plan["entries"]}
+    entry = entries.get(entry_id)
+    if entry is None:
+        raise RunnerFailure("model grader batch member is outside the plan")
+    _, artifacts_root = resolve_contained_path(
+        plan_path.parent,
+        plan["artifacts"]["root"],
+        "artifacts root",
+    )
+    valid = []
+    for row in prior_rows:
+        if row["entry_id"] != entry_id:
+            continue
+        _, receipt_path = resolve_contained_path(
+            artifacts_root,
+            row["receipt"]["path"],
+            "batch member receipt",
+            kind="file",
+        )
+        receipt = load_json(receipt_path)
+        if receipt["run"]["valid"] is True:
+            valid.append((receipt, receipt_path.parent))
+    if len(valid) != 1:
+        raise RunnerFailure("model grader batch member is not uniquely valid")
+    receipt, attempt_dir = valid[0]
+    try:
+        result = model_transport.execution_result(receipt)
+    except ValueError as exc:
+        raise RunnerFailure(str(exc)) from None
+    return entry, result, attempt_dir
+
+
 def _run_model_graders(
     *,
+    plan_path: Path,
     plan: dict[str, Any],
     entry: dict[str, Any],
     host: dict[str, Any],
@@ -1434,6 +1474,7 @@ def _run_model_graders(
     run_id: str,
     attempt: int,
     credential_policy: str,
+    prior_rows: list[dict[str, Any]],
 ) -> tuple[
     list[dict[str, Any]],
     list[dict[str, Any]],
@@ -1452,48 +1493,64 @@ def _run_model_graders(
     stderr_chunks: list[bytes] = []
     argv, environment = _validate_host_command(host, spec_path.parent)
     for model_spec in entry["model_grade_specs"]:
+        if model_spec["batch_owner_entry_id"] != entry["entry_id"]:
+            continue
         grader_id = model_spec["grader_id"]
-        grader_dir = attempt_dir / "model-graders" / grader_id
+        grader_dir = attempt_dir / "model-graders" / model_spec["batch_id"]
         grader_dir.mkdir(parents=True)
-        blinded = {
-            "case_id": entry["case_id"],
-            "repeat": entry["repeat"],
-            "requirements": copy.deepcopy(
-                entry["execute_case_payload"]["case"]["requirements"],
-            ),
-            "captured_output": {
-                field: copy.deepcopy(execution_result[field])
-                for field in (
-                    "terminal_status",
-                    "treatment_error",
-                    "refusal",
-                    "timeout",
+        items = []
+        for member_id in model_spec["batch_entry_ids"]:
+            if member_id == entry["entry_id"]:
+                member_entry = entry
+                member_result = execution_result
+                member_root = attempt_dir
+            else:
+                member_entry, member_result, member_root = _batch_member(
+                    entry_id=member_id,
+                    plan_path=plan_path,
+                    plan=plan,
+                    prior_rows=prior_rows,
                 )
-            },
-            "artifacts": copy.deepcopy(execution_result["artifacts"]),
-            "observations": [],
-        }
-        if sorted(blinded) != sorted(model_spec["blinded_projection"]):
-            raise RunnerFailure("model grader blinded projection is incomplete")
-        blinded_path = grader_dir / "blinded-input.json"
-        atomic_write_json(blinded_path, blinded)
-        def read_evidence(record: dict[str, Any]) -> str:
-            _, path = resolve_contained_path(
-                attempt_dir, record["path"], "model grader evidence",
-                kind="file",
+            blinded = model_transport.blinded_execution(
+                member_entry,
+                member_result,
             )
-            if artifact_record(path, attempt_dir, encoding="utf-8") != record:
-                raise RunnerFailure("model grader evidence binding differs")
-            try:
-                return path.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                raise RunnerFailure("model grader evidence is not UTF-8") from None
+            if sorted(blinded) != sorted(model_spec["blinded_projection"]):
+                raise RunnerFailure(
+                    "model grader blinded projection is incomplete",
+                )
+
+            def read_evidence(
+                record: dict[str, Any],
+                root: Path = member_root,
+            ) -> str:
+                _, path = resolve_contained_path(
+                    root,
+                    record["path"],
+                    "model grader evidence",
+                    kind="file",
+                )
+                if artifact_record(path, root, encoding="utf-8") != record:
+                    raise RunnerFailure("model grader evidence binding differs")
+                try:
+                    return path.read_text(encoding="utf-8")
+                except UnicodeDecodeError:
+                    raise RunnerFailure(
+                        "model grader evidence is not UTF-8",
+                    ) from None
+
+            items.append(model_transport.execution_item(
+                blinded,
+                grader_id=grader_id,
+                entry_id=member_id,
+                read_artifact=read_evidence,
+            ))
         batch = model_transport.execution_batch(
-            blinded,
-            grader_id=grader_id,
-            entry_id=entry["entry_id"],
-            read_artifact=read_evidence,
+            items,
+            batch_id=model_spec["batch_id"],
         )
+        blinded_path = grader_dir / "blinded-input.json"
+        atomic_write_json(blinded_path, batch)
         request = _host_request(
             plan,
             entry,
@@ -2295,6 +2352,7 @@ def _execute_entry(
     host: dict[str, Any],
     registry: dict[str, dict[str, Any]],
     spec_path: Path,
+    prior_rows: list[dict[str, Any]],
     attempt: int = 1,
 ) -> dict[str, Any]:
     artifacts_root, attempt_rel, attempt_dir = _attempt_paths(
@@ -2412,6 +2470,7 @@ def _execute_entry(
         model_stdout,
         model_stderr,
     ) = _run_model_graders(
+        plan_path=plan_path,
         plan=plan,
         entry=entry,
         host=host,
@@ -2423,6 +2482,7 @@ def _execute_entry(
         run_id=run_id,
         attempt=attempt,
         credential_policy=spec["execution"]["credential_policy"],
+        prior_rows=prior_rows,
     )
     grader_outputs.extend(model_outputs)
     usage = _merged_usage(entry, result, model_results, host)
@@ -2622,6 +2682,7 @@ def _resume_entry(
     host: dict[str, Any],
     registry: dict[str, dict[str, Any]],
     spec_path: Path,
+    prior_rows: list[dict[str, Any]],
 ) -> Iterator[tuple[dict[str, Any], bool]]:
     attempts = _attempt_directories(plan_path, plan, entry)
     if not attempts:
@@ -2633,6 +2694,7 @@ def _resume_entry(
             host=host,
             registry=registry,
             spec_path=spec_path,
+            prior_rows=prior_rows,
         )
         yield row, True
         return
@@ -2701,6 +2763,7 @@ def _resume_entry(
             host=host,
             registry=registry,
             spec_path=spec_path,
+            prior_rows=prior_rows,
             attempt=last_attempt + 1,
         )
         yield row, True
@@ -2801,6 +2864,7 @@ def _run_command(args: argparse.Namespace) -> int:
                     host=host,
                     registry=registry,
                     spec_path=spec_path,
+                    prior_rows=rows,
                 ):
                     _append_index_row(index_path, rows, row)
             else:
@@ -2812,6 +2876,7 @@ def _run_command(args: argparse.Namespace) -> int:
                     host=host,
                     registry=registry,
                     spec_path=spec_path,
+                    prior_rows=rows,
                 )
                 complete = True
                 _append_index_row(index_path, rows, row)

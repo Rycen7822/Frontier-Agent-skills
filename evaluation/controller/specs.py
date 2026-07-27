@@ -311,7 +311,6 @@ REGISTERED = (
     "comparator/alternative_intervention",
 )
 TRANSFER = ("baseline/skill_disabled", "candidate/natural_routing")
-TRANSFER_WITH_MECHANISM = (*TRANSFER, "comparator/alternative_intervention")
 
 PROFILES = {
     "self-eval": StudyProfile(
@@ -340,7 +339,7 @@ PROFILES = {
         True,
         "codex",
         20,
-        12,
+        4,
     ),
     "d0-writing-plans": StudyProfile(
         "frontier-d0-writing-plans-planner",
@@ -349,27 +348,26 @@ PROFILES = {
         "plans",
         (
             CaseSlice(0, 4, EXPLICIT, True),
-            CaseSlice(-2, None, REGISTERED, True, False),
+            CaseSlice(-2, None, REGISTERED, False, False),
         ),
         1,
         False,
         True,
         "codex",
         16,
-        16,
+        4,
     ),
     "d0-writing-plans-transfer": StudyProfile(
         "frontier-d0-writing-plans-transfer",
         "writing-plans",
         "L1",
         "plans",
-        (CaseSlice(0, 4, TRANSFER_WITH_MECHANISM, False),),
+        (CaseSlice(0, 4, TRANSFER, False),),
         1,
         False,
         False,
         "codex",
-        12,
-        expected_mechanism=4,
+        8,
     ),
     "formal-sqw": StudyProfile(
         "frontier-formal-software-quality-workflows",
@@ -386,7 +384,7 @@ PROFILES = {
         True,
         "codex",
         96,
-        64,
+        12,
     ),
     "formal-writing-plans": StudyProfile(
         "frontier-formal-writing-plans-planner",
@@ -395,14 +393,14 @@ PROFILES = {
         "plans",
         (
             CaseSlice(0, 8, EXPLICIT, True, split="heldout"),
-            CaseSlice(-2, None, REGISTERED, False, False, "heldout"),
+            CaseSlice(-2, None, REGISTERED, True, False, "heldout"),
         ),
         2,
         True,
         True,
         "codex",
         56,
-        48,
+        10,
     ),
     "formal-writing-plans-transfer": StudyProfile(
         "frontier-formal-writing-plans-transfer",
@@ -461,8 +459,8 @@ def fixed_design(
 
 
 PHASE_BUDGETS = {
-    "d0": (76, 8, 4, 88),
-    "formal": (296, 8, 4, 308),
+    "d0": (52, 8, 4, 64),
+    "formal": (206, 8, 4, 218),
 }
 
 

@@ -476,25 +476,44 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 compile_result.stdout + compile_result.stderr,
             )
             plan = json.loads(plan_path.read_text(encoding='utf-8'))
-            entry = plan['entries'][0]
+            entry = next(
+                item for item in plan['entries']
+                if item['model_grade_specs'][0][
+                    'batch_owner_entry_id'
+                ] == item['entry_id']
+            )
             index_path = root / plan['artifacts']['root'] / plan['artifacts'][
                 'index_relpath'
             ]
 
-            run_result = self._run_runner(
-                plan_path, index_path, '--entry-id', entry['entry_id'],
-            )
+            run_result = self._run_runner(plan_path, index_path)
             self.assertEqual(
                 run_result.returncode, 0,
                 run_result.stdout + run_result.stderr,
             )
-            row = json.loads(index_path.read_text(encoding='utf-8').strip())
+            rows = [
+                json.loads(line)
+                for line in index_path.read_text(encoding='utf-8').splitlines()
+            ]
+            row = next(
+                item for item in rows if item['entry_id'] == entry['entry_id']
+            )
             receipt = json.loads(
                 (
                     root / plan['artifacts']['root']
                     / row['receipt']['path']
                 ).read_text(encoding='utf-8'),
             )
+            self.assertEqual(1, sum(
+                request['envelope']['request_kind'] == 'model_grade'
+                for indexed in rows
+                for request in json.loads(
+                    (
+                        root / plan['artifacts']['root']
+                        / indexed['receipt']['path']
+                    ).read_text(encoding='utf-8'),
+                )['host_protocol']['requests']
+            ))
             self.assertEqual(
                 ['probe_capability', 'execute_case', 'model_grade'],
                 [
@@ -513,10 +532,6 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     / row['artifact_dir'] / blinded_record['path']
                 ).read_text(encoding='utf-8'),
             )
-            self.assertEqual(
-                sorted(entry['model_grade_specs'][0]['blinded_projection']),
-                sorted(blinded),
-            )
             serialized = json.dumps(blinded, sort_keys=True)
             self.assertNotIn('treatment_id', serialized)
             self.assertNotIn('causal_role', serialized)
@@ -524,12 +539,17 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             batch = receipt['host_protocol']['requests'][-1]['payload'][
                 'blinded_input'
             ]
-            self.assertEqual(entry['entry_id'], batch['batch_id'])
-            self.assertEqual(entry['entry_id'], batch['items'][0]['item_id'])
-            self.assertEqual(
-                {'captured_output', 'host_assessment', 'final_answer'},
-                set(batch['items'][0]['grader_view']),
-            )
+            model_spec = entry['model_grade_specs'][0]
+            self.assertEqual(model_spec['batch_id'], batch['batch_id'])
+            self.assertEqual(model_spec['batch_entry_ids'], [
+                item['item_id'] for item in batch['items']
+            ])
+            self.assertEqual(batch, blinded)
+            self.assertTrue(all(
+                {'captured_output', 'host_assessment', 'final_answer'}
+                == set(item['grader_view'])
+                for item in batch['items']
+            ))
             self.assertNotIn('treatment_id', json.dumps(batch, sort_keys=True))
             self.assertEqual(
                 ['execute', 'model_grade'],
@@ -553,6 +573,91 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 },
                 receipt['usage']['host_safety_review'],
             )
+            summary_path = root / 'summary.json'
+            failures_path = root / 'failures.json'
+            analyze_result = self.run_cmd(
+                'scripts/analyze_runs.py',
+                str(index_path),
+                '--spec', str(paths['spec']),
+                '--json', str(summary_path),
+                '--failure-index', str(failures_path),
+            )
+            self.assertEqual(
+                analyze_result.returncode,
+                3,
+                analyze_result.stdout + analyze_result.stderr,
+            )
+            self.assertEqual(
+                'complete',
+                json.loads(summary_path.read_text(encoding='utf-8'))[
+                    'evidence_status'
+                ],
+            )
+
+    def test_model_grader_batch_rejects_incomplete_or_mismatched_output(
+        self,
+    ) -> None:
+        transport = load_analyzer_module().model_transport
+        batch = transport.execution_batch(
+            [{
+                'item_id': entry_id,
+                'checks': [{'id': 'outcome-check'}],
+                'grader_view': {
+                    'captured_output': {},
+                    'host_assessment': {},
+                    'final_answer': 'done',
+                },
+            } for entry_id in ('entry-a', 'entry-b')],
+            batch_id='batch-fixture',
+        )
+
+        def judgment(entry_id: str, check_id: str = 'outcome-check') -> dict:
+            return {
+                'item_id': entry_id,
+                'checks': [{
+                    'id': check_id,
+                    'pass': True,
+                    'notes': 'verified',
+                    'uncertainty': 'none',
+                }],
+            }
+
+        output = {
+            'batch_id': 'batch-fixture',
+            'items': [judgment('entry-b'), judgment('entry-a')],
+        }
+        normalized, pointers = transport.normalize_judgment(
+            output,
+            batch=batch,
+            requirements=[{'check_id': 'outcome-check', 'required': True}],
+            item_id='entry-b',
+        )
+        self.assertTrue(normalized['overall_pass'])
+        self.assertEqual(
+            '/items/0/checks/0/pass',
+            pointers['outcome-check'],
+        )
+
+        invalid_items = (
+            [judgment('entry-a')],
+            [judgment('entry-a'), judgment('entry-a')],
+            [judgment('entry-a', 'wrong-check'), judgment('entry-b')],
+        )
+        for items in invalid_items:
+            with self.subTest(items=items):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    'judgment differs from the bound batch',
+                ):
+                    transport.normalize_judgment(
+                        {'batch_id': 'batch-fixture', 'items': items},
+                        batch=batch,
+                        requirements=[{
+                            'check_id': 'outcome-check',
+                            'required': True,
+                        }],
+                        item_id='entry-a',
+                    )
 
     def test_non_execute_model_entry_emits_no_model_grade_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -721,7 +721,6 @@ def _model_grade(request: dict[str, object]) -> int:
     envelope = request["envelope"]
     payload = request["payload"]
     blinded = payload["blinded_input"]
-    item = blinded["items"][0]
     grade = _artifact(
         f"model-grade-{payload['grader_id']}.json",
         {
@@ -734,7 +733,7 @@ def _model_grade(request: dict[str, object]) -> int:
                     "notes": "synthetic model grade",
                     "uncertainty": "none",
                 } for check in item["checks"]],
-            }],
+            } for item in blinded["items"]],
         },
     )
     result = {

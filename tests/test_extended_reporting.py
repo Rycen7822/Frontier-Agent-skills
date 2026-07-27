@@ -231,6 +231,8 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         self,
         paths: dict[str, Path],
         mutation: Callable[[dict], None],
+        *,
+        model_output: bool = False,
     ) -> None:
         plan = json.loads(paths['plan'].read_text(encoding='utf-8'))
         artifacts_root = paths['plan'].parent / plan['artifacts']['root']
@@ -238,7 +240,16 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             json.loads(line)
             for line in paths['index'].read_text(encoding='utf-8').splitlines()
         ]
-        row = rows[0]
+        owner_ids = {
+            entry['entry_id']
+            for entry in plan['entries']
+            for spec in entry['model_grade_specs']
+            if spec['batch_owner_entry_id'] == entry['entry_id']
+        }
+        row = next(
+            item for item in rows
+            if not model_output or item['entry_id'] in owner_ids
+        )
         receipt_path = artifacts_root / row['receipt']['path']
         receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
         mutation(receipt)
@@ -427,6 +438,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 lambda receipt: receipt['grader_outputs'][0].update({
                     'schedule_hash': 'sha256:' + '0' * 64,
                 }),
+                model_output=True,
             )
             analyzed = self.call_cli(
                 'scripts/analyze_runs.py',
