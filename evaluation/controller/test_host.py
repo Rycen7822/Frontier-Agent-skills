@@ -205,6 +205,9 @@ def test_host_grader_exact_transport(tmp_path: Path, monkeypatch) -> None:
     assert output["overall_pass"]
     assert set(output["checks"][0]["evidence"][0]) == {
         "artifact", "locator", "observation"}
+    assert host.selected_checks(["--checks=transfer-preflight"]) == [
+        "transfer-preflight"
+    ]
     monkeypatch.syspath_prepend(str(Path(__file__).parents[2]))
     host_grader = __import__("evaluation.controller.host_grader", fromlist=["main"])
     monkeypatch.chdir(tmp_path)
