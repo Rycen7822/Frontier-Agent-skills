@@ -39,6 +39,18 @@ def test_cli_accepts_manifest_bound_codex_runtime() -> None:
     assert parsed.command == "host"
 
 
+def test_calibration_pack_closes_every_non_abstain_check() -> None:
+    for study in ("software-quality-workflows", "writing-plans"):
+        check_ids = {check_id for check_id, _, _ in studies.model_checks(study)}
+        for item in studies.calibration_pack(study):
+            expected_ids = (
+                set()
+                if item["calibration_class"] == "abstain"
+                else check_ids
+            )
+            assert set(item["expected_checks"]) == expected_ids
+
+
 def test_rebind_study_inputs_updates_every_host_binding() -> None:
     scenarios = [{"fixture": {"manifest": "old", "sha256": HASH}}]
     assert host_contract.rebind_scenarios(

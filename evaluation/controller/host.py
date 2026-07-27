@@ -130,11 +130,51 @@ def validate_request(request: dict[str, Any]) -> None:
         raise HostError("host request payload is empty")
 
 
+def _reviewer_response_contract(
+    packet: dict[str, Any],
+    output_schema_hash: str,
+) -> dict[str, Any]:
+    columns = len(packet["checks"])
+    rows, remainder = divmod(len(packet["examples"]), columns)
+    if (
+        (rows, columns, remainder) != (16, 10, 0)
+        or any(
+            example[2] != index % columns
+            for index, example in enumerate(packet["examples"])
+        )
+        or any(
+            len({
+                example[1]
+                for example in packet["examples"][start:start + columns]
+            }) != 1
+            for start in range(0, len(packet["examples"]), columns)
+        )
+    ):
+        raise HostError("reviewer packet is not one canonical 16x10 matrix")
+    return {
+        "schema_version": "context-clean-subagent-reviewer-matrix/1.0",
+        "rows": rows,
+        "columns": columns,
+        "symbols": {
+            "P": {"label": "pass", "severity": 0},
+            "F": {"label": "fail", "severity": 1},
+            "A": {"label": "abstain", "severity": 0},
+        },
+        "example_order": "packet.examples row-major",
+        "canonical_output_schema_hash": output_schema_hash,
+    }
+
+
 def reviewer_request_descriptors(
     *,
     phase: str,
     projection: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    packet = compact_packet(projection["packet"])
+    response_contract = _reviewer_response_contract(
+        packet,
+        projection["output_schema_artifact_hash"],
+    )
     descriptors = []
     for reviewer_index in (1, 2):
         digest = canonical_hash({
@@ -144,26 +184,30 @@ def reviewer_request_descriptors(
         }).removeprefix("sha256:")
         reviewer_id = f"reviewer-{digest[:24]}"
         prompt = {
-            "schema_version": "context-clean-subagent-reviewer-prompt/3.0",
+            "schema_version": "context-clean-subagent-reviewer-prompt/4.0",
             "reviewer_id": reviewer_id,
             "instruction": (
-                "Return typed JSON only. Each example is "
-                "[opaque_example_id, view_index, check_index]; review "
-                "views[view_index] against checks[check_index]. Rate pass "
+                'Return exactly {"matrix":[...]} with no other keys or text. '
+                "Each [opaque_example_id, view_index, check_index] selects "
+                "views[view_index] and checks[check_index]. Rate pass "
                 "only when authoritative visible evidence satisfies the "
                 "pass condition. Rate fail when authoritative evidence "
                 "violates the condition or omits required evidence; an "
-                "ordinary missing fact fails. Rate abstain only when the "
+                "ordinary missing fact fails. When the "
                 "view explicitly has evidence_state="
                 "conflicting_candidate_snapshots, authoritative_snapshot="
-                "null, and two conflicting candidate snapshots, so neither "
-                "pass nor fail is supportable. Do not infer hidden gold or "
-                "unstated facts. Return one rating per packet example in "
-                "the same order. Do not return reviewer or opaque example "
-                "identifiers."
+                "null, and two conflicting candidate snapshots, rate every "
+                "example for that view abstain and do not assess its "
+                "candidate snapshots check by check. Otherwise do not rate "
+                "abstain. Arrange response_contract.rows strings with "
+                "response_contract.columns P/F/A symbols; flattening those "
+                "strings row-major must exactly follow packet.examples. Do "
+                "not infer hidden gold or unstated facts. Do not return "
+                "reviewer or opaque example identifiers, explanations, "
+                "Markdown, or any other keys."
             ),
-            "packet": compact_packet(projection["packet"]),
-            "output_schema": projection["output_schema"],
+            "packet": packet,
+            "response_contract": response_contract,
         }
         binding = {
             "schema_version": "frontier-reviewer-request-input/1.0",
@@ -242,12 +286,16 @@ def reviewer_prepare(
     if not root.is_relative_to(study):
         raise HostError("reviewer root is outside the study")
     packet = _state(load_json, packet_path)
-    output_schema = _state(load_json, output_schema_path)
+    _state(load_json, output_schema_path)
     _state(load_json, sealed_mapping_path)
     try:
         compact = compact_packet(packet)
     except ValueError as exc:
         raise HostError(f"reviewer message packet is invalid: {exc}") from None
+    response_contract = _reviewer_response_contract(
+        compact,
+        file_hash(output_schema_path),
+    )
     if len(descriptors) != 2 or not _safe_id(packet.get("campaign_id")):
         raise HostError("reviewer pair or campaign identity is invalid")
     entries = []
@@ -269,7 +317,7 @@ def reviewer_prepare(
             or entry["output_schema_hash"] != descriptor["output_schema_hash"]
             or prompt["packet"] != compact
             or expanded != packet
-            or prompt["output_schema"] != output_schema
+            or prompt["response_contract"] != response_contract
             or entry["subject_id"] != descriptor["subject_id"]
         ):
             raise HostError("reviewer descriptor differs from the request manifest")

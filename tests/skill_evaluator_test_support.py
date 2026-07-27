@@ -2698,6 +2698,24 @@ def compact_reviewer_prompt_packet(packet: dict) -> dict:
     }
 
 
+def reviewer_matrix_response_contract(
+    compact: dict,
+    output_schema_hash: str,
+) -> dict:
+    return {
+        'schema_version': 'context-clean-subagent-reviewer-matrix/1.0',
+        'rows': len(compact['examples']) // len(compact['checks']),
+        'columns': len(compact['checks']),
+        'symbols': {
+            'P': {'label': 'pass', 'severity': 0},
+            'F': {'label': 'fail', 'severity': 1},
+            'A': {'label': 'abstain', 'severity': 0},
+        },
+        'example_order': 'packet.examples row-major',
+        'canonical_output_schema_hash': output_schema_hash,
+    }
+
+
 def positional_reviewer_ratings_schema() -> dict:
     return {
         '$schema': 'https://json-schema.org/draft/2020-12/schema',
@@ -2885,27 +2903,35 @@ def materialize_v5_reviewer_pair(
             'request_kind': 'context_isolated_review',
             'entry_hash': _v5_hash(f'{request_id}-entry'),
         }
+        compact_packet = compact_reviewer_prompt_packet(packet)
         prompt = {
-            'schema_version': 'context-clean-subagent-reviewer-prompt/3.0',
+            'schema_version': 'context-clean-subagent-reviewer-prompt/4.0',
             'reviewer_id': reviewer_id,
             'instruction': (
-                'Return typed JSON only. Each example is '
-                '[opaque_example_id, view_index, check_index]; review '
-                'views[view_index] against checks[check_index]. Rate pass '
+                'Return exactly {"matrix":[...]} with no other keys or text. '
+                'Each [opaque_example_id, view_index, check_index] selects '
+                'views[view_index] and checks[check_index]. Rate pass '
                 'only when authoritative visible evidence satisfies the '
                 'pass condition. Rate fail when authoritative evidence '
                 'violates the condition or omits required evidence; an '
-                'ordinary missing fact fails. Rate abstain only when the '
+                'ordinary missing fact fails. When the '
                 'view explicitly has evidence_state='
                 'conflicting_candidate_snapshots, authoritative_snapshot='
-                'null, and two conflicting candidate snapshots, so neither '
-                'pass nor fail is supportable. Do not infer hidden gold or '
-                'unstated facts. Return one rating per packet example in '
-                'the same order. Do not return reviewer or opaque example '
-                'identifiers.'
+                'null, and two conflicting candidate snapshots, rate every '
+                'example for that view abstain and do not assess its '
+                'candidate snapshots check by check. Otherwise do not rate '
+                'abstain. Arrange response_contract.rows strings with '
+                'response_contract.columns P/F/A symbols; flattening those '
+                'strings row-major must exactly follow packet.examples. Do '
+                'not infer hidden gold or unstated facts. Do not return '
+                'reviewer or opaque example identifiers, explanations, '
+                'Markdown, or any other keys.'
             ),
-            'packet': compact_reviewer_prompt_packet(packet),
-            'output_schema': output_schema,
+            'packet': compact_packet,
+            'response_contract': reviewer_matrix_response_contract(
+                compact_packet,
+                schema_binding['sha256'],
+            ),
         }
         raw_response = {
             'schema_version': 'context-clean-subagent-reviewer-ratings/2.0',

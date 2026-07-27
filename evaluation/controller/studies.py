@@ -981,7 +981,7 @@ def calibration_pack(study: str) -> list[dict[str, Any]]:
             "calibration_class": "known_bad",
             "grader_view": view,
             "expected_overall": False,
-            "expected_checks": expected,
+            "expected_checks": {**all_pass, **expected},
             "reason": reason,
         })
     variants = (
@@ -1038,6 +1038,10 @@ def calibration_pack(study: str) -> list[dict[str, Any]]:
         })
     if len(items) != 16:
         raise AssertionError("calibration pack must contain exactly 16 artifacts")
+    for item in items:
+        required = set() if item["calibration_class"] == "abstain" else set(all_pass)
+        if set(item["expected_checks"]) != required:
+            raise AssertionError("calibration gold must bind every applicable check")
     return items
 
 
