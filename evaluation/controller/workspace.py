@@ -562,8 +562,11 @@ def _mark_failure(
 ) -> None:
     result["terminal_status"] = "timeout" if turn["timed_out"] else "failed"
     result["timeout"] = turn["timed_out"]
+    error = turn["terminal"].get("error")
+    message = error.get("message") if isinstance(error, dict) else None
     result["treatment_error"] = (
-        "Codex model task timed out" if turn["timed_out"] else failed_message
+        "Codex model task timed out" if turn["timed_out"]
+        else message if isinstance(message, str) else failed_message
     )
     result["provider_error_code"] = host.structured_host_error_code(
         turn["terminal"],

@@ -44,11 +44,8 @@ REVIEWER_EFFORT = "max"
 REVIEWER_SERVICE_TIER = "priority"
 REVIEWER_FORK_TURNS = "none"
 AUTH_SOURCE = Path.home() / ".codex" / "auth.json"
-APP_SERVER_ARGS = (
-    "app-server", "--stdio",
-    "--strict-config", "-c",
-    'approvals_reviewer="user"',
-)
+APP_SERVER_ARGS = ("app-server", "--stdio", "--strict-config", "-c",
+                   'approvals_reviewer="user"')
 _CODEX_RUNTIME_HASH_CACHE: dict[
     tuple[str, str],
     tuple[int, int, int, int, int, int, int],
@@ -1290,7 +1287,7 @@ def run_codex_turn(
                     "model": MODEL,
                     "serviceTier": SERVICE_TIER,
                     "cwd": str(workspace.resolve()),
-                    "approvalPolicy": "never",
+                    "approvalPolicy": "on-request",
                     "sandbox": "workspace-write",
                     "ephemeral": True,
                     "experimentalRawEvents": True,
@@ -1304,7 +1301,7 @@ def run_codex_turn(
                     "threadId": thread_id,
                     "input": inputs,
                     "cwd": str(workspace.resolve()),
-                    "approvalPolicy": "never",
+                    "approvalPolicy": "on-request",
                     "sandboxPolicy": {
                         "type": "workspaceWrite",
                         "writableRoots": [str(workspace.resolve())],

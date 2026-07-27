@@ -361,6 +361,9 @@ def test_app_server_preflight_validates_used_union_without_provider(
     assert timed_out["usage"] is None
     assert timed_out["host_safety_review"]["host_safety_review_count"] == 1
     fake_server.close.assert_called_once_with()
+    for call in fake_server.request.call_args_list:
+        if call.args[0] in {"thread/start", "turn/start"}:
+            assert call.args[1]["approvalPolicy"] == "on-request"
 
     cached = tmp_path / "cached-codex"
     cached.write_bytes(b"#!/bin/sh\nexit 0\n")
