@@ -320,7 +320,6 @@ def test_app_server_preflight_validates_used_union_without_provider(
     assert 7 not in waiting.responses and 1 in waiting.responses
     assert host.server_request_result("item/commandExecution/requestApproval", {"additionalPermissions": {"network": {}}}) == {"decision": "decline"}
     assert host.server_request_result("item/permissions/requestApproval", {}) == {"permissions": {}}
-
     fake_server = mock.Mock()
     fake_server.messages = []
     fake_server.message_times = []
@@ -359,6 +358,7 @@ def test_app_server_preflight_validates_used_union_without_provider(
         )
     assert timed_out["timed_out"]
     assert timed_out["usage"] is None
+    assert timed_out["terminal"]["error"]["message"].endswith("model/safetyBuffering/updated")
     assert timed_out["host_safety_review"]["host_safety_review_count"] == 1
     fake_server.close.assert_called_once_with()
     for call in fake_server.request.call_args_list:
