@@ -79,12 +79,12 @@ def test_rebind_study_inputs_updates_every_host_binding() -> None:
         holdout_manifest_hash="sha256:" + "7" * 64,
         host_asset_hashes=assets,
     )
-    assert rebound["graders"][0]["verifier"]["sha256"] == assets[
-        "host_grader.py"
+    assert rebound["graders"][0]["verifier"]["sha256"] == assets["host_grader.py"]
+    assert rebound["graders"][0]["verifier"]["env_allowlist"] == [
+        "PYTHONDONTWRITEBYTECODE", "PYTHONPATH",
     ]
-    assert rebound["graders"][1]["prompt"]["sha256"] == assets[
-        "model_grader_prompt.md"
-    ]
+    model_grader = rebound["graders"][1]
+    assert model_grader["prompt"]["sha256"] == assets["model_grader_prompt.md"]
 
 
 def test_materialized_host_uses_tracked_cli_without_controller_copy(

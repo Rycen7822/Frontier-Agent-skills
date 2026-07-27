@@ -334,9 +334,9 @@ def rebind_spec(
     suite["holdout"]["manifest"]["sha256"] = holdout_manifest_hash
     for grader in rebound["graders"]:
         if grader["type"] == "deterministic":
-            grader["verifier"]["sha256"] = host_asset_hashes[
-                "host_grader.py"
-            ]
+            verifier = grader["verifier"]
+            verifier["env_allowlist"] = ["PYTHONDONTWRITEBYTECODE", "PYTHONPATH"]
+            verifier["sha256"] = host_asset_hashes["host_grader.py"]
         elif grader["type"] == "model":
             grader["prompt"]["sha256"] = host_asset_hashes[
                 "model_grader_prompt.md"
