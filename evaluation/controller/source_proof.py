@@ -70,6 +70,7 @@ CONTROLLER_FILES = {
     "host_grader.py",
     "model_grader_prompt.md",
     "model_judgment.schema.json",
+    "planner_evidence.py",
     "reports.py",
     "reviewer_prompt.txt",
     "source_proof.py",

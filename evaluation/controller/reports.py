@@ -25,6 +25,7 @@ from .artifacts import (
     self_hashed,
     signed_clean_revision,
     tree_hash,
+    verified_artifact,
     verify_self_hash,
     write_or_verify_json,
 )
@@ -413,13 +414,11 @@ def write_writing_plans_join(
         row = transfer_rows.get(entry["entry_id"])
         if row is None:
             raise ReportError("transfer join inventory is incomplete")
-        receipt_path = contained_file(
+        receipt_path = verified_artifact(
             transfer_root / "artifacts",
-            row["receipt"]["path"],
+            row["receipt"],
             "transfer receipt",
         )
-        if file_hash(receipt_path) != row["receipt"]["sha256"]:
-            raise ReportError("transfer receipt index hash differs")
         receipt = json_object(receipt_path.read_bytes(), receipt_path)
         verify_self_hash(receipt, "receipt_hash")
         if (
@@ -444,13 +443,11 @@ def write_writing_plans_join(
             != binding["planner_receipt_hash"]
         ):
             raise ReportError("planner receipt identity drifted")
-        planner_receipt = contained_file(
+        planner_receipt = verified_artifact(
             planner_root / "artifacts",
-            planner_row["receipt"]["path"],
+            planner_row["receipt"],
             "planner receipt",
         )
-        if file_hash(planner_receipt) != binding["planner_receipt_hash"]:
-            raise ReportError("planner receipt hash differs")
         planner_document = json_object(planner_receipt.read_bytes(), planner_receipt)
         verify_self_hash(planner_document, "receipt_hash")
         join[entry["entry_id"]] = {

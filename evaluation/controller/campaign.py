@@ -18,14 +18,13 @@ from .artifacts import (
     atomic_write as _atomic_write,
     canonical_bytes,
     canonical_hash,
-    contained_file,
-    file_hash,
     json_object as _json_object,
     load_json,
     raw_hash,
     require_hash as _require_hash,
     require_nonempty as _require_nonempty,
     self_hashed as _self_hashed,
+    verified_artifact,
     verify_self_hash as _verify_self_hash,
     write_json,
     write_or_verify_json,
@@ -895,13 +894,11 @@ def execute_compiled_plan(
         row = rows.get(binding["entry_id"])
         if row is None:
             raise StateError("official runner emitted no bound index row")
-        receipt = contained_file(
+        receipt = verified_artifact(
             study_root / "artifacts",
-            row["receipt"]["path"],
+            row["receipt"],
             "official runner receipt",
         )
-        if file_hash(receipt) != row["receipt"]["sha256"]:
-            raise StateError("official runner receipt binding differs")
         document = _json_object(receipt.read_bytes(), receipt)
         _verify_self_hash(document, "receipt_hash")
         if (
