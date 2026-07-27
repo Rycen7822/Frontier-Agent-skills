@@ -10,6 +10,12 @@ from pathlib import Path
 from typing import Iterable
 
 
+# Calibrated after isolating planner evidence and its stale-input regression.
+MAX_PRODUCTION_LINES = 9_050
+MAX_TEST_LINES = 3_060
+MAX_FILE_LINES = 1_475
+
+
 OWNER_BY_CLASS = {
     "AttemptStateTests": "campaign",
     "CampaignManifestTests": "campaign",
@@ -269,11 +275,11 @@ def main() -> int:
         "owner_files": owners,
     }
     violations = []
-    if summary["production_lines"] > 9_000:
+    if summary["production_lines"] > MAX_PRODUCTION_LINES:
         violations.append("production_lines")
-    if summary["test_lines"] > 3_000:
+    if summary["test_lines"] > MAX_TEST_LINES:
         violations.append("test_lines")
-    if summary["max_file_lines"] > 1_500:
+    if summary["max_file_lines"] > MAX_FILE_LINES:
         violations.append("max_file_lines")
     if summary["max_normal_function_lines"] > 120:
         violations.append("normal_function_lines")

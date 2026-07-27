@@ -520,7 +520,7 @@ def planner_source(root: Path, case_ids: list[str]) -> str:
         for role in ("baseline", "candidate")
     ]
     plan = artifacts.self_hashed({"entries": entries}, "plan_hash")
-    artifacts.write_json(root / "execution-plan-v1.json", plan)
+    (root / "execution-plan-v1.json").write_bytes(artifacts.canonical_bytes(plan))
     artifacts.write_json(root / "eval-spec-v5.json", {
         "treatments": [
             {
@@ -544,6 +544,16 @@ def planner_source(root: Path, case_ids: list[str]) -> str:
             f"# {entry['case_id']} {entry['treatment_id']}\n",
             encoding="utf-8",
         )
+        deliverable_binding = artifacts.artifact_binding(
+            deliverable,
+            attempt / "workspace",
+        )
+        deliverable_binding["encoding"] = "utf-8"
+        manifest_path = attempt / "fixture-final-manifest.json"
+        manifest_path.write_bytes(artifacts.canonical_bytes({
+            "schema_version": 1,
+            "files": [deliverable_binding],
+        }))
         receipt_value = artifacts.self_hashed({
             "run": {
                 "valid": True,
@@ -559,20 +569,14 @@ def planner_source(root: Path, case_ids: list[str]) -> str:
                 },
                 "plan_hash": plan["plan_hash"],
             },
-            "artifacts": [{
-                "path": f"workspace/fixtures/{entry['case_id']}/PLAN.md",
-                "sha256": artifacts.file_hash(deliverable),
-            }],
+            "artifacts": [artifacts.artifact_binding(manifest_path, attempt)],
         }, "receipt_hash")
         receipt_path = attempt / "receipt.json"
-        artifacts.write_json(receipt_path, receipt_value)
+        receipt_path.write_bytes(artifacts.canonical_bytes(receipt_value))
         rows.append({
             "entry_id": entry_id,
             "artifact_dir": artifact_dir,
-            "receipt": {
-                "path": f"{artifact_dir}/receipt.json",
-                "sha256": artifacts.file_hash(receipt_path),
-            },
+            "receipt": artifacts.artifact_binding(receipt_path, artifact_root),
         })
     (artifact_root / "index.jsonl").write_bytes(
         b"".join(artifacts.canonical_bytes(row) + b"\n" for row in rows),

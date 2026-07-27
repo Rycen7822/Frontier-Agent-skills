@@ -14,13 +14,11 @@ from .artifacts import (
     assert_nofollow,
     canonical_bytes,
     canonical_hash,
-    contained_file,
     file_hash,
     json_object,
-    load_json,
     raw_hash,
-    verify_self_hash,
 )
+from .planner_evidence import verified_planner_deliverables
 from .specs import (
     EFFORT,
     EXECUTION_TIMEOUT_SECONDS,
@@ -44,6 +42,7 @@ TRANSFER_REQUIREMENTS = (
     ("content-integrity", "content-contract", "grounding"),
     ("verification-contract", "verification-passes", "outcome"),
 )
+TRANSFER_REQUIREMENT_IDS = frozenset(item[0] for item in TRANSFER_REQUIREMENTS)
 REVIEWER_SCHEMA = Path(__file__).with_name(
     "context-clean-subagent-reviewer-receipt-v1.schema.json",
 )
@@ -387,6 +386,14 @@ def scenario_from_case(
         scenario["routing_contract"] = routing
     scenario["state_model"] = {"scope": "none"}
     scenario["fault_script"] = []
+    scenario["requirements"] = [
+        requirement
+        for requirement in scenario["requirements"]
+        if (
+            not requirement["requirement_id"].startswith("rubric-")
+            and requirement["requirement_id"] not in TRANSFER_REQUIREMENT_IDS
+        )
+    ]
     for requirement in scenario["requirements"]:
         requirement["grader_id"] = "host-contract"
     scenario["requirements"].extend(_case_requirements(case, skill_id))
@@ -412,7 +419,7 @@ def scenario_from_case(
             "expected_hash": contract_binding["sha256"],
             "predicate": None,
             "valid_from_seq": 0,
-            "valid_until_seq": 1_000_000,
+            "valid_until_seq": 0,
             "valid_from_utc": None,
             "valid_until_utc": None,
             "freshness_requirement": "same-attempt fixture",
@@ -531,159 +538,6 @@ def applicability_records(
             "approved_by": "evaluation-owner",
         })
     return records
-
-
-def _planner_contract(
-    planner_root: Path,
-    case_ids: set[str],
-) -> tuple[dict[str, Any], dict[str, dict[str, Any]], dict[str, tuple[str, str]]]:
-    plan = load_json(contained_file(
-        planner_root,
-        "execution-plan-v1.json",
-        "planner execution plan",
-    ))
-    verify_self_hash(plan, "plan_hash")
-    spec = load_json(contained_file(
-        planner_root,
-        "eval-spec-v5.json",
-        "planner spec",
-    ))
-    profiles = {
-        item["treatment_id"]: (item["causal_role"], item["profile"])
-        for item in spec["treatments"]
-    }
-    if len(profiles) != len(spec["treatments"]):
-        raise ValueError("planner treatment identity is ambiguous")
-    selected = [
-        item
-        for item in plan["entries"]
-        if (
-            item["disposition"] == "execute"
-            and item["case_id"] in case_ids
-            and profiles[item["treatment_id"]][0] in {"baseline", "candidate"}
-        )
-    ]
-    entries = {item["entry_id"]: item for item in selected}
-    if len(entries) != len(selected):
-        raise ValueError("planner entry identity is ambiguous")
-    return plan, entries, profiles
-
-
-def _planner_index(
-    planner_root: Path,
-    entries: dict[str, dict[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    index_path = contained_file(
-        planner_root,
-        "artifacts/index.jsonl",
-        "planner run index",
-    )
-    rows = {}
-    for position, line in enumerate(
-        index_path.read_bytes().splitlines(),
-        start=1,
-    ):
-        row = json_object(line, f"{index_path}:{position}")
-        entry_id = row.get("entry_id")
-        if entry_id not in entries:
-            continue
-        if entry_id in rows:
-            raise ValueError("planner transfer source was retried")
-        rows[entry_id] = row
-    if set(rows) != set(entries):
-        raise ValueError("planner transfer source inventory is incomplete")
-    return rows
-
-
-def _planner_deliverable(
-    planner_root: Path,
-    *,
-    plan: dict[str, Any],
-    entry: dict[str, Any],
-    row: dict[str, Any],
-    profiles: dict[str, tuple[str, str]],
-) -> tuple[tuple[str, int, str], dict[str, Any]]:
-    artifacts_root = planner_root / "artifacts"
-    receipt_path = contained_file(
-        artifacts_root,
-        row["receipt"]["path"],
-        "planner receipt",
-    )
-    if file_hash(receipt_path) != row["receipt"]["sha256"]:
-        raise ValueError("planner receipt index hash mismatch")
-    receipt = load_json(receipt_path)
-    verify_self_hash(receipt, "receipt_hash")
-    run = receipt["run"]
-    expected = {
-        "valid": True,
-        "terminal": "completed",
-        "entry_id": entry["entry_id"],
-        "case_id": entry["case_id"],
-        "repeat": entry["repeat"],
-        "treatment_id": entry["treatment_id"],
-        "plan_hash": plan["plan_hash"],
-    }
-    if any(run.get(key) != value for key, value in expected.items()):
-        raise ValueError("planner receipt identity is invalid")
-    artifact_path = f"workspace/fixtures/{entry['case_id']}/PLAN.md"
-    references = [
-        item for item in receipt["artifacts"] if item["path"] == artifact_path
-    ]
-    if len(references) != 1:
-        raise ValueError("planner receipt lacks one canonical PLAN.md")
-    deliverable_path = contained_file(
-        artifacts_root,
-        f"{row['artifact_dir']}/{artifact_path}",
-        "planner deliverable",
-    )
-    if file_hash(deliverable_path) != references[0]["sha256"]:
-        raise ValueError("planner deliverable hash mismatch")
-    content = deliverable_path.read_text(encoding="utf-8")
-    if not content.strip():
-        raise ValueError("planner deliverable is empty")
-    role, profile = profiles[entry["treatment_id"]]
-    return (entry["case_id"], entry["repeat"], role), {
-        "source_case_id": entry["case_id"],
-        "planner_repeat": entry["repeat"],
-        "planner_treatment_id": entry["treatment_id"],
-        "planner_profile": profile,
-        "planner_entry_id": entry["entry_id"],
-        "planner_receipt_hash": row["receipt"]["sha256"],
-        "planner_plan_hash": plan["plan_hash"],
-        "deliverable_sha256": references[0]["sha256"],
-        "deliverable_content": content,
-    }
-
-
-def verified_planner_deliverables(
-    planner_root: Path,
-    *,
-    case_ids: set[str],
-    repeats: int,
-) -> dict[tuple[str, int, str], dict[str, Any]]:
-    plan, entries, profiles = _planner_contract(planner_root, case_ids)
-    rows = _planner_index(planner_root, entries)
-    deliverables = {}
-    for entry_id, entry in entries.items():
-        key, value = _planner_deliverable(
-            planner_root,
-            plan=plan,
-            entry=entry,
-            row=rows[entry_id],
-            profiles=profiles,
-        )
-        if key in deliverables:
-            raise ValueError("planner deliverable identity is ambiguous")
-        deliverables[key] = value
-    expected = {
-        (case_id, repeat, role)
-        for case_id in case_ids
-        for repeat in range(1, repeats + 1)
-        for role in ("baseline", "candidate")
-    }
-    if set(deliverables) != expected:
-        raise ValueError("planner baseline/candidate matrix is incomplete")
-    return deliverables
 
 
 TRANSFER_PROFILE_ROLES = {

@@ -247,6 +247,22 @@ def contained_file(root: Path, relative: str, label: str) -> Path:
         raise StateError(f"{label} is unavailable: {exc}") from None
 
 
+def verified_artifact(
+    root: Path,
+    binding: dict[str, Any],
+    label: str,
+    *,
+    prefix: str = "",
+) -> Path:
+    if not isinstance(binding, dict) or not isinstance(binding.get("path"), str):
+        raise StateError(f"{label} binding is invalid")
+    relative = (Path(prefix) / binding["path"]).as_posix()
+    path = contained_file(root, relative, label)
+    if file_hash(path) != binding.get("sha256"):
+        raise StateError(f"{label} hash differs")
+    return path
+
+
 def regular_files(root: Path) -> list[Path]:
     base = assert_nofollow(root, kind="directory")
     files = []

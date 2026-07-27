@@ -37,6 +37,14 @@ def test_contained_file_rejects_escape_and_symlink(tmp_path: Path) -> None:
     (root / "value.txt").write_text("bound", encoding="utf-8")
     (root / "link").symlink_to(root / "value.txt")
     assert artifacts.contained_file(root, "value.txt", "value").read_text() == "bound"
+    binding = artifacts.artifact_binding(root / "value.txt", root)
+    assert artifacts.verified_artifact(root, binding, "value").name == "value.txt"
+    with pytest.raises(artifacts.StateError):
+        artifacts.verified_artifact(
+            root,
+            {**binding, "sha256": "sha256:" + "0" * 64},
+            "value",
+        )
     with pytest.raises(artifacts.StateError):
         artifacts.contained_file(root, "../value.txt", "value")
     with pytest.raises(artifacts.StateError):

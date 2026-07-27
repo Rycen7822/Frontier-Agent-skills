@@ -87,6 +87,40 @@ def test_rebind_study_inputs_updates_every_host_binding() -> None:
     assert model_grader["prompt"]["sha256"] == assets["model_grader_prompt.md"]
 
 
+def test_scenario_rebuilds_dynamic_requirements_from_case() -> None:
+    template_path = (
+        Path(__file__).parents[2]
+        / "skill-evaluator/templates/scenarios.example.jsonl"
+    )
+    template = artifacts.json_object(
+        template_path.read_bytes().splitlines()[0],
+        template_path,
+    )
+    template["requirements"].append({
+        **template["requirements"][0],
+        "requirement_id": "rubric-stale",
+        "owner": "model",
+        "grader_id": "blind-rubric",
+    })
+    case = next(
+        item
+        for item in specs.fixed_design("d0-writing-plans").cases
+        if not item.model_grading
+    )
+    scenario = studies.scenario_from_case(
+        template=template,
+        case=case,
+        fixture_files=[],
+        contract_binding={"path": "contract.json", "sha256": HASH},
+        host_binding={"path": "host.json", "sha256": HASH},
+        profiles=list(case.applicable_profiles),
+        skill_id="writing-plans",
+    )
+    assert "rubric-stale" not in {
+        item["requirement_id"] for item in scenario["requirements"]
+    }
+
+
 def test_materialized_host_uses_tracked_cli_without_controller_copy(
     tmp_path: Path,
 ) -> None:
