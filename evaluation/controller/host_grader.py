@@ -33,7 +33,7 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
     print(json.dumps(output, separators=(",", ":"), sort_keys=True))
-    return 0
+    return 0 if output["overall_pass"] else 1
 
 
 if __name__ == "__main__":
