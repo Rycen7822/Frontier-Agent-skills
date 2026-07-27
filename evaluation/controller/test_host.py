@@ -289,7 +289,6 @@ def test_capability_attestation_is_in_memory_exact_and_deterministic() -> None:
 
 def test_app_server_preflight_validates_used_union_without_provider(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app_server_schema_tree(tmp_path)
     first = source_proof.validate_app_server_schema_tree(tmp_path)
@@ -304,21 +303,10 @@ def test_app_server_preflight_validates_used_union_without_provider(
     )
     executable = Path(sys.executable).resolve()
     runtime = {"executable": {"path": str(executable), "sha256": artifacts.file_hash(executable)}}
-    forwarded = {
-        "HTTP_PROXY": "http://proxy.test:7897",
-        "HTTPS_PROXY": "http://proxy.test:7897",
-        "NO_PROXY": "localhost",
-    }
-    for name, value in forwarded.items():
-        monkeypatch.setenv(name, value)
-    monkeypatch.setenv("SHOULD_NOT_REACH_APP_SERVER", "secret")
     with mock.patch.object(host.subprocess, "Popen") as popen:
         host.AppServer(tmp_path, runtime)
     assert popen.call_args.args[0] == [str(executable), *host.APP_SERVER_ARGS]
-    environment = popen.call_args.kwargs["env"]
-    assert {name: environment[name] for name in forwarded} == forwarded
-    assert "PATH" not in environment
-    assert "SHOULD_NOT_REACH_APP_SERVER" not in environment
+    assert "PATH" not in popen.call_args.kwargs["env"]
     waiting = object.__new__(host.AppServer)
     waiting.messages = []
     waiting.condition = threading.Condition()

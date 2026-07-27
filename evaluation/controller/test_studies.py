@@ -137,8 +137,7 @@ def test_materialized_host_uses_tracked_cli_without_controller_copy(
         "host",
     ]
     assert manifest["command"]["env_allowlist"] == [
-        "HTTP_PROXY",
-        "HTTPS_PROXY",
+        "HTTP_PROXY", "HTTPS_PROXY",
         "NO_PROXY",
         "PYTHONDONTWRITEBYTECODE",
         "PYTHONPATH",
