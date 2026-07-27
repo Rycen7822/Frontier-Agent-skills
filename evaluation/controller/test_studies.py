@@ -137,8 +137,13 @@ def test_materialized_host_uses_tracked_cli_without_controller_copy(
         "host",
     ]
     assert manifest["command"]["env_allowlist"] == [
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
         "PYTHONDONTWRITEBYTECODE",
         "PYTHONPATH",
+        "SSL_CERT_DIR",
+        "SSL_CERT_FILE",
     ]
     validator = _validator(repo)
     assert validator.validate_v5_schema(

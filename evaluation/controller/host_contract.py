@@ -276,7 +276,15 @@ def materialize(
         "resolved_executable": str(python),
         "executable_sha256": file_hash(python),
         "protocol_version": 1,
-        "env_allowlist": ["PYTHONDONTWRITEBYTECODE", "PYTHONPATH"],
+        "env_allowlist": [
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "PYTHONDONTWRITEBYTECODE",
+            "PYTHONPATH",
+            "SSL_CERT_DIR",
+            "SSL_CERT_FILE",
+        ],
     })
     _finish_manifest(
         manifest,
