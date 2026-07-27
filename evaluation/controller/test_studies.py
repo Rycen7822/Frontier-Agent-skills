@@ -91,6 +91,7 @@ def test_materialized_host_uses_tracked_cli_without_controller_copy(
     tmp_path: Path,
 ) -> None:
     repo = Path(__file__).parents[2]
+    assert all(case.verification_argv == ("python3", f"fixtures/{case.case_id}/test_app.py") for case in specs.sqw_cases() if case.verification_argv)
     study = tmp_path / "study"
     for arm in ("candidate", "prior"):
         (study / arm / "software-quality-workflows").mkdir(parents=True)
