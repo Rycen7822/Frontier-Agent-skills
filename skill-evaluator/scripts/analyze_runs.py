@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import compile_eval_plan as compiler
+import model_grade_transport as model_transport
 from evidence_io import (
     atomic_write_bytes,
     canonical_json_bytes,
@@ -1787,7 +1788,7 @@ def _model_v4_output(
     requirements: list[dict[str, Any]],
     artifacts: dict[str, dict[str, Any]],
     registry: dict[str, dict[str, Any]],
-) -> tuple[dict[str, Any], str]:
+) -> tuple[dict[str, Any], str, dict[str, str]]:
     matching_specs = [
         item for item in entry["model_grade_specs"]
         if item["grader_id"] == reference["grader_id"]
@@ -1814,6 +1815,14 @@ def _model_v4_output(
         or sorted(blinded) != sorted(model_spec["blinded_projection"])
     ):
         raise ValueError("model blinded input differs from the plan projection")
+    batch = model_transport.execution_batch(
+        blinded,
+        grader_id=reference["grader_id"],
+        entry_id=entry["entry_id"],
+        read_artifact=lambda item: _verified_v4_artifact(
+            item, artifacts, "model grader evidence",
+        )["text"],
+    )
 
     requests = [
         item for item in receipt["host_protocol"]["requests"]
@@ -1828,7 +1837,7 @@ def _model_v4_output(
     if (
         request["payload"].get("batch_hash") != model_spec["batch_hash"]
         or request["payload"].get("schedule_hash") != model_spec["schedule_hash"]
-        or request["payload"].get("blinded_input") != blinded
+        or request["payload"].get("blinded_input") != batch
     ):
         raise ValueError("model grader host request differs from the plan/batch")
 
@@ -1890,9 +1899,14 @@ def _model_v4_output(
         raise ValueError(
             f"model grader output is invalid JSON: {exc.msg}",
         ) from None
-    return validate_grader_output(output, requirements, artifacts), output_reference[
-        "path"
-    ]
+    normalized, pointers = model_transport.normalize_judgment(
+        output, batch=batch, requirements=requirements,
+    )
+    return (
+        validate_grader_output(normalized, requirements, artifacts),
+        output_reference["path"],
+        pointers,
+    )
 
 
 def _deterministic_v4_output(
@@ -1901,7 +1915,7 @@ def _deterministic_v4_output(
     requirements: list[dict[str, Any]],
     artifacts: dict[str, dict[str, Any]],
     credential_policy: str,
-) -> tuple[dict[str, Any], str]:
+) -> tuple[dict[str, Any], str, dict[str, str]]:
     invocation_artifact = _verified_v4_artifact(
         reference["invocation"], artifacts, "grader invocation",
     )
@@ -1951,7 +1965,10 @@ def _deterministic_v4_output(
         invocation["exit_code"] in invocation["pass_exit_codes"]
     ) != normalized["overall_pass"]:
         raise ValueError("deterministic grader exit/pass semantics contradict")
-    return normalized, reference["output"]["path"]
+    return normalized, reference["output"]["path"], {
+        item["check_id"]: f"/checks/{index}/pass"
+        for index, item in enumerate(output["checks"])
+    }
 
 
 def _read_v4_grades(
@@ -1986,7 +2003,7 @@ def _read_v4_grades(
         if declaration is None or declaration["type"] != reference["kind"]:
             raise ValueError("receipt grader kind differs from the spec")
         if reference["kind"] == "deterministic":
-            normalized, output_path = _deterministic_v4_output(
+            normalized, output_path, pointers = _deterministic_v4_output(
                 reference,
                 declaration,
                 selected,
@@ -1994,7 +2011,7 @@ def _read_v4_grades(
                 spec["execution"]["credential_policy"],
             )
         else:
-            normalized, output_path = _model_v4_output(
+            normalized, output_path, pointers = _model_v4_output(
                 receipt,
                 reference,
                 entry,
@@ -2004,11 +2021,6 @@ def _read_v4_grades(
             )
         if normalized["grader_failure"]:
             raise ValueError("grader output reports apparatus failure")
-        output = json.loads(artifacts[output_path]["text"])
-        output_indexes = {
-            item["check_id"]: index
-            for index, item in enumerate(output["checks"])
-        }
         for check_id, passed in normalized["checks"].items():
             if check_id in checks:
                 raise ValueError(f"duplicate normalized grader check: {check_id}")
@@ -2016,7 +2028,7 @@ def _read_v4_grades(
             locators[check_id] = {
                 "kind": "json_pointer",
                 "artifact": output_path,
-                "json_pointer": f"/checks/{output_indexes[check_id]}/pass",
+                "json_pointer": pointers[check_id],
             }
     expected_checks = {item["check_id"] for item in requirements}
     if set(checks) != expected_checks:
