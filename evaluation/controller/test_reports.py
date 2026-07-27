@@ -103,6 +103,7 @@ def test_calibration_partition_is_eight_blinded_provider_requests(
     pack = studies.calibration_pack(skill_id)
     batches = studies.batch_schedule(pack)
     assert len(pack) == 16
+    assert ("Resume preflight:" in str(pack[0])) == (skill_id == "writing-plans")
     assert {
         class_name: sum(
             item["calibration_class"] == class_name

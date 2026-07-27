@@ -872,7 +872,7 @@ def passing_view(study: str) -> dict[str, Any]:
         "1. Update the schema. Acceptance: the focused schema fixture passes.\n"
         "2. After step 1, update callers. Acceptance: the offline integration suite passes.\n\n"
         "Recovery: revert the two implementation commits.\n\n"
-        "Exact next action: implement step 1. This plan does not claim execution, publication, or deployment.\n"
+        "Resume preflight: verify branch, clean worktree, and decision owner.\nExact first source-changing action: implement step 1. This plan does not claim execution, publication, or deployment.\n"
     )
     return {
         "prompt": "Write one durable implementation plan for the resolved local migration.",
