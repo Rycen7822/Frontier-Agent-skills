@@ -583,7 +583,7 @@ def test_codex_execution_projects_bound_workspace(
     assert calls[0]["timeout_seconds"] == host.MODEL_TASK_TIMEOUT_SECONDS == 600
     assert result["terminal_status"] == "completed"
     assert result["principals"][0]["effective_budget"]["tokens"] == 15
-    assert [item["kind"] for item in result["context"]["components"]] == ["body"]
+    assert result["context"]["components"][0]["component_id"] == "body-001"
     assert {item["claim"] for item in result["assertions"]} >= {
         "outcome-complete",
         "transfer-preflight",
