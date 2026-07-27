@@ -251,6 +251,137 @@ def test_p4_custom_exception_is_terminal_and_non_retryable(
     assert receipt_value["failure_class"] is None
 
 
+def test_compiled_plan_closes_scored_ledger_without_replay(
+    tmp_path: Path,
+) -> None:
+    attempt = tmp_path / "attempt"
+    required = [
+        request_entry("execute-1"),
+        request_entry("grade-1", request_kind="model_grade"),
+    ]
+    initialize(attempt, required=required)
+    study = tmp_path / "study"
+    study.mkdir()
+    plan = artifacts.self_hashed(
+        {"entries": [{"entry_id": "entry-1"}]},
+        "plan_hash",
+    )
+    plan_path = study / "execution-plan-v1.json"
+    artifacts.write_json(plan_path, plan)
+    index = study / "artifacts/index.jsonl"
+    runner = tmp_path / "runner.py"
+    runner.write_text(
+        """
+import argparse
+import hashlib
+import json
+from pathlib import Path
+
+p = argparse.ArgumentParser()
+p.add_argument("plan")
+p.add_argument("--index")
+p.add_argument("--entry-id")
+p.add_argument("--resume", action="store_true")
+a = p.parse_args()
+index = Path(a.index)
+receipt = index.parent / "entries/entry-1/attempt-0001/receipt.json"
+receipt.parent.mkdir(parents=True)
+plan = json.loads(Path(a.plan).read_text())
+value = {"run": {
+    "entry_id": a.entry_id,
+    "plan_hash": plan["plan_hash"],
+    "terminal": "completed",
+    "valid": True,
+}}
+canonical = lambda item: json.dumps(
+    item, sort_keys=True, separators=(",", ":"),
+).encode()
+value["receipt_hash"] = "sha256:" + hashlib.sha256(canonical(value)).hexdigest()
+receipt.write_bytes(canonical(value) + b"\\n")
+row = {"entry_id": a.entry_id, "receipt": {
+    "path": receipt.relative_to(index.parent).as_posix(),
+    "sha256": "sha256:" + hashlib.sha256(receipt.read_bytes()).hexdigest(),
+}}
+index.write_bytes(canonical(row) + b"\\n")
+""".lstrip(),
+        encoding="utf-8",
+    )
+    arguments = {
+        "attempt_root": attempt,
+        "study_root": study,
+        "runner_path": runner,
+        "plan_path": plan_path,
+        "index_path": index,
+        "bindings": [{
+            "entry_id": "entry-1",
+            "request_ids": ["execute-1", "grade-1"],
+        }],
+    }
+    first = campaign.execute_compiled_plan(**arguments)
+    runner.unlink()
+    second = campaign.execute_compiled_plan(**arguments)
+    assert first == second
+    assert {item["request_id"] for item in first} == {
+        "execute-1",
+        "grade-1",
+    }
+    assert len(campaign.verify_ledger(attempt / "provider-ledger.jsonl")) == 2
+
+
+def test_compiled_plan_rejects_reserved_entry_without_runner_evidence(
+    tmp_path: Path,
+) -> None:
+    attempt = tmp_path / "attempt"
+    initialize(attempt)
+    reserve(attempt, "request-1")
+    study = tmp_path / "study"
+    study.mkdir()
+    plan = artifacts.self_hashed(
+        {"entries": [{"entry_id": "entry-1"}]},
+        "plan_hash",
+    )
+    plan_path = study / "execution-plan-v1.json"
+    artifacts.write_json(plan_path, plan)
+    with pytest.raises(
+        artifacts.StateError,
+        match="lacks closed runner evidence",
+    ):
+        campaign.execute_compiled_plan(
+            attempt_root=attempt,
+            study_root=study,
+            runner_path=tmp_path / "unused.py",
+            plan_path=plan_path,
+            index_path=study / "artifacts/index.jsonl",
+            bindings=[{
+                "entry_id": "entry-1",
+                "request_ids": ["request-1"],
+            }],
+        )
+    unreserved = tmp_path / "unreserved"
+    initialize(unreserved)
+    index = study / "artifacts/index.jsonl"
+    index.parent.mkdir()
+    index.write_bytes(artifacts.canonical_bytes({
+        "entry_id": "entry-1",
+        "receipt": {},
+    }) + b"\n")
+    with pytest.raises(
+        artifacts.StateError,
+        match="lacks closed runner evidence",
+    ):
+        campaign.execute_compiled_plan(
+            attempt_root=unreserved,
+            study_root=study,
+            runner_path=tmp_path / "unused.py",
+            plan_path=plan_path,
+            index_path=index,
+            bindings=[{
+                "entry_id": "entry-1",
+                "request_ids": ["request-1"],
+            }],
+        )
+
+
 def test_action_context_pins_cwd_lease_and_closes_fds(tmp_path: Path) -> None:
     original = Path.cwd()
     descriptors = set(os.listdir("/proc/self/fd"))

@@ -8,6 +8,7 @@ import fcntl
 import os
 from pathlib import Path
 import re
+import subprocess
 from typing import Any, Callable, Iterator
 
 from .artifacts import (
@@ -17,6 +18,8 @@ from .artifacts import (
     atomic_write as _atomic_write,
     canonical_bytes,
     canonical_hash,
+    contained_file,
+    file_hash,
     json_object as _json_object,
     load_json,
     raw_hash,
@@ -790,6 +793,125 @@ def execute_bound_entry(
         artifact_binding(request_path, result_root),
         artifact_binding(result_path, result_root),
     )
+
+
+def execute_compiled_plan(
+    *,
+    attempt_root: Path,
+    study_root: Path,
+    runner_path: Path,
+    plan_path: Path,
+    index_path: Path,
+    bindings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Run official plan entries once while closing the provider ledger."""
+    plan = _json_object(plan_path.read_bytes(), plan_path)
+    entries = {item["entry_id"]: item for item in plan["entries"]}
+    if len(entries) != len(plan["entries"]):
+        raise StateError("compiled plan entry identity is ambiguous")
+
+    def index_rows() -> dict[str, dict[str, Any]]:
+        if not index_path.exists():
+            return {}
+        rows = {}
+        for position, line in enumerate(index_path.read_bytes().splitlines(), 1):
+            row = _json_object(line, f"{index_path}:{position}")
+            entry_id = row.get("entry_id")
+            if entry_id not in entries or entry_id in rows:
+                raise StateError("run index entry identity is invalid")
+            rows[entry_id] = row
+        return rows
+
+    native = []
+    manifest_entries = _request_entries(bound_request_manifest(attempt_root))
+    for binding in bindings:
+        if (
+            not isinstance(binding, dict)
+            or set(binding) != {"entry_id", "request_ids"}
+            or binding["entry_id"] not in entries
+            or not isinstance(binding["request_ids"], list)
+            or not binding["request_ids"]
+        ):
+            raise StateError("plan provider binding is invalid")
+        request_entries = [
+            manifest_entries.get(request_id)
+            for request_id in binding["request_ids"]
+        ]
+        if any(
+            item is None or item["family"] != "scored"
+            for item in request_entries
+        ):
+            raise StateError("plan provider request is outside scored manifest")
+        rows = index_rows()
+        ledger_ids = {
+            row["request_id"]
+            for row in verify_ledger(attempt_root / "provider-ledger.jsonl")
+        }
+        reserved = set(binding["request_ids"]) & ledger_ids
+        completed = binding["entry_id"] in rows
+        if (reserved or completed) and (
+            reserved != set(binding["request_ids"]) or not completed
+        ):
+            raise StateError("reserved plan entry lacks closed runner evidence")
+        if not completed:
+            for item in request_entries:
+                reserve_provider_request(
+                    attempt_root,
+                    request_id=item["request_id"],
+                    entry_hash=canonical_hash(item),
+                )
+            arguments = [
+                "python3",
+                str(runner_path),
+                str(plan_path),
+                "--index",
+                str(index_path),
+                "--entry-id",
+                binding["entry_id"],
+            ]
+            if index_path.exists():
+                arguments.append("--resume")
+            completed_process = subprocess.run(
+                arguments,
+                cwd=study_root,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+                check=False,
+            )
+            if completed_process.returncode:
+                diagnostic = (
+                    completed_process.stderr or completed_process.stdout
+                ).strip()[:2000]
+                raise StateError(
+                    "official runner failed after provider reservation: "
+                    f"{diagnostic}"
+                )
+            rows = index_rows()
+        row = rows.get(binding["entry_id"])
+        if row is None:
+            raise StateError("official runner emitted no bound index row")
+        receipt = contained_file(
+            study_root / "artifacts",
+            row["receipt"]["path"],
+            "official runner receipt",
+        )
+        if file_hash(receipt) != row["receipt"]["sha256"]:
+            raise StateError("official runner receipt binding differs")
+        document = _json_object(receipt.read_bytes(), receipt)
+        _verify_self_hash(document, "receipt_hash")
+        if (
+            document["run"]["entry_id"] != binding["entry_id"]
+            or document["run"]["plan_hash"] != plan["plan_hash"]
+            or document["run"]["terminal"] != "completed"
+            or document["run"]["valid"] is not True
+        ):
+            raise StateError("official runner receipt is not terminal-valid")
+        native.extend(
+            native_attempt_receipt(item, terminal_status="completed")
+            for item in request_entries
+        )
+    return native
 
 
 def bound_request_manifest(root: Path) -> dict[str, Any]:

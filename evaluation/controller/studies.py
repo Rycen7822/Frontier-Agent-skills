@@ -38,6 +38,12 @@ FULL_PACKET_SCHEMA = "context-clean-subagent-reviewer-packet/1.0"
 COMPACT_PACKET_SCHEMA = "context-clean-subagent-reviewer-message-packet/1.0"
 RATINGS_SCHEMA = "context-clean-subagent-reviewer-ratings/2.0"
 TUPLE_FIELDS = ["opaque_example_id", "view_index", "check_index"]
+TRANSFER_REQUIREMENTS = (
+    ("transfer-preflight", "transfer-preflight", "grounding"),
+    ("artifact-boundary", "artifact-contract", "grounding"),
+    ("content-integrity", "content-contract", "grounding"),
+    ("verification-contract", "verification-passes", "outcome"),
+)
 REVIEWER_SCHEMA = Path(__file__).with_name(
     "context-clean-subagent-reviewer-receipt-v1.schema.json",
 )
@@ -322,7 +328,7 @@ def _case_requirements(
             "requirement_id": requirement_id,
             "dimension": dimension,
             "required": True,
-            "owner": "host",
+            "owner": "deterministic",
             "grader_id": "host-contract",
             "check_id": check_id,
             "checkpoint": "final",
@@ -330,12 +336,7 @@ def _case_requirements(
             "transition_id": None,
             "safety_severity": None,
             "safety_kind": None,
-        } for requirement_id, check_id, dimension in (
-            ("transfer-preflight", "transfer-preflight", "grounding"),
-            ("artifact-boundary", "artifact-contract", "grounding"),
-            ("content-integrity", "content-contract", "grounding"),
-            ("verification-contract", "verification-passes", "outcome"),
-        ))
+        } for requirement_id, check_id, dimension in TRANSFER_REQUIREMENTS)
     return requirements
 
 
@@ -389,6 +390,35 @@ def scenario_from_case(
     for requirement in scenario["requirements"]:
         requirement["grader_id"] = "host-contract"
     scenario["requirements"].extend(_case_requirements(case, skill_id))
+    if case.transfer_source is not None:
+        consumers = [
+            item["requirement_id"]
+            for item in scenario["requirements"]
+            if item["dimension"] == "grounding"
+        ]
+        scenario["observation_contracts"] = [{
+            "observation_id": "transfer-contract-observation",
+            "producer": "host-contract",
+            "capture_authority": "frozen-fixture",
+            "artifact": f"workspace/{contract_binding['path']}",
+            "locator": {
+                "kind": "text_lines",
+                "artifact": f"workspace/{contract_binding['path']}",
+                "start_line": 1,
+                "end_line": 1,
+            },
+            "encoding": "utf-8",
+            "schema_hash": None,
+            "expected_hash": contract_binding["sha256"],
+            "predicate": None,
+            "valid_from_seq": 0,
+            "valid_until_seq": 1_000_000,
+            "valid_from_utc": None,
+            "valid_until_utc": None,
+            "freshness_requirement": "same-attempt fixture",
+            "clock_requirement": "monotonic event sequence",
+            "consumer_requirement_ids": consumers,
+        }]
     return scenario
 
 
@@ -767,6 +797,58 @@ def transfer_design(
         ),
         repeats=1,
     )
+
+
+def scored_plan_bindings(
+    profile: str,
+    plan: dict[str, Any],
+    request_manifest: dict[str, Any],
+) -> list[dict[str, Any]]:
+    design = fixed_design(profile)
+    requests = [
+        item
+        for item in request_manifest["required_requests"]
+        if item["family"] == "scored" and item["study"] == design.study_id
+    ]
+    by_subject: dict[str, list[dict[str, Any]]] = {}
+    for item in requests:
+        by_subject.setdefault(item["subject_id"], []).append(item)
+    bindings = []
+    observed = set()
+    for item in plan["entries"]:
+        if item["disposition"] != "execute":
+            continue
+        payload = item["execute_case_payload"]
+        profile_name = payload["treatment"]["profile"]
+        case_id = item["case_id"]
+        repeat = item["repeat"]
+        if profile.endswith("-transfer"):
+            case_id, marker, planner_repeat = case_id.rpartition("-transfer-r")
+            if not marker or not planner_repeat.isdigit():
+                raise ValueError("transfer case identity is invalid")
+            repeat = int(planner_repeat)
+        subject = (
+            f"{profile}.{case_id}.r{repeat}."
+            f"{profile_name.replace('/', '-')}"
+        )
+        selected = by_subject.get(subject, [])
+        expected_kinds = ["execute"] + (["model_grade"] if item["model_grade_specs"] else [])
+        indexed = {entry["request_kind"]: entry for entry in selected}
+        if (
+            len(indexed) != len(selected)
+            or set(indexed) != set(expected_kinds)
+        ):
+            raise ValueError("compiled entry provider partition differs")
+        request_ids = [indexed[kind]["request_id"] for kind in expected_kinds]
+        observed.update(request_ids)
+        bindings.append({
+            "entry_id": item["entry_id"],
+            "request_ids": request_ids,
+        })
+    expected_ids = {item["request_id"] for item in requests}
+    if len(bindings) != design.expected_execute or observed != expected_ids:
+        raise ValueError("compiled plan does not close scored request inventory")
+    return bindings
 
 
 def passing_view(study: str) -> dict[str, Any]:

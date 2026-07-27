@@ -369,6 +369,107 @@ def study_binding(
     }
 
 
+def write_writing_plans_join(
+    *,
+    planner_root: Path,
+    transfer_root: Path,
+    output: Path,
+) -> dict[str, Any]:
+    def indexed(root: Path, label: str) -> dict[str, dict[str, Any]]:
+        path = contained_file(root, "artifacts/index.jsonl", f"{label} index")
+        rows = {}
+        for position, line in enumerate(path.read_bytes().splitlines(), 1):
+            row = json_object(line, f"{path}:{position}")
+            entry_id = row.get("entry_id")
+            if not isinstance(entry_id, str) or entry_id in rows:
+                raise ReportError(f"{label} index identity is ambiguous")
+            rows[entry_id] = row
+        return rows
+
+    planner_rows = indexed(planner_root, "planner")
+    transfer_rows = indexed(transfer_root, "transfer")
+    plan = json_object(
+        contained_file(
+            transfer_root,
+            "execution-plan-v1.json",
+            "transfer plan",
+        ).read_bytes(),
+        "transfer plan",
+    )
+    spec = load_json(transfer_root / "eval-spec-v5.json")
+    treatments = {
+        item["treatment_id"]: (item["causal_role"], item["profile"])
+        for item in spec["treatments"]
+    }
+    join = {}
+    expected = set()
+    for entry in plan["entries"]:
+        if entry["disposition"] != "execute":
+            continue
+        role, profile = treatments[entry["treatment_id"]]
+        if role not in {"baseline", "candidate"}:
+            continue
+        expected.add(entry["entry_id"])
+        row = transfer_rows.get(entry["entry_id"])
+        if row is None:
+            raise ReportError("transfer join inventory is incomplete")
+        receipt_path = contained_file(
+            transfer_root / "artifacts",
+            row["receipt"]["path"],
+            "transfer receipt",
+        )
+        if file_hash(receipt_path) != row["receipt"]["sha256"]:
+            raise ReportError("transfer receipt index hash differs")
+        receipt = json_object(receipt_path.read_bytes(), receipt_path)
+        verify_self_hash(receipt, "receipt_hash")
+        if (
+            receipt["run"]["valid"] is not True
+            or receipt["run"]["entry_id"] != entry["entry_id"]
+            or receipt["run"]["plan_hash"] != plan["plan_hash"]
+        ):
+            raise ReportError("transfer receipt identity is invalid")
+        contract = load_json(
+            transfer_root
+            / f"fixtures/{entry['case_id']}/case.contract.json"
+        )
+        transfer = contract["transfer_source"]
+        binding_id = transfer["profiles"].get(profile)
+        if binding_id != role:
+            raise ReportError("transfer role differs from planner binding")
+        binding = transfer["bindings"][binding_id]
+        planner_row = planner_rows.get(binding["planner_entry_id"])
+        if (
+            planner_row is None
+            or planner_row["receipt"]["sha256"]
+            != binding["planner_receipt_hash"]
+        ):
+            raise ReportError("planner receipt identity drifted")
+        planner_receipt = contained_file(
+            planner_root / "artifacts",
+            planner_row["receipt"]["path"],
+            "planner receipt",
+        )
+        if file_hash(planner_receipt) != binding["planner_receipt_hash"]:
+            raise ReportError("planner receipt hash differs")
+        planner_document = json_object(planner_receipt.read_bytes(), planner_receipt)
+        verify_self_hash(planner_document, "receipt_hash")
+        join[entry["entry_id"]] = {
+            "source_case_id": binding["source_case_id"],
+            "planner_repeat": binding["planner_repeat"],
+            "planner_entry_id": binding["planner_entry_id"],
+            "planner_receipt_hash": binding["planner_receipt_hash"],
+            "executor_receipt_hash": row["receipt"]["sha256"],
+        }
+    if set(join) != expected:
+        raise ReportError("Writing Plans join inventory differs")
+    write_or_verify_json(output, join)
+    return {
+        "joined_entries": len(join),
+        "join_content_hash": file_hash(output),
+        "provider_requests": 0,
+    }
+
+
 def project_release(
     *,
     analyzer: Any,

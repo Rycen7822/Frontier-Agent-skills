@@ -78,6 +78,7 @@ CONTROLLER_FILES = {
     "test_host.py",
     "test_reports.py",
     "test_studies.py",
+    "transfer.py",
     "workspace.py",
 }
 

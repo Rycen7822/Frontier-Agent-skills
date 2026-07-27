@@ -203,6 +203,194 @@ def test_planner_receipts_bind_transfer_design(tmp_path: Path) -> None:
     assert all(len(case.transfer_source["bindings"]) == 2 for case in transfer.cases)
 
 
+def test_compiled_plan_bindings_close_exact_scored_inventory() -> None:
+    profile = "d0-writing-plans"
+    study = specs.fixed_design(profile)
+    entries = []
+    requests = []
+    for case in study.cases:
+        for repeat in range(1, study.repeats + 1):
+            for treatment in case.applicable_profiles:
+                slug = treatment.replace("/", "-")
+                subject = f"{profile}.{case.case_id}.r{repeat}.{slug}"
+                entries.append({
+                    "entry_id": f"pe-{len(entries)}",
+                    "case_id": case.case_id,
+                    "repeat": repeat,
+                    "disposition": "execute",
+                    "model_grade_specs": (
+                        [{"grader_id": "blind-rubric"}]
+                        if case.model_grading
+                        else []
+                    ),
+                    "execute_case_payload": {
+                        "treatment": {"profile": treatment},
+                    },
+                })
+                for kind in (
+                    ["execute", "model_grade"]
+                    if case.model_grading
+                    else ["execute"]
+                ):
+                    item = request_entry(
+                        f"d0.{subject}.{kind}",
+                        request_kind=kind,
+                        study=study.study_id,
+                    )
+                    item["subject_id"] = subject
+                    requests.append(item)
+    bindings = studies.scored_plan_bindings(
+        profile,
+        {"entries": entries},
+        {"required_requests": requests},
+    )
+    assert len(bindings) == study.expected_execute
+    assert sum(len(item["request_ids"]) for item in bindings) == 32
+    with pytest.raises(ValueError, match="provider partition differs"):
+        studies.scored_plan_bindings(
+            profile,
+            {"entries": entries},
+            {"required_requests": requests[:-1]},
+        )
+
+
+def test_transfer_plan_bindings_use_planner_case_identity() -> None:
+    profile = "d0-writing-plans-transfer"
+    design = specs.fixed_design(profile)
+    entries = []
+    requests = []
+    for case in design.cases:
+        for treatment in case.applicable_profiles:
+            slug = treatment.replace("/", "-")
+            subject = f"{profile}.{case.case_id}.r1.{slug}"
+            entries.append({
+                "entry_id": f"pe-{len(entries)}",
+                "case_id": f"{case.case_id}-transfer-r1",
+                "repeat": 1,
+                "disposition": "execute",
+                "model_grade_specs": [],
+                "execute_case_payload": {
+                    "treatment": {"profile": treatment},
+                },
+            })
+            item = request_entry(
+                f"d0.{subject}.execute",
+                study=design.study_id,
+            )
+            item["subject_id"] = subject
+            requests.append(item)
+    bindings = studies.scored_plan_bindings(
+        profile,
+        {"entries": entries},
+        {"required_requests": requests},
+    )
+    assert len(bindings) == 12
+    assert all(len(item["request_ids"]) == 1 for item in bindings)
+
+
+def test_writing_plans_join_binds_planner_and_transfer_receipts(
+    tmp_path: Path,
+) -> None:
+    planner = tmp_path / "planner"
+    planner.mkdir()
+    base = specs.fixed_design("d0-writing-plans-transfer")
+    planner_source(planner, [case.case_id for case in base.cases])
+    transfer_design = studies.transfer_design(
+        "d0-writing-plans-transfer",
+        planner,
+    )
+    transfer = tmp_path / "transfer"
+    artifacts_root = transfer / "artifacts"
+    artifacts_root.mkdir(parents=True)
+    treatments = []
+    by_profile = {}
+    for case in transfer_design.cases:
+        for profile in case.applicable_profiles:
+            if profile in by_profile:
+                continue
+            role = studies.TRANSFER_PROFILE_ROLES[profile]
+            treatment_id = (
+                role if profile != "comparator/alternative_intervention"
+                else "registered-candidate"
+            )
+            by_profile[profile] = treatment_id
+            treatments.append({
+                "treatment_id": treatment_id,
+                "causal_role": (
+                    "comparator"
+                    if profile == "comparator/alternative_intervention"
+                    else role
+                ),
+                "profile": profile,
+            })
+    artifacts.write_json(
+        transfer / "eval-spec-v5.json",
+        {"treatments": treatments},
+    )
+    entries = []
+    rows = []
+    for case in transfer_design.cases:
+        fixture = transfer / "fixtures" / case.case_id
+        fixture.mkdir(parents=True)
+        artifacts.write_json(
+            fixture / "case.contract.json",
+            {"transfer_source": case.transfer_source},
+        )
+        for profile in case.applicable_profiles:
+            entry_id = f"pe-{len(entries)}"
+            entries.append({
+                "entry_id": entry_id,
+                "case_id": case.case_id,
+                "treatment_id": by_profile[profile],
+                "disposition": "execute",
+            })
+            receipt_path = (
+                artifacts_root
+                / f"entries/{entry_id}/attempt-0001/receipt.json"
+            )
+            receipt_path.parent.mkdir(parents=True)
+            receipt = artifacts.self_hashed({
+                "run": {
+                    "valid": True,
+                    "entry_id": entry_id,
+                    "plan_hash": "pending",
+                },
+            }, "receipt_hash")
+            artifacts.write_json(receipt_path, receipt)
+            rows.append({
+                "entry_id": entry_id,
+                "receipt": {
+                    "path": receipt_path.relative_to(
+                        artifacts_root,
+                    ).as_posix(),
+                    "sha256": artifacts.file_hash(receipt_path),
+                },
+            })
+    plan = artifacts.self_hashed({"entries": entries}, "plan_hash")
+    artifacts.write_json(transfer / "execution-plan-v1.json", plan)
+    for row in rows:
+        path = artifacts_root / row["receipt"]["path"]
+        receipt = artifacts.load_json(path)
+        receipt["run"]["plan_hash"] = plan["plan_hash"]
+        receipt["receipt_hash"] = artifacts.canonical_hash({
+            key: value for key, value in receipt.items()
+            if key != "receipt_hash"
+        })
+        artifacts.write_json(path, receipt)
+        row["receipt"]["sha256"] = artifacts.file_hash(path)
+    (artifacts_root / "index.jsonl").write_bytes(
+        b"".join(artifacts.canonical_bytes(row) + b"\n" for row in rows),
+    )
+    output = tmp_path / "join.json"
+    result = reports.write_writing_plans_join(
+        planner_root=planner,
+        transfer_root=transfer,
+        output=output,
+    )
+    assert result["joined_entries"] == 8
+    assert len(artifacts.load_json(output)) == 8
+
+
 def test_controller_passes_three_bound_studies_to_public_projection(
     tmp_path: Path,
 ) -> None:
