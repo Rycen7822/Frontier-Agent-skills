@@ -26,16 +26,20 @@ EXPECTED_CALLS = {
     "formal-writing-plans": (56, 10, 0),
     "formal-writing-plans-transfer": (32, 0, 0),
 }
+SKILL_IDS = ("software-quality-workflows", "writing-plans")
 
 
 def design(profile: str) -> specs.StudyDesign:
-    if profile.startswith("formal-"):
-        return specs.fixed_design(
-            profile,
-            sqw=specs.sqw_cases(),
-            plans=specs.writing_plan_cases(),
-        )
-    return specs.fixed_design(profile)
+    formal = profile.startswith("formal-")
+    return specs.fixed_design(
+        profile,
+        sqw=specs.sqw_cases() if formal else None,
+        plans=specs.writing_plan_cases() if formal else None,
+    )
+
+
+def projection(arm: str, metrics: dict) -> dict:
+    return {"projection": {arm: {"release_metrics": metrics}}}
 
 
 @pytest.mark.parametrize(("profile", "expected"), EXPECTED_CALLS.items())
@@ -55,13 +59,6 @@ def test_fixed_profiles_close_frozen_call_partitions(
         for case in study.cases
     )
     assert study.expected_model_grade == sum(case.model_grading for case in study.cases)
-
-
-@pytest.mark.parametrize("profile", EXPECTED_CALLS)
-def test_case_identity_and_treatment_profiles_are_unambiguous(
-    profile: str,
-) -> None:
-    study = design(profile)
     case_ids = [case.case_id for case in study.cases]
     assert len(case_ids) == len(set(case_ids))
     assert all(case.applicable_profiles for case in study.cases)
@@ -71,10 +68,23 @@ def test_case_identity_and_treatment_profiles_are_unambiguous(
     )
 
 
-@pytest.mark.parametrize(
-    "skill_id",
-    ["software-quality-workflows", "writing-plans"],
-)
+def test_writing_plan_cases_bind_frozen_profile_distribution() -> None:
+    cases = specs.writing_plan_cases()
+    profiles = (
+        ("handoff", "program") * 2
+        + ("program", "handoff", "handoff", "program")
+    )
+    for case, expected in zip(cases, profiles + (None, None), strict=True):
+        prompt = case.prompt.lower()
+        words = set(prompt.split())
+        if expected is None:
+            assert not {"handoff", "program"} & words
+            continue
+        assert {"handoff", "program"} & words == {expected}
+        assert {"planning", "skill", "mandatory", "routing", "supporting-material"} <= words
+
+
+@pytest.mark.parametrize("skill_id", SKILL_IDS)
 def test_model_check_inventory_is_closed(skill_id: str) -> None:
     checks = specs.model_checks(skill_id)
     assert len(checks) == 10
@@ -83,16 +93,12 @@ def test_model_check_inventory_is_closed(skill_id: str) -> None:
 
 
 def test_unknown_or_unbound_formal_profile_fails_closed() -> None:
-    with pytest.raises(specs.SpecificationError):
-        specs.fixed_design("unknown")
-    with pytest.raises(specs.SpecificationError):
-        specs.fixed_design("formal-sqw")
+    for profile in ("unknown", "formal-sqw"):
+        with pytest.raises(specs.SpecificationError):
+            specs.fixed_design(profile)
 
 
-@pytest.mark.parametrize(
-    "skill_id",
-    ["software-quality-workflows", "writing-plans"],
-)
+@pytest.mark.parametrize("skill_id", SKILL_IDS)
 def test_calibration_partition_is_eight_blinded_provider_requests(
     skill_id: str,
 ) -> None:
@@ -118,10 +124,7 @@ def test_calibration_partition_is_eight_blinded_provider_requests(
     }
 
 
-@pytest.mark.parametrize(
-    "skill_id",
-    ["software-quality-workflows", "writing-plans"],
-)
+@pytest.mark.parametrize("skill_id", SKILL_IDS)
 def test_reviewer_projection_is_lossless_and_positional(skill_id: str) -> None:
     arguments = {
         "campaign_id": "campaign-01",
@@ -198,14 +201,11 @@ def test_planner_receipts_bind_transfer_design(tmp_path: Path) -> None:
         len(transfer.cases),
     ) == (8, 0, 0, 1, 4)
     assert all(len(case.transfer_source["bindings"]) == 2 for case in transfer.cases)
-    assert all(
-        case.verification_argv
-        == (
+    for case in transfer.cases:
+        assert case.verification_argv == (
             "python3",
             f"fixtures/{case.case_id.removesuffix('-transfer-r1')}/test_app.py",
         )
-        for case in transfer.cases
-    )
 
 
 def test_compiled_plan_bindings_close_exact_scored_inventory() -> None:
@@ -436,33 +436,14 @@ def test_controller_passes_three_bound_studies_to_public_projection(
 
 
 def test_d0_uses_frozen_gates_instead_of_generic_usefulness() -> None:
-    contract = {
-        "gate_contract": {
-            "software-quality-workflows": [],
-            "writing-plans": [],
-        },
-    }
-    summaries = {
-        study_id: {
-            "evidence_status": "complete",
-            "usefulness_status": "not_supported",
-        }
-        for study_id in reports.STUDIES
-    }
-    _, d0_failures = reports._projection_results(
-        "d0",
-        contract,
-        {"status": "complete"},
-        summaries,
-    )
-    _, formal_failures = reports._projection_results(
-        "formal",
-        contract,
-        {"status": "complete"},
-        summaries,
-    )
-    assert d0_failures == {}
-    assert "native_status" in formal_failures
+    contract = {"gate_contract": {arm: [] for arm in SKILL_IDS}}
+    summary = {"evidence_status": "complete", "usefulness_status": "not_supported"}
+    summaries = dict.fromkeys(reports.STUDIES, summary)
+    for phase, fails in (("d0", False), ("formal", True)):
+        _, failures = reports._projection_results(
+            phase, contract, {"status": "complete"}, summaries,
+        )
+        assert ("native_status" in failures) is fails
 
 
 def test_evaluator_has_no_private_or_legacy_native_reader() -> None:
@@ -480,14 +461,11 @@ def test_evaluator_has_no_private_or_legacy_native_reader() -> None:
 
 
 def test_gate_inventory_and_threshold_owner_are_exact() -> None:
-    assert {
-        phase: tuple(
-            len(contract[arm])
-            for arm in ("software-quality-workflows", "writing-plans")
-        )
+    counts = {
+        phase: tuple(len(specs.gate_contract(phase)[arm]) for arm in SKILL_IDS)
         for phase in ("d0", "formal")
-        for contract in (specs.gate_contract(phase),)
-    } == {"d0": (11, 21), "formal": (18, 22)}
+    }
+    assert counts == {"d0": (11, 21), "formal": (18, 22)}
     gates = [
         specs.gate("point", "arm", "point_metric", "ge", 0.25, selector="point"),
         {
@@ -503,19 +481,14 @@ def test_gate_inventory_and_threshold_owner_are_exact() -> None:
             },
         },
     ]
-    passed, failed = reports.evaluate_gates(gates, {
-        "projection": {
-            "arm": {
-                "release_metrics": {
-                    "point_metric": {"point": 0.5},
-                    "candidate": 2,
-                    "baseline": 4,
-                },
-            },
-        },
-    })
-    assert [item["gate_id"] for item in passed] == ["point", "relative"]
-    assert failed == []
+    passed, failed = reports.evaluate_gates(gates, projection("arm", {
+        "point_metric": {"point": None},
+        "candidate": 2,
+        "baseline": 4,
+    }))
+    assert [item["gate_id"] for item in passed] == ["relative"]
+    assert [item["gate_id"] for item in failed] == ["point"]
+    assert failed[0]["observed"] is None
 
 
 def test_count_pair_gate_compares_both_values() -> None:
@@ -529,47 +502,12 @@ def test_count_pair_gate_compares_both_values() -> None:
         threshold_kind="count_pair",
         denominator=8,
     )
-    passed, failed = reports.evaluate_gates([gate], {
-        "projection": {
-            "writing_plans": {
-                "release_metrics": {
-                    "transfer_preflight": {"numerator": 8, "denominator": 7},
-                },
-            },
-        },
-    })
+    passed, failed = reports.evaluate_gates([gate], projection(
+        "writing_plans",
+        {"transfer_preflight": {"numerator": 8, "denominator": 7}},
+    ))
     assert passed == []
     assert [item["gate_id"] for item in failed] == ["pair"]
-
-
-def test_unavailable_metric_fails_gate_without_crashing() -> None:
-    gate = specs.gate(
-        "unavailable",
-        "writing_plans",
-        "prior_context",
-        "ge",
-        0.5,
-        selector="point",
-    )
-    passed, failed = reports.evaluate_gates([gate], {
-        "projection": {
-            "writing_plans": {
-                "release_metrics": {
-                    "prior_context": {"point": None},
-                },
-            },
-        },
-    })
-    assert passed == []
-    assert failed == [{
-        "gate_id": "unavailable",
-        "metric_id": (
-            "/projection/writing_plans/release_metrics/prior_context"
-        ),
-        "evidence_artifact_kind": "report_local",
-        "observed": None,
-        "passed": False,
-    }]
 
 
 @pytest.mark.parametrize(

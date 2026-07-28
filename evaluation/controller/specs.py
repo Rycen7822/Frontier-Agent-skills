@@ -179,16 +179,16 @@ SQW_IMPLEMENTATION_CASES = (
 )
 
 WP_TOPICS = (
-    ("api-pagination", "add cursor pagination without changing the existing default response"),
-    ("config-migration", "migrate one configuration key while preserving rollback"),
-    ("cache-invalidation", "add bounded cache invalidation with observable tests"),
-    ("error-taxonomy", "separate user errors from retryable service errors"),
-    ("database-index", "add an index with a reversible deployment sequence"),
-    ("cli-output", "stabilize JSON CLI output without breaking text output"),
-    ("authorization", "tighten authorization at the owning service boundary"),
-    ("job-recovery", "resume interrupted jobs without duplicating completed work"),
-    ("plugin-upgrade", "upgrade a plugin manifest and prove fresh-process loading"),
-    ("schema-cutover", "cut over a schema reader after proving old data migration"),
+    ("api-pagination", "Handoff", "add cursor pagination without changing the existing default response"),
+    ("config-migration", "Program", "migrate one configuration key while preserving rollback"),
+    ("cache-invalidation", "Handoff", "add bounded cache invalidation with observable tests"),
+    ("error-taxonomy", "Program", "separate user errors from retryable service errors"),
+    ("database-index", "Program", "add an index with a reversible deployment sequence"),
+    ("cli-output", "Handoff", "stabilize JSON CLI output without breaking text output"),
+    ("authorization", "Handoff", "tighten authorization at the owning service boundary"),
+    ("job-recovery", "Program", "resume interrupted jobs without duplicating completed work"),
+    ("plugin-upgrade", None, "upgrade a plugin manifest and prove fresh-process loading"),
+    ("schema-cutover", None, "cut over a schema reader after proving old data migration"),
 )
 
 
@@ -235,15 +235,23 @@ def sqw_cases() -> list[CaseDefinition]:
 
 def writing_plan_cases() -> list[CaseDefinition]:
     cases = []
-    for index, ((name, change), implementation) in enumerate(
+    for index, ((name, expected_profile, change), implementation) in enumerate(
         zip(WP_TOPICS, SQW_IMPLEMENTATION_CASES[:len(WP_TOPICS)], strict=True),
     ):
         _, implementation_prompt, source, tests = implementation
         root = f"fixtures/wp-{name}"
+        profile_contract = (
+            f"Treat this as a {expected_profile} plan. If a planning skill is "
+            "loaded, complete its mandatory routing and supporting-material "
+            "steps before writing. "
+            if expected_profile is not None
+            else ""
+        )
         cases.append(CaseDefinition(
             case_id=f"wp-{name}",
             prompt=(
                 f"Write {root}/PLAN.md as an implementation-ready plan to {change}. "
+                f"{profile_contract}"
                 f"The required behavior is: {implementation_prompt} "
                 "Inspect the fixture files, make no source change, and make every "
                 "step, owner, test, stop condition, and rollback unambiguous."

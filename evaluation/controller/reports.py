@@ -603,18 +603,6 @@ def load_attempt_decision_contract(
     return contract
 
 
-def all_gates_pass(report: dict[str, Any]) -> bool:
-    gates = report.get("gate_results")
-    return (
-        isinstance(gates, list)
-        and bool(gates)
-        and all(
-            isinstance(gate, dict) and gate.get("passed") is True
-            for gate in gates
-        )
-    )
-
-
 def _native_hashes(
     roots: dict[str, Path],
     study_ids: tuple[str, ...],
