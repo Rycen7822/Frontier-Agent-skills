@@ -179,17 +179,26 @@ SQW_IMPLEMENTATION_CASES = (
 )
 
 WP_TOPICS = (
-    ("api-pagination", "Handoff", "add cursor pagination without changing the existing default response"),
-    ("config-migration", "Program", "migrate one configuration key while preserving rollback"),
-    ("cache-invalidation", "Handoff", "add bounded cache invalidation with observable tests"),
-    ("error-taxonomy", "Program", "separate user errors from retryable service errors"),
-    ("database-index", "Program", "add an index with a reversible deployment sequence"),
-    ("cli-output", "Handoff", "stabilize JSON CLI output without breaking text output"),
-    ("authorization", "Handoff", "tighten authorization at the owning service boundary"),
-    ("job-recovery", "Program", "resume interrupted jobs without duplicating completed work"),
-    ("plugin-upgrade", None, "upgrade a plugin manifest and prove fresh-process loading"),
-    ("schema-cutover", None, "cut over a schema reader after proving old data migration"),
+    ("api-pagination", "Program", "public_contract",
+        "introduce cursor pagination as a public API contract while preserving the default response through a rollback-capable rollout"),
+    ("config-migration", "Program", "migration_or_rollback", "migrate one configuration key while preserving rollback"),
+    ("cache-invalidation", "Handoff", None, "add one bounded cache invalidation change at the owning component with observable tests"),
+    ("error-taxonomy", "Handoff", None,
+        "separate internal user and retryable error handling inside one owning service without changing its public error schema"),
+    ("database-index", "Program", "migration_or_rollback", "add an index with a reversible deployment sequence"),
+    ("cli-output", "Handoff", None, "stabilize one JSON serialization branch without changing the existing JSON or text CLI contracts"),
+    ("authorization", "Handoff", None,
+        "tighten one authorization check at the owning service boundary without migration or external effects"),
+    ("job-recovery", "Program", "resume_required", "resume interrupted jobs without duplicating completed work"),
+    ("plugin-upgrade", None, None, "upgrade a plugin manifest and prove fresh-process loading"),
+    ("schema-cutover", None, None, "cut over a schema reader after proving old data migration"),
 )
+
+WP_PROGRAM_TRIGGER_FACTS = {
+    "public_contract": "The change introduces a public API contract through a staged, rollback-capable rollout.",
+    "migration_or_rollback": "The change requires an explicit migration and rollback sequence.",
+    "resume_required": "The change must resume interrupted work without duplicating completed work.",
+}
 
 
 def sqw_cases() -> list[CaseDefinition]:
@@ -235,15 +244,25 @@ def sqw_cases() -> list[CaseDefinition]:
 
 def writing_plan_cases() -> list[CaseDefinition]:
     cases = []
-    for index, ((name, expected_profile, change), implementation) in enumerate(
+    for index, ((name, expected_profile, route_trigger, change), implementation) in enumerate(
         zip(WP_TOPICS, SQW_IMPLEMENTATION_CASES[:len(WP_TOPICS)], strict=True),
     ):
         _, implementation_prompt, source, tests = implementation
         root = f"fixtures/wp-{name}"
+        route_fact = (
+            "This is one settled, bounded source slice for durable transfer to another context; "
+            "it does not change a public contract, require migration or rollback, resume "
+            "interrupted work, or create an external side effect. "
+            if route_trigger is None
+            else (
+                "This needs multiple dependent implementation slices across a changing frontier. "
+                f"{WP_PROGRAM_TRIGGER_FACTS[route_trigger]} "
+            )
+        )
         profile_contract = (
-            f"Treat this as a {expected_profile} plan. If a planning skill is "
-            "loaded, complete its mandatory routing and supporting-material "
-            "steps before writing. "
+            f"The root cause and intent are already defined. {route_fact}"
+            "If a planning skill is loaded, run its mandatory route and load only "
+            "the supporting material selected by that route before writing. "
             if expected_profile is not None
             else ""
         )

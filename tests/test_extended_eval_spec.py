@@ -4,6 +4,55 @@ from skill_evaluator_test_support import *  # noqa: F403
 
 
 class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
+    def test_writing_plan_cases_bind_route_facts_without_profile_labels(self) -> None:
+        repo_root = str(Path(__file__).resolve().parents[1])
+        sys.path.insert(0, repo_root)
+        try:
+            from evaluation.controller import specs
+        finally:
+            sys.path.remove(repo_root)
+
+        expected_routes = {
+            'api-pagination': ('Program', 'public_contract'),
+            'config-migration': ('Program', 'migration_or_rollback'),
+            'cache-invalidation': ('Handoff', None),
+            'error-taxonomy': ('Handoff', None),
+            'database-index': ('Program', 'migration_or_rollback'),
+            'cli-output': ('Handoff', None),
+            'authorization': ('Handoff', None),
+            'job-recovery': ('Program', 'resume_required'),
+        }
+        topics = specs.WP_TOPICS
+        self.assertEqual(
+            {name: (profile, trigger) for name, profile, trigger, _ in topics[:8]},
+            expected_routes,
+        )
+        self.assertEqual([topic[1:3] for topic in topics[8:]], [(None, None)] * 2)
+        trigger_markers = {
+            'public_contract': ('public api contract', 'rollback-capable rollout'),
+            'migration_or_rollback': ('migration', 'rollback sequence'),
+            'resume_required': ('resume interrupted work', 'duplicating completed work'),
+        }
+        for case, (_, profile, trigger, _) in zip(
+            specs.writing_plan_cases(), topics, strict=True,
+        ):
+            prompt = case.prompt.lower()
+            self.assertNotIn('treat this as', prompt)
+            self.assertNotIn('handoff', prompt)
+            self.assertNotIn('program', prompt)
+            if profile is None:
+                self.assertNotIn('mandatory route', prompt)
+                continue
+            self.assertIn('mandatory route', prompt)
+            self.assertIn('supporting material selected by that route', prompt)
+            if profile == 'Handoff':
+                self.assertIn('one settled, bounded source slice', prompt)
+                self.assertIn('does not change a public contract', prompt)
+                continue
+            self.assertIn('multiple dependent implementation slices', prompt)
+            for marker in trigger_markers[trigger]:
+                self.assertIn(marker, prompt)
+
     def test_v5_contract_schemas_are_complete_draft_2020_12_owners(self) -> None:
         self.assertIsNotNone(jsonschema)
         schema_dir = ROOT / 'schemas'

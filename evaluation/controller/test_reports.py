@@ -68,22 +68,6 @@ def test_fixed_profiles_close_frozen_call_partitions(
     )
 
 
-def test_writing_plan_cases_bind_frozen_profile_distribution() -> None:
-    cases = specs.writing_plan_cases()
-    profiles = (
-        ("handoff", "program") * 2
-        + ("program", "handoff", "handoff", "program")
-    )
-    for case, expected in zip(cases, profiles + (None, None), strict=True):
-        prompt = case.prompt.lower()
-        words = set(prompt.split())
-        if expected is None:
-            assert not {"handoff", "program"} & words
-            continue
-        assert {"handoff", "program"} & words == {expected}
-        assert {"planning", "skill", "mandatory", "routing", "supporting-material"} <= words
-
-
 @pytest.mark.parametrize("skill_id", SKILL_IDS)
 def test_model_check_inventory_is_closed(skill_id: str) -> None:
     checks = specs.model_checks(skill_id)
