@@ -17,7 +17,6 @@ from .artifacts import (
     artifact_binding,
     assert_nofollow,
     atomic_write,
-    bundle_source_hash,
     canonical_hash,
     file_hash,
     json_object,
@@ -27,7 +26,6 @@ from .artifacts import (
     regular_files,
     raw_hash,
     self_hashed,
-    signed_clean_revision,
     tree_hash,
     verify_self_hash,
     write_or_verify_json,
@@ -51,12 +49,6 @@ ROOT_SUBAGENT_SPAWN_REQUIREMENT = {
     "reasoning_effort": "max",
     "service_tier": "priority",
     "fork_turns": "none",
-}
-EXPECTED_SKILLS = {
-    "long-document-segmented-writing",
-    "skill-evaluator",
-    "software-quality-workflows",
-    "writing-plans",
 }
 CONTROLLER_FILES = {
     "__init__.py",
@@ -83,18 +75,6 @@ CONTROLLER_FILES = {
     "transfer.py",
     "workspace.py",
 }
-
-
-def release_source_hash(repo: Path) -> str:
-    return bundle_source_hash(repo, EXPECTED_SKILLS)
-
-
-def source_identity(repo: Path) -> dict[str, str]:
-    identity = signed_clean_revision(repo)
-    return {
-        "candidate_revision": identity["candidate_revision"],
-        "candidate_source_tree_hash": release_source_hash(repo),
-    }
 
 
 def controller_sources(controller_root: Path) -> list[Path]:
