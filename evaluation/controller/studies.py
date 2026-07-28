@@ -660,10 +660,10 @@ def transfer_design(
 
 def scored_plan_bindings(
     profile: str,
-    design: StudyDesign,
     plan: dict[str, Any],
     request_manifest: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    design = fixed_design(profile)
     requests = [
         item
         for item in request_manifest["required_requests"]
