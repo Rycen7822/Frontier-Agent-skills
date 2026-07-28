@@ -617,8 +617,6 @@ def _transfer_case(
         protected_paths=protected,
         verification_argv=(
             "python3",
-            "-m",
-            "unittest",
             f"{canonical_root}/test_app.py",
         ),
         split=source.split,
