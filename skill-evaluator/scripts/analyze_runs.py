@@ -5830,7 +5830,7 @@ def project_release_estimands(
                     planner["spec"],
                     "candidate",
                 ),
-                metric="controlled_core_skill_context_bytes",
+                metric="controlled_skill_context_bytes",
                 direction="lower_is_better",
                 effect="relative",
                 confidence_level=confidence_level,

@@ -1473,6 +1473,64 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 'transfer_preflight',
                 first['writing_plans']['release_metrics'],
             )
+            loaded_studies = {
+                binding['study_id']: analyzer._load_release_study(binding)
+                for binding in bindings
+            }
+            loaded_planner = loaded_studies['writing-plans-planner']
+            candidate_treatment = next(
+                item for item in loaded_planner['spec']['treatments']
+                if item['causal_role'] == 'candidate'
+            )
+            loaded_planner['spec']['treatments'].append({
+                **candidate_treatment,
+                'treatment_id': 'prior',
+                'causal_role': 'prior',
+                'profile': 'prior/force_loaded',
+            })
+            candidate_id = candidate_treatment['treatment_id']
+            prior_records = []
+            for record in loaded_planner['evidence']['records']:
+                if record['variant'] != candidate_id:
+                    continue
+                record['context_usage'].update({
+                    'bytes': 100,
+                    'controlled_bytes': 100,
+                    'unique_reference_bytes': 0,
+                    'controlled_core_bytes': 100,
+                })
+                prior_record = copy.deepcopy(record)
+                prior_record['variant'] = 'prior'
+                prior_record['counts']['reference_load_count'] = 1
+                prior_record['context_usage'].update({
+                    'bytes': 400,
+                    'controlled_bytes': 400,
+                    'unique_reference_bytes': 300,
+                    'controlled_core_bytes': 100,
+                })
+                prior_records.append(prior_record)
+            loaded_planner['evidence']['records'].extend(prior_records)
+            with mock.patch.object(
+                analyzer,
+                '_load_release_study',
+                side_effect=lambda binding: loaded_studies[binding['study_id']],
+            ):
+                prior_projection = analyzer.project_release_estimands(
+                    bindings,
+                    join,
+                    **kwargs,
+                )
+            prior_context = prior_projection['writing_plans'][
+                'release_metrics'
+            ]['prior_controlled_context_reduction']
+            self.assertEqual('complete', prior_context['status'])
+            self.assertEqual(2, prior_context['case_count'])
+            self.assertEqual(0.75, prior_context['point'])
+            self.assertEqual(
+                'lower_is_better:relative:'
+                'controlled_skill_context_bytes:candidate_vs_prior',
+                prior_context['estimand'],
+            )
             with self.assertRaisesRegex(ValueError, 'is missing'):
                 analyzer._release_max(
                     [{'context_usage': {}}],
