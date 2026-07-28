@@ -1500,6 +1500,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                     'controlled_core_bytes': 100,
                 })
                 prior_record = copy.deepcopy(record)
+                prior_record['entry_id'] = record['entry_id'] + '-prior'
                 prior_record['variant'] = 'prior'
                 prior_record['counts']['reference_load_count'] = 1
                 prior_record['context_usage'].update({
@@ -1510,6 +1511,12 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 })
                 prior_records.append(prior_record)
             loaded_planner['evidence']['records'].extend(prior_records)
+            unavailable_studies = copy.deepcopy(loaded_studies)
+            for record in unavailable_studies[
+                'writing-plans-planner'
+            ]['evidence']['records']:
+                if record['variant'] == 'prior':
+                    record['counts']['reference_load_count'] = 0
             with mock.patch.object(
                 analyzer,
                 '_load_release_study',
@@ -1520,6 +1527,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                     join,
                     **kwargs,
                 )
+            self.assertEqual('complete', prior_projection['status'])
             prior_context = prior_projection['writing_plans'][
                 'release_metrics'
             ]['prior_controlled_context_reduction']
@@ -1530,6 +1538,33 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 'lower_is_better:relative:'
                 'controlled_skill_context_bytes:candidate_vs_prior',
                 prior_context['estimand'],
+            )
+            with mock.patch.object(
+                analyzer,
+                '_load_release_study',
+                side_effect=lambda binding: unavailable_studies[
+                    binding['study_id']
+                ],
+            ):
+                unavailable_projection = analyzer.project_release_estimands(
+                    bindings,
+                    join,
+                    **kwargs,
+                )
+            self.assertEqual(
+                'complete',
+                unavailable_projection['status'],
+                unavailable_projection['writing_plans']['reason_codes'],
+            )
+            unavailable_metrics = unavailable_projection['writing_plans'][
+                'release_metrics'
+            ]
+            self.assertEqual(0, unavailable_metrics['prior_reference_cases'])
+            self.assertEqual(
+                'not_evaluable',
+                unavailable_metrics[
+                    'prior_controlled_context_reduction'
+                ]['status'],
             )
             with self.assertRaisesRegex(ValueError, 'is missing'):
                 analyzer._release_max(
