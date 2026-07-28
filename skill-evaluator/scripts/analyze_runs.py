@@ -5838,10 +5838,6 @@ def project_release_estimands(
                 random_seed=random_seed,
                 eligible_case_ids=eligible,
             )
-            if prior_context["status"] != "complete":
-                join_reason_codes.add(
-                    "writing_plans_prior_context_pairs_incomplete",
-                )
 
     writing_metrics = {}
     if planner_ready and transfer_ready:
