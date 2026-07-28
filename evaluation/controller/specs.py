@@ -356,7 +356,7 @@ PROFILES = {
         "plans",
         (
             CaseSlice(0, 4, EXPLICIT, True),
-            CaseSlice(-2, None, REGISTERED, False, False),
+            CaseSlice(-2, None, REGISTERED, False, False, "regression"),
         ),
         1,
         False,

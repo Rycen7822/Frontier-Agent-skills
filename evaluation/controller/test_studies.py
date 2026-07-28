@@ -107,6 +107,13 @@ def test_scenario_rebuilds_dynamic_requirements_from_case() -> None:
         for item in specs.fixed_design("d0-writing-plans").cases
         if not item.model_grading
     )
+    formal = specs.fixed_design(
+        "formal-writing-plans",
+        sqw=specs.sqw_cases(),
+        plans=specs.writing_plan_cases(),
+    )
+    assert case.split == "regression"
+    assert {item.split for item in formal.cases[-2:]} == {"heldout"}
     scenario = studies.scenario_from_case(
         template=template,
         case=case,
