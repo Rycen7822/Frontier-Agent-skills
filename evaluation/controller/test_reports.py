@@ -542,6 +542,36 @@ def test_count_pair_gate_compares_both_values() -> None:
     assert [item["gate_id"] for item in failed] == ["pair"]
 
 
+def test_unavailable_metric_fails_gate_without_crashing() -> None:
+    gate = specs.gate(
+        "unavailable",
+        "writing_plans",
+        "prior_context",
+        "ge",
+        0.5,
+        selector="point",
+    )
+    passed, failed = reports.evaluate_gates([gate], {
+        "projection": {
+            "writing_plans": {
+                "release_metrics": {
+                    "prior_context": {"point": None},
+                },
+            },
+        },
+    })
+    assert passed == []
+    assert failed == [{
+        "gate_id": "unavailable",
+        "metric_id": (
+            "/projection/writing_plans/release_metrics/prior_context"
+        ),
+        "evidence_artifact_kind": "report_local",
+        "observed": None,
+        "passed": False,
+    }]
+
+
 @pytest.mark.parametrize(
     ("phase", "counts"),
     [("d0", (52, 8, 4)), ("formal", (206, 8, 4))],

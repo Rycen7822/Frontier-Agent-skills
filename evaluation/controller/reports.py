@@ -109,6 +109,8 @@ def _threshold_value(
 
 
 def _comparison(operator: str, observed: Any, expected: Any) -> bool:
+    if observed is None:
+        return False
     operators = {
         "eq": lambda: observed == expected,
         "ne": lambda: observed != expected,
