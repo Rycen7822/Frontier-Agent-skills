@@ -1258,6 +1258,31 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 drift_summary['manual_authority']['status'],
             )
 
+    def test_release_projection_accepts_only_missing_report_only_authority(
+        self,
+    ) -> None:
+        analyzer = load_analyzer_module()
+        public = {
+            "manual": {"status": "missing"},
+            "completeness": {
+                "status": "invalid",
+                "reason_codes": ["manual_authority_invalid"],
+            },
+        }
+        self.assertFalse(analyzer._release_projection_ready(
+            public,
+            allow_missing_manual=False,
+        ))
+        self.assertTrue(analyzer._release_projection_ready(
+            public,
+            allow_missing_manual=True,
+        ))
+        public["manual"]["status"] = "invalid"
+        self.assertFalse(analyzer._release_projection_ready(
+            public,
+            allow_missing_manual=True,
+        ))
+
     def test_project_release_estimands_binds_entries_context_and_manual_authority(
         self,
     ) -> None:

@@ -469,6 +469,7 @@ def write_writing_plans_join(
 
 def project_release(
     *,
+    phase: str,
     analyzer: Any,
     roots: dict[str, Path],
     manual_receipts: dict[str, str | None],
@@ -490,6 +491,7 @@ def project_release(
         confidence_level=0.90,
         bootstrap_iterations=10000,
         random_seed=seed,
+        allow_missing_manual=phase == "d0",
     )
     if not isinstance(projection, dict):
         raise ReportError("stable release projection is not an object")
@@ -752,7 +754,10 @@ def _projection_results(
         summary = summaries[study_id]
         if (
             summary["evidence_status"] != "complete"
-            or summary["usefulness_status"] not in allowed
+            or (
+                phase != "d0"
+                and summary["usefulness_status"] not in allowed
+            )
         ):
             failures.setdefault("native_status", []).append({
                 "study_id": study_id,
@@ -841,6 +846,7 @@ def evaluate_campaign(
     if tree_hash(skill_evaluator_root) != contract["evaluator_source_hash"]:
         raise ReportError("Skill Evaluator source identity differs")
     projection, summaries = project_release(
+        phase=phase,
         analyzer=load_analyzer(skill_evaluator_root),
         roots=roots,
         manual_receipts=manual_receipts,

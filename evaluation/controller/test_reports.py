@@ -406,6 +406,7 @@ def test_controller_passes_three_bound_studies_to_public_projection(
     analyzer = mock.Mock()
     analyzer.project_release_estimands.return_value = {"status": "complete"}
     projection, summaries = reports.project_release(
+        phase="d0",
         analyzer=analyzer,
         roots=roots,
         manual_receipts={
@@ -420,6 +421,9 @@ def test_controller_passes_three_bound_studies_to_public_projection(
     assert set(summaries) == set(reports.STUDIES)
     bindings = analyzer.project_release_estimands.call_args.args[0]
     assert [item["study_id"] for item in bindings] == list(reports.STUDIES)
+    assert analyzer.project_release_estimands.call_args.kwargs[
+        "allow_missing_manual"
+    ] is True
     assert set(bindings[0]) == {
         "study_id",
         "spec",
@@ -429,6 +433,36 @@ def test_controller_passes_three_bound_studies_to_public_projection(
         "failure_index",
         "manual_receipt_locator",
     }
+
+
+def test_d0_uses_frozen_gates_instead_of_generic_usefulness() -> None:
+    contract = {
+        "gate_contract": {
+            "software-quality-workflows": [],
+            "writing-plans": [],
+        },
+    }
+    summaries = {
+        study_id: {
+            "evidence_status": "complete",
+            "usefulness_status": "not_supported",
+        }
+        for study_id in reports.STUDIES
+    }
+    _, d0_failures = reports._projection_results(
+        "d0",
+        contract,
+        {"status": "complete"},
+        summaries,
+    )
+    _, formal_failures = reports._projection_results(
+        "formal",
+        contract,
+        {"status": "complete"},
+        summaries,
+    )
+    assert d0_failures == {}
+    assert "native_status" in formal_failures
 
 
 def test_evaluator_has_no_private_or_legacy_native_reader() -> None:
