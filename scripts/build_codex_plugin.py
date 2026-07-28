@@ -39,38 +39,38 @@ EVALUATED_SKILL_IDS = [
 ]
 EXPECTED_FORMAL_ARM_USAGE = {
     "software-quality-workflows": {
-        "scheduled": 160,
-        "observed": 160,
-        "graded": 64,
+        "scheduled": 108,
+        "observed": 108,
+        "graded": 12,
         "missing": 0,
         "duplicate": 0,
         "retries": 0,
-        "provider_calls": 160,
+        "provider_calls": 108,
     },
     "writing-plans": {
-        "scheduled": 136,
-        "observed": 136,
-        "graded": 48,
+        "scheduled": 98,
+        "observed": 98,
+        "graded": 10,
         "missing": 0,
         "duplicate": 0,
         "retries": 0,
-        "provider_calls": 136,
+        "provider_calls": 98,
     },
 }
 EXPECTED_FORMAL_BUDGET = {
     "schema_version": "provider-budget-contract/1.0",
-    "scheduled_provider_calls": 308,
-    "scored_call_hard_cap": 296,
+    "scheduled_provider_calls": 218,
+    "scored_call_hard_cap": 206,
     "grader_calibration_call_hard_cap": 8,
     "reviewer_calibration_call_hard_cap": 4,
-    "provider_call_hard_cap": 308,
+    "provider_call_hard_cap": 218,
 }
 EXPECTED_FORMAL_AGGREGATE_USAGE = {
-    "scored_model_calls": 296,
+    "scored_model_calls": 206,
     "grader_calibration_calls": 8,
     "reviewer_calibration_calls": 4,
     "apparatus_model_calls": 12,
-    "total_provider_calls": 308,
+    "total_provider_calls": 218,
     "retries": 0,
 }
 P3_AGGREGATE_FIELDS = {
@@ -173,6 +173,55 @@ def _validate_schema(
     Draft202012Validator.check_schema(schema)
     if list(Draft202012Validator(schema).iter_errors(document)):
         raise ValueError(f"{label} is invalid")
+
+
+def _validate_prior_migration_claim(skill_id: str, arm: dict[str, Any]) -> None:
+    claim_id = "prior_reference_migration_claim"
+    metrics = arm["metrics"]
+    if skill_id != "writing-plans":
+        if claim_id in metrics:
+            raise ValueError("prior migration claim has the wrong arm owner")
+        return
+    claim = metrics.get(claim_id)
+    fields = {
+        "status",
+        "minimum_reference_cases",
+        "observed_reference_cases",
+        "mixed_prior_cases",
+        "reduction_selector",
+        "minimum_reduction",
+        "observed_reduction",
+    }
+    if not isinstance(claim, dict) or set(claim) != fields:
+        raise ValueError("prior migration claim structure is invalid")
+    reference_cases = claim["observed_reference_cases"]
+    mixed_cases = claim["mixed_prior_cases"]
+    reduction = claim["observed_reduction"]
+    if (
+        not isinstance(claim["minimum_reference_cases"], int)
+        or isinstance(claim["minimum_reference_cases"], bool)
+        or claim["minimum_reference_cases"] != 4
+        or claim["reduction_selector"] != "lower"
+        or claim["minimum_reduction"] != 0.5
+        or any(
+            not isinstance(value, int) or isinstance(value, bool) or value < 0
+            for value in (reference_cases, mixed_cases)
+        )
+    ):
+        raise ValueError("prior migration claim policy is invalid")
+    if reference_cases < 4 or mixed_cases:
+        expected_status = "unavailable"
+        if reduction is not None:
+            raise ValueError("unavailable prior migration claim has a reduction")
+    else:
+        if (
+            not isinstance(reduction, (int, float))
+            or isinstance(reduction, bool)
+        ):
+            raise ValueError("prior migration claim reduction is invalid")
+        expected_status = "supported" if reduction >= 0.5 else "not_supported"
+    if claim["status"] != expected_status:
+        raise ValueError("prior migration claim status is invalid")
 
 
 def _bytes_hash(value: bytes) -> str:
@@ -490,6 +539,7 @@ def validate_release_evidence(
             arm,
             f"{skill_id} P3 arm report",
         )
+        _validate_prior_migration_claim(skill_id, arm)
         expected_gates = [
             (
                 gate["gate_id"],

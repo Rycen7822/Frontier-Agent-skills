@@ -53,6 +53,87 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
             for marker in trigger_markers[trigger]:
                 self.assertIn(marker, prompt)
 
+    def test_prior_migration_claim_is_noncritical_and_fail_closed(self) -> None:
+        repo_root = str(Path(__file__).resolve().parents[1])
+        sys.path.insert(0, repo_root)
+        try:
+            from evaluation.controller import reports, specs
+        finally:
+            sys.path.remove(repo_root)
+
+        self.assertEqual(
+            {
+                phase: len(specs.gate_contract(phase)['writing-plans'])
+                for phase in ('d0', 'formal')
+            },
+            {'d0': 18, 'formal': 19},
+        )
+        self.assertEqual(
+            {phase: specs.writing_plan_migration_claim_policy(phase)
+             for phase in ('d0', 'formal')},
+            {'d0': (2, 'point', 0.5), 'formal': (4, 'lower', 0.5)},
+        )
+        gate_ids = {
+            gate['gate_id']
+            for phase in ('d0', 'formal')
+            for gate in specs.gate_contract(phase)['writing-plans']
+        }
+        self.assertTrue({
+            'WP-D0-17', 'WP-D0-18', 'WP-D0-19',
+            'WP-F-10', 'WP-F-11', 'WP-F-12',
+        }.isdisjoint(gate_ids))
+
+        def claim(
+            phase: str,
+            cases: object,
+            mixed: object,
+            point: object,
+            lower: object,
+        ) -> dict:
+            return reports.writing_plan_migration_claim(phase, {
+                'writing_plans': {'release_metrics': {
+                    'prior_reference_cases': cases,
+                    'mixed_prior_cases': mixed,
+                    'prior_controlled_context_reduction': {
+                        'point': point,
+                        'lower': lower,
+                    },
+                }},
+            })
+
+        rows = (
+            ('d0', 0, 0, None, None, 'unavailable', None),
+            ('d0', 2, 1, 0.75, 0.60, 'unavailable', None),
+            ('d0', 2, 0, 0.49, 0.60, 'not_supported', 0.49),
+            ('d0', 2, 0, 0.50, 0.40, 'supported', 0.50),
+            ('formal', 4, 0, 0.75, 0.49, 'not_supported', 0.49),
+            ('formal', 4, 0, 0.60, 0.50, 'supported', 0.50),
+        )
+        for phase, cases, mixed, point, lower, status, observed in rows:
+            with self.subTest(phase=phase, status=status, observed=observed):
+                result = claim(phase, cases, mixed, point, lower)
+                self.assertEqual(result['status'], status)
+                self.assertEqual(result['observed_reduction'], observed)
+
+        for cases, point in (
+            ('2', 0.5),
+            (0, 'invalid'),
+            (2, None),
+            (2, float('nan')),
+            (2, float('inf')),
+        ):
+            with self.subTest(cases=cases, point=point):
+                with self.assertRaises(reports.ReportError):
+                    claim('d0', cases, 0, point, 0.5)
+
+        with self.assertRaises(reports.ReportError):
+            reports.writing_plan_migration_claim('d0', {
+                'writing_plans': {'release_metrics': {
+                    'prior_reference_cases': 0,
+                    'mixed_prior_cases': 0,
+                }},
+            })
+
     def test_v5_contract_schemas_are_complete_draft_2020_12_owners(self) -> None:
         self.assertIsNotNone(jsonschema)
         schema_dir = ROOT / 'schemas'

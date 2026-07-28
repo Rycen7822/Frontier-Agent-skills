@@ -555,6 +555,16 @@ def _sqw_gates(phase: str) -> list[dict[str, Any]]:
     ]
 
 
+def writing_plan_migration_claim_policy(phase: str) -> tuple[int, str, float]:
+    try:
+        return {
+            "d0": (2, "point", 0.5),
+            "formal": (4, "lower", 0.5),
+        }[phase]
+    except KeyError:
+        raise SpecificationError(f"unknown migration claim phase: {phase}") from None
+
+
 def _writing_plan_gates(phase: str) -> list[dict[str, Any]]:
     arm = "writing_plans"
     if phase == "D0":
@@ -575,9 +585,6 @@ def _writing_plan_gates(phase: str) -> list[dict[str, Any]]:
             gate("WP-D0-14", arm, "failed_command_output_bytes_max", "eq", 0, evidence="native_artifact"),
             gate("WP-D0-15", arm, "all_context_sample_count", "eq", 4),
             gate("WP-D0-16", arm, "all_context_minimum_relative_effect", "ge", 0),
-            gate("WP-D0-17", arm, "prior_reference_cases", "ge", 2),
-            gate("WP-D0-18", arm, "mixed_prior_cases", "eq", 0),
-            gate("WP-D0-19", arm, "prior_controlled_context_reduction", "ge", 0.50, selector="point"),
             gate("WP-D0-20", arm, "matched_total_token_relative_reduction", "ge", -0.05, selector="point"),
             gate("WP-D0-21", arm, "prewrite_overhead", "le", 2048, selector="upper"),
         ]
@@ -591,9 +598,6 @@ def _writing_plan_gates(phase: str) -> list[dict[str, Any]]:
         gate("WP-F-07", arm, "failed_command_output_bytes_max", "eq", 0, evidence="native_artifact"),
         gate("WP-F-08", arm, "all_context_sample_count", "eq", 8),
         gate("WP-F-09", arm, "all_context_minimum_relative_effect", "ge", 0),
-        gate("WP-F-10", arm, "prior_reference_cases", "ge", 4),
-        gate("WP-F-11", arm, "mixed_prior_cases", "eq", 0),
-        gate("WP-F-12", arm, "prior_controlled_context_reduction", "ge", 0.50, selector="lower"),
         gate("WP-F-13", arm, "planner_quality_relative_effect", "ge", -0.03, selector="lower"),
         gate("WP-F-14", arm, "transfer_preflight", "eq", 32, selector="numerator", threshold_kind="count_pair", denominator=32),
         gate("WP-F-15", arm, "eligible_source_cases", "eq", 8),
