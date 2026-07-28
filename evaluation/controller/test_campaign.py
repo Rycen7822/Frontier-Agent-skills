@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import stat
 
 import pytest
 
@@ -404,6 +405,8 @@ def test_action_context_pins_cwd_lease_and_closes_fds(tmp_path: Path) -> None:
 def test_registry_state_hash_chain_cas_and_post_read(tmp_path: Path) -> None:
     root = tmp_path / "attempt"
     state = initialize(root)
+    state_path = root / "stage-state.json"
+    state_path.chmod(0o644)
     next_state = campaign.transition(
         root,
         expected_state_hash=state["state_hash"],
@@ -413,6 +416,7 @@ def test_registry_state_hash_chain_cas_and_post_read(tmp_path: Path) -> None:
     assert next_state["previous_state_hash"] == state["state_hash"]
     assert next_state["sequence"] == 1
     assert campaign.load_attempt(root)[1] == next_state
+    assert stat.S_IMODE(state_path.stat().st_mode) == 0o644
     with pytest.raises(artifacts.StateError):
         campaign.transition(
             root,
@@ -420,7 +424,6 @@ def test_registry_state_hash_chain_cas_and_post_read(tmp_path: Path) -> None:
             stage="stale",
             status="running",
         )
-    state_path = root / "stage-state.json"
     tampered = json.loads(state_path.read_text(encoding="utf-8"))
     tampered["stage"] = "tampered"
     state_path.write_text(json.dumps(tampered), encoding="utf-8")

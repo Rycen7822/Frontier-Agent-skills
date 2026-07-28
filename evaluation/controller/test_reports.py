@@ -177,6 +177,7 @@ def test_planner_receipts_bind_transfer_design(tmp_path: Path) -> None:
         "d0-writing-plans-transfer",
         tmp_path,
     )
+    source_splits = {case.case_id: case.split for case in base.cases}
     assert (
         transfer.expected_execute,
         transfer.expected_model_grade,
@@ -186,10 +187,33 @@ def test_planner_receipts_bind_transfer_design(tmp_path: Path) -> None:
     ) == (8, 0, 0, 1, 4)
     assert all(len(case.transfer_source["bindings"]) == 2 for case in transfer.cases)
     for case in transfer.cases:
+        source_id = case.case_id.removesuffix("-transfer-r1")
+        assert case.split == source_splits[source_id]
         assert case.verification_argv == (
             "python3",
-            f"fixtures/{case.case_id.removesuffix('-transfer-r1')}/test_app.py",
+            f"fixtures/{source_id}/test_app.py",
         )
+
+
+def test_transfer_execution_projects_only_heldout_source_to_regression() -> None:
+    sources = specs.fixed_design(
+        "formal-writing-plans-transfer",
+        sqw=specs.sqw_cases(),
+        plans=specs.writing_plan_cases(),
+    ).cases
+    source = sources[0]
+    assert source.split == "heldout"
+    roles = {
+        studies.TRANSFER_PROFILE_ROLES[profile]
+        for profile in source.applicable_profiles
+    }
+    deliverables = {
+        (source.case_id, 1, role): {"planner_profile": role}
+        for role in roles
+    }
+    transfer = studies._transfer_case(source, 1, deliverables)
+    assert transfer.split == "regression"
+    assert transfer.transfer_source["bindings"]
 
 
 def test_compiled_plan_bindings_close_exact_scored_inventory() -> None:
