@@ -623,6 +623,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     def test_blinded_grader_evidence_is_bounded_and_fail_closed(self) -> None:
         transport = load_analyzer_module().model_transport
         assessment = {'changed_paths': ['fixtures/app.py']}
+        developer_path = '/' + 'home' + '/example/workspace/fixtures/app.py'
         self.assertEqual(
             '[app](<fixtures/app.py>)',
             transport._redact_workspace_paths(  # noqa: SLF001
@@ -633,7 +634,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(
             '[app]( fixtures/app.py)',
             transport._redact_workspace_paths(  # noqa: SLF001
-                '[app]( /home/example/workspace/fixtures/app.py)',
+                f'[app]( {developer_path})',
                 assessment,
             ),
         )
