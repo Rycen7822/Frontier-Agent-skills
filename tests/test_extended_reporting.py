@@ -1199,6 +1199,37 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 (root / 'missing-summary.json').read_text(encoding='utf-8'),
             )
             self.assertEqual('missing', missing_summary['manual_authority']['status'])
+            missing_binding = {
+                'study_id': 'software-quality-workflows',
+                **{
+                    field: {
+                        'path': path.resolve(),
+                        'sha256': (
+                            'sha256:'
+                            + hashlib.sha256(path.read_bytes()).hexdigest()
+                        ),
+                    }
+                    for field, path in {
+                        'spec': paths['spec'],
+                        'plan': paths['plan'],
+                        'index': paths['index'],
+                        'summary': root / 'missing-summary.json',
+                        'failure_index': root / 'missing-failures.json',
+                    }.items()
+                },
+                'manual_receipt_locator': None,
+            }
+            missing_public = analyzer._load_release_study(
+                missing_binding,
+            )['public']
+            self.assertEqual(
+                ['manual_authority_invalid'],
+                missing_public['completeness']['reason_codes'],
+            )
+            self.assertIsInstance(
+                missing_public['context_efficiency'],
+                dict,
+            )
 
             approved = analyze('approved', write_receipt('approved', 'approve'))
             self.assertEqual(0, approved.returncode, approved.stdout + approved.stderr)

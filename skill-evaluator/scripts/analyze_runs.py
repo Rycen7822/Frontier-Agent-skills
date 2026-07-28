@@ -5101,7 +5101,14 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
             "attributed_context_record_count": attributed_count,
             "reason_codes": reason_codes,
         },
-        "context_efficiency": context if not reason_codes else None,
+        "context_efficiency": (
+            context
+            if (
+                context is not None
+                and set(reason_codes).issubset({"manual_authority_invalid"})
+            )
+            else None
+        ),
     }
     return {
         "public": public,
