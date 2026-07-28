@@ -198,6 +198,14 @@ def test_planner_receipts_bind_transfer_design(tmp_path: Path) -> None:
         len(transfer.cases),
     ) == (8, 0, 0, 1, 4)
     assert all(len(case.transfer_source["bindings"]) == 2 for case in transfer.cases)
+    assert all(
+        case.verification_argv
+        == (
+            "python3",
+            f"fixtures/{case.case_id.removesuffix('-transfer-r1')}/test_app.py",
+        )
+        for case in transfer.cases
+    )
 
 
 def test_compiled_plan_bindings_close_exact_scored_inventory() -> None:
