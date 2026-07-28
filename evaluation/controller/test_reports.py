@@ -233,6 +233,7 @@ def test_compiled_plan_bindings_close_exact_scored_inventory() -> None:
             ))
     bindings = studies.scored_plan_bindings(
         profile,
+        study,
         {"entries": entries},
         {"required_requests": requests},
     )
@@ -241,9 +242,29 @@ def test_compiled_plan_bindings_close_exact_scored_inventory() -> None:
     with pytest.raises(ValueError, match="provider partition differs"):
         studies.scored_plan_bindings(
             profile,
+            study,
             {"entries": entries},
             {"required_requests": requests[:-1]},
         )
+
+
+def test_formal_plan_bindings_use_supplied_external_design() -> None:
+    design = specs.StudyDesign(
+        study_id="frontier-formal-writing-plans-planner",
+        skill_id="writing-plans",
+        level="L4",
+        cases=(),
+        repeats=2,
+        strict=True,
+        manual_required=True,
+        mode="codex",
+    )
+    assert studies.scored_plan_bindings(
+        "formal-writing-plans",
+        design,
+        {"entries": []},
+        {"required_requests": []},
+    ) == []
 
 
 def test_transfer_plan_bindings_use_planner_case_identity() -> None:
@@ -273,6 +294,7 @@ def test_transfer_plan_bindings_use_planner_case_identity() -> None:
             requests.append(item)
     bindings = studies.scored_plan_bindings(
         profile,
+        design,
         {"entries": entries},
         {"required_requests": requests},
     )
