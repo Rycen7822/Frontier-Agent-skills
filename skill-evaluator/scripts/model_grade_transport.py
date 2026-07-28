@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 from hashlib import sha256
 import json
+import re
 from typing import Any, Callable
 
 
@@ -13,6 +14,18 @@ BLINDED_FIELDS = {
     "artifacts", "observations",
 }
 UNCERTAINTY = {"none", "low", "medium", "high"}
+CONTEXT_FIELDS = {
+    "controlled_bytes": "controlled_bytes",
+    "controlled_core_bytes": "controlled_core_bytes",
+    "total_bytes": "bytes",
+    "unique_reference_bytes": "unique_reference_bytes",
+}
+PATH_FIELDS = (
+    "allowed_change_paths",
+    "changed_paths",
+    "expected_change_paths",
+    "protected_paths",
+)
 
 
 def batch_identity(
@@ -48,6 +61,97 @@ def execution_result(receipt: dict[str, Any]) -> dict[str, Any]:
     return results[0]
 
 
+def _task_evidence(entry: dict[str, Any]) -> dict[str, str]:
+    """Return the user request bound into the frozen execution payload."""
+    payload = entry.get("execute_case_payload")
+    turns = payload.get("turns") if isinstance(payload, dict) else None
+    if not isinstance(turns, list):
+        raise ValueError("model grader execution turns are invalid")
+    messages = []
+    for turn in turns:
+        item = turn.get("input") if isinstance(turn, dict) else None
+        if not isinstance(item, dict) or item.get("kind") != "user_message":
+            continue
+        content = item.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("model grader user request is invalid")
+        messages.append(content)
+    if not messages:
+        raise ValueError("model grader user request is missing")
+    return {"request_text": "\n\n".join(messages)}
+
+
+def _deterministic_claims(result: dict[str, Any]) -> list[str]:
+    """Return locally verified claims bound to declared result artifacts."""
+    artifacts = result.get("artifacts")
+    assertions = result.get("assertions")
+    if not isinstance(artifacts, list) or not isinstance(assertions, list):
+        raise ValueError("model grader deterministic evidence is invalid")
+    claims = []
+    for assertion in assertions:
+        if (
+            not isinstance(assertion, dict)
+            or assertion.get("locally_verifiable") is not True
+        ):
+            continue
+        claim = assertion.get("claim")
+        if (
+            not isinstance(claim, str)
+            or not claim
+            or assertion.get("artifact") not in artifacts
+        ):
+            raise ValueError("model grader deterministic claim is invalid")
+        claims.append(claim)
+    if not claims:
+        raise ValueError("model grader deterministic claims are missing")
+    return sorted(set(claims))
+
+
+def _context_evidence(result: dict[str, Any]) -> dict[str, int]:
+    """Return bounded context totals without exposing captured content."""
+    context = result.get("context")
+    if not isinstance(context, dict):
+        raise ValueError("model grader context evidence is invalid")
+    summary = {}
+    for output_name, source_name in CONTEXT_FIELDS.items():
+        value = context.get(source_name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError("model grader context total is invalid")
+        summary[output_name] = value
+    components = context.get("components")
+    if not isinstance(components, list):
+        raise ValueError("model grader context components are invalid")
+    counts = {"body": 0, "reference": 0}
+    for component in components:
+        if not isinstance(component, dict):
+            raise ValueError("model grader context component is invalid")
+        kind = component.get("kind")
+        if kind in counts:
+            occurrence = component.get("occurrence", 1)
+            if (
+                isinstance(occurrence, bool)
+                or not isinstance(occurrence, int)
+                or occurrence < 1
+            ):
+                raise ValueError("model grader context occurrence is invalid")
+            counts[kind] += occurrence
+    summary["body_load_count"] = counts["body"]
+    summary["reference_load_count"] = counts["reference"]
+    return dict(sorted(summary.items()))
+
+
+def _grader_observation(
+    entry: dict[str, Any],
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the typed evidence visible to the model grader."""
+    return {
+        "context_evidence": _context_evidence(result),
+        "deterministic_claims": _deterministic_claims(result),
+        "task_evidence": _task_evidence(entry),
+    }
+
+
 def blinded_execution(
     entry: dict[str, Any],
     result: dict[str, Any],
@@ -66,8 +170,62 @@ def blinded_execution(
             )
         },
         "artifacts": copy.deepcopy(result["artifacts"]),
-        "observations": [],
+        "observations": [_grader_observation(entry, result)],
     }
+
+
+def _relative_evidence_paths(assessment: dict[str, Any]) -> list[str]:
+    """Validate and collect fixture-relative paths from host evidence."""
+    paths = set()
+    for field in PATH_FIELDS:
+        values = assessment.get(field, [])
+        if not isinstance(values, list):
+            raise ValueError(f"model grader {field} is invalid")
+        for value in values:
+            if (
+                not isinstance(value, str)
+                or not value
+                or value.startswith("/")
+                or "\\" in value
+                or re.match(r"^[A-Za-z]:[\\/]", value)
+                or any(part in {"", ".", ".."} for part in value.split("/"))
+            ):
+                raise ValueError(f"model grader {field} path is invalid")
+            paths.add(value)
+    return sorted(paths, key=len, reverse=True)
+
+
+def _redact_workspace_paths(
+    final_answer: str,
+    assessment: dict[str, Any],
+) -> str:
+    """Replace bound absolute paths with their relative evidence paths."""
+    if not isinstance(final_answer, str):
+        raise ValueError("model grader final answer is invalid")
+    redacted = final_answer
+    for path in _relative_evidence_paths(assessment):
+        angle_path = re.compile(
+            rf"<[^>\n]*/{re.escape(path)}(?P<line>:\d+)?>",
+        )
+        redacted = angle_path.sub(
+            lambda match: f"<{path}{match.group('line') or ''}>",
+            redacted,
+        )
+        plain_path = re.compile(
+            rf"(?<![:A-Za-z0-9])(?:[A-Za-z]:[\\/]|/)"
+            rf"[^\s`'\"<>()]*{re.escape(path)}(?P<line>:\d+)?",
+        )
+        redacted = plain_path.sub(
+            lambda match: f"{path}{match.group('line') or ''}",
+            redacted,
+        )
+    if re.search(
+        r"(?<![:A-Za-z0-9])(?:[A-Za-z]:[\\/]|/)"
+        r"(?:home|private|tmp|opt|Users|workspace|workspaces)[\\/]",
+        redacted,
+    ):
+        raise ValueError("model grader final answer exposes an absolute path")
+    return redacted
 
 
 def execution_item(
@@ -105,13 +263,29 @@ def execution_item(
         raise ValueError("model grader host assessment is invalid JSON") from exc
     if not isinstance(assessment, dict):
         raise ValueError("model grader host assessment is not an object")
+    observations = blinded["observations"]
+    if (
+        not isinstance(observations, list)
+        or len(observations) != 1
+        or not isinstance(observations[0], dict)
+        or set(observations[0]) != {
+            "context_evidence",
+            "deterministic_claims",
+            "task_evidence",
+        }
+    ):
+        raise ValueError("model grader typed evidence is invalid")
     return {
         "item_id": entry_id,
         "checks": [{"id": item["check_id"]} for item in requirements],
         "grader_view": {
             "captured_output": blinded["captured_output"],
+            **copy.deepcopy(observations[0]),
             "host_assessment": assessment,
-            "final_answer": evidence["final-answer"],
+            "final_answer": _redact_workspace_paths(
+                evidence["final-answer"],
+                assessment,
+            ),
         },
     }
 

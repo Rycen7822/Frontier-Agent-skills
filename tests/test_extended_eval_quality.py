@@ -690,6 +690,13 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             'do not inspect or reconcile candidate snapshots check by check',
             grader_prompt,
         )
+        self.assertIn(
+            '`task_evidence.request_text`, `deterministic_claims`, '
+            '`context_evidence`',
+            grader_prompt,
+        )
+        self.assertIn('do not demand raw commands', grader_prompt)
+        self.assertIn('A known-seam task can pass', grader_prompt)
 
     def test_reviewer_packet_pass_condition_is_spec_owned(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

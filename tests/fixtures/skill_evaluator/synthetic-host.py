@@ -289,15 +289,17 @@ def _host(request: dict[str, object], mode: str) -> int:
     events = []
     checkpoints = []
     artifacts = []
+    model_observation = None
     if any(
         item["owner"] == "model" for item in payload["case"]["requirements"]
     ):
         suffix = f"{envelope['entry_id']}-{envelope['attempt']}"
+        model_observation = _artifact(
+            f"host-observation-{suffix}.json",
+            {"changed_paths": [], "verification": {"exit_code": 0}},
+        )
         artifacts.extend([
-            _artifact(
-                f"host-observation-{suffix}.json",
-                {"changed_paths": [], "verification": {"exit_code": 0}},
-            ),
+            model_observation,
             _artifact(f"final-answer-{suffix}.md", "synthetic completion"),
         ])
     stateful = payload["case"]["state_model"]["scope"] != "none"
@@ -510,6 +512,12 @@ def _host(request: dict[str, object], mode: str) -> int:
         slots[0]["tool_schema_ceiling"],
     )
     assertions = []
+    if model_observation is not None:
+        assertions.append({
+            "claim": "outcome-complete",
+            "artifact": model_observation,
+            "locally_verifiable": True,
+        })
     for contract in payload["observation_contracts"]:
         relative = contract["artifact"].removeprefix("workspace/")
         observation = _artifact(
