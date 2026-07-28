@@ -138,8 +138,13 @@ def atomic_write(
 ) -> None:
     target = assert_nofollow(path, allow_absent_leaf=True)
     parent = assert_nofollow(target.parent, kind="directory")
+    target_mode = mode
     if target.exists():
-        assert_nofollow(target, kind="file")
+        status = assert_nofollow(target, kind="file").stat(
+            follow_symlinks=False,
+        )
+        if replace:
+            target_mode = stat.S_IMODE(status.st_mode)
     descriptor, temp_name = tempfile.mkstemp(
         prefix=f".{target.name}.",
         suffix=".tmp",
@@ -147,7 +152,7 @@ def atomic_write(
     )
     temp_path = Path(temp_name)
     try:
-        os.fchmod(descriptor, mode)
+        os.fchmod(descriptor, target_mode)
         with os.fdopen(descriptor, "wb", closefd=True) as stream:
             stream.write(payload)
             stream.flush()

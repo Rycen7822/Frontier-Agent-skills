@@ -619,7 +619,9 @@ def _transfer_case(
             "python3",
             f"{canonical_root}/test_app.py",
         ),
-        split=source.split,
+        # A sealed planner case becomes a public executor regression here;
+        # transfer_source retains its planner and source provenance.
+        split="regression" if source.split == "heldout" else source.split,
         tags=(*source.tags, "transfer"),
         applicable_profiles=profiles,
         model_grading=False,
