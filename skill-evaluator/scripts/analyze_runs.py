@@ -5195,6 +5195,24 @@ def _release_context_scalars(public: dict[str, Any]) -> dict[str, int]:
     return result
 
 
+def _release_projection_ready(
+    public: dict[str, Any],
+    *,
+    allow_missing_manual: bool,
+) -> bool:
+    """Allow D0 report-only data while preserving invalid manual receipts."""
+    completeness = public["completeness"]
+    return (
+        completeness["status"] == "complete"
+        or (
+            allow_missing_manual
+            and
+            completeness["reason_codes"] == ["manual_authority_invalid"]
+            and public["manual"]["status"] == "missing"
+        )
+    )
+
+
 def _sqw_release_metrics(
     loaded: dict[str, Any],
     *,
@@ -5570,6 +5588,7 @@ def project_release_estimands(
     confidence_level: float,
     bootstrap_iterations: int,
     random_seed: int,
+    allow_missing_manual: bool = False,
 ) -> dict[str, Any]:
     """Return the in-memory three-study release projection.
 
@@ -5640,10 +5659,14 @@ def project_release_estimands(
     )
     if sqw_tokens["status"] != "complete":
         sqw_reason_codes.append("sqw_total_token_pairs_incomplete")
-    if studies["software-quality-workflows"]["completeness"]["status"] != "complete":
+    sqw_ready = _release_projection_ready(
+        studies["software-quality-workflows"],
+        allow_missing_manual=allow_missing_manual,
+    )
+    if not sqw_ready:
         sqw_reason_codes.append("sqw_native_evidence_invalid")
     sqw_metrics = {}
-    if studies["software-quality-workflows"]["completeness"]["status"] == "complete":
+    if sqw_ready:
         sqw_metrics = _sqw_release_metrics(
             sqw,
             confidence_level=confidence_level,
@@ -5756,11 +5779,15 @@ def project_release_estimands(
     )
     if not matched["complete"]:
         join_reason_codes.add("writing_plans_matched_pairs_incomplete")
-    if (
-        studies["writing-plans-planner"]["completeness"]["status"] != "complete"
-        or studies["writing-plans-transfer"]["completeness"]["status"]
-        != "complete"
-    ):
+    planner_ready = _release_projection_ready(
+        studies["writing-plans-planner"],
+        allow_missing_manual=allow_missing_manual,
+    )
+    transfer_ready = _release_projection_ready(
+        studies["writing-plans-transfer"],
+        allow_missing_manual=allow_missing_manual,
+    )
+    if not planner_ready or not transfer_ready:
         join_reason_codes.add("writing_plans_native_evidence_invalid")
 
     prior_ids = [
@@ -5810,11 +5837,7 @@ def project_release_estimands(
                 )
 
     writing_metrics = {}
-    if (
-        studies["writing-plans-planner"]["completeness"]["status"] == "complete"
-        and studies["writing-plans-transfer"]["completeness"]["status"]
-        == "complete"
-    ):
+    if planner_ready and transfer_ready:
         writing_metrics = _writing_plans_release_metrics(
             planner,
             transfer,
