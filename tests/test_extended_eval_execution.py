@@ -546,10 +546,36 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             ])
             self.assertEqual(batch, blinded)
             self.assertTrue(all(
-                {'captured_output', 'host_assessment', 'final_answer'}
+                {
+                    'captured_output',
+                    'context_evidence',
+                    'deterministic_claims',
+                    'final_answer',
+                    'host_assessment',
+                    'task_evidence',
+                }
                 == set(item['grader_view'])
                 for item in batch['items']
             ))
+            self.assertTrue(all(
+                item['grader_view']['task_evidence']['request_text']
+                for item in batch['items']
+            ))
+            for item in batch['items']:
+                view = item['grader_view']
+                self.assertTrue(view['deterministic_claims'])
+                self.assertEqual(
+                    {
+                        'body_load_count',
+                        'controlled_bytes',
+                        'controlled_core_bytes',
+                        'reference_load_count',
+                        'total_bytes',
+                        'unique_reference_bytes',
+                    },
+                    set(view['context_evidence']),
+                )
+                self.assertNotIn('(</', view['final_answer'])
             self.assertNotIn('treatment_id', json.dumps(batch, sort_keys=True))
             self.assertEqual(
                 ['execute', 'model_grade'],
@@ -593,6 +619,38 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     'evidence_status'
                 ],
             )
+
+    def test_blinded_grader_evidence_is_bounded_and_fail_closed(self) -> None:
+        transport = load_analyzer_module().model_transport
+        assessment = {'changed_paths': ['fixtures/app.py']}
+        self.assertEqual(
+            '[app](<fixtures/app.py>)',
+            transport._redact_workspace_paths(  # noqa: SLF001
+                '[app](</private/workspace/fixtures/app.py>)',
+                assessment,
+            ),
+        )
+        self.assertEqual(
+            '[app]( fixtures/app.py)',
+            transport._redact_workspace_paths(  # noqa: SLF001
+                '[app]( /home/example/workspace/fixtures/app.py)',
+                assessment,
+            ),
+        )
+        with self.assertRaises(ValueError):
+            transport._redact_workspace_paths(  # noqa: SLF001
+                '[other](</private/workspace/fixtures/other.py>)',
+                assessment,
+            )
+        with self.assertRaises(ValueError):
+            transport._task_evidence({})  # noqa: SLF001
+        with self.assertRaises(ValueError):
+            transport._deterministic_claims({  # noqa: SLF001
+                'artifacts': [],
+                'assertions': [],
+            })
+        with self.assertRaises(ValueError):
+            transport._context_evidence({})  # noqa: SLF001
 
     def test_model_grader_batch_rejects_incomplete_or_mismatched_output(
         self,
