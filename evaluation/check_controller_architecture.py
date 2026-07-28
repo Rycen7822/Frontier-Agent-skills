@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Iterable
 
 
-# Calibrated after isolating planner evidence and its stale-input regression.
-MAX_PRODUCTION_LINES = 9_050
+# Recalibrated for the D4 migration-claim owner; other architecture limits stay fixed.
+MAX_PRODUCTION_LINES = 9_125
 MAX_TEST_LINES = 3_060
 MAX_FILE_LINES = 1_475
 

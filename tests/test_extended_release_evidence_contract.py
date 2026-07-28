@@ -5,6 +5,7 @@ from hashlib import sha256
 import importlib.util
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -97,6 +98,31 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
         revision.start()
         self.addCleanup(revision.stop)
 
+    def test_release_budget_matches_controller_frozen_matrix(self) -> None:
+        sys.path.insert(0, str(ROOT))
+        try:
+            from evaluation.controller import specs
+        finally:
+            sys.path.remove(str(ROOT))
+
+        budget = self.builder.EXPECTED_FORMAL_BUDGET
+        self.assertEqual(
+            (
+                budget["scored_call_hard_cap"],
+                budget["grader_calibration_call_hard_cap"],
+                budget["reviewer_calibration_call_hard_cap"],
+                budget["scheduled_provider_calls"],
+            ),
+            specs.PHASE_BUDGETS["formal"],
+        )
+        self.assertEqual(
+            sum(
+                usage["provider_calls"]
+                for usage in self.builder.EXPECTED_FORMAL_ARM_USAGE.values()
+            ),
+            budget["scored_call_hard_cap"],
+        )
+
     def make_contract(self, root: Path) -> tuple[Path, Path, dict]:
         source = root / "source"
         run = root / "run"
@@ -152,11 +178,11 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
             "evaluated_skill_ids": evaluated_skill_ids,
             "budget_contract": {
                 "schema_version": "provider-budget-contract/1.0",
-                "scheduled_provider_calls": 308,
-                "scored_call_hard_cap": 296,
+                "scheduled_provider_calls": 218,
+                "scored_call_hard_cap": 206,
                 "grader_calibration_call_hard_cap": 8,
                 "reviewer_calibration_call_hard_cap": 4,
-                "provider_call_hard_cap": 308,
+                "provider_call_hard_cap": 218,
             },
             "gate_contract": {
                 "schema_version": "gate-contract/1.0",
@@ -208,20 +234,30 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
                     "provider_calls": provider_calls,
                 },
             }
+            if study == "writing-plans":
+                report["metrics"]["prior_reference_migration_claim"] = {
+                    "status": "supported",
+                    "minimum_reference_cases": 4,
+                    "observed_reference_cases": 4,
+                    "mixed_prior_cases": 0,
+                    "reduction_selector": "lower",
+                    "minimum_reduction": 0.5,
+                    "observed_reduction": 0.5,
+                }
             report["report_hash"] = self_hash(report)
             return report
 
         sqw = arm(
             "software-quality-workflows",
-            provider_calls=160,
-            observed=160,
-            graded=64,
+            provider_calls=108,
+            observed=108,
+            graded=12,
         )
         wp = arm(
             "writing-plans",
-            provider_calls=136,
-            observed=136,
-            graded=48,
+            provider_calls=98,
+            observed=98,
+            graded=10,
         )
         sqw_bytes = write_json(
             run / "l2" / "software-quality-workflows" / "report.json",
@@ -239,11 +275,11 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
             "evaluated_skill_ids": evaluated_skill_ids,
             "arm_report_content_hashes": arm_hashes,
             "aggregate_status": "passed",
-            "scored_model_calls": 296,
+            "scored_model_calls": 206,
             "grader_calibration_calls": 8,
             "reviewer_calibration_calls": 4,
             "apparatus_model_calls": 12,
-            "total_provider_calls": 308,
+            "total_provider_calls": 218,
             "retries": 0,
             "gates": [],
         }
@@ -370,6 +406,10 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
         evidence["l2_scored_report_hash"] = aggregate_hash
         evidence["activation_decision_hash"] = activation_hash
         write_json(evidence_path, evidence)
+
+    def load_arm(self, evidence_path: Path, skill_id: str) -> dict:
+        arm_path = evidence_path.parent / "l2" / skill_id / "report.json"
+        return json.loads(arm_path.read_text(encoding="utf-8"))
 
     def rebind_formal_budget(
         self,
@@ -902,6 +942,49 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
                     "P3 arm report is invalid or unbound",
                 ):
                     self.validate(source, evidence_path)
+
+    def test_prior_migration_claim_tamper_is_rejected_after_hash_rebinding(self) -> None:
+        for field, value in (
+            ("status", "not_supported"),
+            ("observed_reduction", 0.49),
+            ("minimum_reference_cases", None),
+        ):
+            with (
+                self.subTest(field=field),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                source, evidence_path, _ = self.make_contract(Path(directory))
+                arm = self.load_arm(evidence_path, "writing-plans")
+                claim = arm["metrics"]["prior_reference_migration_claim"]
+                if value is None:
+                    claim.pop(field)
+                else:
+                    claim[field] = value
+                self.rebind_arm(evidence_path, "writing-plans", arm)
+                with self.assertRaisesRegex(ValueError, "prior migration claim"):
+                    self.validate(source, evidence_path)
+
+    def test_truthful_non_supported_claim_states_do_not_block_release(self) -> None:
+        for status, cases, mixed, reduction in (
+            ("unavailable", 0, 0, None),
+            ("unavailable", 4, 1, None),
+            ("not_supported", 4, 0, 0.49),
+        ):
+            with (
+                self.subTest(status=status, cases=cases, mixed=mixed),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                source, evidence_path, _ = self.make_contract(Path(directory))
+                arm = self.load_arm(evidence_path, "writing-plans")
+                claim = arm["metrics"]["prior_reference_migration_claim"]
+                claim.update({
+                    "status": status,
+                    "observed_reference_cases": cases,
+                    "mixed_prior_cases": mixed,
+                    "observed_reduction": reduction,
+                })
+                self.rebind_arm(evidence_path, "writing-plans", arm)
+                self.validate(source, evidence_path)
 
     def test_missing_arm_candidate_identity_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

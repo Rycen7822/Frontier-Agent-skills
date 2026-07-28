@@ -163,6 +163,63 @@ def evaluate_gates(
     return passed, failed
 
 
+def writing_plan_migration_claim(
+    phase: str,
+    projection: dict[str, Any],
+) -> dict[str, Any]:
+    minimum_cases, selector, minimum_reduction = (
+        specs.writing_plan_migration_claim_policy(phase)
+    )
+    metrics = resolve_pointer(
+        {"projection": projection},
+        "/projection/writing_plans/release_metrics",
+    )
+    required = {
+        "prior_reference_cases",
+        "mixed_prior_cases",
+        "prior_controlled_context_reduction",
+    }
+    if not isinstance(metrics, dict) or not required <= set(metrics):
+        raise ReportError("migration claim metrics are incomplete")
+    reference_cases = metrics["prior_reference_cases"]
+    mixed_cases = metrics["mixed_prior_cases"]
+    if any(
+        not isinstance(value, int) or isinstance(value, bool) or value < 0
+        for value in (reference_cases, mixed_cases)
+    ):
+        raise ReportError("migration claim cohort evidence is invalid")
+    reduction_metric = metrics["prior_controlled_context_reduction"]
+    reduction = (
+        None
+        if reduction_metric is None
+        else selected_value(reduction_metric, selector)
+    )
+    if reduction is not None and (
+        not isinstance(reduction, (int, float))
+        or isinstance(reduction, bool)
+        or not math.isfinite(reduction)
+    ):
+        raise ReportError("migration claim reduction evidence is invalid")
+    result = {
+        "minimum_reference_cases": minimum_cases,
+        "observed_reference_cases": reference_cases,
+        "mixed_prior_cases": mixed_cases,
+        "reduction_selector": selector,
+        "minimum_reduction": minimum_reduction,
+        "observed_reduction": reduction,
+    }
+    if reference_cases < minimum_cases or mixed_cases:
+        return {"status": "unavailable", **result, "observed_reduction": None}
+    if reduction is None:
+        raise ReportError("migration claim reduction evidence is unavailable")
+    return {
+        "status": (
+            "supported" if reduction >= minimum_reduction else "not_supported"
+        ),
+        **result,
+    }
+
+
 def budget_contract(
     phase: str,
     request_manifest_path: Path,
@@ -654,6 +711,13 @@ def build_arm_report(
     native_receipts: list[dict[str, Any]],
 ) -> dict[str, Any]:
     closure = usage_closure(study_ids, attempt_root, native_receipts)
+    metrics = {
+        item["gate_id"]: item["observed"] for item in gate_results
+    }
+    if arm == "writing-plans":
+        metrics["prior_reference_migration_claim"] = (
+            writing_plan_migration_claim("formal", projection)
+        )
     report = {
         "schema_version": "p3-arm-report/3.0",
         "study": arm,
@@ -676,9 +740,7 @@ def build_arm_report(
         "manual_receipt_content_hash": _manual_hash(projection, study_ids),
         "evidence_status": "complete",
         "usefulness_status": "supported",
-        "metrics": {
-            item["gate_id"]: item["observed"] for item in gate_results
-        },
+        "metrics": metrics,
         "gate_results": gate_results,
         "usage_closure": {
             "scheduled": closure["scored_provider_calls"],
@@ -869,6 +931,11 @@ def evaluate_campaign(
             "candidate_revision": contract["candidate_revision"],
             "decision_contract_content_hash": file_hash(contract_path),
             "gate_results": results,
+            "claim_results": {
+                "prior_reference_migration_claim": (
+                    writing_plan_migration_claim(phase, projection)
+                ),
+            },
         }
         write_once(
             output_root / "d0-report.json",
