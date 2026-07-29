@@ -845,7 +845,7 @@ def calibration_pack(study: str) -> list[dict[str, Any]]:
     risks = ("standard", "high") if study == "writing-plans" else ("standard",) * 2
     standard_negatives = failing_views(study)
     negatives = (
-        [*standard_negatives[:2], *failing_views(study, risk="high")[2:]]
+        [standard_negatives[0], standard_negatives[3]] + failing_views(study, risk="high")[2:]
         if study == "writing-plans"
         else standard_negatives
     )
