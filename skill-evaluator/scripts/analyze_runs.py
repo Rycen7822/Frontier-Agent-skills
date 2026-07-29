@@ -3854,6 +3854,8 @@ def _manual_review_input_binding(
     spec: dict[str, Any],
     spec_path: Path,
     plan_path: Path,
+    *,
+    release_gate_contract: str | None = None,
 ) -> dict[str, Any]:
     root = spec_path.parent.resolve(strict=True)
 
@@ -3899,8 +3901,27 @@ def _manual_review_input_binding(
     if len(proof_hashes) != 1:
         raise ValueError("suite quality must bind one canonical raw proof")
 
+    release_gate_reference = None
+    if release_gate_contract is not None:
+        normalized, release_gate_path = resolve_contained_path(
+            root,
+            release_gate_contract,
+            "release gate contract",
+            kind="file",
+        )
+        release_gate = load_json(release_gate_path)
+        if (
+            not isinstance(release_gate, dict)
+            or release_gate.get("schema_version") != "gate-contract/1.0"
+        ):
+            raise ValueError("release gate contract is invalid")
+        release_gate_reference = {
+            "path": normalized,
+            "sha256": file_sha256(release_gate_path),
+        }
+
     binding = {
-        "schema_version": "manual-review-input-binding/1.0",
+        "schema_version": "manual-review-input-binding/1.1",
         "study_id": spec["evaluation_id"],
         "spec_content_hash": file_sha256(spec_path),
         "scenarios_content_hash": scenarios[1],
@@ -3909,6 +3930,7 @@ def _manual_review_input_binding(
             calibration[1] if calibration is not None else None
         ),
         "execution_plan_content_hash": file_sha256(plan_path),
+        "release_gate_contract": release_gate_reference,
     }
     binding["binding_hash"] = canonical_sha256(binding)
     return binding
@@ -4007,10 +4029,19 @@ def _verify_v5_manual_review(
         if item["sha256"] != file_sha256(evidence_path):
             raise ValueError("manual-review input binding hash mismatch")
         binding = load_json(evidence_path)
+        release_gate = binding.get("release_gate_contract")
+        if release_gate is not None and (
+            not isinstance(release_gate, dict)
+            or set(release_gate) != {"path", "sha256"}
+        ):
+            raise ValueError("release gate contract binding is invalid")
         if binding != _manual_review_input_binding(
             spec,
             spec_path,
             plan_path,
+            release_gate_contract=(
+                release_gate["path"] if release_gate is not None else None
+            ),
         ):
             raise ValueError("manual-review input binding owner mismatch")
         decision_projection = {
