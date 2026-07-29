@@ -859,7 +859,9 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 'resampling_unit': 'case',
                 'slices': [],
                 'reliability': ['observed_consistency'],
-                'materiality': {'minimum_cases': 3},
+                'materiality': {
+                    'minimum_baseline_failure_cases': 3,
+                },
             },
             'hard_gates': [],
             'treatments': [
@@ -920,7 +922,9 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 }],
                 'confidence_level': 0.95,
                 'bootstrap_iterations': 100,
-                'materiality': {'minimum_cases': 0},
+                'materiality': {
+                    'minimum_baseline_failure_cases': 0,
+                },
             },
             'hard_gates': [
                 {

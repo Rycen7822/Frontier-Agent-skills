@@ -240,7 +240,7 @@ def test_reviewer_descriptors_bind_two_context_clean_positional_prompts() -> Non
         prompt = descriptor["prompt"]
         assert prompt["schema_version"] == "context-clean-subagent-reviewer-prompt/4.0"
         assert "rate every example for that view abstain" in prompt["instruction"]
-        assert "output_schema" not in prompt and prompt["response_contract"]["rows"] == 16
+        assert "output_schema" not in prompt and prompt["response_contract"]["rows"] == 8
 
 
 def test_native_attempt_receipt_hash_and_failure_class_are_closed() -> None:

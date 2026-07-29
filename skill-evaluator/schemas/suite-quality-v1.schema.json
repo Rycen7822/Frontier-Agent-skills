@@ -209,7 +209,7 @@
       "type": "object",
       "required": ["surface", "case_classes", "status"],
       "properties": {
-        "surface": {"enum": ["coordination", "action", "security", "review", "independence", "observation", "grounding"]},
+        "surface": {"enum": ["scenario-oracle", "coordination", "action", "security", "review", "independence", "observation", "grounding"]},
         "case_classes": {
           "type": "array",
           "minItems": 1,

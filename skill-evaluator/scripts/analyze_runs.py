@@ -2628,7 +2628,10 @@ def _v5_metric_analysis(
         )
     }
     minimum_headroom = int(
-        spec["analysis"]["materiality"].get("minimum_cases", 0),
+        spec["analysis"]["materiality"].get(
+            "minimum_baseline_failure_cases",
+            0,
+        ),
     )
     baseline_ceiling = (
         spec["level"] not in {"L0", "L1"}
@@ -4306,7 +4309,9 @@ def _derive_v5_gate_failures(
             locator={
                 "kind": "json_pointer",
                 "artifact": spec_path.name,
-                "json_pointer": "/analysis/materiality/minimum_cases",
+                "json_pointer": (
+                    "/analysis/materiality/minimum_baseline_failure_cases"
+                ),
             },
             observed=(
                 f"baseline failure cases="
@@ -4314,7 +4319,10 @@ def _derive_v5_gate_failures(
             ),
             expected=(
                 f"at least "
-                f"{spec['analysis']['materiality'].get('minimum_cases', 0)} "
+                f"{spec['analysis']['materiality'].get(
+                    'minimum_baseline_failure_cases',
+                    0,
+                )} "
                 f"baseline failure cases"
             ),
             impact="the candidate contribution is inconclusive at the ceiling",

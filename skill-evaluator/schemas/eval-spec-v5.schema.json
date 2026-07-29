@@ -402,7 +402,17 @@
         "resampling_unit": {"const": "case"},
         "slices": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
         "reliability": {"type": "array", "items": {"enum": ["pass_at_k", "pass_to_k", "observed_consistency"]}},
-        "materiality": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "number"}}
+        "materiality": {
+          "type": "object",
+          "required": ["minimum_baseline_failure_cases"],
+          "properties": {
+            "minimum_baseline_failure_cases": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },

@@ -570,13 +570,41 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
             report,
         )
 
-    def test_l3_and_l4_ready_contracts_close_holdout_and_authority(self) -> None:
-        for level in ('L3', 'L4'):
-            with self.subTest(level=level), tempfile.TemporaryDirectory() as tmp:
+    def test_l3_l4_holdout_preparation_and_revealed_execution(self) -> None:
+        for level, exposure in (
+            ('L3', 'sealed'),
+            ('L3', 'exposed'),
+            ('L4', 'sealed'),
+        ):
+            with (
+                self.subTest(level=level, exposure=exposure),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
                 paths = materialize_v5_contract_fixture(Path(tmp))
                 root = Path(tmp)
+                public_scenario = json.loads(
+                    paths['scenarios'].read_text(encoding='utf-8'),
+                )
+                heldout_scenario = {
+                    **copy.deepcopy(public_scenario),
+                    'case_id': 'heldout-case',
+                    'split': 'heldout',
+                }
+                heldout_scenario['execution_context']['task'] = (
+                    'Exercise the separately heldout contract boundary.'
+                )
+                heldout_scenario['turns'][0]['input']['content'] = (
+                    'Exercise the separately heldout contract boundary.'
+                )
+                heldout_scenario['tags'] = [
+                    *heldout_scenario['tags'],
+                    'heldout-boundary',
+                ]
                 payload = root / 'holdout-scenarios.jsonl'
-                payload.write_text('{"sealed":true}\n', encoding='utf-8')
+                payload.write_text(
+                    json.dumps(heldout_scenario, separators=(',', ':')) + '\n',
+                    encoding='utf-8',
+                )
                 payload_hash = (
                     'sha256:' + hashlib.sha256(payload.read_bytes()).hexdigest()
                 )
@@ -595,12 +623,13 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                         }],
                         'scenario_ids': ['heldout-case'],
                         'custodian': 'independent-evaluation-owner',
-                        'exposure_status': 'sealed',
+                        'exposure_status': exposure,
                     }, indent=2) + '\n',
                     encoding='utf-8',
                 )
                 spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
                 spec['level'] = level
+                spec['execution']['ready'] = exposure == 'exposed'
                 spec['suite']['holdout'] = {
                     'manifest': {
                         'path': manifest.name,
@@ -614,8 +643,25 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                         'sha256': payload_hash,
                     },
                     'custodian': 'independent-evaluation-owner',
-                    'exposure_status': 'sealed',
+                    'exposure_status': exposure,
                 }
+                if exposure == 'exposed':
+                    execution = root / 'execution-scenarios.jsonl'
+                    execution.write_text(
+                        ''.join(
+                            json.dumps(item, separators=(',', ':')) + '\n'
+                            for item in (public_scenario, heldout_scenario)
+                        ),
+                        encoding='utf-8',
+                    )
+                    spec['suite']['scenarios'] = {
+                        'path': execution.name,
+                        'sha256': (
+                            'sha256:'
+                            + hashlib.sha256(execution.read_bytes()).hexdigest()
+                        ),
+                    }
+                    paths['scenarios'] = execution
                 spec['authority']['manual_review'] = {
                     'required': True,
                     'role': 'release-reviewer',
@@ -687,8 +733,44 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                 )
                 proof['custody'].update({
                     'custodian': 'independent-evaluation-owner',
-                    'exposure_status': 'sealed',
+                    'exposure_status': exposure,
                 })
+                if exposure == 'exposed':
+                    proof['case_classes'].append({
+                        'case_id': heldout_scenario['case_id'],
+                        'class': 'positive',
+                    })
+                    proof['golden']['case_ids'].append(
+                        heldout_scenario['case_id'],
+                    )
+                    proof['golden']['passed_ids'].append(
+                        heldout_scenario['case_id'],
+                    )
+                    proof['provenance_clusters'][0]['case_ids'].append(
+                        heldout_scenario['case_id'],
+                    )
+                    validator = load_validator_module()
+                    proof['duplicate_groups'] = [
+                        {
+                            'group_id': f'{kind}-{index}',
+                            'kind': kind,
+                            'case_ids': sorted(group),
+                            'status': 'allowed',
+                            'review_locator': None,
+                        }
+                        for kind in (
+                            'exact',
+                            'prompt_overlap',
+                            'fixture_overlap',
+                        )
+                        for index, group in enumerate(
+                            validator._derive_duplicate_groups(
+                                [public_scenario, heldout_scenario],
+                                kind,
+                            ),
+                            start=1,
+                        )
+                    ]
                 proof['custody']['split_hashes']['heldout'] = payload_hash
                 paths['quality_proof'].write_text(
                     json.dumps(proof, indent=2) + '\n',

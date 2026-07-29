@@ -88,7 +88,7 @@ def _spec(
     template["analysis"].update({
         "confidence_level": 0.90,
         "bootstrap_iterations": 10000,
-        "materiality": {"minimum_cases": len(scenarios)},
+        "materiality": {"minimum_baseline_failure_cases": len(scenarios)},
     })
     scenario_path = root / "scenarios-v1.jsonl"
     artifacts.atomic_write(

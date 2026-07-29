@@ -1151,12 +1151,20 @@ def _validate_scenarios(
             errors, "scenario.duplicate_id", "/scenarios",
             "case_id values must be unique",
         )
+    holdout = spec.get("suite", {}).get("holdout")
+    revealed_holdout = (
+        spec.get("level") in {"L3", "L4"}
+        and isinstance(holdout, dict)
+        and holdout.get("exposure_status") == "exposed"
+        and spec.get("suite", {}).get("scenarios")
+        != spec.get("suite", {}).get("public_scenarios")
+    )
     public_heldout = [
         case_id
         for case_id, scenario in zip(case_ids, scenarios)
         if scenario.get("split") == "heldout"
     ]
-    if public_heldout:
+    if public_heldout and not revealed_holdout:
         _add_contract_error(
             errors, "holdout.public_exposure", "/scenarios",
             f"public scenario corpus contains heldout IDs: {public_heldout}",
@@ -1898,7 +1906,14 @@ def _validate_calibration_binding(
             item.get("execution_context", {}).get("language")
             for item in scenarios
         },
-        "risks": {spec.get("risk_tier")},
+        "risks": {
+            item.get("risk")
+            for item in scenarios
+            if any(
+                requirement.get("owner") == "model"
+                for requirement in item.get("requirements", [])
+            )
+        } or {spec.get("risk_tier")},
         "hosts": {host.get("identity", {}).get("host_id")},
         "models": {grader.get("model") for grader in model_graders},
     }
@@ -2117,12 +2132,19 @@ def _validate_level_requirements(
             f"{level} requires a sequestered holdout binding",
         )
         return
-    if holdout.get("exposure_status") != "sealed":
+    if holdout.get("exposure_status") not in {"sealed", "exposed"}:
         _add_contract_error(
             errors,
             "holdout.exposure",
             "/suite/holdout/exposure_status",
-            "L3/L4 holdout exposure_status must be sealed",
+            "L3/L4 holdout exposure_status must be sealed or exposed",
+        )
+    if ready and holdout.get("exposure_status") != "exposed":
+        _add_contract_error(
+            errors,
+            "holdout.not_revealed",
+            "/suite/holdout/exposure_status",
+            "compiler-ready L3/L4 requires an exposed execution partition",
         )
     manifest_path = _check_bound_file(
         holdout.get("manifest", {}),
@@ -2201,13 +2223,96 @@ def _validate_level_requirements(
         declared_payload != payload_path
         or manifest.get("payload_sha256") != file_sha256(payload_path)
         or manifest.get("custodian") != holdout.get("custodian")
-        or manifest.get("exposure_status") != "sealed"
+        or manifest.get("exposure_status")
+        != holdout.get("exposure_status")
     ):
         _add_contract_error(
             errors,
             "holdout.manifest_binding",
             "/suite/holdout",
             "holdout manifest identity, custody, exposure, or payload hash differs",
+        )
+
+
+def _validate_execution_scenario_partition(
+    spec: dict[str, Any],
+    scenarios: list[dict[str, Any]],
+    *,
+    spec_path: Path,
+    public_path: Path | None,
+    errors: list[dict[str, str]],
+) -> None:
+    suite = spec["suite"]
+    same_binding = suite["scenarios"] == suite["public_scenarios"]
+    if spec["level"] not in {"L3", "L4"}:
+        if not same_binding:
+            _add_contract_error(
+                errors,
+                "binding.public_scenario_mismatch",
+                "/suite/public_scenarios",
+                "L1/L2 scenarios must equal the public scenario binding",
+            )
+        return
+    holdout = suite.get("holdout")
+    if not isinstance(holdout, dict):
+        return
+    if holdout.get("exposure_status") == "sealed":
+        if not same_binding:
+            _add_contract_error(
+                errors,
+                "holdout.sealed_execution",
+                "/suite/scenarios",
+                "sealed holdout cannot appear in the execution corpus",
+            )
+        return
+    if holdout.get("exposure_status") != "exposed" or public_path is None:
+        return
+    if same_binding:
+        _add_contract_error(
+            errors,
+            "holdout.exposed_execution",
+            "/suite/scenarios",
+            "exposed holdout requires a distinct execution corpus",
+        )
+        return
+    try:
+        _, payload_path = resolve_evidence_path(
+            spec_path.parent,
+            holdout["payload"]["path"],
+            "holdout payload",
+            kind="file",
+        )
+        public = load_jsonl(public_path)
+        heldout = load_jsonl(payload_path)
+    except (KeyError, OSError, ValueError) as exc:
+        _add_contract_error(
+            errors,
+            "holdout.execution_partition",
+            "/suite/scenarios",
+            f"cannot read revealed scenario partition: {exc}",
+        )
+        return
+    public_ids = {item.get("case_id") for item in public}
+    heldout_ids = {item.get("case_id") for item in heldout}
+    execution_rows = [
+        {key: value for key, value in item.items() if key != "_line"}
+        for item in scenarios
+    ]
+    partition_rows = [
+        {key: value for key, value in item.items() if key != "_line"}
+        for item in (*public, *heldout)
+    ]
+    if (
+        any(item.get("split") == "heldout" for item in public)
+        or any(item.get("split") != "heldout" for item in heldout)
+        or public_ids & heldout_ids
+        or execution_rows != partition_rows
+    ):
+        _add_contract_error(
+            errors,
+            "holdout.execution_partition",
+            "/suite/scenarios",
+            "execution corpus must be the disjoint ordered public+heldout union",
         )
 
 
@@ -2232,22 +2337,32 @@ def validate_v5_contract_semantics(
         raise ValueError("L1+ semantic validation requires scenarios and host")
 
     suite = spec["suite"]
-    for field in ("scenarios", "public_scenarios"):
-        _check_bound_file(
-            suite[field],
-            root=spec_path.parent,
-            label=field.replace("_", " "),
-            path=f"/suite/{field}",
-            errors=errors,
-            warnings=warnings,
-            ready=ready,
-            expected_path=scenarios_path,
-        )
-    if suite["scenarios"] != suite["public_scenarios"]:
-        _add_contract_error(
-            errors, "binding.public_scenario_mismatch", "/suite/public_scenarios",
-            "public_scenarios must equal the supplied scenario corpus binding",
-        )
+    _check_bound_file(
+        suite["scenarios"],
+        root=spec_path.parent,
+        label="scenarios",
+        path="/suite/scenarios",
+        errors=errors,
+        warnings=warnings,
+        ready=ready,
+        expected_path=scenarios_path,
+    )
+    public_path = _check_bound_file(
+        suite["public_scenarios"],
+        root=spec_path.parent,
+        label="public scenarios",
+        path="/suite/public_scenarios",
+        errors=errors,
+        warnings=warnings,
+        ready=ready,
+    )
+    _validate_execution_scenario_partition(
+        spec,
+        scenarios,
+        spec_path=spec_path,
+        public_path=public_path,
+        errors=errors,
+    )
     _check_bound_file(
         spec["host"]["manifest"],
         root=spec_path.parent,
@@ -4243,6 +4358,25 @@ def _normalize_calibration_raw(
             "calibration.duplicate_id",
             "example_id and rating_id values must be unique",
         )
+    label_coverage = {
+        check_id: {
+            row["gold_label"]
+            for row in label_rows
+            if row["check_id"] == check_id
+        }
+        for check_id in {row["check_id"] for row in label_rows}
+    }
+    incomplete_checks = sorted(
+        check_id
+        for check_id, labels_for_check in label_coverage.items()
+        if not {"pass", "fail"} <= labels_for_check
+    )
+    if incomplete_checks:
+        return None, (
+            "calibration.check_label_coverage",
+            "every calibrated check requires pass and fail gold labels: "
+            f"{incomplete_checks}",
+        )
     labels = {row["example_id"]: row for row in label_rows}
     judge_rows = [
         row for row in ratings if row["reviewer"]["role"] == "judge"
@@ -4917,6 +5051,11 @@ def _required_quality_boundaries(
     scenarios: list[dict[str, Any]],
 ) -> dict[str, set[str]]:
     required: dict[str, set[str]] = {}
+    if any(
+        {"boundary", "failure"} & set(scenario.get("tags", []))
+        for scenario in scenarios
+    ):
+        required["scenario-oracle"] = {"boundary_or_failure"}
     modules = required_v5_modules(spec)
     if "multi_principal_coordination" in modules:
         required["coordination"] = {
@@ -5036,6 +5175,16 @@ def _normalize_suite_quality_raw(
             "quality.golden",
             "golden proof must identify supplied scenarios",
         )
+    boundary_ids = {
+        scenario["case_id"]
+        for scenario in scenarios
+        if {"boundary", "failure"} & set(scenario.get("tags", []))
+    }
+    if not boundary_ids <= set(golden["passed_ids"]):
+        return None, (
+            "quality.boundary_oracle",
+            "every boundary/failure scenario requires a passed golden oracle",
+        )
     if not (
         isinstance(known_bad, dict)
         and set(known_bad) == {"case_ids", "detected_ids"}
@@ -5138,13 +5287,14 @@ def _normalize_suite_quality_raw(
         payload_name = holdout["payload"]["path"]
         if (
             custody.get("custodian") != holdout.get("custodian")
-            or custody.get("exposure_status") != "sealed"
+            or custody.get("exposure_status")
+            != holdout.get("exposure_status")
             or payload_name in custody["author_visible_paths"]
             or payload_name in custody["executor_visible_paths"]
         ):
             return None, (
                 "quality.holdout_custody",
-                "sealed holdout custody or visibility differs from the spec",
+                "holdout custody, exposure, or visibility differs from the spec",
             )
     elif custody.get("exposure_status") != "not_applicable":
         return None, (

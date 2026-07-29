@@ -81,12 +81,12 @@ def test_unknown_or_unbound_formal_profile_fails_closed() -> None:
 
 
 @pytest.mark.parametrize("skill_id", SKILL_IDS)
-def test_calibration_partition_is_eight_blinded_provider_requests(
+def test_calibration_partition_is_four_blinded_provider_requests(
     skill_id: str,
 ) -> None:
     pack = studies.calibration_pack(skill_id)
     batches = studies.batch_schedule(pack)
-    assert len(pack) == 16
+    assert len(pack) == 8
     assert ("Resume preflight:" in str(pack[0])) == (skill_id == "writing-plans")
     assert {
         class_name: sum(
@@ -95,12 +95,12 @@ def test_calibration_partition_is_eight_blinded_provider_requests(
         )
         for class_name in ("known_good", "known_bad", "boundary", "abstain")
     } == {
-        "known_good": 4,
+        "known_good": 2,
         "known_bad": 4,
-        "boundary": 4,
-        "abstain": 4,
+        "boundary": 1,
+        "abstain": 1,
     }
-    assert [len(batch) for batch in batches] == [4, 4, 4, 4]
+    assert [len(batch) for batch in batches] == [4, 4]
     assert {item["artifact_id"] for item in pack} == {
         item_id for batch in batches for item_id in batch
     }
@@ -118,7 +118,7 @@ def test_reviewer_projection_is_lossless_and_positional(skill_id: str) -> None:
     }
     projection = studies.semantic_projection(**arguments)
     assert studies.semantic_projection(**arguments) == projection
-    assert len(projection["packet"]["examples"]) == 160
+    assert len(projection["packet"]["examples"]) == 80
     packet = projection["packet"]
     compact = studies.compact_packet(packet)
     assert studies.expand_packet(compact) == packet

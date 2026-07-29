@@ -1131,7 +1131,7 @@ def _grader_calibration_rows(
                 "gold_severity": 0 if gold in {"pass", "abstain"} else 2,
                 "task": "software-engineering",
                 "language": "en",
-                "risk": spec["risk_tier"],
+                "risk": item.get("risk", spec["risk_tier"]),
                 "host": host_manifest["identity"]["host_id"],
                 "model": grader["model"],
             })
