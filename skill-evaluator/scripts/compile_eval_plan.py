@@ -548,6 +548,10 @@ def _bind_model_grade_batches(
             executable or group,
             key=lambda item: item[0]["entry_ordinal"],
         )
+        if len(members) > model_transport.MAX_BATCH_ITEMS:
+            raise InternalInvariantError(
+                "model grader batch exceeds the transport item limit",
+            )
         entry_ids = [entry["entry_id"] for entry, _ in members]
         batch_id = model_transport.batch_identity(
             evaluation_id,

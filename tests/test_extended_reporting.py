@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
 from unittest import mock
 
+from evaluation.controller import artifacts as controller_artifacts
+from evaluation.controller import reports as controller_reports
+from evaluation.controller.controller_testkit import (
+    release_studies as controller_release_studies,
+)
 from skill_evaluator_test_support import *  # noqa: F403
 
 
@@ -31,6 +38,67 @@ def material_failure_records(
 
 
 class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
+    def test_controller_passes_bound_studies_to_public_projection(self):
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        roots, join = controller_release_studies(root)
+        analyzer = mock.Mock()
+        analyzer.project_release_estimands.return_value = {"status": "complete"}
+        projection, summaries = controller_reports.project_release(
+            phase="d0",
+            analyzer=analyzer,
+            roots=roots,
+            manual_receipts={
+                "software-quality-workflows": "manual/sqw.json",
+                "writing-plans-planner": "manual/planner.json",
+                "writing-plans-transfer": None,
+            },
+            join_path=join,
+            seed=2735,
+        )
+        assert projection["status"] == "complete"
+        assert set(summaries) == set(controller_reports.STUDIES)
+        call = analyzer.project_release_estimands.call_args
+        bindings = call.args[0]
+        assert [item["study_id"] for item in bindings] == list(
+            controller_reports.STUDIES,
+        )
+        assert call.kwargs["allow_missing_manual"] is True
+        assert set(bindings[0]) == {
+            "study_id",
+            "spec",
+            "plan",
+            "index",
+            "summary",
+            "failure_index",
+            "manual_receipt_locator",
+        }
+
+    def test_controller_rejects_state_json_release_summary(self):
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        roots, join = controller_release_studies(root)
+        controller_artifacts.write_json(
+            roots["software-quality-workflows"]
+            / controller_reports.STUDY_FILES["summary"],
+            {},
+        )
+        analyzer = mock.Mock()
+        analyzer.project_release_estimands.return_value = {"status": "complete"}
+        with self.assertRaisesRegex(
+            controller_reports.ReportError,
+            "release JSON bytes are not canonical",
+        ):
+            controller_reports.project_release(
+                phase="formal",
+                analyzer=analyzer,
+                roots=roots,
+                manual_receipts={
+                    study_id: None
+                    for study_id in controller_reports.STUDIES
+                },
+                join_path=join,
+                seed=2735,
+            )
+
     def _materialize_v5_analysis_bundle(
         self,
         root: Path,
@@ -1897,6 +1965,50 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 'sha256:' + hashlib.sha256(details_path.read_bytes()).hexdigest(),
                 details_view['sha256'],
             )
+
+    def test_v5_report_only_truncation_writes_only_explicit_details(self) -> None:
+        for explicit_details in (False, True):
+            with self.subTest(explicit_details=explicit_details):
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    paths = self._materialize_v5_analysis_bundle(
+                        root, failure_index_budget=1,
+                    )
+                    paths['index'].write_text('', encoding='utf-8')
+                    command = [
+                        'scripts/analyze_runs.py',
+                        str(paths['index']),
+                        '--spec', str(paths['spec']),
+                        '--json', str(paths['summary']),
+                        '--failure-index', str(paths['failures']),
+                        '--report-only',
+                    ]
+                    details_path = root / 'explicit-details.json'
+                    if explicit_details:
+                        command.extend(('--details', str(details_path)))
+
+                    result = self.call_cli(*command)
+                    self.assertEqual(
+                        3, result.returncode, result.stdout + result.stderr,
+                    )
+                    summary = json.loads(
+                        paths['summary'].read_text(encoding='utf-8'),
+                    )
+                    self.assertTrue(json.loads(
+                        paths['failures'].read_text(encoding='utf-8'),
+                    )['truncated'])
+                    if explicit_details:
+                        self.assertIsNotNone(
+                            summary['output_manifest']['details'],
+                        )
+                        self.assertTrue(details_path.is_file())
+                    else:
+                        self.assertIsNone(
+                            summary['output_manifest']['details'],
+                        )
+                        self.assertFalse(
+                            (root / 'failures.details.json').exists(),
+                        )
 
     def test_v5_report_preflight_never_writes_false_complete_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

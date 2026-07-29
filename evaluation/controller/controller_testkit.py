@@ -655,7 +655,13 @@ def release_studies(root: Path) -> tuple[dict[str, Path], Path]:
         for relative in reports.STUDY_FILES.values():
             path = study / relative
             path.parent.mkdir(parents=True, exist_ok=True)
-            artifacts.write_json(path, {})
+            if relative in {
+                reports.STUDY_FILES["summary"],
+                reports.STUDY_FILES["failure_index"],
+            }:
+                path.write_bytes(artifacts.canonical_bytes({}))
+            else:
+                artifacts.write_json(path, {})
         roots[study_id] = study
     join = root / "join.json"
     artifacts.write_json(join, {})

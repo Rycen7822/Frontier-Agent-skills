@@ -6042,7 +6042,7 @@ def _main_v5() -> int:
         failures = _v5_failure_index(
             spec, plan, failure_items, view="index",
         )
-        if failures["truncated"] and details_path is None:
+        if failures["truncated"] and details_path is None and not args.report_only:
             details_path = failure_path.with_name(
                 f"{failure_path.stem}.details{failure_path.suffix}",
             )
