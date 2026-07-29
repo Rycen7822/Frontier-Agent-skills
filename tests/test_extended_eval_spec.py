@@ -105,7 +105,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                 phase: len(specs.gate_contract(phase)['writing-plans'])
                 for phase in ('d0', 'formal')
             },
-            {'d0': 18, 'formal': 19},
+            {'d0': 18, 'formal': 20},
         )
         self.assertEqual(
             {phase: specs.writing_plan_migration_claim_policy(phase)
