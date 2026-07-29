@@ -643,7 +643,24 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 check_id
                 for check_id, _, _ in controller_studies.model_checks(study)
             }
-            for item in controller_studies.calibration_pack(study):
+            pack = controller_studies.calibration_pack(study)
+            serialized_views = {
+                json.dumps(
+                    item['grader_view'],
+                    sort_keys=True,
+                    separators=(',', ':'),
+                )
+                for item in pack
+            }
+            self.assertEqual(8, len(pack))
+            self.assertEqual(8, len(serialized_views))
+            duplicate = copy.deepcopy(pack)
+            duplicate[1]['grader_view'] = copy.deepcopy(
+                duplicate[0]['grader_view'],
+            )
+            with self.assertRaisesRegex(ValueError, '8 distinct artifacts'):
+                controller_studies.batch_schedule(duplicate)
+            for item in pack:
                 expected = (
                     set()
                     if item['calibration_class'] == 'abstain'
