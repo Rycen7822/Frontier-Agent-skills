@@ -4,6 +4,45 @@ from skill_evaluator_test_support import *  # noqa: F403
 
 
 class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
+    def test_formal_sqw_non_target_gate_matches_comparator_cases(self) -> None:
+        repo_root = str(Path(__file__).resolve().parents[1])
+        sys.path.insert(0, repo_root)
+        try:
+            from evaluation.controller import specs
+        finally:
+            sys.path.remove(repo_root)
+
+        cases = specs.sqw_cases()
+        comparator_case_ids = {
+            case.case_id
+            for case_slice in specs.PROFILES['formal-sqw'].slices
+            if any(
+                profile.startswith('comparator/')
+                for profile in case_slice.profiles
+            )
+            for case in cases[case_slice.start:case_slice.stop]
+        }
+        gate = next(
+            gate
+            for gate in specs.gate_contract('formal')[
+                'software-quality-workflows'
+            ]
+            if gate['gate_id'] == 'SQW-F-10'
+        )
+        self.assertEqual(12, len(comparator_case_ids))
+        self.assertEqual(
+            {
+                'selector': 'numerator',
+                'numerator': len(comparator_case_ids),
+                'denominator': len(comparator_case_ids),
+            },
+            {
+                'selector': gate['selector'],
+                'numerator': gate['threshold']['numerator'],
+                'denominator': gate['threshold']['denominator'],
+            },
+        )
+
     def test_writing_plan_cases_bind_route_facts_without_profile_labels(self) -> None:
         repo_root = str(Path(__file__).resolve().parents[1])
         sys.path.insert(0, repo_root)
