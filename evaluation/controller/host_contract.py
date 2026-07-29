@@ -10,6 +10,7 @@ from typing import Any
 
 from .artifacts import (
     HASH_PATTERN,
+    VERSION_PATTERN,
     artifact_binding,
     assert_nofollow,
     atomic_write,
@@ -71,36 +72,6 @@ def _capabilities(design: StudyDesign) -> list[str]:
     return names
 
 
-def _command(
-    study: Path,
-    candidate: Path,
-    prior: Path | None,
-    codex_path: Path,
-    codex_hash: str,
-) -> list[str]:
-    argv = [
-        "python3",
-        "-m",
-        "evaluation.controller.cli",
-        "host",
-        "--host-manifest",
-        "host-manifest-v1.json",
-        "--candidate",
-        candidate.relative_to(study).as_posix(),
-        "--grader-prompt",
-        "host/model_grader_prompt.md",
-        "--grader-schema",
-        "host/model_judgment.schema.json",
-        "--codex-bin",
-        str(codex_path),
-        "--codex-bin-sha256",
-        codex_hash,
-    ]
-    if prior is not None:
-        argv.extend(("--prior", prior.relative_to(study).as_posix()))
-    return argv
-
-
 def _identity(
     manifest: dict[str, Any],
     *,
@@ -155,6 +126,7 @@ def _finish_manifest(
     manifest: dict[str, Any],
     *,
     design: StudyDesign,
+    skill_version: str,
     command: list[str],
     adapter_binding: dict[str, str],
     catalog_hash: str,
@@ -184,7 +156,7 @@ def _finish_manifest(
             "description": "Frozen candidate skill",
             "scope": "evaluation",
             "source": "local",
-            "version": "6.0.0",
+            "version": skill_version,
             "root_hash": manifest["identity"]["execution"]["skill_hash"],
         }],
     }
@@ -208,6 +180,7 @@ def materialize(
     evaluator_root: Path,
     candidate_skill: Path,
     prior_skill: Path | None,
+    skill_version: str,
     package_hash: str,
     repository: dict[str, str],
     design: StudyDesign,
@@ -225,6 +198,8 @@ def materialize(
     if (
         not HASH_PATTERN.fullmatch(package_hash)
         or not HASH_PATTERN.fullmatch(controller_content_hash)
+        or not isinstance(skill_version, str)
+        or not VERSION_PATTERN.fullmatch(skill_version)
         or set(repository) != {"revision", "tree"}
     ):
         raise ValueError("host source identity is invalid")
@@ -256,13 +231,26 @@ def materialize(
     python = Path(shutil.which("python3") or "").resolve()
     if not python.is_file():
         raise ValueError("python3 executable is unavailable")
-    command = _command(
-        study,
-        candidate,
-        prior,
-        codex_path,
+    command = [
+        "python3",
+        "-m",
+        "evaluation.controller.cli",
+        "host",
+        "--host-manifest",
+        "host-manifest-v1.json",
+        "--candidate",
+        candidate.relative_to(study).as_posix(),
+        "--grader-prompt",
+        "host/model_grader_prompt.md",
+        "--grader-schema",
+        "host/model_judgment.schema.json",
+        "--codex-bin",
+        str(codex_path),
+        "--codex-bin-sha256",
         codex_hash,
-    )
+    ]
+    if prior is not None:
+        command.extend(("--prior", prior.relative_to(study).as_posix()))
     catalog_hash = _identity(
         manifest,
         repository=repository,
@@ -281,6 +269,7 @@ def materialize(
     _finish_manifest(
         manifest,
         design=design,
+        skill_version=skill_version,
         command=command,
         adapter_binding=artifact_binding(adapter_path, study),
         catalog_hash=catalog_hash,

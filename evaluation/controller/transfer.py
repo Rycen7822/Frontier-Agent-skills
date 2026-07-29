@@ -209,6 +209,7 @@ def materialize(
             output_root / f"candidate/{design.skill_id}/SKILL.md"
         ),
         prior_skill=None,
+        skill_version=planner_spec["subject"]["version"],
         package_hash=package["package_hash"],
         repository={
             "revision": package["repository_revision"],
