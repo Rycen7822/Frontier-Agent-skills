@@ -711,18 +711,18 @@ def scored_plan_bindings(
     return bindings
 
 
-def passing_view(study: str, *, risk: str = "standard") -> dict[str, Any]:
+def passing_view(study: str, *, risk: str = "standard", variant: int = 1) -> dict[str, Any]:
     if study == "software-quality-workflows":
         initial_files = {
-            "counter.py": "return value + 2\n",
-            "test_counter.py": "assert counter(2) == 3\n",
+            "counter.py": f"return value + {variant + 1}\n",
+            "test_counter.py": f"assert counter({variant + 1}) == {2 * variant + 1}\n",
         }
         return {
             "prompt": "Correct the local counter defect and verify the observable result.",
             "initial_files": initial_files,
-            "final_files": {**initial_files, "counter.py": "return value + 1\n"},
+            "final_files": {**initial_files, "counter.py": f"return value + {variant}\n"},
             "changed_paths": ["counter.py"],
-            "diff": "-return value + 2\n+return value + 1\n",
+            "diff": f"-return value + {variant + 1}\n+return value + {variant}\n",
             "actions": ["inspect owning function", "run focused counter tests"],
             "verification": {"exit_code": 0, "stdout": "3 passed", "stderr": ""},
             "final_answer": "Corrected the owning function. The focused regression suite passed 3/3. No publication or external action was performed.",
@@ -869,9 +869,9 @@ def calibration_pack(study: str) -> list[dict[str, Any]]:
     }
     definitions = [
         *(
-            ("clear_pass", "known_good", passing_view(study, risk=risk),
+            ("clear_pass", "known_good", passing_view(study, risk=risk, variant=variant),
              all_pass, "All semantic requirements are satisfied.", risk)
-            for risk in risks
+            for variant, risk in enumerate(risks, start=1)
         ),
         *(
             ("clear_fail", "known_bad", view, {**all_pass, **expected}, reason,
@@ -900,8 +900,8 @@ def calibration_pack(study: str) -> list[dict[str, Any]]:
 
 
 def batch_schedule(pack: list[dict[str, Any]]) -> list[list[str]]:
-    if len(pack) != 8:
-        raise ValueError("calibration pack must contain exactly 8 artifacts")
+    if len(pack) != 8 or len({canonical_bytes(item["grader_view"]) for item in pack}) != 8:
+        raise ValueError("calibration pack must contain 8 distinct artifacts")
     return [
         [pack[index]["artifact_id"] for index in positions]
         for positions in ((7, 2, 6, 0), (1, 3, 4, 5))
