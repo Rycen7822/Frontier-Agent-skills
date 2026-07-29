@@ -1050,11 +1050,8 @@ def quality_proof(
     positive = [
         case_id for case_id in case_ids if case_id not in boundary_ids
     ]
-    boundary = sorted(boundary_ids)
-    if not positive or not boundary:
-        raise ValueError(
-            "suite quality requires distinct positive and boundary cases",
-        )
+    if not positive or not boundary_ids:
+        raise ValueError("suite quality requires distinct positive and boundary cases")
     locator = {
         "kind": "text_lines",
         "artifact": "host/adapter-binding.json",
@@ -1084,7 +1081,7 @@ def quality_proof(
             ],
             *[
                 {"case_id": case_id, "class": "boundary_or_failure"}
-                for case_id in boundary
+                for case_id in sorted(boundary_ids)
             ],
         ],
         "golden": {"case_ids": positive, "passed_ids": positive},
