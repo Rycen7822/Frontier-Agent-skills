@@ -1215,13 +1215,28 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             review_root.mkdir()
             analyzer = load_analyzer_module()
             evidence_path = review_root / 'input-binding.json'
+            release_gate_path = root / 'release-gate-contract.json'
+            release_gate_path.write_text(json.dumps({
+                'schema_version': 'gate-contract/1.0',
+                'software-quality-workflows': [],
+            }), encoding='utf-8')
+            original_binding = analyzer._manual_review_input_binding(
+                json.loads(paths['spec'].read_text(encoding='utf-8')),
+                paths['spec'],
+                paths['plan'],
+                release_gate_contract=release_gate_path.name,
+            )
             evidence_path.write_text(
-                json.dumps(analyzer._manual_review_input_binding(
-                    json.loads(paths['spec'].read_text(encoding='utf-8')),
-                    paths['spec'],
-                    paths['plan'],
-                ), sort_keys=True, separators=(',', ':')),
+                json.dumps(
+                    original_binding,
+                    sort_keys=True,
+                    separators=(',', ':'),
+                ),
                 encoding='utf-8',
+            )
+            self.assertEqual(
+                release_gate_path.name,
+                original_binding['release_gate_contract']['path'],
             )
             evidence = {
                 'type': 'frozen-study-input-binding',
@@ -1359,6 +1374,31 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(
                 'invalid',
                 drift_summary['manual_authority']['status'],
+            )
+            evidence_path.write_text(
+                json.dumps(
+                    original_binding,
+                    sort_keys=True,
+                    separators=(',', ':'),
+                ),
+                encoding='utf-8',
+            )
+            evidence['sha256'] = (
+                'sha256:' + hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+            )
+            release_gate_path.write_text(json.dumps({
+                'schema_version': 'gate-contract/1.0',
+                'software-quality-workflows': [{'gate_id': 'drift'}],
+            }), encoding='utf-8')
+            gate_drift = analyze(
+                'gate-drift',
+                write_receipt('gate-drift', 'approve'),
+                report_only=True,
+            )
+            self.assertEqual(
+                3,
+                gate_drift.returncode,
+                gate_drift.stdout + gate_drift.stderr,
             )
 
     def test_release_projection_accepts_only_missing_report_only_authority(
