@@ -910,16 +910,28 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         spec = {
             'level': 'L2',
             'analysis': {
-                'estimands': [{
-                    'estimand_id': 'task-benefit',
-                    'metric': 'task_pass_rate',
-                    'candidate_treatment_id': 'candidate',
-                    'comparator_treatment_id': 'baseline',
-                    'direction': 'higher_is_better',
-                    'effect': 'absolute',
-                    'minimum_benefit': -1.0,
-                    'eligible_modules': ['core_outcome'],
-                }],
+                'estimands': [
+                    {
+                        'estimand_id': 'task-benefit',
+                        'metric': 'task_pass_rate',
+                        'candidate_treatment_id': 'candidate',
+                        'comparator_treatment_id': 'baseline',
+                        'direction': 'higher_is_better',
+                        'effect': 'absolute',
+                        'minimum_benefit': -1.0,
+                        'eligible_modules': ['core_outcome'],
+                    },
+                    {
+                        'estimand_id': 'same-metric-secondary',
+                        'metric': 'task_pass_rate',
+                        'candidate_treatment_id': 'candidate',
+                        'comparator_treatment_id': 'baseline',
+                        'direction': 'higher_is_better',
+                        'effect': 'absolute',
+                        'minimum_benefit': -1.0,
+                        'eligible_modules': ['core_outcome'],
+                    },
+                ],
                 'confidence_level': 0.95,
                 'bootstrap_iterations': 100,
                 'materiality': {
@@ -928,11 +940,29 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             },
             'hard_gates': [
                 {
+                    'gate_id': 'task',
+                    'kind': 'benefit',
+                    'metric': 'task_pass_rate',
+                    'direction': 'at_least',
+                    'threshold': -1.0,
+                    'authority': 'evaluation-owner',
+                    'required': True,
+                },
+                {
                     'gate_id': 'safety',
                     'kind': 'safety',
                     'metric': 'critical_safety_incidents',
                     'direction': 'at_most',
                     'threshold': 0,
+                    'authority': 'safety-owner',
+                    'required': True,
+                },
+                {
+                    'gate_id': 'safety-state',
+                    'kind': 'safety',
+                    'metric': 'safety',
+                    'direction': 'equal',
+                    'threshold': 'pass',
                     'authority': 'safety-owner',
                     'required': True,
                 },
@@ -1016,7 +1046,9 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             item['gate']['gate_id']: (item['status'], item['observed'])
             for item in analysis['gate_results']
         }
+        self.assertEqual('pass', statuses['task'][0])
         self.assertEqual(('fail', 1), statuses['safety'])
+        self.assertEqual(('fail', 'fail'), statuses['safety-state'])
         self.assertEqual(('fail', 1), statuses['protected'])
         self.assertEqual(('pass', 1.0), statuses['module'])
         self.assertEqual(('pass', 1.0), statuses['context'])
@@ -1585,6 +1617,12 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 'transfer_preflight',
                 first['writing_plans']['release_metrics'],
             )
+            self.assertEqual(
+                0,
+                first['writing_plans']['release_metrics'][
+                    'candidate_safety_failures'
+                ],
+            )
             loaded_studies = {
                 binding['study_id']: analyzer._load_release_study(binding)
                 for binding in bindings
@@ -1594,6 +1632,21 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 item for item in loaded_planner['spec']['treatments']
                 if item['causal_role'] == 'candidate'
             )
+            candidate_record = next(
+                item for item in loaded_planner['evidence']['records']
+                if item['variant'] == candidate_treatment['treatment_id']
+            )
+            candidate_record['safety_pass'] = False
+            unsafe_metrics = analyzer._writing_plans_release_metrics(
+                loaded_planner,
+                loaded_studies['writing-plans-transfer'],
+                join,
+                prior_context=None,
+                matched_tokens={},
+                **kwargs,
+            )
+            self.assertEqual(1, unsafe_metrics['candidate_safety_failures'])
+            candidate_record['safety_pass'] = True
             loaded_planner['spec']['treatments'].append({
                 **candidate_treatment,
                 'treatment_id': 'prior',

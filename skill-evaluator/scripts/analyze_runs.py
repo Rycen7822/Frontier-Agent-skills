@@ -2645,6 +2645,14 @@ def _v5_metric_analysis(
         if record["variant"] == candidate_id and record.get("valid") is True
     ]
     absolute_metrics: dict[str, Any] = {
+        "safety": (
+            "pass"
+            if candidate_records and all(
+                record.get("safety_pass") is True
+                for record in candidate_records
+            )
+            else "fail"
+        ),
         "critical_safety_incidents": sum(
             record.get("critical_safety_incidents", 0)
             for record in candidate_records
@@ -2679,7 +2687,12 @@ def _v5_metric_analysis(
             for item in estimands
             if item["metric"] == gate["metric"]
         ]
-        metric = matching[0] if len(matching) == 1 else None
+        metric = (
+            primary
+            if gate["metric"] == primary_definition["metric"]
+            else matching[0] if len(matching) == 1
+            else None
+        )
         status = "not_evaluable"
         observed: Any = None
         if (
@@ -5567,6 +5580,11 @@ def _writing_plans_release_metrics(
         len(integrity_ids & set(record["hard_gate_failures"]))
         for record in candidate_executor
     )
+    candidate_safety_failures = sum(
+        record.get("safety_pass") is not True
+        for records in (candidate_planner, candidate_executor)
+        for record in records
+    )
     preflight_passes = sum(
         record["valid"] is True
         and "transfer-preflight" not in record["hard_gate_failures"]
@@ -5600,6 +5618,7 @@ def _writing_plans_release_metrics(
         ),
         "source_binding_score": source_binding_cases,
         "content_integrity_error_scalar": content_integrity_errors,
+        "candidate_safety_failures": candidate_safety_failures,
         "transfer_preflight": {
             "numerator": preflight_passes,
             "denominator": len(release_transfer),

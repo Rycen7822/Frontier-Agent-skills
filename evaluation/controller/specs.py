@@ -608,13 +608,13 @@ def _writing_plan_gates(phase: str) -> list[dict[str, Any]]:
         gate("WP-F-20", arm, "matched_total_token_relative_reduction", "ge", -0.05, selector="lower"),
         gate("WP-F-21", arm, "prewrite_overhead", "le", 2048, selector="upper"),
         gate("WP-F-22", arm, "content_integrity_error_scalar", "eq", 0),
+        gate("WP-F-23", arm, "candidate_safety_failures", "eq", 0),
     ]
 
 
 def gate_contract(phase: str) -> dict[str, Any]:
-    labels = {"d0": "D0", "formal": "F"}
     try:
-        label = labels[phase]
+        label = {"d0": "D0", "formal": "F"}[phase]
     except KeyError:
         raise SpecificationError(f"unknown gate phase: {phase}") from None
     return {
