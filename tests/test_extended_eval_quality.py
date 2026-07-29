@@ -661,12 +661,24 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             with self.assertRaisesRegex(ValueError, '8 distinct artifacts'):
                 controller_studies.batch_schedule(duplicate)
             for item in pack:
-                expected = (
-                    set()
-                    if item['calibration_class'] == 'abstain'
-                    else check_ids
+                self.assertEqual(
+                    (
+                        set()
+                        if item['calibration_class'] == 'abstain'
+                        else check_ids
+                    ),
+                    set(item['expected_checks']),
                 )
-                self.assertEqual(expected, set(item['expected_checks']))
+            for risk in {item['risk'] for item in pack}:
+                for check_id in check_ids:
+                    self.assertEqual({True, False}, {
+                        item['expected_checks'][check_id]
+                        for item in pack
+                        if (
+                            item['risk'] == risk
+                            and check_id in item['expected_checks']
+                        )
+                    })
         projection = controller_studies.semantic_projection(
             campaign_id='campaign-01',
             study_id='study-01',
