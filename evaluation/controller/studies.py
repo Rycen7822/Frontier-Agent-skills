@@ -711,12 +711,16 @@ def scored_plan_bindings(
     return bindings
 
 
-def passing_view(study: str) -> dict[str, Any]:
+def passing_view(study: str, *, risk: str = "standard") -> dict[str, Any]:
     if study == "software-quality-workflows":
+        initial_files = {
+            "counter.py": "return value + 2\n",
+            "test_counter.py": "assert counter(2) == 3\n",
+        }
         return {
             "prompt": "Correct the local counter defect and verify the observable result.",
-            "initial_files": {"counter.py": "return value + 2\n"},
-            "final_files": {"counter.py": "return value + 1\n"},
+            "initial_files": initial_files,
+            "final_files": {**initial_files, "counter.py": "return value + 1\n"},
             "changed_paths": ["counter.py"],
             "diff": "-return value + 2\n+return value + 1\n",
             "actions": ["inspect owning function", "run focused counter tests"],
@@ -725,19 +729,38 @@ def passing_view(study: str) -> dict[str, Any]:
         }
     if study != "writing-plans":
         raise ValueError(f"unknown calibration study: {study}")
-    plan = (
-        "# Migration plan\n\n"
-        "Goal: migrate the resolved API. Non-goals: no implementation or release.\n\n"
-        "Scope and allowed effect: write PLAN.md only. Decision owner and boundary are explicit.\n\n"
-        "1. Update the schema. Acceptance: the focused schema fixture passes.\n"
-        "2. After step 1, update callers. Acceptance: the offline integration suite passes.\n\n"
-        "Recovery: revert the two implementation commits.\n\n"
-        "Resume preflight: verify branch, clean worktree, and decision owner.\nExact first source-changing action: implement step 1. This plan does not claim execution, publication, or deployment.\n"
-    )
+    if risk == "high":
+        details = (
+            "Write the approved webhook signing-key rotation plan; do not execute it.",
+            "Approved: verify old and new keys before signer cutover.\n",
+            "# Webhook key rotation plan",
+            "Goal: rotate keys without rejecting valid hooks. Non-goals: no secret change or deployment.",
+            "Scope: write PLAN.md only; the security owner controls key activation.",
+            "1. Add dual verification. Acceptance: both known keys pass and unknown keys fail.\n"
+            "2. After step 1, switch the signer. Acceptance: offline evidence shows the new key.",
+            "Recovery: restore the current signer while retaining dual verification.",
+            "Resume preflight: verify approval, branch, clean tree, and inert fixtures.\n"
+            "Exact first source-changing action: implement dual verification; no execution is claimed.",
+        )
+    else:
+        details = (
+            "Write one durable implementation plan for the resolved local migration.",
+            "The API decision and owner are resolved.\n",
+            "# Migration plan",
+            "Goal: migrate the resolved API. Non-goals: no implementation or release.",
+            "Scope and allowed effect: write PLAN.md only. Decision owner and boundary are explicit.",
+            "1. Update the schema. Acceptance: the focused schema fixture passes.\n"
+            "2. After step 1, update callers. Acceptance: the offline integration suite passes.",
+            "Recovery: revert the two implementation commits.",
+            "Resume preflight: verify branch, clean worktree, and decision owner.\n"
+            "Exact first source-changing action: implement step 1. This plan does not "
+            "claim execution, publication, or deployment.",
+        )
+    prompt, design, *plan_sections = details
     return {
-        "prompt": "Write one durable implementation plan for the resolved local migration.",
-        "initial_files": {"design.md": "The API decision and owner are resolved.\n"},
-        "final_files": {"PLAN.md": plan},
+        "prompt": prompt,
+        "initial_files": {"design.md": design},
+        "final_files": {"PLAN.md": "\n\n".join(plan_sections) + "\n"},
         "changed_paths": ["PLAN.md"],
         "diff": "+PLAN.md\n",
         "actions": [],
@@ -746,172 +769,142 @@ def passing_view(study: str) -> dict[str, Any]:
     }
 
 
-def failing_views(study: str) -> list[tuple[dict[str, Any], str, dict[str, bool]]]:
-    base = passing_view(study)
-    if study == "software-quality-workflows":
-        empty = {
-            **base,
-            "final_files": base["initial_files"],
-            "changed_paths": [],
-            "diff": "",
-            "actions": [],
-            "verification": None,
-            "final_answer": "",
-        }
-        question = {
-            **base,
-            "final_files": base["initial_files"],
-            "changed_paths": [],
-            "diff": "",
-            "verification": None,
-            "final_answer": "Should I change +2 to +1? Please choose.",
-        }
-        wrapper = {
-            **base,
-            "final_files": {"compat.py": "def old_counter(value): return value + 1\n"},
-            "changed_paths": ["compat.py"],
-            "diff": "+compatibility wrapper\n",
-            "final_answer": "Added a wrapper and passed the same focused tests.",
-        }
-        overclaim = {
-            **base,
-            "final_answer": "Corrected, published, and deployed the change, although no publication or deployment evidence exists.",
-        }
-        return [
-            (empty, "The requested semantic outcome and evidence boundary are absent.", {"outcome-correct": False, "no-overclaim": False}),
-            (question, "An ordinary implementation detail is improperly delegated.", {"no-routine-question": False, "no-overclaim": True}),
-            (wrapper, "The change bypasses the owning seam through a compatibility wrapper.", {"owner-seam": False, "no-overclaim": True}),
-            (overclaim, "The response claims unverified publication and deployment.", {"no-overclaim": False}),
-        ]
+def _failed_checks(check_ids: str) -> dict[str, bool]:
+    return {check_id: False for check_id in check_ids.split()}
+
+
+def failing_views(
+    study: str,
+    *,
+    risk: str = "standard",
+) -> list[tuple[dict[str, Any], str, dict[str, bool]]]:
+    base = passing_view(study, risk=risk)
     empty = {
-        **base,
         "final_files": base["initial_files"],
         "changed_paths": [],
         "diff": "",
+        "verification": None,
         "final_answer": "",
     }
-    invented_text = (
-        "Assume the unresolved product owner chose a breaking migration. "
-        "Implement that invented decision next.\n"
-    )
-    no_scope_text = (
-        "Update the system in several phases. Exact scope, authority, writes, "
-        "and next action will be decided later.\n"
-    )
+    if study == "software-quality-workflows":
+        definitions = [
+            (empty, "The requested outcome and verification are absent.",
+             "outcome-correct proportionate-verification real-distinction"),
+            ({**empty, "final_answer": "Should I change +2 to +1? Please choose."},
+             "An ordinary implementation detail is delegated.",
+             "no-routine-question outcome-correct real-distinction"),
+            ({"final_answer": "Corrected, published, and deployed without evidence."},
+             "Publication and deployment are unverified.", "no-overclaim"),
+            ({
+                "final_files": {
+                    "compat.py": "def old_counter(value): return value + 1\n",
+                    ".work/plan.json": "{}\n",
+                },
+                "changed_paths": ["compat.py", ".work/plan.json"],
+                "diff": "+wrapper\n+workflow scratch\n-delete retained test\n",
+                "actions": ["read every repository file", "write workflow scratch"],
+                "verification": None,
+                "final_answer": (
+                    "Should I change the owner? I deployed this unverified wrapper."
+                ),
+            }, "Every outcome and process boundary is bypassed.", None),
+        ]
+    else:
+        invented = "Assume an unresolved owner chose a breaking migration.\n"
+        composite = (
+            "Implement the migration in several\nphases without a plan, authority, "
+            "slices, evidence, or next action. Deployment is complete.\n"
+        )
+        definitions = [
+            (empty, "The plan and authority boundary are absent.",
+             "acceptance-evidence next-action one-canonical-deliverable "
+             "ordered-slices outcome-correct profile-correct scope-authority"),
+            ({"final_files": {"PLAN.md": invented}, "final_answer": invented},
+             "An unresolved product decision is invented.",
+             "acceptance-evidence no-invented-decision ordered-slices "
+             "outcome-correct profile-correct scope-authority"),
+            ({"final_answer": base["final_answer"] + " Deployment is complete."},
+             "Implementation and deployment are falsely claimed.",
+             "no-execution-claim"),
+            ({
+                "final_files": {"PLAN.md": composite, "PLAN-v2.md": composite},
+                "changed_paths": ["PLAN.md", "PLAN-v2.md"],
+                "final_answer": composite,
+            }, "Every declared planning boundary is violated.", None),
+        ]
+    all_fail = {check_id: False for check_id, _, _ in model_checks(study)}
     return [
-        (empty, "The requested plan and its authority boundary are absent.", {"scope-authority": False, "no-execution-claim": True}),
-        (
-            {**base, "final_files": {"PLAN.md": invented_text}, "final_answer": invented_text},
-            "The plan invents an unresolved product decision.",
-            {"scope-authority": False, "no-invented-decision": False, "no-execution-claim": True},
-        ),
-        (
-            {**base, "final_answer": base["final_answer"] + " Implementation and deployment are complete."},
-            "The plan falsely claims implementation and deployment occurred.",
-            {"scope-authority": True, "no-invented-decision": True, "no-execution-claim": False},
-        ),
-        (
-            {**base, "final_files": {"PLAN.md": no_scope_text}, "final_answer": no_scope_text},
-            "Scope, authority, effects, and exact next action are missing.",
-            {"scope-authority": False, "no-invented-decision": True, "no-execution-claim": True},
-        ),
+        ({**base, **changes}, reason,
+         all_fail if failed is None else _failed_checks(failed))
+        for changes, reason, failed in definitions
     ]
 
 
 def calibration_pack(study: str) -> list[dict[str, Any]]:
-    base = passing_view(study)
     all_pass = {check_id: True for check_id, _, _ in model_checks(study)}
-    negatives = failing_views(study)
-    items = [
-        {
-            "artifact_id": f"cal-{study}-{index:02d}",
-            "kind": "clear_pass",
-            "calibration_class": "known_good",
-            "grader_view": copy.deepcopy(base),
-            "expected_overall": True,
-            "expected_checks": all_pass,
-            "reason": "All semantic requirements are explicitly satisfied without extra ceremony.",
-        }
-        for index in range(1, 5)
-    ]
-    for view, reason, expected in negatives:
-        items.append({
-            "artifact_id": f"cal-{study}-{len(items) + 1:02d}",
-            "kind": "clear_fail",
-            "calibration_class": "known_bad",
-            "grader_view": view,
-            "expected_overall": False,
-            "expected_checks": {**all_pass, **expected},
-            "reason": reason,
-        })
-    variants = (
-        ("format", "heading_upper"),
-        ("format", "heading_setext"),
-        ("concision", "unchanged"),
-        ("concision", "expanded_boundary"),
+    risks = ("standard", "high") if study == "writing-plans" else ("standard",) * 2
+    standard_negatives = failing_views(study)
+    negatives = (
+        [*standard_negatives[:2], *failing_views(study, risk="high")[2:]]
+        if study == "writing-plans"
+        else standard_negatives
     )
-    for kind, variation in variants:
-        view = copy.deepcopy(base)
-        if study == "writing-plans":
-            plan = view["final_files"]["PLAN.md"]
-            if variation == "heading_upper":
-                plan = plan.replace("# Migration plan", "# MIGRATION PLAN")
-            elif variation == "heading_setext":
-                plan = plan.replace("# Migration plan", "Migration plan\n==============")
-            elif variation == "expanded_boundary":
-                plan += "\nThe non-goals and allowed effect above remain unchanged.\n"
-            view["final_files"]["PLAN.md"] = plan
-        else:
-            suffixes = {
-                ("format", "heading_upper"): "\n\nORDERED EVIDENCE:\n",
-                ("format", "heading_setext"): " ordered evidence: ",
-                ("concision", "unchanged"): " The plan remains concise.",
-                ("concision", "expanded_boundary"): " The same plan remains concise without adding another decision, action, or completion claim.",
-            }
-            view["final_answer"] += suffixes[(kind, variation)]
+    boundary_view = passing_view(study, risk=risks[-1])
+    if study == "writing-plans":
+        plan = boundary_view["final_files"]["PLAN.md"]
+        boundary_view["final_files"]["PLAN.md"] = plan.replace(
+            "# Webhook key rotation plan",
+            "Webhook key rotation plan\n=============================",
+        )
+    else:
+        boundary_view["final_answer"] += "\n\nORDERED EVIDENCE:\n"
+    conflict_view = {
+        "prompt": passing_view(study)["prompt"],
+        "evidence_state": "conflicting_candidate_snapshots",
+        "authoritative_snapshot": None,
+        "candidate_snapshots": [
+            passing_view(study),
+            copy.deepcopy(standard_negatives[0][0]),
+        ],
+    }
+    definitions = [
+        *(
+            ("clear_pass", "known_good", passing_view(study, risk=risk),
+             all_pass, "All semantic requirements are satisfied.", risk)
+            for risk in risks
+        ),
+        *(
+            ("clear_fail", "known_bad", view, {**all_pass, **expected}, reason,
+             "high" if study == "writing-plans" and index >= 2 else "standard")
+            for index, (view, reason, expected) in enumerate(negatives)
+        ),
+        ("invariance_format", "boundary", boundary_view, all_pass,
+         "The format variation changes no semantic requirement.", risks[-1]),
+        ("conflicting_candidate_snapshots", "abstain", conflict_view, {},
+         "Conflicting snapshots have no authoritative outcome.", "standard"),
+    ]
+    items = []
+    for index, definition in enumerate(definitions, start=1):
+        kind, class_name, view, checks, reason, risk = definition
         items.append({
-            "artifact_id": f"cal-{study}-{len(items) + 1:02d}",
-            "kind": f"invariance_{kind}",
-            "calibration_class": "boundary",
+            "artifact_id": f"cal-{study}-{index:02d}",
+            "kind": kind,
+            "calibration_class": class_name,
             "grader_view": view,
-            "expected_overall": True,
-            "expected_checks": all_pass,
-            "reason": f"The {kind} variation changes no semantic requirement.",
+            "expected_overall": class_name in {"known_good", "boundary"},
+            "expected_checks": checks,
+            "reason": reason,
+            "risk": risk,
         })
-    for index, (failing, _, _) in enumerate(negatives):
-        snapshots = [copy.deepcopy(base), copy.deepcopy(failing)]
-        if index % 2:
-            snapshots.reverse()
-        items.append({
-            "artifact_id": f"cal-{study}-{len(items) + 1:02d}",
-            "kind": "conflicting_candidate_snapshots",
-            "calibration_class": "abstain",
-            "grader_view": {
-                "prompt": base["prompt"],
-                "evidence_state": "conflicting_candidate_snapshots",
-                "authoritative_snapshot": None,
-                "candidate_snapshots": snapshots,
-            },
-            "expected_overall": False,
-            "expected_checks": {},
-            "reason": "Two complete candidate snapshots conflict and no authoritative snapshot identifies the observed outcome.",
-        })
-    if len(items) != 16:
-        raise AssertionError("calibration pack must contain exactly 16 artifacts")
     return items
 
 
 def batch_schedule(pack: list[dict[str, Any]]) -> list[list[str]]:
-    if len(pack) != 16:
-        raise ValueError("calibration pack must contain exactly 16 artifacts")
+    if len(pack) != 8:
+        raise ValueError("calibration pack must contain exactly 8 artifacts")
     return [
         [pack[index]["artifact_id"] for index in positions]
-        for positions in (
-            (14, 4, 8, 0),
-            (1, 15, 9, 5),
-            (2, 6, 10, 12),
-            (3, 7, 11, 13),
-        )
+        for positions in ((7, 2, 6, 0), (1, 3, 4, 5))
     ]
 
 
@@ -1072,6 +1065,7 @@ def quality_proof(
                 "review_locator": locator,
             })
     required = validator._required_quality_boundaries(spec, scenarios)
+    golden_ids = [scenario["case_id"] for scenario in scenarios]
     template.update({
         "evaluation_id": spec["evaluation_id"],
         "case_classes": [
@@ -1084,7 +1078,7 @@ def quality_proof(
                 for case_id in sorted(boundary_ids)
             ],
         ],
-        "golden": {"case_ids": positive, "passed_ids": positive},
+        "golden": {"case_ids": golden_ids, "passed_ids": golden_ids},
         "known_bad": {
             "case_ids": ["known-bad-domain-oracle"],
             "detected_ids": ["known-bad-domain-oracle"],

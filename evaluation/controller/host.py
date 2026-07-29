@@ -135,12 +135,19 @@ def validate_request(request: dict[str, Any]) -> None:
 def _reviewer_response_contract(packet: dict[str, Any], output_schema_hash: str) -> dict[str, Any]:
     columns = len(packet["checks"])
     rows, remainder = divmod(len(packet["examples"]), columns)
-    if (rows, columns, remainder) != (16, 10, 0):
-        raise HostError("reviewer packet is not one canonical 16x10 matrix")
+    if (rows, columns, remainder) != (8, 10, 0):
+        raise HostError("reviewer packet is not one canonical 8x10 matrix")
     return {
-        "schema_version": "context-clean-subagent-reviewer-matrix/1.0", "rows": rows, "columns": columns,
-        "symbols": {"P": {"label": "pass", "severity": 0}, "F": {"label": "fail", "severity": 1}, "A": {"label": "abstain", "severity": 0}},
-        "example_order": "packet.examples row-major", "canonical_output_schema_hash": output_schema_hash,
+        "schema_version": "context-clean-subagent-reviewer-matrix/1.0",
+        "rows": rows,
+        "columns": columns,
+        "symbols": {
+            "P": {"label": "pass", "severity": 0},
+            "F": {"label": "fail", "severity": 1},
+            "A": {"label": "abstain", "severity": 0},
+        },
+        "example_order": "packet.examples row-major",
+        "canonical_output_schema_hash": output_schema_hash,
     }
 
 

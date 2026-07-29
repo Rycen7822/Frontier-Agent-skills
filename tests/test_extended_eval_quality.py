@@ -663,7 +663,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             projection=projection,
         )[0]['prompt']
         self.assertEqual(
-            (16, 10),
+            (8, 10),
             (
                 prompt['response_contract']['rows'],
                 prompt['response_contract']['columns'],
@@ -1420,10 +1420,11 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn(expected, result.stdout + result.stderr)
 
-    def test_calibration_producer_fails_closed_on_expiry_and_scope(self) -> None:
+    def test_calibration_producer_fails_closed_on_expiry_scope_and_labels(self) -> None:
         for mutation, expected in (
             ('expiry', 'calibration.expiry'),
             ('scope', 'calibration.scope'),
+            ('labels', 'calibration.check_label_coverage'),
         ):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
                 paths = materialize_v5_calibration_inputs(Path(tmp))
@@ -1450,8 +1451,18 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                             encoding='utf-8',
                         ).splitlines()
                     ]
-                    for row in labels:
-                        row['task'] = 'unrelated-task'
+                    if mutation == 'scope':
+                        for row in labels:
+                            row['task'] = 'unrelated-task'
+                    else:
+                        target_check = labels[0]['check_id']
+                        for row in labels:
+                            if (
+                                row['check_id'] == target_check
+                                and row['gold_label'] == 'fail'
+                            ):
+                                row['gold_label'] = 'pass'
+                                row['gold_severity'] = 0
                     paths['labels'].write_text(
                         ''.join(
                             json.dumps(row, separators=(',', ':')) + '\n'

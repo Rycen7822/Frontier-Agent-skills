@@ -83,6 +83,8 @@ Report all-run operational cost and success-conditioned deltas separately. `cont
 
 Baseline headroom is a factual prerequisite for a usefulness claim. Complete evidence with insufficient headroom is `inconclusive_ceiling`; it is neither candidate failure nor release support.
 
+`analysis.materiality.minimum_baseline_failure_cases` is the required number of distinct comparator failure cases used by that headroom check. It is not an estimand sample-size declaration; independent-case counts remain explicit in each interval.
+
 Predeclare meaningful routing, domain, difficulty, state, safety, environment, model, modality, and holdout slices. Show `n` and the worst material slice; do not turn many near-duplicate trajectories into independent cases.
 
 ## Independence, critique, and grounding

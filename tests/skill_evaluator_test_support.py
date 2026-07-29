@@ -1277,6 +1277,10 @@ def materialize_v5_contract_fixture(root: Path) -> dict[str, Path]:
         {'case_id': 'case-basic', 'class': 'positive'},
         {'case_id': 'case-basic', 'class': 'boundary_or_failure'},
     ]
+    proof['golden'] = {
+        'case_ids': ['case-basic'],
+        'passed_ids': ['case-basic'],
+    }
     proof['duplicate_groups'] = []
     proof['provenance_clusters'][0]['case_ids'] = ['case-basic']
     proof['custody']['author_visible_paths'] = ['scenarios-v1.jsonl']
@@ -2380,8 +2384,60 @@ def rebind_v5_contract_fixture(paths: dict[str, Path]) -> None:
     )
 
     spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+    def rebind_scenario_source(binding: dict[str, str]) -> Path:
+        source = paths['spec'].parent / binding['path']
+        if source != paths['scenarios']:
+            rows = [
+                json.loads(line)
+                for line in source.read_text(encoding='utf-8').splitlines()
+                if line.strip()
+            ]
+            for row in rows:
+                row['fixture']['sha256'] = host_file_hash
+            source.write_text(
+                ''.join(
+                    json.dumps(row, separators=(',', ':')) + '\n'
+                    for row in rows
+                ),
+                encoding='utf-8',
+            )
+        binding['sha256'] = (
+            'sha256:' + hashlib.sha256(source.read_bytes()).hexdigest()
+        )
+        return source
+
+    public_path = rebind_scenario_source(spec['suite']['public_scenarios'])
+    holdout = spec['suite'].get('holdout')
+    if isinstance(holdout, dict) and holdout['exposure_status'] == 'exposed':
+        payload_path = rebind_scenario_source(holdout['payload'])
+        manifest_path = paths['spec'].parent / holdout['manifest']['path']
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+        manifest['payload_sha256'] = holdout['payload']['sha256']
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2) + '\n',
+            encoding='utf-8',
+        )
+        holdout['manifest']['sha256'] = (
+            'sha256:' + hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+        )
+        scenarios = [
+            json.loads(line)
+            for source in (public_path, payload_path)
+            for line in source.read_text(encoding='utf-8').splitlines()
+            if line.strip()
+        ]
+        paths['scenarios'].write_text(
+            ''.join(
+                json.dumps(row, separators=(',', ':')) + '\n'
+                for row in scenarios
+            ),
+            encoding='utf-8',
+        )
+        scenario_file_hash = (
+            'sha256:'
+            + hashlib.sha256(paths['scenarios'].read_bytes()).hexdigest()
+        )
     spec['suite']['scenarios']['sha256'] = scenario_file_hash
-    spec['suite']['public_scenarios']['sha256'] = scenario_file_hash
     spec['host']['manifest']['sha256'] = host_file_hash
     spec['suite']['fixture_set_hash'] = validator.v5_fixture_set_hash(
         scenarios,
