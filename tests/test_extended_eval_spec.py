@@ -42,6 +42,26 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                 'denominator': gate['threshold']['denominator'],
             },
         )
+        design = specs.fixed_design(
+            'formal-sqw',
+            sqw=cases,
+            plans=specs.writing_plan_cases(),
+        )
+        protected = design.cases[16:]
+        self.assertEqual(4, len(protected))
+        self.assertEqual(
+            [case.case_id for case in cases[16:]],
+            [case.case_id for case in protected],
+        )
+        self.assertTrue(all(
+            case.applicable_profiles == specs.PROTECTED_SQW
+            for case in protected
+        ))
+        self.assertEqual(
+            design.expected_execute,
+            sum(len(case.applicable_profiles) for case in design.cases)
+            * design.repeats,
+        )
 
     def test_writing_plan_cases_bind_route_facts_without_profile_labels(self) -> None:
         repo_root = str(Path(__file__).resolve().parents[1])

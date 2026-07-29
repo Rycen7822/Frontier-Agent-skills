@@ -337,6 +337,10 @@ REGISTERED = (
     "comparator/raw_instructions",
     "comparator/alternative_intervention",
 )
+PROTECTED_SQW = (
+    "comparator/raw_instructions",
+    "candidate/force_loaded",
+)
 TRANSFER = ("baseline/skill_disabled", "candidate/natural_routing")
 
 PROFILES = {
@@ -404,7 +408,8 @@ PROFILES = {
         (
             CaseSlice(0, 8, EXPLICIT, True, split="heldout"),
             CaseSlice(8, 12, REGISTERED, True, False, "heldout"),
-            CaseSlice(12, None, REGISTERED, False, False, "heldout"),
+            CaseSlice(12, 16, REGISTERED, False, False, "heldout"),
+            CaseSlice(16, None, PROTECTED_SQW, False, False, "heldout"),
         ),
         2,
         True,

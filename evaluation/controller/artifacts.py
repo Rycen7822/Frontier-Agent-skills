@@ -18,6 +18,7 @@ class StateError(RuntimeError):
 
 
 HASH_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
+VERSION_PATTERN = re.compile(r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
 
 
 def canonical_bytes(value: Any) -> bytes:

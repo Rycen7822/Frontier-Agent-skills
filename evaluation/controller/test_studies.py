@@ -151,10 +151,9 @@ def test_materialized_host_uses_tracked_cli_without_controller_copy(
     manifest = host_contract.materialize(
         study_root=study,
         evaluator_root=repo / "skill-evaluator",
-        candidate_skill=(
-            study / "candidate/software-quality-workflows/SKILL.md"
-        ),
+        candidate_skill=study / "candidate/software-quality-workflows/SKILL.md",
         prior_skill=study / "prior/software-quality-workflows/SKILL.md",
+        skill_version="9.0.0",
         package_hash=HASH,
         repository={"revision": "a" * 40, "tree": "b" * 40},
         design=specs.fixed_design("d0-sqw"),
@@ -188,6 +187,7 @@ def test_materialized_host_uses_tracked_cli_without_controller_copy(
         "SSL_CERT_DIR",
         "SSL_CERT_FILE",
     ]
+    assert manifest["catalog"]["entries"][0]["version"] == "9.0.0"
     validator = _validator(repo)
     assert validator.validate_v5_schema(
         manifest,
