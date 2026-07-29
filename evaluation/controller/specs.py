@@ -543,7 +543,7 @@ def _sqw_gates(phase: str) -> list[dict[str, Any]]:
         *shared,
         gate("SQW-F-08", arm, "unattributed_residue_bytes_max", "eq", 0),
         gate("SQW-F-09", arm, "prior_controlled_context_reduction", "ge", 0.25, selector="lower"),
-        gate("SQW-F-10", arm, "non_target_correct_no_load", "eq", 8, selector="numerator", threshold_kind="count_pair", denominator=8),
+        gate("SQW-F-10", arm, "non_target_correct_no_load", "eq", 12, selector="numerator", threshold_kind="count_pair", denominator=12),
         gate("SQW-F-11", arm, "baseline_failures", "ge", 3),
         gate("SQW-F-12", arm, "resolved_baseline_failures", "ge", 2),
         gate("SQW-F-13", arm, "candidate_only_failures", "eq", 0),
