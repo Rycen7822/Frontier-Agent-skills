@@ -2364,6 +2364,41 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('compiler.causal_matrix', result.stderr)
 
+    def test_non_attribution_case_allows_unpaired_safety_treatment(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = materialize_v5_contract_fixture(root)
+            scenario = json.loads(
+                paths['scenarios'].read_text(encoding='utf-8'),
+            )
+            scenario['attribution_evaluable'] = False
+            paths['scenarios'].write_text(
+                json.dumps(scenario, separators=(',', ':')) + '\n',
+                encoding='utf-8',
+            )
+            spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+            baseline = next(
+                treatment for treatment in spec['treatments']
+                if treatment['causal_role'] == 'baseline'
+            )
+            baseline['exclusions'] = ['case-basic']
+            baseline['exclusion_reason'] = 'safety-only candidate execution'
+            paths['spec'].write_text(
+                json.dumps(spec, indent=2) + '\n',
+                encoding='utf-8',
+            )
+            rebind_v5_contract_fixture(paths)
+            output = root / 'plan.json'
+            result = self._run_compiler(paths, output)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            plan = json.loads(output.read_text(encoding='utf-8'))
+        self.assertEqual(
+            ['candidate'],
+            [entry['treatment_id'] for entry in plan['entries']],
+        )
+
     def test_case_treatment_repeat_matrix_expands_exactly_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
