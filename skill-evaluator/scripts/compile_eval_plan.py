@@ -824,19 +824,20 @@ def _rotated_treatments(
     selected_ids = {
         treatment["treatment_id"] for treatment in treatments
     }
-    for estimand in spec["analysis"]["estimands"]:
-        pair = {
-            estimand["candidate_treatment_id"],
-            estimand["comparator_treatment_id"],
-        }
-        if selected_ids & pair and not pair <= selected_ids:
-            raise ContractFailure(
-                "compiler.causal_matrix",
-                (
-                    f"scenario {scenario['case_id']} does not include both "
-                    f"treatments for estimand {estimand['estimand_id']}"
-                ),
-            )
+    if scenario["attribution_evaluable"]:
+        for estimand in spec["analysis"]["estimands"]:
+            pair = {
+                estimand["candidate_treatment_id"],
+                estimand["comparator_treatment_id"],
+            }
+            if selected_ids & pair and not pair <= selected_ids:
+                raise ContractFailure(
+                    "compiler.causal_matrix",
+                    (
+                        f"scenario {scenario['case_id']} does not include both "
+                        f"treatments for estimand {estimand['estimand_id']}"
+                    ),
+                )
     if not treatments:
         raise ContractFailure(
             "compiler.matrix_empty",
