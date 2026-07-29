@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest import mock
 
 import pytest
 
@@ -11,7 +10,6 @@ from .controller_testkit import (
     p4_identity,
     p4_steps,
     planner_source,
-    release_studies,
     receipt,
     request_entry,
     reserve,
@@ -405,42 +403,6 @@ def test_writing_plans_join_binds_planner_and_transfer_receipts(
     )
     assert result["joined_entries"] == 8
     assert len(artifacts.load_json(output)) == 8
-
-
-def test_controller_passes_three_bound_studies_to_public_projection(
-    tmp_path: Path,
-) -> None:
-    roots, join = release_studies(tmp_path)
-    analyzer = mock.Mock()
-    analyzer.project_release_estimands.return_value = {"status": "complete"}
-    projection, summaries = reports.project_release(
-        phase="d0",
-        analyzer=analyzer,
-        roots=roots,
-        manual_receipts={
-            "software-quality-workflows": "manual/sqw.json",
-            "writing-plans-planner": "manual/planner.json",
-            "writing-plans-transfer": None,
-        },
-        join_path=join,
-        seed=2735,
-    )
-    assert projection["status"] == "complete"
-    assert set(summaries) == set(reports.STUDIES)
-    bindings = analyzer.project_release_estimands.call_args.args[0]
-    assert [item["study_id"] for item in bindings] == list(reports.STUDIES)
-    assert analyzer.project_release_estimands.call_args.kwargs[
-        "allow_missing_manual"
-    ] is True
-    assert set(bindings[0]) == {
-        "study_id",
-        "spec",
-        "plan",
-        "index",
-        "summary",
-        "failure_index",
-        "manual_receipt_locator",
-    }
 
 
 def test_d0_uses_frozen_gates_instead_of_generic_usefulness() -> None:

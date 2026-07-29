@@ -555,10 +555,24 @@ def project_release(
     if not isinstance(projection, dict):
         raise ReportError("stable release projection is not an object")
     summaries = {
-        study_id: load_json(roots[study_id] / STUDY_FILES["summary"])
+        study_id: _load_release_json(
+            roots[study_id] / STUDY_FILES["summary"],
+        )
         for study_id in STUDIES
     }
     return projection, summaries
+
+
+def _load_release_json(path: Path) -> dict[str, Any]:
+    target = contained_file(path.parent, path.name, "release JSON")
+    try:
+        raw = target.read_bytes()
+        value = json_object(raw, target)
+    except (OSError, StateError) as exc:
+        raise ReportError(f"invalid release JSON: {target}: {exc}") from None
+    if raw != canonical_bytes(value):
+        raise ReportError(f"release JSON bytes are not canonical: {target}")
+    return value
 
 
 def load_analyzer(skill_evaluator_root: Path):

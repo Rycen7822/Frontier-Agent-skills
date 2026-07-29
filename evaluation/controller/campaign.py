@@ -282,20 +282,13 @@ def _validate_request_partitions(
 
 
 def load_request_manifest(path: Path) -> dict[str, Any]:
-    target = assert_nofollow(path, kind="file")
-    try:
-        raw = target.read_bytes()
-    except OSError as exc:
-        raise StateError(f"request manifest cannot be read: {target}: {exc}") from None
-    value = _json_object(raw, target)
+    value = load_json(path)
     if set(value) != MANIFEST_FIELDS:
         raise StateError("request manifest has unexpected fields")
     if value.get("schema_version") != "frontier-provider-request-manifest/1.0":
         raise StateError("request manifest schema version is invalid")
     _require_nonempty(value.get("campaign_id"), "campaign_id")
     _verify_self_hash(value, "manifest_hash")
-    if raw != canonical_bytes(value) + b"\n":
-        raise StateError("request manifest bytes are not canonical")
     _validate_request_partitions(
         value.get("required_requests"),
         value.get("conditional_requests"),
@@ -916,9 +909,7 @@ def execute_compiled_plan(
 
 
 def bound_request_manifest(root: Path) -> dict[str, Any]:
-    """Return the manifest bound by the immutable attempt registry."""
-    _, manifest = _load_registry_and_manifest(root)
-    return _json_object(canonical_bytes(manifest), "bound request manifest")
+    return _load_registry_and_manifest(root)[1]
 
 
 def _verify_ledger(
@@ -973,16 +964,6 @@ def verify_ledger(path: Path) -> list[dict[str, Any]]:
     )
     if target != expected:
         raise StateError("provider ledger is foreign to the attempt")
-    return _verify_ledger(target, manifest)
-
-
-def verify_ledger_snapshot(
-    path: Path,
-    request_manifest_path: Path,
-) -> list[dict[str, Any]]:
-    """Verify an exported ledger against its explicitly bound manifest."""
-    target = assert_nofollow(path, kind="file")
-    manifest = load_request_manifest(request_manifest_path)
     return _verify_ledger(target, manifest)
 
 

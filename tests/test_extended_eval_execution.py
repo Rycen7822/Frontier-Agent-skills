@@ -718,6 +718,74 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                         item_id='entry-a',
                     )
 
+    def test_model_grader_batch_limit_is_consistent(self) -> None:
+        transport = load_analyzer_module().model_transport
+        schema = json.loads(
+            (
+                ROOT.parent
+                / 'evaluation/controller/model_judgment.schema.json'
+            ).read_text(encoding='utf-8')
+        )
+        self.assertEqual(
+            transport.MAX_BATCH_ITEMS,
+            schema['properties']['items']['maxItems'],
+        )
+
+        def batch_item(index: int) -> dict:
+            return {
+                'item_id': f'entry-{index}',
+                'checks': [{'id': 'outcome-check'}],
+                'grader_view': {
+                    'captured_output': {},
+                    'host_assessment': {},
+                    'final_answer': 'done',
+                },
+            }
+
+        accepted = transport.execution_batch(
+            [batch_item(index) for index in range(6)],
+            batch_id='six-item-batch',
+        )
+        self.assertEqual(6, len(accepted['items']))
+        with self.assertRaisesRegex(ValueError, 'batch items are invalid'):
+            transport.execution_batch(
+                [batch_item(index) for index in range(7)],
+                batch_id='seven-item-batch',
+            )
+
+        compiler = load_compiler_module()
+
+        def plan_entry(index: int) -> dict:
+            return {
+                'case_id': 'case-a',
+                'disposition': 'execute',
+                'entry_id': f'entry-{index}',
+                'entry_ordinal': index,
+                'model_grade_specs': [{
+                    'grader_id': 'grader-a',
+                    'item_hash': f'sha256:{index:064x}',
+                    'schedule_hash': 'sha256:' + '1' * 64,
+                }],
+            }
+
+        six_entries = [plan_entry(index) for index in range(6)]
+        compiler._bind_model_grade_batches(  # noqa: SLF001
+            six_entries,
+            'evaluation-a',
+        )
+        batch_entry_ids = six_entries[0]['model_grade_specs'][0][
+            'batch_entry_ids'
+        ]
+        self.assertEqual(6, len(batch_entry_ids))
+        with self.assertRaisesRegex(
+            compiler.InternalInvariantError,
+            'transport item limit',
+        ):
+            compiler._bind_model_grade_batches(  # noqa: SLF001
+                [plan_entry(index) for index in range(7)],
+                'evaluation-a',
+            )
+
     def test_non_execute_model_entry_emits_no_model_grade_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

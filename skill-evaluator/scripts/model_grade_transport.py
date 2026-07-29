@@ -26,6 +26,7 @@ PATH_FIELDS = (
     "expected_change_paths",
     "protected_paths",
 )
+MAX_BATCH_ITEMS = 6
 
 
 def batch_identity(
@@ -303,6 +304,7 @@ def execution_batch(
         not isinstance(batch_id, str)
         or not batch_id
         or not items
+        or len(items) > MAX_BATCH_ITEMS
         or len(item_ids) != len(items)
         or any(
             set(item) != {"item_id", "checks", "grader_view"}
