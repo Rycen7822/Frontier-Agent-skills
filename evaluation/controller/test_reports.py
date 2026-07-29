@@ -482,7 +482,7 @@ def test_count_pair_gate_compares_both_values() -> None:
 
 @pytest.mark.parametrize(
     ("phase", "counts"),
-    [("d0", (52, 8, 4)), ("formal", (206, 8, 4))],
+    [("d0", (52, 8, 4)), ("formal", (206, 4, 4))],
 )
 def test_provider_budget_contract_is_exact(
     tmp_path: Path,

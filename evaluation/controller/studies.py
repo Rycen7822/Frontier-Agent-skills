@@ -1124,7 +1124,7 @@ def quality_proof(
                 else "evaluation-owner"
             ),
             "exposure_status": (
-                "sealed"
+                spec["suite"]["holdout"]["exposure_status"]
                 if spec["suite"]["holdout"] is not None
                 else "not_applicable"
             ),

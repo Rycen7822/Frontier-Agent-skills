@@ -178,11 +178,11 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
             "evaluated_skill_ids": evaluated_skill_ids,
             "budget_contract": {
                 "schema_version": "provider-budget-contract/1.0",
-                "scheduled_provider_calls": 218,
+                "scheduled_provider_calls": 214,
                 "scored_call_hard_cap": 206,
-                "grader_calibration_call_hard_cap": 8,
+                "grader_calibration_call_hard_cap": 4,
                 "reviewer_calibration_call_hard_cap": 4,
-                "provider_call_hard_cap": 218,
+                "provider_call_hard_cap": 214,
             },
             "gate_contract": {
                 "schema_version": "gate-contract/1.0",
@@ -276,10 +276,10 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
             "arm_report_content_hashes": arm_hashes,
             "aggregate_status": "passed",
             "scored_model_calls": 206,
-            "grader_calibration_calls": 8,
+            "grader_calibration_calls": 4,
             "reviewer_calibration_calls": 4,
-            "apparatus_model_calls": 12,
-            "total_provider_calls": 218,
+            "apparatus_model_calls": 8,
+            "total_provider_calls": 214,
             "retries": 0,
             "gates": [],
         }

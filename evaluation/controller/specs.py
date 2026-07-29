@@ -487,7 +487,7 @@ def fixed_design(
 
 PHASE_BUDGETS = {
     "d0": (52, 8, 4, 64),
-    "formal": (206, 8, 4, 218),
+    "formal": (206, 4, 4, 214),
 }
 
 
