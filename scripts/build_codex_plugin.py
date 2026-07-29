@@ -59,18 +59,18 @@ EXPECTED_FORMAL_ARM_USAGE = {
 }
 EXPECTED_FORMAL_BUDGET = {
     "schema_version": "provider-budget-contract/1.0",
-    "scheduled_provider_calls": 218,
+    "scheduled_provider_calls": 214,
     "scored_call_hard_cap": 206,
-    "grader_calibration_call_hard_cap": 8,
+    "grader_calibration_call_hard_cap": 4,
     "reviewer_calibration_call_hard_cap": 4,
-    "provider_call_hard_cap": 218,
+    "provider_call_hard_cap": 214,
 }
 EXPECTED_FORMAL_AGGREGATE_USAGE = {
     "scored_model_calls": 206,
-    "grader_calibration_calls": 8,
+    "grader_calibration_calls": 4,
     "reviewer_calibration_calls": 4,
-    "apparatus_model_calls": 12,
-    "total_provider_calls": 218,
+    "apparatus_model_calls": 8,
+    "total_provider_calls": 214,
     "retries": 0,
 }
 P3_AGGREGATE_FIELDS = {
