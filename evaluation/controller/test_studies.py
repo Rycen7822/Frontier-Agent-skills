@@ -6,6 +6,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+
 from . import artifacts, cli, host_contract, specs, studies
 from .controller_testkit import HASH, host_request
 
@@ -241,6 +243,21 @@ def test_quality_proof_binds_tracked_adapter(tmp_path: Path) -> None:
         tmp_path / "host/adapter-binding.json",
         {"binding": "tracked"},
     )
+    with pytest.raises(
+        ValueError,
+        match="requires distinct positive and boundary cases",
+    ):
+        studies.quality_proof(
+            spec=spec,
+            scenarios=scenarios,
+            study_root=tmp_path,
+            validator=_validator(repo),
+        )
+    scenarios.append({
+        **scenarios[0],
+        "case_id": "case-boundary",
+        "tags": [*scenarios[0]["tags"], "boundary"],
+    })
     proof = studies.quality_proof(
         spec=spec,
         scenarios=scenarios,
@@ -250,6 +267,10 @@ def test_quality_proof_binds_tracked_adapter(tmp_path: Path) -> None:
     assert proof["leakage_probes"][0]["artifact"]["path"] == (
         "host/adapter-binding.json"
     )
+    assert proof["case_classes"] == [
+        {"case_id": "case-basic", "class": "positive"},
+        {"case_id": "case-boundary", "class": "boundary_or_failure"},
+    ]
 
 
 def test_mapped_ratings_preserve_opaque_reviewer_identity() -> None:
