@@ -10,9 +10,10 @@ from pathlib import Path
 from typing import Iterable
 
 
-# Recalibrated for the D4 migration-claim owner; other architecture limits stay fixed.
-MAX_PRODUCTION_LINES = 9_125
-MAX_TEST_LINES = 3_060
+# Recalibrated for bounded transport recovery after splitting its state machine;
+# file, function, cycle, and single-owner limits remain unchanged.
+MAX_PRODUCTION_LINES = 9_350
+MAX_TEST_LINES = 3_300
 MAX_FILE_LINES = 1_475
 
 
