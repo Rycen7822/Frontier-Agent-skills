@@ -2064,6 +2064,20 @@ def _resume_seal(
             raise RunnerFailure(_first_diagnostic(diagnostics))
         requests.append(request)
 
+    interruption_class = "interrupted"
+    if requests and stdout_path.stat().st_size:
+        try:
+            _, host_result, _ = _parse_host_protocol(
+                stdout_path.read_bytes(),
+                request=requests[0],
+                registry=registry,
+            )
+        except RunnerFailure:
+            pass
+        else:
+            if host_result.get("failure_class") == "official_transient":
+                interruption_class = "official_transient"
+
     artifact_paths: list[Path] = []
     for path in sorted(attempt_dir.rglob("*")):
         if path.is_symlink():
@@ -2101,7 +2115,7 @@ def _resume_seal(
             "started_at": observed,
             "ended_at": observed,
             "valid": False,
-            "error": "apparatus interrupted before receipt commit",
+            "error": interruption_class,
             "terminal": "interrupted",
         },
         "provenance": {
@@ -2749,9 +2763,10 @@ def _resume_entry(
         raise RunnerFailure("resume inspection produced no terminal receipt")
     last_attempt = attempts[-1][0]
     policy = entry["attempt_policy"]
+    retry_class = last_receipt["run"]["error"]
     retryable = (
         not last_receipt["run"]["valid"]
-        and "interrupted" in policy["retryable_apparatus_classes"]
+        and retry_class in policy["retryable_apparatus_classes"]
         and last_attempt < policy["max_attempts"]
     )
     if retryable:

@@ -803,20 +803,64 @@ def execute_compiled_plan(
     if len(entries) != len(plan["entries"]):
         raise StateError("compiled plan entry identity is ambiguous")
 
-    def index_rows() -> dict[str, dict[str, Any]]:
+    def index_rows() -> dict[str, list[dict[str, Any]]]:
         if not index_path.exists():
             return {}
-        rows = {}
+        rows: dict[str, list[dict[str, Any]]] = {}
+        identities: set[tuple[str, int]] = set()
         for position, line in enumerate(index_path.read_bytes().splitlines(), 1):
             row = _json_object(line, f"{index_path}:{position}")
             entry_id = row.get("entry_id")
-            if entry_id not in entries or entry_id in rows:
+            attempt = row.get("attempt")
+            identity = (entry_id, attempt)
+            if (
+                entry_id not in entries
+                or not isinstance(attempt, int)
+                or attempt < 1
+                or identity in identities
+            ):
                 raise StateError("run index entry identity is invalid")
-            rows[entry_id] = row
+            identities.add(identity)
+            rows.setdefault(entry_id, []).append(row)
+        if any(
+            [row["attempt"] for row in history]
+            != list(range(1, len(history) + 1))
+            for history in rows.values()
+        ):
+            raise StateError("run index attempt history is not contiguous")
         return rows
 
     native = []
     manifest_entries = _request_entries(bound_request_manifest(attempt_root))
+
+    def receipt_history(
+        entry_id: str,
+        history: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        documents = []
+        for row in history:
+            receipt = verified_artifact(
+                study_root / "artifacts",
+                row["receipt"],
+                "official runner receipt",
+            )
+            document = _json_object(receipt.read_bytes(), receipt)
+            _verify_self_hash(document, "receipt_hash")
+            if (
+                document["run"]["entry_id"] != entry_id
+                or document["run"]["plan_hash"] != plan["plan_hash"]
+                or document["run"]["attempt"] != row["attempt"]
+            ):
+                raise StateError("official runner receipt identity differs")
+            documents.append(document)
+        if any(
+            document["run"]["valid"] is not False
+            or document["run"]["terminal"] == "completed"
+            for document in documents[:-1]
+        ):
+            raise StateError("official runner attempt history is not fail-then-terminal")
+        return history, documents
+
     for binding in bindings:
         if (
             not isinstance(binding, dict)
@@ -835,24 +879,47 @@ def execute_compiled_plan(
             for item in request_entries
         ):
             raise StateError("plan provider request is outside scored manifest")
-        rows = index_rows()
+        history = index_rows().get(binding["entry_id"], [])
         ledger_ids = {
             row["request_id"]
             for row in verify_ledger(attempt_root / "provider-ledger.jsonl")
         }
         reserved = set(binding["request_ids"]) & ledger_ids
-        completed = binding["entry_id"] in rows
-        if (reserved or completed) and (
-            reserved != set(binding["request_ids"]) or not completed
+        expected_reservations = set(binding["request_ids"])
+        if (
+            reserved
+            and reserved != expected_reservations
+        ) or (
+            history
+            and reserved != expected_reservations
         ):
             raise StateError("reserved plan entry lacks closed runner evidence")
-        if not completed:
+        history, documents = receipt_history(binding["entry_id"], history)
+        had_reservation = bool(reserved)
+        if not reserved:
             for item in request_entries:
                 reserve_provider_request(
                     attempt_root,
                     request_id=item["request_id"],
                     entry_hash=canonical_hash(item),
                 )
+        policy = entries[binding["entry_id"]]["attempt_policy"]
+        last_diagnostic = ""
+        resume = had_reservation or index_path.exists()
+        empty_driver_turns = 0
+        for _ in range(policy["max_attempts"] + 1):
+            if documents and (
+                documents[-1]["run"]["terminal"] == "completed"
+                and documents[-1]["run"]["valid"] is True
+            ):
+                break
+            if documents and (
+                documents[-1]["run"]["error"]
+                not in policy["retryable_apparatus_classes"]
+                or documents[-1]["run"]["attempt"]
+                >= policy["max_attempts"]
+            ):
+                break
             arguments = [
                 "python3",
                 str(runner_path),
@@ -862,7 +929,7 @@ def execute_compiled_plan(
                 "--entry-id",
                 binding["entry_id"],
             ]
-            if index_path.exists():
+            if resume:
                 arguments.append("--resume")
             completed_process = subprocess.run(
                 arguments,
@@ -876,31 +943,33 @@ def execute_compiled_plan(
                 check=False,
             )
             if completed_process.returncode:
-                diagnostic = (
+                last_diagnostic = (
                     completed_process.stderr or completed_process.stdout
                 ).strip()[:2000]
-                raise StateError(
-                    "official runner failed after provider reservation: "
-                    f"{diagnostic}"
-                )
-            rows = index_rows()
-        row = rows.get(binding["entry_id"])
-        if row is None:
-            raise StateError("official runner emitted no bound index row")
-        receipt = verified_artifact(
-            study_root / "artifacts",
-            row["receipt"],
-            "official runner receipt",
-        )
-        document = _json_object(receipt.read_bytes(), receipt)
-        _verify_self_hash(document, "receipt_hash")
+            history = index_rows().get(binding["entry_id"], [])
+            history, documents = receipt_history(
+                binding["entry_id"],
+                history,
+            )
+            if not documents:
+                empty_driver_turns += 1
+                if empty_driver_turns >= 2:
+                    break
+            resume = True
+        if not documents:
+            raise StateError(
+                "official runner failed after provider reservation: "
+                f"{last_diagnostic or 'no canonical terminal receipt'}"
+            )
+        document = documents[-1]
         if (
-            document["run"]["entry_id"] != binding["entry_id"]
-            or document["run"]["plan_hash"] != plan["plan_hash"]
-            or document["run"]["terminal"] != "completed"
+            document["run"]["terminal"] != "completed"
             or document["run"]["valid"] is not True
         ):
-            raise StateError("official runner receipt is not terminal-valid")
+            raise StateError(
+                "official runner receipt is not terminal-valid: "
+                f"{last_diagnostic or document['run']['error']}"
+            )
         native.extend(
             native_attempt_receipt(item, terminal_status="completed")
             for item in request_entries

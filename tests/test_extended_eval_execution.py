@@ -1226,11 +1226,13 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             paths = materialize_v5_contract_fixture(root)
-            set_v5_synthetic_host_mode(paths, 'fail-first-attempt')
+            set_v5_synthetic_host_mode(
+                paths, 'transient-first-attempt',
+            )
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
             spec['execution']['retry_policy'] = {
                 'max_attempts': 2,
-                'retryable_apparatus_classes': ['interrupted'],
+                'retryable_apparatus_classes': ['official_transient'],
                 'backoff_seconds': 0,
             }
             paths['spec'].write_text(
@@ -1284,6 +1286,9 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     )
                     for receipt in receipts
                 ],
+            )
+            self.assertEqual(
+                'official_transient', receipts[0]['run']['error'],
             )
             stable = index_path.read_bytes()
             repeated = self._run_runner(

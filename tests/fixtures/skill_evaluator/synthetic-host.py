@@ -714,6 +714,14 @@ def _host(request: dict[str, object], mode: str) -> int:
         result["treatment_error"] = "synthetic model-task timeout"
         result["provider_error_code"] = None
         result["failure_class"] = "model_task_timeout"
+    elif (
+        mode == "transient-first-attempt"
+        and envelope["attempt"] == 1
+    ):
+        result["terminal_status"] = "failed"
+        result["treatment_error"] = "synthetic response stream disconnected"
+        result["provider_error_code"] = "responseStreamDisconnected"
+        result["failure_class"] = "official_transient"
     elif mode == "treatment-cancel":
         result["terminal_status"] = "cancelled"
         result["treatment_error"] = "synthetic treatment cancellation"
