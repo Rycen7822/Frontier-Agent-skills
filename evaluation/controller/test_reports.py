@@ -435,7 +435,7 @@ def test_gate_inventory_and_threshold_owner_are_exact() -> None:
         phase: tuple(len(specs.gate_contract(phase)[arm]) for arm in SKILL_IDS)
         for phase in ("d0", "formal")
     }
-    assert counts == {"d0": (11, 18), "formal": (18, 20)}
+    assert counts == {"d0": (11, 18), "formal": (18, 23)}
     gates = [
         specs.gate("point", "arm", "point_metric", "ge", 0.25, selector="point"),
         {
