@@ -1455,6 +1455,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             paths = materialize_v5_contract_fixture(root)
             fixture_path = root / 'fixture-input.txt'
             fixture_path.write_text('fixture bytes\n', encoding='utf-8')
+            fixture_path.chmod(0o444)
             scenario = json.loads(
                 paths['scenarios'].read_text(encoding='utf-8'),
             )
@@ -1494,9 +1495,15 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             attempt_dir = (
                 root / plan['artifacts']['root'] / row['artifact_dir']
             )
+            workspace_fixture = attempt_dir / 'workspace/fixture-input.txt'
             self.assertEqual(
                 fixture_path.read_bytes(),
-                (attempt_dir / 'workspace/fixture-input.txt').read_bytes(),
+                workspace_fixture.read_bytes(),
+            )
+            self.assertEqual(0o444, fixture_path.stat().st_mode & 0o777)
+            self.assertEqual(
+                0o644,
+                workspace_fixture.stat().st_mode & 0o777,
             )
             receipt = json.loads(
                 (
