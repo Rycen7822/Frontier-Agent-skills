@@ -52,10 +52,6 @@ def _artifact_hash(value: Any) -> str:
     return raw_hash(canonical_bytes(value) + b"\n")
 
 
-def normalized_text_hash(value: str) -> str:
-    return canonical_hash(" ".join(value.split()))
-
-
 def _bound_corpus_file(
     root: Path,
     binding: dict[str, Any],
@@ -146,7 +142,7 @@ def _validate_formal_case(
         ).read_text(encoding="utf-8")
     except UnicodeDecodeError:
         raise ValueError("Formal corpus prompt is not UTF-8") from None
-    if normalized_text_hash(prompt) != case["prompt_normalized_hash"]:
+    if canonical_hash(" ".join(prompt.split())) != case["prompt_normalized_hash"]:
         raise ValueError("Formal corpus prompt normalization differs")
     bindings = case["fixture_files"]
     if not isinstance(bindings, list) or not bindings:
@@ -769,10 +765,6 @@ def passing_view(study: str, *, risk: str = "standard", variant: int = 1) -> dic
     }
 
 
-def _failed_checks(check_ids: str) -> dict[str, bool]:
-    return {check_id: False for check_id in check_ids.split()}
-
-
 def failing_views(
     study: str,
     *,
@@ -834,8 +826,12 @@ def failing_views(
         ]
     all_fail = {check_id: False for check_id, _, _ in model_checks(study)}
     return [
-        ({**base, **changes}, reason,
-         all_fail if failed is None else _failed_checks(failed))
+        (
+            {**base, **changes},
+            reason,
+            all_fail if failed is None
+            else {check_id: False for check_id in failed.split()},
+        )
         for changes, reason, failed in definitions
     ]
 

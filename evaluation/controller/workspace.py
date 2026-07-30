@@ -805,7 +805,6 @@ def execute_model_grade(
         schema_path.name,
         "model grader output schema",
     )
-    schema = json_object(schema_file.read_bytes(), schema_file)
     payload = request["payload"]
     if set(payload) != {
         "grader_id",
@@ -814,6 +813,15 @@ def execute_model_grade(
         "blinded_input",
     }:
         raise WorkspaceError("model grader request fields are invalid")
+    schema = json_object(schema_file.read_bytes(), schema_file)
+    blinded_input = payload["blinded_input"]
+    batch_items = blinded_input["items"]
+    properties = schema["properties"]
+    properties["batch_id"]["enum"] = [blinded_input["batch_id"]]
+    properties["items"]["minItems"] = len(batch_items)
+    properties["items"]["maxItems"] = len(batch_items)
+    item_schema = properties["items"]["items"]["properties"]["item_id"]
+    item_schema["enum"] = [item["item_id"] for item in batch_items]
     prompt = (
         prompt_file.read_text(encoding="utf-8").rstrip()
         + "\n\nBlinded input:\n"

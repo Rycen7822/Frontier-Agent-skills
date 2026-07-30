@@ -197,9 +197,10 @@ def freeze_controller(
         ),
         "controller_inventory": inventory,
         "controller_content_hash": canonical_hash(inventory),
-        "stable_analyzer_source_hash": file_hash(
-            contained_analyzer(evaluator_root),
-        ),
+        "stable_analyzer_source_hash": file_hash(assert_nofollow(
+            evaluator_root / "scripts/analyze_runs.py",
+            kind="file",
+        )),
         "skill_evaluator_source_hash": tree_hash(evaluator_root),
         "app_server": {
             "preflight": artifact_binding(
@@ -222,13 +223,6 @@ def freeze_controller(
     manifest_path.chmod(0o444)
     output_root.chmod(0o555)
     return manifest
-
-
-def contained_analyzer(evaluator_root: Path) -> Path:
-    return assert_nofollow(
-        evaluator_root / "scripts/analyze_runs.py",
-        kind="file",
-    )
 
 
 def freeze_corpus(
