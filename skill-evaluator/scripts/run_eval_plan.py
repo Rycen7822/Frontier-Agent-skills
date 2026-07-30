@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -2220,6 +2221,7 @@ def _restore_fixture(
             if destination.exists() or destination.is_symlink():
                 raise RunnerFailure("fixture destination already exists")
             shutil.copy2(source, destination)
+            destination.chmod(destination.stat().st_mode | stat.S_IWUSR)
             restored.append(destination)
             manifest_rows.append({
                 "kind": kind,
