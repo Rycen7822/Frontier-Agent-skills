@@ -921,6 +921,12 @@ def structured_host_error_code(terminal: dict[str, Any]) -> str | None:
     if not isinstance(error, dict):
         return None
     info = error.get("codexErrorInfo")
+    if (
+        info == "other"
+        and isinstance(error.get("message"), str)
+        and error["message"].startswith("stream disconnected before completion:")
+    ):
+        return "responseStreamDisconnected"
     if isinstance(info, str):
         return info
     if isinstance(info, dict) and len(info) == 1:

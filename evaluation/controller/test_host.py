@@ -44,6 +44,22 @@ def test_transient_classification_uses_only_structured_host_codes() -> None:
             },
         },
     }) == "official_transient"
+    disconnected = {
+        "status": "failed",
+        "error": {
+            "codexErrorInfo": "other",
+            "message": (
+                "stream disconnected before completion: "
+                "error sending request"
+            ),
+        },
+    }
+    assert host.structured_host_error_code(
+        disconnected,
+    ) == "responseStreamDisconnected"
+    assert host.structured_host_failure_class(
+        disconnected,
+    ) == "official_transient"
     assert host.structured_host_failure_class({
         "status": "failed",
         "error": {"codexErrorInfo": "usageLimitExceeded"},

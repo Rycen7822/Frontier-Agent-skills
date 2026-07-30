@@ -260,6 +260,67 @@ def test_p4_custom_exception_is_terminal_and_non_retryable(
     assert receipt_value["failure_class"] is None
 
 
+def _write_fake_compiled_runner(path: Path) -> None:
+    path.write_text(
+        """
+import argparse
+import hashlib
+import json
+from pathlib import Path
+
+p = argparse.ArgumentParser()
+p.add_argument("plan")
+p.add_argument("--index")
+p.add_argument("--entry-id")
+p.add_argument("--resume", action="store_true")
+a = p.parse_args()
+retry = Path(__file__).stem.endswith("-retry")
+if retry and not a.resume:
+    raise SystemExit(3)
+index = Path(a.index)
+plan = json.loads(Path(a.plan).read_text())
+canonical = lambda item: json.dumps(
+    item, sort_keys=True, separators=(",", ":"),
+).encode()
+attempts = (
+    [(1, "interrupted", False, "official_transient"),
+     (2, "completed", True, None)]
+    if retry else [(1, "completed", True, None)]
+)
+rows = []
+for attempt, terminal, valid, error in attempts:
+    receipt = (
+        index.parent / f"entries/entry-1/attempt-{attempt:04d}/receipt.json"
+    )
+    receipt.parent.mkdir(parents=True)
+    value = {"run": {
+        "entry_id": a.entry_id,
+        "plan_hash": plan["plan_hash"],
+        "attempt": attempt,
+        "error": error,
+        "terminal": terminal,
+        "valid": valid,
+    }}
+    value["receipt_hash"] = (
+        "sha256:" + hashlib.sha256(canonical(value)).hexdigest()
+    )
+    receipt.write_bytes(canonical(value) + b"\\n")
+    rows.append({
+        "entry_id": a.entry_id,
+        "attempt": attempt,
+        "receipt": {
+            "path": receipt.relative_to(index.parent).as_posix(),
+            "sha256": (
+                "sha256:" + hashlib.sha256(receipt.read_bytes()).hexdigest()
+            ),
+        },
+    })
+index.write_bytes(b"".join(canonical(row) + b"\\n" for row in rows))
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+
 def test_compiled_plan_closes_scored_ledger_without_replay(
     tmp_path: Path,
 ) -> None:
@@ -272,50 +333,20 @@ def test_compiled_plan_closes_scored_ledger_without_replay(
     study = tmp_path / "study"
     study.mkdir()
     plan = artifacts.self_hashed(
-        {"entries": [{"entry_id": "entry-1"}]},
+        {"entries": [{
+            "entry_id": "entry-1",
+            "attempt_policy": {
+                "max_attempts": 1,
+                "retryable_apparatus_classes": [],
+            },
+        }]},
         "plan_hash",
     )
     plan_path = study / "execution-plan-v1.json"
     artifacts.write_json(plan_path, plan)
     index = study / "artifacts/index.jsonl"
     runner = tmp_path / "runner.py"
-    runner.write_text(
-        """
-import argparse
-import hashlib
-import json
-from pathlib import Path
-from evaluation.controller import campaign as imported_campaign
-
-p = argparse.ArgumentParser()
-p.add_argument("plan")
-p.add_argument("--index")
-p.add_argument("--entry-id")
-p.add_argument("--resume", action="store_true")
-a = p.parse_args()
-index = Path(a.index)
-receipt = index.parent / "entries/entry-1/attempt-0001/receipt.json"
-receipt.parent.mkdir(parents=True)
-plan = json.loads(Path(a.plan).read_text())
-value = {"run": {
-    "entry_id": a.entry_id,
-    "plan_hash": plan["plan_hash"],
-    "terminal": "completed",
-    "valid": True,
-}}
-canonical = lambda item: json.dumps(
-    item, sort_keys=True, separators=(",", ":"),
-).encode()
-value["receipt_hash"] = "sha256:" + hashlib.sha256(canonical(value)).hexdigest()
-receipt.write_bytes(canonical(value) + b"\\n")
-row = {"entry_id": a.entry_id, "receipt": {
-    "path": receipt.relative_to(index.parent).as_posix(),
-    "sha256": "sha256:" + hashlib.sha256(receipt.read_bytes()).hexdigest(),
-}}
-index.write_bytes(canonical(row) + b"\\n")
-""".lstrip(),
-        encoding="utf-8",
-    )
+    _write_fake_compiled_runner(runner)
     arguments = {
         "attempt_root": attempt,
         "study_root": study,
@@ -338,16 +369,117 @@ index.write_bytes(canonical(row) + b"\\n")
     assert len(campaign.verify_ledger(attempt / "provider-ledger.jsonl")) == 2
 
 
-def test_compiled_plan_rejects_reserved_entry_without_runner_evidence(
+def test_compiled_plan_closes_transient_attempt_before_retry(
     tmp_path: Path,
 ) -> None:
     attempt = tmp_path / "attempt"
     initialize(attempt)
+    study = tmp_path / "study"
+    study.mkdir()
+    plan = artifacts.self_hashed(
+        {"entries": [{
+            "entry_id": "entry-1",
+            "attempt_policy": {
+                "max_attempts": 2,
+                "retryable_apparatus_classes": ["official_transient"],
+            },
+        }]},
+        "plan_hash",
+    )
+    plan_path = study / "execution-plan-v1.json"
+    artifacts.write_json(plan_path, plan)
+    index = study / "artifacts/index.jsonl"
+    runner = tmp_path / "runner-retry.py"
+    _write_fake_compiled_runner(runner)
+    arguments = {
+        "attempt_root": attempt,
+        "study_root": study,
+        "runner_path": runner,
+        "plan_path": plan_path,
+        "index_path": index,
+        "bindings": [{
+            "entry_id": "entry-1",
+            "request_ids": ["request-1"],
+        }],
+    }
+
+    first = campaign.execute_compiled_plan(**arguments)
+    runner.unlink()
+    second = campaign.execute_compiled_plan(**arguments)
+    rows = [
+        json.loads(line)
+        for line in index.read_text(encoding="utf-8").splitlines()
+    ]
+    assert first == second
+    assert [row["attempt"] for row in rows] == [1, 2]
+    assert len(campaign.verify_ledger(attempt / "provider-ledger.jsonl")) == 1
+
+
+def test_compiled_plan_bounds_empty_resume_driver_turns(
+    tmp_path: Path,
+) -> None:
+    attempt = tmp_path / "attempt"
+    initialize(attempt)
+    study = tmp_path / "study"
+    study.mkdir()
+    plan = artifacts.self_hashed(
+        {"entries": [{
+            "entry_id": "entry-1",
+            "attempt_policy": {
+                "max_attempts": 5,
+                "retryable_apparatus_classes": ["official_transient"],
+            },
+        }]},
+        "plan_hash",
+    )
+    plan_path = study / "execution-plan-v1.json"
+    artifacts.write_json(plan_path, plan)
+    runner = tmp_path / "runner-empty.py"
+    runner.write_text(
+        "from pathlib import Path\n"
+        "counter = Path(__file__).with_suffix('.count')\n"
+        "value = int(counter.read_text()) if counter.exists() else 0\n"
+        "counter.write_text(str(value + 1))\n"
+        "raise SystemExit(3)\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        artifacts.StateError,
+        match="no canonical terminal receipt",
+    ):
+        campaign.execute_compiled_plan(
+            attempt_root=attempt,
+            study_root=study,
+            runner_path=runner,
+            plan_path=plan_path,
+            index_path=study / "artifacts/index.jsonl",
+            bindings=[{
+                "entry_id": "entry-1",
+                "request_ids": ["request-1"],
+            }],
+        )
+    assert runner.with_suffix(".count").read_text() == "2"
+
+
+def test_compiled_plan_rejects_reserved_entry_without_runner_evidence(
+    tmp_path: Path,
+) -> None:
+    attempt = tmp_path / "attempt"
+    initialize(attempt, required=[
+        request_entry("request-1"),
+        request_entry("request-2"),
+    ])
     reserve(attempt, "request-1")
     study = tmp_path / "study"
     study.mkdir()
     plan = artifacts.self_hashed(
-        {"entries": [{"entry_id": "entry-1"}]},
+        {"entries": [{
+            "entry_id": "entry-1",
+            "attempt_policy": {
+                "max_attempts": 1,
+                "retryable_apparatus_classes": [],
+            },
+        }]},
         "plan_hash",
     )
     plan_path = study / "execution-plan-v1.json"
@@ -364,7 +496,7 @@ def test_compiled_plan_rejects_reserved_entry_without_runner_evidence(
             index_path=study / "artifacts/index.jsonl",
             bindings=[{
                 "entry_id": "entry-1",
-                "request_ids": ["request-1"],
+                "request_ids": ["request-1", "request-2"],
             }],
         )
     unreserved = tmp_path / "unreserved"
@@ -373,6 +505,7 @@ def test_compiled_plan_rejects_reserved_entry_without_runner_evidence(
     index.parent.mkdir()
     index.write_bytes(artifacts.canonical_bytes({
         "entry_id": "entry-1",
+        "attempt": 1,
         "receipt": {},
     }) + b"\n")
     with pytest.raises(
