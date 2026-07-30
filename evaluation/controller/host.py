@@ -1048,7 +1048,12 @@ class AppServer:
             )
             if name in os.environ
         }
-        environment.update({"CODEX_HOME": str(codex_home), "HOME": str(codex_home.parent), "PYTHONDONTWRITEBYTECODE": "1"})
+        environment.update({
+            "CODEX_HOME": str(codex_home),
+            "HOME": str(codex_home.parent),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONPYCACHEPREFIX": str(codex_home / "pycache"),
+        })
         self.process = subprocess.Popen(
             [runtime["executable"]["path"], *APP_SERVER_ARGS],
             stdin=subprocess.PIPE,

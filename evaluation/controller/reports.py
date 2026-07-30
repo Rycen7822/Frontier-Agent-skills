@@ -409,22 +409,18 @@ def usage_closure(
     }
 
 
-def _file_binding(root: Path, relative: str, label: str) -> dict[str, Any]:
-    path = contained_file(root, relative, label)
-    return {"path": path, "sha256": file_hash(path)}
-
-
 def study_binding(
     root: Path,
     study_id: str,
     manual_receipt_locator: str | None,
 ) -> dict[str, Any]:
+    bindings = {}
+    for field, relative in STUDY_FILES.items():
+        bound_file = contained_file(root, relative, f"{study_id} {field}")
+        bindings[field] = {"path": bound_file, "sha256": file_hash(bound_file)}
     return {
         "study_id": study_id,
-        **{
-            field: _file_binding(root, relative, f"{study_id} {field}")
-            for field, relative in STUDY_FILES.items()
-        },
+        **bindings,
         "manual_receipt_locator": manual_receipt_locator,
     }
 

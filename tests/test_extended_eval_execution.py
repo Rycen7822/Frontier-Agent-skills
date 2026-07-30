@@ -620,6 +620,83 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 ],
             )
 
+    def test_model_grader_schema_binds_frozen_batch_ids(self) -> None:
+        from unittest import mock
+
+        from evaluation.controller import artifacts, host, workspace
+        from evaluation.controller.controller_testkit import (
+            completed_turn,
+            host_manifest,
+            host_request,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            request = host_request('model_grade')
+            request['payload'] = {
+                'grader_id': 'rubric',
+                'batch_hash': HASHES['candidate'],
+                'schedule_hash': HASHES['candidate'],
+                'blinded_input': {
+                    'batch_id': 'batch-one',
+                    'items': [{
+                        'item_id': 'entry-one',
+                        'checks': [{'id': 'outcome'}],
+                        'grader_view': {},
+                    }],
+                },
+            }
+            request['request_hash'] = artifacts.canonical_hash({
+                key: value
+                for key, value in request.items()
+                if key != 'request_hash'
+            })
+            turn = completed_turn(
+                answer=json.dumps({'overall_pass': True}),
+                usage=None,
+            )
+            with (
+                mock.patch.object(
+                    workspace.host,
+                    'run_codex_turn',
+                    return_value=turn,
+                ) as run_turn,
+                mock.patch.object(
+                    workspace.host,
+                    'codex_runtime_from_host',
+                    return_value={},
+                ),
+            ):
+                result = workspace.execute_model_grade(
+                    root,
+                    request,
+                    host_manifest(),
+                    prompt_path=ROOT.parent
+                    / 'evaluation/controller/model_grader_prompt.md',
+                    schema_path=ROOT.parent
+                    / 'evaluation/controller/model_judgment.schema.json',
+                )
+            call = run_turn.call_args.kwargs
+            self.assertEqual(
+                host.MODEL_TASK_TIMEOUT_SECONDS,
+                call['timeout_seconds'],
+            )
+            properties = call['output_schema']['properties']
+            self.assertEqual(['batch-one'], properties['batch_id']['enum'])
+            items_schema = properties['items']
+            self.assertEqual(
+                (1, 1),
+                (items_schema['minItems'], items_schema['maxItems']),
+            )
+            self.assertEqual(
+                ['entry-one'],
+                items_schema['items']['properties']['item_id']['enum'],
+            )
+            self.assertEqual(
+                'model_grade',
+                result['usage']['records'][0]['phase'],
+            )
+
     def test_blinded_grader_evidence_is_bounded_and_fail_closed(self) -> None:
         transport = load_analyzer_module().model_transport
         assessment = {'changed_paths': ['fixtures/app.py']}

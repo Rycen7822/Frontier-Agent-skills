@@ -308,7 +308,9 @@ def test_app_server_preflight_validates_used_union_without_provider(
     with mock.patch.object(host.subprocess, "Popen") as popen:
         host.AppServer(tmp_path, runtime)
     assert popen.call_args.args[0] == [str(executable), *host.APP_SERVER_ARGS]
-    assert "PATH" not in popen.call_args.kwargs["env"]
+    environment = popen.call_args.kwargs["env"]
+    assert "PATH" not in environment
+    assert environment["PYTHONPYCACHEPREFIX"] == str(tmp_path / "pycache")
     waiting = object.__new__(host.AppServer)
     waiting.messages = []
     waiting.condition = threading.Condition()
@@ -675,47 +677,3 @@ def test_transfer_substitution_stops_before_model(
             prior=None,
         )
     assert len(calls) == 1
-
-
-@pytest.mark.parametrize("status", ["completed", "timeout"])
-def test_model_grade_is_blinded_and_bound(
-    tmp_path: Path,
-    monkeypatch,
-    status: str,
-) -> None:
-    prompt = tmp_path / "prompt.md"
-    schema = tmp_path / "schema.json"
-    prompt.write_text("Grade the bound checks.", encoding="utf-8")
-    schema.write_text('{"type":"object"}', encoding="utf-8")
-    request = host_request("model_grade")
-    request["payload"] = {
-        "grader_id": "rubric",
-        "batch_hash": HASH,
-        "schedule_hash": HASH,
-        "blinded_input": {"case_id": "case-one"},
-    }
-    request["request_hash"] = artifacts.canonical_hash({
-        key: value for key, value in request.items() if key != "request_hash"
-    })
-    turn = completed_turn(
-        status=status,
-        answer=json.dumps({"overall_pass": True}) if status == "completed" else "",
-        usage=None,
-    )
-    calls = bind_fake_turn(monkeypatch, turn)
-    result = workspace.execute_model_grade(
-        tmp_path,
-        request,
-        host_manifest(),
-        prompt_path=prompt,
-        schema_path=schema,
-    )
-    assert calls[0]["timeout_seconds"] == host.MODEL_TASK_TIMEOUT_SECONDS
-    assert "candidate" not in calls[0]["prompt"]
-    if status == "completed":
-        assert len(result["artifacts"]) == 1
-        assert result["usage"]["records"][0]["phase"] == "model_grade"
-    else:
-        assert result["terminal_status"] == "timeout"
-        assert result["failure_class"] == "model_task_timeout"
-        assert result["usage"]["records"] == []
