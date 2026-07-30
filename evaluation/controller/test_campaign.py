@@ -415,52 +415,6 @@ def test_compiled_plan_closes_transient_attempt_before_retry(
     assert len(campaign.verify_ledger(attempt / "provider-ledger.jsonl")) == 1
 
 
-def test_compiled_plan_bounds_empty_resume_driver_turns(
-    tmp_path: Path,
-) -> None:
-    attempt = tmp_path / "attempt"
-    initialize(attempt)
-    study = tmp_path / "study"
-    study.mkdir()
-    plan = artifacts.self_hashed(
-        {"entries": [{
-            "entry_id": "entry-1",
-            "attempt_policy": {
-                "max_attempts": 5,
-                "retryable_apparatus_classes": ["official_transient"],
-            },
-        }]},
-        "plan_hash",
-    )
-    plan_path = study / "execution-plan-v1.json"
-    artifacts.write_json(plan_path, plan)
-    runner = tmp_path / "runner-empty.py"
-    runner.write_text(
-        "from pathlib import Path\n"
-        "counter = Path(__file__).with_suffix('.count')\n"
-        "value = int(counter.read_text()) if counter.exists() else 0\n"
-        "counter.write_text(str(value + 1))\n"
-        "raise SystemExit(3)\n",
-        encoding="utf-8",
-    )
-    with pytest.raises(
-        artifacts.StateError,
-        match="no canonical terminal receipt",
-    ):
-        campaign.execute_compiled_plan(
-            attempt_root=attempt,
-            study_root=study,
-            runner_path=runner,
-            plan_path=plan_path,
-            index_path=study / "artifacts/index.jsonl",
-            bindings=[{
-                "entry_id": "entry-1",
-                "request_ids": ["request-1"],
-            }],
-        )
-    assert runner.with_suffix(".count").read_text() == "2"
-
-
 @pytest.mark.parametrize("stop_after", (0, 1, 2, 4))
 def test_compiled_plan_resumes_at_binding_boundaries_without_replay(
     tmp_path: Path,
@@ -528,6 +482,7 @@ def test_compiled_plan_resumes_at_binding_boundaries_without_replay(
                 match="no canonical terminal receipt",
             ):
                 campaign.execute_compiled_plan(**arguments)
+            assert artifacts.load_json(control)["empty_exits"] == 2
         result = campaign.execute_compiled_plan(**arguments)
         replay = campaign.execute_compiled_plan(**arguments)
         assert result == replay
