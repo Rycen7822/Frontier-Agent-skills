@@ -1883,6 +1883,11 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 for arm in ('baseline', 'candidate')
                 for case in ('a', 'b')
             ]
+            sqw_records.extend(
+                record(f'sqw-non-target-{case}', 'non-target', case, 10)
+                for case in ('a', 'b')
+            )
+            sqw_records[-1]['counts']['reference_load_count'] = 1
             planner_records = [
                 *[
                     record(f'planner-{arm}-{case}', arm, case, 10)
@@ -1950,7 +1955,15 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             loaded = {
                 'software-quality-workflows': {
                     'public': public,
-                    'spec': {'treatments': treatments},
+                    'spec': {
+                        'treatments': [
+                            *treatments,
+                            {
+                                'treatment_id': 'non-target',
+                                'causal_role': 'comparator',
+                            },
+                        ],
+                    },
                     'evidence': {
                         'records': sqw_records,
                         'selected_attempts': {},
@@ -2014,6 +2027,12 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(
                 'complete',
                 projection['writing_plans']['status'],
+            )
+            self.assertEqual(
+                {'numerator': 1, 'denominator': 2},
+                projection['software_quality_workflows'][
+                    'release_metrics'
+                ]['non_target_correct_no_load'],
             )
 
     def test_v5_report_transaction_truncation_and_immutable_retry(self) -> None:

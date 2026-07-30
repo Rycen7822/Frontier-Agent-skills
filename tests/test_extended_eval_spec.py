@@ -57,6 +57,27 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
             case.applicable_profiles == specs.PROTECTED_SQW
             for case in protected
         ))
+        writing_gates = {
+            item['gate_id']: item
+            for item in specs.gate_contract('formal')['writing-plans']
+        }
+        self.assertEqual(
+            {
+                'WP-F-10': (
+                    'authoritative_body_consumed_exactly_once',
+                    True,
+                ),
+                'WP-F-11': ('authority_reference_loads_max', 0),
+                'WP-F-12': ('protocol_only_calls', 0),
+            },
+            {
+                gate_id: (
+                    writing_gates[gate_id]['metric_id'].rsplit('/', 1)[-1],
+                    writing_gates[gate_id]['threshold']['scalar'],
+                )
+                for gate_id in ('WP-F-10', 'WP-F-11', 'WP-F-12')
+            },
+        )
         self.assertEqual(
             design.expected_execute,
             sum(len(case.applicable_profiles) for case in design.cases)
@@ -125,7 +146,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                 phase: len(specs.gate_contract(phase)['writing-plans'])
                 for phase in ('d0', 'formal')
             },
-            {'d0': 18, 'formal': 20},
+            {'d0': 18, 'formal': 23},
         )
         self.assertEqual(
             {phase: specs.writing_plan_migration_claim_policy(phase)
@@ -139,7 +160,6 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
         }
         self.assertTrue({
             'WP-D0-17', 'WP-D0-18', 'WP-D0-19',
-            'WP-F-10', 'WP-F-11', 'WP-F-12',
         }.isdisjoint(gate_ids))
 
         def claim(

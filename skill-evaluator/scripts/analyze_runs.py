@@ -5346,6 +5346,7 @@ def _sqw_release_metrics(
             and row["skill_body_loaded"] is False
             and row["skill_incorporated"] is False
             and row["skill_applied"] is False
+            and row["counts"]["reference_load_count"] == 0
             for row in rows
         )
         for rows in non_target_by_case.values()
