@@ -461,6 +461,108 @@ def test_compiled_plan_bounds_empty_resume_driver_turns(
     assert runner.with_suffix(".count").read_text() == "2"
 
 
+@pytest.mark.parametrize("stop_after", (0, 1, 2, 4))
+def test_compiled_plan_resumes_at_binding_boundaries_without_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stop_after: int,
+) -> None:
+    plan = artifacts.self_hashed(
+        {"entries": [
+            {
+                "entry_id": f"entry-{ordinal}",
+                "entry_ordinal": ordinal,
+                "attempt_policy": {
+                    "max_attempts": 1,
+                    "retryable_apparatus_classes": [],
+                },
+            }
+            for ordinal in range(1, 5)
+        ]},
+        "plan_hash",
+    )
+    bindings = [
+        {
+            "entry_id": f"entry-{ordinal}",
+            "request_ids": [f"request-{ordinal}"],
+        }
+        for ordinal in range(1, 5)
+    ]
+    runner = (
+        Path(__file__).parents[2]
+        / "tests/fixtures/skill_evaluator/formal-lifecycle-runner.py"
+    )
+
+    def execute(root: Path, stop: int) -> tuple[list[dict], Path]:
+        root.mkdir()
+        attempt = root / "attempt"
+        initialize(
+            attempt,
+            required=[
+                request_entry(f"request-{ordinal}")
+                for ordinal in range(1, 5)
+            ],
+        )
+        study = root / "study"
+        study.mkdir()
+        plan_path = study / "execution-plan-v1.json"
+        artifacts.write_json(plan_path, plan)
+        control = root / "control.json"
+        artifacts.write_json(control, {
+            "stop_after": stop,
+            "total": 4,
+            "empty_exits": 0,
+        })
+        monkeypatch.setenv("FORMAL_LIFECYCLE_CONTROL", str(control))
+        arguments = {
+            "attempt_root": attempt,
+            "study_root": study,
+            "runner_path": runner,
+            "plan_path": plan_path,
+            "index_path": study / "artifacts/index.jsonl",
+            "bindings": bindings,
+        }
+        if 0 <= stop < 4:
+            with pytest.raises(
+                artifacts.StateError,
+                match="no canonical terminal receipt",
+            ):
+                campaign.execute_compiled_plan(**arguments)
+        result = campaign.execute_compiled_plan(**arguments)
+        replay = campaign.execute_compiled_plan(**arguments)
+        assert result == replay
+        ledger = campaign.verify_ledger(
+            attempt / "provider-ledger.jsonl"
+        )
+        assert [row["request_id"] for row in ledger] == [
+            f"request-{ordinal}" for ordinal in range(1, 5)
+        ]
+        return result, study
+
+    control_result, control_study = execute(tmp_path / "control", -1)
+    resumed_result, resumed_study = execute(
+        tmp_path / f"resume-{stop_after}",
+        stop_after,
+    )
+    assert resumed_result == control_result
+    assert (
+        resumed_study / "artifacts/index.jsonl"
+    ).read_bytes() == (
+        control_study / "artifacts/index.jsonl"
+    ).read_bytes()
+    assert {
+        path.relative_to(resumed_study).as_posix(): path.read_bytes()
+        for path in sorted(
+            (resumed_study / "artifacts/entries").rglob("receipt.json")
+        )
+    } == {
+        path.relative_to(control_study).as_posix(): path.read_bytes()
+        for path in sorted(
+            (control_study / "artifacts/entries").rglob("receipt.json")
+        )
+    }
+
+
 def test_compiled_plan_rejects_reserved_entry_without_runner_evidence(
     tmp_path: Path,
 ) -> None:
