@@ -1005,6 +1005,7 @@ def _rating_record(
     grader_identity: dict[str, Any] | None,
     execution_identity: dict[str, Any] | None,
     independence: dict[str, Any] | None,
+    host_build_hash: str,
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
@@ -1034,12 +1035,18 @@ def _rating_record(
         "ordering": ordering,
         "created": "2026-07-25T00:00:00Z",
         "expires": "2026-08-25T00:00:00Z",
-        "drift_triggers": [{
-            "field": "prompt_hash",
-            "expected": grader["prompt"]["sha256"],
-            "observed": grader["prompt"]["sha256"],
-            "status": "unchanged",
-        }],
+        "drift_triggers": [
+            {
+                "field": field,
+                "expected": value,
+                "observed": value,
+                "status": "unchanged",
+            }
+            for field, value in (
+                ("prompt_hash", grader["prompt"]["sha256"]),
+                ("host_build_hash", host_build_hash),
+            )
+        ],
         "adjudication_policy": "frozen gold labels",
         "thresholds": {
             "minimum_agreement": 0.8,
@@ -1144,6 +1151,7 @@ def _grader_calibration_rows(
                 grader_identity=grader_identity,
                 execution_identity=execution,
                 independence=independence,
+                host_build_hash=host_manifest["identity"]["host_build"],
             ))
     return labels, ratings
 
@@ -1246,6 +1254,7 @@ def calibration_rows(
                 grader_identity=None,
                 execution_identity=None,
                 independence=None,
+                host_build_hash=host_manifest["identity"]["host_build"],
             ))
     for position, row in enumerate(ratings, start=1):
         row["position"] = position

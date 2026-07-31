@@ -24,6 +24,7 @@ from .artifacts import (
     raw_hash,
     verify_self_hash,
 )
+from .model_evidence import ModelEvidenceError, workspace_evidence
 
 
 class WorkspaceError(RuntimeError):
@@ -96,6 +97,47 @@ def workspace_snapshot(root: Path) -> dict[str, str]:
             except OSError as exc:
                 raise WorkspaceError(f"workspace snapshot failed: {exc}") from None
     return snapshot
+
+
+def workspace_text_snapshot(
+    root: Path,
+    contract: dict[str, Any],
+) -> dict[str, str]:
+    snapshot = {}
+    selected = sorted({
+        *contract["allowed_change_paths"],
+        *contract["protected_paths"],
+    })
+    for relative in selected:
+        path = root / relative
+        if not path.exists():
+            continue
+        if path.is_symlink() or not path.is_file():
+            raise WorkspaceError("workspace evidence path is invalid")
+        try:
+            snapshot[relative] = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise WorkspaceError(
+                f"workspace evidence is not bounded UTF-8 text: {exc}"
+            ) from None
+    return snapshot
+
+
+def final_workspace_evidence(
+    root: Path,
+    contract: dict[str, Any],
+    initial_files: dict[str, str],
+    assessment: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        return workspace_evidence(
+            initial_files,
+            workspace_text_snapshot(root, contract),
+            changed_paths=assessment["changed_paths"],
+            verification=assessment["verification"],
+        )
+    except ModelEvidenceError as exc:
+        raise WorkspaceError(str(exc)) from None
 
 
 def _valid_relative(value: Any) -> bool:
@@ -697,6 +739,7 @@ def execute_codex(
         payload["treatment"]["profile"],
     )
     before = workspace_snapshot(workspace)
+    initial_files = workspace_text_snapshot(workspace, contract)
     explicit_skill, registered_skill = selected_skills(
         payload,
         candidate,
@@ -721,6 +764,9 @@ def execute_codex(
         before,
         transfer,
     )
+    evidence = final_workspace_evidence(
+        workspace, contract, initial_files, observation,
+    )
     suffix = (
         f"{request['envelope']['entry_id']}-"
         f"{request['envelope']['attempt']}"
@@ -729,6 +775,11 @@ def execute_codex(
         workspace,
         f"host-observation-{suffix}.json",
         canonical_bytes(observation),
+    )
+    evidence_artifact = _write_payload(
+        workspace,
+        f"workspace-evidence-{suffix}.json",
+        canonical_bytes(evidence),
     )
     answer_artifact = _write_payload(
         workspace,
@@ -744,6 +795,7 @@ def execute_codex(
     events, result = host.execute_fake(request, host_manifest)
     result["artifacts"] = [
         observation_artifact,
+        evidence_artifact,
         answer_artifact,
         *context_artifacts,
     ]

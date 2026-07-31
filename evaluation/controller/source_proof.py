@@ -60,6 +60,7 @@ CONTROLLER_FILES = {
     "host.py",
     "host_contract.py",
     "host_grader.py",
+    "model_evidence.py",
     "model_grader_prompt.md",
     "model_judgment.schema.json",
     "planner_evidence.py",

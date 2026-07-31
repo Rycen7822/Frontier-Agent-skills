@@ -27,6 +27,25 @@ PATH_FIELDS = (
     "protected_paths",
 )
 MAX_BATCH_ITEMS = 6
+MAX_WORKSPACE_EVIDENCE_BYTES = 32_768
+WORKSPACE_EVIDENCE_FIELDS = {
+    "initial_files",
+    "final_files",
+    "changed_paths",
+    "diff",
+    "verification",
+}
+
+
+def _valid_relative_path(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and not value.startswith("/")
+        and "\\" not in value
+        and re.match(r"^[A-Za-z]:[\\/]", value) is None
+        and all(part not in {"", ".", ".."} for part in value.split("/"))
+    )
 
 
 def batch_identity(
@@ -183,14 +202,7 @@ def _relative_evidence_paths(assessment: dict[str, Any]) -> list[str]:
         if not isinstance(values, list):
             raise ValueError(f"model grader {field} is invalid")
         for value in values:
-            if (
-                not isinstance(value, str)
-                or not value
-                or value.startswith("/")
-                or "\\" in value
-                or re.match(r"^[A-Za-z]:[\\/]", value)
-                or any(part in {"", ".", ".."} for part in value.split("/"))
-            ):
+            if not _valid_relative_path(value):
                 raise ValueError(f"model grader {field} path is invalid")
             paths.add(value)
     return sorted(paths, key=len, reverse=True)
@@ -229,6 +241,59 @@ def _redact_workspace_paths(
     return redacted
 
 
+def _workspace_evidence(
+    payload: str,
+    assessment: dict[str, Any],
+) -> dict[str, Any]:
+    if len(payload.encode("utf-8")) > MAX_WORKSPACE_EVIDENCE_BYTES:
+        raise ValueError("model grader workspace evidence exceeds its bound")
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ValueError("model grader workspace evidence is invalid JSON") from exc
+    if (
+        not isinstance(value, dict)
+        or set(value) != WORKSPACE_EVIDENCE_FIELDS
+        or any(
+            not isinstance(value[field], dict)
+            or any(
+                not isinstance(path, str)
+                or not isinstance(content, str)
+                for path, content in value[field].items()
+            )
+            for field in ("initial_files", "final_files")
+        )
+        or not isinstance(value["changed_paths"], list)
+        or any(not isinstance(path, str) for path in value["changed_paths"])
+        or not isinstance(value["diff"], str)
+        or not isinstance(value["verification"], dict)
+    ):
+        raise ValueError("model grader workspace evidence differs")
+    file_paths = {
+        *value["initial_files"],
+        *value["final_files"],
+    }
+    if (
+        any(not _valid_relative_path(path) for path in file_paths)
+        or any(not _valid_relative_path(path) for path in value["changed_paths"])
+        or value["changed_paths"] != assessment.get("changed_paths")
+        or value["verification"] != assessment.get("verification")
+        or not file_paths <= (
+            set(assessment.get("allowed_change_paths", []))
+            | set(assessment.get("protected_paths", []))
+        )
+        or json.dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            allow_nan=False,
+        ) != payload
+    ):
+        raise ValueError("model grader workspace evidence binding differs")
+    return value
+
+
 def execution_item(
     blinded: dict[str, Any],
     *,
@@ -246,7 +311,7 @@ def execution_item(
     if not requirements:
         raise ValueError("model grader has no selected requirements")
     evidence = {}
-    for label in ("host-observation", "final-answer"):
+    for label in ("host-observation", "workspace-evidence", "final-answer"):
         matches = [
             item for item in blinded["artifacts"]
             if (
@@ -283,6 +348,10 @@ def execution_item(
             "captured_output": blinded["captured_output"],
             **copy.deepcopy(observations[0]),
             "host_assessment": assessment,
+            "workspace_evidence": _workspace_evidence(
+                evidence["workspace-evidence"],
+                assessment,
+            ),
             "final_answer": _redact_workspace_paths(
                 evidence["final-answer"],
                 assessment,

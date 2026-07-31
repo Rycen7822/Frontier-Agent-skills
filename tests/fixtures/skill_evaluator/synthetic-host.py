@@ -296,10 +296,25 @@ def _host(request: dict[str, object], mode: str) -> int:
         suffix = f"{envelope['entry_id']}-{envelope['attempt']}"
         model_observation = _artifact(
             f"host-observation-{suffix}.json",
-            {"changed_paths": [], "verification": {"exit_code": 0}},
+            {
+                "allowed_change_paths": [],
+                "changed_paths": [],
+                "protected_paths": [],
+                "verification": {"exit_code": 0},
+            },
         )
         artifacts.extend([
             model_observation,
+            _artifact(
+                f"workspace-evidence-{suffix}.json",
+                {
+                    "initial_files": {},
+                    "final_files": {},
+                    "changed_paths": [],
+                    "diff": "",
+                    "verification": {"exit_code": 0},
+                },
+            ),
             _artifact(f"final-answer-{suffix}.md", "synthetic completion"),
         ])
     stateful = payload["case"]["state_model"]["scope"] != "none"

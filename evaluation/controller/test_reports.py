@@ -628,6 +628,7 @@ def test_calibration_requires_pair_and_accepts_numeric_severity() -> None:
     host_manifest = {
         "identity": {
             "adapter": {"sha256": bound_hash},
+            "host_build": bound_hash,
             "host_id": "host-1",
         },
     }
@@ -653,6 +654,13 @@ def test_calibration_requires_pair_and_accepts_numeric_severity() -> None:
         reports.calibration_rows(reviewer_reviews=reviews[:1], **kwargs)
     _, ratings = reports.calibration_rows(reviewer_reviews=reviews, **kwargs)
     assert 0.5 in [row["severity"] for row in ratings]
+    grader_rating = next(
+        row for row in ratings
+        if row["reviewer"]["reviewer_id"] == "blinded-grader"
+    )
+    assert {
+        trigger["field"] for trigger in grader_rating["drift_triggers"]
+    } == {"host_build_hash", "prompt_hash"}
 
 
 def test_p4_recomputes_all_gates_and_writes_schema_valid_report(
