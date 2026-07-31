@@ -36,6 +36,8 @@ def workspace_evidence(
             continue
         if relative in after:
             changed_final[relative] = after[relative]
+        if relative not in before:
+            continue
         diff.extend(
             difflib.unified_diff(
                 before.get(relative, "").splitlines(keepends=True),
