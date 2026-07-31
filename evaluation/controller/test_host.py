@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import json
 import os
 from pathlib import Path
@@ -646,7 +647,7 @@ def test_codex_execution_projects_bound_workspace(
     assert "test_app.py" not in view["final_files"]
 
 
-def test_workspace_evidence_deduplicates_realistic_plan_projection() -> None:
+def test_workspace_evidence_deduplicates_added_realistic_plan() -> None:
     initial = {
         "README.md": "R" * 732,
         "case.contract.json": "C" * 1_235,
@@ -654,7 +655,7 @@ def test_workspace_evidence_deduplicates_realistic_plan_projection() -> None:
         "service.py": "S" * 909,
         "test_service.py": "T" * 867,
     }
-    plan = ("## Ordered slice\n" + "owner, evidence, stop, rollback\n" * 500)[:12_568]
+    plan = ("## Ordered slice\n" + "owner, evidence, stop, rollback\n" * 500)[:13_855]
     final = {**initial, "PLAN.md": plan}
     evidence = model_evidence.workspace_evidence(
         initial,
@@ -662,10 +663,19 @@ def test_workspace_evidence_deduplicates_realistic_plan_projection() -> None:
         changed_paths=["PLAN.md"],
         verification=None,
     )
-    duplicated = {**evidence, "final_files": final}
+    legacy = {
+        **evidence,
+        "diff": "".join(difflib.unified_diff(
+            [],
+            plan.splitlines(keepends=True),
+            fromfile="a/PLAN.md",
+            tofile="b/PLAN.md",
+        )),
+    }
     assert evidence["final_files"] == {"PLAN.md": plan}
+    assert evidence["diff"] == ""
     limit = model_evidence.MAX_WORKSPACE_EVIDENCE_BYTES
-    assert len(artifacts.canonical_bytes(duplicated)) > limit
+    assert len(artifacts.canonical_bytes(legacy)) > limit
     assert len(artifacts.canonical_bytes(evidence)) <= limit
 
 
