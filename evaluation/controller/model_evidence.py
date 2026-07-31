@@ -30,9 +30,12 @@ def workspace_evidence(
     verification: dict[str, Any] | None,
 ) -> dict[str, Any]:
     diff = []
+    changed_final: dict[str, str] = {}
     for relative in sorted(before.keys() | after.keys()):
         if before.get(relative) == after.get(relative):
             continue
+        if relative in after:
+            changed_final[relative] = after[relative]
         diff.extend(
             difflib.unified_diff(
                 before.get(relative, "").splitlines(keepends=True),
@@ -43,7 +46,7 @@ def workspace_evidence(
         )
     value = {
         "initial_files": before,
-        "final_files": after,
+        "final_files": changed_final,
         "changed_paths": changed_paths,
         "diff": "".join(diff),
         "verification": verification or {
