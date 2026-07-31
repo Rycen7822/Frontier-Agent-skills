@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Iterable
 
 
-# Recalibrated for bounded transport recovery after splitting its state machine;
-# file, function, cycle, and single-owner limits remain unchanged.
-MAX_PRODUCTION_LINES = 9_350
+# Bounded model-visible workspace evidence is now a distinct shared owner used
+# by execution and calibration; file, function, cycle, and owner limits remain.
+MAX_PRODUCTION_LINES = 9_500
 MAX_TEST_LINES = 3_300
 MAX_FILE_LINES = 1_475
 

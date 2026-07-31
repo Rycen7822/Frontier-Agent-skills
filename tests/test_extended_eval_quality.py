@@ -278,7 +278,14 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 '--labels', str(paths['labels']),
                 '--output', str(paths['calibration']),
             )
+            artifact = json.loads(
+                paths['calibration'].read_text(encoding='utf-8'),
+            ) if result.returncode == 0 else {}
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(
+            {'host_build_hash', 'prompt_hash'},
+            {item['field'] for item in artifact['drift_triggers']},
+        )
 
     def test_calibration_requires_every_selected_model_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -669,6 +676,19 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                     ),
                     set(item['expected_checks']),
                 )
+                if item['calibration_class'] != 'abstain':
+                    self.assertEqual(
+                        {
+                            'captured_output',
+                            'context_evidence',
+                            'deterministic_claims',
+                            'final_answer',
+                            'host_assessment',
+                            'task_evidence',
+                            'workspace_evidence',
+                        },
+                        set(item['grader_view']),
+                    )
             for risk in {item['risk'] for item in pack}:
                 for check_id in check_ids:
                     self.assertEqual({True, False}, {

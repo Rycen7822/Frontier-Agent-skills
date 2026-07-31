@@ -589,9 +589,22 @@ def test_codex_execution_projects_bound_workspace(
     skill = tmp_path / "skill/SKILL.md"
     skill.parent.mkdir()
     skill.write_text("# Fixture\n", encoding="utf-8")
+    implementation = tmp_path / "app.py"
+    implementation.write_text("return 0\n", encoding="utf-8")
+    (tmp_path / "test_app.py").write_text("assert app() == 1\n", encoding="utf-8")
     request = host_request()
-    write_contract(tmp_path, request)
-    calls = bind_fake_turn(monkeypatch, completed_turn())
+    write_contract(
+        tmp_path,
+        request,
+        allowed=["app.py"],
+        expected=["app.py"],
+        protected=["test_app.py"],
+    )
+    calls = bind_fake_turn(
+        monkeypatch,
+        completed_turn(),
+        lambda: implementation.write_text("return 1\n", encoding="utf-8"),
+    )
     events, result = workspace.execute_codex(
         tmp_path,
         request,
@@ -608,6 +621,27 @@ def test_codex_execution_projects_bound_workspace(
         "outcome-complete",
         "transfer-preflight",
     }
+    evidence = next(
+        item for item in result["artifacts"]
+        if item["path"].startswith("workspace/workspace-evidence-")
+    )
+    view = json.loads(
+        (
+            tmp_path / evidence["path"].removeprefix("workspace/")
+        ).read_text(encoding="utf-8")
+    )
+    assert set(view) == {
+        "changed_paths",
+        "diff",
+        "final_files",
+        "initial_files",
+        "verification",
+    }
+    assert view["initial_files"]["app.py"] == "return 0\n"
+    assert view["final_files"]["app.py"] == "return 1\n"
+    assert view["changed_paths"] == ["app.py"]
+    assert "-return 0" in view["diff"] and "+return 1" in view["diff"]
+    assert view["initial_files"]["test_app.py"] == view["final_files"]["test_app.py"]
 
 
 def test_timeout_preserves_zero_usage_and_safety_observation(

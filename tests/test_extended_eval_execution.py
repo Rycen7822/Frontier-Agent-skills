@@ -553,6 +553,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     'final_answer',
                     'host_assessment',
                     'task_evidence',
+                    'workspace_evidence',
                 }
                 == set(item['grader_view'])
                 for item in batch['items']
@@ -576,6 +577,16 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     set(view['context_evidence']),
                 )
                 self.assertNotIn('(</', view['final_answer'])
+                self.assertEqual(
+                    {
+                        'changed_paths',
+                        'diff',
+                        'final_files',
+                        'initial_files',
+                        'verification',
+                    },
+                    set(view['workspace_evidence']),
+                )
             self.assertNotIn('treatment_id', json.dumps(batch, sort_keys=True))
             self.assertEqual(
                 ['execute', 'model_grade'],
@@ -729,6 +740,46 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             })
         with self.assertRaises(ValueError):
             transport._context_evidence({})  # noqa: SLF001
+        bound_assessment = {
+            'allowed_change_paths': ['fixtures/app.py'],
+            'changed_paths': ['fixtures/app.py'],
+            'protected_paths': [],
+            'verification': {'exit_code': 0},
+        }
+        evidence = {
+            'initial_files': {'fixtures/app.py': 'return 0\n'},
+            'final_files': {'fixtures/app.py': 'return 1\n'},
+            'changed_paths': ['fixtures/app.py'],
+            'diff': '-return 0\n+return 1\n',
+            'verification': {'exit_code': 0},
+        }
+        canonical = json.dumps(
+            evidence, ensure_ascii=False, separators=(',', ':'), sort_keys=True,
+        )
+        self.assertEqual(
+            evidence,
+            transport._workspace_evidence(  # noqa: SLF001
+                canonical,
+                bound_assessment,
+            ),
+        )
+        for invalid in (
+            canonical + '\n',
+            canonical.replace('fixtures/app.py', '../app.py'),
+            json.dumps(
+                {
+                    **evidence,
+                    'final_files': {'fixtures/app.py': 'x' * 33_000},
+                },
+                separators=(',', ':'),
+                sort_keys=True,
+            ),
+        ):
+            with self.assertRaises(ValueError):
+                transport._workspace_evidence(  # noqa: SLF001
+                    invalid,
+                    bound_assessment,
+                )
 
     def test_model_grader_batch_rejects_incomplete_or_mismatched_output(
         self,

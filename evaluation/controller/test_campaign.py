@@ -103,6 +103,7 @@ def test_controller_closure_requires_workspace_and_rejects_extra_files(
     root = controller_tree(tmp_path / "controller")
     sources = source_proof.controller_sources(root)
     assert {path.name for path in sources} == source_proof.CONTROLLER_FILES
+    assert "model_evidence.py" in source_proof.CONTROLLER_FILES
     assert "workspace.py" in source_proof.CONTROLLER_FILES
     (root / "unexpected.py").write_text("extra\n", encoding="utf-8")
     with pytest.raises(source_proof.ProofError, match="extra=.*unexpected"):

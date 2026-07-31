@@ -441,6 +441,8 @@ def write_contract(
     root: Path,
     request: dict,
     *,
+    allowed: list[str] | None = None,
+    expected: list[str] | None = None,
     protected: list[str] | None = None,
     transfer: dict | None = None,
 ) -> Path:
@@ -449,8 +451,8 @@ def write_contract(
     artifacts.write_json(path, {
         "schema_version": "frontier-case-contract/1.0",
         "read_only": False,
-        "allowed_change_paths": [],
-        "expected_change_paths": [],
+        "allowed_change_paths": allowed or [],
+        "expected_change_paths": expected or [],
         "protected_paths": protected or [],
         "content_requirements": {},
         "verification_argv": None,
@@ -493,11 +495,17 @@ def completed_turn(
     }
 
 
-def bind_fake_turn(monkeypatch: Any, turn: dict) -> list[dict]:
+def bind_fake_turn(
+    monkeypatch: Any,
+    turn: dict,
+    mutate: Any = None,
+) -> list[dict]:
     calls = []
 
     def run(**kwargs):
         calls.append(kwargs)
+        if mutate:
+            mutate()
         return turn
 
     monkeypatch.setattr(host, "codex_runtime_from_host", lambda _: {})

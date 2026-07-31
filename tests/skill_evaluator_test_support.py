@@ -2602,6 +2602,9 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
         json.dumps(spec, indent=2) + '\n', encoding='utf-8',
     )
     rebind_v5_contract_fixture(paths)
+    host_build_hash = json.loads(
+        paths['host'].read_text(encoding='utf-8'),
+    )['manifest_hash']
 
     classes = (
         ('known-good', 'known_good', 'pass', 0),
@@ -2689,12 +2692,18 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
             'ordering': ordering,
             'created': '2025-12-01T00:00:00Z',
             'expires': '2027-01-01T00:00:00Z',
-            'drift_triggers': [{
-                'field': 'prompt_hash',
-                'expected': synthetic_hash,
-                'observed': synthetic_hash,
-                'status': 'unchanged',
-            }],
+            'drift_triggers': [
+                {
+                    'field': field,
+                    'expected': value,
+                    'observed': value,
+                    'status': 'unchanged',
+                }
+                for field, value in (
+                    ('prompt_hash', synthetic_hash),
+                    ('host_build_hash', host_build_hash),
+                )
+            ],
             'adjudication_policy': 'independent gold owner',
             'thresholds': {
                 'minimum_agreement': 0.8,
