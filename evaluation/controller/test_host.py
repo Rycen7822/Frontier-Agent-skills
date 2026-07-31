@@ -10,7 +10,8 @@ from unittest import mock
 
 import pytest
 
-from . import artifacts, campaign, host, source_proof, studies, workspace
+from . import artifacts, campaign, host, model_evidence, source_proof, studies
+from . import workspace
 from .controller_testkit import (
     HASH,
     app_server_schema_tree,
@@ -641,7 +642,31 @@ def test_codex_execution_projects_bound_workspace(
     assert view["final_files"]["app.py"] == "return 1\n"
     assert view["changed_paths"] == ["app.py"]
     assert "-return 0" in view["diff"] and "+return 1" in view["diff"]
-    assert view["initial_files"]["test_app.py"] == view["final_files"]["test_app.py"]
+    assert view["initial_files"]["test_app.py"] == "assert app() == 1\n"
+    assert "test_app.py" not in view["final_files"]
+
+
+def test_workspace_evidence_deduplicates_realistic_plan_projection() -> None:
+    initial = {
+        "README.md": "R" * 732,
+        "case.contract.json": "C" * 1_235,
+        "planning_contract.json": "P" * 1_482,
+        "service.py": "S" * 909,
+        "test_service.py": "T" * 867,
+    }
+    plan = ("## Ordered slice\n" + "owner, evidence, stop, rollback\n" * 500)[:12_568]
+    final = {**initial, "PLAN.md": plan}
+    evidence = model_evidence.workspace_evidence(
+        initial,
+        final,
+        changed_paths=["PLAN.md"],
+        verification=None,
+    )
+    duplicated = {**evidence, "final_files": final}
+    assert evidence["final_files"] == {"PLAN.md": plan}
+    limit = model_evidence.MAX_WORKSPACE_EVIDENCE_BYTES
+    assert len(artifacts.canonical_bytes(duplicated)) > limit
+    assert len(artifacts.canonical_bytes(evidence)) <= limit
 
 
 def test_timeout_preserves_zero_usage_and_safety_observation(
