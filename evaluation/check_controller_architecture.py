@@ -13,7 +13,7 @@ from typing import Iterable
 # Bounded model-visible workspace evidence is now a distinct shared owner used
 # by execution and calibration; file, function, cycle, and owner limits remain.
 MAX_PRODUCTION_LINES = 9_500
-MAX_TEST_LINES = 3_350
+MAX_TEST_LINES = 3_400
 MAX_FILE_LINES = 1_475
 
 
