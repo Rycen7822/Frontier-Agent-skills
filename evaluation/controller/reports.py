@@ -1228,9 +1228,16 @@ def calibration_rows(
         checks,
         ordering,
     )
-    for reviewer_id, reviews in sorted(
-        _reviewer_groups(reviewer_reviews, reviewer_mapping).items(),
-    ):
+    if bool(reviewer_reviews) != bool(reviewer_mapping):
+        raise ReportError(
+            "reviewer reviews and mapping must both be present or absent"
+        )
+    reviewer_groups = (
+        _reviewer_groups(reviewer_reviews, reviewer_mapping)
+        if reviewer_reviews
+        else {}
+    )
+    for reviewer_id, reviews in sorted(reviewer_groups.items()):
         principal_id = next(iter(reviews.values()))["principal_id"]
         for opaque_id, mapping in reviewer_mapping.items():
             review = reviews[opaque_id]

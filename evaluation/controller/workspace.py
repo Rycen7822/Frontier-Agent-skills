@@ -11,6 +11,8 @@ import sys
 import time
 from typing import Any
 
+from jsonschema import Draft202012Validator
+
 from . import host
 from .artifacts import (
     HASH_PATTERN,
@@ -839,6 +841,75 @@ def execute_codex(
     return events, result
 
 
+def _model_grade_inventory(
+    blinded_input: Any,
+) -> tuple[list[str], list[dict[str, Any]]]:
+    if (
+        not isinstance(blinded_input, dict)
+        or set(blinded_input) != {"batch_id", "items"}
+        or not isinstance(blinded_input.get("batch_id"), str)
+        or not blinded_input["batch_id"]
+        or not isinstance(blinded_input.get("items"), list)
+        or not blinded_input["items"]
+    ):
+        raise WorkspaceError("model grader blinded input is invalid")
+    item_ids: list[str] = []
+    expected_checks: list[dict[str, Any]] | None = None
+    for item in blinded_input["items"]:
+        checks = item.get("checks") if isinstance(item, dict) else None
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("item_id"), str)
+            or not item["item_id"]
+            or not isinstance(checks, list)
+            or not checks
+            or any(
+                not isinstance(check, dict)
+                or set(check) != {"id", "pass_condition"}
+                or not isinstance(check["id"], str)
+                or not check["id"]
+                or not isinstance(check["pass_condition"], str)
+                or not check["pass_condition"].strip()
+                for check in checks
+            )
+            or len({check["id"] for check in checks}) != len(checks)
+            or (expected_checks is not None and checks != expected_checks)
+        ):
+            raise WorkspaceError("model grader blinded items are invalid")
+        item_ids.append(item["item_id"])
+        expected_checks = checks
+    if len(item_ids) != len(set(item_ids)) or expected_checks is None:
+        raise WorkspaceError("model grader blinded item IDs are invalid")
+    return item_ids, expected_checks
+
+
+def _validate_model_grade_output(
+    output: dict[str, Any],
+    schema: dict[str, Any],
+    item_ids: list[str],
+    expected_checks: list[dict[str, Any]],
+) -> None:
+    if list(Draft202012Validator(schema).iter_errors(output)):
+        raise WorkspaceError("model grader output violates its bound schema")
+    observed_items = {
+        item.get("item_id"): item
+        for item in output["items"]
+        if isinstance(item, dict)
+    }
+    expected_check_ids = {check["id"] for check in expected_checks}
+    if (
+        len(observed_items) != len(output["items"])
+        or set(observed_items) != set(item_ids)
+        or any(
+            len(item["checks"]) != len(expected_check_ids)
+            or {check["id"] for check in item["checks"]}
+            != expected_check_ids
+            for item in observed_items.values()
+        )
+    ):
+        raise WorkspaceError("model grader output differs from its bound batch")
+
+
 def execute_model_grade(
     workspace: Path,
     request: dict[str, Any],
@@ -867,13 +938,20 @@ def execute_model_grade(
         raise WorkspaceError("model grader request fields are invalid")
     schema = json_object(schema_file.read_bytes(), schema_file)
     blinded_input = payload["blinded_input"]
+    item_ids, expected_checks = _model_grade_inventory(blinded_input)
     batch_items = blinded_input["items"]
     properties = schema["properties"]
     properties["batch_id"]["enum"] = [blinded_input["batch_id"]]
     properties["items"]["minItems"] = len(batch_items)
     properties["items"]["maxItems"] = len(batch_items)
     item_schema = properties["items"]["items"]["properties"]["item_id"]
-    item_schema["enum"] = [item["item_id"] for item in batch_items]
+    item_schema["enum"] = item_ids
+    checks_schema = properties["items"]["items"]["properties"]["checks"]
+    checks_schema["minItems"] = len(expected_checks)
+    checks_schema["maxItems"] = len(expected_checks)
+    checks_schema["items"]["properties"]["id"]["enum"] = [
+        check["id"] for check in expected_checks
+    ]
     prompt = (
         prompt_file.read_text(encoding="utf-8").rstrip()
         + "\n\nBlinded input:\n"
@@ -912,6 +990,7 @@ def execute_model_grade(
         output = json_object(turn["final_answer"], "model grader output")
     except (UnicodeDecodeError, ValueError) as exc:
         raise WorkspaceError("model grader output is not JSON") from exc
+    _validate_model_grade_output(output, schema, item_ids, expected_checks)
     artifact = _write_payload(
         workspace,
         (

@@ -545,6 +545,20 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 item['item_id'] for item in batch['items']
             ])
             self.assertEqual(batch, blinded)
+            spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+            declared_checks = {
+                check['check_id']: check['pass_condition']
+                for grader in spec['graders']
+                if grader['type'] == 'model'
+                for check in grader['checks']
+            }
+            self.assertTrue(all(
+                {
+                    check['id']: check['pass_condition']
+                    for check in item['checks']
+                } == declared_checks
+                for item in batch['items']
+            ))
             self.assertTrue(all(
                 {
                     'captured_output',
@@ -652,7 +666,10 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     'batch_id': 'batch-one',
                     'items': [{
                         'item_id': 'entry-one',
-                        'checks': [{'id': 'outcome'}],
+                        'checks': [{
+                            'id': 'outcome',
+                            'pass_condition': 'The requested outcome is complete.',
+                        }],
                         'grader_view': {},
                     }],
                 },
@@ -662,10 +679,18 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 for key, value in request.items()
                 if key != 'request_hash'
             })
-            turn = completed_turn(
-                answer=json.dumps({'overall_pass': True}),
-                usage=None,
-            )
+            turn = completed_turn(answer=json.dumps({
+                'batch_id': 'batch-one',
+                'items': [{
+                    'item_id': 'entry-one',
+                    'checks': [{
+                        'id': 'outcome',
+                        'pass': True,
+                        'notes': 'verified',
+                        'uncertainty': 'none',
+                    }],
+                }],
+            }), usage=None)
             with (
                 mock.patch.object(
                     workspace.host,
@@ -703,10 +728,56 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 ['entry-one'],
                 items_schema['items']['properties']['item_id']['enum'],
             )
+            checks_schema = items_schema['items']['properties']['checks']
+            self.assertEqual(
+                (1, 1),
+                (checks_schema['minItems'], checks_schema['maxItems']),
+            )
+            self.assertEqual(
+                ['outcome'],
+                checks_schema['items']['properties']['id']['enum'],
+            )
             self.assertEqual(
                 'model_grade',
                 result['usage']['records'][0]['phase'],
             )
+            wrong_check_turn = completed_turn(answer=json.dumps({
+                'batch_id': 'batch-one',
+                'items': [{
+                    'item_id': 'entry-one',
+                    'checks': [{
+                        'id': 'wrong-check',
+                        'pass': True,
+                        'notes': 'not bound',
+                        'uncertainty': 'none',
+                    }],
+                }],
+            }), usage=None)
+            with (
+                mock.patch.object(
+                    workspace.host,
+                    'run_codex_turn',
+                    return_value=wrong_check_turn,
+                ),
+                mock.patch.object(
+                    workspace.host,
+                    'codex_runtime_from_host',
+                    return_value={},
+                ),
+                self.assertRaisesRegex(
+                    workspace.WorkspaceError,
+                    'bound schema',
+                ),
+            ):
+                workspace.execute_model_grade(
+                    root,
+                    request,
+                    host_manifest(),
+                    prompt_path=ROOT.parent
+                    / 'evaluation/controller/model_grader_prompt.md',
+                    schema_path=ROOT.parent
+                    / 'evaluation/controller/model_judgment.schema.json',
+                )
 
     def test_blinded_grader_evidence_is_bounded_and_fail_closed(self) -> None:
         transport = load_analyzer_module().model_transport
@@ -788,7 +859,16 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         batch = transport.execution_batch(
             [{
                 'item_id': entry_id,
-                'checks': [{'id': 'outcome-check'}],
+                'checks': [
+                    {
+                        'id': 'outcome-check',
+                        'pass_condition': 'The outcome is complete.',
+                    },
+                    {
+                        'id': 'quality-check',
+                        'pass_condition': 'The result meets the quality bar.',
+                    },
+                ],
                 'grader_view': {
                     'captured_output': {},
                     'host_assessment': {},
@@ -798,7 +878,13 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             batch_id='batch-fixture',
         )
 
-        def judgment(entry_id: str, check_id: str = 'outcome-check') -> dict:
+        def judgment(
+            entry_id: str,
+            check_ids: tuple[str, ...] = (
+                'outcome-check',
+                'quality-check',
+            ),
+        ) -> dict:
             return {
                 'item_id': entry_id,
                 'checks': [{
@@ -806,29 +892,38 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     'pass': True,
                     'notes': 'verified',
                     'uncertainty': 'none',
-                }],
+                } for check_id in check_ids],
             }
 
         output = {
             'batch_id': 'batch-fixture',
-            'items': [judgment('entry-b'), judgment('entry-a')],
+            'items': [
+                judgment('entry-b', ('quality-check', 'outcome-check')),
+                judgment('entry-a'),
+            ],
         }
         normalized, pointers = transport.normalize_judgment(
             output,
             batch=batch,
-            requirements=[{'check_id': 'outcome-check', 'required': True}],
+            requirements=[
+                {'check_id': 'outcome-check', 'required': True},
+                {'check_id': 'quality-check', 'required': True},
+            ],
             item_id='entry-b',
         )
         self.assertTrue(normalized['overall_pass'])
         self.assertEqual(
-            '/items/0/checks/0/pass',
+            '/items/0/checks/1/pass',
             pointers['outcome-check'],
         )
 
         invalid_items = (
             [judgment('entry-a')],
             [judgment('entry-a'), judgment('entry-a')],
-            [judgment('entry-a', 'wrong-check'), judgment('entry-b')],
+            [
+                judgment('entry-a', ('wrong-check', 'quality-check')),
+                judgment('entry-b'),
+            ],
         )
         for items in invalid_items:
             with self.subTest(items=items):
@@ -839,10 +934,10 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     transport.normalize_judgment(
                         {'batch_id': 'batch-fixture', 'items': items},
                         batch=batch,
-                        requirements=[{
-                            'check_id': 'outcome-check',
-                            'required': True,
-                        }],
+                        requirements=[
+                            {'check_id': 'outcome-check', 'required': True},
+                            {'check_id': 'quality-check', 'required': True},
+                        ],
                         item_id='entry-a',
                     )
 
@@ -862,7 +957,10 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         def batch_item(index: int) -> dict:
             return {
                 'item_id': f'entry-{index}',
-                'checks': [{'id': 'outcome-check'}],
+                'checks': [{
+                    'id': 'outcome-check',
+                    'pass_condition': 'The outcome is complete.',
+                }],
                 'grader_view': {
                     'captured_output': {},
                     'host_assessment': {},
@@ -875,6 +973,15 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             batch_id='six-item-batch',
         )
         self.assertEqual(6, len(accepted['items']))
+        invalid_check = batch_item(0)
+        invalid_check['checks'] = [{'id': 'outcome-check'}]
+        inconsistent = [batch_item(0), batch_item(1)]
+        inconsistent[1]['checks'][0]['pass_condition'] = 'Different meaning.'
+        duplicate_check = batch_item(0)
+        duplicate_check['checks'] *= 2
+        for items in ([invalid_check], inconsistent, [duplicate_check]):
+            with self.assertRaisesRegex(ValueError, 'batch items are invalid'):
+                transport.execution_batch(items, batch_id='invalid-batch')
         with self.assertRaisesRegex(ValueError, 'batch items are invalid'):
             transport.execution_batch(
                 [batch_item(index) for index in range(7)],
@@ -913,6 +1020,57 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 [plan_entry(index) for index in range(7)],
                 'evaluation-a',
             )
+
+    def test_model_batch_identity_binds_check_meaning(self) -> None:
+        compiler = load_compiler_module()
+        grader = {
+            'grader_id': 'grader-a',
+            'type': 'model',
+            'checks': [{
+                'check_id': 'check-a',
+                'dimension': 'quality',
+                'required': True,
+                'pass_condition': 'The first meaning.',
+            }],
+            'batch_schedule_hash': 'sha256:' + '1' * 64,
+            'prompt': {'path': 'prompt.md', 'sha256': 'sha256:' + '2' * 64},
+            'output_schema': {
+                'path': 'output.schema.json',
+                'sha256': 'sha256:' + '3' * 64,
+            },
+        }
+        scenario = {
+            'case_id': 'case-a',
+            'requirements': [{
+                'requirement_id': 'requirement-a',
+                'check_id': 'check-a',
+                'dimension': 'quality',
+                'grader_id': 'grader-a',
+                'required': True,
+            }],
+        }
+
+        def identity(pass_condition: str) -> tuple[str, str]:
+            grader['checks'][0]['pass_condition'] = pass_condition
+            model_spec = compiler._model_grade_specs(  # noqa: SLF001
+                {'graders': [grader]}, scenario, 1, ['grader-a'],
+            )[0]
+            entry = {
+                'case_id': 'case-a',
+                'disposition': 'execute',
+                'entry_id': 'entry-a',
+                'entry_ordinal': 1,
+                'model_grade_specs': [model_spec],
+            }
+            compiler._bind_model_grade_batches(  # noqa: SLF001
+                [entry], 'evaluation-a',
+            )
+            return model_spec['item_hash'], model_spec['batch_hash']
+
+        self.assertNotEqual(
+            identity('The first meaning.'),
+            identity('A materially different meaning.'),
+        )
 
     def test_non_execute_model_entry_emits_no_model_grade_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

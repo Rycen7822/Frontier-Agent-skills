@@ -4611,8 +4611,25 @@ def _normalize_calibration_raw(
             "calibration.threshold_contract",
             "raw thresholds must equal required calibration gates in the spec",
         )
+    check_agreements = {
+        check_id: (
+            sum(
+                row["label"] == labels[row["example_id"]]["gold_label"]
+                for row in judge_rows
+                if row["check_id"] == check_id
+            )
+            / sum(row["check_id"] == check_id for row in judge_rows)
+        )
+        for check_id in checks
+    }
+    failed_checks = sorted(
+        check_id
+        for check_id, agreement in check_agreements.items()
+        if agreement < thresholds["minimum_agreement"]
+    )
     if (
         len(label_rows) < thresholds["minimum_examples"]
+        or failed_checks
         or any(
             cell["agreement"] < thresholds["minimum_agreement"]
             for cell in normalized["metrics"]["judge_to_gold"]
@@ -4620,19 +4637,8 @@ def _normalize_calibration_raw(
     ):
         return None, (
             "calibration.threshold_failed",
-            "calibration sample count or judge agreement is below threshold",
-        )
-    manual_required = spec.get("authority", {}).get(
-        "manual_review", {},
-    ).get("required") is True
-    if (
-        spec.get("level") in {"L3", "L4"}
-        or spec.get("risk_tier") == "high"
-        or manual_required
-    ) and reviewer_pair_binding is None:
-        return None, (
-            "calibration.reviewer_pair_required",
-            "L3/L4, high-risk, or manual calibration requires one exact reviewer pair",
+            "calibration sample count or per-check judge agreement is below "
+            f"threshold; failed checks: {failed_checks}",
         )
     return normalized, None
 

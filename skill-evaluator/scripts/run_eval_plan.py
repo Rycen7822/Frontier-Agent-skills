@@ -1465,6 +1465,7 @@ def _run_model_graders(
     *,
     plan_path: Path,
     plan: dict[str, Any],
+    spec: dict[str, Any],
     entry: dict[str, Any],
     host: dict[str, Any],
     registry: dict[str, dict[str, Any]],
@@ -1492,11 +1493,18 @@ def _run_model_graders(
     artifacts: list[Path] = []
     stdout_chunks: list[bytes] = []
     stderr_chunks: list[bytes] = []
+    declarations = {
+        grader["grader_id"]: grader
+        for grader in spec["graders"]
+        if grader["type"] == "model"
+    }
     argv, environment = _validate_host_command(host, spec_path.parent)
     for model_spec in entry["model_grade_specs"]:
         if model_spec["batch_owner_entry_id"] != entry["entry_id"]:
             continue
         grader_id = model_spec["grader_id"]
+        if grader_id not in declarations:
+            raise RunnerFailure("model grader declaration is absent")
         grader_dir = attempt_dir / "model-graders" / model_spec["batch_id"]
         grader_dir.mkdir(parents=True)
         items = []
@@ -1543,6 +1551,7 @@ def _run_model_graders(
             items.append(model_transport.execution_item(
                 blinded,
                 grader_id=grader_id,
+                grader_checks=declarations[grader_id]["checks"],
                 entry_id=member_id,
                 read_artifact=read_evidence,
             ))
@@ -2488,6 +2497,7 @@ def _execute_entry(
     ) = _run_model_graders(
         plan_path=plan_path,
         plan=plan,
+        spec=spec,
         entry=entry,
         host=host,
         registry=registry,
