@@ -730,6 +730,10 @@ def execute_bound_entry(
             receipt = validate_native_attempt_receipt(load_json(receipt_path))
         elif terminal != (False, False):
             raise StateError("terminal request artifacts are incomplete")
+        else:
+            raise StateError(
+                "provider reservation lacks canonical terminal artifacts"
+            )
     else:
         reserve_provider_request(
             attempt_root,
@@ -989,6 +993,10 @@ def execute_compiled_plan(
             and reserved != expected_reservations
         ):
             raise StateError("reserved plan entry lacks closed runner evidence")
+        if reserved and not history:
+            raise StateError(
+                "provider reservation lacks canonical runner evidence"
+            )
         documents = _runner_receipts(
             study_root=study_root,
             plan_hash=plan["plan_hash"],
