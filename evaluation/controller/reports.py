@@ -804,13 +804,9 @@ def _projection_results(
             "writing_plans": projection.get("writing_plans"),
         }]
     usefulness = {
-        "software-quality-workflows": (
-            {"supported"}
-            if phase == "formal"
-            else {"supported", "inconclusive_ceiling"}
-        ),
+        "software-quality-workflows": {"supported", "inconclusive_ceiling"},
         "writing-plans-planner": {"supported"},
-        "writing-plans-transfer": {"supported", "inconclusive_ceiling"},
+        "writing-plans-transfer": {"not_evaluable"},
     }
     for study_id, allowed in usefulness.items():
         summary = summaries[study_id]

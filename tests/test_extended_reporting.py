@@ -1617,6 +1617,14 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 'transfer_preflight',
                 first['writing_plans']['release_metrics'],
             )
+            planner_quality = first['writing_plans']['release_metrics'][
+                'planner_quality_absolute_effect'
+            ]
+            self.assertEqual(
+                'higher_is_better:absolute:'
+                'quality_score_normalized:candidate_vs_baseline',
+                planner_quality['estimand'],
+            )
             self.assertEqual(
                 0,
                 first['writing_plans']['release_metrics'][

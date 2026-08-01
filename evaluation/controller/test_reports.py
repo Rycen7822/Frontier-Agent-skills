@@ -416,6 +416,44 @@ def test_d0_uses_frozen_gates_instead_of_generic_usefulness() -> None:
         assert ("native_status" in failures) is fails
 
 
+def test_formal_native_policy_matches_ceiling_and_l1_studies() -> None:
+    contract = {"gate_contract": {arm: [] for arm in SKILL_IDS}}
+    summaries = {
+        "software-quality-workflows": {
+            "evidence_status": "complete",
+            "usefulness_status": "inconclusive_ceiling",
+        },
+        "writing-plans-planner": {
+            "evidence_status": "complete",
+            "usefulness_status": "supported",
+        },
+        "writing-plans-transfer": {
+            "evidence_status": "complete",
+            "usefulness_status": "not_evaluable",
+        },
+    }
+    _, failures = reports._projection_results(
+        "formal", contract, {"status": "complete"}, summaries,
+    )
+    assert failures == {}
+
+    for study_id, status in (
+        ("software-quality-workflows", "not_supported"),
+        ("writing-plans-planner", "not_supported"),
+        ("writing-plans-transfer", "supported"),
+    ):
+        invalid = {key: dict(value) for key, value in summaries.items()}
+        invalid[study_id]["usefulness_status"] = status
+        _, failures = reports._projection_results(
+            "formal", contract, {"status": "complete"}, invalid,
+        )
+        assert failures["native_status"] == [{
+            "study_id": study_id,
+            "evidence_status": "complete",
+            "usefulness_status": status,
+        }]
+
+
 def test_evaluator_has_no_private_or_legacy_native_reader() -> None:
     source = Path(reports.__file__).read_text(encoding="utf-8")
     for forbidden in (
@@ -435,7 +473,21 @@ def test_gate_inventory_and_threshold_owner_are_exact() -> None:
         phase: tuple(len(specs.gate_contract(phase)[arm]) for arm in SKILL_IDS)
         for phase in ("d0", "formal")
     }
-    assert counts == {"d0": (11, 18), "formal": (18, 23)}
+    assert counts == {"d0": (11, 17), "formal": (15, 21)}
+    formal_sqw = {
+        gate["gate_id"]: gate
+        for gate in specs.gate_contract("formal")["software-quality-workflows"]
+    }
+    formal_wp = {
+        gate["gate_id"]: gate
+        for gate in specs.gate_contract("formal")["writing-plans"]
+    }
+    assert {"SQW-F-11", "SQW-F-12", "SQW-F-16"}.isdisjoint(formal_sqw)
+    assert {"WP-F-18", "WP-F-20"}.isdisjoint(formal_wp)
+    assert formal_wp["WP-F-09"]["threshold"]["scalar"] == -0.02
+    assert formal_wp["WP-F-13"]["metric_id"].endswith(
+        "/planner_quality_absolute_effect"
+    )
     gates = [
         specs.gate("point", "arm", "point_metric", "ge", 0.25, selector="point"),
         {

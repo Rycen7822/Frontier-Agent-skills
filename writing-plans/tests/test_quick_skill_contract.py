@@ -43,7 +43,7 @@ def frontmatter(path: Path) -> dict:
 class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_explicit_activation(self) -> None:
         metadata = frontmatter(SKILL_PATH)
-        self.assertEqual("8.0.0", metadata["metadata"]["version"])
+        self.assertEqual("8.1.0", metadata["metadata"]["version"])
         self.assertEqual(
             "Write source-bound software implementation Handoffs and "
             "multi-session Programs from settled decisions; not diagnosis "
@@ -139,16 +139,16 @@ class QuickWritingPlansTests(unittest.TestCase):
         for contract in (
             "only post-edit command",
             "behavior, diff scope, protected boundary, residue, and whitespace",
-            "after proof passes, run no status, diff, test, or confirmation",
+            "after proof, run no status, diff, test, or confirmation",
             "planner-only non-content confirmation",
-            "never enters the executor plan",
+            "never put it in the executor plan",
         ):
             self.assertIn(contract, body)
 
     def test_source_binding_and_first_source_change_are_distinct(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8")
         self.assertLess(
-            body.index("Revision or explicit non-Git source identity"),
+            body.index("revision or explicit non-Git identity"),
             body.index("Resume preflight"),
         )
         self.assertLess(
@@ -170,20 +170,20 @@ class QuickWritingPlansTests(unittest.TestCase):
 
     def test_postwrite_checks_do_not_reemit_the_plan(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
-        for contract in ("before writing", "do not reopen", "git diff --check"):
+        for contract in ("before return", "do not reopen", "git diff --check"):
             self.assertIn(contract, body)
 
     def test_minimal_sufficient_plan_and_execution_contract(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
         for contract in (
             "minimal sufficient form",
-            "repo-relative paths",
+            "repo-relative dirty/protected and first-slice paths",
             "state each fact",
             "one combined preflight",
             "one combined final proof command",
-            "at most one combined non-content confirmation",
+            "at most one combined planner-only non-content confirmation",
             "do not expand one sentence into its own heading",
-            "skill-authoring workflow",
+            "skill-source changes use skill authoring",
             "portable identity",
             "no word/byte reduction target",
             "only one compact contract table",
@@ -194,11 +194,14 @@ class QuickWritingPlansTests(unittest.TestCase):
             "exclude the named plan deliverable itself",
             "never compare against the original absolute root",
             "globally clean status",
-            "exact source content already bound in the invocation",
-            "prompt-named plan/owner/test/symbol paths as resolved",
-            "do not inventory files, search alternate owners, or check existence separately",
+            "use invocation-bound source; do not reread it",
+            "treat named plan/owner/test/symbol paths as resolved",
+            "do not inventory, seek alternate owners, or check existence",
             "only a later planning invocation updates the program",
             "protected immutable input",
+            "dependencies cite milestone names, never ordinals",
+            "resume missing attestation acceptance or one-preflight fallback",
+            "prose broken only to fit a column",
             "do not instruct execution to modify the plan",
             "repository's test owner",
             "not an example or alternative",
@@ -209,7 +212,7 @@ class QuickWritingPlansTests(unittest.TestCase):
         ):
             self.assertIn(contract, body)
         self.assertIn("state contains current frontier and later blockers", body)
-        self.assertIn("slice contains milestones in dependency order", body)
+        self.assertIn("slice contains named milestones in dependency order", body)
 
     def test_no_host_injection_reread_workaround(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
