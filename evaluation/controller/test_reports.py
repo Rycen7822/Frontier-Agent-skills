@@ -104,6 +104,17 @@ def test_calibration_partition_is_four_blinded_provider_requests(
     assert {item["artifact_id"] for item in pack} == {
         item_id for batch in batches for item_id in batch
     }
+    if skill_id == "writing-plans":
+        assert any(
+            item["calibration_class"] == "known_bad"
+            and item["expected_checks"]["no-invented-decision"] is False
+            and sum(
+                value is False
+                for value in item["expected_checks"].values()
+            ) == 6
+            and "unresolved owner" in str(item["grader_view"])
+            for item in pack
+        )
 
 
 @pytest.mark.parametrize("skill_id", SKILL_IDS)
@@ -706,6 +717,13 @@ def test_calibration_requires_pair_and_accepts_numeric_severity() -> None:
         reports.calibration_rows(reviewer_reviews=reviews[:1], **kwargs)
     _, ratings = reports.calibration_rows(reviewer_reviews=reviews, **kwargs)
     assert 0.5 in [row["severity"] for row in ratings]
+    _, judge_only = reports.calibration_rows(
+        reviewer_reviews=[],
+        **{**kwargs, "reviewer_mapping": {}},
+    )
+    assert {
+        row["reviewer"]["role"] for row in judge_only
+    } == {"judge"}
     grader_rating = next(
         row for row in ratings
         if row["reviewer"]["reviewer_id"] == "blinded-grader"

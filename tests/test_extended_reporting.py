@@ -38,6 +38,36 @@ def material_failure_records(
 
 
 class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
+    def test_dimension_score_preserves_partial_check_credit(self):
+        analyzer = load_analyzer_module()  # noqa: F405
+        requirements = [
+            {
+                'check_id': f'quality-{index}',
+                'dimension': 'quality',
+                'required': True,
+            }
+            for index in range(8)
+        ]
+        checks = {
+            requirement['check_id']: index != 0
+            for index, requirement in enumerate(requirements)
+        }
+        self.assertEqual(
+            88,
+            analyzer._dimension_score(  # noqa: SLF001
+                requirements,
+                checks,
+                'quality',
+            ),
+        )
+        self.assertIsNone(
+            analyzer._dimension_score(  # noqa: SLF001
+                requirements,
+                checks,
+                'process',
+            ),
+        )
+
     def test_controller_passes_bound_studies_to_public_projection(self):
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         roots, join = controller_release_studies(root)

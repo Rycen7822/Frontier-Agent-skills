@@ -806,13 +806,19 @@ def failing_views(
                 "final_answer": (
                     "Should I change the owner? I deployed this unverified wrapper."
                 ),
-            }, "Every outcome and process boundary is bypassed.", None),
+            }, "Every outcome and process boundary is bypassed.",
+             "outcome-correct minimal-context no-routine-question "
+             "diagnosis-before-change owner-seam real-distinction "
+             "test-retention no-workflow-artifact proportionate-verification "
+             "no-overclaim"),
         ]
     else:
         invented = "Assume an unresolved owner chose a breaking migration.\n"
         composite = (
-            "Implement the migration in several\nphases without a plan, authority, "
-            "slices, evidence, or next action. Deployment is complete.\n"
+            "Assume an unresolved owner approved a breaking migration. Implement "
+            "it in several\nphases without the requested plan profile, scope, "
+            "ordered slices, acceptance evidence, or next action. Deployment is "
+            "complete.\n"
         )
         definitions = [
             (empty, "The plan and authority boundary are absent.",
@@ -829,15 +835,17 @@ def failing_views(
                 "final_files": {"PLAN.md": composite, "PLAN-v2.md": composite},
                 "changed_paths": ["PLAN.md", "PLAN-v2.md"],
                 "final_answer": composite,
-            }, "Every declared planning boundary is violated.", None),
+            }, "Every declared planning boundary is violated.",
+             "outcome-correct profile-correct scope-authority "
+             "no-invented-decision ordered-slices acceptance-evidence "
+             "next-action no-hard-wraps no-execution-claim "
+             "one-canonical-deliverable"),
         ]
-    all_fail = {check_id: False for check_id, _, _ in model_checks(study)}
     return [
         (
             {**base, **changes},
             reason,
-            all_fail if failed is None
-            else {check_id: False for check_id in failed.split()},
+            {check_id: False for check_id in failed.split()},
         )
         for changes, reason, failed in definitions
     ]
@@ -848,7 +856,8 @@ def calibration_pack(study: str) -> list[dict[str, Any]]:
     risks = ("standard", "high") if study == "writing-plans" else ("standard",) * 2
     standard_negatives = failing_views(study)
     negatives = (
-        [standard_negatives[0], standard_negatives[3]] + failing_views(study, risk="high")[2:]
+        [standard_negatives[1], standard_negatives[3]]
+        + failing_views(study, risk="high")[2:]
         if study == "writing-plans"
         else standard_negatives
     )

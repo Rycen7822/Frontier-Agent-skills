@@ -23,7 +23,7 @@ Each spec declares exactly one decision for every module: `core_outcome`, `natur
 
 Selected model graders require a bound, unexpired blinded calibration artifact. L2–L4 require a bound suite-quality artifact; L1 may bind one. `quality_contract_hash` excludes the quality artifact path/hash, readiness, outputs, timestamps, and candidate results, so the spec-to-quality binding is acyclic. Validator-produced calibration and quality artifacts are preparation evidence, never candidate score evidence.
 
-Calibration must contain both pass and fail gold for every selected model check and cover every risk tier of scenarios that invoke model grading. Candidate/grader genealogy dependence remains explicit and can never close an `independent_judge` gate; without that gate it is usable only with blinded gold, the required context-clean reviewer pair, and the declared manual authority.
+Calibration must contain both pass and fail gold for every selected model check and cover every risk tier of scenarios that invoke model grading. Candidate/grader genealogy dependence remains explicit and can never close an `independent_judge` gate. A context-clean reviewer pair is optional corroboration; without it, blinded gold, per-check agreement, and the declared manual authority remain mandatory, and no reviewer-independence claim is available.
 
 Placeholders are valid only in their exact non-ready forms. A public example that validates with warnings is a template, not a run receipt or usefulness result.
 

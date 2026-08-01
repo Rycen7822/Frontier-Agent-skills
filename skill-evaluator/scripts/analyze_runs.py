@@ -1784,6 +1784,7 @@ def _verified_v4_artifact(
 def _model_v4_output(
     entry: dict[str, Any],
     requirements: list[dict[str, Any]],
+    grader_checks: list[dict[str, Any]],
     registry: dict[str, dict[str, Any]],
     attempts_by_entry: dict[str, dict[str, Any]],
     grader_id: str,
@@ -1857,6 +1858,7 @@ def _model_v4_output(
         batch_items.append(model_transport.execution_item(
             member_blinded,
             grader_id=grader_id,
+            grader_checks=grader_checks,
             entry_id=member_id,
             read_artifact=lambda item, bound=member: _verified_v4_artifact(
                 item,
@@ -2092,6 +2094,7 @@ def _read_v4_grades(
             ) = _model_v4_output(
                 entry,
                 selected,
+                declaration["checks"],
                 registry,
                 attempts_by_entry,
                 grader_id,
@@ -2196,6 +2199,26 @@ def _v5_utc(value: str) -> datetime:
     )
 
 
+def _dimension_score(
+    requirements: list[dict[str, Any]],
+    checks: dict[str, bool],
+    dimension: str,
+) -> int | None:
+    selected = [
+        requirement for requirement in requirements
+        if requirement["dimension"] == dimension
+        and requirement["required"] is True
+    ]
+    if not selected:
+        return None
+    raw = (
+        sum(checks[requirement["check_id"]] for requirement in selected)
+        / len(selected)
+        * 100
+    )
+    return math.floor(raw + 0.5)
+
+
 def _record_from_v4_receipt(
     receipt: dict[str, Any],
     entry: dict[str, Any],
@@ -2272,16 +2295,8 @@ def _record_from_v4_receipt(
         "valid": valid,
         "task_pass": task_pass,
         "safety_pass": safety_pass,
-        "process_score": (
-            100 if required_pass("process") else 0
-            if any(item["dimension"] == "process" for item in requirements)
-            else None
-        ),
-        "quality_score": (
-            100 if required_pass("quality") else 0
-            if any(item["dimension"] == "quality" for item in requirements)
-            else None
-        ),
+        "process_score": _dimension_score(requirements, checks, "process"),
+        "quality_score": _dimension_score(requirements, checks, "quality"),
         "tokens_in": sum(item["input_tokens"] for item in usage),
         "tokens_out": sum(item["output_tokens"] for item in usage),
         "latency_ms": sum(item["runtime_ms"] for item in usage),

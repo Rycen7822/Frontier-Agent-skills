@@ -298,6 +298,7 @@ def execution_item(
     blinded: dict[str, Any],
     *,
     grader_id: str,
+    grader_checks: list[dict[str, Any]],
     entry_id: str,
     read_artifact: Callable[[dict[str, Any]], str],
 ) -> dict[str, Any]:
@@ -310,6 +311,29 @@ def execution_item(
     ]
     if not requirements:
         raise ValueError("model grader has no selected requirements")
+    declarations = {
+        check.get("check_id"): check
+        for check in grader_checks
+        if isinstance(check, dict)
+    }
+    requirement_ids = [item.get("check_id") for item in requirements]
+    if (
+        len(declarations) != len(grader_checks)
+        or len(requirement_ids) != len(set(requirement_ids))
+        or any(
+            not isinstance(check_id, str)
+            or not check_id
+            or check_id not in declarations
+            or not isinstance(declarations[check_id].get("pass_condition"), str)
+            or not declarations[check_id]["pass_condition"].strip()
+            or declarations[check_id].get("dimension")
+            != requirement.get("dimension")
+            or declarations[check_id].get("required")
+            is not requirement.get("required")
+            for check_id, requirement in zip(requirement_ids, requirements)
+        )
+    ):
+        raise ValueError("model grader check declarations are invalid")
     evidence = {}
     for label in ("host-observation", "workspace-evidence", "final-answer"):
         matches = [
@@ -343,7 +367,13 @@ def execution_item(
         raise ValueError("model grader typed evidence is invalid")
     return {
         "item_id": entry_id,
-        "checks": [{"id": item["check_id"]} for item in requirements],
+        "checks": [
+            {
+                "id": check_id,
+                "pass_condition": declarations[check_id]["pass_condition"],
+            }
+            for check_id in requirement_ids
+        ],
         "grader_view": {
             "captured_output": blinded["captured_output"],
             **copy.deepcopy(observations[0]),
@@ -369,6 +399,9 @@ def execution_batch(
     item_ids = [
         item.get("item_id") for item in items if isinstance(item, dict)
     ]
+    check_lists = [
+        item.get("checks") for item in items if isinstance(item, dict)
+    ]
     if (
         not isinstance(batch_id, str)
         or not batch_id
@@ -381,6 +414,23 @@ def execution_batch(
         )
         or any(not isinstance(item_id, str) or not item_id for item_id in item_ids)
         or len(item_ids) != len(set(item_ids))
+        or len(check_lists) != len(items)
+        or any(
+            not isinstance(checks, list)
+            or not checks
+            or any(
+                not isinstance(check, dict)
+                or set(check) != {"id", "pass_condition"}
+                or not isinstance(check["id"], str)
+                or not check["id"]
+                or not isinstance(check["pass_condition"], str)
+                or not check["pass_condition"].strip()
+                for check in checks
+            )
+            or len({check["id"] for check in checks}) != len(checks)
+            for checks in check_lists
+        )
+        or any(checks != check_lists[0] for checks in check_lists[1:])
     ):
         raise ValueError("model grader batch items are invalid")
     return {"batch_id": batch_id, "items": items}
@@ -420,7 +470,8 @@ def normalize_judgment(
             check.get("id") for check in checks if isinstance(check, dict)
         ] if isinstance(checks, list) else []
         if (
-            observed != expected
+            set(observed) != set(expected)
+            or len(observed) != len(expected)
             or len(observed) != len(set(observed))
             or any(
                 set(check) != {"id", "pass", "notes", "uncertainty"}

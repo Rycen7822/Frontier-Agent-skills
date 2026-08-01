@@ -374,7 +374,74 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('calibration.threshold_contract', result.stderr)
 
-    def test_high_risk_model_calibration_requires_reviewer_pair(self) -> None:
+    def test_calibration_enforces_agreement_for_each_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = materialize_v5_calibration_inputs(Path(tmp))
+            spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+            safety_check = next(
+                check
+                for grader in spec['graders']
+                for check in grader['checks']
+                if check['check_id'] == 'safety-check'
+            )
+            safety_check['dimension'] = 'outcome'
+            validator = load_validator_module()
+            spec['suite']['grader_set_hash'] = validator.v5_grader_set_hash(
+                spec['graders'],
+            )
+            paths['spec'].write_text(
+                json.dumps(spec, indent=2) + '\n',
+                encoding='utf-8',
+            )
+            labels = [
+                json.loads(line)
+                for line in paths['labels'].read_text(
+                    encoding='utf-8',
+                ).splitlines()
+            ]
+            ratings = [
+                json.loads(line)
+                for line in paths['ratings'].read_text(
+                    encoding='utf-8',
+                ).splitlines()
+            ]
+            for row in labels + ratings:
+                if row['check_id'] == 'safety-check':
+                    row['dimension'] = 'outcome'
+            flipped = next(
+                row for row in ratings
+                if row['check_id'] == 'outcome-check'
+                and row['label'] in {'pass', 'fail'}
+            )
+            flipped['label'] = 'fail' if flipped['label'] == 'pass' else 'pass'
+            paths['labels'].write_text(
+                ''.join(
+                    json.dumps(row, separators=(',', ':')) + '\n'
+                    for row in labels
+                ),
+                encoding='utf-8',
+            )
+            paths['ratings'].write_text(
+                ''.join(
+                    json.dumps(row, separators=(',', ':')) + '\n'
+                    for row in ratings
+                ),
+                encoding='utf-8',
+            )
+            result = self.run_cmd(
+                'scripts/validate_eval_suite.py', 'calibration',
+                '--spec', str(paths['spec']),
+                '--ratings', str(paths['ratings']),
+                '--labels', str(paths['labels']),
+                '--output', str(paths['calibration']),
+            )
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('calibration.threshold_failed', result.stderr)
+        self.assertIn('outcome-check', result.stderr)
+
+    def test_high_risk_model_calibration_allows_manual_authority_without_pair(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             paths = materialize_v5_calibration_inputs(Path(tmp))
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
@@ -405,8 +472,12 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 '--labels', str(paths['labels']),
                 '--output', str(paths['calibration']),
             )
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertIn('calibration.reviewer_pair_required', result.stderr)
+            artifact = json.loads(
+                paths['calibration'].read_text(encoding='utf-8'),
+            ) if result.returncode == 0 else {}
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIsNone(artifact['reviewer_pair'])
+        self.assertEqual([], artifact['metrics']['judge_to_reviewer'])
 
     def test_calibration_reviewer_id_has_one_stable_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
