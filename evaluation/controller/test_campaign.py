@@ -198,11 +198,35 @@ def test_bundle_source_hash_accepts_strict_formatted_manifest(
         artifacts.bundle_source_hash(root, skills | {"missing-skill"})
 
 
-def test_p4_reserved_nonterminal_request_resumes_same_id(tmp_path: Path) -> None:
+def test_p4_reserved_nonterminal_request_fails_closed(tmp_path: Path) -> None:
     attempt = tmp_path / "attempt"
     initialize(attempt)
     entry = campaign.request_entry(attempt, "request-1")
     reserve(attempt, entry["request_id"])
+    calls = []
+    result_root = tmp_path / "result"
+    with pytest.raises(
+        artifacts.StateError,
+        match="reservation lacks canonical terminal artifacts",
+    ):
+        campaign.execute_bound_entry(
+            attempt_root=attempt,
+            entry=entry,
+            request={"request_id": entry["request_id"]},
+            effect_root=result_root / "effect",
+            result_root=result_root,
+            effect=lambda: (
+                calls.append(entry["request_id"])
+                or {"terminal_status": "completed"}
+            ),
+        )
+    assert calls == []
+
+
+def test_p4_terminal_request_replays_without_effect(tmp_path: Path) -> None:
+    attempt = tmp_path / "attempt"
+    initialize(attempt)
+    entry = campaign.request_entry(attempt, "request-1")
     calls = []
     result_root = tmp_path / "result"
     result, *_ = campaign.execute_bound_entry(
@@ -216,8 +240,6 @@ def test_p4_reserved_nonterminal_request_resumes_same_id(tmp_path: Path) -> None
             or {"terminal_status": "completed"}
         ),
     )
-    assert result == {"terminal_status": "completed"}
-    assert calls == ["request-1"]
     replayed, *_ = campaign.execute_bound_entry(
         attempt_root=attempt,
         entry=entry,
@@ -464,7 +486,7 @@ def test_compiled_plan_resumes_at_binding_boundaries_without_replay(
         artifacts.write_json(plan_path, plan)
         control = root / "control.json"
         artifacts.write_json(control, {
-            "stop_after": stop,
+            "stop_after": -1,
             "total": 4,
             "empty_exits": 0,
         })
@@ -477,13 +499,10 @@ def test_compiled_plan_resumes_at_binding_boundaries_without_replay(
             "index_path": study / "artifacts/index.jsonl",
             "bindings": bindings,
         }
-        if 0 <= stop < 4:
-            with pytest.raises(
-                artifacts.StateError,
-                match="no canonical terminal receipt",
-            ):
-                campaign.execute_compiled_plan(**arguments)
-            assert artifacts.load_json(control)["empty_exits"] == 2
+        if stop:
+            campaign.execute_compiled_plan(
+                **{**arguments, "bindings": bindings[:stop]},
+            )
         result = campaign.execute_compiled_plan(**arguments)
         replay = campaign.execute_compiled_plan(**arguments)
         assert result == replay
@@ -548,6 +567,28 @@ def test_compiled_plan_rejects_reserved_entry_without_runner_evidence(
     ):
         campaign.execute_compiled_plan(
             attempt_root=attempt,
+            study_root=study,
+            runner_path=tmp_path / "unused.py",
+            plan_path=plan_path,
+            index_path=study / "artifacts/index.jsonl",
+            bindings=[{
+                "entry_id": "entry-1",
+                "request_ids": ["request-1", "request-2"],
+            }],
+        )
+    fully_reserved = tmp_path / "fully-reserved"
+    initialize(fully_reserved, required=[
+        request_entry("request-1"),
+        request_entry("request-2"),
+    ])
+    reserve(fully_reserved, "request-1")
+    reserve(fully_reserved, "request-2")
+    with pytest.raises(
+        artifacts.StateError,
+        match="reservation lacks canonical runner evidence",
+    ):
+        campaign.execute_compiled_plan(
+            attempt_root=fully_reserved,
             study_root=study,
             runner_path=tmp_path / "unused.py",
             plan_path=plan_path,
