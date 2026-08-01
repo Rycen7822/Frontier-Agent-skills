@@ -1,10 +1,12 @@
 # Release Notes
 
-## Bundle 6.0.0 Skill Evaluator 3.0 major cut
+## Bundle 6.0.0 Skill Evaluator 3.0 and Writing Plans 8.1
 
-Bundle 6.0.0 advances only Skill Evaluator from 2.0.0 to 3.0.0; Long Document remains 1.0.0, Software Quality Workflows 9.0.0, and Writing Plans 8.0.0. Compatible schema epoch advances to 5. The four-owner set, Direct-first boundary, mixed activation matrix, `implicit_local_pilot` ceiling, and `remote_writes=false` remain unchanged.
+Bundle 6.0.0 advances Skill Evaluator from 2.0.0 to 3.0.0 and Writing Plans from 8.0.0 to 8.1.0; Long Document remains 1.0.0 and Software Quality Workflows remains 9.0.0. Compatible schema epoch advances to 5. The four-owner set, Direct-first boundary, mixed activation matrix, `implicit_local_pilot` ceiling, and `remote_writes=false` remain unchanged.
 
 Skill Evaluator 3.0 makes spec v5, scenario v1, execution plan v1, host manifest v1, run-index row v2, receipt v4, analysis summary v4, and failure index v1 the only active protocol. Preparation, deterministic compilation, bounded host execution/resume, evidence verification, compact five-axis reporting, package audit, and Pattern traceability have executable schema and test owners. Spec v4 and receipt v3 have no compatibility reader.
+
+Writing Plans 8.1 makes the resume-attestation fallback, named milestone dependencies, and rejection of column-driven prose wrapping explicit. Release scoring retains context and token diagnostics while hard-gating attributable product behavior; planner quality uses normalized absolute effect, and native usefulness policy follows the ceiling and fixed-L1 study designs.
 
 This source cut proves deterministic package, bundle, static, staging, archive, and test contracts only. Scored usefulness, signed release, installation, publication, deployment, credentials, and remote writes remain separately authorized external gates. Rollback restores the frozen bundle 5.0.0 / Skill Evaluator 2.0.0 source identity rather than converting historical evidence.
 
