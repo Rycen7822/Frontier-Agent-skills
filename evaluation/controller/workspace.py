@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from pathlib import PurePosixPath
-import shutil
 import subprocess
 import sys
-import time
 from typing import Any
 
 from jsonschema import Draft202012Validator
@@ -1146,101 +1143,3 @@ def load_p4_corpus(manifest_path: Path) -> dict[str, Any]:
     if corpus["corpus_tree_hash"] != canonical_hash(hashes):
         raise WorkspaceError("P4 corpus tree hash differs")
     return corpus
-
-
-def copy_p4_fixture(
-    *,
-    corpus_root: Path,
-    task: dict[str, Any],
-    destination: Path,
-) -> None:
-    if destination.exists() or destination.is_symlink():
-        raise WorkspaceError("P4 workspace must be absent")
-    destination.mkdir(parents=True)
-    fixture_root = corpus_root / task["fixture_root"]
-    for binding in task["fixture_files"]:
-        source = _p4_corpus_file(
-            corpus_root,
-            binding,
-            f"P4 {task['task_id']} fixture",
-        )
-        try:
-            relative = source.relative_to(fixture_root)
-        except ValueError:
-            raise WorkspaceError("P4 fixture file escapes fixture root") from None
-        target = destination / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, target)
-        target.chmod(
-            0o444 if relative.as_posix() in task["protected_paths"] else 0o644
-        )
-
-
-def run_command(
-    argv: list[str],
-    *,
-    cwd: Path,
-    timeout_seconds: int = 600,
-) -> dict[str, Any]:
-    if (
-        not isinstance(argv, list)
-        or not argv
-        or not all(isinstance(item, str) and item for item in argv)
-    ):
-        raise WorkspaceError("P4 command argv is invalid")
-    started = time.monotonic_ns()
-    try:
-        result = subprocess.run(
-            argv,
-            cwd=cwd,
-            env={
-                "PATH": os.environ.get("PATH", ""),
-                "PYTHONDONTWRITEBYTECODE": "1",
-            },
-            capture_output=True,
-            text=True,
-            shell=False,
-            timeout=timeout_seconds,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return {
-            "argv": argv,
-            "exit_code": None,
-            "timed_out": True,
-            "runtime_ns": time.monotonic_ns() - started,
-            "stdout_sha256": canonical_hash(""),
-            "stderr_sha256": canonical_hash("timeout"),
-            "failure_class": "timeout",
-        }
-    combined = result.stdout + result.stderr
-    failure_class = None
-    if result.returncode != 0:
-        if "AssertionError" in combined or "FAILED (failures=" in combined:
-            failure_class = "assertion"
-        elif "SyntaxError" in combined:
-            failure_class = "syntax"
-        else:
-            failure_class = "setup_or_other"
-    return {
-        "argv": argv,
-        "exit_code": result.returncode,
-        "timed_out": False,
-        "runtime_ns": time.monotonic_ns() - started,
-        "stdout_sha256": canonical_hash(result.stdout),
-        "stderr_sha256": canonical_hash(result.stderr),
-        "failure_class": failure_class,
-    }
-
-
-def apply_bound_patch(
-    *,
-    corpus_root: Path,
-    binding: dict[str, Any],
-    workspace: Path,
-    label: str,
-) -> None:
-    patch_path = _p4_corpus_file(corpus_root, binding, label)
-    result = run_command(["git", "apply", str(patch_path)], cwd=workspace)
-    if result["exit_code"] != 0:
-        raise WorkspaceError(f"{label} could not be applied")
