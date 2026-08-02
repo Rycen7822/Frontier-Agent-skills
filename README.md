@@ -54,6 +54,8 @@ frontier-engineering-plugin/
 
 Use `scripts/build_codex_plugin.py` to create a new staging tree and build evidence, then validate the staged tree and run `scripts/smoke_codex_plugin.py`. These commands copy the four complete skill directories and perform no global install, provider call, publication, or deployment.
 
+A release build additionally requires a canonical `release-authorization/1` file created by `scripts/create_release_authorization.py` from the signed-clean source revision, the verified staged plugin, the deterministic static report, and a non-empty release-owner attestation. Staging builds reject this authorization; release builds require and identity-check it. Scored evaluation reports are not packaging authorization.
+
 ## Same-thread Codex skill reload supervisor
 
 This optional developer tool is not used by the Bundle 6.1.0 source-complete or release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles. It never calls `fork`, never selects `--last`, never edits global Codex configuration, and never drives the TUI with synthesized keystrokes. It owns a local Unix-socket app-server and launches every TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.

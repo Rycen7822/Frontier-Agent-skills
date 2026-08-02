@@ -62,7 +62,7 @@ class QuickBundleContractTests(unittest.TestCase):
         schema_names = (
             "plugin-build-evidence.schema.json", "source-archive-evidence.schema.json",
             "static-plugin-smoke.schema.json", "cli-install-smoke.schema.json",
-            "release-evidence.schema.json",
+            "release-authorization-v1.schema.json",
         )
         for name in schema_names:
             text = (ROOT / "packaging" / "schemas" / name).read_text(encoding="utf-8")

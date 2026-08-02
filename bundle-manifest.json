@@ -37,7 +37,7 @@
       "PYTHONDONTWRITEBYTECODE=1 python3 long-document-segmented-writing/tests/test_assemble_markdown.py -v",
       "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tests python3 -m unittest tests/test_extended_codex_skill_reload_supervisor.py tests/test_extended_eval_execution.py -v",
       "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tests python3 -m unittest tests/test_extended_eval_quality.py tests/test_extended_eval_spec.py tests/test_extended_module_e2e.py -v",
-      "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tests python3 -m unittest tests/test_extended_package_audit.py tests/test_extended_plugin_build.py tests/test_extended_receipts.py tests/test_extended_release_evidence_contract.py tests/test_extended_reporting.py tests/test_extended_source_archive.py -v"
+      "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tests python3 -m unittest tests/test_extended_package_audit.py tests/test_extended_plugin_build.py tests/test_extended_receipts.py tests/test_extended_release_authorization.py tests/test_extended_reporting.py tests/test_extended_source_archive.py -v"
     ],
     "release": [
       "PYTHONDONTWRITEBYTECODE=1 python3 tests/test_release_cli_install.py -v"
