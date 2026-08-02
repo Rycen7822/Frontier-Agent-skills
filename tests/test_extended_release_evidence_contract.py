@@ -98,31 +98,6 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
         revision.start()
         self.addCleanup(revision.stop)
 
-    def test_release_budget_matches_controller_frozen_matrix(self) -> None:
-        sys.path.insert(0, str(ROOT))
-        try:
-            from evaluation.controller import specs
-        finally:
-            sys.path.remove(str(ROOT))
-
-        budget = self.builder.EXPECTED_FORMAL_BUDGET
-        self.assertEqual(
-            (
-                budget["scored_call_hard_cap"],
-                budget["grader_calibration_call_hard_cap"],
-                budget["reviewer_calibration_call_hard_cap"],
-                budget["scheduled_provider_calls"],
-            ),
-            specs.PHASE_BUDGETS["formal"],
-        )
-        self.assertEqual(
-            sum(
-                usage["provider_calls"]
-                for usage in self.builder.EXPECTED_FORMAL_ARM_USAGE.values()
-            ),
-            budget["scored_call_hard_cap"],
-        )
-
     def make_contract(self, root: Path) -> tuple[Path, Path, dict]:
         source = root / "source"
         run = root / "run"

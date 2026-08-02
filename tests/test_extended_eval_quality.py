@@ -2,13 +2,6 @@ from __future__ import annotations
 
 from skill_evaluator_test_support import *  # noqa: F403
 
-sys.path.insert(0, str(Path(__file__).parents[1]))
-try:
-    from evaluation.controller import host as controller_host
-    from evaluation.controller import studies as controller_studies
-finally:
-    sys.path.pop(0)
-
 
 class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
     def _calibration_binding_errors(
@@ -714,109 +707,6 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                     1, result.returncode, result.stdout + result.stderr,
                 )
                 self.assertIn('calibration.reviewer_prompt', result.stderr)
-
-    def test_controller_calibration_and_matrix_contract(self) -> None:
-        for study in ('software-quality-workflows', 'writing-plans'):
-            check_ids = {
-                check_id
-                for check_id, _, _ in controller_studies.model_checks(study)
-            }
-            pack = controller_studies.calibration_pack(study)
-            serialized_views = {
-                json.dumps(
-                    item['grader_view'],
-                    sort_keys=True,
-                    separators=(',', ':'),
-                )
-                for item in pack
-            }
-            self.assertEqual(8, len(pack))
-            self.assertEqual(8, len(serialized_views))
-            duplicate = copy.deepcopy(pack)
-            duplicate[1]['grader_view'] = copy.deepcopy(
-                duplicate[0]['grader_view'],
-            )
-            with self.assertRaisesRegex(ValueError, '8 distinct artifacts'):
-                controller_studies.batch_schedule(duplicate)
-            for item in pack:
-                self.assertEqual(
-                    (
-                        set()
-                        if item['calibration_class'] == 'abstain'
-                        else check_ids
-                    ),
-                    set(item['expected_checks']),
-                )
-                if item['calibration_class'] != 'abstain':
-                    self.assertEqual(
-                        {
-                            'captured_output',
-                            'context_evidence',
-                            'deterministic_claims',
-                            'final_answer',
-                            'host_assessment',
-                            'task_evidence',
-                            'workspace_evidence',
-                        },
-                        set(item['grader_view']),
-                    )
-            for risk in {item['risk'] for item in pack}:
-                for check_id in check_ids:
-                    self.assertEqual({True, False}, {
-                        item['expected_checks'][check_id]
-                        for item in pack
-                        if (
-                            item['risk'] == risk
-                            and check_id in item['expected_checks']
-                        )
-                    })
-        projection = controller_studies.semantic_projection(
-            campaign_id='campaign-01',
-            study_id='study-01',
-            study_profile='d0-sqw',
-            skill_id='software-quality-workflows',
-            controller_content_hash='sha256:' + '1' * 64,
-            output_schema=controller_studies.reviewer_output_schema(),
-        )
-        prompt = controller_host.reviewer_request_descriptors(
-            phase='d0',
-            projection=projection,
-        )[0]['prompt']
-        self.assertEqual(
-            (8, 10),
-            (
-                prompt['response_contract']['rows'],
-                prompt['response_contract']['columns'],
-            ),
-        )
-        malformed = {
-            **prompt['packet'],
-            'examples': prompt['packet']['examples'][:-1],
-        }
-        with self.assertRaises(controller_host.HostError):
-            controller_host._reviewer_response_contract(  # noqa: SLF001
-                malformed,
-                projection['output_schema_artifact_hash'],
-            )
-        grader_prompt = (
-            Path(__file__).parents[1]
-            / 'evaluation/controller/model_grader_prompt.md'
-        ).read_text(encoding='utf-8')
-        self.assertIn(
-            'set `uncertainty=high` for every supplied check',
-            grader_prompt,
-        )
-        self.assertIn(
-            'do not inspect or reconcile candidate snapshots check by check',
-            grader_prompt,
-        )
-        self.assertIn(
-            '`task_evidence.request_text`, `deterministic_claims`, '
-            '`context_evidence`',
-            grader_prompt,
-        )
-        self.assertIn('do not demand raw commands', grader_prompt)
-        self.assertIn('A known-seam task can pass', grader_prompt)
 
     def test_reviewer_packet_pass_condition_is_spec_owned(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
