@@ -15,55 +15,10 @@ from comparison_contract import (
     commit_outputs,
     load_comparison_plan,
     load_cycle_capsules,
-    make_diagnostic,
 )
 from comparison_revision import evaluate_revision
+from comparison_transition import evaluate_transition
 from evidence_io import file_sha256
-
-
-def _structural_transition(
-    plan_path: Path,
-    plan: dict[str, Any],
-    capsules: dict[str, CycleCapsule],
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    roles = sorted(capsules, key=ROLE_ORDER.__getitem__)
-    pending = make_diagnostic(
-        severity="medium",
-        fact_type="evidence_gap",
-        reason_key="policy_evaluation_pending",
-        roles=roles,
-        expected="the applicable comparison policy is mechanically evaluated",
-        observed="cycle capsules are valid; policy evaluation is not implemented",
-        locator_artifact=plan_path.name,
-        json_pointer="/decision_policy",
-        source_hash=file_sha256(plan_path),
-    )
-    return {
-        "registration_status": "not_evaluable",
-        "comparability_checks": [
-            {
-                "check_id": "capsule-bindings",
-                "status": "pass",
-                "roles": roles,
-                "diagnostic_ids": [],
-            },
-            {
-                "check_id": "policy-evaluation",
-                "status": "not_evaluable",
-                "roles": roles,
-                "diagnostic_ids": [pending["diagnostic_id"]],
-            },
-        ],
-        "metrics": [],
-        "result": {
-            "kind": "model_transition",
-            "mode": plan["decision_policy"]["mode"],
-            "classification": "apparatus_inconclusive",
-            "classification_metric_ids": [],
-        },
-        "authority_eligibility": "blocked",
-        "claim_ceiling": "diagnostic_only",
-    }, [pending]
 
 
 def _report(
@@ -113,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
         decision, diagnostics = (
             evaluate_revision(plan_path, plan, capsules)
             if plan["kind"] == "revision"
-            else _structural_transition(plan_path, plan, capsules)
+            else evaluate_transition(plan_path, plan, capsules)
         )
         report = _report(plan, capsules, decision)
         report_path, index_path = commit_outputs(
