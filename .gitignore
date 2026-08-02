@@ -45,3 +45,6 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# reference project
+/reference/
