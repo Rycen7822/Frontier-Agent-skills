@@ -52,7 +52,9 @@ For each declared treatment × turn cell, routing records declared, discovered, 
 
 Catalog routing uses the host manifest's ordered base catalog plus the scenario overlay. Natural-routing comparators keep that effective catalog identical and change only the declared target delivery intervention. Composition is limited to one declared unordered pair, ordered sequence, or typed handoff edge; loading multiple Skills cannot establish composition by itself.
 
-Usage preserves input, output, and cache token classes; queue/runtime latency; tool/network calls; retries/rework; requested/effective effort; artifacts/checkpoints/residue; pricing identity; and per-principal/turn/phase/call attribution. Provider cache tokens and application-cache behavior are separate facts. Host preflight is apparatus cost, and failed treatment execution never becomes an efficiency win.
+Usage preserves input, output, and cache token classes; queue/runtime latency; tool/network calls; retries/rework; requested/effective effort; artifacts/checkpoints/residue; pricing identity; and per-principal/turn/phase/call attribution. `usage.host_safety_review` aggregates only typed host events as `captured|missing`, review count, and elapsed milliseconds; missing capture never becomes a zero review, and raw reasons or session identities stay outside the receipt. Provider cache tokens and application-cache behavior are separate facts. Host preflight is apparatus cost, and failed treatment execution never becomes an efficiency win.
+
+A host-classified model-task timeout or typed provider termination stops before deterministic and model graders. The raw host result remains apparatus evidence, but the attempt does not become a candidate failure or consume grader calls.
 
 Evidence locators are one-based inclusive `{start_line,end_line}` spans into allowlisted UTF-8 artifacts. The analyzer proves that cited bytes/lines exist; the selected grader owns their meaning.
 

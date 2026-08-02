@@ -476,25 +476,44 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 compile_result.stdout + compile_result.stderr,
             )
             plan = json.loads(plan_path.read_text(encoding='utf-8'))
-            entry = plan['entries'][0]
+            entry = next(
+                item for item in plan['entries']
+                if item['model_grade_specs'][0][
+                    'batch_owner_entry_id'
+                ] == item['entry_id']
+            )
             index_path = root / plan['artifacts']['root'] / plan['artifacts'][
                 'index_relpath'
             ]
 
-            run_result = self._run_runner(
-                plan_path, index_path, '--entry-id', entry['entry_id'],
-            )
+            run_result = self._run_runner(plan_path, index_path)
             self.assertEqual(
                 run_result.returncode, 0,
                 run_result.stdout + run_result.stderr,
             )
-            row = json.loads(index_path.read_text(encoding='utf-8').strip())
+            rows = [
+                json.loads(line)
+                for line in index_path.read_text(encoding='utf-8').splitlines()
+            ]
+            row = next(
+                item for item in rows if item['entry_id'] == entry['entry_id']
+            )
             receipt = json.loads(
                 (
                     root / plan['artifacts']['root']
                     / row['receipt']['path']
                 ).read_text(encoding='utf-8'),
             )
+            self.assertEqual(1, sum(
+                request['envelope']['request_kind'] == 'model_grade'
+                for indexed in rows
+                for request in json.loads(
+                    (
+                        root / plan['artifacts']['root']
+                        / indexed['receipt']['path']
+                    ).read_text(encoding='utf-8'),
+                )['host_protocol']['requests']
+            ))
             self.assertEqual(
                 ['probe_capability', 'execute_case', 'model_grade'],
                 [
@@ -513,14 +532,76 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     / row['artifact_dir'] / blinded_record['path']
                 ).read_text(encoding='utf-8'),
             )
-            self.assertEqual(
-                sorted(entry['model_grade_specs'][0]['blinded_projection']),
-                sorted(blinded),
-            )
             serialized = json.dumps(blinded, sort_keys=True)
             self.assertNotIn('treatment_id', serialized)
             self.assertNotIn('causal_role', serialized)
             self.assertNotIn('profile', serialized)
+            batch = receipt['host_protocol']['requests'][-1]['payload'][
+                'blinded_input'
+            ]
+            model_spec = entry['model_grade_specs'][0]
+            self.assertEqual(model_spec['batch_id'], batch['batch_id'])
+            self.assertEqual(model_spec['batch_entry_ids'], [
+                item['item_id'] for item in batch['items']
+            ])
+            self.assertEqual(batch, blinded)
+            spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+            declared_checks = {
+                check['check_id']: check['pass_condition']
+                for grader in spec['graders']
+                if grader['type'] == 'model'
+                for check in grader['checks']
+            }
+            self.assertTrue(all(
+                {
+                    check['id']: check['pass_condition']
+                    for check in item['checks']
+                } == declared_checks
+                for item in batch['items']
+            ))
+            self.assertTrue(all(
+                {
+                    'captured_output',
+                    'context_evidence',
+                    'deterministic_claims',
+                    'final_answer',
+                    'host_assessment',
+                    'task_evidence',
+                    'workspace_evidence',
+                }
+                == set(item['grader_view'])
+                for item in batch['items']
+            ))
+            self.assertTrue(all(
+                item['grader_view']['task_evidence']['request_text']
+                for item in batch['items']
+            ))
+            for item in batch['items']:
+                view = item['grader_view']
+                self.assertTrue(view['deterministic_claims'])
+                self.assertEqual(
+                    {
+                        'body_load_count',
+                        'controlled_bytes',
+                        'controlled_core_bytes',
+                        'reference_load_count',
+                        'total_bytes',
+                        'unique_reference_bytes',
+                    },
+                    set(view['context_evidence']),
+                )
+                self.assertNotIn('(</', view['final_answer'])
+                self.assertEqual(
+                    {
+                        'changed_paths',
+                        'diff',
+                        'final_files',
+                        'initial_files',
+                        'verification',
+                    },
+                    set(view['workspace_evidence']),
+                )
+            self.assertNotIn('treatment_id', json.dumps(batch, sort_keys=True))
             self.assertEqual(
                 ['execute', 'model_grade'],
                 [
@@ -535,6 +616,461 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     for record in receipt['usage']['records']
                 ),
             )
+            self.assertEqual(
+                {
+                    'capture_status': 'missing',
+                    'host_safety_review_count': 1,
+                    'host_safety_review_latency_ms': 9.0,
+                },
+                receipt['usage']['host_safety_review'],
+            )
+            summary_path = root / 'summary.json'
+            failures_path = root / 'failures.json'
+            analyze_result = self.run_cmd(
+                'scripts/analyze_runs.py',
+                str(index_path),
+                '--spec', str(paths['spec']),
+                '--json', str(summary_path),
+                '--failure-index', str(failures_path),
+            )
+            self.assertEqual(
+                analyze_result.returncode,
+                3,
+                analyze_result.stdout + analyze_result.stderr,
+            )
+            self.assertEqual(
+                'complete',
+                json.loads(summary_path.read_text(encoding='utf-8'))[
+                    'evidence_status'
+                ],
+            )
+
+    def test_model_grader_schema_binds_frozen_batch_ids(self) -> None:
+        from unittest import mock
+
+        from evaluation.controller import artifacts, host, workspace
+        from evaluation.controller.controller_testkit import (
+            completed_turn,
+            host_manifest,
+            host_request,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            request = host_request('model_grade')
+            request['payload'] = {
+                'grader_id': 'rubric',
+                'batch_hash': HASHES['candidate'],
+                'schedule_hash': HASHES['candidate'],
+                'blinded_input': {
+                    'batch_id': 'batch-one',
+                    'items': [{
+                        'item_id': 'entry-one',
+                        'checks': [{
+                            'id': 'outcome',
+                            'pass_condition': 'The requested outcome is complete.',
+                        }],
+                        'grader_view': {},
+                    }],
+                },
+            }
+            request['request_hash'] = artifacts.canonical_hash({
+                key: value
+                for key, value in request.items()
+                if key != 'request_hash'
+            })
+            turn = completed_turn(answer=json.dumps({
+                'batch_id': 'batch-one',
+                'items': [{
+                    'item_id': 'entry-one',
+                    'checks': [{
+                        'id': 'outcome',
+                        'pass': True,
+                        'notes': 'verified',
+                        'uncertainty': 'none',
+                    }],
+                }],
+            }), usage=None)
+            with (
+                mock.patch.object(
+                    workspace.host,
+                    'run_codex_turn',
+                    return_value=turn,
+                ) as run_turn,
+                mock.patch.object(
+                    workspace.host,
+                    'codex_runtime_from_host',
+                    return_value={},
+                ),
+            ):
+                result = workspace.execute_model_grade(
+                    root,
+                    request,
+                    host_manifest(),
+                    prompt_path=ROOT.parent
+                    / 'evaluation/controller/model_grader_prompt.md',
+                    schema_path=ROOT.parent
+                    / 'evaluation/controller/model_judgment.schema.json',
+                )
+            call = run_turn.call_args.kwargs
+            self.assertEqual(
+                host.MODEL_TASK_TIMEOUT_SECONDS,
+                call['timeout_seconds'],
+            )
+            properties = call['output_schema']['properties']
+            self.assertEqual(['batch-one'], properties['batch_id']['enum'])
+            items_schema = properties['items']
+            self.assertEqual(
+                (1, 1),
+                (items_schema['minItems'], items_schema['maxItems']),
+            )
+            self.assertEqual(
+                ['entry-one'],
+                items_schema['items']['properties']['item_id']['enum'],
+            )
+            checks_schema = items_schema['items']['properties']['checks']
+            self.assertEqual(
+                (1, 1),
+                (checks_schema['minItems'], checks_schema['maxItems']),
+            )
+            self.assertEqual(
+                ['outcome'],
+                checks_schema['items']['properties']['id']['enum'],
+            )
+            self.assertEqual(
+                'model_grade',
+                result['usage']['records'][0]['phase'],
+            )
+            wrong_check_turn = completed_turn(answer=json.dumps({
+                'batch_id': 'batch-one',
+                'items': [{
+                    'item_id': 'entry-one',
+                    'checks': [{
+                        'id': 'wrong-check',
+                        'pass': True,
+                        'notes': 'not bound',
+                        'uncertainty': 'none',
+                    }],
+                }],
+            }), usage=None)
+            with (
+                mock.patch.object(
+                    workspace.host,
+                    'run_codex_turn',
+                    return_value=wrong_check_turn,
+                ),
+                mock.patch.object(
+                    workspace.host,
+                    'codex_runtime_from_host',
+                    return_value={},
+                ),
+                self.assertRaisesRegex(
+                    workspace.WorkspaceError,
+                    'bound schema',
+                ),
+            ):
+                workspace.execute_model_grade(
+                    root,
+                    request,
+                    host_manifest(),
+                    prompt_path=ROOT.parent
+                    / 'evaluation/controller/model_grader_prompt.md',
+                    schema_path=ROOT.parent
+                    / 'evaluation/controller/model_judgment.schema.json',
+                )
+
+    def test_blinded_grader_evidence_is_bounded_and_fail_closed(self) -> None:
+        transport = load_analyzer_module().model_transport
+        assessment = {'changed_paths': ['fixtures/app.py']}
+        developer_path = '/' + 'home' + '/example/workspace/fixtures/app.py'
+        self.assertEqual(
+            '[app](<fixtures/app.py>)',
+            transport._redact_workspace_paths(  # noqa: SLF001
+                '[app](</private/workspace/fixtures/app.py>)',
+                assessment,
+            ),
+        )
+        self.assertEqual(
+            '[app]( fixtures/app.py)',
+            transport._redact_workspace_paths(  # noqa: SLF001
+                f'[app]( {developer_path})',
+                assessment,
+            ),
+        )
+        with self.assertRaises(ValueError):
+            transport._redact_workspace_paths(  # noqa: SLF001
+                '[other](</private/workspace/fixtures/other.py>)',
+                assessment,
+            )
+        with self.assertRaises(ValueError):
+            transport._task_evidence({})  # noqa: SLF001
+        with self.assertRaises(ValueError):
+            transport._deterministic_claims({  # noqa: SLF001
+                'artifacts': [],
+                'assertions': [],
+            })
+        with self.assertRaises(ValueError):
+            transport._context_evidence({})  # noqa: SLF001
+        bound_assessment = {
+            'allowed_change_paths': ['fixtures/app.py'],
+            'changed_paths': ['fixtures/app.py'],
+            'protected_paths': [],
+            'verification': {'exit_code': 0},
+        }
+        evidence = {
+            'initial_files': {'fixtures/app.py': 'return 0\n'},
+            'final_files': {'fixtures/app.py': 'return 1\n'},
+            'changed_paths': ['fixtures/app.py'],
+            'diff': '-return 0\n+return 1\n',
+            'verification': {'exit_code': 0},
+        }
+        canonical = json.dumps(
+            evidence, ensure_ascii=False, separators=(',', ':'), sort_keys=True,
+        )
+        self.assertEqual(
+            evidence,
+            transport._workspace_evidence(  # noqa: SLF001
+                canonical,
+                bound_assessment,
+            ),
+        )
+        for invalid in (
+            canonical + '\n',
+            canonical.replace('fixtures/app.py', '../app.py'),
+            json.dumps(
+                {
+                    **evidence,
+                    'final_files': {'fixtures/app.py': 'x' * 33_000},
+                },
+                separators=(',', ':'),
+                sort_keys=True,
+            ),
+        ):
+            with self.assertRaises(ValueError):
+                transport._workspace_evidence(  # noqa: SLF001
+                    invalid,
+                    bound_assessment,
+                )
+
+    def test_model_grader_batch_rejects_incomplete_or_mismatched_output(
+        self,
+    ) -> None:
+        transport = load_analyzer_module().model_transport
+        batch = transport.execution_batch(
+            [{
+                'item_id': entry_id,
+                'checks': [
+                    {
+                        'id': 'outcome-check',
+                        'pass_condition': 'The outcome is complete.',
+                    },
+                    {
+                        'id': 'quality-check',
+                        'pass_condition': 'The result meets the quality bar.',
+                    },
+                ],
+                'grader_view': {
+                    'captured_output': {},
+                    'host_assessment': {},
+                    'final_answer': 'done',
+                },
+            } for entry_id in ('entry-a', 'entry-b')],
+            batch_id='batch-fixture',
+        )
+
+        def judgment(
+            entry_id: str,
+            check_ids: tuple[str, ...] = (
+                'outcome-check',
+                'quality-check',
+            ),
+        ) -> dict:
+            return {
+                'item_id': entry_id,
+                'checks': [{
+                    'id': check_id,
+                    'pass': True,
+                    'notes': 'verified',
+                    'uncertainty': 'none',
+                } for check_id in check_ids],
+            }
+
+        output = {
+            'batch_id': 'batch-fixture',
+            'items': [
+                judgment('entry-b', ('quality-check', 'outcome-check')),
+                judgment('entry-a'),
+            ],
+        }
+        normalized, pointers = transport.normalize_judgment(
+            output,
+            batch=batch,
+            requirements=[
+                {'check_id': 'outcome-check', 'required': True},
+                {'check_id': 'quality-check', 'required': True},
+            ],
+            item_id='entry-b',
+        )
+        self.assertTrue(normalized['overall_pass'])
+        self.assertEqual(
+            '/items/0/checks/1/pass',
+            pointers['outcome-check'],
+        )
+
+        invalid_items = (
+            [judgment('entry-a')],
+            [judgment('entry-a'), judgment('entry-a')],
+            [
+                judgment('entry-a', ('wrong-check', 'quality-check')),
+                judgment('entry-b'),
+            ],
+        )
+        for items in invalid_items:
+            with self.subTest(items=items):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    'judgment differs from the bound batch',
+                ):
+                    transport.normalize_judgment(
+                        {'batch_id': 'batch-fixture', 'items': items},
+                        batch=batch,
+                        requirements=[
+                            {'check_id': 'outcome-check', 'required': True},
+                            {'check_id': 'quality-check', 'required': True},
+                        ],
+                        item_id='entry-a',
+                    )
+
+    def test_model_grader_batch_limit_is_consistent(self) -> None:
+        transport = load_analyzer_module().model_transport
+        schema = json.loads(
+            (
+                ROOT.parent
+                / 'evaluation/controller/model_judgment.schema.json'
+            ).read_text(encoding='utf-8')
+        )
+        self.assertEqual(
+            transport.MAX_BATCH_ITEMS,
+            schema['properties']['items']['maxItems'],
+        )
+
+        def batch_item(index: int) -> dict:
+            return {
+                'item_id': f'entry-{index}',
+                'checks': [{
+                    'id': 'outcome-check',
+                    'pass_condition': 'The outcome is complete.',
+                }],
+                'grader_view': {
+                    'captured_output': {},
+                    'host_assessment': {},
+                    'final_answer': 'done',
+                },
+            }
+
+        accepted = transport.execution_batch(
+            [batch_item(index) for index in range(6)],
+            batch_id='six-item-batch',
+        )
+        self.assertEqual(6, len(accepted['items']))
+        invalid_check = batch_item(0)
+        invalid_check['checks'] = [{'id': 'outcome-check'}]
+        inconsistent = [batch_item(0), batch_item(1)]
+        inconsistent[1]['checks'][0]['pass_condition'] = 'Different meaning.'
+        duplicate_check = batch_item(0)
+        duplicate_check['checks'] *= 2
+        for items in ([invalid_check], inconsistent, [duplicate_check]):
+            with self.assertRaisesRegex(ValueError, 'batch items are invalid'):
+                transport.execution_batch(items, batch_id='invalid-batch')
+        with self.assertRaisesRegex(ValueError, 'batch items are invalid'):
+            transport.execution_batch(
+                [batch_item(index) for index in range(7)],
+                batch_id='seven-item-batch',
+            )
+
+        compiler = load_compiler_module()
+
+        def plan_entry(index: int) -> dict:
+            return {
+                'case_id': 'case-a',
+                'disposition': 'execute',
+                'entry_id': f'entry-{index}',
+                'entry_ordinal': index,
+                'model_grade_specs': [{
+                    'grader_id': 'grader-a',
+                    'item_hash': f'sha256:{index:064x}',
+                    'schedule_hash': 'sha256:' + '1' * 64,
+                }],
+            }
+
+        six_entries = [plan_entry(index) for index in range(6)]
+        compiler._bind_model_grade_batches(  # noqa: SLF001
+            six_entries,
+            'evaluation-a',
+        )
+        batch_entry_ids = six_entries[0]['model_grade_specs'][0][
+            'batch_entry_ids'
+        ]
+        self.assertEqual(6, len(batch_entry_ids))
+        with self.assertRaisesRegex(
+            compiler.InternalInvariantError,
+            'transport item limit',
+        ):
+            compiler._bind_model_grade_batches(  # noqa: SLF001
+                [plan_entry(index) for index in range(7)],
+                'evaluation-a',
+            )
+
+    def test_model_batch_identity_binds_check_meaning(self) -> None:
+        compiler = load_compiler_module()
+        grader = {
+            'grader_id': 'grader-a',
+            'type': 'model',
+            'checks': [{
+                'check_id': 'check-a',
+                'dimension': 'quality',
+                'required': True,
+                'pass_condition': 'The first meaning.',
+            }],
+            'batch_schedule_hash': 'sha256:' + '1' * 64,
+            'prompt': {'path': 'prompt.md', 'sha256': 'sha256:' + '2' * 64},
+            'output_schema': {
+                'path': 'output.schema.json',
+                'sha256': 'sha256:' + '3' * 64,
+            },
+        }
+        scenario = {
+            'case_id': 'case-a',
+            'requirements': [{
+                'requirement_id': 'requirement-a',
+                'check_id': 'check-a',
+                'dimension': 'quality',
+                'grader_id': 'grader-a',
+                'required': True,
+            }],
+        }
+
+        def identity(pass_condition: str) -> tuple[str, str]:
+            grader['checks'][0]['pass_condition'] = pass_condition
+            model_spec = compiler._model_grade_specs(  # noqa: SLF001
+                {'graders': [grader]}, scenario, 1, ['grader-a'],
+            )[0]
+            entry = {
+                'case_id': 'case-a',
+                'disposition': 'execute',
+                'entry_id': 'entry-a',
+                'entry_ordinal': 1,
+                'model_grade_specs': [model_spec],
+            }
+            compiler._bind_model_grade_batches(  # noqa: SLF001
+                [entry], 'evaluation-a',
+            )
+            return model_spec['item_hash'], model_spec['batch_hash']
+
+        self.assertNotEqual(
+            identity('The first meaning.'),
+            identity('A materially different meaning.'),
+        )
 
     def test_non_execute_model_entry_emits_no_model_grade_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -899,11 +1435,13 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             paths = materialize_v5_contract_fixture(root)
-            set_v5_synthetic_host_mode(paths, 'fail-first-attempt')
+            set_v5_synthetic_host_mode(
+                paths, 'transient-first-attempt',
+            )
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
             spec['execution']['retry_policy'] = {
                 'max_attempts': 2,
-                'retryable_apparatus_classes': ['interrupted'],
+                'retryable_apparatus_classes': ['official_transient'],
                 'backoff_seconds': 0,
             }
             paths['spec'].write_text(
@@ -957,6 +1495,9 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     )
                     for receipt in receipts
                 ],
+            )
+            self.assertEqual(
+                'official_transient', receipts[0]['run']['error'],
             )
             stable = index_path.read_bytes()
             repeated = self._run_runner(
@@ -1016,6 +1557,51 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 self.assertEqual(terminal, receipt['run']['terminal'])
                 self.assertEqual('clean', receipt['cleanup']['process'])
                 self.assertEqual([], receipt['cleanup']['residue'])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = materialize_v5_contract_fixture(root)
+            set_v5_synthetic_host_mode(paths, 'host-model-timeout')
+            plan_path = root / 'execution-plan.json'
+            compile_result = self._run_compiler(paths, plan_path)
+            self.assertEqual(
+                compile_result.returncode, 0,
+                compile_result.stdout + compile_result.stderr,
+            )
+            plan = json.loads(plan_path.read_text(encoding='utf-8'))
+            entry = plan['entries'][0]
+            index_path = (
+                root / plan['artifacts']['root']
+                / plan['artifacts']['index_relpath']
+            )
+            stopped = self._run_runner(
+                plan_path, index_path, '--entry-id', entry['entry_id'],
+            )
+            self.assertEqual(
+                stopped.returncode, 3,
+                stopped.stdout + stopped.stderr,
+            )
+            self.assertIn('model_task_timeout', stopped.stderr)
+            attempt_dir = (
+                root / plan['artifacts']['root']
+                / entry['artifact_relpath'] / 'attempt-0001'
+            )
+            result = json.loads(
+                (attempt_dir / 'host-stdout.jsonl').read_text(
+                    encoding='utf-8',
+                ).splitlines()[-1],
+            )
+            self.assertEqual(
+                'model_task_timeout',
+                result['failure_class'],
+            )
+            self.assertEqual(
+                'captured',
+                result['usage']['host_safety_review']['capture_status'],
+            )
+            self.assertFalse(index_path.exists())
+            self.assertFalse((attempt_dir / 'graders').exists())
+            self.assertFalse((attempt_dir / 'model-graders').exists())
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1160,6 +1746,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             paths = materialize_v5_contract_fixture(root)
             fixture_path = root / 'fixture-input.txt'
             fixture_path.write_text('fixture bytes\n', encoding='utf-8')
+            fixture_path.chmod(0o444)
             scenario = json.loads(
                 paths['scenarios'].read_text(encoding='utf-8'),
             )
@@ -1199,9 +1786,15 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             attempt_dir = (
                 root / plan['artifacts']['root'] / row['artifact_dir']
             )
+            workspace_fixture = attempt_dir / 'workspace/fixture-input.txt'
             self.assertEqual(
                 fixture_path.read_bytes(),
-                (attempt_dir / 'workspace/fixture-input.txt').read_bytes(),
+                workspace_fixture.read_bytes(),
+            )
+            self.assertEqual(0o444, fixture_path.stat().st_mode & 0o777)
+            self.assertEqual(
+                0o644,
+                workspace_fixture.stat().st_mode & 0o777,
             )
             receipt = json.loads(
                 (
@@ -2068,6 +2661,41 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             result = self._run_compiler(paths, root / 'plan.json')
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('compiler.causal_matrix', result.stderr)
+
+    def test_non_attribution_case_allows_unpaired_safety_treatment(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = materialize_v5_contract_fixture(root)
+            scenario = json.loads(
+                paths['scenarios'].read_text(encoding='utf-8'),
+            )
+            scenario['attribution_evaluable'] = False
+            paths['scenarios'].write_text(
+                json.dumps(scenario, separators=(',', ':')) + '\n',
+                encoding='utf-8',
+            )
+            spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+            baseline = next(
+                treatment for treatment in spec['treatments']
+                if treatment['causal_role'] == 'baseline'
+            )
+            baseline['exclusions'] = ['case-basic']
+            baseline['exclusion_reason'] = 'safety-only candidate execution'
+            paths['spec'].write_text(
+                json.dumps(spec, indent=2) + '\n',
+                encoding='utf-8',
+            )
+            rebind_v5_contract_fixture(paths)
+            output = root / 'plan.json'
+            result = self._run_compiler(paths, output)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            plan = json.loads(output.read_text(encoding='utf-8'))
+        self.assertEqual(
+            ['candidate'],
+            [entry['treatment_id'] for entry in plan['entries']],
+        )
 
     def test_case_treatment_repeat_matrix_expands_exactly_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

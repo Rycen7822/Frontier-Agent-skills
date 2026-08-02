@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
 from unittest import mock
 
+from evaluation.controller import artifacts as controller_artifacts
+from evaluation.controller import reports as controller_reports
+from evaluation.controller.controller_testkit import (
+    release_studies as controller_release_studies,
+)
 from skill_evaluator_test_support import *  # noqa: F403
 
 
@@ -31,6 +38,97 @@ def material_failure_records(
 
 
 class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
+    def test_dimension_score_preserves_partial_check_credit(self):
+        analyzer = load_analyzer_module()  # noqa: F405
+        requirements = [
+            {
+                'check_id': f'quality-{index}',
+                'dimension': 'quality',
+                'required': True,
+            }
+            for index in range(8)
+        ]
+        checks = {
+            requirement['check_id']: index != 0
+            for index, requirement in enumerate(requirements)
+        }
+        self.assertEqual(
+            88,
+            analyzer._dimension_score(  # noqa: SLF001
+                requirements,
+                checks,
+                'quality',
+            ),
+        )
+        self.assertIsNone(
+            analyzer._dimension_score(  # noqa: SLF001
+                requirements,
+                checks,
+                'process',
+            ),
+        )
+
+    def test_controller_passes_bound_studies_to_public_projection(self):
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        roots, join = controller_release_studies(root)
+        analyzer = mock.Mock()
+        analyzer.project_release_estimands.return_value = {"status": "complete"}
+        projection, summaries = controller_reports.project_release(
+            phase="d0",
+            analyzer=analyzer,
+            roots=roots,
+            manual_receipts={
+                "software-quality-workflows": "manual/sqw.json",
+                "writing-plans-planner": "manual/planner.json",
+                "writing-plans-transfer": None,
+            },
+            join_path=join,
+            seed=2735,
+        )
+        assert projection["status"] == "complete"
+        assert set(summaries) == set(controller_reports.STUDIES)
+        call = analyzer.project_release_estimands.call_args
+        bindings = call.args[0]
+        assert [item["study_id"] for item in bindings] == list(
+            controller_reports.STUDIES,
+        )
+        assert call.kwargs["allow_missing_manual"] is True
+        assert set(bindings[0]) == {
+            "study_id",
+            "spec",
+            "plan",
+            "index",
+            "summary",
+            "failure_index",
+            "manual_receipt_locator",
+        }
+
+    def test_controller_rejects_state_json_release_summary(self):
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        roots, join = controller_release_studies(root)
+        controller_artifacts.write_json(
+            roots["software-quality-workflows"]
+            / controller_reports.STUDY_FILES["summary"],
+            {},
+        )
+        analyzer = mock.Mock()
+        analyzer.project_release_estimands.return_value = {"status": "complete"}
+        with self.assertRaisesRegex(
+            controller_reports.ReportError,
+            "release JSON bytes are not canonical",
+        ):
+            controller_reports.project_release(
+                phase="formal",
+                analyzer=analyzer,
+                roots=roots,
+                manual_receipts={
+                    study_id: None
+                    for study_id in controller_reports.STUDIES
+                },
+                join_path=join,
+                seed=2735,
+            )
+
     def _materialize_v5_analysis_bundle(
         self,
         root: Path,
@@ -42,6 +140,12 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     ) -> dict[str, Path]:
         paths = materialize_v5_contract_fixture(root)
         spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+        package_root = root / spec['subject']['package']['path']
+        package_root.mkdir(parents=True, exist_ok=True)
+        (package_root / 'SKILL.md').write_text(
+            '# Evaluated skill\n',
+            encoding='utf-8',
+        )
         spec['level'] = level
         spec['execution']['mode'] = (
             'diagnostic' if level in {'L0', 'L1'} else 'scored'
@@ -99,7 +203,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             )
         if manual_required:
             role = 'independent-evaluator'
-            required_evidence = ['outcome-review']
+            required_evidence = ['frozen-study-input-binding']
             spec['authority']['manual_review'] = {
                 'required': True,
                 'role': role,
@@ -225,6 +329,8 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         self,
         paths: dict[str, Path],
         mutation: Callable[[dict], None],
+        *,
+        model_output: bool = False,
     ) -> None:
         plan = json.loads(paths['plan'].read_text(encoding='utf-8'))
         artifacts_root = paths['plan'].parent / plan['artifacts']['root']
@@ -232,7 +338,16 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             json.loads(line)
             for line in paths['index'].read_text(encoding='utf-8').splitlines()
         ]
-        row = rows[0]
+        owner_ids = {
+            entry['entry_id']
+            for entry in plan['entries']
+            for spec in entry['model_grade_specs']
+            if spec['batch_owner_entry_id'] == entry['entry_id']
+        }
+        row = next(
+            item for item in rows
+            if not model_output or item['entry_id'] in owner_ids
+        )
         receipt_path = artifacts_root / row['receipt']['path']
         receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
         mutation(receipt)
@@ -421,6 +536,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 lambda receipt: receipt['grader_outputs'][0].update({
                     'schedule_hash': 'sha256:' + '0' * 64,
                 }),
+                model_output=True,
             )
             analyzed = self.call_cli(
                 'scripts/analyze_runs.py',
@@ -773,7 +889,9 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 'resampling_unit': 'case',
                 'slices': [],
                 'reliability': ['observed_consistency'],
-                'materiality': {'minimum_cases': 3},
+                'materiality': {
+                    'minimum_baseline_failure_cases': 3,
+                },
             },
             'hard_gates': [],
             'treatments': [
@@ -822,27 +940,59 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         spec = {
             'level': 'L2',
             'analysis': {
-                'estimands': [{
-                    'estimand_id': 'task-benefit',
-                    'metric': 'task_pass_rate',
-                    'candidate_treatment_id': 'candidate',
-                    'comparator_treatment_id': 'baseline',
-                    'direction': 'higher_is_better',
-                    'effect': 'absolute',
-                    'minimum_benefit': -1.0,
-                    'eligible_modules': ['core_outcome'],
-                }],
+                'estimands': [
+                    {
+                        'estimand_id': 'task-benefit',
+                        'metric': 'task_pass_rate',
+                        'candidate_treatment_id': 'candidate',
+                        'comparator_treatment_id': 'baseline',
+                        'direction': 'higher_is_better',
+                        'effect': 'absolute',
+                        'minimum_benefit': -1.0,
+                        'eligible_modules': ['core_outcome'],
+                    },
+                    {
+                        'estimand_id': 'same-metric-secondary',
+                        'metric': 'task_pass_rate',
+                        'candidate_treatment_id': 'candidate',
+                        'comparator_treatment_id': 'baseline',
+                        'direction': 'higher_is_better',
+                        'effect': 'absolute',
+                        'minimum_benefit': -1.0,
+                        'eligible_modules': ['core_outcome'],
+                    },
+                ],
                 'confidence_level': 0.95,
                 'bootstrap_iterations': 100,
-                'materiality': {'minimum_cases': 0},
+                'materiality': {
+                    'minimum_baseline_failure_cases': 0,
+                },
             },
             'hard_gates': [
+                {
+                    'gate_id': 'task',
+                    'kind': 'benefit',
+                    'metric': 'task_pass_rate',
+                    'direction': 'at_least',
+                    'threshold': -1.0,
+                    'authority': 'evaluation-owner',
+                    'required': True,
+                },
                 {
                     'gate_id': 'safety',
                     'kind': 'safety',
                     'metric': 'critical_safety_incidents',
                     'direction': 'at_most',
                     'threshold': 0,
+                    'authority': 'safety-owner',
+                    'required': True,
+                },
+                {
+                    'gate_id': 'safety-state',
+                    'kind': 'safety',
+                    'metric': 'safety',
+                    'direction': 'equal',
+                    'threshold': 'pass',
                     'authority': 'safety-owner',
                     'required': True,
                 },
@@ -926,7 +1076,9 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             item['gate']['gate_id']: (item['status'], item['observed'])
             for item in analysis['gate_results']
         }
+        self.assertEqual('pass', statuses['task'][0])
         self.assertEqual(('fail', 1), statuses['safety'])
+        self.assertEqual(('fail', 'fail'), statuses['safety-state'])
         self.assertEqual(('fail', 1), statuses['protected'])
         self.assertEqual(('pass', 1.0), statuses['module'])
         self.assertEqual(('pass', 1.0), statuses['context'])
@@ -1123,11 +1275,34 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             artifacts = root / 'artifacts'
             review_root = artifacts / 'manual'
             review_root.mkdir()
-            evidence_path = review_root / 'outcome.txt'
-            evidence_path.write_text('reviewed outcome\n', encoding='utf-8')
+            analyzer = load_analyzer_module()
+            evidence_path = review_root / 'input-binding.json'
+            release_gate_path = root / 'release-gate-contract.json'
+            release_gate_path.write_text(json.dumps({
+                'schema_version': 'gate-contract/1.0',
+                'software-quality-workflows': [],
+            }), encoding='utf-8')
+            original_binding = analyzer._manual_review_input_binding(
+                json.loads(paths['spec'].read_text(encoding='utf-8')),
+                paths['spec'],
+                paths['plan'],
+                release_gate_contract=release_gate_path.name,
+            )
+            evidence_path.write_text(
+                json.dumps(
+                    original_binding,
+                    sort_keys=True,
+                    separators=(',', ':'),
+                ),
+                encoding='utf-8',
+            )
+            self.assertEqual(
+                release_gate_path.name,
+                original_binding['release_gate_contract']['path'],
+            )
             evidence = {
-                'type': 'outcome-review',
-                'artifact': 'manual/outcome.txt',
+                'type': 'frozen-study-input-binding',
+                'artifact': 'manual/input-binding.json',
                 'sha256': (
                     'sha256:'
                     + hashlib.sha256(evidence_path.read_bytes()).hexdigest()
@@ -1173,6 +1348,37 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 (root / 'missing-summary.json').read_text(encoding='utf-8'),
             )
             self.assertEqual('missing', missing_summary['manual_authority']['status'])
+            missing_binding = {
+                'study_id': 'software-quality-workflows',
+                **{
+                    field: {
+                        'path': path.resolve(),
+                        'sha256': (
+                            'sha256:'
+                            + hashlib.sha256(path.read_bytes()).hexdigest()
+                        ),
+                    }
+                    for field, path in {
+                        'spec': paths['spec'],
+                        'plan': paths['plan'],
+                        'index': paths['index'],
+                        'summary': root / 'missing-summary.json',
+                        'failure_index': root / 'missing-failures.json',
+                    }.items()
+                },
+                'manual_receipt_locator': None,
+            }
+            missing_public = analyzer._load_release_study(
+                missing_binding,
+            )['public']
+            self.assertEqual(
+                ['manual_authority_invalid'],
+                missing_public['completeness']['reason_codes'],
+            )
+            self.assertIsInstance(
+                missing_public['context_efficiency'],
+                dict,
+            )
 
             approved = analyze('approved', write_receipt('approved', 'approve'))
             self.assertEqual(0, approved.returncode, approved.stdout + approved.stderr)
@@ -1203,6 +1409,669 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 (root / 'invalid-summary.json').read_text(encoding='utf-8'),
             )
             self.assertEqual('invalid', invalid_summary['manual_authority']['status'])
+            binding = json.loads(evidence_path.read_text(encoding='utf-8'))
+            binding['spec_content_hash'] = 'sha256:' + '0' * 64
+            binding['binding_hash'] = canonical_hash({
+                key: value for key, value in binding.items()
+                if key != 'binding_hash'
+            })
+            evidence_path.write_text(
+                json.dumps(binding, sort_keys=True, separators=(',', ':')),
+                encoding='utf-8',
+            )
+            evidence['sha256'] = (
+                'sha256:' + hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+            )
+            drift = analyze(
+                'owner-drift',
+                write_receipt('owner-drift', 'approve'),
+                report_only=True,
+            )
+            self.assertEqual(3, drift.returncode, drift.stdout + drift.stderr)
+            drift_summary = json.loads(
+                (root / 'owner-drift-summary.json').read_text(
+                    encoding='utf-8',
+                ),
+            )
+            self.assertEqual(
+                'invalid',
+                drift_summary['manual_authority']['status'],
+            )
+            evidence_path.write_text(
+                json.dumps(
+                    original_binding,
+                    sort_keys=True,
+                    separators=(',', ':'),
+                ),
+                encoding='utf-8',
+            )
+            evidence['sha256'] = (
+                'sha256:' + hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+            )
+            release_gate_path.write_text(json.dumps({
+                'schema_version': 'gate-contract/1.0',
+                'software-quality-workflows': [{'gate_id': 'drift'}],
+            }), encoding='utf-8')
+            gate_drift = analyze(
+                'gate-drift',
+                write_receipt('gate-drift', 'approve'),
+                report_only=True,
+            )
+            self.assertEqual(
+                3,
+                gate_drift.returncode,
+                gate_drift.stdout + gate_drift.stderr,
+            )
+
+    def test_release_projection_accepts_only_missing_report_only_authority(
+        self,
+    ) -> None:
+        analyzer = load_analyzer_module()
+        public = {
+            "manual": {"status": "missing"},
+            "completeness": {
+                "status": "invalid",
+                "reason_codes": ["manual_authority_invalid"],
+            },
+        }
+        self.assertFalse(analyzer._release_projection_ready(
+            public,
+            allow_missing_manual=False,
+        ))
+        self.assertTrue(analyzer._release_projection_ready(
+            public,
+            allow_missing_manual=True,
+        ))
+        public["manual"]["status"] = "invalid"
+        self.assertFalse(analyzer._release_projection_ready(
+            public,
+            allow_missing_manual=True,
+        ))
+
+    def test_project_release_estimands_binds_entries_context_and_manual_authority(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            study_ids = (
+                'software-quality-workflows',
+                'writing-plans-planner',
+                'writing-plans-transfer',
+            )
+            studies = {}
+            for study_id in study_ids:
+                paths = self._materialize_v5_analysis_bundle(
+                    root / study_id,
+                    case_count=2,
+                )
+                analyzed = self.call_cli(
+                    'scripts/analyze_runs.py',
+                    str(paths['index']),
+                    '--spec', str(paths['spec']),
+                    '--json', str(paths['summary']),
+                    '--failure-index', str(paths['failures']),
+                )
+                self.assertEqual(
+                    0,
+                    analyzed.returncode,
+                    analyzed.stdout + analyzed.stderr,
+                )
+                studies[study_id] = paths
+
+            def bound(path: Path) -> dict:
+                return {
+                    'path': path.resolve(),
+                    'sha256': (
+                        'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()
+                    ),
+                }
+
+            bindings = [
+                {
+                    'study_id': study_id,
+                    'spec': bound(studies[study_id]['spec']),
+                    'plan': bound(studies[study_id]['plan']),
+                    'index': bound(studies[study_id]['index']),
+                    'summary': bound(studies[study_id]['summary']),
+                    'failure_index': bound(studies[study_id]['failures']),
+                    'manual_receipt_locator': None,
+                }
+                for study_id in study_ids
+            ]
+            planner_paths = studies['writing-plans-planner']
+            transfer_paths = studies['writing-plans-transfer']
+            planner_plan = json.loads(
+                planner_paths['plan'].read_text(encoding='utf-8'),
+            )
+            transfer_plan = json.loads(
+                transfer_paths['plan'].read_text(encoding='utf-8'),
+            )
+            planner_spec = json.loads(
+                planner_paths['spec'].read_text(encoding='utf-8'),
+            )
+            transfer_spec = json.loads(
+                transfer_paths['spec'].read_text(encoding='utf-8'),
+            )
+            planner_roles = {
+                item['treatment_id']: item['causal_role']
+                for item in planner_spec['treatments']
+            }
+            transfer_roles = {
+                item['treatment_id']: item['causal_role']
+                for item in transfer_spec['treatments']
+            }
+            planner_entries = {
+                (
+                    planner_roles[item['treatment_id']],
+                    item['case_id'],
+                    item['repeat'],
+                ): item
+                for item in planner_plan['entries']
+                if item['disposition'] == 'execute'
+            }
+
+            def rows(path: Path) -> dict[str, dict]:
+                return {
+                    item['entry_id']: item
+                    for item in (
+                        json.loads(line)
+                        for line in path.read_text(
+                            encoding='utf-8',
+                        ).splitlines()
+                    )
+                }
+
+            planner_rows = rows(planner_paths['index'])
+            transfer_rows = rows(transfer_paths['index'])
+            join = {}
+            for executor in transfer_plan['entries']:
+                if executor['disposition'] != 'execute':
+                    continue
+                planner = planner_entries[(
+                    transfer_roles[executor['treatment_id']],
+                    executor['case_id'],
+                    executor['repeat'],
+                )]
+                join[executor['entry_id']] = {
+                    'source_case_id': planner['case_id'],
+                    'planner_repeat': planner['repeat'],
+                    'planner_entry_id': planner['entry_id'],
+                    'planner_receipt_hash': planner_rows[
+                        planner['entry_id']
+                    ]['receipt']['sha256'],
+                    'executor_receipt_hash': transfer_rows[
+                        executor['entry_id']
+                    ]['receipt']['sha256'],
+                }
+
+            analyzer = load_analyzer_module()
+            kwargs = {
+                'confidence_level': 0.90,
+                'bootstrap_iterations': 10000,
+                'random_seed': 2735,
+            }
+            first = analyzer.project_release_estimands(
+                bindings,
+                join,
+                **kwargs,
+            )
+            second = analyzer.project_release_estimands(
+                bindings,
+                join,
+                **kwargs,
+            )
+            self.assertEqual(first, second)
+            self.assertEqual('complete', first['status'])
+            self.assertEqual(
+                'complete',
+                first['software_quality_workflows']['status'],
+            )
+            self.assertEqual('complete', first['writing_plans']['status'])
+            self.assertTrue(all(
+                item['context_efficiency'] is not None
+                for item in first['studies'].values()
+            ))
+            self.assertGreater(
+                first['software_quality_workflows']['release_metrics'][
+                    'candidate_entry_bytes_p95'
+                ],
+                0,
+            )
+            self.assertEqual(
+                0,
+                first['software_quality_workflows']['release_metrics'][
+                    'unattributed_residue_bytes_max'
+                ],
+            )
+            self.assertIn(
+                'transfer_preflight',
+                first['writing_plans']['release_metrics'],
+            )
+            planner_quality = first['writing_plans']['release_metrics'][
+                'planner_quality_absolute_effect'
+            ]
+            self.assertEqual(
+                'higher_is_better:absolute:'
+                'quality_score_normalized:candidate_vs_baseline',
+                planner_quality['estimand'],
+            )
+            self.assertEqual(
+                0,
+                first['writing_plans']['release_metrics'][
+                    'candidate_safety_failures'
+                ],
+            )
+            loaded_studies = {
+                binding['study_id']: analyzer._load_release_study(binding)
+                for binding in bindings
+            }
+            loaded_planner = loaded_studies['writing-plans-planner']
+            candidate_treatment = next(
+                item for item in loaded_planner['spec']['treatments']
+                if item['causal_role'] == 'candidate'
+            )
+            candidate_record = next(
+                item for item in loaded_planner['evidence']['records']
+                if item['variant'] == candidate_treatment['treatment_id']
+            )
+            candidate_record['safety_pass'] = False
+            unsafe_metrics = analyzer._writing_plans_release_metrics(
+                loaded_planner,
+                loaded_studies['writing-plans-transfer'],
+                join,
+                prior_context=None,
+                matched_tokens={},
+                **kwargs,
+            )
+            self.assertEqual(1, unsafe_metrics['candidate_safety_failures'])
+            candidate_record['safety_pass'] = True
+            loaded_planner['spec']['treatments'].append({
+                **candidate_treatment,
+                'treatment_id': 'prior',
+                'causal_role': 'prior',
+                'profile': 'prior/force_loaded',
+            })
+            candidate_id = candidate_treatment['treatment_id']
+            prior_records = []
+            for record in loaded_planner['evidence']['records']:
+                if record['variant'] != candidate_id:
+                    continue
+                record['context_usage'].update({
+                    'bytes': 100,
+                    'controlled_bytes': 100,
+                    'unique_reference_bytes': 0,
+                    'controlled_core_bytes': 100,
+                })
+                prior_record = copy.deepcopy(record)
+                prior_record['entry_id'] = record['entry_id'] + '-prior'
+                prior_record['variant'] = 'prior'
+                prior_record['counts']['reference_load_count'] = 1
+                prior_record['context_usage'].update({
+                    'bytes': 400,
+                    'controlled_bytes': 400,
+                    'unique_reference_bytes': 300,
+                    'controlled_core_bytes': 100,
+                })
+                prior_records.append(prior_record)
+            loaded_planner['evidence']['records'].extend(prior_records)
+            unavailable_studies = copy.deepcopy(loaded_studies)
+            for record in unavailable_studies[
+                'writing-plans-planner'
+            ]['evidence']['records']:
+                if record['variant'] == 'prior':
+                    record['counts']['reference_load_count'] = 0
+            with mock.patch.object(
+                analyzer,
+                '_load_release_study',
+                side_effect=lambda binding: loaded_studies[binding['study_id']],
+            ):
+                prior_projection = analyzer.project_release_estimands(
+                    bindings,
+                    join,
+                    **kwargs,
+                )
+            self.assertEqual('complete', prior_projection['status'])
+            prior_context = prior_projection['writing_plans'][
+                'release_metrics'
+            ]['prior_controlled_context_reduction']
+            self.assertEqual('complete', prior_context['status'])
+            self.assertEqual(2, prior_context['case_count'])
+            self.assertEqual(0.75, prior_context['point'])
+            self.assertEqual(
+                'lower_is_better:relative:'
+                'controlled_skill_context_bytes:candidate_vs_prior',
+                prior_context['estimand'],
+            )
+            with mock.patch.object(
+                analyzer,
+                '_load_release_study',
+                side_effect=lambda binding: unavailable_studies[
+                    binding['study_id']
+                ],
+            ):
+                unavailable_projection = analyzer.project_release_estimands(
+                    bindings,
+                    join,
+                    **kwargs,
+                )
+            self.assertEqual(
+                'complete',
+                unavailable_projection['status'],
+                unavailable_projection['writing_plans']['reason_codes'],
+            )
+            unavailable_metrics = unavailable_projection['writing_plans'][
+                'release_metrics'
+            ]
+            self.assertEqual(0, unavailable_metrics['prior_reference_cases'])
+            self.assertEqual(
+                'not_evaluable',
+                unavailable_metrics[
+                    'prior_controlled_context_reduction'
+                ]['status'],
+            )
+            with self.assertRaisesRegex(ValueError, 'is missing'):
+                analyzer._release_max(
+                    [{'context_usage': {}}],
+                    'context_usage',
+                    'unattributed_residue_bytes',
+                )
+
+            incomplete_join = dict(join)
+            incomplete_join.pop(next(iter(incomplete_join)))
+            invalid = analyzer.project_release_estimands(
+                bindings,
+                incomplete_join,
+                **kwargs,
+            )
+            self.assertEqual('invalid', invalid['status'])
+            self.assertIn(
+                'writing_plans_join_inventory_mismatch',
+                invalid['writing_plans']['reason_codes'],
+            )
+
+            sqw_paths = studies['software-quality-workflows']
+            original_index = sqw_paths['index'].read_bytes()
+            sqw_paths['index'].write_bytes(
+                b'\n'.join(original_index.splitlines()[:-1]) + b'\n',
+            )
+            incomplete_summary = sqw_paths['summary'].with_name(
+                'incomplete-summary.json',
+            )
+            incomplete_failures = sqw_paths['failures'].with_name(
+                'incomplete-failures.json',
+            )
+            analyzed = self.call_cli(
+                'scripts/analyze_runs.py',
+                str(sqw_paths['index']),
+                '--spec', str(sqw_paths['spec']),
+                '--json', str(incomplete_summary),
+                '--failure-index', str(incomplete_failures),
+            )
+            self.assertEqual(
+                3,
+                analyzed.returncode,
+                analyzed.stdout + analyzed.stderr,
+            )
+            incomplete_bindings = copy.deepcopy(bindings)
+            incomplete_bindings[0]['index'] = bound(sqw_paths['index'])
+            incomplete_bindings[0]['summary'] = bound(incomplete_summary)
+            incomplete_bindings[0]['failure_index'] = bound(
+                incomplete_failures,
+            )
+            incomplete = analyzer.project_release_estimands(
+                incomplete_bindings,
+                join,
+                **kwargs,
+            )
+            self.assertEqual(
+                'invalid',
+                incomplete['studies']['software-quality-workflows'][
+                    'completeness'
+                ]['status'],
+            )
+            self.assertIn(
+                'missing_terminal_entry',
+                incomplete['studies']['software-quality-workflows'][
+                    'completeness'
+                ]['reason_codes'],
+            )
+            sqw_paths['index'].write_bytes(original_index)
+
+            studies['software-quality-workflows']['summary'].write_bytes(
+                studies['software-quality-workflows']['summary'].read_bytes()
+                + b' ',
+            )
+            with self.assertRaisesRegex(ValueError, 'binding hash mismatch'):
+                analyzer.project_release_estimands(bindings, join, **kwargs)
+
+    def test_release_join_excludes_mechanism_and_unmapped_planner_cases(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+
+            def receipt(name: str) -> tuple[Path, str]:
+                path = root / f'{name}.json'
+                path.write_text(f'{{"id":"{name}"}}\n', encoding='utf-8')
+                return (
+                    path,
+                    'sha256:'
+                    + hashlib.sha256(path.read_bytes()).hexdigest(),
+                )
+
+            def record(
+                entry_id: str,
+                variant: str,
+                case_id: str,
+                tokens: int,
+            ) -> dict:
+                return {
+                    'entry_id': entry_id,
+                    'variant': variant,
+                    'case_id': case_id,
+                    'repeat': 1,
+                    'valid': True,
+                    'tokens_in': tokens,
+                    'tokens_out': 1,
+                    'task_pass': True,
+                    'quality_score': 100,
+                    'critical_safety_incidents': 0,
+                    'skill_body_loaded': False,
+                    'skill_incorporated': False,
+                    'skill_applied': False,
+                    'hard_gate_failures': [],
+                    'counts': {
+                        'reference_load_count': 0,
+                        'host_injected_body_count': 1,
+                        'skill_protocol_tool_calls': 0,
+                    },
+                    'bytes': {
+                        'executor_prewrite_tool_output_bytes': 0,
+                    },
+                    'context_usage': {
+                        'unattributed_residue_bytes': 0,
+                    },
+                }
+
+            context_efficiency = {
+                metric: {
+                    'evidence_artifact_kind': 'report_local',
+                    'p50': 1,
+                    'p95': 1,
+                    'max': 1 if metric.endswith('context_bytes') else 0,
+                }
+                for metric in (
+                    'candidate_entry_bytes',
+                    'controlled_context_bytes',
+                    'total_context_bytes',
+                    'host_integration_duplicate_bytes',
+                    'unexplained_repeated_static_content_bytes',
+                    'protocol_output_bytes',
+                    'failed_command_output_bytes',
+                )
+            }
+            public = {
+                'identity': {},
+                'manual': {'required': False, 'status': 'not_applicable'},
+                'completeness': {'status': 'complete'},
+                'context_efficiency': context_efficiency,
+            }
+            sqw_records = [
+                record(f'sqw-{arm}-{case}', arm, case, 10)
+                for arm in ('baseline', 'candidate')
+                for case in ('a', 'b')
+            ]
+            sqw_records.extend(
+                record(f'sqw-non-target-{case}', 'non-target', case, 10)
+                for case in ('a', 'b')
+            )
+            sqw_records[-1]['counts']['reference_load_count'] = 1
+            planner_records = [
+                *[
+                    record(f'planner-{arm}-{case}', arm, case, 10)
+                    for arm in ('baseline', 'candidate')
+                    for case in ('a', 'b')
+                ],
+                record(
+                    'planner-registered-only',
+                    'registered-baseline',
+                    'registered-only',
+                    10,
+                ),
+            ]
+            transfer_records = [
+                *[
+                    record(f'executor-{arm}-{case}', arm, f'x-{case}', 10)
+                    for arm in ('baseline', 'candidate')
+                    for case in ('a', 'b')
+                ],
+                record('executor-mechanism-a', 'mechanism', 'x-a', 10),
+            ]
+            planner_attempts = {}
+            transfer_attempts = {}
+            join = {}
+            for record_item in planner_records:
+                path, _ = receipt(record_item['entry_id'])
+                planner_attempts[record_item['entry_id']] = {
+                    'receipt_path': path,
+                }
+            for record_item in transfer_records:
+                path, _ = receipt(record_item['entry_id'])
+                transfer_attempts[record_item['entry_id']] = {
+                    'receipt_path': path,
+                }
+            for case in ('a', 'b'):
+                for arm in ('baseline', 'candidate'):
+                    planner_id = f'planner-{arm}-{case}'
+                    executor_id = f'executor-{arm}-{case}'
+                    join[executor_id] = {
+                        'source_case_id': case,
+                        'planner_repeat': 1,
+                        'planner_entry_id': planner_id,
+                        'planner_receipt_hash': (
+                            'sha256:'
+                            + hashlib.sha256(
+                                planner_attempts[planner_id][
+                                    'receipt_path'
+                                ].read_bytes(),
+                            ).hexdigest()
+                        ),
+                        'executor_receipt_hash': (
+                            'sha256:'
+                            + hashlib.sha256(
+                                transfer_attempts[executor_id][
+                                    'receipt_path'
+                                ].read_bytes(),
+                            ).hexdigest()
+                        ),
+                    }
+
+            treatments = [
+                {'treatment_id': 'baseline', 'causal_role': 'baseline'},
+                {'treatment_id': 'candidate', 'causal_role': 'candidate'},
+            ]
+            loaded = {
+                'software-quality-workflows': {
+                    'public': public,
+                    'spec': {
+                        'treatments': [
+                            *treatments,
+                            {
+                                'treatment_id': 'non-target',
+                                'causal_role': 'comparator',
+                            },
+                        ],
+                    },
+                    'evidence': {
+                        'records': sqw_records,
+                        'selected_attempts': {},
+                    },
+                },
+                'writing-plans-planner': {
+                    'public': public,
+                    'spec': {
+                        'treatments': [
+                            *treatments,
+                            {
+                                'treatment_id': 'registered-baseline',
+                                'causal_role': 'comparator',
+                            },
+                        ],
+                    },
+                    'evidence': {
+                        'records': planner_records,
+                        'selected_attempts': planner_attempts,
+                    },
+                },
+                'writing-plans-transfer': {
+                    'public': public,
+                    'spec': {
+                        'treatments': [
+                            *treatments,
+                            {
+                                'treatment_id': 'mechanism',
+                                'causal_role': 'comparator',
+                            },
+                        ],
+                    },
+                    'evidence': {
+                        'records': transfer_records,
+                        'selected_attempts': transfer_attempts,
+                    },
+                },
+            }
+            bindings = [
+                {'study_id': study_id}
+                for study_id in (
+                    'software-quality-workflows',
+                    'writing-plans-planner',
+                    'writing-plans-transfer',
+                )
+            ]
+            analyzer = load_analyzer_module()
+            with mock.patch.object(
+                analyzer,
+                '_load_release_study',
+                side_effect=lambda binding: loaded[binding['study_id']],
+            ):
+                projection = analyzer.project_release_estimands(
+                    bindings,
+                    join,
+                    confidence_level=0.90,
+                    bootstrap_iterations=10000,
+                    random_seed=2735,
+                )
+            self.assertEqual('complete', projection['status'])
+            self.assertEqual(
+                'complete',
+                projection['writing_plans']['status'],
+            )
+            self.assertEqual(
+                {'numerator': 1, 'denominator': 2},
+                projection['software_quality_workflows'][
+                    'release_metrics'
+                ]['non_target_correct_no_load'],
+            )
 
     def test_v5_report_transaction_truncation_and_immutable_retry(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1250,6 +2119,50 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 'sha256:' + hashlib.sha256(details_path.read_bytes()).hexdigest(),
                 details_view['sha256'],
             )
+
+    def test_v5_report_only_truncation_writes_only_explicit_details(self) -> None:
+        for explicit_details in (False, True):
+            with self.subTest(explicit_details=explicit_details):
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    paths = self._materialize_v5_analysis_bundle(
+                        root, failure_index_budget=1,
+                    )
+                    paths['index'].write_text('', encoding='utf-8')
+                    command = [
+                        'scripts/analyze_runs.py',
+                        str(paths['index']),
+                        '--spec', str(paths['spec']),
+                        '--json', str(paths['summary']),
+                        '--failure-index', str(paths['failures']),
+                        '--report-only',
+                    ]
+                    details_path = root / 'explicit-details.json'
+                    if explicit_details:
+                        command.extend(('--details', str(details_path)))
+
+                    result = self.call_cli(*command)
+                    self.assertEqual(
+                        3, result.returncode, result.stdout + result.stderr,
+                    )
+                    summary = json.loads(
+                        paths['summary'].read_text(encoding='utf-8'),
+                    )
+                    self.assertTrue(json.loads(
+                        paths['failures'].read_text(encoding='utf-8'),
+                    )['truncated'])
+                    if explicit_details:
+                        self.assertIsNotNone(
+                            summary['output_manifest']['details'],
+                        )
+                        self.assertTrue(details_path.is_file())
+                    else:
+                        self.assertIsNone(
+                            summary['output_manifest']['details'],
+                        )
+                        self.assertFalse(
+                            (root / 'failures.details.json').exists(),
+                        )
 
     def test_v5_report_preflight_never_writes_false_complete_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1389,6 +2302,8 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                         "tokens_out": 0,
                     })
         analyzer = load_analyzer_module()
+        planner[0]["task_pass"] = False
+        executor[0]["task_pass"] = False
         complete = analyzer.matched_planner_executor_tokens(
             planner,
             executor,
@@ -1401,7 +2316,12 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             repeats=2,
         )
         self.assertTrue(complete["complete"])
-        self.assertEqual(2, complete["eligible_case_count"])
+        self.assertEqual("complete", complete["status"])
+        self.assertEqual(2, complete["case_count"])
+        self.assertEqual([], complete["excluded_pairs"])
+        self.assertAlmostEqual(0.30, complete["point"])
+        self.assertAlmostEqual(0.30, complete["lower"])
+        self.assertAlmostEqual(0.30, complete["upper"])
 
         planner.append(dict(planner[0]))
         duplicate = analyzer.matched_planner_executor_tokens(
@@ -1432,6 +2352,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             repeats=2,
         )
         self.assertFalse(invalid_tokens["complete"])
+        self.assertEqual("invalid_tokens", invalid_tokens["excluded_pairs"][0]["reason"])
         planner[0]["tokens_in"] = 100
 
         executor.pop()
@@ -1447,7 +2368,8 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             repeats=2,
         )
         self.assertFalse(incomplete["complete"])
-        self.assertEqual(1, incomplete["eligible_case_count"])
+        self.assertEqual("incomplete", incomplete["status"])
+        self.assertEqual(1, incomplete["case_count"])
 
     def test_host_preflight_bytes_are_separate_from_executor_prewrite(self) -> None:
         analyzer = load_analyzer_module()
@@ -1608,7 +2530,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         )['status'])
 
 
-    def test_relative_cost_benefit_direction_and_zero_denominator(self) -> None:
+    def test_relative_cost_includes_valid_task_failures_and_zero_denominator(self) -> None:
         analyzer = load_analyzer_module()
         records = []
         for case_id, baseline_tokens, candidate_tokens, candidate_pass in (
@@ -1628,8 +2550,8 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             bootstrap_iterations=200, random_seed=11,
         )
         self.assertEqual('complete', summary['status'])
-        self.assertAlmostEqual(35.0, summary['point'])
-        self.assertEqual(['early-failure'], [row['case_id'] for row in summary['task_failures']])
+        self.assertAlmostEqual(123.0, summary['point'])
+        self.assertEqual([], summary['task_failures'])
 
         relative = analyzer.summarize_paired_metric(
             records, comparator='baseline', candidate='candidate', metric='tokens_in',
@@ -1637,7 +2559,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             bootstrap_iterations=200, random_seed=11,
         )
         self.assertEqual('complete', relative['status'])
-        self.assertAlmostEqual(0.225, relative['point'])
+        self.assertAlmostEqual(0.4822222222, relative['point'])
 
         for row in records:
             if row['case_id'] == 'case-a' and row['variant'] == 'baseline':
@@ -1648,7 +2570,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             bootstrap_iterations=200, random_seed=11,
         )
         self.assertEqual('complete', relative['status'])
-        self.assertAlmostEqual(-0.375, relative['point'])
+        self.assertAlmostEqual(0.0822222222, relative['point'])
         for row in records:
             if row['case_id'] == 'case-a' and row['variant'] == 'candidate':
                 row['tokens_in'] = 0
@@ -1657,7 +2579,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             direction='lower_is_better', effect='relative', confidence_level=0.95,
             bootstrap_iterations=200, random_seed=11,
         )
-        self.assertAlmostEqual(0.125, no_cost['point'])
+        self.assertAlmostEqual(0.4155555556, no_cost['point'])
 
     def test_prewrite_uses_absolute_delta_upper_bound(self) -> None:
         analyzer = load_analyzer_module()
@@ -1904,11 +2826,11 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(
             8, projected['unexplained_repeated_static_content_bytes'],
         )
+        self.assertEqual(0, projected['unattributed_residue_bytes'])
         invalid = copy.deepcopy(context)
         invalid['controlled_bytes'] += 1
         with self.assertRaisesRegex(ValueError, 'accounting failed'):
             load_analyzer_module()._v4_context_projection(invalid)
-            self.assertIn('evidence_status=invalid', invalid.stdout)
 
 
     def test_prior_context_delta_is_variant_scoped_and_fail_closed(self) -> None:

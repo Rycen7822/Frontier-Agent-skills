@@ -43,7 +43,13 @@ def frontmatter(path: Path) -> dict:
 class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_explicit_activation(self) -> None:
         metadata = frontmatter(SKILL_PATH)
-        self.assertEqual("8.0.0", metadata["metadata"]["version"])
+        self.assertEqual("8.1.0", metadata["metadata"]["version"])
+        self.assertEqual(
+            "Write source-bound software implementation Handoffs and "
+            "multi-session Programs from settled decisions; not diagnosis "
+            "or execution.",
+            metadata["description"],
+        )
         description = metadata["description"].casefold()
         self.assertGreaterEqual(len(description), 80)
         for term in ("source-bound", "software implementation", "handoff", "program"):
@@ -66,12 +72,83 @@ class QuickWritingPlansTests(unittest.TestCase):
         rows = ("- State —", "- Resume —", "- Slice —", "- Proof —")
         self.assertEqual(list(rows), sorted(rows, key=body.index))
         self.assertIn("directly from settled facts", body)
-        self.assertIn("one combined command/evidence statement", body)
+        self.assertIn(
+            "Acceptance and verification: the one combined final proof command",
+            body,
+        )
+
+    def test_rows_have_exclusive_ownership_without_fact_loss(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        row_markers = {
+            "- State —": (
+                "Bound source identity",
+                "Protected work and allowed effects",
+                "Settled decisions",
+                "Exact first-slice inputs, outputs, values, invariants",
+                "Later blockers and dependencies",
+            ),
+            "- Resume —": ("freshness-bound host attestation",),
+            "- Slice —": (
+                "Goal / non-goals",
+                "First source-changing slice and files/symbols",
+                "Exact next source-changing action",
+            ),
+            "- Proof —": (
+                "Acceptance and verification",
+                "Rollback/cleanup when material",
+            ),
+        }
+        for row, markers in row_markers.items():
+            line = next(line for line in body.splitlines() if line.startswith(row))
+            for marker in markers:
+                with self.subTest(row=row, marker=marker):
+                    self.assertIn(marker, line)
+                    self.assertEqual(1, body.count(marker))
+
+    def test_transfer_consumes_matching_preflight(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        for contract in (
+            "consume a matching freshness-bound host attestation",
+            "resolved root, bound source identity, freshness, and dirty scope match",
+            "transfer it unchanged",
+            "missing or mismatched",
+            "one combined preflight",
+            "do not rerun it",
+        ):
+            self.assertIn(contract, body)
+        self.assertNotIn("root/revision/head/dirty scope", body)
+
+    def test_verification_owner_is_observed_not_inferred(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        for contract in (
+            "prompt-bound verification command",
+            "one bounded authority inspection",
+            "never infer the runner",
+            "language, filename, or convention",
+        ):
+            self.assertIn(contract, body)
+
+    def test_protected_behavior_is_bound_once(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        self.assertIn("observed protected-test i/o and values", body)
+        self.assertIn("later slice and proof rows reference state", body)
+        self.assertEqual(1, body.count("observed protected-test i/o and values"))
+
+    def test_proof_is_the_only_post_edit_command(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        for contract in (
+            "only post-edit command",
+            "behavior, diff scope, protected boundary, residue, and whitespace",
+            "after proof, run no status, diff, test, or confirmation",
+            "planner-only non-content confirmation",
+            "never put it in the executor plan",
+        ):
+            self.assertIn(contract, body)
 
     def test_source_binding_and_first_source_change_are_distinct(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8")
         self.assertLess(
-            body.index("Revision or explicit non-Git source identity"),
+            body.index("revision or explicit non-Git identity"),
             body.index("Resume preflight"),
         )
         self.assertLess(
@@ -93,34 +170,62 @@ class QuickWritingPlansTests(unittest.TestCase):
 
     def test_postwrite_checks_do_not_reemit_the_plan(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
-        for contract in ("before writing", "do not reopen", "git diff --check"):
+        for contract in ("before return", "do not reopen", "git diff --check"):
             self.assertIn(contract, body)
 
     def test_minimal_sufficient_plan_and_execution_contract(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
         for contract in (
             "minimal sufficient form",
-            "repo-relative paths",
+            "repo-relative dirty/protected and first-slice paths",
             "state each fact",
-            "one combined prewrite inspection",
+            "one combined preflight",
             "one combined final proof command",
-            "at most one combined non-content confirmation",
+            "at most one combined planner-only non-content confirmation",
             "do not expand one sentence into its own heading",
-            "skill-authoring workflow",
+            "skill-source changes use skill authoring",
             "portable identity",
-            "one compact contract table",
             "no word/byte reduction target",
+            "each prose paragraph on one physical line",
+            "line breaks only at markdown structural boundaries",
+            "never inside a sentence or merely to fit a column",
+            "only one compact contract table",
+            "exact first-slice inputs, outputs, values, invariants",
+            "directly from settled facts once",
+            "state behavior, not just a symbol/test",
+            "program uses those rows",
             "exclude the named plan deliverable itself",
             "never compare against the original absolute root",
             "globally clean status",
+            "use invocation-bound source; do not reread it",
+            "treat named plan/owner/test/symbol paths as resolved",
+            "do not inventory, seek alternate owners, or check existence",
+            "only a later planning invocation updates the program",
+            "protected immutable input",
+            "dependencies cite milestone names, never ordinals",
+            "resume missing attestation acceptance or one-preflight fallback",
+            "prose broken only to fit a column",
+            "do not instruct execution to modify the plan",
+            "repository's test owner",
+            "not an example or alternative",
+            "pythondontwritebytecode=1 python -m unittest <repo-test>",
+            "never use bare `pytest`",
+            "leaves no cache/state artifact",
+            "exact cleanup",
         ):
             self.assertIn(contract, body)
+        self.assertIn("state contains current frontier and later blockers", body)
+        self.assertIn("slice contains named milestones in dependency order", body)
 
-    def test_injected_body_is_not_loaded_twice(self) -> None:
+    def test_no_host_injection_reread_workaround(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
-        self.assertIn("complete body in the invocation", body)
-        self.assertIn("do not reopen `skill.md`", body)
-        self.assertIn("read it once", body)
+        for workaround in (
+            "complete body in the invocation",
+            "metadata/path only",
+            "host-injected",
+            "host injected",
+        ):
+            self.assertNotIn(workaround, body)
 
     def test_no_brief_surface(self) -> None:
         self.assertNotIn("brief", SKILL_PATH.read_text(encoding="utf-8").casefold())

@@ -87,7 +87,7 @@ The analyzer counts every protected `case × selected treatment × repeat` plan 
 - `regression`: an immutable confirmed failure after its fix.
 - `heldout`: sequestered from authoring, routine prompts, and grader rationales until the decision.
 
-For L3, the public scenario file contains no heldout rows and the holdout payload contains only heldout rows. The manifest binds payload bytes, ordered IDs, count, and each canonical scenario hash. Refresh after exposure or a material distribution/contract change.
+For L3, the public scenario file contains no heldout rows and the holdout payload contains only heldout rows. Before the decision, `suite.scenarios` equals `public_scenarios`, the holdout status is `sealed`, and `execution.ready=false`. After the candidate is frozen, the custodian changes the copied manifest status to `exposed`, materializes `suite.scenarios` as the exact ordered, disjoint `public + heldout` union, and only then sets `execution.ready=true`. The compiler evaluates that union without copying heldout rows into the public file. The manifest binds payload bytes, ordered IDs, count, and each canonical scenario hash. Refresh before evaluating a later candidate or after a material distribution or contract change.
 
 ## Real state and safety fixtures
 

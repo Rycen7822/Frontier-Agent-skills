@@ -43,14 +43,9 @@ class ReleaseCliInstallTests(unittest.TestCase):
     def test_real_isolated_install_and_remove(self) -> None:
         run_root = required_absolute_path("FRONTIER_RUN_ROOT", directory=True)
         release_evidence_path = required_absolute_path("FRONTIER_RELEASE_EVIDENCE")
-        validator = required_absolute_path("FRONTIER_PLUGIN_VALIDATOR")
+        work_root = required_absolute_path("FRONTIER_CLI_WORK_ROOT", directory=True)
         codex_bin = required_absolute_path("FRONTIER_CODEX_BIN")
         self.assertEqual(run_root / "release-evidence.json", release_evidence_path)
-        self.assertEqual(
-            ("skills", ".system", "plugin-creator", "scripts", "validate_plugin.py"),
-            validator.parts[-5:],
-            "release requires the installed official plugin-creator validator",
-        )
         self.assertTrue(codex_bin.stat().st_mode & stat.S_IXUSR, "Codex binary is not executable")
 
         release_root = run_root / "release"
@@ -58,7 +53,6 @@ class ReleaseCliInstallTests(unittest.TestCase):
         plugin = marketplace / "plugins" / "frontier-engineering-plugin"
         build_path = release_root / "plugin-build-evidence.json"
         static_path = release_root / "static-plugin-smoke.json"
-        work_root = release_root / "cli-work"
         output = release_root / "cli-install-smoke.json"
         for path in (release_root, marketplace, plugin, work_root):
             self.assertTrue(path.is_dir() and not path.is_symlink(), path)
@@ -77,10 +71,10 @@ class ReleaseCliInstallTests(unittest.TestCase):
         result = run_cli_smoke(
             plugin,
             build_path,
+            release_evidence_path,
             static_path,
             marketplace,
             work_root,
-            validator,
             codex_command=str(codex_bin),
         )
         schema = _strict_json(ROOT / "packaging" / "schemas" / "cli-install-smoke.schema.json")

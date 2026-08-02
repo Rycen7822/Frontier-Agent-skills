@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from jsonschema import Draft202012Validator
 import yaml
@@ -19,6 +20,7 @@ EXPECTED_ACTIVATION = {
     "software-quality-workflows": False,
     "writing-plans": False,
 }
+TEST_REVISION = "a" * 40
 
 
 def load_builder():
@@ -53,8 +55,16 @@ class ExtendedPluginBuildTests(unittest.TestCase):
     def build_staging(self, root: Path) -> tuple[Path, Path, dict]:
         output = root / "frontier-engineering-plugin"
         evidence_path = root / "plugin-build-evidence.json"
-        evidence = self.builder.build(ROOT, output, None, evidence_path)
+        with mock.patch.object(
+            self.builder, "_source_revision", return_value=TEST_REVISION,
+        ):
+            evidence = self.builder.build(ROOT, output, None, evidence_path)
         return output, evidence_path, evidence
+
+    def test_source_revision_rejects_nested_non_repository_root(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            with self.assertRaisesRegex(ValueError, "canonical Git revision"):
+                self.builder._source_revision(Path(directory))
 
     def test_staging_is_atomic_schema_valid_and_activation_aware(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -289,6 +289,34 @@ def _host(request: dict[str, object], mode: str) -> int:
     events = []
     checkpoints = []
     artifacts = []
+    model_observation = None
+    if any(
+        item["owner"] == "model" for item in payload["case"]["requirements"]
+    ):
+        suffix = f"{envelope['entry_id']}-{envelope['attempt']}"
+        model_observation = _artifact(
+            f"host-observation-{suffix}.json",
+            {
+                "allowed_change_paths": [],
+                "changed_paths": [],
+                "protected_paths": [],
+                "verification": {"exit_code": 0},
+            },
+        )
+        artifacts.extend([
+            model_observation,
+            _artifact(
+                f"workspace-evidence-{suffix}.json",
+                {
+                    "initial_files": {},
+                    "final_files": {},
+                    "changed_paths": [],
+                    "diff": "",
+                    "verification": {"exit_code": 0},
+                },
+            ),
+            _artifact(f"final-answer-{suffix}.md", "synthetic completion"),
+        ])
     stateful = payload["case"]["state_model"]["scope"] != "none"
     for seq, turn in enumerate(payload["turns"]):
         state_artifact = (
@@ -499,6 +527,12 @@ def _host(request: dict[str, object], mode: str) -> int:
         slots[0]["tool_schema_ceiling"],
     )
     assertions = []
+    if model_observation is not None:
+        assertions.append({
+            "claim": "outcome-complete",
+            "artifact": model_observation,
+            "locally_verifiable": True,
+        })
     for contract in payload["observation_contracts"]:
         relative = contract["artifact"].removeprefix("workspace/")
         observation = _artifact(
@@ -639,6 +673,11 @@ def _host(request: dict[str, object], mode: str) -> int:
         "cleanup": {"status": "clean", "state": cleanup_state},
         "usage": {
             "pricing_identity": "fixture-pricing",
+            "host_safety_review": {
+                "capture_status": "captured",
+                "host_safety_review_count": 1,
+                "host_safety_review_latency_ms": 9,
+            },
             "records": [
                 {
                     "principal_id": principal["principal_id"],
@@ -684,6 +723,20 @@ def _host(request: dict[str, object], mode: str) -> int:
         result["terminal_status"] = "timeout"
         result["timeout"] = True
         result["treatment_error"] = "synthetic treatment timeout"
+    elif mode == "host-model-timeout":
+        result["terminal_status"] = "timeout"
+        result["timeout"] = True
+        result["treatment_error"] = "synthetic model-task timeout"
+        result["provider_error_code"] = None
+        result["failure_class"] = "model_task_timeout"
+    elif (
+        mode == "transient-first-attempt"
+        and envelope["attempt"] == 1
+    ):
+        result["terminal_status"] = "failed"
+        result["treatment_error"] = "synthetic response stream disconnected"
+        result["provider_error_code"] = "responseStreamDisconnected"
+        result["failure_class"] = "official_transient"
     elif mode == "treatment-cancel":
         result["terminal_status"] = "cancelled"
         result["treatment_error"] = "synthetic treatment cancellation"
@@ -702,21 +755,16 @@ def _model_grade(request: dict[str, object]) -> int:
     grade = _artifact(
         f"model-grade-{payload['grader_id']}.json",
         {
-            "overall_pass": True,
-            "score": 100,
-            "checks": [
-                {
-                    "check_id": requirement["check_id"],
+            "batch_id": blinded["batch_id"],
+            "items": [{
+                "item_id": item["item_id"],
+                "checks": [{
+                    "id": check["id"],
                     "pass": True,
-                    "evidence": [],
                     "notes": "synthetic model grade",
                     "uncertainty": "none",
-                }
-                for requirement in blinded["requirements"]
-            ],
-            "missing_evidence": [],
-            "grader_failure": False,
-            "grader_failure_reason": None,
+                } for check in item["checks"]],
+            } for item in blinded["items"]],
         },
     )
     result = {
@@ -737,6 +785,11 @@ def _model_grade(request: dict[str, object]) -> int:
         "cleanup": {"status": "clean"},
         "usage": {
             "pricing_identity": "fixture-pricing",
+            "host_safety_review": {
+                "capture_status": "missing",
+                "host_safety_review_count": 0,
+                "host_safety_review_latency_ms": 0,
+            },
             "records": [{
                 "principal_id": f"grader-{payload['grader_id']}",
                 "turn_id": None,

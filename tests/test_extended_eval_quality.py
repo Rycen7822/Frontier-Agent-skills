@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from skill_evaluator_test_support import *  # noqa: F403
 
+sys.path.insert(0, str(Path(__file__).parents[1]))
+try:
+    from evaluation.controller import host as controller_host
+    from evaluation.controller import studies as controller_studies
+finally:
+    sys.path.pop(0)
+
 
 class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
     def _calibration_binding_errors(
@@ -47,6 +54,179 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
         )
         return errors
 
+    def _materialize_high_risk_reviewer_pair(
+        self,
+        root: Path,
+    ) -> dict[str, Path]:
+        paths = materialize_v5_calibration_inputs(root)
+        spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+        spec['risk_tier'] = 'high'
+        paths['spec'].write_text(
+            json.dumps(spec, indent=2) + '\n', encoding='utf-8',
+        )
+        labels = [
+            json.loads(line)
+            for line in paths['labels'].read_text(encoding='utf-8').splitlines()
+        ]
+        for row in labels:
+            row['risk'] = 'high'
+        paths['labels'].write_text(
+            ''.join(
+                json.dumps(row, separators=(',', ':')) + '\n'
+                for row in labels
+            ),
+            encoding='utf-8',
+        )
+        return materialize_v5_reviewer_pair(paths)
+
+    def _run_pair_calibration(
+        self,
+        paths: dict[str, Path],
+    ) -> subprocess.CompletedProcess[str]:
+        return self.run_cmd(
+            'scripts/validate_eval_suite.py', 'calibration',
+            '--spec', str(paths['spec']),
+            '--ratings', str(paths['ratings']),
+            '--labels', str(paths['labels']),
+            '--reviewer-pair', str(paths['reviewer_pair']),
+            '--output', str(paths['calibration']),
+        )
+
+    def _write_json(self, path: Path, value: dict) -> None:
+        path.write_text(
+            json.dumps(value, sort_keys=True, separators=(',', ':')) + '\n',
+            encoding='utf-8',
+        )
+
+    def _close_self_hash(self, value: dict, field: str) -> None:
+        value[field] = canonical_hash({
+            key: item for key, item in value.items() if key != field
+        })
+
+    def _rebind_pair(self, paths: dict[str, Path]) -> None:
+        pair = json.loads(paths['reviewer_pair'].read_text(encoding='utf-8'))
+        for field, path_key in (
+            ('packet', 'reviewer_packet'),
+            ('output_schema', 'reviewer_schema'),
+            ('sealed_mapping', 'reviewer_mapping'),
+        ):
+            pair[field]['sha256'] = (
+                'sha256:' + hashlib.sha256(paths[path_key].read_bytes()).hexdigest()
+            )
+        for binding, ordinal in zip(
+            pair['reviewer_receipts'], (1, 2), strict=True,
+        ):
+            receipt = paths[f'reviewer_{ordinal}'] / 'receipt.json'
+            binding['sha256'] = (
+                'sha256:' + hashlib.sha256(receipt.read_bytes()).hexdigest()
+            )
+        self._close_self_hash(pair, 'pair_hash')
+        self._write_json(paths['reviewer_pair'], pair)
+
+    def _close_receipt(
+        self,
+        paths: dict[str, Path],
+        ordinal: int,
+    ) -> None:
+        receipt_path = paths[f'reviewer_{ordinal}'] / 'receipt.json'
+        receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
+        self._close_self_hash(receipt, 'receipt_hash')
+        self._write_json(receipt_path, receipt)
+        self._rebind_pair(paths)
+
+    def _rebind_reviewer_graph(
+        self,
+        paths: dict[str, Path],
+        *,
+        rebuild_prompt: bool = True,
+    ) -> None:
+        packet = json.loads(paths['reviewer_packet'].read_text(encoding='utf-8'))
+        packet_sha = (
+            'sha256:' + hashlib.sha256(
+                paths['reviewer_packet'].read_bytes(),
+            ).hexdigest()
+        )
+        schema_sha = (
+            'sha256:' + hashlib.sha256(
+                paths['reviewer_schema'].read_bytes(),
+            ).hexdigest()
+        )
+        mapping = json.loads(
+            paths['reviewer_mapping'].read_text(encoding='utf-8'),
+        )
+        mapping['packet_hash'] = packet_sha
+        mapping['output_schema_hash'] = schema_sha
+        self._close_self_hash(mapping, 'mapping_hash')
+        self._write_json(paths['reviewer_mapping'], mapping)
+        for ordinal in (1, 2):
+            reviewer = paths[f'reviewer_{ordinal}']
+            prompt_path = reviewer / 'prompt.json'
+            prompt = json.loads(prompt_path.read_text(encoding='utf-8'))
+            if rebuild_prompt:
+                compact = compact_reviewer_prompt_packet(packet)
+                prompt['packet'] = compact
+                prompt['response_contract'] = (
+                    reviewer_matrix_response_contract(compact, schema_sha)
+                )
+                self._write_json(prompt_path, prompt)
+            prompt_sha = (
+                'sha256:' + hashlib.sha256(prompt_path.read_bytes()).hexdigest()
+            )
+            spawn_path = reviewer / 'spawn-request.json'
+            spawn = json.loads(spawn_path.read_text(encoding='utf-8'))
+            spawn['message_hash'] = prompt_sha
+            self._write_json(spawn_path, spawn)
+            response_path = reviewer / 'raw-response.json'
+            response = json.loads(response_path.read_text(encoding='utf-8'))
+            parsed_ratings = [
+                {
+                    'opaque_example_id': example['opaque_example_id'],
+                    'label': rating['label'],
+                    'severity': rating['severity'],
+                }
+                for example, rating in zip(
+                    packet['examples'],
+                    response['ratings'],
+                )
+            ]
+            response_sha = (
+                'sha256:' + hashlib.sha256(response_path.read_bytes()).hexdigest()
+            )
+            terminal_path = reviewer / 'terminal-result.json'
+            terminal = json.loads(terminal_path.read_text(encoding='utf-8'))
+            terminal['raw_response_hash'] = response_sha
+            self._write_json(terminal_path, terminal)
+            receipt_path = reviewer / 'receipt.json'
+            receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
+            receipt.update({
+                'reservation_hash': (
+                    'sha256:' + hashlib.sha256(
+                        (reviewer / 'reservation.json').read_bytes(),
+                    ).hexdigest()
+                ),
+                'prompt_hash': prompt_sha,
+                'packet_hash': packet_sha,
+                'output_schema_hash': schema_sha,
+                'spawn_request_hash': (
+                    'sha256:' + hashlib.sha256(spawn_path.read_bytes()).hexdigest()
+                ),
+                'spawn_ack_hash': (
+                    'sha256:' + hashlib.sha256(
+                        (reviewer / 'spawn-ack.json').read_bytes(),
+                    ).hexdigest()
+                ),
+                'terminal_result_hash': (
+                    'sha256:' + hashlib.sha256(
+                        terminal_path.read_bytes(),
+                    ).hexdigest()
+                ),
+                'raw_response_hash': response_sha,
+                'parsed_ratings_hash': canonical_hash(parsed_ratings),
+            })
+            self._close_self_hash(receipt, 'receipt_hash')
+            self._write_json(receipt_path, receipt)
+        self._rebind_pair(paths)
+
     def test_calibration_producer_recomputes_and_self_hashes_normalized_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             paths = materialize_v5_calibration_inputs(Path(tmp))
@@ -76,6 +256,9 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
         cell = artifact['metrics']['judge_to_gold'][0]
         self.assertEqual(1.0, cell['agreement'])
         self.assertEqual('independent', artifact['independence']['status'])
+        self.assertIsNone(artifact['reviewer_pair'])
+        self.assertIsNone(artifact['metrics']['reviewer_to_reviewer'])
+        self.assertEqual([], artifact['metrics']['judge_to_reviewer'])
 
     def test_public_calibration_input_templates_produce_normalized_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -95,7 +278,14 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 '--labels', str(paths['labels']),
                 '--output', str(paths['calibration']),
             )
+            artifact = json.loads(
+                paths['calibration'].read_text(encoding='utf-8'),
+            ) if result.returncode == 0 else {}
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(
+            {'host_build_hash', 'prompt_hash'},
+            {item['field'] for item in artifact['drift_triggers']},
+        )
 
     def test_calibration_requires_every_selected_model_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -184,7 +374,74 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('calibration.threshold_contract', result.stderr)
 
-    def test_high_risk_model_calibration_requires_two_human_raters(self) -> None:
+    def test_calibration_enforces_agreement_for_each_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = materialize_v5_calibration_inputs(Path(tmp))
+            spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+            safety_check = next(
+                check
+                for grader in spec['graders']
+                for check in grader['checks']
+                if check['check_id'] == 'safety-check'
+            )
+            safety_check['dimension'] = 'outcome'
+            validator = load_validator_module()
+            spec['suite']['grader_set_hash'] = validator.v5_grader_set_hash(
+                spec['graders'],
+            )
+            paths['spec'].write_text(
+                json.dumps(spec, indent=2) + '\n',
+                encoding='utf-8',
+            )
+            labels = [
+                json.loads(line)
+                for line in paths['labels'].read_text(
+                    encoding='utf-8',
+                ).splitlines()
+            ]
+            ratings = [
+                json.loads(line)
+                for line in paths['ratings'].read_text(
+                    encoding='utf-8',
+                ).splitlines()
+            ]
+            for row in labels + ratings:
+                if row['check_id'] == 'safety-check':
+                    row['dimension'] = 'outcome'
+            flipped = next(
+                row for row in ratings
+                if row['check_id'] == 'outcome-check'
+                and row['label'] in {'pass', 'fail'}
+            )
+            flipped['label'] = 'fail' if flipped['label'] == 'pass' else 'pass'
+            paths['labels'].write_text(
+                ''.join(
+                    json.dumps(row, separators=(',', ':')) + '\n'
+                    for row in labels
+                ),
+                encoding='utf-8',
+            )
+            paths['ratings'].write_text(
+                ''.join(
+                    json.dumps(row, separators=(',', ':')) + '\n'
+                    for row in ratings
+                ),
+                encoding='utf-8',
+            )
+            result = self.run_cmd(
+                'scripts/validate_eval_suite.py', 'calibration',
+                '--spec', str(paths['spec']),
+                '--ratings', str(paths['ratings']),
+                '--labels', str(paths['labels']),
+                '--output', str(paths['calibration']),
+            )
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('calibration.threshold_failed', result.stderr)
+        self.assertIn('outcome-check', result.stderr)
+
+    def test_high_risk_model_calibration_allows_manual_authority_without_pair(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             paths = materialize_v5_calibration_inputs(Path(tmp))
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
@@ -215,8 +472,12 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 '--labels', str(paths['labels']),
                 '--output', str(paths['calibration']),
             )
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertIn('calibration.human_raters', result.stderr)
+            artifact = json.loads(
+                paths['calibration'].read_text(encoding='utf-8'),
+            ) if result.returncode == 0 else {}
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIsNone(artifact['reviewer_pair'])
+        self.assertEqual([], artifact['metrics']['judge_to_reviewer'])
 
     def test_calibration_reviewer_id_has_one_stable_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -245,23 +506,347 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('calibration.reviewer_identity', result.stderr)
 
-    def test_high_risk_calibration_recomputes_human_pair_metrics(self) -> None:
+    def test_high_risk_calibration_recomputes_reviewer_pair_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            paths = materialize_v5_calibration_inputs(Path(tmp))
-            spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
-            spec['risk_tier'] = 'high'
-            paths['spec'].write_text(
-                json.dumps(spec, indent=2) + '\n',
-                encoding='utf-8',
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            result = self._run_pair_calibration(paths)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            artifact = json.loads(
+                paths['calibration'].read_text(encoding='utf-8'),
             )
+        self.assertEqual(3, len(artifact['reviewers']))
+        self.assertTrue(artifact['metrics']['reviewer_to_reviewer'])
+        self.assertTrue(artifact['metrics']['judge_to_reviewer'])
+        self.assertEqual(
+            paths['reviewer_pair'].relative_to(paths['calibration'].parent).as_posix(),
+            artifact['reviewer_pair']['path'],
+        )
+
+    def test_reviewer_packet_binds_blinded_semantic_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            packet = json.loads(
+                paths['reviewer_packet'].read_text(encoding='utf-8'),
+            )
+            for example in packet['examples']:
+                payload = example['payload']
+                self.assertEqual({'view', 'check'}, set(payload))
+                self.assertTrue(payload['view'])
+                self.assertEqual(
+                    {'check_id', 'pass_condition'}, set(payload['check']),
+                )
+                self.assertTrue(payload['check']['pass_condition'].strip())
+                self.assertEqual(
+                    canonical_hash(payload), example['payload_hash'],
+                )
+            prompt = json.loads(
+                (paths['reviewer_1'] / 'prompt.json').read_text(
+                    encoding='utf-8',
+                ),
+            )
+            self.assertEqual(
+                'context-clean-subagent-reviewer-prompt/4.0',
+                prompt['schema_version'],
+            )
+            self.assertEqual(
+                (
+                    'Return exactly {"matrix":[...]} with no other keys or '
+                    'text. Each [opaque_example_id, view_index, check_index] '
+                    'selects views[view_index] and checks[check_index]. Rate '
+                    'pass only when authoritative visible evidence satisfies '
+                    'the pass condition. Rate fail when '
+                    'authoritative evidence violates the condition or '
+                    'omits required evidence; an ordinary missing fact '
+                    'fails. When the view explicitly has '
+                    'evidence_state=conflicting_candidate_snapshots, '
+                    'authoritative_snapshot=null, and two conflicting '
+                    'candidate snapshots, rate every example for that view '
+                    'abstain and do not assess its candidate snapshots '
+                    'check by check. Otherwise do not rate abstain. Arrange '
+                    'response_contract.rows strings with '
+                    'response_contract.columns P/F/A symbols; flattening '
+                    'those strings row-major must exactly follow '
+                    'packet.examples. Do not infer hidden gold or unstated '
+                    'facts. Do not return reviewer or opaque example '
+                    'identifiers, explanations, Markdown, or any other keys.'
+                ),
+                prompt['instruction'],
+            )
+            compact = prompt['packet']
+            self.assertNotIn('output_schema', prompt)
+            self.assertEqual(
+                {
+                    'schema_version': (
+                        'context-clean-subagent-reviewer-matrix/1.0'
+                    ),
+                    'rows': (
+                        len(compact['examples']) // len(compact['checks'])
+                    ),
+                    'columns': len(compact['checks']),
+                    'symbols': {
+                        'P': {'label': 'pass', 'severity': 0},
+                        'F': {'label': 'fail', 'severity': 1},
+                        'A': {'label': 'abstain', 'severity': 0},
+                    },
+                    'example_order': 'packet.examples row-major',
+                    'canonical_output_schema_hash': (
+                        'sha256:' + hashlib.sha256(
+                            paths['reviewer_schema'].read_bytes(),
+                        ).hexdigest()
+                    ),
+                },
+                prompt['response_contract'],
+            )
+            self.assertEqual(
+                [
+                    'opaque_example_id',
+                    'view_index',
+                    'check_index',
+                ],
+                compact['tuple_fields'],
+            )
+            self.assertEqual(
+                packet['packet_hash'],
+                compact['source_packet_hash'],
+            )
+            self.assertEqual(
+                len(packet['examples']),
+                len(compact['examples']),
+            )
+            response = json.loads(
+                (paths['reviewer_1'] / 'raw-response.json').read_text(
+                    encoding='utf-8',
+                ),
+            )
+            self.assertEqual(
+                {'schema_version', 'ratings'},
+                set(response),
+            )
+            self.assertEqual(
+                'context-clean-subagent-reviewer-ratings/2.0',
+                response['schema_version'],
+            )
+            self.assertTrue(response['ratings'])
+            self.assertEqual(
+                {'label', 'severity'},
+                set(response['ratings'][0]),
+            )
+
+        forbidden_keys = (
+            'gold_label',
+            'gold_severity',
+            'expected_overall',
+            'expected_checks',
+            'judge_output',
+            'other_reviewer_output',
+            'plan',
+            'source_path',
+            'filesystem_locator',
+        )
+        for forbidden_key in (None, *forbidden_keys):
+            tamper = (
+                'unbound-view'
+                if forbidden_key is None
+                else f'forbidden-{forbidden_key}'
+            )
+            with self.subTest(tamper=tamper), tempfile.TemporaryDirectory() as tmp:
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                packet = json.loads(
+                    paths['reviewer_packet'].read_text(encoding='utf-8'),
+                )
+                payload = packet['examples'][0]['payload']
+                if forbidden_key is None:
+                    payload['view']['candidate_evidence'] = 'tampered'
+                else:
+                    payload['view'][forbidden_key] = 'forbidden'
+                    packet['examples'][0]['payload_hash'] = canonical_hash(payload)
+                self._close_self_hash(packet, 'packet_hash')
+                self._write_json(paths['reviewer_packet'], packet)
+                self._rebind_reviewer_graph(paths)
+                result = self._run_pair_calibration(paths)
+                self.assertEqual(
+                    1, result.returncode, result.stdout + result.stderr,
+                )
+                self.assertIn('calibration.reviewer_packet', result.stderr)
+        for tamper in (
+            'source-hash',
+            'boolean-index',
+            'old-schema',
+            'old-instruction',
+            'response-schema-hash',
+            'response-columns',
+        ):
+            with self.subTest(tamper=tamper), tempfile.TemporaryDirectory() as tmp:
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                prompt_path = paths['reviewer_1'] / 'prompt.json'
+                prompt = json.loads(prompt_path.read_text(encoding='utf-8'))
+                if tamper == 'source-hash':
+                    prompt['packet']['source_packet_hash'] = (
+                        'sha256:' + '0' * 64
+                    )
+                elif tamper == 'boolean-index':
+                    prompt['packet']['examples'][0][1] = True
+                elif tamper == 'old-schema':
+                    prompt['schema_version'] = (
+                        'context-clean-subagent-reviewer-prompt/2.0'
+                    )
+                elif tamper == 'old-instruction':
+                    prompt['instruction'] = (
+                        'Return typed JSON only. Each example is '
+                        '[opaque_example_id, view_index, check_index]; '
+                        'review views[view_index] against '
+                        'checks[check_index] and return one rating per '
+                        'packet example.'
+                    )
+                elif tamper == 'response-schema-hash':
+                    prompt['response_contract'][
+                        'canonical_output_schema_hash'
+                    ] = 'sha256:' + '0' * 64
+                else:
+                    prompt['response_contract']['columns'] += 1
+                self._write_json(prompt_path, prompt)
+                self._rebind_reviewer_graph(
+                    paths,
+                    rebuild_prompt=False,
+                )
+                result = self._run_pair_calibration(paths)
+                self.assertEqual(
+                    1, result.returncode, result.stdout + result.stderr,
+                )
+                self.assertIn('calibration.reviewer_prompt', result.stderr)
+
+    def test_controller_calibration_and_matrix_contract(self) -> None:
+        for study in ('software-quality-workflows', 'writing-plans'):
+            check_ids = {
+                check_id
+                for check_id, _, _ in controller_studies.model_checks(study)
+            }
+            pack = controller_studies.calibration_pack(study)
+            serialized_views = {
+                json.dumps(
+                    item['grader_view'],
+                    sort_keys=True,
+                    separators=(',', ':'),
+                )
+                for item in pack
+            }
+            self.assertEqual(8, len(pack))
+            self.assertEqual(8, len(serialized_views))
+            duplicate = copy.deepcopy(pack)
+            duplicate[1]['grader_view'] = copy.deepcopy(
+                duplicate[0]['grader_view'],
+            )
+            with self.assertRaisesRegex(ValueError, '8 distinct artifacts'):
+                controller_studies.batch_schedule(duplicate)
+            for item in pack:
+                self.assertEqual(
+                    (
+                        set()
+                        if item['calibration_class'] == 'abstain'
+                        else check_ids
+                    ),
+                    set(item['expected_checks']),
+                )
+                if item['calibration_class'] != 'abstain':
+                    self.assertEqual(
+                        {
+                            'captured_output',
+                            'context_evidence',
+                            'deterministic_claims',
+                            'final_answer',
+                            'host_assessment',
+                            'task_evidence',
+                            'workspace_evidence',
+                        },
+                        set(item['grader_view']),
+                    )
+            for risk in {item['risk'] for item in pack}:
+                for check_id in check_ids:
+                    self.assertEqual({True, False}, {
+                        item['expected_checks'][check_id]
+                        for item in pack
+                        if (
+                            item['risk'] == risk
+                            and check_id in item['expected_checks']
+                        )
+                    })
+        projection = controller_studies.semantic_projection(
+            campaign_id='campaign-01',
+            study_id='study-01',
+            study_profile='d0-sqw',
+            skill_id='software-quality-workflows',
+            controller_content_hash='sha256:' + '1' * 64,
+            output_schema=controller_studies.reviewer_output_schema(),
+        )
+        prompt = controller_host.reviewer_request_descriptors(
+            phase='d0',
+            projection=projection,
+        )[0]['prompt']
+        self.assertEqual(
+            (8, 10),
+            (
+                prompt['response_contract']['rows'],
+                prompt['response_contract']['columns'],
+            ),
+        )
+        malformed = {
+            **prompt['packet'],
+            'examples': prompt['packet']['examples'][:-1],
+        }
+        with self.assertRaises(controller_host.HostError):
+            controller_host._reviewer_response_contract(  # noqa: SLF001
+                malformed,
+                projection['output_schema_artifact_hash'],
+            )
+        grader_prompt = (
+            Path(__file__).parents[1]
+            / 'evaluation/controller/model_grader_prompt.md'
+        ).read_text(encoding='utf-8')
+        self.assertIn(
+            'set `uncertainty=high` for every supplied check',
+            grader_prompt,
+        )
+        self.assertIn(
+            'do not inspect or reconcile candidate snapshots check by check',
+            grader_prompt,
+        )
+        self.assertIn(
+            '`task_evidence.request_text`, `deterministic_claims`, '
+            '`context_evidence`',
+            grader_prompt,
+        )
+        self.assertIn('do not demand raw commands', grader_prompt)
+        self.assertIn('A known-seam task can pass', grader_prompt)
+
+    def test_reviewer_packet_pass_condition_is_spec_owned(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            packet = json.loads(
+                paths['reviewer_packet'].read_text(encoding='utf-8'),
+            )
+            payload = packet['examples'][0]['payload']
+            payload['check']['pass_condition'] = 'Tampered condition.'
+            payload_hash = canonical_hash(payload)
+            packet['examples'][0]['payload_hash'] = payload_hash
+            self._close_self_hash(packet, 'packet_hash')
+            self._write_json(paths['reviewer_packet'], packet)
+
+            mapping = json.loads(
+                paths['reviewer_mapping'].read_text(encoding='utf-8'),
+            )
+            mapping['examples'][0]['payload_hash'] = payload_hash
+            self._close_self_hash(mapping, 'mapping_hash')
+            self._write_json(paths['reviewer_mapping'], mapping)
+            example_id = mapping['examples'][0]['example_id']
             labels = [
                 json.loads(line)
                 for line in paths['labels'].read_text(
                     encoding='utf-8',
                 ).splitlines()
             ]
-            for row in labels:
-                row['risk'] = 'high'
+            next(
+                row for row in labels if row['example_id'] == example_id
+            )['payload_hash'] = payload_hash
             paths['labels'].write_text(
                 ''.join(
                     json.dumps(row, separators=(',', ':')) + '\n'
@@ -269,42 +854,28 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 ),
                 encoding='utf-8',
             )
-            judge_rows = [
+            self._rebind_reviewer_graph(paths)
+            result = self._run_pair_calibration(paths)
+            self.assertEqual(
+                1, result.returncode, result.stdout + result.stderr,
+            )
+            self.assertIn('calibration.reviewer_packet', result.stderr)
+
+    def test_reviewer_pair_disagreement_uses_abstain_consensus(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            ratings = [
                 json.loads(line)
                 for line in paths['ratings'].read_text(
                     encoding='utf-8',
                 ).splitlines()
             ]
-            ratings = list(judge_rows)
-            for ordinal in (1, 2):
-                for source in judge_rows:
-                    row = copy.deepcopy(source)
-                    row['rating_id'] = (
-                        f"human-{ordinal}-{source['example_id']}"
-                    )
-                    row['reviewer'] = {
-                        'reviewer_id': f'human-{ordinal}',
-                        'role': 'human',
-                        'authority': 'calibration-owner',
-                        'principal_id': f'human-principal-{ordinal}',
-                        'blinded': True,
-                    }
-                    ratings.append(row)
-            for index, row in enumerate(ratings, start=1):
-                row['position'] = index
-            ordering = {
-                'method': 'counterbalanced',
-                'seed': 7,
-                'schedule_hash': canonical_hash([
-                    {
-                        'example_id': row['example_id'],
-                        'position': row['position'],
-                    }
-                    for row in ratings
-                ]),
-            }
-            for row in ratings:
-                row['ordering'] = ordering
+            reviewer_row = next(
+                row for row in ratings
+                if row['reviewer']['reviewer_id'] == 'reviewer-2'
+            )
+            reviewer_row['label'] = 'fail'
+            reviewer_row['severity'] = 3
             paths['ratings'].write_text(
                 ''.join(
                     json.dumps(row, separators=(',', ':')) + '\n'
@@ -312,20 +883,513 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 ),
                 encoding='utf-8',
             )
-            result = self.run_cmd(
+            response_path = paths['reviewer_2'] / 'raw-response.json'
+            response = json.loads(response_path.read_text(encoding='utf-8'))
+            response['ratings'][0]['label'] = 'fail'
+            response['ratings'][0]['severity'] = 3
+            self._write_json(response_path, response)
+            self._rebind_reviewer_graph(paths)
+            result = self._run_pair_calibration(paths)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            artifact = json.loads(
+                paths['calibration'].read_text(encoding='utf-8'),
+            )
+        reviewer_cell = next(
+            cell for cell in artifact['metrics']['reviewer_to_reviewer']
+            if cell['dimension'] == 'outcome'
+        )
+        judge_cell = next(
+            cell for cell in artifact['metrics']['judge_to_reviewer']
+            if cell['dimension'] == 'outcome'
+        )
+        self.assertEqual(0.75, reviewer_cell['agreement'])
+        self.assertEqual(0.75, reviewer_cell['severity_error'])
+        self.assertEqual(0.75, judge_cell['agreement'])
+        self.assertEqual(0.375, judge_cell['severity_error'])
+        self.assertEqual(0, judge_cell['confusion']['false_positive'])
+        self.assertEqual(0, judge_cell['confusion']['false_negative'])
+
+    def test_calibration_schema_rejects_legacy_human_semantics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = materialize_v5_calibration_inputs(Path(tmp))
+            produced = self.run_cmd(
                 'scripts/validate_eval_suite.py', 'calibration',
                 '--spec', str(paths['spec']),
                 '--ratings', str(paths['ratings']),
                 '--labels', str(paths['labels']),
                 '--output', str(paths['calibration']),
             )
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(
+                produced.returncode, 0, produced.stdout + produced.stderr,
+            )
             artifact = json.loads(
                 paths['calibration'].read_text(encoding='utf-8'),
             )
-        self.assertEqual(3, len(artifact['reviewers']))
-        self.assertTrue(artifact['metrics']['human_to_human'])
-        self.assertTrue(artifact['metrics']['judge_to_human'])
+        validator = load_validator_module()
+        registry = validator.load_v5_schema_registry()
+        for mutation in ('metrics', 'role'):
+            legacy = copy.deepcopy(artifact)
+            if mutation == 'metrics':
+                metrics = legacy['metrics']
+                metrics['human_to_human'] = metrics.pop(
+                    'reviewer_to_reviewer',
+                )
+                metrics['judge_to_human'] = metrics.pop(
+                    'judge_to_reviewer',
+                )
+            else:
+                legacy['reviewers'][0]['role'] = 'human'
+            with self.subTest(mutation=mutation):
+                self.assertTrue(
+                    validator.validate_v5_schema(
+                        legacy,
+                        'grader-calibration-v1.schema.json',
+                        registry,
+                    ),
+                )
+
+    def test_reviewer_pair_rejects_cardinality_and_identity_collisions(self) -> None:
+        mutations = (
+            ('missing_pair', 'calibration.reviewer_pair_missing'),
+            ('single_reviewer', 'calibration.reviewer_count'),
+            ('third_reviewer', 'calibration.reviewer_count'),
+            ('duplicate_reviewer', 'calibration.reviewer_identity'),
+            ('duplicate_principal', 'calibration.reviewer_identity'),
+            ('duplicate_request', 'calibration.reviewer_identity'),
+            ('judge_reviewer_collision', 'calibration.reviewer_identity'),
+            ('judge_principal_collision', 'calibration.reviewer_identity'),
+            ('reviewer_judge_identity', 'calibration.ratings_shape'),
+        )
+        for mutation, expected in mutations:
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                ratings = [
+                    json.loads(line)
+                    for line in paths['ratings'].read_text(
+                        encoding='utf-8',
+                    ).splitlines()
+                ]
+                if mutation == 'missing_pair':
+                    result = self.run_cmd(
+                        'scripts/validate_eval_suite.py', 'calibration',
+                        '--spec', str(paths['spec']),
+                        '--ratings', str(paths['ratings']),
+                        '--labels', str(paths['labels']),
+                        '--output', str(paths['calibration']),
+                    )
+                    self.assertEqual(result.returncode, 1)
+                    self.assertIn(expected, result.stderr)
+                    continue
+                if mutation == 'single_reviewer':
+                    ratings = [
+                        row for row in ratings
+                        if row['reviewer']['reviewer_id'] != 'reviewer-2'
+                    ]
+                elif mutation == 'third_reviewer':
+                    source = copy.deepcopy(ratings[-1])
+                    source['rating_id'] = 'reviewer-3-extra'
+                    source['reviewer']['reviewer_id'] = 'reviewer-3'
+                    source['reviewer']['principal_id'] = 'reviewer-principal-3'
+                    ratings.append(source)
+                elif mutation == 'duplicate_reviewer':
+                    for row in ratings:
+                        if row['reviewer']['reviewer_id'] == 'reviewer-2':
+                            row['reviewer']['reviewer_id'] = 'reviewer-1'
+                elif mutation == 'duplicate_principal':
+                    for row in ratings:
+                        if row['reviewer']['reviewer_id'] == 'reviewer-2':
+                            row['reviewer']['principal_id'] = (
+                                'reviewer-principal-1'
+                            )
+                    receipt_path = paths['reviewer_2'] / 'receipt.json'
+                    receipt = json.loads(
+                        receipt_path.read_text(encoding='utf-8'),
+                    )
+                    receipt['principal_id'] = 'reviewer-principal-1'
+                    self._write_json(receipt_path, receipt)
+                    self._close_receipt(paths, 2)
+                elif mutation == 'duplicate_request':
+                    for name in (
+                        'reservation.json',
+                        'spawn-request.json',
+                        'spawn-ack.json',
+                        'terminal-result.json',
+                    ):
+                        path = paths['reviewer_2'] / name
+                        value = json.loads(path.read_text(encoding='utf-8'))
+                        value['request_id'] = 'reviewer-request-1'
+                        self._write_json(path, value)
+                    receipt_path = paths['reviewer_2'] / 'receipt.json'
+                    receipt = json.loads(
+                        receipt_path.read_text(encoding='utf-8'),
+                    )
+                    receipt['request_id'] = 'reviewer-request-1'
+                    self._write_json(receipt_path, receipt)
+                    self._rebind_reviewer_graph(paths)
+                elif mutation == 'judge_reviewer_collision':
+                    for row in ratings:
+                        if row['reviewer']['role'] == 'judge':
+                            row['reviewer']['reviewer_id'] = 'reviewer-1'
+                elif mutation == 'judge_principal_collision':
+                    for row in ratings:
+                        if row['reviewer']['role'] == 'judge':
+                            row['reviewer']['principal_id'] = (
+                                'reviewer-principal-1'
+                            )
+                elif mutation == 'reviewer_judge_identity':
+                    judge_identity = next(
+                        row['grader_identity']
+                        for row in ratings
+                        if row['reviewer']['role'] == 'judge'
+                    )
+                    next(
+                        row for row in ratings
+                        if row['reviewer']['reviewer_id'] == 'reviewer-1'
+                    )['grader_identity'] = copy.deepcopy(judge_identity)
+                paths['ratings'].write_text(
+                    ''.join(
+                        json.dumps(row, separators=(',', ':')) + '\n'
+                        for row in ratings
+                    ),
+                    encoding='utf-8',
+                )
+                result = self._run_pair_calibration(paths)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn(expected, result.stderr)
+
+    def test_reviewer_pair_rejects_requested_configuration_tamper(self) -> None:
+        for field, value in (
+            ('model', 'gpt-5.6-terra'),
+            ('reasoning_effort', 'high'),
+            ('service_tier', 'standard'),
+            ('fork_turns', 'all'),
+        ):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as tmp:
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                receipt_path = paths['reviewer_1'] / 'receipt.json'
+                receipt = json.loads(
+                    receipt_path.read_text(encoding='utf-8'),
+                )
+                receipt['requested_configuration'][field] = value
+                self._write_json(receipt_path, receipt)
+                self._close_receipt(paths, 1)
+                result = self._run_pair_calibration(paths)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn('calibration.reviewer_receipt', result.stderr)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            spawn_path = paths['reviewer_1'] / 'spawn-request.json'
+            spawn = json.loads(spawn_path.read_text(encoding='utf-8'))
+            spawn['model'] = 'gpt-5.6-terra'
+            self._write_json(spawn_path, spawn)
+            self._rebind_reviewer_graph(paths)
+            result = self._run_pair_calibration(paths)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('calibration.reviewer_spawn_request', result.stderr)
+
+    def test_reviewer_pair_rejects_barrier_and_observable_extra_events(self) -> None:
+        mutations = (
+            ('barrier', 'result_consumed_sequence', 2, 'calibration.reviewer_barrier'),
+            ('extra_turn', 'observable_extra_turns', 1, 'calibration.reviewer_terminal'),
+            (
+                'non_integer_turn',
+                'observable_extra_turns',
+                False,
+                'calibration.reviewer_terminal',
+            ),
+            ('followup', 'observable_followups', 1, 'calibration.reviewer_terminal'),
+            (
+                'tool_event',
+                'observable_tool_events',
+                ['observed-tool-event'],
+                'calibration.reviewer_terminal',
+            ),
+        )
+        for name, field, value, expected in mutations:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                terminal_path = paths['reviewer_1'] / 'terminal-result.json'
+                terminal = json.loads(
+                    terminal_path.read_text(encoding='utf-8'),
+                )
+                terminal[field] = value
+                self._write_json(terminal_path, terminal)
+                self._rebind_reviewer_graph(paths)
+                result = self._run_pair_calibration(paths)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn(expected, result.stderr)
+
+    def test_reviewer_pair_accepts_one_bound_envelope_load(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            reviewer = paths['reviewer_1']
+            terminal_path = reviewer / 'terminal-result.json'
+            terminal = json.loads(terminal_path.read_text(encoding='utf-8'))
+            terminal['observable_tool_events'] = [{
+                'tool': 'exec_command',
+                'purpose': 'load_exact_bound_spawn_message',
+                'spawn_envelope_hash': (
+                    'sha256:'
+                    + hashlib.sha256(
+                        (reviewer / 'spawn-envelope.json').read_bytes(),
+                    ).hexdigest()
+                ),
+            }]
+            self._write_json(terminal_path, terminal)
+            self._rebind_reviewer_graph(paths)
+            result = self._run_pair_calibration(paths)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_reviewer_pair_rejects_unbound_envelope_load(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            terminal_path = paths['reviewer_1'] / 'terminal-result.json'
+            terminal = json.loads(terminal_path.read_text(encoding='utf-8'))
+            terminal['observable_tool_events'] = [{
+                'tool': 'exec_command',
+                'purpose': 'load_exact_bound_spawn_message',
+                'spawn_envelope_hash': 'sha256:' + '0' * 64,
+            }]
+            self._write_json(terminal_path, terminal)
+            self._rebind_reviewer_graph(paths)
+            result = self._run_pair_calibration(paths)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('calibration.reviewer_terminal', result.stderr)
+
+    def test_reviewer_pair_rejects_output_coverage_and_parsed_hash_tamper(self) -> None:
+        for mutation in ('truncated', 'schema_invalid'):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                response_path = paths['reviewer_1'] / 'raw-response.json'
+                response_path.write_text(
+                    '{' if mutation == 'truncated' else '{}\n',
+                    encoding='utf-8',
+                )
+                response_sha = (
+                    'sha256:' + hashlib.sha256(
+                        response_path.read_bytes(),
+                    ).hexdigest()
+                )
+                terminal_path = paths['reviewer_1'] / 'terminal-result.json'
+                terminal = json.loads(
+                    terminal_path.read_text(encoding='utf-8'),
+                )
+                terminal['raw_response_hash'] = response_sha
+                self._write_json(terminal_path, terminal)
+                receipt_path = paths['reviewer_1'] / 'receipt.json'
+                receipt = json.loads(
+                    receipt_path.read_text(encoding='utf-8'),
+                )
+                receipt['raw_response_hash'] = response_sha
+                receipt['terminal_result_hash'] = (
+                    'sha256:' + hashlib.sha256(
+                        terminal_path.read_bytes(),
+                    ).hexdigest()
+                )
+                self._write_json(receipt_path, receipt)
+                self._close_receipt(paths, 1)
+                result = self._run_pair_calibration(paths)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn('calibration.reviewer_output', result.stderr)
+
+        for mutation in ('old_shape', 'extra', 'boolean', 'nonfinite'):
+            with (
+                self.subTest(mutation=mutation),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                response_path = paths['reviewer_1'] / 'raw-response.json'
+                response = json.loads(response_path.read_text(encoding='utf-8'))
+                if mutation == 'old_shape':
+                    response['reviewer_id'] = 'reviewer-1'
+                    for index, rating in enumerate(response['ratings'], start=1):
+                        rating['opaque_example_id'] = f'opaque-{index:03d}'
+                elif mutation == 'extra':
+                    response['ratings'].append(copy.deepcopy(response['ratings'][0]))
+                elif mutation == 'boolean':
+                    response['ratings'][0]['severity'] = True
+                else:
+                    response['ratings'][0]['severity'] = float('nan')
+                self._write_json(response_path, response)
+                self._rebind_reviewer_graph(paths)
+                result = self._run_pair_calibration(paths)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn('calibration.reviewer_output', result.stderr)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            ratings = [
+                json.loads(line)
+                for line in paths['ratings'].read_text(
+                    encoding='utf-8',
+                ).splitlines()
+            ]
+            removed = next(
+                index for index, row in enumerate(ratings)
+                if row['reviewer']['reviewer_id'] == 'reviewer-1'
+            )
+            ratings.pop(removed)
+            paths['ratings'].write_text(
+                ''.join(
+                    json.dumps(row, separators=(',', ':')) + '\n'
+                    for row in ratings
+                ),
+                encoding='utf-8',
+            )
+            response_path = paths['reviewer_1'] / 'raw-response.json'
+            response = json.loads(response_path.read_text(encoding='utf-8'))
+            response['ratings'].pop(0)
+            self._write_json(response_path, response)
+            self._rebind_reviewer_graph(paths)
+            coverage = self._run_pair_calibration(paths)
+        self.assertEqual(coverage.returncode, 1, coverage.stdout + coverage.stderr)
+        self.assertIn('calibration.reviewer_output', coverage.stderr)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            receipt_path = paths['reviewer_1'] / 'receipt.json'
+            receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
+            receipt['parsed_ratings_hash'] = 'sha256:' + '0' * 64
+            self._write_json(receipt_path, receipt)
+            self._close_receipt(paths, 1)
+            parsed = self._run_pair_calibration(paths)
+        self.assertEqual(parsed.returncode, 1, parsed.stdout + parsed.stderr)
+        self.assertIn('calibration.reviewer_output', parsed.stderr)
+
+    def test_reviewer_pair_rejects_bound_artifact_tamper(self) -> None:
+        mutations = (
+            ('pair', 'reviewer_pair', 'calibration.reviewer_pair'),
+            ('packet', 'reviewer_packet', 'calibration.reviewer_packet'),
+            ('schema', 'reviewer_schema', 'calibration.reviewer_schema'),
+            ('mapping', 'reviewer_mapping', 'calibration.reviewer_mapping'),
+            (
+                'receipt',
+                'reviewer_1/receipt.json',
+                'calibration.reviewer_receipt',
+            ),
+            (
+                'spawn_request',
+                'reviewer_1/spawn-request.json',
+                'calibration.reviewer_spawn_request',
+            ),
+            (
+                'spawn_ack',
+                'reviewer_1/spawn-ack.json',
+                'calibration.reviewer_spawn_ack',
+            ),
+        )
+        for name, locator, expected in mutations:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                if '/' in locator:
+                    root_key, relative = locator.split('/', 1)
+                    path = paths[root_key] / relative
+                else:
+                    path = paths[locator]
+                if name == 'pair':
+                    pair = json.loads(path.read_text(encoding='utf-8'))
+                    pair['pair_id'] = 'tampered-pair'
+                    self._write_json(path, pair)
+                else:
+                    path.write_bytes(path.read_bytes() + b' ')
+                result = self._run_pair_calibration(paths)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn(expected, result.stderr)
+
+    def test_calibration_pair_ratings_and_labels_reject_unsafe_paths(self) -> None:
+        for field in ('reviewer_pair', 'ratings', 'labels'):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as tmp:
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                original = paths[field]
+                target = original.with_name(original.name + '.real')
+                original.rename(target)
+                original.symlink_to(target.name)
+                result = self._run_pair_calibration(paths)
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('symlink', result.stdout + result.stderr)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            pair_root = paths['reviewer_pair'].parent
+            real_root = pair_root.with_name('reviewer-pair-real')
+            pair_root.rename(real_root)
+            pair_root.symlink_to(real_root.name, target_is_directory=True)
+            result = self._run_pair_calibration(paths)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('symlink', result.stdout + result.stderr)
+
+        for field in ('reviewer_pair', 'ratings', 'labels'):
+            with (
+                self.subTest(field=f'outside-{field}'),
+                tempfile.TemporaryDirectory() as tmp,
+                tempfile.TemporaryDirectory() as outside,
+            ):
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                external = Path(outside) / paths[field].name
+                external.write_bytes(paths[field].read_bytes())
+                paths[field] = external
+                result = self._run_pair_calibration(paths)
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('outside output root', result.stdout + result.stderr)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            paths['reviewer_pair'] = paths['reviewer_1']
+            result = self._run_pair_calibration(paths)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('calibration.artifact_path', result.stderr)
+
+    def test_calibration_recomputes_pair_binding_and_self_hash(self) -> None:
+        for mutation in ('binding', 'metrics'):
+            with (
+                self.subTest(mutation=mutation),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                produced = self._run_pair_calibration(paths)
+                self.assertEqual(
+                    produced.returncode, 0, produced.stdout + produced.stderr,
+                )
+                artifact = json.loads(
+                    paths['calibration'].read_text(encoding='utf-8'),
+                )
+                if mutation == 'binding':
+                    artifact['reviewer_pair']['sha256'] = 'sha256:' + '0' * 64
+                else:
+                    artifact['metrics']['reviewer_to_reviewer'][0][
+                        'agreement'
+                    ] = 0.25
+                artifact['calibration_hash'] = canonical_hash({
+                    key: value
+                    for key, value in artifact.items()
+                    if key != 'calibration_hash'
+                })
+                self._write_json(paths['calibration'], artifact)
+                normalization_errors = self._calibration_binding_errors(paths)
+            self.assertIn(
+                'calibration.normalization',
+                {error['code'] for error in normalization_errors},
+                normalization_errors,
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            produced = self._run_pair_calibration(paths)
+            self.assertEqual(
+                produced.returncode, 0, produced.stdout + produced.stderr,
+            )
+            artifact = json.loads(
+                paths['calibration'].read_text(encoding='utf-8'),
+            )
+            artifact['calibration_hash'] = 'sha256:' + '0' * 64
+            self._write_json(paths['calibration'], artifact)
+            self_hash_errors = self._calibration_binding_errors(paths)
+        self.assertIn(
+            'self_hash.mismatch',
+            {error['code'] for error in self_hash_errors},
+            self_hash_errors,
+        )
 
     def test_grounding_calibration_requires_support_and_attribution_boundaries(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -476,10 +1540,11 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn(expected, result.stdout + result.stderr)
 
-    def test_calibration_producer_fails_closed_on_expiry_and_scope(self) -> None:
+    def test_calibration_producer_fails_closed_on_expiry_scope_and_labels(self) -> None:
         for mutation, expected in (
             ('expiry', 'calibration.expiry'),
             ('scope', 'calibration.scope'),
+            ('labels', 'calibration.check_label_coverage'),
         ):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
                 paths = materialize_v5_calibration_inputs(Path(tmp))
@@ -506,8 +1571,18 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                             encoding='utf-8',
                         ).splitlines()
                     ]
-                    for row in labels:
-                        row['task'] = 'unrelated-task'
+                    if mutation == 'scope':
+                        for row in labels:
+                            row['task'] = 'unrelated-task'
+                    else:
+                        target_check = labels[0]['check_id']
+                        for row in labels:
+                            if (
+                                row['check_id'] == target_check
+                                and row['gold_label'] == 'fail'
+                            ):
+                                row['gold_label'] = 'pass'
+                                row['gold_severity'] = 0
                     paths['labels'].write_text(
                         ''.join(
                             json.dumps(row, separators=(',', ':')) + '\n'

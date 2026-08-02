@@ -11,6 +11,7 @@ from pathlib import Path
 import sys
 from typing import Any, Callable
 
+import model_grade_transport as model_transport
 from evidence_io import (
     atomic_write_bytes,
     canonical_json_bytes,
@@ -505,24 +506,97 @@ def _model_grade_specs(
         grader = graders[grader_id]
         if grader["type"] != "model":
             continue
+        checks = {
+            check["check_id"]: check for check in grader["checks"]
+        }
+        selected_requirements = sorted(
+            (
+                {
+                    "requirement_id": requirement["requirement_id"],
+                    "check_id": requirement["check_id"],
+                    "dimension": requirement["dimension"],
+                    "required": requirement["required"],
+                    "pass_condition": checks[
+                        requirement["check_id"]
+                    ]["pass_condition"],
+                }
+                for requirement in scenario["requirements"]
+                if requirement["grader_id"] == grader_id
+            ),
+            key=lambda requirement: requirement["requirement_id"],
+        )
         result.append({
             "grader_id": grader_id,
             "blinded_projection": list(BLINDED_MODEL_PROJECTION),
             "prompt": copy.deepcopy(grader["prompt"]),
             "schema": copy.deepcopy(grader["output_schema"]),
-            "batch_hash": canonical_sha256({
+            "item_hash": canonical_sha256({
                 "case_id": scenario["case_id"],
                 "grader_id": grader_id,
                 "repeat": repeat,
-                "requirement_ids": sorted(
-                    requirement["requirement_id"]
-                    for requirement in scenario["requirements"]
-                    if requirement["grader_id"] == grader_id
-                ),
+                "requirements": selected_requirements,
             }),
             "schedule_hash": grader["batch_schedule_hash"],
         })
     return result
+
+
+def _bind_model_grade_batches(
+    entries: list[dict[str, Any]],
+    evaluation_id: str,
+) -> None:
+    groups: dict[
+        tuple[str, str],
+        list[tuple[dict[str, Any], dict[str, Any]]],
+    ] = {}
+    for entry in entries:
+        for model_spec in entry["model_grade_specs"]:
+            groups.setdefault(
+                (entry["case_id"], model_spec["grader_id"]),
+                [],
+            ).append((entry, model_spec))
+    for (case_id, grader_id), group in groups.items():
+        executable = [
+            item for item in group if item[0]["disposition"] == "execute"
+        ]
+        members = sorted(
+            executable or group,
+            key=lambda item: item[0]["entry_ordinal"],
+        )
+        if len(members) > model_transport.MAX_BATCH_ITEMS:
+            raise InternalInvariantError(
+                "model grader batch exceeds the transport item limit",
+            )
+        entry_ids = [entry["entry_id"] for entry, _ in members]
+        batch_id = model_transport.batch_identity(
+            evaluation_id,
+            case_id,
+            grader_id,
+        )
+        schedule_hashes = {item["schedule_hash"] for _, item in group}
+        if len(schedule_hashes) != 1:
+            raise InternalInvariantError(
+                "one model grader batch has multiple schedules",
+            )
+        batch_hash = canonical_sha256({
+            "batch_id": batch_id,
+            "items": [
+                {
+                    "entry_id": entry["entry_id"],
+                    "item_hash": model_spec["item_hash"],
+                }
+                for entry, model_spec in members
+            ],
+            "schedule_hash": next(iter(schedule_hashes)),
+        })
+        owner = entry_ids[-1]
+        for _, model_spec in group:
+            model_spec.update({
+                "batch_id": batch_id,
+                "batch_entry_ids": entry_ids,
+                "batch_owner_entry_id": owner,
+                "batch_hash": batch_hash,
+            })
 
 
 def _declared_handoff_ids(scenario: dict[str, Any]) -> list[str]:
@@ -765,19 +839,20 @@ def _rotated_treatments(
     selected_ids = {
         treatment["treatment_id"] for treatment in treatments
     }
-    for estimand in spec["analysis"]["estimands"]:
-        pair = {
-            estimand["candidate_treatment_id"],
-            estimand["comparator_treatment_id"],
-        }
-        if selected_ids & pair and not pair <= selected_ids:
-            raise ContractFailure(
-                "compiler.causal_matrix",
-                (
-                    f"scenario {scenario['case_id']} does not include both "
-                    f"treatments for estimand {estimand['estimand_id']}"
-                ),
-            )
+    if scenario["attribution_evaluable"]:
+        for estimand in spec["analysis"]["estimands"]:
+            pair = {
+                estimand["candidate_treatment_id"],
+                estimand["comparator_treatment_id"],
+            }
+            if selected_ids & pair and not pair <= selected_ids:
+                raise ContractFailure(
+                    "compiler.causal_matrix",
+                    (
+                        f"scenario {scenario['case_id']} does not include both "
+                        f"treatments for estimand {estimand['estimand_id']}"
+                    ),
+                )
     if not treatments:
         raise ContractFailure(
             "compiler.matrix_empty",
@@ -867,6 +942,7 @@ def compile_plan(
             "compiler.matrix_empty",
             "semantic case/treatment/repeat matrix is empty",
         )
+    _bind_model_grade_batches(entries, normalized_spec["evaluation_id"])
 
     plan_projection = {
         "evaluation_id": normalized_spec["evaluation_id"],

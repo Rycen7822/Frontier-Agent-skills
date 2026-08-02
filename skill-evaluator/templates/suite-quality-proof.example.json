@@ -7,10 +7,12 @@
   },
   "golden": {
     "case_ids": [
-      "case-basic"
+      "case-basic",
+      "case-boundary"
     ],
     "passed_ids": [
-      "case-basic"
+      "case-basic",
+      "case-boundary"
     ]
   },
   "known_bad": {
@@ -102,7 +104,15 @@
       "scenarios.example.jsonl"
     ]
   },
-  "boundary_coverage": [],
+  "boundary_coverage": [
+    {
+      "surface": "scenario-oracle",
+      "case_classes": [
+        "boundary_or_failure"
+      ],
+      "status": "pass"
+    }
+  ],
   "review_status": {
     "duplicate_and_provenance_review": "pass",
     "leakage_review": "pass"

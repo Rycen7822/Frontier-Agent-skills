@@ -2,40 +2,38 @@
 name: writing-plans
 description: "Write source-bound software implementation Handoffs and multi-session Programs from settled decisions; not diagnosis or execution."
 metadata:
-  version: 8.0.0
+  version: 8.1.0
 ---
 
-A complete body in the invocation is loaded; do not reopen `SKILL.md`. With metadata/path only, read it once.
-
-Handoff crosses contexts; Program tracks a changing frontier; otherwise stay native. Load a skill-authoring workflow only for skill source changes. Do not decide, diagnose, execute, verify, or claim.
+Handoff crosses contexts; Program tracks a changing frontier; otherwise stay native. Skill-source changes use skill authoring. Do not decide, diagnose, execute, verify or claim.
 
 ## Bind
 
-Use one combined prewrite inspection for plan path, owner/test and, across contexts, root/HEAD/status; split on failure or a new dependency.
+Use invocation-bound source; do not reread it. Treat named plan/owner/test/symbol paths as resolved. Do not inventory, seek alternate owners, or check existence unless the binding fails or contradicts the prompt.
 
-Bind portable identity—Revision or explicit non-Git source identity; Repo-relative dirty/protected paths; First-slice owner files/symbols. Resolve root once; use repo-relative paths, never temporary/home paths or future `pwd` equality.
+Bind portable identity: revision or explicit non-Git identity, with repo-relative dirty/protected and first-slice paths/symbols. Resolve root once; never bind temporary/home paths or future `pwd` equality.
 
-Facts/authority/evidence are fixed. Unknowns block only later slices; missing intent/write/irreversible approval blocks its slice.
+Facts/authority/evidence are fixed. Unknowns block later slices only; missing intent/write/irreversible approval blocks that slice.
 
 ## Contract
 
-Use the minimal sufficient form: state each fact/decision/evidence once; omit generic/empty prose, and do not expand one sentence into its own heading. There is no word/byte reduction target; retain needed facts.
+Minimal sufficient form: omit generic/empty prose; do not expand one sentence into its own heading. No word/byte reduction target: retain needed facts. Keep each prose paragraph on one physical line; insert line breaks only at Markdown structural boundaries, never inside a sentence or merely to fit a column.
 
-Write a title plus one compact contract table or bullet block with four merged rows:
+Write a title and one contract table or four-row bullets:
 
-- State — Bound source identity; Protected work and allowed effects; Settled decisions; Later blockers and dependencies.
-- Resume — Resume preflight.
+- State — Bound source identity; Protected work and allowed effects; Settled decisions; Exact first-slice inputs, outputs, values, invariants; observed protected-test I/O and values, once; Later blockers and dependencies.
+- Resume — Resume preflight (concrete): consume a matching freshness-bound host attestation when resolved root, bound source identity, freshness, and dirty scope match; transfer it unchanged and do not rerun it; if missing or mismatched, run one combined preflight.
 - Slice — Goal / non-goals; First source-changing slice and files/symbols; Exact next source-changing action.
-- Proof — Acceptance and verification as one combined proof; Rollback/cleanup when material.
+- Proof — Acceptance and verification: the one combined final proof command is the only post-edit command and covers behavior, diff scope, protected boundary, residue, and whitespace; Rollback/cleanup when material.
 
-Fill the rows directly from settled facts; do not compare formats or narrate planning rationale. In Proof, name acceptance and verification once as one combined command/evidence statement.
+Fill rows directly from settled facts, assigning each fact to one row. State behavior, not just a symbol/test. Later Slice and Proof rows reference State instead of repeating protected behavior. No format comparison or planning rationale.
 
-Program with multiple milestones uses one table: Milestones in dependency order, each with acceptance; Current frontier; Migration/deprecation owner and removal condition when applicable; Update-in-place rule.
+Program uses those rows: State contains Current frontier and later blockers; Slice contains named Milestones in dependency order, each with acceptance; dependencies cite milestone names, never ordinals. Include Migration/deprecation owner and removal condition when applicable. Update-in-place rule: only a later planning invocation updates the Program; an executor treats it as protected immutable input.
 
-Resume preflight resolves root anew; combine identity/freshness/dirty checks. Exclude the named plan deliverable itself (including untracked `PLAN.md`) and reject other dirt. Never compare against the original absolute root or require globally clean status.
+The Resume row resolves root anew; exclude the named plan deliverable itself (including untracked `PLAN.md`) from dirty scope; reject other dirt. Never compare against the original absolute root or require globally clean status.
 
-The next action names first edit/result/check, not inspection unless blocked. Each slice names one combined final proof command if expressible; split after failure or an independent long check. Name each source read, status/diff check, and acceptance command once.
+Next action: first edit/result/check; inspect only if blocked. Use the prompt-bound verification command; if absent, make one bounded authority inspection. Never infer the runner from language, filename, or convention. The repository's test owner supplies the Proof—not an example or alternative. Python unittest: `PYTHONDONTWRITEBYTECODE=1 python -m unittest <repo-test>`; never use bare `pytest`; leaves no cache/state artifact. Other owners disable residue in-command or include exact cleanup. Split Proof only on failure or an independent long check.
 
-Review the whole plan before writing. After file write, perform at most one combined non-content confirmation such as status/hash/`git diff --check`; do not reopen, print, or diff its contents.
+Before return, reject: Resume missing attestation acceptance or one-preflight fallback; ordinal dependency references. After writing, allow at most one combined planner-only non-content confirmation (status/hash/`git diff --check`); never put it in the executor plan. Do not reopen, print or diff contents. After Proof, run no status, diff, test, or confirmation.
 
-Reply only with plan/named Markdown; update Program in place. No sidecar/state/copy, hard wraps, source edits, or completion claims.
+Reply only with plan/named Markdown; do not instruct execution to modify the plan. No sidecar/state/copy, source edits or completion claims.
