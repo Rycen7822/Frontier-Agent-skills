@@ -196,6 +196,19 @@ def _project_plan(plan: dict[str, Any], subject_id: str) -> dict[str, Any]:
     return projected
 
 
+def cycle_spec_projection(spec: dict[str, Any]) -> dict[str, Any]:
+    """Return cycle semantics with identity-derived bindings removed."""
+    return _project_spec(spec)
+
+
+def cycle_plan_projection(
+    plan: dict[str, Any],
+    subject_id: str,
+) -> dict[str, Any]:
+    """Return execution semantics with cycle-derived identities removed."""
+    return _project_plan(plan, subject_id)
+
+
 def _project_catalog(
     catalog: dict[str, Any],
     subject_id: str,
@@ -285,6 +298,7 @@ def capsule_diagnostic(
     expected: Any,
     observed: Any,
     json_pointer: str,
+    roles: list[str] | None = None,
     case_ids: list[str] | None = None,
     requirement_ids: list[str] | None = None,
     metric_ids: list[str] | None = None,
@@ -294,7 +308,7 @@ def capsule_diagnostic(
         severity="high",
         fact_type=fact_type,
         reason_key=reason_key,
-        roles=[capsule.role],
+        roles=roles or [capsule.role],
         expected=expected,
         observed=observed,
         locator_artifact=path,
@@ -314,12 +328,13 @@ def plan_diagnostic(
     expected: Any,
     observed: Any,
     json_pointer: str,
+    roles: list[str] | None = None,
 ) -> dict[str, Any]:
     return make_diagnostic(
         severity="high",
         fact_type=fact_type,
         reason_key=reason_key,
-        roles=["prior", "candidate"],
+        roles=roles or ["prior", "candidate"],
         expected=expected,
         observed=observed,
         locator_artifact=plan_path.name,
@@ -353,7 +368,10 @@ def identity_diagnostics(
             json_pointer="/execution_identity",
         ))
 
-    if not same(_project_spec(prior.spec), _project_spec(candidate.spec)):
+    if not same(
+        cycle_spec_projection(prior.spec),
+        cycle_spec_projection(candidate.spec),
+    ):
         diagnostics.append(capsule_diagnostic(
             plan,
             candidate,
@@ -365,8 +383,11 @@ def identity_diagnostics(
             json_pointer="",
         ))
     subject_id = prior.spec["subject"]["skill_id"]
-    prior_plan_projection = _project_plan(prior.execution_plan, subject_id)
-    candidate_plan_projection = _project_plan(
+    prior_plan_projection = cycle_plan_projection(
+        prior.execution_plan,
+        subject_id,
+    )
+    candidate_plan_projection = cycle_plan_projection(
         candidate.execution_plan,
         subject_id,
     )
