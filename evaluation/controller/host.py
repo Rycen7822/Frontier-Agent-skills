@@ -1081,8 +1081,10 @@ class AppServer:
         threading.Thread(target=self._read_stderr, daemon=True).start()
 
     def _read_stdout(self) -> None:
-        assert self.process.stdout is not None
-        for line in self.process.stdout:
+        stdout = self.process.stdout
+        if stdout is None:
+            raise HostError("Codex app-server stdout pipe is unavailable")
+        for line in stdout:
             try:
                 message = json.loads(line)
             except json.JSONDecodeError:
@@ -1101,8 +1103,10 @@ class AppServer:
                 self.condition.notify_all()
 
     def _read_stderr(self) -> None:
-        assert self.process.stderr is not None
-        for line in self.process.stderr:
+        stderr = self.process.stderr
+        if stderr is None:
+            raise HostError("Codex app-server stderr pipe is unavailable")
+        for line in stderr:
             with self.condition:
                 self.stderr.append(line)
                 self.condition.notify_all()
@@ -1110,11 +1114,13 @@ class AppServer:
     def _send(self, value: dict[str, Any]) -> None:
         if self.process.poll() is not None:
             raise HostError("Codex app-server exited before request")
-        assert self.process.stdin is not None
-        self.process.stdin.write(
+        stdin = self.process.stdin
+        if stdin is None:
+            raise HostError("Codex app-server stdin pipe is unavailable")
+        stdin.write(
             json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n",
         )
-        self.process.stdin.flush()
+        stdin.flush()
 
     def request(
         self,

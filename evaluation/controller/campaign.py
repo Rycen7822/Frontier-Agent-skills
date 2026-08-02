@@ -241,7 +241,6 @@ def _validate_request_partitions(
         predecessors = [required_by_id.get(request_id) for request_id in pair_ids]
         if any(item is None for item in predecessors):
             raise StateError("conditional retry predecessor is absent")
-        assert all(item is not None for item in predecessors)
         predecessor_entries = [item for item in predecessors if item is not None]
         if [item["request_kind"] for item in predecessor_entries] != [
             "execute",
@@ -869,21 +868,8 @@ def _drive_runner_entry(
     documents: list[dict[str, Any]],
     resume: bool,
 ) -> dict[str, Any]:
-    policy = entries[entry_id]["attempt_policy"]
     last_diagnostic = ""
-    empty_driver_turns = 0
-    for _ in range(policy["max_attempts"] + 1):
-        if documents and (
-            documents[-1]["run"]["terminal"] == "completed"
-            and documents[-1]["run"]["valid"] is True
-        ):
-            break
-        if documents and (
-            documents[-1]["run"]["error"]
-            not in policy["retryable_apparatus_classes"]
-            or documents[-1]["run"]["attempt"] >= policy["max_attempts"]
-        ):
-            break
+    if not documents:
         arguments = [
             "python3",
             str(runner_path),
@@ -918,11 +904,6 @@ def _drive_runner_entry(
             entry_id=entry_id,
             history=history,
         )
-        if not documents:
-            empty_driver_turns += 1
-            if empty_driver_turns >= 2:
-                break
-        resume = True
     if not documents:
         raise StateError(
             "official runner failed after provider reservation: "
@@ -979,6 +960,14 @@ def execute_compiled_plan(
             for item in request_entries
         ):
             raise StateError("plan provider request is outside scored manifest")
+        policy = entries[binding["entry_id"]]["attempt_policy"]
+        if (
+            policy["max_attempts"] != 1
+            or policy["retryable_apparatus_classes"]
+        ):
+            raise StateError(
+                "provider-bound retries require distinct request identities"
+            )
         history = _runner_index(index_path, entries).get(
             binding["entry_id"],
             [],
