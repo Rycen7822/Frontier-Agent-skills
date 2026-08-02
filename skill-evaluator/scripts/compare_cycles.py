@@ -17,10 +17,11 @@ from comparison_contract import (
     load_cycle_capsules,
     make_diagnostic,
 )
+from comparison_revision import evaluate_revision
 from evidence_io import file_sha256
 
 
-def _structural_result(
+def _structural_transition(
     plan_path: Path,
     plan: dict[str, Any],
     capsules: dict[str, CycleCapsule],
@@ -37,46 +38,8 @@ def _structural_result(
         json_pointer="/decision_policy",
         source_hash=file_sha256(plan_path),
     )
-    if plan["kind"] == "revision":
-        result = {
-            "kind": "revision",
-            "status": "not_evaluable",
-            "target_failure_class": plan["decision_policy"]["target"][
-                "failure_class"
-            ],
-            "closed_diagnostic_ids": [],
-            "remaining_diagnostic_ids": plan["decision_policy"]["target"][
-                "diagnostic_ids"
-            ],
-        }
-    else:
-        result = {
-            "kind": "model_transition",
-            "mode": plan["decision_policy"]["mode"],
-            "classification": "apparatus_inconclusive",
-            "classification_metric_ids": [],
-        }
-    report = {
-        "schema_version": 1,
-        "comparison_report_hash": "sha256:" + "0" * 64,
-        "comparison_id": plan["comparison_id"],
-        "comparison_plan_hash": plan["comparison_plan_hash"],
-        "kind": plan["kind"],
-        "claim_scope": plan["claim_scope"],
-        "generator": {
-            "name": "compare_cycles.py",
-            "version": "3.1.0",
-            "source_hash": file_sha256(Path(__file__)),
-        },
-        "registration_status": (
-            "declared_pre_registered"
-            if plan["registration"]["mode"] == "pre_registered"
-            else "exploratory"
-        ),
-        "inputs": [
-            capsules[role].report_record()
-            for role in roles
-        ],
+    return {
+        "registration_status": "not_evaluable",
         "comparability_checks": [
             {
                 "check_id": "capsule-bindings",
@@ -92,12 +55,47 @@ def _structural_result(
             },
         ],
         "metrics": [],
-        "result": result,
+        "result": {
+            "kind": "model_transition",
+            "mode": plan["decision_policy"]["mode"],
+            "classification": "apparatus_inconclusive",
+            "classification_metric_ids": [],
+        },
         "authority_eligibility": "blocked",
         "claim_ceiling": "diagnostic_only",
+    }, [pending]
+
+
+def _report(
+    plan: dict[str, Any],
+    capsules: dict[str, CycleCapsule],
+    decision: dict[str, Any],
+) -> dict[str, Any]:
+    roles = sorted(capsules, key=ROLE_ORDER.__getitem__)
+    return {
+        "schema_version": 1,
+        "comparison_report_hash": "sha256:" + "0" * 64,
+        "comparison_id": plan["comparison_id"],
+        "comparison_plan_hash": plan["comparison_plan_hash"],
+        "kind": plan["kind"],
+        "claim_scope": plan["claim_scope"],
+        "generator": {
+            "name": "compare_cycles.py",
+            "version": "3.1.0",
+            "source_hash": file_sha256(Path(__file__)),
+        },
+        "registration_status": decision["registration_status"],
+        "inputs": [
+            capsules[role].report_record()
+            for role in roles
+        ],
+        "comparability_checks": decision["comparability_checks"],
+        "metrics": decision["metrics"],
+        "result": decision["result"],
+        "authority_eligibility": decision["authority_eligibility"],
+        "claim_ceiling": decision["claim_ceiling"],
         "diagnostic_index_hash": "sha256:" + "0" * 64,
     }
-    return report, [pending]
 
 
 def _bounded_error(exc: BaseException) -> str:
@@ -112,11 +110,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         plan_path, plan, registry = load_comparison_plan(args.plan)
         capsules = load_cycle_capsules(plan_path, plan, registry)
-        report, diagnostics = _structural_result(
-            plan_path,
-            plan,
-            capsules,
+        decision, diagnostics = (
+            evaluate_revision(plan_path, plan, capsules)
+            if plan["kind"] == "revision"
+            else _structural_transition(plan_path, plan, capsules)
         )
+        report = _report(plan, capsules, decision)
         report_path, index_path = commit_outputs(
             plan_path,
             plan,
@@ -138,8 +137,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     root = plan_path.parent
+    outcome = decision["result"].get(
+        "status",
+        decision["result"].get("classification", "not_evaluable"),
+    )
     print(
-        "comparison=not_evaluable "
+        f"comparison={outcome} "
         f"report={report_path.relative_to(root).as_posix()} "
         f"report_sha256={file_sha256(report_path)} "
         f"diagnostic_index={index_path.relative_to(root).as_posix()} "
