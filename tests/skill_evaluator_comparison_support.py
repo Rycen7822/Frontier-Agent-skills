@@ -123,6 +123,9 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
             'scripts/run_eval_plan.py',
             str(paths['plan']),
             '--index', str(paths['index']),
+            '--new-attempt-budget', str(runner_worst_case_attempt_budget(
+                json.loads(paths['plan'].read_text(encoding='utf-8')),
+            )),
         )
         self.assertEqual(
             0, executed.returncode, executed.stdout + executed.stderr,

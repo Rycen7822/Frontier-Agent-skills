@@ -28,6 +28,7 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
             str(plan_path),
             '--index', str(index_path),
             '--entry-id', entry['entry_id'],
+            '--new-attempt-budget', '1',
         )
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
         row = json.loads(index_path.read_text(encoding='utf-8').strip())
@@ -187,6 +188,7 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
                     '--index', str(index_path),
                     '--entry-id', bundle['entry']['entry_id'],
                     '--resume',
+                    '--new-attempt-budget', '0',
                 )
                 self.assertEqual(
                     resumed.returncode, 2,

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/runner-status-v1.schema.json",
+  "title": "Skill Evaluator runner status v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "plan_id",
+    "plan_hash",
+    "selected_entries",
+    "execute_entries",
+    "indexed_attempts",
+    "completed_entries",
+    "invalid_attempts",
+    "remaining_entries",
+    "active_attempts",
+    "recoverable_attempts",
+    "next_entry_id",
+    "next_attempt",
+    "next_pass_new_attempts",
+    "worst_case_remaining_attempts",
+    "execute_case_request_ceiling",
+    "model_grade_request_ceiling"
+  ],
+  "properties": {
+    "schema_version": {"const": "runner-status/1"},
+    "plan_id": {"$ref": "#/$defs/safe_id"},
+    "plan_hash": {"$ref": "#/$defs/sha256"},
+    "selected_entries": {"$ref": "#/$defs/count"},
+    "execute_entries": {"$ref": "#/$defs/count"},
+    "indexed_attempts": {"$ref": "#/$defs/count"},
+    "completed_entries": {"$ref": "#/$defs/count"},
+    "invalid_attempts": {"$ref": "#/$defs/count"},
+    "remaining_entries": {"$ref": "#/$defs/count"},
+    "active_attempts": {"$ref": "#/$defs/attempts"},
+    "recoverable_attempts": {"$ref": "#/$defs/attempts"},
+    "next_entry_id": {
+      "oneOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]
+    },
+    "next_attempt": {
+      "oneOf": [
+        {"type": "integer", "minimum": 1, "maximum": 9999},
+        {"type": "null"}
+      ]
+    },
+    "next_pass_new_attempts": {"$ref": "#/$defs/count"},
+    "worst_case_remaining_attempts": {"$ref": "#/$defs/count"},
+    "execute_case_request_ceiling": {"$ref": "#/$defs/count"},
+    "model_grade_request_ceiling": {"$ref": "#/$defs/count"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "safe_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "count": {"type": "integer", "minimum": 0},
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["entry_id", "attempt"],
+        "properties": {
+          "entry_id": {"$ref": "#/$defs/safe_id"},
+          "attempt": {"type": "integer", "minimum": 1, "maximum": 9999}
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

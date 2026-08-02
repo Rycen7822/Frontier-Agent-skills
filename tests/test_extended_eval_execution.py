@@ -36,11 +36,35 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         *args: str,
         environment: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
+        runner_args = list(args)
+        if (
+            '--status' not in runner_args
+            and '--new-attempt-budget' not in runner_args
+        ):
+            status_selection: tuple[str, ...] = ()
+            if '--entry-id' in runner_args:
+                entry_position = runner_args.index('--entry-id')
+                status_selection = (
+                    '--entry-id', runner_args[entry_position + 1],
+                )
+            status = self.run_cmd(
+                'scripts/run_eval_plan.py',
+                str(plan_path),
+                '--index', str(index_path),
+                '--status',
+                *status_selection,
+            )
+            if status.returncode:
+                return status
+            runner_args.extend([
+                '--new-attempt-budget',
+                str(json.loads(status.stdout)['next_pass_new_attempts']),
+            ])
         return self.run_cmd(
             'scripts/run_eval_plan.py',
             str(plan_path),
             '--index', str(index_path),
-            *args,
+            *runner_args,
             env=environment,
         )
 
@@ -1421,7 +1445,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(3, first.returncode, first.stdout + first.stderr)
             resumed = self._run_runner(
                 plan_path, index_path, '--entry-id', entry['entry_id'],
-                '--resume',
+                '--resume', '--new-attempt-budget', '1',
             )
             self.assertEqual(
                 resumed.returncode, 0, resumed.stdout + resumed.stderr,

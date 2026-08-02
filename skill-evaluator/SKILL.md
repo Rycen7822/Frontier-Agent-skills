@@ -36,7 +36,7 @@ Load only the owner of the active question. Do not preload every reference.
 
 ## Evidence read surface
 
-Keep scored evidence immutable for retention. Read the analyzer summary first, then its failure index, then only spec-bounded representative receipts. Open a receipt-owned raw artifact only for a named failure, grader disagreement, or integrity audit, by exact locator and hash. Never tree-walk evidence or create per-step notes, notice JSON, or model-authored receipt copies. A failing run remains an outcome failure, not an efficiency gain.
+Keep scored evidence immutable. Read the analyzer summary first, then its failure index, then spec-bounded representative receipts. Open receipt-owned raw artifacts only for named failures, grader disagreements, or integrity audits, by exact locator and hash. Never tree-walk or create per-step notes, notice JSON, or model-authored receipt copies. A failing run is an outcome failure, not an efficiency gain.
 
 ## Claim ceilings
 
@@ -88,11 +88,11 @@ python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" suite-quality \
   --spec draft-eval-spec.json --proof suite-quality-proof.json --output suite-quality.json
 ```
 
-Compile only a final `execution.ready=true` spec; compilation starts no host or grader. The runner executes only `execute` entries, `--resume` seals recoverable attempts, and `--index` must equal the plan-declared path.
+Compile only an `execution.ready=true` spec; compilation starts no process. Inspect with `--status`. Run/resume require `--new-attempt-budget`; custody lasts through receipt/index commit.
 
 ```bash
 python3 "$SKILL_EVALUATOR_DIR/scripts/compile_eval_plan.py" eval-spec.ready.json scenarios.jsonl host-manifest.json --output execution-plan.json
-python3 "$SKILL_EVALUATOR_DIR/scripts/run_eval_plan.py" execution-plan.json --index artifacts/index.jsonl
+python3 "$SKILL_EVALUATOR_DIR/scripts/run_eval_plan.py" execution-plan.json --index artifacts/index.jsonl --new-attempt-budget 2
 ```
 
 ```bash
@@ -109,7 +109,7 @@ For a requested L4 comparison, follow the commands in [Longitudinal evaluation](
 
 - Contract owners: [evaluation](references/evaluation-contract.md), [task suite](references/task-suite-design.md), [execution and grading](references/execution-and-grading.md), [metrics](references/rubric-and-metrics.md), [reporting](references/reporting-and-decisions.md), and [longitudinal comparison](references/longitudinal-evaluation.md).
 - Supporting owners: [source map](references/source-map.md), [Draft 2020-12 schemas](schemas/README.md), and the conditional [evaluation report](templates/evaluation-report.md).
-- Code owners: [audit](scripts/audit_skill_package.py), [validator](scripts/validate_eval_suite.py), [reviewer pair](scripts/reviewer_pair_contract.py), [reviewer prompt](scripts/reviewer_prompt_contract.py), [compiler](scripts/compile_eval_plan.py), [runner](scripts/run_eval_plan.py), [transport](scripts/model_grade_transport.py), [grader semantics](scripts/grader_semantics.py), [analyzer](scripts/analyze_runs.py), [offline comparator](scripts/compare_cycles.py), and [I/O](scripts/evidence_io.py).
+- Code owners: [audit](scripts/audit_skill_package.py), [validator](scripts/validate_eval_suite.py), [reviewer pair](scripts/reviewer_pair_contract.py), [reviewer prompt](scripts/reviewer_prompt_contract.py), [compiler](scripts/compile_eval_plan.py), [runner](scripts/run_eval_plan.py), [status](scripts/runner_status.py), [transport](scripts/model_grade_transport.py), [grader semantics](scripts/grader_semantics.py), [analyzer](scripts/analyze_runs.py), [offline comparator](scripts/compare_cycles.py), and [I/O](scripts/evidence_io.py).
 - Spec fixtures: [L0](templates/eval-spec.l0.example.json), [L1](templates/eval-spec.l1.example.json), and [L2](templates/eval-spec.example.json); public scenarios: [L1](templates/scenarios.l1.example.jsonl) and [L2](templates/scenarios.example.jsonl); [host manifest](templates/host-manifest.example.json).
 - Preparation fixtures: [calibration ratings](templates/calibration-ratings.example.jsonl), [calibration gold](templates/calibration-gold.example.jsonl), and [suite-quality proof](templates/suite-quality-proof.example.json).
 - Evidence fixtures: [run index](templates/runs.example.jsonl), [grader schema](templates/grader-output.schema.json), [grader prompt](templates/llm-grader-prompt.md), [holdout manifest](templates/holdout-manifest.example.json), and [holdout scenarios](templates/holdout-scenarios.example.jsonl).

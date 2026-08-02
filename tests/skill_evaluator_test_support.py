@@ -41,6 +41,16 @@ HASHES = {
         'plugin': '9', 'cases': 'a', 'contracts': 'b', 'fixtures': 'c', 'batch': 'd',
     }.items()
 }
+
+
+def runner_worst_case_attempt_budget(plan: dict) -> int:
+    return sum(
+        entry['attempt_policy']['max_attempts']
+        for entry in plan['entries']
+        if entry['disposition'] == 'execute'
+    )
+
+
 RECEIPT_PACKAGE_SKILL = (
     '---\nname: target-skill\ndescription: Test receipt package.\n---\n\n# Target Skill\n'
 )
@@ -795,6 +805,21 @@ def load_grader_semantics_module():
     return module
 
 
+def load_runner_module():
+    scripts = str(ROOT / 'scripts')
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    spec = importlib.util.spec_from_file_location(
+        'skill_evaluator_run_eval_plan',
+        ROOT / 'scripts/run_eval_plan.py',
+    )
+    if spec is None or spec.loader is None:
+        raise AssertionError('cannot load run_eval_plan.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_compiler_module():
     scripts = str(ROOT / 'scripts')
     if scripts not in sys.path:
@@ -1154,6 +1179,25 @@ def make_v5_schema_examples() -> dict[str, dict]:
             'sha256': receipt['receipt_hash'],
         },
     }
+    runner_status = {
+        'schema_version': 'runner-status/1',
+        'plan_id': plan['plan_id'],
+        'plan_hash': plan['plan_hash'],
+        'selected_entries': 1,
+        'execute_entries': 1,
+        'indexed_attempts': 0,
+        'completed_entries': 0,
+        'invalid_attempts': 0,
+        'remaining_entries': 1,
+        'active_attempts': [],
+        'recoverable_attempts': [],
+        'next_entry_id': plan['entries'][0]['entry_id'],
+        'next_attempt': 1,
+        'next_pass_new_attempts': 1,
+        'worst_case_remaining_attempts': 1,
+        'execute_case_request_ceiling': 1,
+        'model_grade_request_ceiling': 0,
+    }
     failure_index = {
         'schema_version': 1,
         'view': 'index',
@@ -1279,6 +1323,7 @@ def make_v5_schema_examples() -> dict[str, dict]:
         'execution-plan-v1.schema.json': plan,
         'host-manifest-v1.schema.json': host,
         'run-index-row-v2.schema.json': run_index,
+        'runner-status-v1.schema.json': runner_status,
         'receipt-v4.schema.json': receipt,
         'grader-calibration-v2.schema.json': calibration,
         'suite-quality-v1.schema.json': quality,

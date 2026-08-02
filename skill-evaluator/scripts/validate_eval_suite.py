@@ -139,6 +139,7 @@ V5_SCHEMA_NAMES = {
     "host-manifest-v1.schema.json",
     "receipt-v4.schema.json",
     "run-index-row-v2.schema.json",
+    "runner-status-v1.schema.json",
     "scenario-v1.schema.json",
     "suite-quality-v1.schema.json",
 }
