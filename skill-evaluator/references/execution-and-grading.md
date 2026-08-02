@@ -131,7 +131,9 @@ Preserve original attempts. Retry only predeclared apparatus failures; never ret
 
 Attempt numbers, run IDs, start markers, directories, receipts, and index rows follow the plan's deterministic projection. Treatment failures are never retried. A retryable apparatus failure keeps its receipt/index evidence before the next bounded attempt.
 
-`--resume` first verifies that the existing index is the unique continuous execute-attempt prefix and that every referenced receipt remains valid. A verified complete receipt is skipped. A valid start marker without a receipt is sealed only into the schema-declared interrupted apparatus receipt; no task outcome is invented. An unowned, missing, mismatched, or tampered marker/index/receipt fails closed. Resume never creates evidence for non-execute dispositions.
+Each attempt holds a transient POSIX custody lock from directory creation through receipt/index commit. Every direct host, deterministic-grader, and model-grader child inherits that lock, so parent loss cannot make a live child appear recoverable. `--status` validates frozen inputs and current evidence, reports bounded canonical `runner-status/1` JSON, and never creates a file or lock.
+
+Every run/resume supplies `--new-attempt-budget N`. Preflight rejects missing, negative, excessive, or next-pass-insufficient authorization before writes; only creating a new attempt directory consumes one. `--resume --new-attempt-budget 0` may validate, repair an index, or seal a marker, but cannot retry. Resume verifies the continuous index and bound receipts, skips complete evidence, seals a valid marker without inventing an outcome, and rejects active, unowned, partial, mismatched, or tampered state.
 
 ## Manual-review receipt
 

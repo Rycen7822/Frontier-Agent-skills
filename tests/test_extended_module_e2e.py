@@ -35,6 +35,9 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
             'scripts/run_eval_plan.py',
             str(plan_path),
             '--index', str(index_path),
+            '--new-attempt-budget', str(
+                runner_worst_case_attempt_budget(plan)
+            ),
         )
         self.assertEqual(
             expected_runner_exit,

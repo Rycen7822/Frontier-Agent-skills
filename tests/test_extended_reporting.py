@@ -170,10 +170,14 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(
             compiled.returncode, 0, compiled.stdout + compiled.stderr,
         )
+        plan = json.loads(paths['plan'].read_text(encoding='utf-8'))
         executed = self.call_cli(
             'scripts/run_eval_plan.py',
             str(paths['plan']),
             '--index', str(paths['index']),
+            '--new-attempt-budget', str(
+                runner_worst_case_attempt_budget(plan)
+            ),
         )
         self.assertEqual(
             executed.returncode, 0, executed.stdout + executed.stderr,
@@ -330,6 +334,9 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             'scripts/run_eval_plan.py',
             str(plan_path),
             '--index', str(index_path),
+            '--new-attempt-budget', str(
+                runner_worst_case_attempt_budget(plan)
+            ),
         )
         self.assertEqual(
             0, executed.returncode, executed.stdout + executed.stderr,

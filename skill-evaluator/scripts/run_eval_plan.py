@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
@@ -18,8 +19,14 @@ import sys
 import time
 from typing import Any, Iterator
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - exercised only off POSIX
+    fcntl = None
+
 import compile_eval_plan as compiler
 import model_grade_transport as model_transport
+from runner_status import project_runner_status
 from evidence_io import (
     artifact_record,
     atomic_write_bytes,
@@ -50,6 +57,90 @@ class RunnerFailure(RuntimeError):
 
 class ApparatusFailure(RuntimeError):
     """An execution failure that did not produce complete evidence."""
+
+
+class BudgetExhausted(ApparatusFailure):
+    """The invocation cannot create another authorized attempt."""
+
+
+ATTEMPT_CUSTODY_NAME = "attempt-custody.lock"
+
+
+def _owned_lock_stat(fd: int, path: Path) -> os.stat_result:
+    opened = os.fstat(fd)
+    current = path.lstat()
+    if (
+        not stat.S_ISREG(opened.st_mode)
+        or opened.st_nlink != 1
+        or opened.st_uid != os.geteuid()
+        or stat.S_IMODE(opened.st_mode) & 0o077
+        or (opened.st_dev, opened.st_ino)
+        != (current.st_dev, current.st_ino)
+    ):
+        raise RunnerFailure("attempt custody lock is not owner-safe")
+    return opened
+
+
+class _AttemptCustody:
+    """Hold one attempt's transient POSIX custody lock."""
+
+    def __init__(self, attempt_dir: Path) -> None:
+        self.path = attempt_dir / ATTEMPT_CUSTODY_NAME
+        self.fd: int | None = None
+        self._committed = False
+
+    def __enter__(self) -> _AttemptCustody:
+        if fcntl is None or not hasattr(os, "O_NOFOLLOW"):
+            raise RunnerFailure("POSIX attempt custody is unsupported")
+        try:
+            fd = os.open(
+                self.path,
+                os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
+                0o600,
+            )
+        except OSError as exc:
+            raise RunnerFailure("attempt custody lock is invalid") from exc
+        try:
+            _owned_lock_stat(fd, self.path)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise RunnerFailure("attempt is still active") from exc
+        except BaseException:
+            os.close(fd)
+            raise
+        self.fd = fd
+        return self
+
+    def commit(self) -> None:
+        """Allow owner-only lock removal after receipt/index commit."""
+        self._committed = True
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        if self.fd is None:
+            return
+        try:
+            if exc_type is None and self._committed:
+                _owned_lock_stat(self.fd, self.path)
+                self.path.unlink()
+        finally:
+            fcntl.flock(self.fd, fcntl.LOCK_UN)
+            os.close(self.fd)
+            self.fd = None
+
+
+class _AttemptBudget:
+    def __init__(self, authorized: int) -> None:
+        self.authorized = authorized
+        self.remaining = authorized
+
+    def consume(self) -> None:
+        self.ensure_available()
+        self.remaining -= 1
+
+    def ensure_available(self) -> None:
+        if self.remaining < 1:
+            raise BudgetExhausted("new-attempt budget exhausted")
 
 
 def _utc_now() -> str:
@@ -231,6 +322,59 @@ def _attempt_paths(
     return artifacts_root, attempt_rel, attempt_dir
 
 
+@contextmanager
+def _new_attempt_custody(
+    plan_path: Path,
+    plan: dict[str, Any],
+    entry: dict[str, Any],
+    attempt: int,
+    budget: _AttemptBudget,
+) -> Iterator[_AttemptCustody]:
+    artifacts_root, attempt_rel, attempt_dir = _attempt_paths(
+        plan_path, plan, entry, attempt,
+    )
+    budget.consume()
+    artifacts_root.mkdir(parents=True, exist_ok=True)
+    if artifacts_root.is_symlink() or not artifacts_root.is_dir():
+        raise RunnerFailure("artifacts root must be a regular directory")
+    attempt_dir.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        attempt_dir.mkdir()
+    except FileExistsError as exc:
+        raise RunnerFailure(
+            f"attempt path already exists without --resume: {attempt_rel}",
+        ) from exc
+    with _AttemptCustody(attempt_dir) as custody:
+        yield custody
+
+
+def _lock_is_busy(attempt_dir: Path) -> bool:
+    """Probe an existing lock without creating or mutating it."""
+    path = attempt_dir / ATTEMPT_CUSTODY_NAME
+    if path.is_symlink():
+        raise RunnerFailure("attempt custody lock is invalid")
+    if not path.exists():
+        return False
+    if not path.is_file():
+        raise RunnerFailure("attempt custody lock is invalid")
+    if fcntl is None or not hasattr(os, "O_NOFOLLOW"):
+        raise RunnerFailure("POSIX attempt custody is unsupported")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise RunnerFailure("attempt custody lock is invalid") from exc
+    try:
+        _owned_lock_stat(fd, path)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
+
+
 def _build_marker(
     plan: dict[str, Any],
     entry: dict[str, Any],
@@ -357,17 +501,22 @@ def _run_process(
     environment: dict[str, str],
     input_bytes: bytes,
     timeout_seconds: int,
+    custody_fd: int,
 ) -> tuple[int, bytes, bytes]:
-    process = subprocess.Popen(
-        argv,
-        cwd=cwd,
-        env=environment,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        shell=False,
-        start_new_session=True,
-    )
+    try:
+        process = subprocess.Popen(
+            argv,
+            cwd=cwd,
+            env=environment,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=False,
+            start_new_session=True,
+            pass_fds=(custody_fd,),
+        )
+    except OSError as exc:
+        raise ApparatusFailure("child process could not start") from exc
     try:
         stdout, stderr = process.communicate(
             input=input_bytes,
@@ -1293,6 +1442,7 @@ def _run_deterministic_graders(
     spec_path: Path,
     attempt_dir: Path,
     result_path: Path,
+    custody_fd: int,
 ) -> tuple[list[dict[str, Any]], list[Path]]:
     declarations = {
         grader["grader_id"]: grader
@@ -1362,6 +1512,7 @@ def _run_deterministic_graders(
             environment=environment,
             input_bytes=b"",
             timeout_seconds=verifier["timeout_seconds"],
+            custody_fd=custody_fd,
         )
         stdout_path = grader_dir / "stdout.json"
         stderr_path = grader_dir / "stderr.txt"
@@ -1477,6 +1628,7 @@ def _run_model_graders(
     attempt: int,
     credential_policy: str,
     prior_rows: list[dict[str, Any]],
+    custody_fd: int,
 ) -> tuple[
     list[dict[str, Any]],
     list[dict[str, Any]],
@@ -1601,6 +1753,7 @@ def _run_model_graders(
             environment=environment,
             input_bytes=canonical_json_bytes(request) + b"\n",
             timeout_seconds=entry["timeout_seconds"],
+            custody_fd=custody_fd,
         )
         stdout_path = grader_dir / "host-stdout.jsonl"
         stderr_path = grader_dir / "host-stderr.txt"
@@ -2042,6 +2195,37 @@ def _existing_receipt(
     return marker, receipt
 
 
+def _reserved_request(
+    attempt_dir: Path,
+    registry: dict[str, dict[str, Any]],
+    expected: dict[str, Any],
+) -> dict[str, Any] | None:
+    path = attempt_dir / "host-request.json"
+    if path.is_symlink():
+        raise RunnerFailure("reserved host request is not a regular file")
+    if not path.exists():
+        if any(
+            (attempt_dir / name).exists()
+            for name in (
+                "host-invocation.json", "host-stdout.jsonl",
+                "host-stderr.txt",
+            )
+        ):
+            raise RunnerFailure("host execution exists without its request")
+        return None
+    if not path.is_file():
+        raise RunnerFailure("reserved host request is not a regular file")
+    request = load_json(path)
+    diagnostics = validate_host_protocol_record(
+        "host_request", request, registry,
+    )
+    if diagnostics:
+        raise RunnerFailure(_first_diagnostic(diagnostics))
+    if request != expected:
+        raise RunnerFailure("reserved host request identity differs")
+    return request
+
+
 def _resume_seal(
     *,
     plan: dict[str, Any],
@@ -2056,22 +2240,18 @@ def _resume_seal(
     _validate_marker(
         marker, plan=plan, entry=entry, attempt=attempt,
     )
+    request = _reserved_request(
+        attempt_dir,
+        registry,
+        _host_request(plan, entry, marker["run_id"], attempt),
+    )
+    requests = [request] if request is not None else []
     stdout_path = attempt_dir / "host-stdout.jsonl"
     stderr_path = attempt_dir / "host-stderr.txt"
     if not stdout_path.exists():
         atomic_write_bytes(stdout_path, b"")
     if not stderr_path.exists():
         atomic_write_bytes(stderr_path, b"")
-    request_path = attempt_dir / "host-request.json"
-    requests: list[dict[str, Any]] = []
-    if request_path.exists():
-        request = load_json(request_path)
-        diagnostics = validate_host_protocol_record(
-            "host_request", request, registry,
-        )
-        if diagnostics:
-            raise RunnerFailure(_first_diagnostic(diagnostics))
-        requests.append(request)
 
     interruption_class = "interrupted"
     if requests and stdout_path.stat().st_size:
@@ -2092,7 +2272,7 @@ def _resume_seal(
         if path.is_symlink():
             raise RunnerFailure("crashed attempt contains a symlink")
         if path.is_file() and path.name not in {
-            "attempt-start.json", "receipt.json",
+            ATTEMPT_CUSTODY_NAME, "attempt-start.json", "receipt.json",
         }:
             artifact_paths.append(path)
     artifacts = _receipt_artifacts(artifact_paths, attempt_dir)
@@ -2301,6 +2481,7 @@ def _run_reset_probe(
     workspace: Path,
     run_id: str,
     attempt: int,
+    custody_fd: int,
 ) -> tuple[
     dict[str, Any],
     list[dict[str, Any]],
@@ -2337,6 +2518,7 @@ def _run_reset_probe(
         environment=environment,
         input_bytes=canonical_json_bytes(request) + b"\n",
         timeout_seconds=entry["timeout_seconds"],
+        custody_fd=custody_fd,
     )
     stdout_path = reset_dir / "host-stdout.jsonl"
     stderr_path = reset_dir / "host-stderr.txt"
@@ -2378,21 +2560,14 @@ def _execute_entry(
     registry: dict[str, dict[str, Any]],
     spec_path: Path,
     prior_rows: list[dict[str, Any]],
+    custody_fd: int,
     attempt: int = 1,
 ) -> dict[str, Any]:
-    artifacts_root, attempt_rel, attempt_dir = _attempt_paths(
+    _, attempt_rel, attempt_dir = _attempt_paths(
         plan_path, plan, entry, attempt,
     )
-    artifacts_root.mkdir(parents=True, exist_ok=True)
-    if artifacts_root.is_symlink() or not artifacts_root.is_dir():
-        raise RunnerFailure("artifacts root must be a regular directory")
-    attempt_dir.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        attempt_dir.mkdir()
-    except FileExistsError as exc:
-        raise RunnerFailure(
-            f"attempt path already exists without --resume: {attempt_rel}",
-        ) from exc
+    if not attempt_dir.is_dir() or attempt_dir.is_symlink():
+        raise RunnerFailure("attempt custody does not own a regular directory")
     workspace = attempt_dir / "workspace"
     workspace.mkdir()
 
@@ -2451,6 +2626,7 @@ def _execute_entry(
         workspace=workspace,
         run_id=run_id,
         attempt=attempt,
+        custody_fd=custody_fd,
     )
     exit_code, stdout, stderr = _run_process(
         argv,
@@ -2458,6 +2634,7 @@ def _execute_entry(
         environment=environment,
         input_bytes=canonical_json_bytes(request) + b"\n",
         timeout_seconds=entry["timeout_seconds"],
+        custody_fd=custody_fd,
     )
     stdout_path = attempt_dir / "host-stdout.jsonl"
     stderr_path = attempt_dir / "host-stderr.txt"
@@ -2484,7 +2661,7 @@ def _execute_entry(
     atomic_write_bytes(result_path, canonical_json_bytes(result) + b"\n")
 
     grader_outputs, grader_artifacts = _run_deterministic_graders(
-        entry, spec, spec_path, attempt_dir, result_path,
+        entry, spec, spec_path, attempt_dir, result_path, custody_fd,
     )
     (
         model_outputs,
@@ -2509,6 +2686,7 @@ def _execute_entry(
         attempt=attempt,
         credential_policy=spec["execution"]["credential_policy"],
         prior_rows=prior_rows,
+        custody_fd=custody_fd,
     )
     grader_outputs.extend(model_outputs)
     usage = _merged_usage(entry, result, model_results, host)
@@ -2676,6 +2854,129 @@ def _verify_index_receipts(
                 )
 
 
+def _runner_status(
+    *,
+    plan_path: Path,
+    plan: dict[str, Any],
+    spec: dict[str, Any],
+    registry: dict[str, dict[str, Any]],
+    selected: list[dict[str, Any]],
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    execute_entries = [
+        entry for entry in selected if entry["disposition"] == "execute"
+    ]
+    active: list[dict[str, Any]] = []
+    recoverable: list[dict[str, Any]] = []
+    invalid_attempts = 0
+    entry_states: dict[str, dict[str, Any]] = {}
+
+    for entry in execute_entries:
+        attempts = _attempt_directories(plan_path, plan, entry)
+        last_receipt: dict[str, Any] | None = None
+        active_attempt: int | None = None
+        recoverable_attempt: int | None = None
+        for position, (attempt, _, attempt_dir) in enumerate(attempts):
+            busy = _lock_is_busy(attempt_dir)
+            if busy:
+                if position != len(attempts) - 1:
+                    raise RunnerFailure("active attempt precedes a later attempt")
+                active_attempt = attempt
+                active.append({"entry_id": entry["entry_id"], "attempt": attempt})
+                continue
+            existing = _existing_receipt(
+                plan=plan,
+                entry=entry,
+                attempt=attempt,
+                attempt_dir=attempt_dir,
+                spec=spec,
+                registry=registry,
+            )
+            if existing is None:
+                if position != len(attempts) - 1:
+                    raise RunnerFailure(
+                        "recoverable attempt precedes a later attempt",
+                    )
+                marker = load_json(attempt_dir / "attempt-start.json")
+                _reserved_request(
+                    attempt_dir,
+                    registry,
+                    _host_request(plan, entry, marker["run_id"], attempt),
+                )
+                recoverable_attempt = attempt
+                recoverable.append({
+                    "entry_id": entry["entry_id"],
+                    "attempt": attempt,
+                })
+                continue
+            _, last_receipt = existing
+            if not last_receipt["run"]["valid"]:
+                invalid_attempts += 1
+
+        complete = (
+            active_attempt is None
+            and recoverable_attempt is None
+            and last_receipt is not None
+            and last_receipt["run"]["valid"]
+        )
+        policy = entry["attempt_policy"]
+        last_attempt = attempts[-1][0] if attempts else 0
+        retryable = (
+            last_receipt is not None
+            and not last_receipt["run"]["valid"]
+            and last_receipt["run"]["error"]
+            in policy["retryable_apparatus_classes"]
+            and last_attempt < policy["max_attempts"]
+        )
+        if complete:
+            next_pass = 0
+            worst_case = 0
+            next_attempt: int | None = None
+        elif not attempts:
+            next_pass = 1
+            worst_case = policy["max_attempts"]
+            next_attempt = 1
+        elif active_attempt is not None:
+            next_pass = 0
+            worst_case = policy["max_attempts"] - last_attempt
+            next_attempt = active_attempt
+        elif recoverable_attempt is not None:
+            next_pass = 0
+            worst_case = policy["max_attempts"] - last_attempt
+            next_attempt = recoverable_attempt
+        elif retryable:
+            next_pass = 1
+            worst_case = policy["max_attempts"] - last_attempt
+            next_attempt = last_attempt + 1
+        else:
+            next_pass = 0
+            worst_case = 0
+            next_attempt = None
+        entry_states[entry["entry_id"]] = {
+            "complete": complete,
+            "next_pass_new_attempts": next_pass,
+            "worst_case_remaining_attempts": worst_case,
+            "next_attempt": next_attempt,
+            "model_grade_requests_per_attempt": len(entry["model_grade_specs"]),
+        }
+    status = project_runner_status(
+        plan=plan,
+        selected=selected,
+        execute_entries=execute_entries,
+        rows=rows,
+        entry_states=entry_states,
+        active_attempts=active,
+        recoverable_attempts=recoverable,
+        invalid_attempts=invalid_attempts,
+    )
+    diagnostics = validate_v5_schema(
+        status, "runner-status-v1.schema.json", registry,
+    )
+    if diagnostics:
+        raise RunnerFailure(_first_diagnostic(diagnostics))
+    return status
+
+
 def _append_index_row(
     index_path: Path,
     rows: list[dict[str, Any]],
@@ -2709,43 +3010,65 @@ def _resume_entry(
     registry: dict[str, dict[str, Any]],
     spec_path: Path,
     prior_rows: list[dict[str, Any]],
+    budget: _AttemptBudget,
 ) -> Iterator[tuple[dict[str, Any], bool]]:
     attempts = _attempt_directories(plan_path, plan, entry)
     if not attempts:
-        row = _execute_entry(
-            plan_path=plan_path,
-            plan=plan,
-            entry=entry,
-            spec=spec,
-            host=host,
-            registry=registry,
-            spec_path=spec_path,
-            prior_rows=prior_rows,
-        )
-        yield row, True
-        return
-    last_receipt: dict[str, Any] | None = None
-    for position, (attempt, attempt_rel, attempt_dir) in enumerate(attempts):
-        existing = _existing_receipt(
-            plan=plan,
-            entry=entry,
-            attempt=attempt,
-            attempt_dir=attempt_dir,
-            spec=spec,
-            registry=registry,
-        )
-        if existing is None:
-            if position != len(attempts) - 1:
-                raise RunnerFailure("non-terminal attempt gap precedes a later attempt")
-            receipt = _resume_seal(
+        with _new_attempt_custody(
+            plan_path, plan, entry, 1, budget,
+        ) as custody:
+            row = _execute_entry(
+                plan_path=plan_path,
                 plan=plan,
                 entry=entry,
                 spec=spec,
                 host=host,
+                registry=registry,
+                spec_path=spec_path,
+                prior_rows=prior_rows,
+                custody_fd=custody.fd,
+            )
+            yield row, True
+            custody.commit()
+        return
+    last_receipt: dict[str, Any] | None = None
+    for position, (attempt, attempt_rel, attempt_dir) in enumerate(attempts):
+        with _AttemptCustody(attempt_dir) as custody:
+            existing = _existing_receipt(
+                plan=plan,
+                entry=entry,
                 attempt=attempt,
                 attempt_dir=attempt_dir,
+                spec=spec,
                 registry=registry,
             )
+            if existing is None:
+                if position != len(attempts) - 1:
+                    raise RunnerFailure(
+                        "non-terminal attempt gap precedes a later attempt",
+                    )
+                receipt = _resume_seal(
+                    plan=plan,
+                    entry=entry,
+                    spec=spec,
+                    host=host,
+                    attempt=attempt,
+                    attempt_dir=attempt_dir,
+                    registry=registry,
+                )
+                row = _row_from_receipt(
+                    plan=plan,
+                    entry=entry,
+                    attempt_rel=attempt_rel,
+                    receipt_path=attempt_dir / "receipt.json",
+                    receipt=receipt,
+                    registry=registry,
+                )
+                last_receipt = receipt
+                yield row, False
+                custody.commit()
+                break
+            _, receipt = existing
             row = _row_from_receipt(
                 plan=plan,
                 entry=entry,
@@ -2755,19 +3078,8 @@ def _resume_entry(
                 registry=registry,
             )
             last_receipt = receipt
-            yield row, False
-            break
-        _, receipt = existing
-        row = _row_from_receipt(
-            plan=plan,
-            entry=entry,
-            attempt_rel=attempt_rel,
-            receipt_path=attempt_dir / "receipt.json",
-            receipt=receipt,
-            registry=registry,
-        )
-        last_receipt = receipt
-        yield row, position == len(attempts) - 1 and receipt["run"]["valid"]
+            yield row, position == len(attempts) - 1 and receipt["run"]["valid"]
+            custody.commit()
 
     if last_receipt is None:
         raise RunnerFailure("resume inspection produced no terminal receipt")
@@ -2780,20 +3092,26 @@ def _resume_entry(
         and last_attempt < policy["max_attempts"]
     )
     if retryable:
+        budget.ensure_available()
         if policy["backoff_seconds"]:
             time.sleep(policy["backoff_seconds"])
-        row = _execute_entry(
-            plan_path=plan_path,
-            plan=plan,
-            entry=entry,
-            spec=spec,
-            host=host,
-            registry=registry,
-            spec_path=spec_path,
-            prior_rows=prior_rows,
-            attempt=last_attempt + 1,
-        )
-        yield row, True
+        with _new_attempt_custody(
+            plan_path, plan, entry, last_attempt + 1, budget,
+        ) as custody:
+            row = _execute_entry(
+                plan_path=plan_path,
+                plan=plan,
+                entry=entry,
+                spec=spec,
+                host=host,
+                registry=registry,
+                spec_path=spec_path,
+                prior_rows=prior_rows,
+                custody_fd=custody.fd,
+                attempt=last_attempt + 1,
+            )
+            yield row, True
+            custody.commit()
 
 
 def _index_path(
@@ -2841,9 +3159,19 @@ def _run_command(args: argparse.Namespace) -> int:
         )
         index_path = _index_path(plan_path, plan, Path(args.index))
         selected = _selected_entries(plan, args.entry_id)
-        if args.max_parallel < 1:
+        if args.status and (
+            args.resume
+            or args.new_attempt_budget is not None
+            or args.max_parallel is not None
+        ):
+            raise RunnerFailure(
+                "--status conflicts with --resume, --new-attempt-budget, "
+                "and --max-parallel",
+            )
+        max_parallel = args.max_parallel if args.max_parallel is not None else 1
+        if max_parallel < 1:
             raise RunnerFailure("--max-parallel must be at least 1")
-        if args.max_parallel > spec["execution"]["max_parallel"]:
+        if max_parallel > spec["execution"]["max_parallel"]:
             raise RunnerFailure("--max-parallel exceeds the spec limit")
 
         execute_entries = [
@@ -2869,6 +3197,42 @@ def _run_command(args: argparse.Namespace) -> int:
             spec=spec,
             registry=registry,
         )
+        status = _runner_status(
+            plan_path=plan_path,
+            plan=plan,
+            spec=spec,
+            registry=registry,
+            selected=selected,
+            rows=rows,
+        )
+        if args.status:
+            sys.stdout.buffer.write(canonical_json_bytes(status) + b"\n")
+            return 0
+        if args.new_attempt_budget is None:
+            raise RunnerFailure("--new-attempt-budget is required")
+        if args.new_attempt_budget < 0:
+            raise RunnerFailure("--new-attempt-budget must be non-negative")
+        if (
+            args.new_attempt_budget
+            > status["worst_case_remaining_attempts"]
+        ):
+            raise RunnerFailure(
+                "--new-attempt-budget exceeds worst-case remaining attempts",
+            )
+        if args.new_attempt_budget < status["next_pass_new_attempts"]:
+            raise RunnerFailure(
+                "--new-attempt-budget is below next-pass attempts",
+            )
+        budget = _AttemptBudget(args.new_attempt_budget)
+        print(
+            "RUN PREFLIGHT: "
+            f"selected={status['selected_entries']} "
+            f"next_pass={status['next_pass_new_attempts']} "
+            f"worst_case={status['worst_case_remaining_attempts']} "
+            f"execute_case_ceiling={status['execute_case_request_ceiling']} "
+            f"model_grade_ceiling={status['model_grade_request_ceiling']} "
+            f"authorized={budget.authorized}",
+        )
         if not args.resume and (
             rows
             or any(
@@ -2892,22 +3256,30 @@ def _run_command(args: argparse.Namespace) -> int:
                     registry=registry,
                     spec_path=spec_path,
                     prior_rows=rows,
+                    budget=budget,
                 ):
                     _append_index_row(index_path, rows, row)
             else:
-                row = _execute_entry(
-                    plan_path=plan_path,
-                    plan=plan,
-                    entry=entry,
-                    spec=spec,
-                    host=host,
-                    registry=registry,
-                    spec_path=spec_path,
-                    prior_rows=rows,
-                )
-                complete = True
-                _append_index_row(index_path, rows, row)
+                with _new_attempt_custody(
+                    plan_path, plan, entry, 1, budget,
+                ) as custody:
+                    row = _execute_entry(
+                        plan_path=plan_path,
+                        plan=plan,
+                        entry=entry,
+                        spec=spec,
+                        host=host,
+                        registry=registry,
+                        spec_path=spec_path,
+                        prior_rows=rows,
+                        custody_fd=custody.fd,
+                    )
+                    complete = True
+                    _append_index_row(index_path, rows, row)
+                    custody.commit()
             incomplete = incomplete or not complete
+            if not complete:
+                break
         if incomplete:
             raise ApparatusFailure(
                 "one or more entries have only invalid apparatus evidence",
@@ -2937,7 +3309,9 @@ def main() -> int:
     parser.add_argument("--index", required=True)
     parser.add_argument("--entry-id")
     parser.add_argument("--resume", action="store_true")
-    parser.add_argument("--max-parallel", type=int, default=1)
+    parser.add_argument("--status", action="store_true")
+    parser.add_argument("--new-attempt-budget", type=int)
+    parser.add_argument("--max-parallel", type=int)
     return _run_command(parser.parse_args())
 
 
