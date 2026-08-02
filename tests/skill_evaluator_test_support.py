@@ -780,6 +780,21 @@ def load_reviewer_pair_contract_module():
     return module
 
 
+def load_grader_semantics_module():
+    scripts = str(ROOT / 'scripts')
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    spec = importlib.util.spec_from_file_location(
+        'skill_evaluator_grader_semantics',
+        ROOT / 'scripts/grader_semantics.py',
+    )
+    if spec is None or spec.loader is None:
+        raise AssertionError('cannot load grader_semantics.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_compiler_module():
     scripts = str(ROOT / 'scripts')
     if scripts not in sys.path:
@@ -1099,8 +1114,8 @@ def load_v5_committed_fixtures() -> dict[str, dict]:
         'host-manifest-v1.schema.json': json.loads(
             (fixture_root / 'host-manifest-v1.json').read_text(encoding='utf-8'),
         ),
-        'grader-calibration-v1.schema.json': json.loads(
-            (fixture_root / 'calibration-v1.json').read_text(encoding='utf-8'),
+        'grader-calibration-v2.schema.json': json.loads(
+            (fixture_root / 'calibration-v2.json').read_text(encoding='utf-8'),
         ),
         'suite-quality-v1.schema.json': json.loads(
             (fixture_root / 'suite-quality-v1.json').read_text(encoding='utf-8'),
@@ -1118,7 +1133,7 @@ def make_v5_schema_examples() -> dict[str, dict]:
     scenario = committed['scenario-v1.schema.json']
     host = committed['host-manifest-v1.schema.json']
     spec = committed['eval-spec-v5.schema.json']
-    calibration = committed['grader-calibration-v1.schema.json']
+    calibration = committed['grader-calibration-v2.schema.json']
     quality = committed['suite-quality-v1.schema.json']
     plan = committed['execution-plan-v1.schema.json']
     receipt = _v5_receipt(plan, scenario, spec, host)
@@ -1265,7 +1280,7 @@ def make_v5_schema_examples() -> dict[str, dict]:
         'host-manifest-v1.schema.json': host,
         'run-index-row-v2.schema.json': run_index,
         'receipt-v4.schema.json': receipt,
-        'grader-calibration-v1.schema.json': calibration,
+        'grader-calibration-v2.schema.json': calibration,
         'suite-quality-v1.schema.json': quality,
         'analysis-summary-v4.schema.json': _v5_summary(plan, spec),
         'failure-index-v1.schema.json': failure_index,
@@ -2644,7 +2659,7 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
     paths.update({
         'ratings': root / 'calibration-ratings.jsonl',
         'labels': root / 'calibration-gold.jsonl',
-        'calibration': root / 'calibration-v1.json',
+        'calibration': root / 'calibration-v2.json',
     })
     synthetic_hash = (
         'sha256:' + hashlib.sha256(paths['synthetic_host'].read_bytes()).hexdigest()
@@ -2721,46 +2736,64 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
         ('boundary', 'boundary', 'fail', 1),
         ('abstain', 'abstain', 'abstain', 0),
     )
+    semantics = load_grader_semantics_module()
     labels = []
     for check in checks:
-        for example_id, class_name, label, severity in classes:
-            bound_example_id = (
-                example_id
-                if check['check_id'] == 'outcome-check'
-                else f"{check['check_id']}-{example_id}"
-            )
-            labels.append({
-                'schema_version': 1,
-                'example_id': bound_example_id,
-                'class': class_name,
-                'dimension': check['dimension'],
-                'check_id': check['check_id'],
-                'payload_hash': _v5_hash(bound_example_id),
-                'source_support': 'supported',
-                'gold_label': label,
-                'gold_severity': severity,
-                'task': 'testing',
-                'language': 'en',
-                'risk': 'standard',
-                'host': 'synthetic-host',
-                'model': 'fixture-judge',
-            })
+        for sample in (1, 2):
+            for example_id, class_name, label, severity in classes:
+                sample_id = example_id if sample == 1 else f'{example_id}-2'
+                bound_example_id = (
+                    sample_id
+                    if check['check_id'] == 'outcome-check'
+                    else f"{check['check_id']}-{sample_id}"
+                )
+                payload = semantics.semantic_payload(
+                    {
+                        'candidate_evidence': (
+                            f'Blinded fixture evidence for {bound_example_id}.'
+                        ),
+                    },
+                    check['check_id'],
+                    check['pass_condition'],
+                )
+                labels.append({
+                    'schema_version': 2,
+                    'example_id': bound_example_id,
+                    'class': class_name,
+                    'dimension': check['dimension'],
+                    'check_id': check['check_id'],
+                    'payload': payload,
+                    'payload_hash': semantics.semantic_payload_hash(payload),
+                    'source_support': 'supported',
+                    'gold_label': label,
+                    'gold_severity': severity,
+                    'task': 'testing',
+                    'language': 'en',
+                    'risk': 'standard',
+                    'host': 'synthetic-host',
+                    'model': 'fixture-judge',
+                })
     ordering = {
         'method': 'counterbalanced',
         'seed': 7,
         'schedule_hash': canonical_hash([
-            {'example_id': item['example_id'], 'position': index}
+            {
+                'example_id': item['example_id'],
+                'check_id': item['check_id'],
+                'position': index,
+            }
             for index, item in enumerate(labels, start=1)
         ]),
     }
     ratings = [
         {
-            'schema_version': 1,
+            'schema_version': 2,
             'rating_id': f'rating-{label["example_id"]}',
             'example_id': label['example_id'],
             'grader_id': 'model-grader',
             'dimension': label['dimension'],
             'check_id': label['check_id'],
+            'payload_hash': label['payload_hash'],
             'label': label['gold_label'],
             'severity': label['gold_severity'],
             'position': index,
@@ -2960,28 +2993,13 @@ def materialize_v5_reviewer_pair(
         json.loads(line)
         for line in paths['ratings'].read_text(encoding='utf-8').splitlines()
     ]
-    judges_by_example = {row['example_id']: row for row in judge_rows}
-    spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
-    pass_conditions = {
-        check['check_id']: check['pass_condition']
-        for grader in spec['graders']
-        if grader['type'] == 'model'
-        for check in grader['checks']
+    judges_by_example = {
+        (row['example_id'], row['check_id']): row for row in judge_rows
     }
+    spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
     packet_examples = []
     for index, label in enumerate(labels, start=1):
-        payload = {
-            'view': {
-                'candidate_evidence': (
-                    f'Blinded fixture evidence for example {index}.'
-                ),
-            },
-            'check': {
-                'check_id': label['check_id'],
-                'pass_condition': pass_conditions[label['check_id']],
-            },
-        }
-        label['payload_hash'] = canonical_hash(payload)
+        payload = label['payload']
         packet_examples.append({
             'opaque_example_id': f'opaque-{index:03d}',
             'payload': payload,
@@ -3041,7 +3059,9 @@ def materialize_v5_reviewer_pair(
         output_ratings: list[dict] = []
         parsed_ratings: list[dict] = []
         for packet_example, label in zip(packet_examples, labels, strict=True):
-            source = judges_by_example[label['example_id']]
+            source = judges_by_example[
+                (label['example_id'], label['check_id'])
+            ]
             row = copy.deepcopy(source)
             row['rating_id'] = (
                 f'{reviewer_id}-{packet_example["opaque_example_id"]}'
@@ -3205,7 +3225,11 @@ def materialize_v5_reviewer_pair(
         'method': 'counterbalanced',
         'seed': 7,
         'schedule_hash': canonical_hash([
-            {'example_id': row['example_id'], 'position': row['position']}
+            {
+                'example_id': row['example_id'],
+                'check_id': row['check_id'],
+                'position': row['position'],
+            }
             for row in ratings
         ]),
     }

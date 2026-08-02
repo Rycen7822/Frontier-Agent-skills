@@ -61,6 +61,8 @@ Absolute candidate pass rate and point benefit are guardrail/description only. T
 
 Any non-task primary benefit requires a task-pass noninferiority gate against the same comparator. A cost primary additionally requires quality and safety noninferiority plus zero unauthorized effects. Hard gates have one declared kind, metric, direction, threshold, authority, and required flag. Protected, safety, invalid-evidence, module, context, host, calibration, quality, or task-regression failures cannot be offset by aggregate utility.
 
+Calibration v2 evaluates `minimum_examples` and `minimum_agreement` independently for every selected model check. The artifact records exact per-check sample and agreement metrics; one failing check closes the gate regardless of aggregate or dimension-level values. Optional reviewer corroboration does not lower the judge-to-gold or manual-authority requirements.
+
 ## Target-Skill context guardrail
 
 `analyze_runs.py::summarize_skill_context` freezes every intended-trigger selected-candidate-treatment `case × repeat` key as the budget denominator. Missing, duplicate, invalid, or `context_usage.status=missing` rows reduce attribution coverage; a verified `captured` zero-component run remains attributed, and candidate failures cannot look efficient by disappearing.

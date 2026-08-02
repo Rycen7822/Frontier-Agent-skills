@@ -17,9 +17,9 @@ metadata:
 
 Evaluate the complete Skill package and its runtime contribution. For a frontier model, reward only specialized, task-relevant help beyond the model's native competence; treat redundant instructions and loaded references as context cost.
 
-Use the lightest level that can support the decision. A package audit or smoke run never becomes a comparative, release, or deployment claim. Resolve all paths below from this `SKILL.md` directory as `SKILL_EVALUATOR_DIR`.
+Use the lightest decision-supporting level. Audit or smoke evidence never supports comparative, release, or deployment claims. Resolve paths from this file's directory as `SKILL_EVALUATOR_DIR`.
 
-This skill is explicit-only. Ordinary software development does not run an evaluation automatically; invoke it only for a requested package-quality, comparison, security, release, or longitudinal decision.
+This skill is explicit-only. Invoke it for a requested package-quality, comparison, security, release, or longitudinal decision, never ordinary development.
 
 ## Decision router
 
@@ -36,7 +36,7 @@ Load only the owner of the active question. Do not preload every reference.
 
 ## Evidence read surface
 
-Keep scored evidence immutable for the spec retention period. Read the analyzer summary first, then its failure index, then only the spec-bounded representative receipts. Open a receipt-owned raw artifact only for a named failure, grader disagreement, or integrity audit, following the exact index locator and hash. Never start with a tree walk or create per-step worknotes, per-notice JSON, or model-authored receipt copies. An early failing run remains an outcome failure, never an efficiency gain.
+Keep scored evidence immutable for retention. Read the analyzer summary first, then its failure index, then only spec-bounded representative receipts. Open a receipt-owned raw artifact only for a named failure, grader disagreement, or integrity audit, by exact locator and hash. Never tree-walk evidence or create per-step notes, notice JSON, or model-authored receipt copies. A failing run remains an outcome failure, not an efficiency gain.
 
 ## Claim ceilings
 
@@ -48,7 +48,7 @@ Keep scored evidence immutable for the spec retention period. Read the analyzer 
 | L3 | L2 plus sequestered holdout, adversarial controls, environment binding, and required manual-review receipt | Readiness for the tested scope only |
 | L4 | Immutable cycle capsules plus a frozen comparison plan | Revision closure or model-transition classification for the tested scope only |
 
-Without selection, order, and composition receipts, L4 must not claim library-scale multi-Skill orchestration evidence.
+Without selection, order, and composition receipts, L4 cannot claim library-scale orchestration.
 
 ## Non-negotiable invariants
 
@@ -78,7 +78,7 @@ python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" contract eval-spec
 python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" contract eval-spec.json scenarios.jsonl host-manifest.json
 ```
 
-For a selected model grader, normalize blinded calibration evidence before suite quality. Deterministic-grader-only specs omit calibration.
+For each selected model grader, produce calibration v2 before suite quality. Gold rows own exact blinded payloads; ratings bind their hashes; sample/agreement thresholds apply per check. Reviewer pairs are optional, and deterministic-only specs omit calibration.
 
 ```bash
 python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" calibration --spec draft-eval-spec.json \
@@ -109,7 +109,7 @@ For a requested L4 comparison, follow the commands in [Longitudinal evaluation](
 
 - Contract owners: [evaluation](references/evaluation-contract.md), [task suite](references/task-suite-design.md), [execution and grading](references/execution-and-grading.md), [metrics](references/rubric-and-metrics.md), [reporting](references/reporting-and-decisions.md), and [longitudinal comparison](references/longitudinal-evaluation.md).
 - Supporting owners: [source map](references/source-map.md), [Draft 2020-12 schemas](schemas/README.md), and the conditional [evaluation report](templates/evaluation-report.md).
-- Executable owners: [audit](scripts/audit_skill_package.py), [validator](scripts/validate_eval_suite.py), [reviewer pair](scripts/reviewer_pair_contract.py), [reviewer prompt](scripts/reviewer_prompt_contract.py), [compiler](scripts/compile_eval_plan.py), [runner](scripts/run_eval_plan.py), [transport](scripts/model_grade_transport.py), [analyzer](scripts/analyze_runs.py), [offline comparator](scripts/compare_cycles.py), and [I/O](scripts/evidence_io.py).
+- Code owners: [audit](scripts/audit_skill_package.py), [validator](scripts/validate_eval_suite.py), [reviewer pair](scripts/reviewer_pair_contract.py), [reviewer prompt](scripts/reviewer_prompt_contract.py), [compiler](scripts/compile_eval_plan.py), [runner](scripts/run_eval_plan.py), [transport](scripts/model_grade_transport.py), [grader semantics](scripts/grader_semantics.py), [analyzer](scripts/analyze_runs.py), [offline comparator](scripts/compare_cycles.py), and [I/O](scripts/evidence_io.py).
 - Spec fixtures: [L0](templates/eval-spec.l0.example.json), [L1](templates/eval-spec.l1.example.json), and [L2](templates/eval-spec.example.json); public scenarios: [L1](templates/scenarios.l1.example.jsonl) and [L2](templates/scenarios.example.jsonl); [host manifest](templates/host-manifest.example.json).
 - Preparation fixtures: [calibration ratings](templates/calibration-ratings.example.jsonl), [calibration gold](templates/calibration-gold.example.jsonl), and [suite-quality proof](templates/suite-quality-proof.example.json).
 - Evidence fixtures: [run index](templates/runs.example.jsonl), [grader schema](templates/grader-output.schema.json), [grader prompt](templates/llm-grader-prompt.md), [holdout manifest](templates/holdout-manifest.example.json), and [holdout scenarios](templates/holdout-scenarios.example.jsonl).

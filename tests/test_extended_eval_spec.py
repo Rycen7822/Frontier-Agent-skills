@@ -14,7 +14,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
             'host-manifest-v1.schema.json',
             'run-index-row-v2.schema.json',
             'receipt-v4.schema.json',
-            'grader-calibration-v1.schema.json',
+            'grader-calibration-v2.schema.json',
             'suite-quality-v1.schema.json',
             'analysis-summary-v4.schema.json',
             'failure-index-v1.schema.json',

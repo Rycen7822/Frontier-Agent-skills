@@ -25,6 +25,7 @@ from evidence_io import (
     validate_locator,
     verify_self_hash,
 )
+from grader_semantics import semantic_payload_hash
 from reviewer_pair_contract import (
     ReviewerPairError,
     read_nofollow_regular,
@@ -134,7 +135,7 @@ V5_SCHEMA_NAMES = {
     "eval-spec-v5.schema.json",
     "execution-plan-v1.schema.json",
     "failure-index-v1.schema.json",
-    "grader-calibration-v1.schema.json",
+    "grader-calibration-v2.schema.json",
     "host-manifest-v1.schema.json",
     "receipt-v4.schema.json",
     "run-index-row-v2.schema.json",
@@ -1846,16 +1847,25 @@ def _validate_calibration_binding(
     if path is None:
         return None
     calibration = load_json(path)
+    if (
+        not isinstance(calibration, dict)
+        or calibration.get("schema_version") != 2
+    ):
+        _add_contract_error(
+            errors,
+            "calibration.unsupported_schema",
+            "/calibration/schema_version",
+            "only grader calibration schema version 2 is supported",
+        )
+        return None
     _validate_self_hashed_artifact(
         calibration,
-        schema_name="grader-calibration-v1.schema.json",
+        schema_name="grader-calibration-v2.schema.json",
         hash_field="calibration_hash",
         path="/calibration",
         registry=registry,
         errors=errors,
     )
-    if not isinstance(calibration, dict):
-        return None
     _validate_calibration_raw_normalization(
         spec,
         calibration,
@@ -3929,16 +3939,44 @@ def _commit_preparation_artifact(
 
 CALIBRATION_LABEL_FIELDS = {
     "schema_version", "example_id", "class", "dimension", "check_id",
-    "payload_hash", "source_support", "gold_label", "gold_severity",
+    "payload", "payload_hash", "source_support", "gold_label", "gold_severity",
     "task", "language", "risk", "host", "model",
 }
 CALIBRATION_RATING_FIELDS = {
     "schema_version", "rating_id", "example_id", "grader_id", "dimension",
-    "check_id", "label", "severity", "position",
+    "check_id", "payload_hash", "label", "severity", "position",
     "blinded_treatment_labels", "reviewer", "grader_identity",
     "execution_identity", "independence_facts", "ordering", "created",
     "expires", "drift_triggers", "adjudication_policy", "thresholds",
 }
+CALIBRATION_FORBIDDEN_VIEW_KEYS = {
+    "gold_label", "gold_severity", "expected_overall", "expected_checks",
+    "judge_output", "other_reviewer_output", "plan", "source_path",
+    "filesystem_locator",
+}
+
+
+def _invalid_calibration_view(value: Any) -> bool:
+    if isinstance(value, dict):
+        return any(
+            key in CALIBRATION_FORBIDDEN_VIEW_KEYS
+            or _invalid_calibration_view(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, list):
+        return any(_invalid_calibration_view(item) for item in value)
+    if isinstance(value, str):
+        return (
+            any(
+                prefix in value
+                for prefix in (
+                    "/home/", "/mnt/", "/tmp/", "/workspace/",
+                    "/workspaces/", "/private/", "/Users/", "/opt/",
+                )
+            )
+            or re.search(r"(?:^|\s)[A-Za-z]:[\\/]", value) is not None
+        )
+    return False
 
 
 def _calibration_failure(code: str, message: str) -> int:
@@ -4056,7 +4094,7 @@ def _derive_independence(
 
 
 def _calibration_metric_cells(
-    labels: dict[str, dict[str, Any]],
+    labels: dict[tuple[str, str], dict[str, Any]],
     ratings: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     cells: list[dict[str, Any]] = []
@@ -4074,7 +4112,7 @@ def _calibration_metric_cells(
         agreements: list[int] = []
         severity_errors: list[float] = []
         for row in selected:
-            gold = labels[row["example_id"]]
+            gold = labels[(row["example_id"], row["check_id"])]
             predicted = row["label"]
             expected = gold["gold_label"]
             agreements.append(int(predicted == expected))
@@ -4112,6 +4150,71 @@ def _calibration_metric_cells(
     return cells
 
 
+def _calibration_check_metrics(
+    labels: dict[tuple[str, str], dict[str, Any]],
+    judge_rows: list[dict[str, Any]],
+    reviewer_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    reviewer_ids = sorted({
+        row["reviewer"]["reviewer_id"] for row in reviewer_rows
+    })
+    reviewer_maps = {
+        reviewer_id: {
+            (row["example_id"], row["check_id"]): row
+            for row in reviewer_rows
+            if row["reviewer"]["reviewer_id"] == reviewer_id
+        }
+        for reviewer_id in reviewer_ids
+    }
+    metrics = []
+    for check_id in sorted({row["check_id"] for row in labels.values()}):
+        gold_rows = {
+            key: row for key, row in labels.items() if key[1] == check_id
+        }
+        selected_judge = [
+            row for row in judge_rows if row["check_id"] == check_id
+        ]
+        judge_agreement = sum(
+            row["label"]
+            == gold_rows[(row["example_id"], check_id)]["gold_label"]
+            for row in selected_judge
+        ) / len(selected_judge)
+        pair_count = 0
+        reviewer_agreement: float | None = None
+        judge_reviewer_agreement: float | None = None
+        if len(reviewer_ids) == 2:
+            first = reviewer_maps[reviewer_ids[0]]
+            second = reviewer_maps[reviewer_ids[1]]
+            keys = sorted(gold_rows)
+            pair_count = len(keys)
+            reviewer_agreement = sum(
+                first[key]["label"] == second[key]["label"] for key in keys
+            ) / pair_count
+            consensus = {}
+            for key in keys:
+                labels_for_key = [first[key]["label"], second[key]["label"]]
+                consensus[key] = (
+                    labels_for_key[0]
+                    if labels_for_key[0] == labels_for_key[1]
+                    else "abstain"
+                )
+            judge_reviewer_agreement = sum(
+                row["label"]
+                == consensus[(row["example_id"], row["check_id"])]
+                for row in selected_judge
+            ) / len(selected_judge)
+        metrics.append({
+            "check_id": check_id,
+            "dimension": next(iter(gold_rows.values()))["dimension"],
+            "judge_sample_count": len(selected_judge),
+            "judge_to_gold_agreement": judge_agreement,
+            "reviewer_pair_sample_count": pair_count,
+            "reviewer_to_reviewer_agreement": reviewer_agreement,
+            "judge_to_reviewer_agreement": judge_reviewer_agreement,
+        })
+    return metrics
+
+
 def _calibration_raw_shape_error(
     ratings: list[Any],
     label_rows: list[Any],
@@ -4127,7 +4230,7 @@ def _calibration_raw_shape_error(
             "source_support", "task", "language", "risk", "host", "model",
         )
         if (
-            row.get("schema_version") != 1
+            row.get("schema_version") != 2
             or not all(nonempty_string(row.get(field)) for field in strings)
             or row.get("class")
             not in {"known_good", "known_bad", "boundary", "abstain"}
@@ -4145,6 +4248,14 @@ def _calibration_raw_shape_error(
                 "calibration.labels_shape",
                 f"labels row {index + 1} has invalid field types or values",
             )
+        try:
+            if row["payload_hash"] != semantic_payload_hash(row["payload"]):
+                raise ValueError("payload hash differs")
+        except (KeyError, TypeError, ValueError):
+            return (
+                "calibration.labels_shape",
+                f"labels row {index + 1} has an invalid semantic payload",
+            )
     for index, row in enumerate(ratings):
         if not isinstance(row, dict) or set(row) != CALIBRATION_RATING_FIELDS:
             return (
@@ -4153,10 +4264,11 @@ def _calibration_raw_shape_error(
             )
         strings = (
             "rating_id", "example_id", "grader_id", "dimension",
-            "check_id", "created", "expires", "adjudication_policy",
+            "check_id", "payload_hash", "created", "expires",
+            "adjudication_policy",
         )
         if (
-            row.get("schema_version") != 1
+            row.get("schema_version") != 2
             or not all(nonempty_string(row.get(field)) for field in strings)
             or row.get("label") not in {"pass", "fail", "abstain"}
             or not isinstance(row.get("severity"), (int, float))
@@ -4208,7 +4320,9 @@ def _calibration_normalized_fields(
     label_rows: list[dict[str, Any]],
     reviewer_pair_binding: dict[str, str] | None,
 ) -> dict[str, Any]:
-    labels = {row["example_id"]: row for row in label_rows}
+    labels = {
+        (row["example_id"], row["check_id"]): row for row in label_rows
+    }
     judge_rows = [
         row for row in ratings if row["reviewer"]["role"] == "judge"
     ]
@@ -4224,8 +4338,8 @@ def _calibration_normalized_fields(
     if len(reviewer_ids) == 2:
         anchor_id = reviewer_ids[0]
         anchor = {
-            row["example_id"]: {
-                **labels[row["example_id"]],
+            (row["example_id"], row["check_id"]): {
+                **labels[(row["example_id"], row["check_id"])],
                 "gold_label": row["label"],
                 "gold_severity": row["severity"],
             }
@@ -4238,11 +4352,11 @@ def _calibration_normalized_fields(
         ]
         reviewer_to_reviewer = _calibration_metric_cells(anchor, comparisons)
 
-        consensus: dict[str, dict[str, Any]] = {}
-        for example_id, label in labels.items():
+        consensus: dict[tuple[str, str], dict[str, Any]] = {}
+        for key, label in labels.items():
             rows = [
                 row for row in reviewer_rows
-                if row["example_id"] == example_id
+                if (row["example_id"], row["check_id"]) == key
             ]
             counts = Counter(row["label"] for row in rows)
             ordered = sorted(
@@ -4253,7 +4367,7 @@ def _calibration_normalized_fields(
                 if len(ordered) == 1 or ordered[0][1] > ordered[1][1]
                 else "abstain"
             )
-            consensus[example_id] = {
+            consensus[key] = {
                 **label,
                 "gold_label": consensus_label,
                 "gold_severity": (
@@ -4287,11 +4401,15 @@ def _calibration_normalized_fields(
             {
                 key: row[key]
                 for key in (
-                    "example_id", "class", "payload_hash",
+                    "example_id", "class", "dimension", "check_id",
+                    "payload", "payload_hash",
                     "source_support", "gold_label",
                 )
             }
-            for row in sorted(label_rows, key=lambda item: item["example_id"])
+            for row in sorted(
+                label_rows,
+                key=lambda item: (item["example_id"], item["check_id"]),
+            )
         ],
         "blinded_treatment_labels": blinded,
         "ordering": _uniform_value(
@@ -4306,6 +4424,11 @@ def _calibration_normalized_fields(
             "reviewer_to_reviewer": reviewer_to_reviewer,
             "judge_to_reviewer": judge_to_reviewer,
         },
+        "check_metrics": _calibration_check_metrics(
+            labels,
+            judge_rows,
+            reviewer_rows,
+        ),
         "reviewer_pair": reviewer_pair_binding,
         "scope": {
             "tasks": sorted({row["task"] for row in label_rows}),
@@ -4352,15 +4475,17 @@ def _normalize_calibration_raw(
     shape_error = _calibration_raw_shape_error(ratings, label_rows)
     if shape_error is not None:
         return None, shape_error
-    label_ids = [row["example_id"] for row in label_rows]
+    label_keys = [
+        (row["example_id"], row["check_id"]) for row in label_rows
+    ]
     rating_ids = [row["rating_id"] for row in ratings]
     if (
-        len(label_ids) != len(set(label_ids))
+        len(label_keys) != len(set(label_keys))
         or len(rating_ids) != len(set(rating_ids))
     ):
         return None, (
             "calibration.duplicate_id",
-            "example_id and rating_id values must be unique",
+            "(example_id, check_id) and rating_id values must be unique",
         )
     label_coverage = {
         check_id: {
@@ -4381,14 +4506,18 @@ def _normalize_calibration_raw(
             "every calibrated check requires pass and fail gold labels: "
             f"{incomplete_checks}",
         )
-    labels = {row["example_id"]: row for row in label_rows}
+    labels = {
+        (row["example_id"], row["check_id"]): row for row in label_rows
+    }
     judge_rows = [
         row for row in ratings if row["reviewer"]["role"] == "judge"
     ]
     if any(
-        row["example_id"] not in labels
-        or row["dimension"] != labels[row["example_id"]]["dimension"]
-        or row["check_id"] != labels[row["example_id"]]["check_id"]
+        (row["example_id"], row["check_id"]) not in labels
+        or row["dimension"]
+        != labels[(row["example_id"], row["check_id"])]["dimension"]
+        or row["payload_hash"]
+        != labels[(row["example_id"], row["check_id"])]["payload_hash"]
         for row in judge_rows
     ):
         return None, (
@@ -4415,7 +4544,11 @@ def _normalize_calibration_raw(
             )
         reviewer_identities[reviewer_id] = identity
     reviewer_examples = [
-        (row["reviewer"]["reviewer_id"], row["example_id"])
+        (
+            row["reviewer"]["reviewer_id"],
+            row["example_id"],
+            row["check_id"],
+        )
         for row in ratings
     ]
     if len(reviewer_examples) != len(set(reviewer_examples)):
@@ -4429,7 +4562,9 @@ def _normalize_calibration_raw(
     if (
         len(judge_reviewers) != 1
         or len(judge_rows) != len(label_rows)
-        or {row["example_id"] for row in judge_rows} != set(label_ids)
+        or {
+            (row["example_id"], row["check_id"]) for row in judge_rows
+        } != set(label_keys)
     ):
         return None, (
             "calibration.judge_coverage",
@@ -4499,6 +4634,16 @@ def _normalize_calibration_raw(
             for row in ratings
         ]
     if any(
+        (row["example_id"], row["check_id"]) not in labels
+        or row["payload_hash"]
+        != labels[(row["example_id"], row["check_id"])]["payload_hash"]
+        for row in effective_ratings
+    ):
+        return None, (
+            "calibration.payload_binding",
+            "every rating must bind the matching gold semantic payload hash",
+        )
+    if any(
         row["blinded_treatment_labels"] is not True
         or row["reviewer"].get("blinded") is not True
         for row in ratings
@@ -4515,7 +4660,11 @@ def _normalize_calibration_raw(
         return None, ("calibration.ratings_shape", str(exc))
     positions = [row["position"] for row in ratings]
     schedule_hash = canonical_sha256([
-        {"example_id": row["example_id"], "position": row["position"]}
+        {
+            "example_id": row["example_id"],
+            "check_id": row["check_id"],
+            "position": row["position"],
+        }
         for row in sorted(ratings, key=lambda item: item["position"])
     ])
     if (
@@ -4549,13 +4698,14 @@ def _normalize_calibration_raw(
             "raw grader identity does not match the selected spec grader",
         )
     checks = {
-        check.get("check_id"): check.get("dimension")
+        check.get("check_id"): check
         for check in grader.get("checks", [])
     }
     if (
         set(normalized["check_ids"]) != set(checks)
         or any(
-            checks.get(row["check_id"]) != row["dimension"]
+            checks.get(row["check_id"], {}).get("dimension")
+            != row["dimension"]
             for row in label_rows
         )
     ):
@@ -4563,6 +4713,20 @@ def _normalize_calibration_raw(
             "calibration.check_coverage",
             "calibration labels must cover every selected grader check",
         )
+    for row in label_rows:
+        declaration = checks[row["check_id"]]
+        payload = row["payload"]
+        if (
+            payload["check"]["check_id"] != row["check_id"]
+            or payload["check"]["pass_condition"]
+            != declaration["pass_condition"]
+            or not payload["view"]
+            or _invalid_calibration_view(payload["view"])
+        ):
+            return None, (
+                "calibration.payload_binding",
+                "gold payload check or pass condition differs from the spec",
+            )
     required_classes = {"known_good", "known_bad", "boundary", "abstain"}
     for check_id in checks:
         classes = {
@@ -4575,7 +4739,7 @@ def _normalize_calibration_raw(
                 f"grader check {check_id} lacks a required example class",
             )
         if (
-            checks[check_id] == "grounding"
+            checks[check_id]["dimension"] == "grounding"
             and not {"supported", "unsupported", "unattributed"} <= {
                 row["source_support"] for row in label_rows
                 if row["check_id"] == check_id
@@ -4584,6 +4748,14 @@ def _normalize_calibration_raw(
             return None, (
                 "calibration.grounding_coverage",
                 f"grounding check {check_id} lacks support/attribution boundaries",
+            )
+        if spec["risk_tier"] not in {
+            row["risk"] for row in label_rows
+            if row["check_id"] == check_id
+        }:
+            return None, (
+                "calibration.risk_coverage",
+                f"grader check {check_id} lacks the selected risk tier",
             )
     thresholds = normalized["thresholds"]
     if (
@@ -4615,30 +4787,16 @@ def _normalize_calibration_raw(
             "calibration.threshold_contract",
             "raw thresholds must equal required calibration gates in the spec",
         )
-    check_agreements = {
-        check_id: (
-            sum(
-                row["label"] == labels[row["example_id"]]["gold_label"]
-                for row in judge_rows
-                if row["check_id"] == check_id
-            )
-            / sum(row["check_id"] == check_id for row in judge_rows)
-        )
-        for check_id in checks
-    }
     failed_checks = sorted(
-        check_id
-        for check_id, agreement in check_agreements.items()
-        if agreement < thresholds["minimum_agreement"]
-    )
-    if (
-        len(label_rows) < thresholds["minimum_examples"]
-        or failed_checks
-        or any(
-            cell["agreement"] < thresholds["minimum_agreement"]
-            for cell in normalized["metrics"]["judge_to_gold"]
+        metric["check_id"]
+        for metric in normalized["check_metrics"]
+        if (
+            metric["judge_sample_count"] < thresholds["minimum_examples"]
+            or metric["judge_to_gold_agreement"]
+            < thresholds["minimum_agreement"]
         )
-    ):
+    )
+    if failed_checks:
         return None, (
             "calibration.threshold_failed",
             "calibration sample count or per-check judge agreement is below "
@@ -4899,7 +5057,7 @@ def _calibration_command(args: argparse.Namespace) -> int:
     if normalized["reviewer_pair"] is not None:
         calibration_identity["reviewer_pair"] = normalized["reviewer_pair"]["sha256"]
     artifact: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "calibration_id": "cal-" + canonical_sha256(
             calibration_identity,
         ).removeprefix("sha256:")[:24],
@@ -4913,7 +5071,7 @@ def _calibration_command(args: argparse.Namespace) -> int:
         artifact, "calibration_hash",
     )
     output_errors = validate_v5_schema(
-        artifact, "grader-calibration-v1.schema.json", registry,
+        artifact, "grader-calibration-v2.schema.json", registry,
     )
     if output_errors:
         diagnostic = output_errors[0]

@@ -722,24 +722,33 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         self,
     ) -> None:
         transport = load_analyzer_module().model_transport
+        semantics = load_grader_semantics_module()
+        grader_view = {
+            'captured_output': {},
+            'host_assessment': {},
+            'final_answer': 'done',
+        }
+
+        def bound_check(check_id: str, pass_condition: str) -> dict:
+            payload = semantics.semantic_payload(
+                grader_view, check_id, pass_condition,
+            )
+            return {
+                'id': check_id,
+                'pass_condition': pass_condition,
+                'payload_hash': semantics.semantic_payload_hash(payload),
+            }
+
         batch = transport.execution_batch(
             [{
                 'item_id': entry_id,
                 'checks': [
-                    {
-                        'id': 'outcome-check',
-                        'pass_condition': 'The outcome is complete.',
-                    },
-                    {
-                        'id': 'quality-check',
-                        'pass_condition': 'The result meets the quality bar.',
-                    },
+                    bound_check('outcome-check', 'The outcome is complete.'),
+                    bound_check(
+                        'quality-check', 'The result meets the quality bar.',
+                    ),
                 ],
-                'grader_view': {
-                    'captured_output': {},
-                    'host_assessment': {},
-                    'final_answer': 'done',
-                },
+                'grader_view': grader_view,
             } for entry_id in ('entry-a', 'entry-b')],
             batch_id='batch-fixture',
         )
@@ -807,21 +816,103 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                         item_id='entry-a',
                     )
 
+    def test_grader_semantic_payload_is_identical_across_public_paths(
+        self,
+    ) -> None:
+        semantics = load_grader_semantics_module()
+        from reviewer_prompt_contract import expand_prompt_packet
+
+        transport = load_analyzer_module().model_transport
+        view = {'candidate_evidence': 'Blinded evidence.'}
+        check_id = 'quality-check'
+        pass_condition = 'The result meets the quality bar.'
+        payload = semantics.semantic_payload(view, check_id, pass_condition)
+        payload_hash = semantics.semantic_payload_hash(payload)
+        packet = {
+            'schema_version': 'context-clean-subagent-reviewer-packet/1.0',
+            'campaign_id': 'campaign-one',
+            'examples': [{
+                'opaque_example_id': 'opaque-one',
+                'payload': payload,
+                'payload_hash': payload_hash,
+            }],
+            'packet_hash': None,
+        }
+        packet['packet_hash'] = canonical_hash({
+            key: value for key, value in packet.items()
+            if key != 'packet_hash'
+        })
+        compact = {
+            'schema_version': (
+                'context-clean-subagent-reviewer-message-packet/1.0'
+            ),
+            'campaign_id': 'campaign-one',
+            'tuple_fields': [
+                'opaque_example_id', 'view_index', 'check_index',
+            ],
+            'views': [view],
+            'checks': [{
+                'check_id': check_id,
+                'pass_condition': pass_condition,
+            }],
+            'examples': [['opaque-one', 0, 0]],
+            'source_packet_hash': packet['packet_hash'],
+        }
+        self.assertEqual(
+            packet,
+            expand_prompt_packet(compact, campaign_id='campaign-one'),
+        )
+        batch = transport.execution_batch([{
+            'item_id': 'entry-one',
+            'checks': [{
+                'id': check_id,
+                'pass_condition': pass_condition,
+                'payload_hash': payload_hash,
+            }],
+            'grader_view': view,
+        }], batch_id='batch-one')
+        self.assertEqual(
+            payload_hash,
+            batch['items'][0]['checks'][0]['payload_hash'],
+        )
+        changed = semantics.semantic_payload(
+            view, check_id, pass_condition + ' Changed.',
+        )
+        self.assertNotEqual(
+            payload_hash,
+            semantics.semantic_payload_hash(changed),
+        )
+        for invalid in (
+            {**payload, 'extra': True},
+            {'view': {'value': float('nan')}, 'check': payload['check']},
+            {'view': {'value': ('not', 'json-native')}, 'check': payload['check']},
+        ):
+            with self.assertRaises(ValueError):
+                semantics.semantic_payload_hash(invalid)
+
     def test_model_grader_batch_limit_is_consistent(self) -> None:
         transport = load_analyzer_module().model_transport
+        semantics = load_grader_semantics_module()
 
         def batch_item(index: int) -> dict:
+            grader_view = {
+                'captured_output': {},
+                'host_assessment': {},
+                'final_answer': f'done-{index}',
+            }
+            payload = semantics.semantic_payload(
+                grader_view,
+                'outcome-check',
+                'The outcome is complete.',
+            )
             return {
                 'item_id': f'entry-{index}',
                 'checks': [{
                     'id': 'outcome-check',
                     'pass_condition': 'The outcome is complete.',
+                    'payload_hash': semantics.semantic_payload_hash(payload),
                 }],
-                'grader_view': {
-                    'captured_output': {},
-                    'host_assessment': {},
-                    'final_answer': 'done',
-                },
+                'grader_view': grader_view,
             }
 
         accepted = transport.execution_batch(
@@ -829,6 +920,13 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             batch_id='six-item-batch',
         )
         self.assertEqual(6, len(accepted['items']))
+        self.assertEqual(
+            6,
+            len({
+                item['checks'][0]['payload_hash']
+                for item in accepted['items']
+            }),
+        )
         invalid_check = batch_item(0)
         invalid_check['checks'] = [{'id': 'outcome-check'}]
         inconsistent = [batch_item(0), batch_item(1)]
@@ -2299,6 +2397,92 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             self.assertNotIn('treatment', projection)
             self.assertNotIn('causal_role', projection)
             self.assertNotIn('profile', projection)
+
+    def test_calibration_semantic_change_rebinds_plan_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            original = materialize_v5_model_ready_fixture(root / 'original')
+            changed = materialize_v5_model_ready_fixture(root / 'changed')
+            original_output = root / 'original-plan.json'
+            changed_output = root / 'changed-plan.json'
+            first = self._run_compiler(original, original_output)
+            self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+
+            spec = json.loads(changed['spec'].read_text(encoding='utf-8'))
+            check = spec['graders'][0]['checks'][0]
+            check['pass_condition'] += ' Preserve the declared boundary.'
+            semantics = load_grader_semantics_module()
+            labels = [
+                json.loads(line)
+                for line in changed['labels'].read_text(
+                    encoding='utf-8',
+                ).splitlines()
+            ]
+            ratings = [
+                json.loads(line)
+                for line in changed['ratings'].read_text(
+                    encoding='utf-8',
+                ).splitlines()
+            ]
+            hashes = {}
+            for row in labels:
+                if row['check_id'] != check['check_id']:
+                    continue
+                row['payload'] = semantics.semantic_payload(
+                    row['payload']['view'],
+                    check['check_id'],
+                    check['pass_condition'],
+                )
+                row['payload_hash'] = semantics.semantic_payload_hash(
+                    row['payload'],
+                )
+                hashes[(row['example_id'], row['check_id'])] = row['payload_hash']
+            for row in ratings:
+                key = (row['example_id'], row['check_id'])
+                if key in hashes:
+                    row['payload_hash'] = hashes[key]
+            changed['labels'].write_text(
+                ''.join(json.dumps(row, separators=(',', ':')) + '\n' for row in labels),
+                encoding='utf-8',
+            )
+            changed['ratings'].write_text(
+                ''.join(json.dumps(row, separators=(',', ':')) + '\n' for row in ratings),
+                encoding='utf-8',
+            )
+            changed['spec'].write_text(
+                json.dumps(spec, indent=2) + '\n',
+                encoding='utf-8',
+            )
+            changed['calibration'].unlink()
+            generated = self.run_cmd(
+                'scripts/validate_eval_suite.py', 'calibration',
+                '--spec', str(changed['spec']),
+                '--ratings', str(changed['ratings']),
+                '--labels', str(changed['labels']),
+                '--output', str(changed['calibration']),
+            )
+            self.assertEqual(
+                generated.returncode, 0, generated.stdout + generated.stderr,
+            )
+            spec['suite']['calibration']['sha256'] = (
+                'sha256:'
+                + hashlib.sha256(changed['calibration'].read_bytes()).hexdigest()
+            )
+            changed['spec'].write_text(
+                json.dumps(spec, indent=2) + '\n',
+                encoding='utf-8',
+            )
+            rebind_v5_contract_fixture(changed)
+            second = self._run_compiler(changed, changed_output)
+            self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+            original_plan = json.loads(original_output.read_text(encoding='utf-8'))
+            changed_plan = json.loads(changed_output.read_text(encoding='utf-8'))
+
+        self.assertNotEqual(
+            original_plan['calibration_hash'], changed_plan['calibration_hash'],
+        )
+        self.assertNotEqual(original_plan['plan_id'], changed_plan['plan_id'])
+        self.assertNotEqual(original_plan['plan_hash'], changed_plan['plan_hash'])
 
     def test_compiler_never_starts_host_or_grader_processes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
