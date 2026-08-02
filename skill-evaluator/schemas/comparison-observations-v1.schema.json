@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/comparison-observations-v1.schema.json",
+  "title": "Skill Evaluator comparison observations v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "comparison_observations_hash",
+    "generator",
+    "evaluation_id",
+    "plan_id",
+    "plan_hash",
+    "spec_hash",
+    "scenario_corpus_hash",
+    "host_manifest_hash",
+    "subject",
+    "metrics"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "comparison_observations_hash": {"$ref": "#/$defs/sha256"},
+    "generator": {"$ref": "#/$defs/generator"},
+    "evaluation_id": {"$ref": "#/$defs/safe_id"},
+    "plan_id": {"$ref": "#/$defs/safe_id"},
+    "plan_hash": {"$ref": "#/$defs/sha256"},
+    "spec_hash": {"$ref": "#/$defs/sha256"},
+    "scenario_corpus_hash": {"$ref": "#/$defs/sha256"},
+    "host_manifest_hash": {"$ref": "#/$defs/sha256"},
+    "subject": {"$ref": "#/$defs/subject"},
+    "metrics": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/metric"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "generator": {
+      "type": "object",
+      "required": ["name", "version", "source_hash"],
+      "properties": {
+        "name": {"const": "analyze_runs.py"},
+        "version": {"const": "3.1.0"},
+        "source_hash": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "subject": {
+      "type": "object",
+      "required": ["skill_id", "version", "shape", "package_hash"],
+      "properties": {
+        "skill_id": {"$ref": "#/$defs/safe_id"},
+        "version": {"type": "string", "minLength": 1},
+        "shape": {
+          "enum": [
+            "single_skill",
+            "skill_catalog",
+            "ordered_pipeline",
+            "handoff_graph"
+          ]
+        },
+        "package_hash": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "scale": {
+      "type": "object",
+      "required": ["raw", "reported", "normalization"],
+      "properties": {
+        "raw": {"type": "string", "minLength": 1},
+        "reported": {"type": "string", "minLength": 1},
+        "normalization": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "case_value": {
+      "type": "object",
+      "required": ["case_id", "comparator_value", "candidate_value"],
+      "properties": {
+        "case_id": {"$ref": "#/$defs/safe_id"},
+        "comparator_value": {"type": "number"},
+        "candidate_value": {"type": "number"}
+      },
+      "additionalProperties": false
+    },
+    "metric": {
+      "type": "object",
+      "required": [
+        "metric_id",
+        "direction",
+        "effect",
+        "scale",
+        "comparator_treatment_id",
+        "candidate_treatment_id",
+        "status",
+        "reason",
+        "repeat_count",
+        "values"
+      ],
+      "properties": {
+        "metric_id": {"$ref": "#/$defs/safe_id"},
+        "direction": {
+          "enum": ["higher_is_better", "lower_is_better"]
+        },
+        "effect": {"enum": ["absolute", "relative"]},
+        "scale": {"$ref": "#/$defs/scale"},
+        "comparator_treatment_id": {"$ref": "#/$defs/safe_id"},
+        "candidate_treatment_id": {"$ref": "#/$defs/safe_id"},
+        "status": {"enum": ["complete", "not_evaluable"]},
+        "reason": {
+          "anyOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "repeat_count": {"type": "integer", "minimum": 0},
+        "values": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/case_value"}
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {"status": {"const": "complete"}}
+          },
+          "then": {
+            "properties": {
+              "reason": {"type": "null"},
+              "repeat_count": {"type": "integer", "minimum": 1},
+              "values": {
+                "type": "array",
+                "minItems": 2,
+                "items": {"$ref": "#/$defs/case_value"}
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "reason": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import ctypes
+import errno
 from hashlib import sha256
 import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import shutil
 import tempfile
 from typing import Any, Iterable, Mapping
 
@@ -185,6 +188,73 @@ def atomic_write_jsonl(
 ) -> None:
     payload = b"".join(canonical_json_bytes(record) + b"\n" for record in records)
     atomic_write_bytes(path, payload, replace=replace)
+
+
+def _rename_no_replace(source: Path, destination: Path) -> None:
+    try:
+        renameat2 = ctypes.CDLL(None, use_errno=True).renameat2
+    except AttributeError:
+        raise ValueError("atomic no-replace publication is unavailable") from None
+    renameat2.argtypes = (
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+    renameat2.restype = ctypes.c_int
+    if renameat2(
+        -100,
+        os.fsencode(source),
+        -100,
+        os.fsencode(destination),
+        1,
+    ) == 0:
+        return
+    error = ctypes.get_errno()
+    if error == errno.EEXIST:
+        raise FileExistsError(
+            f"refusing to overwrite existing output root: {destination}",
+        )
+    raise OSError(error, os.strerror(error), destination)
+
+
+def atomic_write_directory(
+    path: Path,
+    files: Mapping[str, bytes],
+) -> None:
+    if not files:
+        raise ValueError("atomic directory output requires at least one file")
+    if path.is_symlink() or path.exists():
+        raise FileExistsError(f"refusing to overwrite existing output root: {path}")
+    parent = path.parent
+    if not parent.is_dir() or parent.is_symlink():
+        raise ValueError(f"output parent must be a regular directory: {parent}")
+
+    normalized_files: dict[str, bytes] = {}
+    for name, payload in files.items():
+        normalized = normalize_relative_path(name, "atomic directory file")
+        if PurePosixPath(normalized).parent != PurePosixPath("."):
+            raise ValueError("atomic directory files must be top-level names")
+        if not isinstance(payload, bytes):
+            raise TypeError("atomic directory payloads must be bytes")
+        normalized_files[normalized] = payload
+    if len(normalized_files) != len(files):
+        raise ValueError("atomic directory file names must be distinct")
+
+    temporary = Path(tempfile.mkdtemp(
+        dir=parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    ))
+    try:
+        for name in sorted(normalized_files):
+            atomic_write_bytes(temporary / name, normalized_files[name])
+        _rename_no_replace(temporary, path)
+        _fsync_directory(parent)
+    except BaseException:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
 
 
 def artifact_record(path: Path, root: Path, *, encoding: str) -> dict[str, str]:
