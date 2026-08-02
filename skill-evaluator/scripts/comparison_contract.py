@@ -307,6 +307,26 @@ def _load_cycle(
         )
         if failure_index["view"] != "index":
             _raise("input.failure_view", f"{role}.failure_index must use index view")
+        failure_view = summary["output_manifest"]["failure_index"]
+        failure_path = paths["failure_index"]
+        summary_path = paths["summary"]
+        assert failure_path is not None and summary_path is not None
+        expected_failure_view = {
+            "path": failure_path.relative_to(summary_path.parent).as_posix(),
+            "sha256": file_hashes["failure_index"],
+            "schema_or_view_version": "failure-index-v1/index",
+            "item_count": failure_index["item_count"],
+            "shown_count": failure_index["shown_count"],
+            "omitted_count": failure_index["omitted_count"],
+            "truncated": failure_index["truncated"],
+            "family_counts": failure_index["family_counts"],
+            "severity_counts": failure_index["severity_counts"],
+        }
+        _expect_equal(
+            failure_view,
+            expected_failure_view,
+            f"{role}.summary failure index",
+        )
     if observations is not None:
         assert isinstance(observations, dict)
         for field, expected_value in (
@@ -419,6 +439,9 @@ def commit_outputs(
         diagnostics,
         key=lambda item: item["diagnostic_id"],
     )
+    diagnostic_ids = [item["diagnostic_id"] for item in ordered_diagnostics]
+    if len(diagnostic_ids) != len(set(diagnostic_ids)):
+        _raise("output.diagnostic_id", "comparison diagnostic IDs must be unique")
     diagnostic_index = {
         "schema_version": 1,
         "comparison_diagnostic_index_hash": "sha256:" + "0" * 64,
