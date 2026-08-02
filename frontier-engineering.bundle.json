@@ -2,7 +2,7 @@
   "activation_ceiling": "implicit_local_pilot",
   "bundle_id": "frontier-engineering/6.0.0",
   "compatible_schema_epoch": 5,
-  "release_build_id": "build-51e6780a09231ff7e5e094b3",
+  "release_build_id": "build-2bf40c31d2ce9a6f50eee73c",
   "remote_writes": false,
   "schema_version": "frontier-engineering-bundle/2.0",
   "skills": {
@@ -13,18 +13,18 @@
     },
     "skill-evaluator": {
       "allow_implicit_invocation": false,
-      "root_hash": "sha256:8c9e9f06a54e605dedd74cb5486d2d1a2c222ae4c2d2fa313f5935292386e3fb",
+      "root_hash": "sha256:776691aea9d6c561797b65a85001bb9a27ef39f9538e50b37b2858831a98ffa2",
       "version": "3.0.0"
     },
     "software-quality-workflows": {
       "allow_implicit_invocation": false,
-      "root_hash": "sha256:7ec9854ac1d99a83c7d95bd9884dd1bddee5b2762ffe13717ad68e29fdbee5ab",
+      "root_hash": "sha256:a5c99864e2426c0a040d7a80f63802ed448eca299205dd83ce10af0ba7e5abbc",
       "version": "9.0.0"
     },
     "writing-plans": {
       "allow_implicit_invocation": false,
-      "root_hash": "sha256:c0a9e72bd1feb75c891949adc43f372710858a82715694d6bd52dbc09adc42f5",
-      "version": "8.0.0"
+      "root_hash": "sha256:ea2cdf3d61cf5c04a992088c04237138d04093f30082e97de18f4b5aa3fb92c9",
+      "version": "8.1.0"
     }
   }
 }

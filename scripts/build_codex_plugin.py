@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 from hashlib import sha256
 import json
 import os
@@ -31,41 +33,59 @@ from _bundle_hash import bundle_inventory, inventory, tree_hash  # noqa: E402
 FORBIDDEN_PLUGIN_KEYS = {"mcpServers", "apps", "hooks"}
 FORBIDDEN_PLUGIN_NAMES = {".mcp.json", ".app.json", "hooks.json"}
 TEXT_SUFFIXES = {".md", ".json", ".yaml", ".yml", ".py", ".template"}
-RELEASE_FIELDS = {
-    "schema_version", "bundle_id", "bundle_version", "source_tree_hash", "plugin_tree_hash", "source_revision",
-    "source_revision_signed", "source_clean", "deterministic_report_hash",
-    "p3_decision_contract_hash", "evaluated_skill_ids", "arm_report_content_hashes",
-    "l2_scored_report_hash", "longitudinal_report_hash", "activation_decision_hash",
-    "approved_skill_activation", "remote_writes", "release_gate",
-}
 EVALUATED_SKILL_IDS = [
     "software-quality-workflows",
     "writing-plans",
 ]
-P3_ARM_FIELDS = {
-    "schema_version", "study", "candidate_revision",
-    "candidate_source_tree_hash", "candidate_plugin_tree_hash",
-    "decision_contract_content_hash", "spec_content_hash",
-    "cases_content_hash", "case_contracts_content_hash",
-    "fixture_manifest_set_hash", "grader_set_hash",
-    "grader_batch_schedule_hash", "treatment_contract_hash",
-    "environment_hash", "receipt_index_content_hash",
-    "receipt_treatment_index_content_hash", "analysis_input_content_hashes",
-    "evidence_status", "usefulness_status", "metrics", "gates",
-    "report_hash",
+EXPECTED_FORMAL_ARM_USAGE = {
+    "software-quality-workflows": {
+        "scheduled": 108,
+        "observed": 108,
+        "graded": 12,
+        "missing": 0,
+        "duplicate": 0,
+        "retries": 0,
+        "provider_calls": 108,
+    },
+    "writing-plans": {
+        "scheduled": 98,
+        "observed": 98,
+        "graded": 10,
+        "missing": 0,
+        "duplicate": 0,
+        "retries": 0,
+        "provider_calls": 98,
+    },
+}
+EXPECTED_FORMAL_BUDGET = {
+    "schema_version": "provider-budget-contract/1.0",
+    "scheduled_provider_calls": 214,
+    "scored_call_hard_cap": 206,
+    "grader_calibration_call_hard_cap": 4,
+    "reviewer_calibration_call_hard_cap": 4,
+    "provider_call_hard_cap": 214,
+}
+EXPECTED_FORMAL_AGGREGATE_USAGE = {
+    "scored_model_calls": 206,
+    "grader_calibration_calls": 4,
+    "reviewer_calibration_calls": 4,
+    "apparatus_model_calls": 8,
+    "total_provider_calls": 214,
+    "retries": 0,
 }
 P3_AGGREGATE_FIELDS = {
     "schema_version", "candidate_revision", "candidate_source_tree_hash",
     "candidate_plugin_tree_hash", "decision_contract_content_hash",
     "evaluated_skill_ids", "arm_report_content_hashes", "aggregate_status",
-    "scored_model_calls", "apparatus_model_calls", "total_provider_calls",
-    "retries", "gates", "report_hash",
+    "scored_model_calls", "grader_calibration_calls",
+    "reviewer_calibration_calls", "apparatus_model_calls",
+    "total_provider_calls", "retries", "gates", "report_hash",
 }
 EXPECTED_SKILLS = {
     "long-document-segmented-writing": "1.0.0",
     "skill-evaluator": "3.0.0",
     "software-quality-workflows": "9.0.0",
-    "writing-plans": "8.0.0",
+    "writing-plans": "8.1.0",
 }
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,
@@ -77,9 +97,25 @@ EXPECTED_APPROVED_ACTIVATION = {
     skill_id: "implicit" if enabled else "explicit_only"
     for skill_id, enabled in EXPECTED_ACTIVATION.items()
 }
+CANONICAL_MARKETPLACE = {
+    "name": "frontier-engineering-v6-release",
+    "plugins": [{
+        "name": "frontier-engineering-plugin",
+        "source": {
+            "source": "local",
+            "path": "./plugins/frontier-engineering-plugin",
+        },
+        "policy": {
+            "installation": "AVAILABLE",
+            "authentication": "ON_INSTALL",
+        },
+        "category": "Developer Tools",
+    }],
+}
 
 
 def _regular_bytes(path: Path, maximum: int = 4 * 1024 * 1024) -> bytes:
+    _reject_symlink_components(path)
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(path, flags)
     try:
@@ -125,6 +161,67 @@ def _decode_json(payload: bytes, path: Path) -> dict[str, Any]:
 
 def _strict_json(path: Path, maximum: int = 4 * 1024 * 1024) -> dict[str, Any]:
     return _decode_json(_regular_bytes(path, maximum), path)
+
+
+def _validate_schema(
+    source_root: Path,
+    schema_name: str,
+    document: dict[str, Any],
+    label: str,
+) -> None:
+    schema = _strict_json(source_root / "packaging" / "schemas" / schema_name)
+    Draft202012Validator.check_schema(schema)
+    if list(Draft202012Validator(schema).iter_errors(document)):
+        raise ValueError(f"{label} is invalid")
+
+
+def _validate_prior_migration_claim(skill_id: str, arm: dict[str, Any]) -> None:
+    claim_id = "prior_reference_migration_claim"
+    metrics = arm["metrics"]
+    if skill_id != "writing-plans":
+        if claim_id in metrics:
+            raise ValueError("prior migration claim has the wrong arm owner")
+        return
+    claim = metrics.get(claim_id)
+    fields = {
+        "status",
+        "minimum_reference_cases",
+        "observed_reference_cases",
+        "mixed_prior_cases",
+        "reduction_selector",
+        "minimum_reduction",
+        "observed_reduction",
+    }
+    if not isinstance(claim, dict) or set(claim) != fields:
+        raise ValueError("prior migration claim structure is invalid")
+    reference_cases = claim["observed_reference_cases"]
+    mixed_cases = claim["mixed_prior_cases"]
+    reduction = claim["observed_reduction"]
+    if (
+        not isinstance(claim["minimum_reference_cases"], int)
+        or isinstance(claim["minimum_reference_cases"], bool)
+        or claim["minimum_reference_cases"] != 4
+        or claim["reduction_selector"] != "lower"
+        or claim["minimum_reduction"] != 0.5
+        or any(
+            not isinstance(value, int) or isinstance(value, bool) or value < 0
+            for value in (reference_cases, mixed_cases)
+        )
+    ):
+        raise ValueError("prior migration claim policy is invalid")
+    if reference_cases < 4 or mixed_cases:
+        expected_status = "unavailable"
+        if reduction is not None:
+            raise ValueError("unavailable prior migration claim has a reduction")
+    else:
+        if (
+            not isinstance(reduction, (int, float))
+            or isinstance(reduction, bool)
+        ):
+            raise ValueError("prior migration claim reduction is invalid")
+        expected_status = "supported" if reduction >= 0.5 else "not_supported"
+    if claim["status"] != expected_status:
+        raise ValueError("prior migration claim status is invalid")
 
 
 def _bytes_hash(value: bytes) -> str:
@@ -300,18 +397,26 @@ def validate_release_evidence(
         raise ValueError("dist output requires matching passed release evidence")
     _reject_symlink_components(path)
     evidence = _strict_json(path)
-    schema = _strict_json(source_root / "packaging" / "schemas" / "release-evidence.schema.json")
-    Draft202012Validator.check_schema(schema)
-    errors = list(Draft202012Validator(schema).iter_errors(evidence))
-    if errors or set(evidence) != RELEASE_FIELDS or evidence.get("schema_version") != "release-evidence/4.0":
-        raise ValueError("release evidence schema is invalid")
+    _validate_schema(
+        source_root,
+        "release-evidence.schema.json",
+        evidence,
+        "release evidence",
+    )
     bundle = _strict_json(source_root / "frontier-engineering.bundle.json")
+    evaluator_source_hash = (
+        bundle.get("skills", {})
+        .get("skill-evaluator", {})
+        .get("root_hash")
+    )
     if (
         evidence.get("bundle_id") != bundle.get("bundle_id")
         or evidence.get("bundle_version") != manifest.get("bundle_version")
         or evidence.get("source_tree_hash") != source_tree_hash
         or evidence.get("approved_skill_activation") != EXPECTED_APPROVED_ACTIVATION
         or evidence.get("remote_writes") is not False
+        or not isinstance(evaluator_source_hash, str)
+        or not re.fullmatch(r"sha256:[0-9a-f]{64}", evaluator_source_hash)
     ):
         raise ValueError("release evidence source, bundle, or activation identity does not match")
     if plugin_tree_hash is not None and evidence.get("plugin_tree_hash") != plugin_tree_hash:
@@ -332,13 +437,43 @@ def validate_release_evidence(
         static_report.get("report_hash") != _self_hash(static_report)
         or evidence.get("deterministic_report_hash") != static_report.get("report_hash")
         or static_report.get("bundle_id") != bundle.get("bundle_id")
-        or static_report.get("bundle_version") != manifest.get("bundle_version")
+        or static_report.get("version") != manifest.get("bundle_version")
         or static_report.get("skill_activation") != EXPECTED_ACTIVATION
     ):
         raise ValueError("static contract diagnostic identity or report hash does not match")
 
     evidence_root = path.absolute().parent
+    _require_closed_directory(
+        evidence_root,
+        {
+            "activation-decision.json",
+            "release-evidence.json",
+            "l2",
+            "longitudinal",
+        },
+        "release evidence",
+    )
     l2_root = evidence_root / "l2"
+    _require_closed_directory(
+        l2_root,
+        {
+            "p3-decision-contract.json",
+            "aggregate-report.json",
+            *EVALUATED_SKILL_IDS,
+        },
+        "release evidence L2",
+    )
+    for skill_id in EVALUATED_SKILL_IDS:
+        _require_closed_directory(
+            l2_root / skill_id,
+            {"report.json"},
+            f"{skill_id} release arm",
+        )
+    _require_closed_directory(
+        evidence_root / "longitudinal",
+        {"report.json"},
+        "release longitudinal",
+    )
     aggregate_path = l2_root / "aggregate-report.json"
     aggregate_bytes = _regular_bytes(aggregate_path, 16 * 1024 * 1024)
     aggregate = _decode_json(aggregate_bytes, aggregate_path)
@@ -355,13 +490,6 @@ def validate_release_evidence(
         skill_id: l2_root / skill_id / "report.json"
         for skill_id in aggregate["evaluated_skill_ids"]
     }
-    expected_l2_entries = {
-        "p3-decision-contract.json",
-        "aggregate-report.json",
-        *aggregate["evaluated_skill_ids"],
-    }
-    if {item.name for item in l2_root.iterdir()} != expected_l2_entries:
-        raise ValueError("release evidence L2 inventory has missing or extra arms")
     external_paths = {
         **arm_paths,
         "decision_contract": l2_root / "p3-decision-contract.json",
@@ -380,6 +508,18 @@ def validate_release_evidence(
     longitudinal = external["longitudinal"]
     activation = external["activation"]
 
+    _validate_schema(
+        source_root,
+        "p3-decision-contract-v4.schema.json",
+        decision_contract,
+        "P3 decision contract",
+    )
+    _validate_schema(
+        source_root,
+        "frontier-longitudinal-report-v1.schema.json",
+        longitudinal,
+        "longitudinal report",
+    )
     if (
         decision_contract.get("decision_contract_hash")
         != _self_hash_field(decision_contract, "decision_contract_hash")
@@ -387,31 +527,47 @@ def validate_release_evidence(
         or decision_contract.get("candidate_source_tree_hash") != source_tree_hash
         or decision_contract.get("candidate_plugin_tree_hash")
         != evidence.get("plugin_tree_hash")
+        or decision_contract.get("evaluator_source_hash")
+        != evaluator_source_hash
         or decision_contract.get("evaluated_skill_ids") != EVALUATED_SKILL_IDS
     ):
         raise ValueError("P3 decision contract identity or self-hash is invalid")
     for skill_id, arm in arms.items():
-        expected_analysis_keys = (
-            {"task_analysis"} if skill_id == "software-quality-workflows"
-            else {"planner_analysis", "transfer_analysis"}
+        _validate_schema(
+            source_root,
+            "p3-arm-report-v3.schema.json",
+            arm,
+            f"{skill_id} P3 arm report",
         )
-        analysis_hashes = arm.get("analysis_input_content_hashes")
+        _validate_prior_migration_claim(skill_id, arm)
+        expected_gates = [
+            (
+                gate["gate_id"],
+                gate["metric_id"],
+                gate["evidence_artifact_kind"],
+            )
+            for gate in decision_contract["gate_contract"][skill_id]
+        ]
+        actual_gates = [
+            (
+                gate["gate_id"],
+                gate["metric_id"],
+                gate["evidence_artifact_kind"],
+            )
+            for gate in arm["gate_results"]
+        ]
         if (
-            set(arm) != P3_ARM_FIELDS
-            or arm.get("schema_version") != "p3-arm-report/2.0"
-            or arm.get("study") != skill_id
+            arm.get("study") != skill_id
             or arm.get("report_hash") != _self_hash(arm)
-            or (arm.get("evidence_status"), arm.get("usefulness_status"))
-            != ("complete", "supported")
             or arm.get("decision_contract_content_hash")
             != hashes["decision_contract"]
-            or not isinstance(analysis_hashes, dict)
-            or set(analysis_hashes) != expected_analysis_keys
-            or any(
-                not isinstance(value, str)
-                or not re.fullmatch(r"sha256:[0-9a-f]{64}", value)
-                for value in analysis_hashes.values()
-            )
+            or arm.get("controller_content_hash")
+            != decision_contract.get("controller_content_hash")
+            or arm.get("evaluator_source_hash")
+            != decision_contract.get("evaluator_source_hash")
+            or arm.get("usage_closure")
+            != EXPECTED_FORMAL_ARM_USAGE[skill_id]
+            or actual_gates != expected_gates
             or aggregate["arm_report_content_hashes"].get(skill_id)
             != hashes[skill_id]
         ):
@@ -425,8 +581,38 @@ def validate_release_evidence(
         != aggregate["arm_report_content_hashes"]
     ):
         raise ValueError("aggregate L2 status or arm content hash does not match")
-    if longitudinal.get("longitudinal_status") != "passed":
-        raise ValueError("longitudinal report is not passed")
+    budget = decision_contract["budget_contract"]
+    arm_provider_calls = sum(
+        arm["usage_closure"]["provider_calls"] for arm in arms.values()
+    )
+    arm_retries = sum(arm["usage_closure"]["retries"] for arm in arms.values())
+    usage = {
+        field: aggregate.get(field)
+        for field in EXPECTED_FORMAL_AGGREGATE_USAGE
+    }
+    if any(
+        type(value) is not int for value in usage.values()
+    ):
+        raise ValueError("aggregate L2 provider usage fields must be integers")
+    if (
+        budget != EXPECTED_FORMAL_BUDGET
+        or usage != EXPECTED_FORMAL_AGGREGATE_USAGE
+        or arm_provider_calls != usage["scored_model_calls"]
+        or arm_retries != usage["retries"]
+    ):
+        raise ValueError(
+            "aggregate L2 provider usage does not match the frozen budget"
+        )
+    if (
+        longitudinal.get("report_hash") != _self_hash(longitudinal)
+        or longitudinal.get("decision_contract_content_hash")
+        != hashes["decision_contract"]
+        or longitudinal.get("controller_content_hash")
+        != decision_contract.get("controller_content_hash")
+        or longitudinal.get("evaluator_source_hash")
+        != decision_contract.get("evaluator_source_hash")
+    ):
+        raise ValueError("longitudinal report identity or self-hash is invalid")
 
     expected_hashes = {
         "p3_decision_contract_hash": hashes["decision_contract"],
@@ -517,15 +703,87 @@ def _assert_skill_copy_matches(source_records: list[dict[str, Any]], plugin_reco
             raise ValueError(f"E_SOURCE_DRIFT: staged skill bytes differ from frozen source inventory: {source['path']}")
 
 
+def validate_plugin_build(
+    plugin_root: Path,
+    build_evidence_path: Path,
+    *,
+    source_root: Path,
+    release_evidence: Path | None,
+) -> dict[str, Any]:
+    source_root = source_root.resolve(strict=True)
+    _reject_symlink_components(plugin_root)
+    _reject_symlink_components(build_evidence_path)
+    plugin_root = plugin_root.resolve(strict=True)
+    manifest = _strict_json(source_root / "bundle-manifest.json")
+    source_records = validate_source(source_root, manifest)
+    evidence = _strict_json(build_evidence_path)
+    _validate_schema(
+        source_root,
+        "plugin-build-evidence.schema.json",
+        evidence,
+        "plugin build evidence",
+    )
+    if evidence.get("evidence_hash") != _self_hash_field(
+        evidence,
+        "evidence_hash",
+    ):
+        raise ValueError("plugin build evidence self-hash is invalid")
+
+    plugin_records = _validate_staging(plugin_root, evidence["plugin_name"])
+    versions = {
+        skill_id: skill_version(plugin_root / "skills" / skill_id)
+        for skill_id in EXPECTED_SKILLS
+    }
+    activation = {
+        skill_id: skill_activation(plugin_root / "skills" / skill_id)
+        for skill_id in EXPECTED_SKILLS
+    }
+    if (
+        evidence.get("source_tree_hash") != tree_hash(source_records)
+        or evidence.get("source_revision") != _source_revision(source_root)
+        or evidence.get("source_file_count") != len(source_records)
+        or evidence.get("plugin_tree_hash") != tree_hash(plugin_records)
+        or evidence.get("plugin_file_count") != len(plugin_records)
+        or evidence.get("files") != plugin_records
+        or evidence.get("skill_versions") != versions
+        or evidence.get("skill_activation") != activation
+    ):
+        raise ValueError("plugin build evidence does not match source or plugin bytes")
+
+    output_class = evidence["output_class"]
+    if output_class == "staging":
+        if release_evidence is not None:
+            raise ValueError("staging validation forbids release evidence")
+    elif release_evidence is None:
+        raise ValueError("release validation requires release evidence")
+    else:
+        _reject_symlink_components(release_evidence)
+        if evidence.get("release_evidence_hash") != _content_hash(release_evidence):
+            raise ValueError("release evidence content hash does not match build evidence")
+        validate_release_evidence(
+            release_evidence,
+            source_root=source_root,
+            manifest=manifest,
+            source_tree_hash=evidence["source_tree_hash"],
+            plugin_tree_hash=evidence["plugin_tree_hash"],
+        )
+    return evidence
+
+
 def _source_revision(source_root: Path) -> str:
     completed = subprocess.run(
-        ["git", "-C", str(source_root), "rev-parse", "HEAD"],
+        ["git", "-C", str(source_root), "rev-parse", "--show-toplevel", "HEAD"],
         text=True, capture_output=True, check=False, timeout=30,
     )
-    revision = completed.stdout.strip()
-    if completed.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", revision):
+    lines = completed.stdout.splitlines()
+    if (
+        completed.returncode != 0
+        or len(lines) != 2
+        or Path(lines[0]).resolve(strict=True) != source_root.resolve(strict=True)
+        or re.fullmatch(r"[0-9a-f]{40}", lines[1]) is None
+    ):
         raise ValueError("source root lacks a canonical Git revision")
-    return revision
+    return lines[1]
 
 
 def _reject_symlink_components(path: Path) -> None:
@@ -539,7 +797,129 @@ def _reject_symlink_components(path: Path) -> None:
             break
 
 
-def build(source_root: Path, output: Path, release_evidence: Path | None, evidence_output: Path) -> dict[str, Any]:
+def _rename_no_replace(source: Path, destination: Path) -> None:
+    try:
+        renameat2 = ctypes.CDLL(None, use_errno=True).renameat2
+    except AttributeError:
+        raise ValueError("atomic no-replace publication is unavailable") from None
+    renameat2.argtypes = (
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+    renameat2.restype = ctypes.c_int
+    if renameat2(
+        -100,
+        os.fsencode(source),
+        -100,
+        os.fsencode(destination),
+        1,
+    ) == 0:
+        return
+    error = ctypes.get_errno()
+    if error == errno.EEXIST:
+        raise ValueError(f"no-overwrite destination appeared: {destination}")
+    raise OSError(error, os.strerror(error), destination)
+
+
+def _directory_identity(path: Path) -> tuple[int, int]:
+    info = path.lstat()
+    if path.is_symlink() or not stat.S_ISDIR(info.st_mode):
+        raise ValueError(f"owned staging path is not a directory: {path}")
+    return info.st_dev, info.st_ino
+
+
+def _file_identity(path: Path) -> tuple[int, int]:
+    info = path.lstat()
+    if path.is_symlink() or not stat.S_ISREG(info.st_mode):
+        raise ValueError(f"owned staging path is not a file: {path}")
+    return info.st_dev, info.st_ino
+
+
+def _remove_owned_tree(path: Path, identity: tuple[int, int]) -> None:
+    if not path.exists() and not path.is_symlink():
+        return
+    if _directory_identity(path) != identity:
+        raise RuntimeError(f"owned staging inode changed: {path}")
+    shutil.rmtree(path)
+
+
+def _remove_owned_file(path: Path, identity: tuple[int, int]) -> None:
+    if not path.exists() and not path.is_symlink():
+        return
+    if _file_identity(path) != identity:
+        raise RuntimeError(f"owned staging inode changed: {path}")
+    path.unlink()
+
+
+def _plugin_publication_matches(
+    output: Path,
+    identity: tuple[int, int],
+    plugin_name: str,
+    records: list[dict[str, Any]],
+) -> bool:
+    try:
+        return (
+            _directory_identity(output) == identity
+            and _validate_staging(output, plugin_name) == records
+        )
+    except (OSError, ValueError):
+        return False
+
+
+def _marketplace_publication_matches(
+    marketplace_root: Path,
+    marketplace_identity: tuple[int, int],
+    manifest_identity: tuple[int, int],
+    manifest_bytes: bytes,
+    output: Path,
+    output_identity: tuple[int, int],
+    plugin_name: str,
+    records: list[dict[str, Any]],
+) -> bool:
+    manifest_path = (
+        marketplace_root / ".agents" / "plugins" / "marketplace.json"
+    )
+    try:
+        return (
+            _directory_identity(marketplace_root) == marketplace_identity
+            and _file_identity(manifest_path) == manifest_identity
+            and manifest_path.read_bytes() == manifest_bytes
+            and _plugin_publication_matches(
+                output,
+                output_identity,
+                plugin_name,
+                records,
+            )
+        )
+    except (OSError, ValueError):
+        return False
+
+
+def _require_closed_directory(
+    path: Path,
+    expected_entries: set[str],
+    label: str,
+) -> None:
+    _reject_symlink_components(path)
+    if path.is_symlink() or not path.is_dir():
+        raise ValueError(f"{label} is not a regular directory")
+    entries = {item.name: item for item in path.iterdir()}
+    if set(entries) != expected_entries or any(
+        item.is_symlink() for item in entries.values()
+    ):
+        raise ValueError(f"{label} inventory has missing, extra, or symlink entries")
+
+
+def build(
+    source_root: Path,
+    output: Path,
+    release_evidence: Path | None,
+    evidence_output: Path,
+    marketplace_root: Path | None = None,
+) -> dict[str, Any]:
     source_root = source_root.resolve(strict=True)
     output = output.absolute()
     evidence_output = evidence_output.absolute()
@@ -561,23 +941,81 @@ def build(source_root: Path, output: Path, release_evidence: Path | None, eviden
         raise ValueError(f"plugin output folder must match manifest name: {template['name']}")
     is_release = release_evidence is not None
     if is_release:
+        if marketplace_root is None:
+            raise ValueError("release build requires a canonical marketplace root")
+        marketplace_root = marketplace_root.absolute()
+        _reject_symlink_components(marketplace_root)
+        if marketplace_root.exists() or marketplace_root.is_symlink():
+            raise ValueError("marketplace root is no-overwrite")
+        if output != marketplace_root / "plugins" / template["name"]:
+            raise ValueError("release plugin output must be inside the canonical marketplace")
+        if evidence_output.is_relative_to(marketplace_root):
+            raise ValueError("build evidence must be outside the canonical marketplace")
         validate_release_evidence(
             release_evidence,
             source_root=source_root,
             manifest=manifest,
             source_tree_hash=source_tree_hash,
         )
+    elif marketplace_root is not None:
+        raise ValueError("staging build forbids a marketplace root")
 
-    output.parent.mkdir(parents=True, exist_ok=True)
+    if is_release:
+        assert marketplace_root is not None
+        marketplace_root.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        output.parent.mkdir(parents=True, exist_ok=True)
     evidence_output.parent.mkdir(parents=True, exist_ok=True)
     staging = evidence_output.parent / "plugin-build-staging"
     if staging.exists() or staging.is_symlink():
         raise ValueError("plugin build staging path is no-overwrite")
-    if output.parent.stat().st_dev != evidence_output.parent.stat().st_dev:
+    publish_parent = marketplace_root.parent if marketplace_root is not None else output.parent
+    if publish_parent.stat().st_dev != evidence_output.parent.stat().st_dev:
         raise ValueError("plugin staging and destination must share one filesystem")
+    marketplace_staging = evidence_output.parent / "marketplace-build-staging"
+    if is_release and (
+        marketplace_staging.exists() or marketplace_staging.is_symlink()
+    ):
+        raise ValueError("marketplace build staging path is no-overwrite")
     staging.mkdir(mode=0o700)
+    staging_identity = _directory_identity(staging)
+    marketplace_staging_identity: tuple[int, int] | None = None
+    marketplace_manifest_identity: tuple[int, int] | None = None
+    marketplace_manifest_bytes: bytes | None = None
     evidence_temporary: Path | None = None
+    evidence_identity: tuple[int, int] | None = None
+    evidence_bytes: bytes | None = None
     published = False
+    plugin_records: list[dict[str, Any]] | None = None
+
+    def publication_still_matches() -> bool:
+        if plugin_records is None:
+            return False
+        if is_release:
+            if (
+                marketplace_root is None
+                or marketplace_staging_identity is None
+                or marketplace_manifest_identity is None
+                or marketplace_manifest_bytes is None
+            ):
+                return False
+            return _marketplace_publication_matches(
+                marketplace_root,
+                marketplace_staging_identity,
+                marketplace_manifest_identity,
+                marketplace_manifest_bytes,
+                output,
+                staging_identity,
+                template["name"],
+                plugin_records,
+            )
+        return _plugin_publication_matches(
+            output,
+            staging_identity,
+            template["name"],
+            plugin_records,
+        )
+
     try:
         (staging / ".codex-plugin").mkdir()
         (staging / "skills").mkdir()
@@ -621,36 +1059,170 @@ def build(source_root: Path, output: Path, release_evidence: Path | None, eviden
         evidence["evidence_hash"] = "sha256:" + sha256(
             json.dumps(evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
+        _validate_schema(
+            source_root,
+            "plugin-build-evidence.schema.json",
+            evidence,
+            "plugin build evidence",
+        )
         descriptor, temporary_name = tempfile.mkstemp(prefix="plugin-build-evidence-", dir=evidence_output.parent)
         evidence_temporary = Path(temporary_name)
+        evidence_identity = _file_identity(evidence_temporary)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(evidence, handle, ensure_ascii=False, indent=2, sort_keys=True)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-        staging.rename(output)
+        if _file_identity(evidence_temporary) != evidence_identity:
+            raise RuntimeError("build evidence staging inode changed")
+        evidence_bytes = evidence_temporary.read_bytes()
+        if is_release:
+            assert marketplace_root is not None
+            marketplace_staging.mkdir(mode=0o700)
+            marketplace_staging_identity = _directory_identity(
+                marketplace_staging
+            )
+            (marketplace_staging / "plugins").mkdir()
+            marketplace_manifest = (
+                marketplace_staging / ".agents" / "plugins" / "marketplace.json"
+            )
+            marketplace_manifest.parent.mkdir(parents=True)
+            marketplace_manifest_bytes = (
+                json.dumps(
+                    CANONICAL_MARKETPLACE,
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode("utf-8")
+            marketplace_manifest.write_bytes(marketplace_manifest_bytes)
+            marketplace_manifest_identity = _file_identity(
+                marketplace_manifest
+            )
+            staging.rename(
+                marketplace_staging / "plugins" / template["name"],
+            )
+            _rename_no_replace(marketplace_staging, marketplace_root)
+        else:
+            _rename_no_replace(staging, output)
         published = True
+        if not publication_still_matches():
+            raise ValueError("published plugin tree changed during publication")
+        assert evidence_identity is not None
+        assert evidence_bytes is not None
         os.link(evidence_temporary, evidence_output)
-        evidence_temporary.unlink()
+        if (
+            _file_identity(evidence_output) != evidence_identity
+            or evidence_output.read_bytes() != evidence_bytes
+        ):
+            raise ValueError("published build evidence changed")
+        _remove_owned_file(evidence_temporary, evidence_identity)
         evidence_temporary = None
+        if (
+            _file_identity(evidence_output) != evidence_identity
+            or evidence_output.read_bytes() != evidence_bytes
+        ):
+            raise ValueError("published build evidence readback differs")
+        if not publication_still_matches():
+            raise ValueError(
+                "published plugin tree changed after evidence publication"
+            )
         return evidence
     except BaseException:
-        if published and not evidence_output.exists() and not staging.exists() and (output.exists() or output.is_symlink()):
-            output.rename(staging)
-        if evidence_temporary is not None:
-            evidence_temporary.unlink(missing_ok=True)
+        if evidence_identity is not None and (
+            evidence_output.exists() or evidence_output.is_symlink()
+        ):
+            try:
+                if _file_identity(evidence_output) == evidence_identity:
+                    _remove_owned_file(
+                        evidence_output,
+                        evidence_identity,
+                    )
+            except (OSError, ValueError):
+                pass
+        if (
+            published
+            and not staging.exists()
+            and publication_still_matches()
+        ):
+            if is_release:
+                assert marketplace_root is not None
+                _rename_no_replace(marketplace_root, marketplace_staging)
+            else:
+                _rename_no_replace(output, staging)
+        if is_release and marketplace_staging.exists():
+            staged_plugin = (
+                marketplace_staging / "plugins" / template["name"]
+            )
+            if staged_plugin.exists() and not staging.exists():
+                _rename_no_replace(staged_plugin, staging)
+            assert marketplace_staging_identity is not None
+            _remove_owned_tree(
+                marketplace_staging,
+                marketplace_staging_identity,
+            )
+        if staging.exists() or staging.is_symlink():
+            _remove_owned_tree(staging, staging_identity)
+        if evidence_temporary is not None and evidence_identity is not None:
+            _remove_owned_file(evidence_temporary, evidence_identity)
         raise
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-root", type=Path, default=ROOT)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--evidence-output", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--evidence-output", type=Path)
     parser.add_argument("--release-evidence", type=Path)
+    parser.add_argument("--marketplace-root", type=Path)
+    parser.add_argument("--validate-plugin-root", type=Path)
+    parser.add_argument("--build-evidence", type=Path)
     args = parser.parse_args(argv)
+
+    validation_mode = (
+        args.validate_plugin_root is not None
+        or args.build_evidence is not None
+    )
+    if validation_mode:
+        if (
+            args.validate_plugin_root is None
+            or args.build_evidence is None
+            or args.output is not None
+            or args.evidence_output is not None
+            or args.marketplace_root is not None
+        ):
+            return 2
+        try:
+            validate_plugin_build(
+                args.validate_plugin_root,
+                args.build_evidence,
+                source_root=args.source_root,
+                release_evidence=args.release_evidence,
+            )
+        except (
+            OSError,
+            ValueError,
+            json.JSONDecodeError,
+            subprocess.SubprocessError,
+        ):
+            return 2
+        return 0
+
+    if args.output is None or args.evidence_output is None:
+        print(json.dumps({
+            "ok": False,
+            "error": "build mode requires --output and --evidence-output",
+        }, ensure_ascii=False))
+        return 1
     try:
-        evidence = build(args.source_root, args.output, args.release_evidence, args.evidence_output)
+        evidence = build(
+            args.source_root,
+            args.output,
+            args.release_evidence,
+            args.evidence_output,
+            args.marketplace_root,
+        )
     except (OSError, ValueError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 1

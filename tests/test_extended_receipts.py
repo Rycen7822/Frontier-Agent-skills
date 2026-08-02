@@ -51,6 +51,32 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
         validator = load_validator_module()
         registry = validator.load_v5_schema_registry()
         receipt = make_v5_schema_examples()['receipt-v4.schema.json']
+        receipt['usage']['host_safety_review'] = {
+            'capture_status': 'captured',
+            'host_safety_review_count': 1,
+            'host_safety_review_latency_ms': 9,
+        }
+        self.assertEqual(
+            [],
+            validator.validate_v5_schema(
+                receipt, 'receipt-v4.schema.json', registry,
+            ),
+        )
+        receipt['usage']['host_safety_review'][
+            'host_safety_review_count'
+        ] = -1
+        self.assertIn(
+            'schema.minimum',
+            {
+                item['code']
+                for item in validator.validate_v5_schema(
+                    receipt, 'receipt-v4.schema.json', registry,
+                )
+            },
+        )
+        receipt['usage']['host_safety_review'][
+            'host_safety_review_count'
+        ] = 1
         receipt['host_protocol']['requests'] = []
         receipt['host_protocol']['results'] = []
         normal = validator.validate_v5_schema(
@@ -106,6 +132,14 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(
                 plan['host_manifest_hash'],
                 receipt['provenance']['host_manifest_hash'],
+            )
+            self.assertEqual(
+                {
+                    'capture_status': 'captured',
+                    'host_safety_review_count': 1,
+                    'host_safety_review_latency_ms': 9.0,
+                },
+                receipt['usage']['host_safety_review'],
             )
             self.assertEqual(
                 entry['treatment_hash'],

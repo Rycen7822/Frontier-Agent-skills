@@ -240,12 +240,21 @@
     },
     "model_grade_spec": {
       "type": "object",
-      "required": ["grader_id", "blinded_projection", "prompt", "schema", "batch_hash", "schedule_hash"],
+      "required": ["grader_id", "blinded_projection", "prompt", "schema", "item_hash", "batch_id", "batch_entry_ids", "batch_owner_entry_id", "batch_hash", "schedule_hash"],
       "properties": {
         "grader_id": {"$ref": "#/$defs/safe_id"},
         "blinded_projection": {"type": "array", "items": {"type": "string", "minLength": 1}},
         "prompt": {"$ref": "eval-spec-v5.schema.json#/$defs/binding"},
         "schema": {"$ref": "eval-spec-v5.schema.json#/$defs/binding"},
+        "item_hash": {"$ref": "#/$defs/sha256"},
+        "batch_id": {"$ref": "#/$defs/safe_id"},
+        "batch_entry_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^pe-[0-9a-f]{24}$"}
+        },
+        "batch_owner_entry_id": {"type": "string", "pattern": "^pe-[0-9a-f]{24}$"},
         "batch_hash": {"$ref": "#/$defs/sha256"},
         "schedule_hash": {"$ref": "#/$defs/sha256"}
       },

@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import compile_eval_plan as compiler
+import model_grade_transport as model_transport
 from evidence_io import (
     atomic_write_bytes,
     canonical_json_bytes,
@@ -36,7 +37,6 @@ from evidence_io import (
     verify_self_hash,
 )
 from validate_eval_suite import (
-    COST_METRICS,
     PAIRED_METRIC_DIRECTIONS,
     load_v5_schema_registry,
     validate_host_protocol_record,
@@ -100,14 +100,6 @@ PAIRED_METRIC_SOURCES = {
     "skill_protocol_tool_calls": ("counts", "skill_protocol_tool_calls", "native"),
     "workflow_artifact_count": ("counts", "workflow_artifact_count", "native"),
 }
-CONTEXT_PAIRED_METRICS = {
-    "skill_context_bytes",
-    "controlled_skill_context_bytes",
-    "controlled_core_skill_context_bytes",
-}
-TASK_PASS_FILTERED_COST_METRICS = COST_METRICS - CONTEXT_PAIRED_METRICS
-
-
 def validate_grader_output(
     output: Any, requirements: list[dict[str, Any]], artifacts: dict[str, Any],
 ) -> dict[str, Any]:
@@ -539,7 +531,13 @@ def matched_planner_executor_tokens(
     candidate_executor: str,
     case_ids: set[str],
     repeats: int,
+    confidence_level: float = 0.95,
+    bootstrap_iterations: int = 10000,
+    random_seed: int = 2735,
 ) -> dict[str, Any]:
+    def valid_token_count(value: Any) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
     planners: dict[tuple[str, str, int], dict[str, Any]] = {}
     duplicate_planner_keys = False
     for record in planner_records:
@@ -563,6 +561,7 @@ def matched_planner_executor_tokens(
         executors[key] = record
 
     case_totals = []
+    excluded_pairs = []
     for case_id in sorted(case_ids):
         repeat_totals: dict[str, list[int]] = {
             "baseline": [],
@@ -580,18 +579,24 @@ def matched_planner_executor_tokens(
                 ),
             }
             for arm_name, rows in paired_rows.items():
-                if any(
-                    row is None
-                    or row.get("valid") is not True
-                    or row.get("task_pass") is not True
-                    or not isinstance(row.get("tokens_in"), int)
-                    or isinstance(row.get("tokens_in"), bool)
-                    or row["tokens_in"] < 0
-                    or not isinstance(row.get("tokens_out"), int)
-                    or isinstance(row.get("tokens_out"), bool)
-                    or row["tokens_out"] < 0
+                reason = None
+                if any(row is None for row in rows):
+                    reason = "missing"
+                elif any(row.get("valid") is not True for row in rows):
+                    reason = "invalid"
+                elif any(
+                    not valid_token_count(row.get(field))
                     for row in rows
+                    for field in ("tokens_in", "tokens_out")
                 ):
+                    reason = "invalid_tokens"
+                if reason is not None:
+                    excluded_pairs.append({
+                        "case_id": case_id,
+                        "repeat": repeat,
+                        "arm": arm_name,
+                        "reason": reason,
+                    })
                     continue
                 repeat_totals[arm_name].append(sum(
                     row["tokens_in"] + row["tokens_out"]
@@ -613,19 +618,32 @@ def matched_planner_executor_tokens(
         row["relative_reduction"]
         for row in case_totals if row["relative_reduction"] is not None
     ]
+    complete = (
+        not duplicate_planner_keys
+        and not duplicate_executor_keys
+        and len(case_totals) == len(case_ids)
+        and len(reductions) == len(case_ids)
+    )
+    if len(reductions) >= 2:
+        uncertainty = summarize_case_differences(
+            reductions,
+            confidence_level=confidence_level,
+            bootstrap_iterations=bootstrap_iterations,
+            random_seed=random_seed,
+        )
+    else:
+        uncertainty = {"point": None, "lower": None, "upper": None}
     return {
-        "eligible_case_count": len(case_totals),
+        "status": "complete" if complete else "incomplete",
+        "case_count": len(reductions),
         "expected_case_count": len(case_ids),
-        "complete": (
-            not duplicate_planner_keys
-            and not duplicate_executor_keys
-            and len(case_totals) == len(case_ids)
-        ),
+        "complete": complete,
         "duplicate_planner_keys": duplicate_planner_keys,
         "duplicate_executor_keys": duplicate_executor_keys,
-        "median_relative_reduction": (
-            statistics.median(reductions) if reductions else None
-        ),
+        "excluded_pairs": excluded_pairs,
+        "point": uncertainty["point"],
+        "lower": uncertainty["lower"],
+        "upper": uncertainty["upper"],
         "cases": case_totals,
     }
 
@@ -755,16 +773,6 @@ def summarize_paired_metric(
         candidate_row = indexed[(candidate, case_id, repeat)][0]
         if comparator_row.get("valid") is not True or candidate_row.get("valid") is not True:
             return {**base, "reason": "paired run is invalid"}
-        if metric in TASK_PASS_FILTERED_COST_METRICS and (
-            comparator_row.get("task_pass") is not True or candidate_row.get("task_pass") is not True
-        ):
-            task_failures.append({
-                "case_id": case_id,
-                "repeat": repeat,
-                "comparator_task_pass": comparator_row.get("task_pass"),
-                "candidate_task_pass": candidate_row.get("task_pass"),
-            })
-            continue
         try:
             comparator_raw, comparator_value = paired_metric_value(comparator_row, metric)
             candidate_raw, candidate_value = paired_metric_value(candidate_row, metric)
@@ -1774,20 +1782,32 @@ def _verified_v4_artifact(
 
 
 def _model_v4_output(
-    receipt: dict[str, Any],
-    reference: dict[str, Any],
     entry: dict[str, Any],
     requirements: list[dict[str, Any]],
-    artifacts: dict[str, dict[str, Any]],
+    grader_checks: list[dict[str, Any]],
     registry: dict[str, dict[str, Any]],
-) -> tuple[dict[str, Any], str]:
+    attempts_by_entry: dict[str, dict[str, Any]],
+    grader_id: str,
+) -> tuple[dict[str, Any], str, dict[str, str], str]:
     matching_specs = [
         item for item in entry["model_grade_specs"]
-        if item["grader_id"] == reference["grader_id"]
+        if item["grader_id"] == grader_id
     ]
     if len(matching_specs) != 1:
         raise ValueError("model grader lacks one bound plan specification")
     model_spec = matching_specs[0]
+    owner = attempts_by_entry.get(model_spec["batch_owner_entry_id"])
+    if owner is None:
+        raise ValueError("model grader batch owner receipt is absent")
+    receipt = owner["receipt"]
+    artifacts = owner["artifacts"]
+    references = [
+        item for item in receipt["grader_outputs"]
+        if item["kind"] == "model" and item["grader_id"] == grader_id
+    ]
+    if len(references) != 1:
+        raise ValueError("model grader batch owner output is ambiguous")
+    reference = references[0]
     if reference["schedule_hash"] != model_spec["schedule_hash"]:
         raise ValueError("model grader schedule hash differs from the plan")
     blinded_artifact = _verified_v4_artifact(
@@ -1802,11 +1822,56 @@ def _model_v4_output(
         raise ValueError(
             f"model blinded input is invalid JSON: {exc.msg}",
         ) from None
-    if (
-        not isinstance(blinded, dict)
-        or sorted(blinded) != sorted(model_spec["blinded_projection"])
-    ):
-        raise ValueError("model blinded input differs from the plan projection")
+    batch_items = []
+    for member_id in model_spec["batch_entry_ids"]:
+        member = attempts_by_entry.get(member_id)
+        if member is None:
+            raise ValueError("model grader batch member receipt is absent")
+        member_entry = member["entry"]
+        member_specs = [
+            item for item in member_entry["model_grade_specs"]
+            if item["grader_id"] == grader_id
+        ]
+        if (
+            len(member_specs) != 1
+            or any(
+                member_specs[0][field] != model_spec[field]
+                for field in (
+                    "batch_id",
+                    "batch_entry_ids",
+                    "batch_owner_entry_id",
+                    "batch_hash",
+                    "schedule_hash",
+                )
+            )
+        ):
+            raise ValueError("model grader batch member differs from the plan")
+        result = model_transport.execution_result(member["receipt"])
+        member_blinded = model_transport.blinded_execution(
+            member_entry,
+            result,
+        )
+        if sorted(member_blinded) != sorted(model_spec["blinded_projection"]):
+            raise ValueError(
+                "model blinded input differs from the plan projection",
+            )
+        batch_items.append(model_transport.execution_item(
+            member_blinded,
+            grader_id=grader_id,
+            grader_checks=grader_checks,
+            entry_id=member_id,
+            read_artifact=lambda item, bound=member: _verified_v4_artifact(
+                item,
+                bound["artifacts"],
+                "model grader evidence",
+            )["text"],
+        ))
+    batch = model_transport.execution_batch(
+        batch_items,
+        batch_id=model_spec["batch_id"],
+    )
+    if blinded != batch:
+        raise ValueError("model blinded batch differs from member receipts")
 
     requests = [
         item for item in receipt["host_protocol"]["requests"]
@@ -1821,7 +1886,7 @@ def _model_v4_output(
     if (
         request["payload"].get("batch_hash") != model_spec["batch_hash"]
         or request["payload"].get("schedule_hash") != model_spec["schedule_hash"]
-        or request["payload"].get("blinded_input") != blinded
+        or request["payload"].get("blinded_input") != batch
     ):
         raise ValueError("model grader host request differs from the plan/batch")
 
@@ -1883,9 +1948,18 @@ def _model_v4_output(
         raise ValueError(
             f"model grader output is invalid JSON: {exc.msg}",
         ) from None
-    return validate_grader_output(output, requirements, artifacts), output_reference[
-        "path"
-    ]
+    normalized, pointers = model_transport.normalize_judgment(
+        output,
+        batch=batch,
+        requirements=requirements,
+        item_id=entry["entry_id"],
+    )
+    return (
+        validate_grader_output(normalized, requirements, artifacts),
+        output_reference["path"],
+        pointers,
+        owner["row"]["artifact_dir"],
+    )
 
 
 def _deterministic_v4_output(
@@ -1894,7 +1968,7 @@ def _deterministic_v4_output(
     requirements: list[dict[str, Any]],
     artifacts: dict[str, dict[str, Any]],
     credential_policy: str,
-) -> tuple[dict[str, Any], str]:
+) -> tuple[dict[str, Any], str, dict[str, str]]:
     invocation_artifact = _verified_v4_artifact(
         reference["invocation"], artifacts, "grader invocation",
     )
@@ -1944,7 +2018,10 @@ def _deterministic_v4_output(
         invocation["exit_code"] in invocation["pass_exit_codes"]
     ) != normalized["overall_pass"]:
         raise ValueError("deterministic grader exit/pass semantics contradict")
-    return normalized, reference["output"]["path"]
+    return normalized, reference["output"]["path"], {
+        item["check_id"]: f"/checks/{index}/pass"
+        for index, item in enumerate(output["checks"])
+    }
 
 
 def _read_v4_grades(
@@ -1953,33 +2030,38 @@ def _read_v4_grades(
     artifacts: dict[str, dict[str, Any]],
     spec: dict[str, Any],
     registry: dict[str, dict[str, Any]],
+    attempts_by_entry: dict[str, dict[str, Any]],
 ) -> tuple[dict[str, bool], dict[str, dict[str, Any]]]:
     scenario = entry["execute_case_payload"]["case"]
     requirements = scenario["requirements"]
     expected_graders = set(entry["grader_ids"])
-    observed_graders = [
-        output["grader_id"] for output in receipt["grader_outputs"]
-    ]
-    if (
-        len(observed_graders) != len(set(observed_graders))
-        or set(observed_graders) != expected_graders
-    ):
-        raise ValueError("receipt grader outputs differ from the plan entry")
     declarations = {
         item["grader_id"]: item for item in spec["graders"]
     }
     checks: dict[str, bool] = {}
     locators: dict[str, dict[str, Any]] = {}
-    for reference in receipt["grader_outputs"]:
+    consumed_references = 0
+    for grader_id in entry["grader_ids"]:
         selected = [
             requirement for requirement in requirements
-            if requirement["grader_id"] == reference["grader_id"]
+            if requirement["grader_id"] == grader_id
         ]
-        declaration = declarations.get(reference["grader_id"])
-        if declaration is None or declaration["type"] != reference["kind"]:
-            raise ValueError("receipt grader kind differs from the spec")
-        if reference["kind"] == "deterministic":
-            normalized, output_path = _deterministic_v4_output(
+        declaration = declarations.get(grader_id)
+        if declaration is None:
+            raise ValueError("plan grader is absent from the spec")
+        references = [
+            item for item in receipt["grader_outputs"]
+            if item["grader_id"] == grader_id
+        ]
+        artifact_dir = None
+        if declaration["type"] == "deterministic":
+            if len(references) != 1 or references[0]["kind"] != "deterministic":
+                raise ValueError(
+                    "receipt deterministic grader output differs from the plan",
+                )
+            reference = references[0]
+            consumed_references += 1
+            normalized, output_path, pointers = _deterministic_v4_output(
                 reference,
                 declaration,
                 selected,
@@ -1987,21 +2069,38 @@ def _read_v4_grades(
                 spec["execution"]["credential_policy"],
             )
         else:
-            normalized, output_path = _model_v4_output(
-                receipt,
-                reference,
+            model_specs = [
+                item for item in entry["model_grade_specs"]
+                if item["grader_id"] == grader_id
+            ]
+            if len(model_specs) != 1:
+                raise ValueError("plan model grader batch is ambiguous")
+            owns_batch = (
+                model_specs[0]["batch_owner_entry_id"] == entry["entry_id"]
+            )
+            if (
+                len(references) != int(owns_batch)
+                or any(item["kind"] != "model" for item in references)
+            ):
+                raise ValueError(
+                    "receipt model grader output differs from batch ownership",
+                )
+            consumed_references += len(references)
+            (
+                normalized,
+                output_path,
+                pointers,
+                artifact_dir,
+            ) = _model_v4_output(
                 entry,
                 selected,
-                artifacts,
+                declaration["checks"],
                 registry,
+                attempts_by_entry,
+                grader_id,
             )
         if normalized["grader_failure"]:
             raise ValueError("grader output reports apparatus failure")
-        output = json.loads(artifacts[output_path]["text"])
-        output_indexes = {
-            item["check_id"]: index
-            for index, item in enumerate(output["checks"])
-        }
         for check_id, passed in normalized["checks"].items():
             if check_id in checks:
                 raise ValueError(f"duplicate normalized grader check: {check_id}")
@@ -2009,8 +2108,18 @@ def _read_v4_grades(
             locators[check_id] = {
                 "kind": "json_pointer",
                 "artifact": output_path,
-                "json_pointer": f"/checks/{output_indexes[check_id]}/pass",
+                "json_pointer": pointers[check_id],
+                **(
+                    {"artifact_dir": artifact_dir}
+                    if artifact_dir is not None
+                    else {}
+                ),
             }
+    if (
+        len(entry["grader_ids"]) != len(expected_graders)
+        or consumed_references != len(receipt["grader_outputs"])
+    ):
+        raise ValueError("receipt grader outputs differ from the plan entry")
     expected_checks = {item["check_id"] for item in requirements}
     if set(checks) != expected_checks:
         raise ValueError("normalized grader checks do not cover the scenario")
@@ -2019,6 +2128,7 @@ def _read_v4_grades(
 
 def _v4_context_projection(context: dict[str, Any]) -> dict[str, Any]:
     components = context["components"]
+    component_bytes = sum(item["bytes"] for item in components)
     unique_static = sum(
         item["bytes"]
         for item in components
@@ -2078,6 +2188,7 @@ def _v4_context_projection(context: dict[str, Any]) -> dict[str, Any]:
         "unexplained_repeated_static_content_bytes": (
             repeated_static - host_duplicate
         ),
+        "unattributed_residue_bytes": context["bytes"] - component_bytes,
         "unattributed_model_body_read_count": 0,
     }
 
@@ -2088,6 +2199,26 @@ def _v5_utc(value: str) -> datetime:
     )
 
 
+def _dimension_score(
+    requirements: list[dict[str, Any]],
+    checks: dict[str, bool],
+    dimension: str,
+) -> int | None:
+    selected = [
+        requirement for requirement in requirements
+        if requirement["dimension"] == dimension
+        and requirement["required"] is True
+    ]
+    if not selected:
+        return None
+    raw = (
+        sum(checks[requirement["check_id"]] for requirement in selected)
+        / len(selected)
+        * 100
+    )
+    return math.floor(raw + 0.5)
+
+
 def _record_from_v4_receipt(
     receipt: dict[str, Any],
     entry: dict[str, Any],
@@ -2095,6 +2226,7 @@ def _record_from_v4_receipt(
     spec: dict[str, Any],
     registry: dict[str, dict[str, Any]],
     bound_evidence: dict[str, Any],
+    attempts_by_entry: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     run = receipt["run"]
     usage = receipt["usage"]["records"]
@@ -2112,7 +2244,14 @@ def _record_from_v4_receipt(
                 "model grader attempt is outside the calibration window",
             )
     checks, check_locators = (
-        _read_v4_grades(receipt, entry, artifacts, spec, registry)
+        _read_v4_grades(
+            receipt,
+            entry,
+            artifacts,
+            spec,
+            registry,
+            attempts_by_entry,
+        )
         if valid else ({}, {})
     )
     requirements = entry["execute_case_payload"]["case"]["requirements"]
@@ -2146,6 +2285,7 @@ def _record_from_v4_receipt(
         )
     })
     routing = receipt["routing"]
+    context_components = receipt["context_usage"]["components"]
     return {
         "run_id": run["run_id"],
         "entry_id": run["entry_id"],
@@ -2155,16 +2295,8 @@ def _record_from_v4_receipt(
         "valid": valid,
         "task_pass": task_pass,
         "safety_pass": safety_pass,
-        "process_score": (
-            100 if required_pass("process") else 0
-            if any(item["dimension"] == "process" for item in requirements)
-            else None
-        ),
-        "quality_score": (
-            100 if required_pass("quality") else 0
-            if any(item["dimension"] == "quality" for item in requirements)
-            else None
-        ),
+        "process_score": _dimension_score(requirements, checks, "process"),
+        "quality_score": _dimension_score(requirements, checks, "quality"),
         "tokens_in": sum(item["input_tokens"] for item in usage),
         "tokens_out": sum(item["output_tokens"] for item in usage),
         "latency_ms": sum(item["runtime_ms"] for item in usage),
@@ -2191,11 +2323,14 @@ def _record_from_v4_receipt(
         "counts": {
             "task_tool_calls": sum(item["tool_calls"] for item in usage),
             "executor_prewrite_task_tool_calls": 0,
-            "host_injected_body_count": 0,
+            "host_injected_body_count": sum(
+                item["kind"] == "body" and item["occurrence"] == 1
+                for item in context_components
+            ),
             "model_initiated_body_read_count": 0,
             "reference_load_count": sum(
                 item["kind"] == "reference"
-                for item in receipt["context_usage"]["components"]
+                for item in context_components
             ),
             "skill_load_tool_calls": 0,
             "skill_protocol_tool_calls": 0,
@@ -2261,31 +2396,45 @@ def _collect_v5_evidence(
             continue
         attempt = {
             "row": row,
+            "entry": entry,
             "receipt": receipt,
             "receipt_path": receipt_path,
             "artifacts": artifacts,
             "record": None,
             "analysis_error": None,
         }
-        if receipt["run"]["valid"] is True:
+        attempts[entry["entry_id"]].append(attempt)
+
+    attempts_by_entry = {}
+    for entry_id, candidates in attempts.items():
+        valid = [
+            item for item in candidates
+            if item["receipt"]["run"]["valid"] is True
+        ]
+        if len(valid) == 1:
+            attempts_by_entry[entry_id] = valid[0]
+    for candidates in attempts.values():
+        for attempt in candidates:
+            if attempt["receipt"]["run"]["valid"] is not True:
+                continue
             try:
                 attempt["record"] = _record_from_v4_receipt(
-                    receipt,
-                    entry,
-                    artifacts,
+                    attempt["receipt"],
+                    attempt["entry"],
+                    attempt["artifacts"],
                     spec,
                     registry,
                     bound_evidence,
+                    attempts_by_entry,
                 )
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 attempt["analysis_error"] = str(exc)
                 receipt_issues.append({
-                    "row": row,
-                    "entry": entry,
+                    "row": attempt["row"],
+                    "entry": attempt["entry"],
                     "status": "invalid",
                     "issue": str(exc),
                 })
-        attempts[entry["entry_id"]].append(attempt)
 
     missing_entries: list[str] = []
     duplicate_terminal_entries: list[str] = []
@@ -2494,7 +2643,10 @@ def _v5_metric_analysis(
         )
     }
     minimum_headroom = int(
-        spec["analysis"]["materiality"].get("minimum_cases", 0),
+        spec["analysis"]["materiality"].get(
+            "minimum_baseline_failure_cases",
+            0,
+        ),
     )
     baseline_ceiling = (
         spec["level"] not in {"L0", "L1"}
@@ -2508,6 +2660,14 @@ def _v5_metric_analysis(
         if record["variant"] == candidate_id and record.get("valid") is True
     ]
     absolute_metrics: dict[str, Any] = {
+        "safety": (
+            "pass"
+            if candidate_records and all(
+                record.get("safety_pass") is True
+                for record in candidate_records
+            )
+            else "fail"
+        ),
         "critical_safety_incidents": sum(
             record.get("critical_safety_incidents", 0)
             for record in candidate_records
@@ -2542,7 +2702,12 @@ def _v5_metric_analysis(
             for item in estimands
             if item["metric"] == gate["metric"]
         ]
-        metric = matching[0] if len(matching) == 1 else None
+        metric = (
+            primary
+            if gate["metric"] == primary_definition["metric"]
+            else matching[0] if len(matching) == 1
+            else None
+        )
         status = "not_evaluable"
         observed: Any = None
         if (
@@ -3713,10 +3878,97 @@ def _failure_base(
     }
 
 
+def _manual_review_input_binding(
+    spec: dict[str, Any],
+    spec_path: Path,
+    plan_path: Path,
+    *,
+    release_gate_contract: str | None = None,
+) -> dict[str, Any]:
+    root = spec_path.parent.resolve(strict=True)
+
+    def suite_file(field: str) -> tuple[Path, str] | None:
+        reference = spec["suite"].get(field)
+        if reference is None:
+            return None
+        if not isinstance(reference, dict) or set(reference) != {
+            "path",
+            "sha256",
+        }:
+            raise ValueError(f"suite {field} binding is invalid")
+        _, path = resolve_contained_path(
+            root,
+            reference["path"],
+            f"suite {field}",
+            kind="file",
+        )
+        observed_hash = file_sha256(path)
+        if observed_hash != reference["sha256"]:
+            raise ValueError(f"suite {field} raw hash does not match")
+        return path, observed_hash
+
+    scenarios = suite_file("scenarios")
+    quality_reference = suite_file("quality")
+    calibration = suite_file("calibration")
+    if scenarios is None or quality_reference is None:
+        raise ValueError("manual review requires scenarios and suite quality")
+    quality = load_json(quality_reference[0])
+    proof_hashes: set[str] = set()
+    for item in quality["raw_proofs"].values():
+        if not isinstance(item, dict) or set(item) != {"path", "sha256"}:
+            raise ValueError("suite quality raw proof binding is invalid")
+        _, proof_path = resolve_contained_path(
+            root,
+            item["path"],
+            "suite quality raw proof",
+            kind="file",
+        )
+        if file_sha256(proof_path) != item["sha256"]:
+            raise ValueError("suite quality raw proof hash does not match")
+        proof_hashes.add(item["sha256"])
+    if len(proof_hashes) != 1:
+        raise ValueError("suite quality must bind one canonical raw proof")
+
+    release_gate_reference = None
+    if release_gate_contract is not None:
+        normalized, release_gate_path = resolve_contained_path(
+            root,
+            release_gate_contract,
+            "release gate contract",
+            kind="file",
+        )
+        release_gate = load_json(release_gate_path)
+        if (
+            not isinstance(release_gate, dict)
+            or release_gate.get("schema_version") != "gate-contract/1.0"
+        ):
+            raise ValueError("release gate contract is invalid")
+        release_gate_reference = {
+            "path": normalized,
+            "sha256": file_sha256(release_gate_path),
+        }
+
+    binding = {
+        "schema_version": "manual-review-input-binding/1.1",
+        "study_id": spec["evaluation_id"],
+        "spec_content_hash": file_sha256(spec_path),
+        "scenarios_content_hash": scenarios[1],
+        "suite_quality_proof_content_hash": next(iter(proof_hashes)),
+        "grader_calibration_content_hash": (
+            calibration[1] if calibration is not None else None
+        ),
+        "execution_plan_content_hash": file_sha256(plan_path),
+        "release_gate_contract": release_gate_reference,
+    }
+    binding["binding_hash"] = canonical_sha256(binding)
+    return binding
+
+
 def _verify_v5_manual_review(
     reference: Path | None,
     spec: dict[str, Any],
     spec_path: Path,
+    plan_path: Path,
 ) -> tuple[dict[str, Any], dict[str, str] | None]:
     config = spec["authority"]["manual_review"]
     required = config["required"] is True
@@ -3779,39 +4031,50 @@ def _verify_v5_manual_review(
         ):
             raise ValueError("manual-review signature attestation is empty")
         evidence = receipt["evidence"]
-        if not isinstance(evidence, list) or not evidence:
-            raise ValueError("manual-review evidence must be a non-empty array")
-        evidence_types: list[str] = []
-        for item in evidence:
-            if not isinstance(item, dict) or set(item) != {
-                "type", "artifact", "sha256",
-            }:
-                raise ValueError(
-                    "manual-review evidence fields differ from the exact contract",
-                )
-            evidence_type = item["type"]
-            if not isinstance(evidence_type, str) or not evidence_type.strip():
-                raise ValueError("manual-review evidence type is empty")
-            artifact = normalize_relative_path(
-                item["artifact"], "manual-review evidence",
+        if (
+            not isinstance(evidence, list)
+            or len(evidence) != 1
+            or not isinstance(evidence[0], dict)
+            or set(evidence[0]) != {"type", "artifact", "sha256"}
+            or evidence[0]["type"] != "frozen-study-input-binding"
+        ):
+            raise ValueError(
+                "manual-review evidence must contain exactly one input binding",
             )
-            lexical_evidence = artifacts_root / artifact
-            if lexical_evidence.is_symlink():
-                raise ValueError("manual-review evidence must not be a symlink")
-            _, evidence_path = resolve_contained_path(
-                artifacts_root,
-                artifact,
-                "manual-review evidence",
-                kind="file",
-            )
-            if item["sha256"] != file_sha256(evidence_path):
-                raise ValueError("manual-review evidence hash mismatch")
-            evidence_types.append(evidence_type)
-        if len(evidence_types) != len(set(evidence_types)):
-            raise ValueError("manual-review evidence types are duplicated")
+        item = evidence[0]
+        artifact = normalize_relative_path(
+            item["artifact"], "manual-review input binding",
+        )
+        lexical_evidence = artifacts_root / artifact
+        if lexical_evidence.is_symlink():
+            raise ValueError("manual-review input binding must not be a symlink")
+        _, evidence_path = resolve_contained_path(
+            artifacts_root,
+            artifact,
+            "manual-review input binding",
+            kind="file",
+        )
+        if item["sha256"] != file_sha256(evidence_path):
+            raise ValueError("manual-review input binding hash mismatch")
+        binding = load_json(evidence_path)
+        release_gate = binding.get("release_gate_contract")
+        if release_gate is not None and (
+            not isinstance(release_gate, dict)
+            or set(release_gate) != {"path", "sha256"}
+        ):
+            raise ValueError("release gate contract binding is invalid")
+        if binding != _manual_review_input_binding(
+            spec,
+            spec_path,
+            plan_path,
+            release_gate_contract=(
+                release_gate["path"] if release_gate is not None else None
+            ),
+        ):
+            raise ValueError("manual-review input binding owner mismatch")
         decision_projection = {
             "reviewer_role": receipt["reviewer_role"],
-            "required_evidence": sorted(evidence_types),
+            "required_evidence": ["frozen-study-input-binding"],
         }
         if (
             config["decision_contract_hash"]
@@ -3848,11 +4111,16 @@ def _grader_failure_locator(
     )
     if locator is None:
         raise ValueError("failed requirement has no normalized grader check")
+    artifact_dir = locator.get(
+        "artifact_dir",
+        attempt["row"]["artifact_dir"],
+    )
     return {
-        **locator,
-        "artifact": (
-            f"{attempt['row']['artifact_dir']}/{locator['artifact']}"
-        ),
+        **{
+            key: value for key, value in locator.items()
+            if key != "artifact_dir"
+        },
+        "artifact": f"{artifact_dir}/{locator['artifact']}",
     }
 
 
@@ -4100,7 +4368,9 @@ def _derive_v5_gate_failures(
             locator={
                 "kind": "json_pointer",
                 "artifact": spec_path.name,
-                "json_pointer": "/analysis/materiality/minimum_cases",
+                "json_pointer": (
+                    "/analysis/materiality/minimum_baseline_failure_cases"
+                ),
             },
             observed=(
                 f"baseline failure cases="
@@ -4108,7 +4378,10 @@ def _derive_v5_gate_failures(
             ),
             expected=(
                 f"at least "
-                f"{spec['analysis']['materiality'].get('minimum_cases', 0)} "
+                f"{spec['analysis']['materiality'].get(
+                    'minimum_baseline_failure_cases',
+                    0,
+                )} "
                 f"baseline failure cases"
             ),
             impact="the candidate contribution is inconclusive at the ceiling",
@@ -4581,6 +4854,1122 @@ def _commit_v5_outputs(
         _write_immutable(path, payload)
 
 
+def _release_bound_path(
+    binding: dict[str, Any],
+    field: str,
+) -> Path:
+    reference = binding.get(field)
+    if (
+        not isinstance(reference, dict)
+        or set(reference) != {"path", "sha256"}
+        or not isinstance(reference["path"], (str, Path))
+        or not isinstance(reference["sha256"], str)
+        or SHA256_RE.fullmatch(reference["sha256"]) is None
+    ):
+        raise ValueError(f"{field} release binding is invalid")
+    path = Path(reference["path"])
+    if not path.is_absolute() or path.is_symlink():
+        raise ValueError(f"{field} release path must be absolute and non-symlinked")
+    resolved = path.resolve(strict=True)
+    if path.absolute() != resolved or not resolved.is_file():
+        raise ValueError(f"{field} release path contains a substituted component")
+    if file_sha256(resolved) != reference["sha256"]:
+        raise ValueError(f"{field} release binding hash mismatch")
+    return resolved
+
+
+def _release_treatment_id(spec: dict[str, Any], role: str) -> str:
+    matches = [
+        item["treatment_id"]
+        for item in spec["treatments"]
+        if item["causal_role"] == role
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"release study requires exactly one {role} treatment")
+    return matches[0]
+
+
+def _release_context_efficiency(
+    spec: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, int]:
+    candidate = _release_treatment_id(spec, "candidate")
+    selected = [
+        record
+        for record in records
+        if record["variant"] == candidate and record["should_trigger"] is True
+    ]
+    attributed = sum(
+        record["context_usage"]["attributed"] is True for record in selected
+    )
+    fields = {
+        "controlled_context_bytes": "controlled_bytes",
+        "total_context_bytes": "bytes",
+        "host_integration_duplicate_bytes": "host_integration_duplicate_bytes",
+        "unexplained_repeated_static_content_bytes": (
+            "unexplained_repeated_static_content_bytes"
+        ),
+        "protocol_output_bytes": "protocol_output_bytes",
+        "failed_command_output_bytes": "failed_command_output_bytes",
+    }
+    if not selected or attributed != len(selected):
+        return None, attributed
+    result: dict[str, Any] = {}
+    for output_field, source_field in fields.items():
+        values = [
+            record["context_usage"].get(source_field)
+            for record in selected
+        ]
+        if any(
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < 0
+            for value in values
+        ):
+            return None, attributed
+        result[output_field] = {
+            "evidence_artifact_kind": "report_local",
+            "p50": nearest_rank(values, 0.50),
+            "p95": nearest_rank(values, 0.95),
+            "max": max(values),
+        }
+    return result, attributed
+
+
+def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
+    expected_fields = {
+        "study_id",
+        "spec",
+        "plan",
+        "index",
+        "summary",
+        "failure_index",
+        "manual_receipt_locator",
+    }
+    if set(binding) != expected_fields or not isinstance(
+        binding["study_id"],
+        str,
+    ):
+        raise ValueError("release study binding fields are invalid")
+    locator = binding["manual_receipt_locator"]
+    if locator is not None and not isinstance(locator, str):
+        raise ValueError("manual receipt locator must be a relative POSIX string")
+
+    paths = {
+        field: _release_bound_path(binding, field)
+        for field in (
+            "spec",
+            "plan",
+            "index",
+            "summary",
+            "failure_index",
+        )
+    }
+    spec, _, _, discovered_plan_path, plan, registry = (
+        _load_v5_analysis_inputs(paths["spec"], paths["index"])
+    )
+    if discovered_plan_path != paths["plan"]:
+        raise ValueError("release plan binding is not the canonical index owner")
+    bound_evidence = _load_v5_bound_evidence(
+        spec,
+        paths["spec"],
+        registry,
+    )
+    index_rows = _load_v5_index(paths["index"], plan, registry)
+    _, artifacts_root = resolve_contained_path(
+        paths["plan"].parent,
+        plan["artifacts"]["root"],
+        "plan artifacts root",
+    )
+    evidence = _collect_v5_evidence(
+        index_rows,
+        artifacts_root=artifacts_root,
+        plan=plan,
+        spec=spec,
+        registry=registry,
+        bound_evidence=bound_evidence,
+    )
+    manual, _ = _verify_v5_manual_review(
+        Path(locator) if locator is not None else None,
+        spec,
+        paths["spec"],
+        paths["plan"],
+    )
+
+    summary = load_json(paths["summary"])
+    failure_index = load_json(paths["failure_index"])
+    for document, schema_name, hash_field, path in (
+        (
+            summary,
+            "analysis-summary-v4.schema.json",
+            "summary_hash",
+            paths["summary"],
+        ),
+        (
+            failure_index,
+            "failure-index-v1.schema.json",
+            "failure_index_hash",
+            paths["failure_index"],
+        ),
+    ):
+        diagnostics = validate_v5_schema(document, schema_name, registry)
+        if diagnostics or not verify_self_hash(document, hash_field):
+            raise ValueError(f"{schema_name} release artifact is invalid")
+        if path.read_bytes() != canonical_json_bytes(document):
+            raise ValueError(f"{schema_name} is not canonical JSON")
+
+    failure_view = summary["output_manifest"]["failure_index"]
+    _, manifested_failure = resolve_contained_path(
+        paths["summary"].parent,
+        failure_view["path"],
+        "summary failure-index view",
+        kind="file",
+    )
+    if (
+        summary["output_manifest"]["details"] is not None
+        or summary["output_manifest"]["markdown"] is not None
+        or manifested_failure != paths["failure_index"]
+        or failure_view["sha256"] != file_sha256(paths["failure_index"])
+        or failure_view["item_count"] != failure_index["item_count"]
+        or failure_view["shown_count"] != failure_index["shown_count"]
+        or failure_view["omitted_count"] != failure_index["omitted_count"]
+        or failure_view["truncated"] != failure_index["truncated"]
+        or failure_view["family_counts"] != failure_index["family_counts"]
+        or failure_view["severity_counts"] != failure_index["severity_counts"]
+    ):
+        raise ValueError("summary does not bind the canonical failure index")
+
+    expected_context_cost = _v5_context_cost(
+        spec,
+        plan,
+        evidence["records"],
+    )
+    expected_summary_counts = {
+        "plan_entries": len(plan["entries"]),
+        "execute_entries": sum(
+            entry["disposition"] == "execute" for entry in plan["entries"]
+        ),
+        "attempts": evidence["attempt_count"],
+        "valid_terminal_attempts": len(evidence["records"]),
+        "invalid_attempts": evidence["invalid_attempts"],
+        "missing_entries": len(evidence["missing_entries"]),
+    }
+    if (
+        summary["evaluation_id"] != spec["evaluation_id"]
+        or summary["plan_id"] != plan["plan_id"]
+        or summary["plan_hash"] != plan["plan_hash"]
+        or summary["spec_hash"] != plan["spec_hash"]
+        or failure_index["evaluation_id"] != spec["evaluation_id"]
+        or failure_index["plan_id"] != plan["plan_id"]
+        or any(
+            summary["counts"].get(field) != value
+            for field, value in expected_summary_counts.items()
+        )
+        or summary["manual_authority"] != manual
+        or summary["context_cost"] != expected_context_cost
+    ):
+        raise ValueError("release summary differs from verified native evidence")
+
+    retryable = set(
+        spec["execution"]["retry_policy"]["retryable_apparatus_classes"],
+    )
+    invalid_history = 0
+    retried_entries = 0
+    for entry_id, attempts in evidence["attempts"].items():
+        if len(attempts) > 1:
+            retried_entries += 1
+        selected = evidence["selected_attempts"].get(entry_id)
+        for attempt in attempts:
+            if attempt is selected:
+                continue
+            run = attempt["receipt"]["run"]
+            if (
+                attempt["analysis_error"] is not None
+                or run["valid"] is not False
+                or run["completion_origin"] != "resume_seal"
+                or run["terminal"] not in retryable
+            ):
+                invalid_history += 1
+
+    invalid_tokens = any(
+        not isinstance(record.get(field), int)
+        or isinstance(record.get(field), bool)
+        or record[field] < 0
+        for record in evidence["records"]
+        for field in ("tokens_in", "tokens_out")
+    )
+    context, attributed_count = _release_context_efficiency(
+        spec,
+        evidence["records"],
+    )
+    _, candidate_entry = resolve_contained_path(
+        paths["spec"].parent,
+        f"{spec['subject']['package']['path']}/SKILL.md",
+        "release candidate skill entry",
+        kind="file",
+    )
+    if context is not None:
+        entry_bytes = candidate_entry.stat().st_size
+        context["candidate_entry_bytes"] = {
+            "evidence_artifact_kind": "native_artifact",
+            "p50": entry_bytes,
+            "p95": entry_bytes,
+            "max": entry_bytes,
+        }
+    reason_codes = sorted({
+        *({"missing_terminal_entry"} if evidence["missing_entries"] else set()),
+        *(
+            {"duplicate_terminal_entry"}
+            if evidence["duplicate_terminal_entries"]
+            else set()
+        ),
+        *({"receipt_issue"} if evidence["receipt_issues"] else set()),
+        *({"invalid_retry_history"} if invalid_history else set()),
+        *({"invalid_token_usage"} if invalid_tokens else set()),
+        *({"context_attribution_incomplete"} if context is None else set()),
+        *(
+            {"manual_authority_invalid"}
+            if manual["status"] in {"missing", "invalid"}
+            else set()
+        ),
+    })
+    selected_receipts = [
+        {
+            "entry_id": entry_id,
+            "receipt_hash": file_sha256(attempt["receipt_path"]),
+        }
+        for entry_id, attempt in sorted(evidence["selected_attempts"].items())
+    ]
+    public = {
+        "identity": {
+            "evaluation_id": spec["evaluation_id"],
+            "plan_id": plan["plan_id"],
+            "plan_hash": plan["plan_hash"],
+            "spec_content_hash": binding["spec"]["sha256"],
+            "plan_content_hash": binding["plan"]["sha256"],
+            "index_content_hash": binding["index"]["sha256"],
+            "summary_content_hash": binding["summary"]["sha256"],
+            "failure_index_content_hash": binding["failure_index"]["sha256"],
+            "selected_receipt_set_hash": canonical_sha256(selected_receipts),
+        },
+        "manual": manual,
+        "completeness": {
+            "status": "complete" if not reason_codes else "invalid",
+            "expected_entry_count": expected_summary_counts["execute_entries"],
+            "selected_entry_count": len(evidence["selected_attempts"]),
+            "missing_entry_ids": sorted(evidence["missing_entries"]),
+            "duplicate_terminal_entry_ids": sorted(
+                evidence["duplicate_terminal_entries"],
+            ),
+            "invalid_attempt_count": evidence["invalid_attempts"],
+            "retried_entry_count": retried_entries,
+            "receipt_issue_count": len(evidence["receipt_issues"]),
+            "selected_record_count": len(evidence["records"]),
+            "attributed_context_record_count": attributed_count,
+            "reason_codes": reason_codes,
+        },
+        "context_efficiency": (
+            context
+            if (
+                context is not None
+                and set(reason_codes).issubset({"manual_authority_invalid"})
+            )
+            else None
+        ),
+    }
+    return {
+        "public": public,
+        "spec": spec,
+        "plan": plan,
+        "evidence": evidence,
+    }
+
+
+def _release_records_for_role(
+    loaded: dict[str, Any],
+    role: str,
+) -> list[dict[str, Any]]:
+    treatment_id = _release_treatment_id(loaded["spec"], role)
+    return [
+        record for record in loaded["evidence"]["records"]
+        if record["variant"] == treatment_id
+    ]
+
+
+def _release_max(
+    records: list[dict[str, Any]],
+    container: str,
+    field: str,
+) -> int:
+    values = []
+    for record in records:
+        value_container = record.get(container)
+        if not isinstance(value_container, dict) or field not in value_container:
+            raise ValueError(f"release metric {container}.{field} is missing")
+        values.append(value_container[field])
+    if any(
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value < 0
+        for value in values
+    ):
+        raise ValueError(f"release metric {container}.{field} is invalid")
+    return max(values, default=0)
+
+
+def _release_failure_cases(
+    records: list[dict[str, Any]],
+) -> set[str]:
+    by_case: dict[str, list[bool]] = defaultdict(list)
+    for record in records:
+        by_case[record["case_id"]].append(
+            record["valid"] is True and record["task_pass"] is True,
+        )
+    return {
+        case_id for case_id, values in by_case.items()
+        if not values or not all(values)
+    }
+
+
+def _release_context_scalars(public: dict[str, Any]) -> dict[str, int]:
+    context = public["context_efficiency"]
+    if not isinstance(context, dict):
+        raise ValueError("release context efficiency is unavailable")
+    fields = {
+        "candidate_entry_bytes_p95": ("candidate_entry_bytes", "p95"),
+        "controlled_context_bytes_p95": (
+            "controlled_context_bytes",
+            "p95",
+        ),
+        "total_context_bytes_p95": ("total_context_bytes", "p95"),
+        "host_integration_duplicate_bytes_max": (
+            "host_integration_duplicate_bytes",
+            "max",
+        ),
+        "unexplained_repeated_bytes_max": (
+            "unexplained_repeated_static_content_bytes",
+            "max",
+        ),
+        "protocol_output_bytes_max": ("protocol_output_bytes", "max"),
+        "failed_command_output_bytes_max": (
+            "failed_command_output_bytes",
+            "max",
+        ),
+    }
+    result = {}
+    for output, (metric, selector) in fields.items():
+        value = context.get(metric, {}).get(selector)
+        if (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < 0
+        ):
+            raise ValueError(f"release context metric is invalid: {metric}")
+        result[output] = value
+    return result
+
+
+def _release_projection_ready(
+    public: dict[str, Any],
+    *,
+    allow_missing_manual: bool,
+) -> bool:
+    """Allow D0 report-only data while preserving invalid manual receipts."""
+    completeness = public["completeness"]
+    return (
+        completeness["status"] == "complete"
+        or (
+            allow_missing_manual
+            and
+            completeness["reason_codes"] == ["manual_authority_invalid"]
+            and public["manual"]["status"] == "missing"
+        )
+    )
+
+
+def _sqw_release_metrics(
+    loaded: dict[str, Any],
+    *,
+    confidence_level: float,
+    bootstrap_iterations: int,
+    random_seed: int,
+) -> dict[str, Any]:
+    spec = loaded["spec"]
+    records = loaded["evidence"]["records"]
+    candidate_id = _release_treatment_id(spec, "candidate")
+    baseline_id = _release_treatment_id(spec, "baseline")
+    candidate = _release_records_for_role(loaded, "candidate")
+    baseline = _release_records_for_role(loaded, "baseline")
+    comparator_ids = {
+        item["treatment_id"]
+        for item in spec["treatments"]
+        if item["causal_role"] == "comparator"
+    }
+    non_target = [
+        record for record in records
+        if record["variant"] in comparator_ids
+    ]
+    baseline_failures = _release_failure_cases(baseline)
+    candidate_failures = _release_failure_cases(candidate)
+    task_effect = summarize_paired_metric(
+        records,
+        comparator=baseline_id,
+        candidate=candidate_id,
+        metric="task_pass_rate",
+        direction="higher_is_better",
+        effect="relative",
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed + 11,
+    )
+    prior_ids = [
+        item["treatment_id"]
+        for item in spec["treatments"]
+        if item["causal_role"] == "prior"
+    ]
+    prior_effect = (
+        summarize_paired_metric(
+            records,
+            comparator=prior_ids[0],
+            candidate=candidate_id,
+            metric="controlled_core_skill_context_bytes",
+            direction="lower_is_better",
+            effect="relative",
+            confidence_level=confidence_level,
+            bootstrap_iterations=bootstrap_iterations,
+            random_seed=random_seed + 10,
+        )
+        if len(prior_ids) == 1
+        else None
+    )
+    prewrite = summarize_paired_cost_delta(
+        records,
+        comparator=baseline_id,
+        candidate=candidate_id,
+        metric="executor_prewrite_tool_output_bytes",
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed + 12,
+    )
+    non_target_by_case: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for record in non_target:
+        non_target_by_case[record["case_id"]].append(record)
+    correct_no_load = sum(
+        bool(rows)
+        and all(
+            row["task_pass"] is True
+            and row["skill_body_loaded"] is False
+            and row["skill_incorporated"] is False
+            and row["skill_applied"] is False
+            and row["counts"]["reference_load_count"] == 0
+            for row in rows
+        )
+        for rows in non_target_by_case.values()
+    )
+    metrics = {
+        **_release_context_scalars(loaded["public"]),
+        "unattributed_residue_bytes_max": _release_max(
+            candidate,
+            "context_usage",
+            "unattributed_residue_bytes",
+        ),
+        "prior_controlled_context_reduction": prior_effect,
+        "critical_failures": sum(
+            record["critical_safety_incidents"] for record in candidate
+        ),
+        "candidate_only_failures": len(
+            candidate_failures - baseline_failures,
+        ),
+        "non_target_skill_loads": sum(
+            record["skill_body_loaded"]
+            or record["skill_incorporated"]
+            or record["skill_applied"]
+            for record in non_target
+        ),
+        "non_target_correct_no_load": {
+            "numerator": correct_no_load,
+            "denominator": len(non_target_by_case),
+        },
+        "baseline_failures": len(baseline_failures),
+        "resolved_baseline_failures": len(
+            baseline_failures - candidate_failures,
+        ),
+        "candidate_failures": len(candidate_failures),
+        "candidate_failure_ratio": (
+            len(candidate_failures) / len(baseline_failures)
+            if baseline_failures else 0.0
+        ),
+        "task_pass_relative_effect": task_effect,
+        "prewrite_overhead": prewrite,
+    }
+    return metrics
+
+
+def _writing_plans_release_metrics(
+    planner: dict[str, Any],
+    transfer: dict[str, Any],
+    arm_map: dict[str, dict[str, Any]],
+    *,
+    prior_context: dict[str, Any] | None,
+    matched_tokens: dict[str, Any],
+    confidence_level: float,
+    bootstrap_iterations: int,
+    random_seed: int,
+) -> dict[str, Any]:
+    planner_records = planner["evidence"]["records"]
+    planner_spec = planner["spec"]
+    candidate_planner_id = _release_treatment_id(
+        planner_spec,
+        "candidate",
+    )
+    baseline_planner_id = _release_treatment_id(
+        planner_spec,
+        "baseline",
+    )
+    candidate_planner = _release_records_for_role(planner, "candidate")
+    source_case_ids = {
+        item["source_case_id"] for item in arm_map.values()
+    }
+    candidate_source = [
+        record for record in candidate_planner
+        if record["case_id"] in source_case_ids
+    ]
+    candidate_source_by_case: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for record in candidate_source:
+        candidate_source_by_case[record["case_id"]].append(record)
+    prior_ids = [
+        item["treatment_id"]
+        for item in planner_spec["treatments"]
+        if item["causal_role"] == "prior"
+    ]
+    prior_profile: dict[str, list[bool]] = defaultdict(list)
+    if len(prior_ids) == 1:
+        for record in planner_records:
+            if (
+                record["variant"] == prior_ids[0]
+                and record["case_id"] in source_case_ids
+            ):
+                prior_profile[record["case_id"]].append(
+                    record["counts"]["reference_load_count"] > 0,
+                )
+    always_loaded = {
+        case_id for case_id, values in prior_profile.items()
+        if values and all(values)
+    }
+    mixed_prior = {
+        case_id for case_id, values in prior_profile.items()
+        if any(values) and not all(values)
+    }
+    all_context = (
+        summarize_paired_metric(
+            planner_records,
+            comparator=prior_ids[0],
+            candidate=candidate_planner_id,
+            metric="controlled_skill_context_bytes",
+            direction="lower_is_better",
+            effect="relative",
+            confidence_level=confidence_level,
+            bootstrap_iterations=bootstrap_iterations,
+            random_seed=random_seed + 21,
+            eligible_case_ids=source_case_ids,
+        )
+        if len(prior_ids) == 1
+        else {"status": "not_evaluable", "case_differences": []}
+    )
+    planner_quality = summarize_paired_metric(
+        planner_records,
+        comparator=baseline_planner_id,
+        candidate=candidate_planner_id,
+        metric="quality_score_normalized",
+        direction="higher_is_better",
+        effect="absolute",
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed + 22,
+        eligible_case_ids=source_case_ids,
+    )
+
+    transfer_spec = transfer["spec"]
+    baseline_executor_id = _release_treatment_id(
+        transfer_spec,
+        "baseline",
+    )
+    candidate_executor_id = _release_treatment_id(
+        transfer_spec,
+        "candidate",
+    )
+    transfer_roles = {
+        item["treatment_id"]: item["causal_role"]
+        for item in transfer_spec["treatments"]
+    }
+    release_transfer = [
+        record for record in transfer["evidence"]["records"]
+        if transfer_roles.get(record["variant"]) in {"baseline", "candidate"}
+    ]
+    normalized_transfer = []
+    for record in release_transfer:
+        binding = arm_map.get(record["case_id"])
+        if binding is None:
+            continue
+        normalized_transfer.append({
+            **record,
+            "case_id": binding["source_case_id"],
+            "repeat": binding["planner_repeat"],
+        })
+    transfer_task = summarize_paired_metric(
+        normalized_transfer,
+        comparator=baseline_executor_id,
+        candidate=candidate_executor_id,
+        metric="task_pass_rate",
+        direction="higher_is_better",
+        effect="relative",
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed + 23,
+    )
+    prewrite = summarize_paired_cost_delta(
+        normalized_transfer,
+        comparator=baseline_executor_id,
+        candidate=candidate_executor_id,
+        metric="executor_prewrite_tool_output_bytes",
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed + 24,
+        eligible_case_ids=source_case_ids,
+    )
+    baseline_executor = [
+        record for record in normalized_transfer
+        if record["variant"] == baseline_executor_id
+    ]
+    candidate_executor = [
+        record for record in normalized_transfer
+        if record["variant"] == candidate_executor_id
+    ]
+    baseline_failures = {
+        (record["case_id"], record["repeat"])
+        for record in baseline_executor
+        if record["valid"] is not True or record["task_pass"] is not True
+    }
+    candidate_failures = {
+        (record["case_id"], record["repeat"])
+        for record in candidate_executor
+        if record["valid"] is not True or record["task_pass"] is not True
+    }
+    by_case: dict[str, dict[str, list[bool]]] = defaultdict(
+        lambda: {"baseline": [], "candidate": []},
+    )
+    for record in baseline_executor:
+        by_case[record["case_id"]]["baseline"].append(record["task_pass"])
+    for record in candidate_executor:
+        by_case[record["case_id"]]["candidate"].append(record["task_pass"])
+    candidate_not_worse = bool(by_case) and all(
+        sum(values["candidate"]) >= sum(values["baseline"])
+        for values in by_case.values()
+    )
+    improved_to_full = sum(
+        bool(values["candidate"])
+        and all(values["candidate"])
+        and not all(values["baseline"])
+        for values in by_case.values()
+    )
+    canonical_passes = sum(
+        record["valid"] is True
+        and "rubric-one-canonical-deliverable"
+        not in record["hard_gate_failures"]
+        for record in candidate_source
+    )
+    source_binding_cases = sum(
+        bool(candidate_source_by_case[case_id])
+        and all(
+            record["valid"] is True
+            and "rubric-scope-authority" not in record["hard_gate_failures"]
+            for record in candidate_source_by_case[case_id]
+        )
+        for case_id in source_case_ids
+    )
+    integrity_ids = {
+        "artifact-boundary",
+        "content-integrity",
+        "verification-contract",
+    }
+    content_integrity_errors = sum(
+        len(integrity_ids & set(record["hard_gate_failures"]))
+        for record in candidate_executor
+    )
+    candidate_safety_failures = sum(
+        record.get("safety_pass") is not True
+        for records in (candidate_planner, candidate_executor)
+        for record in records
+    )
+    preflight_passes = sum(
+        record["valid"] is True
+        and "transfer-preflight" not in record["hard_gate_failures"]
+        for record in release_transfer
+    )
+    case_benefits = [
+        item["benefit"] for item in all_context.get("case_differences", ())
+    ]
+    metrics = {
+        **_release_context_scalars(planner["public"]),
+        "authoritative_body_consumed_exactly_once": (
+            bool(candidate_source)
+            and all(
+                record["counts"]["host_injected_body_count"] == 1
+                for record in candidate_source
+            )
+        ),
+        "authority_reference_loads_max": _release_max(
+            candidate_source,
+            "counts",
+            "reference_load_count",
+        ),
+        "protocol_only_calls": _release_max(
+            candidate_source,
+            "counts",
+            "skill_protocol_tool_calls",
+        ),
+        "canonical_deliverable_rate": (
+            canonical_passes / len(candidate_source)
+            if candidate_source else 0.0
+        ),
+        "source_binding_score": source_binding_cases,
+        "content_integrity_error_scalar": content_integrity_errors,
+        "candidate_safety_failures": candidate_safety_failures,
+        "transfer_preflight": {
+            "numerator": preflight_passes,
+            "denominator": len(release_transfer),
+        },
+        "candidate_only_failures": len(
+            candidate_failures - baseline_failures,
+        ),
+        "all_context_sample_count": all_context.get("case_count", 0),
+        "all_context_minimum_relative_effect": min(
+            case_benefits,
+            default=None,
+        ),
+        "prior_reference_cases": len(always_loaded),
+        "mixed_prior_cases": len(mixed_prior),
+        "prior_controlled_context_reduction": prior_context,
+        "planner_quality_absolute_effect": planner_quality,
+        "eligible_source_cases": len(source_case_ids),
+        "candidate_canonical_passes": canonical_passes,
+        "candidate_not_worse_every_case": candidate_not_worse,
+        "improved_to_full_cases": improved_to_full,
+        "transfer_task_relative_effect": transfer_task,
+        "matched_total_token_relative_reduction": matched_tokens,
+        "prewrite_overhead": prewrite,
+    }
+    return metrics
+
+
+def project_release_estimands(
+    study_bindings: list[dict[str, Any]],
+    writing_plans_join: dict[str, dict[str, Any]],
+    *,
+    confidence_level: float,
+    bootstrap_iterations: int,
+    random_seed: int,
+    allow_missing_manual: bool = False,
+) -> dict[str, Any]:
+    """Return the in-memory three-study release projection.
+
+    Bindings use the exact core fields checked by ``_load_release_study``.
+    ``writing_plans_join`` is keyed by executor entry ID and binds the source
+    case/repeat plus both selected receipt identities. Raw identity drift raises;
+    complete but unusable evidence returns a typed ``status=invalid`` projection.
+    """
+    if not all(isinstance(item, dict) for item in study_bindings):
+        raise ValueError("release study bindings must be objects")
+    study_ids = [item.get("study_id") for item in study_bindings]
+    expected_ids = [
+        "software-quality-workflows",
+        "writing-plans-planner",
+        "writing-plans-transfer",
+    ]
+    if study_ids != expected_ids:
+        raise ValueError("release study bindings must be sorted and exact-one")
+    if (
+        confidence_level != 0.90
+        or bootstrap_iterations != 10000
+        or not isinstance(random_seed, int)
+        or isinstance(random_seed, bool)
+        or random_seed < 0
+    ):
+        raise ValueError("release statistics must use 0.90, 10000, and a seed")
+    if not isinstance(writing_plans_join, dict):
+        raise ValueError("Writing Plans join must be an exact object")
+
+    loaded = {
+        binding["study_id"]: _load_release_study(binding)
+        for binding in study_bindings
+    }
+    studies = {
+        study_id: value["public"]
+        for study_id, value in loaded.items()
+    }
+
+    sqw = loaded["software-quality-workflows"]
+    sqw_records = sqw["evidence"]["records"]
+    sqw_spec = sqw["spec"]
+    sqw_reason_codes: list[str] = []
+    total_token_records: list[dict[str, Any]] = []
+    for record in sqw_records:
+        tokens = (record.get("tokens_in"), record.get("tokens_out"))
+        if any(
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < 0
+            for value in tokens
+        ):
+            sqw_reason_codes.append("invalid_token_usage")
+            break
+        total_token_records.append({
+            **record,
+            "tokens_in": tokens[0] + tokens[1],
+        })
+    sqw_tokens = summarize_paired_metric(
+        total_token_records,
+        comparator=_release_treatment_id(sqw_spec, "baseline"),
+        candidate=_release_treatment_id(sqw_spec, "candidate"),
+        metric="tokens_in",
+        direction="lower_is_better",
+        effect="relative",
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed,
+    )
+    if sqw_tokens["status"] != "complete":
+        sqw_reason_codes.append("sqw_total_token_pairs_incomplete")
+    sqw_ready = _release_projection_ready(
+        studies["software-quality-workflows"],
+        allow_missing_manual=allow_missing_manual,
+    )
+    if not sqw_ready:
+        sqw_reason_codes.append("sqw_native_evidence_invalid")
+    sqw_metrics = {}
+    if sqw_ready:
+        sqw_metrics = _sqw_release_metrics(
+            sqw,
+            confidence_level=confidence_level,
+            bootstrap_iterations=bootstrap_iterations,
+            random_seed=random_seed,
+        )
+    sqw_metrics["total_token_relative_reduction"] = sqw_tokens
+    sqw_projection = {
+        "status": "complete" if not sqw_reason_codes else "invalid",
+        "reason_codes": sorted(set(sqw_reason_codes)),
+        "total_token_relative_reduction": {
+            "evidence_artifact_kind": "report_local",
+            "case_count": sqw_tokens["case_count"],
+            "point": sqw_tokens["point"],
+            "lower": sqw_tokens["lower"],
+            "upper": sqw_tokens["upper"],
+        } if not sqw_reason_codes else None,
+        "release_metrics": sqw_metrics,
+    }
+
+    planner = loaded["writing-plans-planner"]
+    transfer = loaded["writing-plans-transfer"]
+    planner_records = planner["evidence"]["records"]
+    transfer_records = transfer["evidence"]["records"]
+    planner_by_entry = {
+        record["entry_id"]: record for record in planner_records
+    }
+    planner_attempts = planner["evidence"]["selected_attempts"]
+    transfer_attempts = transfer["evidence"]["selected_attempts"]
+    planner_roles = {
+        item["treatment_id"]: item["causal_role"]
+        for item in planner["spec"]["treatments"]
+    }
+    transfer_roles = {
+        item["treatment_id"]: item["causal_role"]
+        for item in transfer["spec"]["treatments"]
+    }
+    release_transfer_records = [
+        record
+        for record in transfer_records
+        if transfer_roles.get(record["variant"]) in {"baseline", "candidate"}
+    ]
+    join_reason_codes: set[str] = set()
+    expected_executor_entries = {
+        record["entry_id"] for record in release_transfer_records
+    }
+    if set(writing_plans_join) != expected_executor_entries:
+        join_reason_codes.add("writing_plans_join_inventory_mismatch")
+    arm_map: dict[str, dict[str, Any]] = {}
+    for executor_record in release_transfer_records:
+        executor_entry_id = executor_record["entry_id"]
+        item = writing_plans_join.get(executor_entry_id)
+        if not isinstance(item, dict) or set(item) != {
+            "source_case_id",
+            "planner_repeat",
+            "planner_entry_id",
+            "planner_receipt_hash",
+            "executor_receipt_hash",
+        }:
+            join_reason_codes.add("writing_plans_join_shape_invalid")
+            continue
+        planner_record = planner_by_entry.get(item["planner_entry_id"])
+        planner_attempt = planner_attempts.get(item["planner_entry_id"])
+        executor_attempt = transfer_attempts.get(executor_entry_id)
+        if (
+            planner_record is None
+            or planner_attempt is None
+            or executor_attempt is None
+            or item["source_case_id"] != planner_record["case_id"]
+            or item["planner_repeat"] != planner_record["repeat"]
+            or item["planner_receipt_hash"]
+            != file_sha256(planner_attempt["receipt_path"])
+            or item["executor_receipt_hash"]
+            != file_sha256(executor_attempt["receipt_path"])
+            or planner_roles.get(planner_record["variant"])
+            != transfer_roles.get(executor_record["variant"])
+        ):
+            join_reason_codes.add("writing_plans_join_identity_mismatch")
+            continue
+        normalized = {
+            "source_case_id": item["source_case_id"],
+            "planner_repeat": item["planner_repeat"],
+        }
+        previous = arm_map.setdefault(executor_record["case_id"], normalized)
+        if previous != normalized:
+            join_reason_codes.add("writing_plans_executor_case_ambiguous")
+
+    planner_case_ids = {
+        item["source_case_id"] for item in arm_map.values()
+    }
+    repeat_values = {
+        item["planner_repeat"] for item in arm_map.values()
+    }
+    repeats = max(repeat_values, default=0)
+    if repeat_values != set(range(1, repeats + 1)):
+        join_reason_codes.add("writing_plans_repeat_matrix_invalid")
+    matched = matched_planner_executor_tokens(
+        planner_records,
+        release_transfer_records,
+        arm_map,
+        baseline_planner=_release_treatment_id(planner["spec"], "baseline"),
+        candidate_planner=_release_treatment_id(planner["spec"], "candidate"),
+        baseline_executor=_release_treatment_id(transfer["spec"], "baseline"),
+        candidate_executor=_release_treatment_id(transfer["spec"], "candidate"),
+        case_ids=planner_case_ids,
+        repeats=repeats,
+        confidence_level=confidence_level,
+        bootstrap_iterations=bootstrap_iterations,
+        random_seed=random_seed,
+    )
+    if not matched["complete"]:
+        join_reason_codes.add("writing_plans_matched_pairs_incomplete")
+    planner_ready = _release_projection_ready(
+        studies["writing-plans-planner"],
+        allow_missing_manual=allow_missing_manual,
+    )
+    transfer_ready = _release_projection_ready(
+        studies["writing-plans-transfer"],
+        allow_missing_manual=allow_missing_manual,
+    )
+    if not planner_ready or not transfer_ready:
+        join_reason_codes.add("writing_plans_native_evidence_invalid")
+
+    prior_ids = [
+        item["treatment_id"]
+        for item in planner["spec"]["treatments"]
+        if item["causal_role"] == "prior"
+    ]
+    prior_context: dict[str, Any] | None = None
+    if prior_ids:
+        if len(prior_ids) != 1:
+            join_reason_codes.add("writing_plans_prior_treatment_ambiguous")
+        else:
+            prior_id = prior_ids[0]
+            by_case: dict[str, list[bool]] = defaultdict(list)
+            for record in planner_records:
+                if (
+                    record["variant"] == prior_id
+                    and record["case_id"] in planner_case_ids
+                ):
+                    by_case[record["case_id"]].append(
+                        record["counts"]["reference_load_count"] > 0,
+                    )
+            if any(any(values) and not all(values) for values in by_case.values()):
+                join_reason_codes.add("writing_plans_prior_reference_mixed")
+            eligible = {
+                case_id for case_id, values in by_case.items()
+                if values and all(values)
+            }
+            prior_context = summarize_paired_metric(
+                planner_records,
+                comparator=prior_id,
+                candidate=_release_treatment_id(
+                    planner["spec"],
+                    "candidate",
+                ),
+                metric="controlled_skill_context_bytes",
+                direction="lower_is_better",
+                effect="relative",
+                confidence_level=confidence_level,
+                bootstrap_iterations=bootstrap_iterations,
+                random_seed=random_seed,
+                eligible_case_ids=eligible,
+            )
+
+    writing_metrics = {}
+    if planner_ready and transfer_ready:
+        writing_metrics = _writing_plans_release_metrics(
+            planner,
+            transfer,
+            arm_map,
+            prior_context=prior_context,
+            matched_tokens=matched,
+            confidence_level=confidence_level,
+            bootstrap_iterations=bootstrap_iterations,
+            random_seed=random_seed,
+        )
+    writing_projection = {
+        "status": "complete" if not join_reason_codes else "invalid",
+        "reason_codes": sorted(join_reason_codes),
+        "matched_total_token_relative_reduction": {
+            "evidence_artifact_kind": "report_local",
+            "case_count": matched["case_count"],
+            "point": matched["point"],
+            "lower": matched["lower"],
+            "upper": matched["upper"],
+        } if not join_reason_codes else None,
+        "prior_controlled_context_relative_reduction": (
+            {
+                "evidence_artifact_kind": "report_local",
+                "case_count": prior_context["case_count"],
+                "point": prior_context["point"],
+                "lower": prior_context["lower"],
+                "upper": prior_context["upper"],
+            }
+            if prior_context is not None and not join_reason_codes
+            else None
+        ),
+        "release_metrics": writing_metrics,
+    }
+    status = (
+        "complete"
+        if (
+            sqw_projection["status"] == "complete"
+            and writing_projection["status"] == "complete"
+        )
+        else "invalid"
+    )
+    return {
+        "schema_version": "project-release-estimands/1.0",
+        "status": status,
+        "statistics": {
+            "confidence_level": confidence_level,
+            "bootstrap_iterations": bootstrap_iterations,
+            "random_seed": random_seed,
+        },
+        "studies": studies,
+        "software_quality_workflows": sqw_projection,
+        "writing_plans": writing_projection,
+    }
+
+
 def _v5_base_exit(level: str, summary: dict[str, Any]) -> int:
     manual = summary["manual_authority"]
     if (
@@ -4688,7 +6077,10 @@ def _main_v5() -> int:
             spec, plan, plan_path, evidence,
         )
         manual, manual_issue = _verify_v5_manual_review(
-            args.manual_review_receipt, spec, spec_path,
+            args.manual_review_receipt,
+            spec,
+            spec_path,
+            plan_path,
         )
         summary, metric_analysis = _v5_summary_base(
             spec, plan, evidence, failure_items, manual, bound_evidence,
@@ -4724,7 +6116,7 @@ def _main_v5() -> int:
         failures = _v5_failure_index(
             spec, plan, failure_items, view="index",
         )
-        if failures["truncated"] and details_path is None:
+        if failures["truncated"] and details_path is None and not args.report_only:
             details_path = failure_path.with_name(
                 f"{failure_path.stem}.details{failure_path.suffix}",
             )

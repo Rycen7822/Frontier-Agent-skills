@@ -15,6 +15,7 @@
     "check_ids",
     "labeled_examples",
     "raw_ratings",
+    "reviewer_pair",
     "examples",
     "blinded_treatment_labels",
     "ordering",
@@ -49,6 +50,12 @@
     },
     "labeled_examples": {"$ref": "#/$defs/artifact_binding"},
     "raw_ratings": {"$ref": "#/$defs/artifact_binding"},
+    "reviewer_pair": {
+      "anyOf": [
+        {"$ref": "#/$defs/artifact_binding"},
+        {"type": "null"}
+      ]
+    },
     "examples": {
       "type": "array",
       "minItems": 4,
@@ -202,11 +209,11 @@
     },
     "metrics": {
       "type": "object",
-      "required": ["judge_to_gold", "human_to_human", "judge_to_human"],
+      "required": ["judge_to_gold", "reviewer_to_reviewer", "judge_to_reviewer"],
       "properties": {
         "judge_to_gold": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/metric_cell"}},
-        "human_to_human": {"anyOf": [{"type": "array", "items": {"$ref": "#/$defs/metric_cell"}}, {"type": "null"}]},
-        "judge_to_human": {"type": "array", "items": {"$ref": "#/$defs/metric_cell"}}
+        "reviewer_to_reviewer": {"anyOf": [{"type": "array", "items": {"$ref": "#/$defs/metric_cell"}}, {"type": "null"}]},
+        "judge_to_reviewer": {"type": "array", "items": {"$ref": "#/$defs/metric_cell"}}
       },
       "additionalProperties": false
     },
@@ -238,7 +245,7 @@
       "required": ["reviewer_id", "role", "authority", "principal_id", "blinded"],
       "properties": {
         "reviewer_id": {"$ref": "#/$defs/safe_id"},
-        "role": {"type": "string", "minLength": 1},
+        "role": {"enum": ["judge", "context_clean_subagent_reviewer"]},
         "authority": {"type": "string", "minLength": 1},
         "principal_id": {"$ref": "#/$defs/safe_id"},
         "blinded": {"type": "boolean"}

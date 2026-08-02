@@ -23,6 +23,8 @@ Each spec declares exactly one decision for every module: `core_outcome`, `natur
 
 Selected model graders require a bound, unexpired blinded calibration artifact. L2–L4 require a bound suite-quality artifact; L1 may bind one. `quality_contract_hash` excludes the quality artifact path/hash, readiness, outputs, timestamps, and candidate results, so the spec-to-quality binding is acyclic. Validator-produced calibration and quality artifacts are preparation evidence, never candidate score evidence.
 
+Calibration must contain both pass and fail gold for every selected model check and cover every risk tier of scenarios that invoke model grading. Candidate/grader genealogy dependence remains explicit and can never close an `independent_judge` gate. A context-clean reviewer pair is optional corroboration; without it, blinded gold, per-check agreement, and the declared manual authority remain mandatory, and no reviewer-independence claim is available.
+
 Placeholders are valid only in their exact non-ready forms. A public example that validates with warnings is a template, not a run receipt or usefulness result.
 
 ## Levels
@@ -68,7 +70,7 @@ Repeats never increase `case_count`. Fewer than two complete independent cases c
 
 ## Isolation and provenance
 
-The compiler consumes the exact spec v5, scenario corpus, host manifest, and any bound calibration/quality artifacts and emits one deterministic execution plan v1. Each plan entry fixes its disposition (`execute`, `unsupported`, or `not_evaluable`) from verified capability probes. Unsupported or unknown capability evidence is feasibility evidence and produces no attempt.
+The compiler consumes the exact spec v5 execution scenario corpus, host manifest, and any bound calibration/quality artifacts and emits one deterministic execution plan v1. For an exposed L3/L4 decision, the execution corpus is the validated ordered union of the separate public and heldout bindings; the public file itself remains free of heldout rows. Each plan entry fixes its disposition (`execute`, `unsupported`, or `not_evaluable`) from verified capability probes. Unsupported or unknown capability evidence is feasibility evidence and produces no attempt.
 
 Every run-index row v2 joins one execute attempt to the plan/entry/case/treatment/repeat and a hashed receipt v4 under `spec.artifacts.root`. The analyzer recompiles the plan, verifies index and receipt identities, and recomputes spec, scenario, host, package, catalog, treatment, fixture, grader, artifact, invocation, calibration, and quality bindings before deriving a result. Index rows contain no pass, score, routing, usage, grader, or provenance claims.
 

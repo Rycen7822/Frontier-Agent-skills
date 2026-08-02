@@ -12,12 +12,14 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
 from typing import Any, Iterator
 
 import compile_eval_plan as compiler
+import model_grade_transport as model_transport
 from evidence_io import (
     artifact_record,
     atomic_write_bytes,
@@ -1134,6 +1136,33 @@ def _capture_faults(
     return captured
 
 
+def _raise_for_host_infrastructure_failure(
+    result: dict[str, Any],
+    label: str,
+) -> None:
+    failure_class = result.get("failure_class")
+    provider_error_code = result.get("provider_error_code")
+    if failure_class is None:
+        if provider_error_code is not None:
+            raise RunnerFailure(
+                f"{label} has an unclassified provider error",
+            )
+        return
+    if failure_class == "model_task_timeout":
+        if (
+            result["terminal_status"] != "timeout"
+            or result["timeout"] is not True
+            or provider_error_code is not None
+        ):
+            raise RunnerFailure(f"{label} timeout classification is invalid")
+    elif (
+        result["terminal_status"] != "failed"
+        or not isinstance(provider_error_code, str)
+    ):
+        raise RunnerFailure(f"{label} provider classification is invalid")
+    raise ApparatusFailure(f"{label} stopped with {failure_class}")
+
+
 def _merged_usage(
     entry: dict[str, Any],
     result: dict[str, Any],
@@ -1178,7 +1207,46 @@ def _merged_usage(
         if identity in identities:
             raise RunnerFailure("usage record call identity is duplicated")
         identities.add(identity)
-    return {"pricing_identity": pricing_identity, "records": records}
+    safety_fields = {
+        "capture_status",
+        "host_safety_review_count",
+        "host_safety_review_latency_ms",
+    }
+    capture_status = "captured"
+    safety_count = 0
+    safety_latency_ms = 0.0
+    for source in sources:
+        observation = source.get("host_safety_review")
+        if observation is None:
+            capture_status = "missing"
+            continue
+        if not isinstance(observation, dict) or set(observation) != safety_fields:
+            raise RunnerFailure("host safety-review observation is invalid")
+        count = observation["host_safety_review_count"]
+        latency = observation["host_safety_review_latency_ms"]
+        if (
+            observation["capture_status"] not in {"captured", "missing"}
+            or not isinstance(count, int)
+            or isinstance(count, bool)
+            or count < 0
+            or not isinstance(latency, (int, float))
+            or isinstance(latency, bool)
+            or latency < 0
+        ):
+            raise RunnerFailure("host safety-review observation is invalid")
+        if observation["capture_status"] != "captured":
+            capture_status = "missing"
+        safety_count += count
+        safety_latency_ms += float(latency)
+    return {
+        "pricing_identity": pricing_identity,
+        "host_safety_review": {
+            "capture_status": capture_status,
+            "host_safety_review_count": safety_count,
+            "host_safety_review_latency_ms": safety_latency_ms,
+        },
+        "records": records,
+    }
 
 
 def _validate_grader_output(
@@ -1354,9 +1422,50 @@ def _run_deterministic_graders(
     return outputs, artifacts
 
 
+def _batch_member(
+    *,
+    entry_id: str,
+    plan_path: Path,
+    plan: dict[str, Any],
+    prior_rows: list[dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any], Path]:
+    entries = {item["entry_id"]: item for item in plan["entries"]}
+    entry = entries.get(entry_id)
+    if entry is None:
+        raise RunnerFailure("model grader batch member is outside the plan")
+    _, artifacts_root = resolve_contained_path(
+        plan_path.parent,
+        plan["artifacts"]["root"],
+        "artifacts root",
+    )
+    valid = []
+    for row in prior_rows:
+        if row["entry_id"] != entry_id:
+            continue
+        _, receipt_path = resolve_contained_path(
+            artifacts_root,
+            row["receipt"]["path"],
+            "batch member receipt",
+            kind="file",
+        )
+        receipt = load_json(receipt_path)
+        if receipt["run"]["valid"] is True:
+            valid.append((receipt, receipt_path.parent))
+    if len(valid) != 1:
+        raise RunnerFailure("model grader batch member is not uniquely valid")
+    receipt, attempt_dir = valid[0]
+    try:
+        result = model_transport.execution_result(receipt)
+    except ValueError as exc:
+        raise RunnerFailure(str(exc)) from None
+    return entry, result, attempt_dir
+
+
 def _run_model_graders(
     *,
+    plan_path: Path,
     plan: dict[str, Any],
+    spec: dict[str, Any],
     entry: dict[str, Any],
     host: dict[str, Any],
     registry: dict[str, dict[str, Any]],
@@ -1367,6 +1476,7 @@ def _run_model_graders(
     run_id: str,
     attempt: int,
     credential_policy: str,
+    prior_rows: list[dict[str, Any]],
 ) -> tuple[
     list[dict[str, Any]],
     list[dict[str, Any]],
@@ -1383,33 +1493,74 @@ def _run_model_graders(
     artifacts: list[Path] = []
     stdout_chunks: list[bytes] = []
     stderr_chunks: list[bytes] = []
+    declarations = {
+        grader["grader_id"]: grader
+        for grader in spec["graders"]
+        if grader["type"] == "model"
+    }
     argv, environment = _validate_host_command(host, spec_path.parent)
     for model_spec in entry["model_grade_specs"]:
+        if model_spec["batch_owner_entry_id"] != entry["entry_id"]:
+            continue
         grader_id = model_spec["grader_id"]
-        grader_dir = attempt_dir / "model-graders" / grader_id
+        if grader_id not in declarations:
+            raise RunnerFailure("model grader declaration is absent")
+        grader_dir = attempt_dir / "model-graders" / model_spec["batch_id"]
         grader_dir.mkdir(parents=True)
-        blinded = {
-            "case_id": entry["case_id"],
-            "repeat": entry["repeat"],
-            "requirements": copy.deepcopy(
-                entry["execute_case_payload"]["case"]["requirements"],
-            ),
-            "captured_output": {
-                field: copy.deepcopy(execution_result[field])
-                for field in (
-                    "terminal_status",
-                    "treatment_error",
-                    "refusal",
-                    "timeout",
+        items = []
+        for member_id in model_spec["batch_entry_ids"]:
+            if member_id == entry["entry_id"]:
+                member_entry = entry
+                member_result = execution_result
+                member_root = attempt_dir
+            else:
+                member_entry, member_result, member_root = _batch_member(
+                    entry_id=member_id,
+                    plan_path=plan_path,
+                    plan=plan,
+                    prior_rows=prior_rows,
                 )
-            },
-            "artifacts": copy.deepcopy(execution_result["artifacts"]),
-            "observations": [],
-        }
-        if sorted(blinded) != sorted(model_spec["blinded_projection"]):
-            raise RunnerFailure("model grader blinded projection is incomplete")
+            blinded = model_transport.blinded_execution(
+                member_entry,
+                member_result,
+            )
+            if sorted(blinded) != sorted(model_spec["blinded_projection"]):
+                raise RunnerFailure(
+                    "model grader blinded projection is incomplete",
+                )
+
+            def read_evidence(
+                record: dict[str, Any],
+                root: Path = member_root,
+            ) -> str:
+                _, path = resolve_contained_path(
+                    root,
+                    record["path"],
+                    "model grader evidence",
+                    kind="file",
+                )
+                if artifact_record(path, root, encoding="utf-8") != record:
+                    raise RunnerFailure("model grader evidence binding differs")
+                try:
+                    return path.read_text(encoding="utf-8")
+                except UnicodeDecodeError:
+                    raise RunnerFailure(
+                        "model grader evidence is not UTF-8",
+                    ) from None
+
+            items.append(model_transport.execution_item(
+                blinded,
+                grader_id=grader_id,
+                grader_checks=declarations[grader_id]["checks"],
+                entry_id=member_id,
+                read_artifact=read_evidence,
+            ))
+        batch = model_transport.execution_batch(
+            items,
+            batch_id=model_spec["batch_id"],
+        )
         blinded_path = grader_dir / "blinded-input.json"
-        atomic_write_json(blinded_path, blinded)
+        atomic_write_json(blinded_path, batch)
         request = _host_request(
             plan,
             entry,
@@ -1420,7 +1571,7 @@ def _run_model_graders(
                 "grader_id": grader_id,
                 "batch_hash": model_spec["batch_hash"],
                 "schedule_hash": model_spec["schedule_hash"],
-                "blinded_input": blinded,
+                "blinded_input": batch,
             },
         )
         diagnostics = validate_host_protocol_record(
@@ -1461,6 +1612,10 @@ def _run_model_graders(
             )
         batch_events, batch_result, _ = _parse_host_protocol(
             stdout, request=request, registry=registry,
+        )
+        _raise_for_host_infrastructure_failure(
+            batch_result,
+            f"model grader {grader_id}",
         )
         _host_artifact_paths(batch_result, attempt_dir)
         requests.append(request)
@@ -1918,6 +2073,20 @@ def _resume_seal(
             raise RunnerFailure(_first_diagnostic(diagnostics))
         requests.append(request)
 
+    interruption_class = "interrupted"
+    if requests and stdout_path.stat().st_size:
+        try:
+            _, host_result, _ = _parse_host_protocol(
+                stdout_path.read_bytes(),
+                request=requests[0],
+                registry=registry,
+            )
+        except RunnerFailure:
+            pass
+        else:
+            if host_result.get("failure_class") == "official_transient":
+                interruption_class = "official_transient"
+
     artifact_paths: list[Path] = []
     for path in sorted(attempt_dir.rglob("*")):
         if path.is_symlink():
@@ -1955,7 +2124,7 @@ def _resume_seal(
             "started_at": observed,
             "ended_at": observed,
             "valid": False,
-            "error": "apparatus interrupted before receipt commit",
+            "error": interruption_class,
             "terminal": "interrupted",
         },
         "provenance": {
@@ -2075,6 +2244,7 @@ def _restore_fixture(
             if destination.exists() or destination.is_symlink():
                 raise RunnerFailure("fixture destination already exists")
             shutil.copy2(source, destination)
+            destination.chmod(destination.stat().st_mode | stat.S_IWUSR)
             restored.append(destination)
             manifest_rows.append({
                 "kind": kind,
@@ -2207,6 +2377,7 @@ def _execute_entry(
     host: dict[str, Any],
     registry: dict[str, dict[str, Any]],
     spec_path: Path,
+    prior_rows: list[dict[str, Any]],
     attempt: int = 1,
 ) -> dict[str, Any]:
     artifacts_root, attempt_rel, attempt_dir = _attempt_paths(
@@ -2297,6 +2468,7 @@ def _execute_entry(
     events, result, checkpoints = _parse_host_protocol(
         stdout, request=request, registry=registry,
     )
+    _raise_for_host_infrastructure_failure(result, "execute host")
     _validate_routing_contract(entry, events)
     _validate_state_contract(entry, events, result, checkpoints)
     _validate_runtime_records(entry, result, host, registry)
@@ -2323,7 +2495,9 @@ def _execute_entry(
         model_stdout,
         model_stderr,
     ) = _run_model_graders(
+        plan_path=plan_path,
         plan=plan,
+        spec=spec,
         entry=entry,
         host=host,
         registry=registry,
@@ -2334,6 +2508,7 @@ def _execute_entry(
         run_id=run_id,
         attempt=attempt,
         credential_policy=spec["execution"]["credential_policy"],
+        prior_rows=prior_rows,
     )
     grader_outputs.extend(model_outputs)
     usage = _merged_usage(entry, result, model_results, host)
@@ -2533,6 +2708,7 @@ def _resume_entry(
     host: dict[str, Any],
     registry: dict[str, dict[str, Any]],
     spec_path: Path,
+    prior_rows: list[dict[str, Any]],
 ) -> Iterator[tuple[dict[str, Any], bool]]:
     attempts = _attempt_directories(plan_path, plan, entry)
     if not attempts:
@@ -2544,6 +2720,7 @@ def _resume_entry(
             host=host,
             registry=registry,
             spec_path=spec_path,
+            prior_rows=prior_rows,
         )
         yield row, True
         return
@@ -2596,9 +2773,10 @@ def _resume_entry(
         raise RunnerFailure("resume inspection produced no terminal receipt")
     last_attempt = attempts[-1][0]
     policy = entry["attempt_policy"]
+    retry_class = last_receipt["run"]["error"]
     retryable = (
         not last_receipt["run"]["valid"]
-        and "interrupted" in policy["retryable_apparatus_classes"]
+        and retry_class in policy["retryable_apparatus_classes"]
         and last_attempt < policy["max_attempts"]
     )
     if retryable:
@@ -2612,6 +2790,7 @@ def _resume_entry(
             host=host,
             registry=registry,
             spec_path=spec_path,
+            prior_rows=prior_rows,
             attempt=last_attempt + 1,
         )
         yield row, True
@@ -2712,6 +2891,7 @@ def _run_command(args: argparse.Namespace) -> int:
                     host=host,
                     registry=registry,
                     spec_path=spec_path,
+                    prior_rows=rows,
                 ):
                     _append_index_row(index_path, rows, row)
             else:
@@ -2723,6 +2903,7 @@ def _run_command(args: argparse.Namespace) -> int:
                     host=host,
                     registry=registry,
                     spec_path=spec_path,
+                    prior_rows=rows,
                 )
                 complete = True
                 _append_index_row(index_path, rows, row)

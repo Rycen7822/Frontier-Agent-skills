@@ -345,7 +345,7 @@
       "observed_consistency"
     ],
     "materiality": {
-      "minimum_cases": 2
+      "minimum_baseline_failure_cases": 2
     }
   },
   "hard_gates": [

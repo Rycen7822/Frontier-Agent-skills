@@ -1,6 +1,6 @@
 ---
 name: software-quality-workflows
-description: "Use when software work has a material boundary in evidence, authority, ownership, source, or effects."
+description: Use when software work has a material boundary in evidence, authority, ownership, source, or effects.
 license: MIT
 metadata:
   version: 9.0.0

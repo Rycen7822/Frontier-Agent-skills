@@ -642,6 +642,8 @@
         "envelope": {"$ref": "#/$defs/runtime_envelope"},
         "request_hash": {"$ref": "#/$defs/sha256"},
         "treatment_error": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
+        "provider_error_code": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
+        "failure_class": {"enum": ["model_task_timeout", "official_transient", "provider_nonretryable"]},
         "refusal": {"type": "boolean"},
         "timeout": {"type": "boolean"},
         "protocol_error": {"anyOf": [{"$ref": "#/$defs/protocol_error"}, {"type": "null"}]},

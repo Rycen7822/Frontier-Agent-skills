@@ -1,0 +1,9 @@
+Return exactly {"matrix":[...]} with no other keys or text.
+Each [opaque_example_id, view_index, check_index] selects views[view_index] and checks[check_index].
+Rate pass only when authoritative visible evidence satisfies the pass condition.
+Rate fail when authoritative evidence violates the condition or omits required evidence; an ordinary missing fact fails.
+When the view explicitly has evidence_state=conflicting_candidate_snapshots, authoritative_snapshot=null, and two conflicting candidate snapshots, rate every example for that view abstain and do not assess its candidate snapshots check by check.
+Otherwise do not rate abstain.
+Arrange response_contract.rows strings with response_contract.columns P/F/A symbols; flattening those strings row-major must exactly follow packet.examples.
+Do not infer hidden gold or unstated facts.
+Do not return reviewer or opaque example identifiers, explanations, Markdown, or any other keys.
