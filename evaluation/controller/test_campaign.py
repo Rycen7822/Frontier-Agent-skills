@@ -376,7 +376,7 @@ def test_compiled_plan_closes_scored_ledger_without_replay(
     assert len(campaign.verify_ledger(attempt / "provider-ledger.jsonl")) == 2
 
 
-def test_compiled_plan_closes_transient_attempt_before_retry(
+def test_compiled_plan_rejects_unbudgeted_provider_retry(
     tmp_path: Path,
 ) -> None:
     attempt = tmp_path / "attempt"
@@ -410,16 +410,13 @@ def test_compiled_plan_closes_transient_attempt_before_retry(
         }],
     }
 
-    first = campaign.execute_compiled_plan(**arguments)
-    runner.unlink()
-    second = campaign.execute_compiled_plan(**arguments)
-    rows = [
-        json.loads(line)
-        for line in index.read_text(encoding="utf-8").splitlines()
-    ]
-    assert first == second
-    assert [row["attempt"] for row in rows] == [1, 2]
-    assert len(campaign.verify_ledger(attempt / "provider-ledger.jsonl")) == 1
+    with pytest.raises(
+        artifacts.StateError,
+        match="retries require distinct request identities",
+    ):
+        campaign.execute_compiled_plan(**arguments)
+    assert not index.exists()
+    assert campaign.verify_ledger(attempt / "provider-ledger.jsonl") == []
 
 
 @pytest.mark.parametrize("stop_after", (0, 1, 2, 4))
