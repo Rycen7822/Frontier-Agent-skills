@@ -37,7 +37,7 @@ Placeholders are valid only in their exact non-ready forms. A public example tha
 | L3 | L2 plus sequestered holdout, adversarial controls, environment pinning, and required manual-review receipt | Readiness for the tested scope and environment |
 | L4 | Version lineage and repeated frozen evaluation cycles | Version and cycle monitoring only |
 
-L4 is limited to version and cycle monitoring. Without selection, order, and composition receipts, it must not claim library-scale multi-Skill orchestration evidence.
+L4 is limited to controlled revision and model-transition evidence. Without selection, order, and composition receipts, it must not claim library-scale multi-Skill orchestration evidence.
 
 ## Treatment registry
 

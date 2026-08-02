@@ -3250,12 +3250,16 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         self.assertIn('Analyzed 2 attempts', result.stdout)
         self.assertIn('Evidence: `complete`', markdown)
 
-    def test_l4_claims_stop_at_version_cycle_monitoring_without_orchestration_receipts(self) -> None:
+    def test_l4_claims_stop_at_controlled_comparison_without_orchestration_receipts(self) -> None:
         for name in (
             'evaluation-contract.md', 'longitudinal-evaluation.md', 'reporting-and-decisions.md',
         ):
             text = (ROOT / 'references' / name).read_text(encoding='utf-8')
-            self.assertIn('L4 is limited to version and cycle monitoring', text, name)
+            self.assertIn(
+                'L4 is limited to controlled revision and model-transition evidence',
+                text,
+                name,
+            )
             self.assertIn('selection, order, and composition receipts', text, name)
             self.assertIn('must not claim library-scale multi-Skill orchestration evidence', text, name)
 

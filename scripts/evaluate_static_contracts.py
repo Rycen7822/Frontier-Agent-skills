@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build or verify the deterministic Frontier 6.0 static contract report."""
+"""Build or verify the deterministic Frontier 6.1 static contract report."""
 
 from __future__ import annotations
 

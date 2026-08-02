@@ -15,7 +15,7 @@
   ],
   "properties": {
     "schema_version": {"const": "frontier-engineering-bundle/2.0"},
-    "bundle_id": {"const": "frontier-engineering/6.0.0"},
+    "bundle_id": {"const": "frontier-engineering/6.1.0"},
     "compatible_schema_epoch": {"const": 5},
     "release_build_id": {"type": "string", "pattern": "^build-[0-9a-f]{24}$"},
     "activation_ceiling": {"const": "implicit_local_pilot"},
@@ -36,7 +36,7 @@
         },
         "skill-evaluator": {
           "$ref": "#/$defs/explicit_skill",
-          "properties": {"version": {"const": "3.0.0"}}
+          "properties": {"version": {"const": "3.1.0"}}
         },
         "software-quality-workflows": {
           "$ref": "#/$defs/explicit_skill",

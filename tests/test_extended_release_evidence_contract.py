@@ -138,7 +138,7 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
                 (ROOT / "packaging" / "schemas" / name).read_bytes()
             )
         write_json(source / "frontier-engineering.bundle.json", {
-            "bundle_id": "frontier-engineering/6.0.0",
+            "bundle_id": "frontier-engineering/6.1.0",
             "skills": {
                 "skill-evaluator": {
                     "root_hash": EVALUATOR_HASH,
@@ -146,8 +146,8 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
             },
         })
         static = {
-            "bundle_id": "frontier-engineering/6.0.0",
-            "version": "6.0.0",
+            "bundle_id": "frontier-engineering/6.1.0",
+            "version": "6.1.0",
             "skill_activation": ACTIVATION_BOOL,
         }
         static["report_hash"] = self_hash(static)
@@ -311,7 +311,7 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
         longitudinal_bytes = write_json(run / "longitudinal" / "report.json", longitudinal)
         activation = {
             "schema_version": "activation-decision/2.0",
-            "bundle_id": "frontier-engineering/6.0.0",
+            "bundle_id": "frontier-engineering/6.1.0",
             "candidate_revision": REVISION,
             "source_tree_hash": SOURCE_HASH,
             "candidate_plugin_tree_hash": PLUGIN_HASH,
@@ -327,8 +327,8 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
         activation_bytes = write_json(run / "activation-decision.json", activation)
         evidence = {
             "schema_version": "release-evidence/4.0",
-            "bundle_id": "frontier-engineering/6.0.0",
-            "bundle_version": "6.0.0",
+            "bundle_id": "frontier-engineering/6.1.0",
+            "bundle_version": "6.1.0",
             "source_tree_hash": SOURCE_HASH,
             "plugin_tree_hash": PLUGIN_HASH,
             "source_revision": REVISION,
@@ -354,7 +354,7 @@ class ExtendedReleaseEvidenceContractTests(unittest.TestCase):
             return self.builder.validate_release_evidence(
                 evidence_path,
                 source_root=source,
-                manifest={"bundle_version": "6.0.0"},
+                manifest={"bundle_version": "6.1.0"},
                 source_tree_hash=SOURCE_HASH,
                 plugin_tree_hash=PLUGIN_HASH,
             )

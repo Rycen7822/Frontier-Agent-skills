@@ -227,6 +227,10 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
             'suite-quality-v1.schema.json',
             'analysis-summary-v4.schema.json',
             'failure-index-v1.schema.json',
+            'comparison-plan-v1.schema.json',
+            'comparison-observations-v1.schema.json',
+            'comparison-report-v1.schema.json',
+            'comparison-diagnostic-index-v1.schema.json',
         }
         self.assertEqual(
             {path.name for path in schema_dir.glob('*.schema.json')},

@@ -2,7 +2,7 @@
 name: skill-evaluator
 description: "Evaluate, benchmark, compare, regression-test, or security-audit an Agent Skill package. Use when deciding whether a skill triggers correctly, improves task outcomes over a no-skill or prior-version baseline, follows its intended process, remains efficient and safe, generalizes beyond development examples, or is ready to install, publish, or deploy."
 metadata:
-  version: 3.0.0
+  version: 3.1.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -29,7 +29,7 @@ This skill is explicit-only. Ordinary software development does not run an evalu
 | Diagnose trigger, loading, or execution | L1 | [Execution and grading](references/execution-and-grading.md) |
 | Decide whether the Skill adds value at acceptable context cost | L2 | [Evaluation contract](references/evaluation-contract.md), then [Rubric and metrics](references/rubric-and-metrics.md) |
 | Support release, installation, high-risk, or generalization claims | L3 | [Task-suite design](references/task-suite-design.md), then [Reporting and decisions](references/reporting-and-decisions.md) |
-| Monitor versions or evaluation cycles | L4 | [Longitudinal evaluation](references/longitudinal-evaluation.md) |
+| Compare a controlled revision or model transition | L4 | [Longitudinal evaluation](references/longitudinal-evaluation.md) |
 | Trace method provenance | any | [Source map](references/source-map.md) |
 
 Load only the owner of the active question. Do not preload every reference.
@@ -46,7 +46,7 @@ Keep scored evidence immutable for the spec retention period. Read the analyzer 
 | L1 | Focused scenarios with verified run receipts | Diagnostic behavior only |
 | L2 | Frozen baseline/candidate scenarios, independent-case intervals, benefit and context guardrails | Scoped incremental usefulness |
 | L3 | L2 plus sequestered holdout, adversarial controls, environment binding, and required manual-review receipt | Readiness for the tested scope only |
-| L4 | Version lineage and repeated evaluation cycles | Version and cycle monitoring only |
+| L4 | Immutable cycle capsules plus a frozen comparison plan | Revision closure or model-transition classification for the tested scope only |
 
 Without selection, order, and composition receipts, L4 must not claim library-scale multi-Skill orchestration evidence.
 
@@ -61,6 +61,7 @@ Without selection, order, and composition receipts, L4 must not claim library-sc
 - Static audit findings are provisional review locators. They never authorize deleting package resources, hiding matched text, weakening rules, or treating scanner silence as safety evidence.
 - Empirical usefulness is `supported`, `not_supported`, `inconclusive_ceiling`, or `not_evaluable`. Manual review and deployment authority are separate final gates.
 - Public templates contain placeholders. They are not live receipts, host evidence, or scored usefulness evidence.
+- Offline comparison consumes existing immutable cycle capsules; it never edits a Skill, schedules a run, promotes a release, or converts exploratory history into pre-registration.
 
 ## Run the owners
 
@@ -102,18 +103,14 @@ python3 "$SKILL_EVALUATOR_DIR/scripts/analyze_runs.py" artifacts/index.jsonl \
 
 Analyzer exits: `0` complete supported/eligible or L0/L1 diagnostic; `1` verified not-supported or manual `hold|reject`; `2` contract/I/O error; `3` incomplete, invalid, unsupported, not-evaluable, inconclusive, or authority-ineligible. A required manual receipt is spec-relative. `--report-only` converts only `1` to `0`, never the states.
 
+For a requested L4 comparison, follow the commands in [Longitudinal evaluation](references/longitudinal-evaluation.md).
+
 ## Owner index
 
-- [Evaluation contract](references/evaluation-contract.md): spec v5, levels, treatments, preparation gates, fairness, and claim ceilings.
-- [Task-suite design](references/task-suite-design.md): scenario v1, frontier-model filter, requirements, protected controls, and holdout boundaries.
-- [Execution and grading](references/execution-and-grading.md): host protocol, execution plan, receipt v4, artifacts, routing, usage, context, graders, and failure classification.
-- [Rubric and metrics](references/rubric-and-metrics.md): independent-case intervals, benefit/context gates, and usefulness states.
-- [Reporting and decisions](references/reporting-and-decisions.md): evidence, usefulness, manual authority, and external-decision boundaries.
-- [Longitudinal evaluation](references/longitudinal-evaluation.md): version and cycle monitoring.
-- [Source map](references/source-map.md): source provenance and exact implementation owners.
-- [Contract schemas](schemas/README.md): Draft 2020-12 owners for the 3.0 wire contracts.
-- [Evaluation report](templates/evaluation-report.md): the single conditional report template.
-- Executable owners: [audit](scripts/audit_skill_package.py), [validator](scripts/validate_eval_suite.py), [reviewer pair](scripts/reviewer_pair_contract.py), [reviewer prompt](scripts/reviewer_prompt_contract.py), [compiler](scripts/compile_eval_plan.py), [runner](scripts/run_eval_plan.py), [transport](scripts/model_grade_transport.py), [analyzer](scripts/analyze_runs.py), and [I/O](scripts/evidence_io.py).
+- Contract owners: [evaluation](references/evaluation-contract.md), [task suite](references/task-suite-design.md), [execution and grading](references/execution-and-grading.md), [metrics](references/rubric-and-metrics.md), [reporting](references/reporting-and-decisions.md), and [longitudinal comparison](references/longitudinal-evaluation.md).
+- Supporting owners: [source map](references/source-map.md), [Draft 2020-12 schemas](schemas/README.md), and the conditional [evaluation report](templates/evaluation-report.md).
+- Executable owners: [audit](scripts/audit_skill_package.py), [validator](scripts/validate_eval_suite.py), [reviewer pair](scripts/reviewer_pair_contract.py), [reviewer prompt](scripts/reviewer_prompt_contract.py), [compiler](scripts/compile_eval_plan.py), [runner](scripts/run_eval_plan.py), [transport](scripts/model_grade_transport.py), [analyzer](scripts/analyze_runs.py), [offline comparator](scripts/compare_cycles.py), and [I/O](scripts/evidence_io.py).
 - Spec fixtures: [L0](templates/eval-spec.l0.example.json), [L1](templates/eval-spec.l1.example.json), and [L2](templates/eval-spec.example.json); public scenarios: [L1](templates/scenarios.l1.example.jsonl) and [L2](templates/scenarios.example.jsonl); [host manifest](templates/host-manifest.example.json).
 - Preparation fixtures: [calibration ratings](templates/calibration-ratings.example.jsonl), [calibration gold](templates/calibration-gold.example.jsonl), and [suite-quality proof](templates/suite-quality-proof.example.json).
 - Evidence fixtures: [run index](templates/runs.example.jsonl), [grader schema](templates/grader-output.schema.json), [grader prompt](templates/llm-grader-prompt.md), [holdout manifest](templates/holdout-manifest.example.json), and [holdout scenarios](templates/holdout-scenarios.example.jsonl).
+- Comparison fixtures: [revision plan](templates/comparison-plan.revision.example.json) and [model-transition plan](templates/comparison-plan.model-transition.example.json).
