@@ -1,10 +1,10 @@
 # Frontier Agent Skills
 
-This repository is the development source of truth for the dual-host `frontier-engineering/6.0.0` bundle. It contains exactly four skills: `long-document-segmented-writing` 1.0.0, `skill-evaluator` 3.0.0, `software-quality-workflows` 9.0.0, and `writing-plans` 8.1.0. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository never mutates an active installation.
+This repository is the development source of truth for the dual-host `frontier-engineering/6.1.0` bundle. It contains exactly four skills: `long-document-segmented-writing` 1.0.0, `skill-evaluator` 3.1.0, `software-quality-workflows` 9.0.0, and `writing-plans` 8.1.0. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository never mutates an active installation.
 
 ## Release identity
 
-The indivisible release unit is bundle version 6.0.0 at schema epoch 5. Its manifest records the four exact versions and mixed activation matrix:
+The indivisible release unit is bundle version 6.1.0 at schema epoch 5. Its manifest records the four exact versions and mixed activation matrix:
 
 ```json
 {
@@ -15,7 +15,7 @@ The indivisible release unit is bundle version 6.0.0 at schema epoch 5. Its mani
 }
 ```
 
-`true` permits implicit local selection; `false` is explicit-only and its prompt retains the exact `$skill-name`. The bundle ceiling remains `implicit_local_pilot`, and `remote_writes` is false. Bundle 6.0.0 is accepted through direct human-readable source review and ordinary signed release operations; the repository's evaluator, hash, smoke, and benchmark tooling is not a release gate for this version.
+`true` permits implicit local selection; `false` is explicit-only and its prompt retains the exact `$skill-name`. The bundle ceiling remains `implicit_local_pilot`, and `remote_writes` is false. Bundle 6.1.0 requires a signed, clean source candidate plus the repository's deterministic source, schema, bundle, plugin, archive, and test gates. Passing those local gates establishes source completeness only; it never grants installation, publication, deployment, or other external authority.
 
 ## Design boundary
 
@@ -24,7 +24,7 @@ The skills assume a capable coding agent and keep the common path compact. SQW l
 - `software-quality-workflows` defaults to Direct execution for authorized, local, reversible same-session work. Direct creates no workflow protocol calls, JSON receipts, router/card state, or fallback ledger.
 - `writing-plans` is explicit-only and compiles settled decisions into one source-bound Handoff or update-in-place Program Markdown. It binds the root once, states each fact once, batches compatible evidence checks, separates resume preflight from the first source-changing action, leaves same-session plans model-native, and returns unresolved facts to the caller or owning process.
 - `long-document-segmented-writing` owns long-corpus drafting, bounded scratch state, deterministic assembly, and final confidence repair.
-- `skill-evaluator` is explicit-only and owns L0–L4 evaluation claim ceilings, package audit, scored analysis, and evidence interpretation.
+- `skill-evaluator` is explicit-only and owns L0–L4 evaluation claim ceilings, package audit, scored analysis, controlled revision closure, model-transition classification, and evidence interpretation.
 
 SQW uses one fallback Markdown ledger only when the host and repository have no durable owner and one of five conditions exists: cross-context recovery, destructive or external effects, staged migration/release/rollout, multiple writers, or an explicitly requested recoverable audit trail. It never creates a second state projection.
 
@@ -32,15 +32,15 @@ Development is distinction-first: each behavior change needs an observable test,
 
 ## Verification boundary
 
-Bundle 6.0.0 does not use repository tests, evaluator runs, graders, validators, generated identities, or hash chains as release evidence. Existing test and evaluator sources remain developer tools and product fixtures, but they do not authorize, block, or describe this release. The release record states only facts confirmed by direct reading and ordinary version-control operations.
+Bundle 6.1.0 uses model-free repository tests, validators, canonical generated identities, and static smoke as local source-complete gates. Scored evaluator runs, graders, providers, and reviewer campaigns are not triggered by this release path. Deterministic local evidence can block a candidate but cannot authorize an external release.
 
 ## Source archives
 
-The source archive uses root `frontier-engineering-bundle`; the skills-only archive contains exactly the four canonical skill roots. Assemble either archive with ordinary file copies and ZIP tooling, exclude `.work`, worktrees, caches, local paths, credentials, and historical run artifacts, then read the archive file list before publication. Do not invoke the historical evidence-producing archive builder for this release.
+The source archive uses root `frontier-engineering-bundle`; the skills-only archive contains exactly the four canonical skill roots. Build both layouts with `scripts/build_source_archive.py` into a new temporary output directory, verify reproducible bytes and schema-valid evidence, and inspect the member list before publication. The builder excludes `.work`, worktrees, caches, local paths, credentials, and historical run artifacts; it does not publish the archive.
 
 ## Plugin staging
 
-The plugin identity is `frontier-engineering-plugin` version 6.0.0 with display name `Frontier Engineering`. Its release layout is:
+The plugin identity is `frontier-engineering-plugin` version 6.1.0 with display name `Frontier Engineering`. Its release layout is:
 
 ```text
 frontier-engineering-plugin/
@@ -52,11 +52,11 @@ frontier-engineering-plugin/
     writing-plans/
 ```
 
-Create `plugin.json` from `packaging/codex-plugin/plugin.json.template` with version `6.0.0`, copy the four complete skill directories, and inspect the resulting tree directly. Do not call the historical plugin builder, smoke runner, release-evidence validator, or isolated-install harness for this release.
+Use `scripts/build_codex_plugin.py` to create a new staging tree and build evidence, then validate the staged tree and run `scripts/smoke_codex_plugin.py`. These commands copy the four complete skill directories and perform no global install, provider call, publication, or deployment.
 
 ## Same-thread Codex skill reload supervisor
 
-This optional developer tool is not used by the Bundle 6.0.0 manual completion or release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles. It never calls `fork`, never selects `--last`, never edits global Codex configuration, and never drives the TUI with synthesized keystrokes. It owns a local Unix-socket app-server and launches every TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
+This optional developer tool is not used by the Bundle 6.1.0 source-complete or release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles. It never calls `fork`, never selects `--last`, never edits global Codex configuration, and never drives the TUI with synthesized keystrokes. It owns a local Unix-socket app-server and launches every TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
 
 The protocol is fail-closed and pinned to `codex-cli 0.144.6`. Validate the CLI schema and local Unix WebSocket transport before the first run:
 
@@ -96,8 +96,8 @@ Any CLI version drift, schema drift, thread/cwd mismatch, permission mismatch, p
 
 ## Evaluation boundary
 
-The [Skill Evaluator entrypoint](skill-evaluator/SKILL.md) remains an explicit-only product for users who deliberately request structured Skill evaluation. Its schemas, scripts, examples, and historical `evaluation/` fixtures are not invoked by ordinary development and are not release evidence for Bundle 6.0.0. This release makes no scored usefulness, token-efficiency, longitudinal, installation, or deployment claim.
+The [Skill Evaluator entrypoint](skill-evaluator/SKILL.md) remains an explicit-only product for users who deliberately request structured Skill evaluation. Its runtime evaluator and historical `evaluation/` fixtures are not invoked by ordinary development or the Bundle 6.1.0 source-complete path. The new offline comparator consumes only explicitly supplied immutable cycle capsules and makes no scored usefulness, installation, or deployment claim on behalf of this bundle.
 
-For the Skill Evaluator 3.0 upgrade, source rollback restores bundle 5.0.0 / Skill Evaluator 2.0.0 semantics at commit `d3824cfeb05ea8e37ec2c9013570b8405530bc89` through an ordinary revert or the frozen source archive; do not use a destructive worktree reset. Installed rollback uses only a verified bundle-5 staged plugin/archive through the isolated remove/install path and never implies publish or deploy authority.
+For the Skill Evaluator 3.1 upgrade, source rollback restores bundle 6.0.0 / Skill Evaluator 3.0.0 semantics at commit `cfc3e5a28b18d188f01d286d1f290f297ecc1705` through an ordinary revert or the frozen source archive; do not use a destructive worktree reset. Installed rollback uses only a verified bundle-6.0 staged plugin/archive through the isolated remove/install path and never implies publish or deploy authority.
 
 Version 4 workflow/card/plan state is not read, migrated, aliased, or dual-written. Finish an active 4.x task under 4.x, or terminate it explicitly and restart from current repository truth.

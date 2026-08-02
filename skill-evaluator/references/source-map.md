@@ -39,6 +39,9 @@ Each `Owner heading` is the normative product section. `Source basis` identifies
 | M-08 | Compare immutable versions while protecting holdout, regression, host, and rollback boundaries | Ding et al. evolution/robustness; Pattern durable-state recovery | Direct + adaptation | `longitudinal-evaluation.md` → `Freeze each cycle`; `longitudinal-evaluation.md` → `Protected behavior`; `longitudinal-evaluation.md` → `Monitoring and rollback` | holdout `payload_sha256`; plan/host/module identity; `analyze_runs.py::derive_protected_outcome_failures`; `tests/test_extended_reporting.py` |
 | M-09 | Separate attempted, authorized, blocked, executed, delivered, rendered, and confirmed effects | Ding et al. safety; Anthropic security; Pattern tool/action lifecycle | Direct + adaptation | `execution-and-grading.md` → `Actions, authorization, observations, and faults`; `security-and-package-audit.md` → `Evidence ladder` | receipt v4 actions; authorization fusion; `action_summary`; `run_eval_plan.py::_validate_action_lifecycle`; `tests/test_extended_module_e2e.py` |
 | M-10 | Infer over case clusters and keep five axes, context burden, independence, critique, and grounding non-compensating | Combined M-01–M-09 plus Pattern evidence/authority separation | Local synthesis | `rubric-and-metrics.md` → `Five independent axes`; `rubric-and-metrics.md` → `Independent-case intervals`; `reporting-and-decisions.md` → `Status model` | `analyze_runs.py::summarize_case_differences`; `analyze_runs.py::summarize_skill_context`; `analyze_runs.py::derive_usefulness_status`; `independence_summary`; `grounding_summary`; `tests/test_extended_reporting.py` |
+| M-11 | Close one controlled revision hypothesis or classify direct/bridge/combined model drift without granting release authority | Ding et al. evolution/robustness; Pattern frozen scope and evidence/authority separation | Direct + local synthesis | `longitudinal-evaluation.md` → `Offline comparison owner`; `reporting-and-decisions.md` → `Offline comparison report v1` | comparison plan/observations/report/index v1; `compare_cycles.py`; `comparison_revision.py`; `comparison_transition.py`; `tests/test_extended_eval_revision.py`; `tests/test_extended_eval_transition.py` |
+
+M-11 implementation owners are the [capsule contract](../scripts/comparison_contract.py), [revision contract](../scripts/comparison_revision_contract.py), [revision evaluator](../scripts/comparison_revision.py), [transition evaluator](../scripts/comparison_transition.py), and [transition metrics](../scripts/comparison_transition_metrics.py).
 
 ### Reverse coverage: local owner to source method
 
@@ -56,6 +59,7 @@ Each `Owner heading` is the normative product section. `Source basis` identifies
 | `summarize_skill_context`, attribution, controlled/core bytes, per-call cost | M-02, M-04, M-10 | Progressive-disclosure cost adaptation |
 | `independence_summary`, critique uptake, `grounding_summary` | M-03, M-10 | Pattern judge dependence, repair uptake, and source support |
 | `derive_usefulness_status`, five axes, failure index, manual-review receipt | M-03, M-09, M-10 | Local synthesis over all source methods |
+| revision closure and model-transition classification with authority ceiling | M-08, M-11 | Ding et al. evolution/robustness; Pattern frozen scope and authority separation |
 
 ## 5. Pattern evidence traceability
 
@@ -108,6 +112,7 @@ The following are explicit product choices, not universal standards:
 - five separate applicability, feasibility, evidence, empirical-usefulness, and final-authority axes;
 - a manual-review authority receipt whose signature text is retained but not cryptographically verified;
 - L4 version/cycle monitoring without unverified library orchestration claims.
+- opt-in revision/model-transition comparison with canonical diagnostics and no candidate, run, or release side effects.
 
 ## 7. Source limitations
 

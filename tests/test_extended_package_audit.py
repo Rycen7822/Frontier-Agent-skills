@@ -45,7 +45,7 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
             skill_path = isolated / 'SKILL.md'
             skill_path.write_text(
                 skill_path.read_text(encoding='utf-8').replace(
-                    '- [Contract schemas](schemas/README.md): Draft 2020-12 owners for the 3.0 wire contracts.\n',
+                    '- Supporting owners: [source map](references/source-map.md), [Draft 2020-12 schemas](schemas/README.md), and the conditional [evaluation report](templates/evaluation-report.md).\n',
                     '',
                 ),
                 encoding='utf-8',
@@ -287,7 +287,7 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
         method_rows = [line for line in method_section.splitlines() if line.startswith('| M-')]
         self.assertEqual(
             {line.split('|')[1].strip() for line in method_rows},
-            {f'M-{index:02d}' for index in range(1, 11)},
+            {f'M-{index:02d}' for index in range(1, 12)},
         )
         owner_pattern = re.compile(r'`([^`]+\.md)`\s*→\s*`([^`]+)`')
         for row in method_rows:

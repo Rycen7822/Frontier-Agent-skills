@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://frontier-agent-skills.local/schemas/static-contract-diagnostic.schema.json",
-  "title": "Frontier 6.0 deterministic static contract diagnostic",
+  "title": "Frontier 6.1 deterministic static contract diagnostic",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -27,8 +27,8 @@
   "properties": {
     "schema_version": {"const": "static-contract-diagnostic/1.0"},
     "classification": {"const": "static_contract_diagnostic"},
-    "bundle_id": {"const": "frontier-engineering/6.0.0"},
-    "version": {"const": "6.0.0"},
+    "bundle_id": {"const": "frontier-engineering/6.1.0"},
+    "version": {"const": "6.1.0"},
     "schema_epoch": {"const": 5},
     "skill_versions": {
       "type": "object",
@@ -36,7 +36,7 @@
       "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
         "long-document-segmented-writing": {"const": "1.0.0"},
-        "skill-evaluator": {"const": "3.0.0"},
+        "skill-evaluator": {"const": "3.1.0"},
         "software-quality-workflows": {"const": "9.0.0"},
         "writing-plans": {"const": "8.1.0"}
       }

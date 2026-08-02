@@ -1153,6 +1153,111 @@ def make_v5_schema_examples() -> dict[str, dict]:
         'severity_counts': {},
         'failures': [],
     }
+    comparison_plan = json.loads(
+        (ROOT / 'templates/comparison-plan.revision.example.json').read_text(
+            encoding='utf-8',
+        ),
+    )
+    comparison_observations = {
+        'schema_version': 1,
+        'comparison_observations_hash': _v5_hash('comparison-observations'),
+        'generator': {
+            'name': 'analyze_runs.py',
+            'version': '3.1.0',
+            'source_hash': _v5_hash('analyzer-source'),
+        },
+        'evaluation_id': spec['evaluation_id'],
+        'plan_id': plan['plan_id'],
+        'plan_hash': plan['plan_hash'],
+        'spec_hash': _v5_hash('comparison-spec'),
+        'scenario_corpus_hash': _v5_hash('comparison-scenarios'),
+        'host_manifest_hash': host['manifest_hash'],
+        'subject': {
+            'skill_id': spec['subject']['skill_id'],
+            'version': spec['subject']['version'],
+            'shape': spec['subject']['shape'],
+            'package_hash': spec['subject']['package']['package_hash'],
+        },
+        'metrics': [{
+            'metric_id': 'benefit',
+            'direction': 'higher_is_better',
+            'effect': 'absolute',
+            'scale': {
+                'raw': 'score',
+                'reported': 'score',
+                'normalization': 'identity',
+            },
+            'comparator_treatment_id': 'baseline',
+            'candidate_treatment_id': 'candidate',
+            'status': 'not_evaluable',
+            'reason': 'schema fixture',
+            'repeat_count': 0,
+            'values': [],
+        }],
+    }
+
+    def comparison_input(role: str) -> dict:
+        observations_hash = comparison_observations[
+            'comparison_observations_hash'
+        ]
+        return {
+            'role': role,
+            'evaluation_id': spec['evaluation_id'],
+            'plan_id': plan['plan_id'],
+            'spec_hash': _v5_hash(f'{role}-spec'),
+            'plan_hash': plan['plan_hash'],
+            'host_manifest_hash': host['manifest_hash'],
+            'summary_hash': _v5_hash(f'{role}-summary'),
+            'failure_index_hash': None,
+            'observations_hash': observations_hash,
+            'execution_identity': copy.deepcopy(plan['execution_identity']),
+            'file_hashes': {
+                'spec': _v5_hash(f'{role}-spec-file'),
+                'execution_plan': _v5_hash(f'{role}-plan-file'),
+                'host_manifest': _v5_hash(f'{role}-host-file'),
+                'summary': _v5_hash(f'{role}-summary-file'),
+                'failure_index': None,
+                'observations': _v5_hash(f'{role}-observations-file'),
+            },
+        }
+
+    comparison_index = {
+        'schema_version': 1,
+        'comparison_diagnostic_index_hash': _v5_hash('comparison-index'),
+        'comparison_id': comparison_plan['comparison_id'],
+        'comparison_plan_hash': comparison_plan['comparison_plan_hash'],
+        'item_count': 0,
+        'diagnostics': [],
+    }
+    comparison_report = {
+        'schema_version': 1,
+        'comparison_report_hash': _v5_hash('comparison-report'),
+        'comparison_id': comparison_plan['comparison_id'],
+        'comparison_plan_hash': comparison_plan['comparison_plan_hash'],
+        'kind': 'revision',
+        'claim_scope': 'diagnostic_only',
+        'generator': {
+            'name': 'compare_cycles.py',
+            'version': '3.1.0',
+            'source_hash': _v5_hash('comparator-source'),
+        },
+        'registration_status': 'exploratory',
+        'inputs': [comparison_input('prior'), comparison_input('candidate')],
+        'comparability_checks': [],
+        'metrics': [],
+        'result': {
+            'kind': 'revision',
+            'status': 'not_evaluable',
+            'target_failure_class': 'quality_regression',
+            'closed_diagnostic_ids': [],
+            'remaining_diagnostic_ids': [],
+        },
+        'authority_eligibility': 'blocked',
+        'claim_ceiling': 'diagnostic_only',
+        'diagnostic_index_hash': comparison_index[
+            'comparison_diagnostic_index_hash'
+        ],
+    }
     return {
         'eval-spec-v5.schema.json': spec,
         'scenario-v1.schema.json': scenario,
@@ -1164,6 +1269,10 @@ def make_v5_schema_examples() -> dict[str, dict]:
         'suite-quality-v1.schema.json': quality,
         'analysis-summary-v4.schema.json': _v5_summary(plan, spec),
         'failure-index-v1.schema.json': failure_index,
+        'comparison-plan-v1.schema.json': comparison_plan,
+        'comparison-observations-v1.schema.json': comparison_observations,
+        'comparison-report-v1.schema.json': comparison_report,
+        'comparison-diagnostic-index-v1.schema.json': comparison_index,
     }
 
 
