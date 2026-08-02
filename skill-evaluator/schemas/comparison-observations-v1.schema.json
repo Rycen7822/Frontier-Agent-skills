@@ -48,7 +48,7 @@
       "required": ["name", "version", "source_hash"],
       "properties": {
         "name": {"const": "analyze_runs.py"},
-        "version": {"const": "3.1.0"},
+        "version": {"const": "3.2.0"},
         "source_hash": {"$ref": "#/$defs/sha256"}
       },
       "additionalProperties": false

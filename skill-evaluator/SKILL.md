@@ -2,7 +2,7 @@
 name: skill-evaluator
 description: "Evaluate, benchmark, compare, regression-test, or security-audit an Agent Skill package. Use when deciding whether a skill triggers correctly, improves task outcomes over a no-skill or prior-version baseline, follows its intended process, remains efficient and safe, generalizes beyond development examples, or is ready to install, publish, or deploy."
 metadata:
-  version: 3.1.0
+  version: 3.2.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -17,7 +17,7 @@ metadata:
 
 Evaluate the complete Skill package and its runtime contribution. For a frontier model, reward only specialized, task-relevant help beyond the model's native competence; treat redundant instructions and loaded references as context cost.
 
-Use the lightest decision-supporting level. Audit or smoke evidence never supports comparative, release, or deployment claims. Resolve paths from this file's directory as `SKILL_EVALUATOR_DIR`.
+Use the lightest decision-supporting level. Resolve paths from this file's directory as `SKILL_EVALUATOR_DIR`.
 
 This skill is explicit-only. Invoke it for a requested package-quality, comparison, security, release, or longitudinal decision, never ordinary development.
 
@@ -36,7 +36,7 @@ Load only the owner of the active question. Do not preload every reference.
 
 ## Evidence read surface
 
-Keep scored evidence immutable. Read the analyzer summary first, then its failure index, then spec-bounded representative receipts. Open receipt-owned raw artifacts only for named failures, grader disagreements, or integrity audits, by exact locator and hash. Never tree-walk or create per-step notes, notice JSON, or model-authored receipt copies. A failing run is an outcome failure, not an efficiency gain.
+Keep scored evidence immutable. Read the analyzer summary first, then its failure index, then spec-bounded representative receipts. Open raw artifacts only for named failures, grader disagreements, or integrity audits, by exact locator and hash. Never tree-walk or create per-step notes, notice JSON, or receipt copies. A failing run is an outcome failure, not an efficiency gain.
 
 ## Claim ceilings
 
@@ -92,6 +92,7 @@ Compile only an `execution.ready=true` spec; compilation starts no process. Insp
 
 ```bash
 python3 "$SKILL_EVALUATOR_DIR/scripts/compile_eval_plan.py" eval-spec.ready.json scenarios.jsonl host-manifest.json --output execution-plan.json
+python3 "$SKILL_EVALUATOR_DIR/scripts/run_eval_plan.py" execution-plan.json --index artifacts/index.jsonl --status
 python3 "$SKILL_EVALUATOR_DIR/scripts/run_eval_plan.py" execution-plan.json --index artifacts/index.jsonl --new-attempt-budget 2
 ```
 

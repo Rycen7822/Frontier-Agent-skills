@@ -1,6 +1,6 @@
 {
   "bundle_schema_version": "3.0",
-  "bundle_version": "6.1.0",
+  "bundle_version": "6.2.0",
   "skills": [
     {
       "id": "long-document-segmented-writing",
@@ -10,7 +10,7 @@
     {
       "id": "skill-evaluator",
       "path": "skill-evaluator",
-      "version": "3.1.0"
+      "version": "3.2.0"
     },
     {
       "id": "software-quality-workflows",

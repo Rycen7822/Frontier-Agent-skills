@@ -1,5 +1,13 @@
 # Release Notes
 
+## Bundle 6.2.0 Skill Evaluator 3.2 hardening
+
+Bundle 6.2.0 advances Skill Evaluator from 3.1.0 to 3.2.0 while retaining schema epoch 5 and the existing four-skill activation matrix. The evaluator now has one per-check grader semantic owner, calibration v2 preparation, POSIX child-inherited attempt custody, deterministic read-only status, explicit per-invocation attempt budgets, and one public zero-provider lifecycle fixture spanning interruption, recovery, sealing, indexing, and analysis.
+
+Three interfaces are intentionally incompatible. Calibration v1 is rejected and has no reader or converter. Every run or resume supplies `--new-attempt-budget`; status remains a separate read-only call. Plugin release evidence is now `release-authorization/1`, replacing `release-evidence/4.0` without a compatibility command or artifact converter.
+
+Local source-complete validation is model-free. Release authorization binds identity and human release-owner approval but does not establish scored usefulness, installation, publication, deployment, credentials, or remote-write authority.
+
 ## Bundle 6.0.0 Skill Evaluator 3.0 and Writing Plans 8.1
 
 Bundle 6.0.0 advances Skill Evaluator from 2.0.0 to 3.0.0 and Writing Plans from 8.0.0 to 8.1.0; Long Document remains 1.0.0 and Software Quality Workflows remains 9.0.0. Compatible schema epoch advances to 5. The four-owner set, Direct-first boundary, mixed activation matrix, `implicit_local_pilot` ceiling, and `remote_writes=false` remain unchanged.

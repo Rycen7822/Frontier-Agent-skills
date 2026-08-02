@@ -1,10 +1,10 @@
 {
   "brainstorming_runtime_copies": [],
-  "bundle_id": "frontier-engineering/6.1.0",
+  "bundle_id": "frontier-engineering/6.2.0",
   "classification": "static_contract_diagnostic",
   "entry_bytes": {
     "long-document-segmented-writing": 10365,
-    "skill-evaluator": 9984,
+    "skill-evaluator": 9988,
     "software-quality-workflows": 3065,
     "writing-plans": 4091
   },
@@ -64,14 +64,14 @@
     "writing-plans/SKILL.md",
     "writing-plans/agents/openai.yaml"
   ],
-  "package_bytes": 1387066,
-  "package_file_count": 114,
+  "package_bytes": 1446350,
+  "package_file_count": 117,
   "profile_command_hashes": {
-    "extended": "sha256:1f9b89af2cb7e437e9d21db436408081551d99e50f1cc92e1a4b12840038826c",
+    "extended": "sha256:8563a69448b10749137dfff7dd2b0ac74e58fc8bc35b945a230310d81002544f",
     "quick": "sha256:c895e68a59c34c1e2c98cfbedb132c79340a6856f08b76a1c7fc6f32dcb96236",
     "release": "sha256:796f0f9d60160f8c23a7c6e15a0fe95cf7e2676845a509f7803691363a746f77"
   },
-  "report_hash": "sha256:598b47da74c3dfb5c510de0ec0ecce359094c3a963dd8fc5403676e38a602156",
+  "report_hash": "sha256:517d5d176f496daa3d3d9649b91ce53a46a941d8dc47dec7a204ce3c68c79069",
   "schema_epoch": 5,
   "schema_version": "static-contract-diagnostic/1.0",
   "skill_activation": {
@@ -82,9 +82,9 @@
   },
   "skill_versions": {
     "long-document-segmented-writing": "1.0.0",
-    "skill-evaluator": "3.1.0",
+    "skill-evaluator": "3.2.0",
     "software-quality-workflows": "9.0.0",
     "writing-plans": "8.1.0"
   },
-  "version": "6.1.0"
+  "version": "6.2.0"
 }
