@@ -33,9 +33,16 @@ from _bundle_hash import bundle_inventory, inventory, tree_hash  # noqa: E402
 FORBIDDEN_PLUGIN_KEYS = {"mcpServers", "apps", "hooks"}
 FORBIDDEN_PLUGIN_NAMES = {".mcp.json", ".app.json", "hooks.json"}
 TEXT_SUFFIXES = {".md", ".json", ".yaml", ".yml", ".py", ".template"}
+LOCAL_PATH_PATTERNS = tuple(re.compile(pattern) for pattern in (
+    r"/home/[A-Za-z0-9._-]+",
+    r"/mnt/data(?:/|$)",
+    r"/mnt/[A-Za-z]/Users/[^/\s]+",
+    r"[A-Za-z]:[\\/]+Users[\\/]+[^\\/\s]+",
+))
+PLACEHOLDER_PATTERN = re.compile(re.escape(chr(91)) + "TODO:")
 EXPECTED_SKILLS = {
     "long-document-segmented-writing": "1.0.0",
-    "skill-evaluator": "3.1.0",
+    "skill-evaluator": "3.2.0",
     "software-quality-workflows": "9.0.0",
     "writing-plans": "8.1.0",
 }
@@ -64,6 +71,12 @@ CANONICAL_MARKETPLACE = {
         "category": "Developer Tools",
     }],
 }
+
+
+def _contains_forbidden_reader_marker(text: str) -> bool:
+    return PLACEHOLDER_PATTERN.search(text) is not None or any(
+        pattern.search(text) for pattern in LOCAL_PATH_PATTERNS
+    )
 
 
 def _regular_bytes(path: Path, maximum: int = 4 * 1024 * 1024) -> bytes:
@@ -206,7 +219,7 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     skills = manifest.get("skills")
     if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != set(EXPECTED_SKILLS):
         raise ValueError("manifest must declare exactly the four canonical skills")
-    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "6.1.0"):
+    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "6.2.0"):
         raise ValueError("manifest bundle schema/version is invalid")
     if {item.get("id"): item.get("version") for item in skills} != EXPECTED_SKILLS:
         raise ValueError("version mismatch: manifest skill versions do not match the four-skill release identity")
@@ -240,9 +253,11 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
         if path.suffix not in TEXT_SUFFIXES:
             continue
         text = path.read_text(encoding="utf-8")
-        for marker in ("/" + "home" + "/", "/" + "mnt" + "/" + "data" + "/", "[TODO:"):
-            if marker in text:
-                raise ValueError(f"reader-facing source contains forbidden local/placeholder marker: {record['path']}")
+        if _contains_forbidden_reader_marker(text):
+            raise ValueError(
+                "reader-facing source contains forbidden local/placeholder "
+                f"marker: {record['path']}",
+            )
     return records
 
 
@@ -388,7 +403,7 @@ def _validate_staging(staging: Path, plugin_name: str) -> list[dict[str, Any]]:
         path = staging / record["path"]
         if path.suffix in TEXT_SUFFIXES:
             text = path.read_text(encoding="utf-8")
-            if "/" + "home" + "/" in text or "/" + "mnt" + "/" + "data" + "/" in text:
+            if _contains_forbidden_reader_marker(text):
                 raise ValueError(f"staging contains a developer absolute path: {record['path']}")
     return records
 

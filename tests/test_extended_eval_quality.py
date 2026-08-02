@@ -527,7 +527,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                             row['risk'] = 'low'
                 elif mutation == 'workspace-path':
                     target['payload']['view']['candidate_evidence'] = (
-                        '/home/example/private-worktree/result.json'
+                        '/private/result.json'
                     )
                     target['payload_hash'] = canonical_hash(target['payload'])
                     target_rating['payload_hash'] = target['payload_hash']
@@ -825,7 +825,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                     payload['view']['candidate_evidence'] = 'tampered'
                 elif forbidden_key == 'workspace-absolute-path':
                     payload['view']['candidate_evidence'] = (
-                        '/home/example/private-worktree/result.json'
+                        '/private/result.json'
                     )
                     packet['examples'][0]['payload_hash'] = canonical_hash(payload)
                 else:

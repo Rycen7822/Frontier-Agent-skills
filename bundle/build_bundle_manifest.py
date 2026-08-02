@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build or verify the exact four-skill Frontier 6.1 bundle manifest."""
+"""Build or verify the exact four-skill Frontier 6.2 bundle manifest."""
 
 from __future__ import annotations
 
@@ -22,14 +22,14 @@ if str(SCRIPTS) not in sys.path:
 from _bundle_hash import FORBIDDEN_PARTS, FORBIDDEN_SUFFIXES, inventory, tree_hash  # noqa: E402
 
 
-BUNDLE_ID = "frontier-engineering/6.1.0"
+BUNDLE_ID = "frontier-engineering/6.2.0"
 SCHEMA_EPOCH = 5
 OUTPUT = ROOT / "frontier-engineering.bundle.json"
 SCHEMA = ROOT / "bundle" / "frontier-engineering-bundle.schema.json"
 SOURCE_MANIFEST = ROOT / "bundle-manifest.json"
 EXPECTED_SKILLS = {
     "long-document-segmented-writing": "1.0.0",
-    "skill-evaluator": "3.1.0",
+    "skill-evaluator": "3.2.0",
     "software-quality-workflows": "9.0.0",
     "writing-plans": "8.1.0",
 }
@@ -132,7 +132,7 @@ def _skill_record(skill_id: str, version: str) -> dict[str, Any]:
         raise ValueError(f"skill frontmatter version differs from source manifest: {skill_id}")
     activation = _activation(skill_root)
     if activation is not EXPECTED_ACTIVATION[skill_id]:
-        raise ValueError(f"skill activation differs from the fixed 6.1 matrix: {skill_id}")
+        raise ValueError(f"skill activation differs from the fixed 6.2 matrix: {skill_id}")
     records = inventory(skill_root, _skill_paths(skill_root))
     if not records:
         raise ValueError(f"canonical skill root is empty: {skill_id}")
@@ -147,8 +147,8 @@ def build_manifest() -> dict[str, Any]:
     source = _load_json(SOURCE_MANIFEST)
     if set(source) != SOURCE_FIELDS:
         raise ValueError(f"source bundle fields differ from schema 3.0: {sorted(source)}")
-    if source.get("bundle_schema_version") != "3.0" or source.get("bundle_version") != "6.1.0":
-        raise ValueError("source bundle must bind schema 3.0 and release 6.1.0")
+    if source.get("bundle_schema_version") != "3.0" or source.get("bundle_version") != "6.2.0":
+        raise ValueError("source bundle must bind schema 3.0 and release 6.2.0")
     if source.get("activation_ceiling") != "implicit_local_pilot" or source.get("remote_writes") is not False:
         raise ValueError("source bundle activation ceiling or remote-write boundary is invalid")
     profiles = source.get("test_profiles")

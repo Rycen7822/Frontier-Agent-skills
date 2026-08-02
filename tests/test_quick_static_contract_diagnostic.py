@@ -33,10 +33,10 @@ class QuickStaticContractDiagnosticTests(unittest.TestCase):
         expected_paths = [path.relative_to(ROOT).as_posix() for path in checker.model_facing_paths(ROOT)]
         self.assertEqual(expected_paths, first["model_facing_files_checked"])
         self.assertEqual("static_contract_diagnostic", first["classification"])
-        self.assertEqual("frontier-engineering/6.1.0", first["bundle_id"])
-        self.assertEqual("6.1.0", first["version"])
+        self.assertEqual("frontier-engineering/6.2.0", first["bundle_id"])
+        self.assertEqual("6.2.0", first["version"])
         self.assertEqual(5, first["schema_epoch"])
-        self.assertEqual("3.1.0", first["skill_versions"]["skill-evaluator"])
+        self.assertEqual("3.2.0", first["skill_versions"]["skill-evaluator"])
         self.assertEqual(checker.LIMITATIONS, first["limitations"])
         profile_hashes = list(first["profile_command_hashes"].values())
         self.assertEqual(3, len(profile_hashes))

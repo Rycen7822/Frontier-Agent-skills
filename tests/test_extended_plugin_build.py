@@ -66,6 +66,25 @@ class ExtendedPluginBuildTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "canonical Git revision"):
                 self.builder._source_revision(Path(directory))
 
+    def test_reader_marker_scan_rejects_real_local_paths_not_policy_literals(
+        self,
+    ) -> None:
+        cases = {
+            "/" + "home" + "/alice/project": True,
+            "/" + "mnt" + "/data/project": True,
+            "/" + "mnt" + "/d/Users/alice/project": True,
+            "C:" + "\\Users\\alice\\project": True,
+            chr(91) + "TODO: unresolved]": True,
+            "/home/": False,
+            "/private/result.json": False,
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertIs(
+                    self.builder._contains_forbidden_reader_marker(text),
+                    expected,
+                )
+
     def test_staging_is_atomic_schema_valid_and_activation_aware(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

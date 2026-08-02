@@ -21,7 +21,12 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from _bundle_hash import FORBIDDEN_PARTS, FORBIDDEN_SUFFIXES, inventory, tree_hash  # noqa: E402
-from build_codex_plugin import _strict_json, skill_version, validate_source  # noqa: E402
+from build_codex_plugin import (  # noqa: E402
+    _contains_forbidden_reader_marker,
+    _strict_json,
+    skill_version,
+    validate_source,
+)
 
 
 Layout = Literal["bundle", "skills_only"]
@@ -130,13 +135,12 @@ def _collect_source_files(source_root: Path, manifest: dict[str, Any], layout: L
 
 
 def _validate_reader_paths(source_root: Path, records: list[dict[str, Any]]) -> None:
-    forbidden_fragments = ("/" + "home" + "/", "/" + "mnt" + "/" + "data" + "/")
     for record in records:
         path = source_root / record["path"]
         if path.suffix not in TEXT_SUFFIXES:
             continue
         text = path.read_text(encoding="utf-8")
-        if any(fragment in text for fragment in forbidden_fragments):
+        if _contains_forbidden_reader_marker(text):
             raise ValueError(f"developer absolute path in archive source: {record['path']}")
 
 

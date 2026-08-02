@@ -150,9 +150,11 @@ Preserve original attempts. Retry only predeclared apparatus failures; never ret
 
 Attempt numbers, run IDs, start markers, directories, receipts, and index rows follow the plan's deterministic projection. Treatment failures are never retried. A retryable apparatus failure keeps its receipt/index evidence before the next bounded attempt.
 
-Each attempt holds a transient POSIX custody lock from directory creation through receipt/index commit. Every direct host, deterministic-grader, and model-grader child inherits that lock, so parent loss cannot make a live child appear recoverable. `--status` validates frozen inputs and current evidence, reports bounded canonical `runner-status/1` JSON, and never creates a file or lock.
+Each attempt holds a transient POSIX custody lock from directory creation through receipt/index commit. Every direct host, deterministic-grader, and model-grader child inherits that lock, so parent loss cannot make a live child appear recoverable. Platforms without the required POSIX `flock`, descriptor inheritance, and no-follow file semantics fail closed; there is no advisory fallback. `--status` validates frozen inputs and current evidence, reports bounded canonical `runner-status/1` JSON, and never creates a file or lock.
 
 Every run/resume supplies `--new-attempt-budget N`. Preflight rejects missing, negative, excessive, or next-pass-insufficient authorization before writes; only creating a new attempt directory consumes one. `--resume --new-attempt-budget 0` may validate, repair an index, or seal a marker, but cannot retry. Resume verifies the continuous index and bound receipts, skips complete evidence, seals a valid marker without inventing an outcome, and rejects active, unowned, partial, mismatched, or tampered state.
+
+This runner is not a durable supervisor. A long job belongs to an external service or process manager that preserves the exact plan and invokes the public status/resume surface; TUI lifetime is not execution identity. The invocation budget is plan-local. A release owner separately records cross-plan and cross-candidate authority and cannot reset cumulative authorization by compiling a new plan.
 
 ## Manual-review receipt
 
