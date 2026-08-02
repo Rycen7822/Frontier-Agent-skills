@@ -9,7 +9,7 @@ contracts. The runtime wire remains unchanged:
 - [Host manifest and protocol v1](host-manifest-v1.schema.json)
 - [Run-index row v2](run-index-row-v2.schema.json)
 - [Receipt v4](receipt-v4.schema.json)
-- [Grader calibration v1](grader-calibration-v1.schema.json)
+- [Grader calibration v2](grader-calibration-v2.schema.json)
 - [Suite quality v1](suite-quality-v1.schema.json)
 - [Analysis summary v4](analysis-summary-v4.schema.json)
 - [Failure index v1](failure-index-v1.schema.json)

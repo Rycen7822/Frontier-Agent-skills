@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from evidence_io import canonical_sha256
+from grader_semantics import semantic_payload, semantic_payload_hash
 
 
 COMPACT_PACKET_SCHEMA = (
@@ -138,14 +139,16 @@ def expand_prompt_packet(
                 )
             seen_checks.add(check_index)
         opaque_ids.add(opaque_id)
-        payload = {
-            "view": views[view_index],
-            "check": checks[check_index],
-        }
+        check = checks[check_index]
+        payload = semantic_payload(
+            views[view_index],
+            check["check_id"],
+            check["pass_condition"],
+        )
         packet_examples.append({
             "opaque_example_id": opaque_id,
             "payload": payload,
-            "payload_hash": canonical_sha256(payload),
+            "payload_hash": semantic_payload_hash(payload),
         })
     if len(seen_views) != len(views) or len(seen_checks) != len(checks):
         raise PromptContractError(

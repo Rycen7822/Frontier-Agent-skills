@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/skill-evaluator/schemas/grader-calibration-v1.schema.json",
-  "title": "Skill Evaluator grader calibration v1",
+  "$id": "https://example.invalid/skill-evaluator/schemas/grader-calibration-v2.schema.json",
+  "title": "Skill Evaluator grader calibration v2",
   "type": "object",
   "required": [
     "schema_version",
@@ -21,6 +21,7 @@
     "ordering",
     "adjudication_policy",
     "metrics",
+    "check_metrics",
     "scope",
     "thresholds",
     "created",
@@ -29,7 +30,7 @@
     "reviewers"
   ],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "calibration_id": {"$ref": "#/$defs/safe_id"},
     "calibration_hash": {"$ref": "#/$defs/sha256"},
     "evaluation_id": {"$ref": "#/$defs/safe_id"},
@@ -65,6 +66,11 @@
     "ordering": {"$ref": "#/$defs/ordering"},
     "adjudication_policy": {"type": "string", "minLength": 1},
     "metrics": {"$ref": "#/$defs/metrics"},
+    "check_metrics": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/check_metric"}
+    },
     "scope": {"$ref": "#/$defs/scope"},
     "thresholds": {
       "type": "object",
@@ -155,10 +161,13 @@
     },
     "example": {
       "type": "object",
-      "required": ["example_id", "class", "payload_hash", "source_support", "gold_label"],
+      "required": ["example_id", "class", "dimension", "check_id", "payload", "payload_hash", "source_support", "gold_label"],
       "properties": {
         "example_id": {"$ref": "#/$defs/safe_id"},
         "class": {"enum": ["known_good", "known_bad", "boundary", "abstain"]},
+        "dimension": {"$ref": "#/$defs/safe_id"},
+        "check_id": {"$ref": "#/$defs/safe_id"},
+        "payload": {"$ref": "#/$defs/semantic_payload"},
         "payload_hash": {"$ref": "#/$defs/sha256"},
         "source_support": {
           "enum": [
@@ -214,6 +223,45 @@
         "judge_to_gold": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/metric_cell"}},
         "reviewer_to_reviewer": {"anyOf": [{"type": "array", "items": {"$ref": "#/$defs/metric_cell"}}, {"type": "null"}]},
         "judge_to_reviewer": {"type": "array", "items": {"$ref": "#/$defs/metric_cell"}}
+      },
+      "additionalProperties": false
+    },
+    "semantic_payload": {
+      "type": "object",
+      "required": ["view", "check"],
+      "properties": {
+        "view": {"type": "object"},
+        "check": {
+          "type": "object",
+          "required": ["check_id", "pass_condition"],
+          "properties": {
+            "check_id": {"$ref": "#/$defs/safe_id"},
+            "pass_condition": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "check_metric": {
+      "type": "object",
+      "required": [
+        "check_id", "dimension", "judge_sample_count",
+        "judge_to_gold_agreement", "reviewer_pair_sample_count",
+        "reviewer_to_reviewer_agreement", "judge_to_reviewer_agreement"
+      ],
+      "properties": {
+        "check_id": {"$ref": "#/$defs/safe_id"},
+        "dimension": {"$ref": "#/$defs/safe_id"},
+        "judge_sample_count": {"type": "integer", "minimum": 1},
+        "judge_to_gold_agreement": {"type": "number", "minimum": 0, "maximum": 1},
+        "reviewer_pair_sample_count": {"type": "integer", "minimum": 0},
+        "reviewer_to_reviewer_agreement": {
+          "type": ["number", "null"], "minimum": 0, "maximum": 1
+        },
+        "judge_to_reviewer_agreement": {
+          "type": ["number", "null"], "minimum": 0, "maximum": 1
+        }
       },
       "additionalProperties": false
     },

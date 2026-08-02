@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from evidence_io import canonical_sha256, verify_self_hash
+from grader_semantics import semantic_payload_hash
 from reviewer_prompt_contract import (
     PromptContractError,
     validate_reviewer_prompt,
@@ -89,6 +90,22 @@ def _contains_forbidden_packet_key(value: Any) -> bool:
         )
     if isinstance(value, list):
         return any(_contains_forbidden_packet_key(item) for item in value)
+    if isinstance(value, str):
+        return (
+            any(
+                prefix in value
+                for prefix in (
+                    "/home/", "/mnt/", "/tmp/", "/workspace/",
+                    "/workspaces/", "/private/", "/Users/", "/opt/",
+                )
+            )
+            or (
+                len(value) >= 3
+                and value[0].isalpha()
+                and value[1] == ":"
+                and value[2] in {"/", "\\"}
+            )
+        )
     return False
 
 
@@ -303,6 +320,13 @@ def _validate_packet(
             code="calibration.reviewer_packet",
             label="packet check",
         )
+        try:
+            observed_payload_hash = semantic_payload_hash(payload)
+        except ValueError:
+            _fail(
+                "calibration.reviewer_packet",
+                "packet semantic payload is invalid",
+            )
         if (
             not _safe_id(opaque_id)
             or opaque_id in seen
@@ -314,7 +338,7 @@ def _validate_packet(
             or expected_checks.get(check["check_id"])
             != check["pass_condition"]
             or _contains_forbidden_packet_key(payload)
-            or example["payload_hash"] != canonical_sha256(payload)
+            or example["payload_hash"] != observed_payload_hash
         ):
             _fail("calibration.reviewer_packet", "packet examples are invalid or duplicated")
         seen.add(opaque_id)
@@ -328,7 +352,7 @@ def _validate_mapping(
     packet_binding: dict[str, str],
     schema_binding: dict[str, str],
     packet_examples: list[dict[str, Any]],
-    labels: dict[str, dict[str, Any]],
+    labels: dict[tuple[str, str], dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
     fields = {
         "schema_version", "campaign_id", "packet_hash", "output_schema_hash",
@@ -349,7 +373,7 @@ def _validate_mapping(
     expected_opaque = [item["opaque_example_id"] for item in packet_examples]
     observed_opaque: list[str] = []
     by_opaque: dict[str, dict[str, Any]] = {}
-    real_ids: set[str] = set()
+    real_keys: set[tuple[str, str]] = set()
     for item in mapping["examples"]:
         _closed_object(
             item,
@@ -362,12 +386,13 @@ def _validate_mapping(
         )
         opaque_id = item["opaque_example_id"]
         real_id = item["example_id"]
-        label = labels.get(real_id)
+        real_key = (real_id, item["check_id"])
+        label = labels.get(real_key)
         if (
             not _safe_id(opaque_id)
             or not _safe_id(real_id)
             or opaque_id in by_opaque
-            or real_id in real_ids
+            or real_key in real_keys
             or label is None
             or item["check_id"] != label["check_id"]
             or item["dimension"] != label["dimension"]
@@ -375,9 +400,9 @@ def _validate_mapping(
         ):
             _fail("calibration.reviewer_mapping", "sealed mapping does not join labels exactly")
         observed_opaque.append(opaque_id)
-        real_ids.add(real_id)
+        real_keys.add(real_key)
         by_opaque[opaque_id] = item
-    if observed_opaque != expected_opaque or set(real_ids) != set(labels):
+    if observed_opaque != expected_opaque or real_keys != set(labels):
         _fail("calibration.reviewer_mapping", "sealed mapping coverage or ordering differs")
     for packet_example in packet_examples:
         mapped = by_opaque[packet_example["opaque_example_id"]]
@@ -735,7 +760,9 @@ def validate_reviewer_pair(
         campaign_id=pair["campaign_id"],
         expected_checks=expected_checks,
     )
-    labels = {row["example_id"]: row for row in label_rows}
+    labels = {
+        (row["example_id"], row["check_id"]): row for row in label_rows
+    }
     mapping_by_opaque = _validate_mapping(
         mapping,
         campaign_id=pair["campaign_id"],
@@ -830,6 +857,7 @@ def validate_reviewer_pair(
                 mapped is None
                 or row["check_id"] != mapped["check_id"]
                 or row["dimension"] != mapped["dimension"]
+                or row["payload_hash"] != mapped["payload_hash"]
             ):
                 _fail("calibration.reviewer_mapping", "reviewer row does not join sealed mapping")
             mapped_rows.append({**row, "example_id": mapped["example_id"]})

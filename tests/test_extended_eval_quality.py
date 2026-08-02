@@ -238,7 +238,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(
             [],
             validator.validate_v5_schema(
-                artifact, 'grader-calibration-v1.schema.json', registry,
+                artifact, 'grader-calibration-v2.schema.json', registry,
             ),
         )
         self.assertTrue(
@@ -252,6 +252,21 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
         self.assertIsNone(artifact['reviewer_pair'])
         self.assertIsNone(artifact['metrics']['reviewer_to_reviewer'])
         self.assertEqual([], artifact['metrics']['judge_to_reviewer'])
+        self.assertEqual(
+            {'outcome-check', 'safety-check'},
+            {item['check_id'] for item in artifact['check_metrics']},
+        )
+        for metric in artifact['check_metrics']:
+            self.assertEqual(8, metric['judge_sample_count'])
+            self.assertEqual(1.0, metric['judge_to_gold_agreement'])
+            self.assertEqual(0, metric['reviewer_pair_sample_count'])
+            self.assertIsNone(metric['reviewer_to_reviewer_agreement'])
+            self.assertIsNone(metric['judge_to_reviewer_agreement'])
+        for example in artifact['examples']:
+            self.assertEqual(
+                canonical_hash(example['payload']),
+                example['payload_hash'],
+            )
 
     def test_public_calibration_input_templates_produce_normalized_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -307,6 +322,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 'schedule_hash': canonical_hash([
                     {
                         'example_id': row['example_id'],
+                        'check_id': row['check_id'],
                         'position': index,
                     }
                     for index, row in enumerate(ratings, start=1)
@@ -401,12 +417,13 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             for row in labels + ratings:
                 if row['check_id'] == 'safety-check':
                     row['dimension'] = 'outcome'
-            flipped = next(
+            flipped = [
                 row for row in ratings
                 if row['check_id'] == 'outcome-check'
                 and row['label'] in {'pass', 'fail'}
-            )
-            flipped['label'] = 'fail' if flipped['label'] == 'pass' else 'pass'
+            ][:2]
+            for row in flipped:
+                row['label'] = 'fail' if row['label'] == 'pass' else 'pass'
             paths['labels'].write_text(
                 ''.join(
                     json.dumps(row, separators=(',', ':')) + '\n'
@@ -431,6 +448,158 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('calibration.threshold_failed', result.stderr)
         self.assertIn('outcome-check', result.stderr)
+
+    def test_calibration_v2_semantic_and_per_check_mutations_fail_closed(
+        self,
+    ) -> None:
+        cases = {
+            'gold-pass-condition': 'calibration.payload_binding',
+            'view-with-stale-hash': 'calibration.labels_shape',
+            'gold-hash': 'calibration.labels_shape',
+            'rating-hash-missing': 'calibration.ratings_shape',
+            'rating-hash-mismatch': 'calibration.example_join',
+            'duplicate-pair': 'calibration.duplicate_id',
+            'sample-count': 'calibration.threshold_failed',
+            'class-coverage': 'calibration.class_coverage',
+            'risk-coverage': 'calibration.risk_coverage',
+            'workspace-path': 'calibration.payload_binding',
+            'legacy-v1': 'calibration.labels_shape',
+        }
+        for mutation, expected in cases.items():
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
+                paths = materialize_v5_calibration_inputs(Path(tmp))
+                labels = [
+                    json.loads(line)
+                    for line in paths['labels'].read_text(
+                        encoding='utf-8',
+                    ).splitlines()
+                ]
+                ratings = [
+                    json.loads(line)
+                    for line in paths['ratings'].read_text(
+                        encoding='utf-8',
+                    ).splitlines()
+                ]
+                target = labels[0]
+                target_rating = next(
+                    row for row in ratings
+                    if (
+                        row['example_id'], row['check_id']
+                    ) == (target['example_id'], target['check_id'])
+                )
+                if mutation == 'gold-pass-condition':
+                    target['payload']['check']['pass_condition'] += ' Tampered.'
+                    target['payload_hash'] = canonical_hash(target['payload'])
+                    target_rating['payload_hash'] = target['payload_hash']
+                elif mutation == 'view-with-stale-hash':
+                    target['payload']['view']['candidate_evidence'] = 'changed'
+                elif mutation == 'gold-hash':
+                    target['payload_hash'] = 'sha256:' + '0' * 64
+                elif mutation == 'rating-hash-missing':
+                    target_rating.pop('payload_hash')
+                elif mutation == 'rating-hash-mismatch':
+                    target_rating['payload_hash'] = 'sha256:' + '0' * 64
+                elif mutation == 'duplicate-pair':
+                    labels.append(copy.deepcopy(target))
+                elif mutation == 'sample-count':
+                    removed = next(
+                        row for row in labels
+                        if row['check_id'] == 'outcome-check'
+                        and row['example_id'].endswith('-2')
+                    )
+                    labels.remove(removed)
+                    ratings[:] = [
+                        row for row in ratings
+                        if (
+                            row['example_id'], row['check_id']
+                        ) != (removed['example_id'], removed['check_id'])
+                    ]
+                elif mutation == 'class-coverage':
+                    for row in labels:
+                        if (
+                            row['check_id'] == 'safety-check'
+                            and row['class'] == 'boundary'
+                        ):
+                            row['class'] = 'known_bad'
+                elif mutation == 'risk-coverage':
+                    for row in labels:
+                        if row['check_id'] == 'safety-check':
+                            row['risk'] = 'low'
+                elif mutation == 'workspace-path':
+                    target['payload']['view']['candidate_evidence'] = (
+                        '/home/example/private-worktree/result.json'
+                    )
+                    target['payload_hash'] = canonical_hash(target['payload'])
+                    target_rating['payload_hash'] = target['payload_hash']
+                else:
+                    for row in labels + ratings:
+                        row['schema_version'] = 1
+                for position, row in enumerate(ratings, start=1):
+                    row['position'] = position
+                ordering = {
+                    'method': 'counterbalanced',
+                    'seed': 7,
+                    'schedule_hash': canonical_hash([
+                        {
+                            'example_id': row['example_id'],
+                            'check_id': row['check_id'],
+                            'position': row['position'],
+                        }
+                        for row in ratings
+                    ]),
+                }
+                for row in ratings:
+                    row['ordering'] = ordering
+                paths['labels'].write_text(
+                    ''.join(
+                        json.dumps(row, separators=(',', ':')) + '\n'
+                        for row in labels
+                    ),
+                    encoding='utf-8',
+                )
+                paths['ratings'].write_text(
+                    ''.join(
+                        json.dumps(row, separators=(',', ':')) + '\n'
+                        for row in ratings
+                    ),
+                    encoding='utf-8',
+                )
+                result = self.run_cmd(
+                    'scripts/validate_eval_suite.py', 'calibration',
+                    '--spec', str(paths['spec']),
+                    '--ratings', str(paths['ratings']),
+                    '--labels', str(paths['labels']),
+                    '--output', str(paths['calibration']),
+                )
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn(expected, result.stderr)
+
+    def test_calibration_v1_artifact_is_explicitly_unsupported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = materialize_v5_model_ready_fixture(Path(tmp))
+            calibration = json.loads(
+                paths['calibration'].read_text(encoding='utf-8'),
+            )
+            calibration['schema_version'] = 1
+            self._close_self_hash(calibration, 'calibration_hash')
+            self._write_json(paths['calibration'], calibration)
+            spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+            spec['suite']['calibration']['sha256'] = (
+                'sha256:'
+                + hashlib.sha256(paths['calibration'].read_bytes()).hexdigest()
+            )
+            self._write_json(paths['spec'], spec)
+            rebind_v5_contract_fixture(paths)
+            result = self.run_cmd(
+                'scripts/validate_eval_suite.py', 'contract',
+                str(paths['spec']), str(paths['scenarios']), str(paths['host']),
+                '--json', '-',
+            )
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn(
+            'calibration.unsupported_schema',
+            {error['code'] for error in json.loads(result.stdout)['errors']},
+        )
 
     def test_high_risk_model_calibration_allows_manual_authority_without_pair(
         self,
@@ -510,6 +679,10 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(3, len(artifact['reviewers']))
         self.assertTrue(artifact['metrics']['reviewer_to_reviewer'])
         self.assertTrue(artifact['metrics']['judge_to_reviewer'])
+        for metric in artifact['check_metrics']:
+            self.assertEqual(8, metric['reviewer_pair_sample_count'])
+            self.assertEqual(1.0, metric['reviewer_to_reviewer_agreement'])
+            self.assertEqual(1.0, metric['judge_to_reviewer_agreement'])
         self.assertEqual(
             paths['reviewer_pair'].relative_to(paths['calibration'].parent).as_posix(),
             artifact['reviewer_pair']['path'],
@@ -636,7 +809,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             'source_path',
             'filesystem_locator',
         )
-        for forbidden_key in (None, *forbidden_keys):
+        for forbidden_key in (None, *forbidden_keys, 'workspace-absolute-path'):
             tamper = (
                 'unbound-view'
                 if forbidden_key is None
@@ -650,6 +823,11 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 payload = packet['examples'][0]['payload']
                 if forbidden_key is None:
                     payload['view']['candidate_evidence'] = 'tampered'
+                elif forbidden_key == 'workspace-absolute-path':
+                    payload['view']['candidate_evidence'] = (
+                        '/home/example/private-worktree/result.json'
+                    )
+                    packet['examples'][0]['payload_hash'] = canonical_hash(payload)
                 else:
                     payload['view'][forbidden_key] = 'forbidden'
                     packet['examples'][0]['payload_hash'] = canonical_hash(payload)
@@ -720,30 +898,6 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             packet['examples'][0]['payload_hash'] = payload_hash
             self._close_self_hash(packet, 'packet_hash')
             self._write_json(paths['reviewer_packet'], packet)
-
-            mapping = json.loads(
-                paths['reviewer_mapping'].read_text(encoding='utf-8'),
-            )
-            mapping['examples'][0]['payload_hash'] = payload_hash
-            self._close_self_hash(mapping, 'mapping_hash')
-            self._write_json(paths['reviewer_mapping'], mapping)
-            example_id = mapping['examples'][0]['example_id']
-            labels = [
-                json.loads(line)
-                for line in paths['labels'].read_text(
-                    encoding='utf-8',
-                ).splitlines()
-            ]
-            next(
-                row for row in labels if row['example_id'] == example_id
-            )['payload_hash'] = payload_hash
-            paths['labels'].write_text(
-                ''.join(
-                    json.dumps(row, separators=(',', ':')) + '\n'
-                    for row in labels
-                ),
-                encoding='utf-8',
-            )
             self._rebind_reviewer_graph(paths)
             result = self._run_pair_calibration(paths)
             self.assertEqual(
@@ -792,10 +946,10 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             cell for cell in artifact['metrics']['judge_to_reviewer']
             if cell['dimension'] == 'outcome'
         )
-        self.assertEqual(0.75, reviewer_cell['agreement'])
-        self.assertEqual(0.75, reviewer_cell['severity_error'])
-        self.assertEqual(0.75, judge_cell['agreement'])
-        self.assertEqual(0.375, judge_cell['severity_error'])
+        self.assertEqual(0.875, reviewer_cell['agreement'])
+        self.assertEqual(0.375, reviewer_cell['severity_error'])
+        self.assertEqual(0.875, judge_cell['agreement'])
+        self.assertEqual(0.1875, judge_cell['severity_error'])
         self.assertEqual(0, judge_cell['confusion']['false_positive'])
         self.assertEqual(0, judge_cell['confusion']['false_negative'])
 
@@ -833,7 +987,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 self.assertTrue(
                     validator.validate_v5_schema(
                         legacy,
-                        'grader-calibration-v1.schema.json',
+                        'grader-calibration-v2.schema.json',
                         registry,
                     ),
                 )
@@ -1317,14 +1471,20 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             source_ratings = [
                 row for row in ratings if row['check_id'] == 'outcome-check'
             ]
+            semantics = load_grader_semantics_module()
             for label, rating in zip(source_labels, source_ratings):
                 bound_label = copy.deepcopy(label)
                 bound_label['example_id'] = f"grounding-{label['example_id']}"
                 bound_label['dimension'] = 'grounding'
                 bound_label['check_id'] = 'grounding-check'
-                bound_label['payload_hash'] = canonical_hash({
-                    'example_id': bound_label['example_id'],
-                })
+                bound_label['payload'] = semantics.semantic_payload(
+                    label['payload']['view'],
+                    'grounding-check',
+                    'Claims have fresh attributed support.',
+                )
+                bound_label['payload_hash'] = semantics.semantic_payload_hash(
+                    bound_label['payload'],
+                )
                 labels.append(bound_label)
                 bound_rating = copy.deepcopy(rating)
                 bound_rating['rating_id'] = (
@@ -1333,6 +1493,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 bound_rating['example_id'] = bound_label['example_id']
                 bound_rating['dimension'] = 'grounding'
                 bound_rating['check_id'] = 'grounding-check'
+                bound_rating['payload_hash'] = bound_label['payload_hash']
                 ratings.append(bound_rating)
             for index, row in enumerate(ratings, start=1):
                 row['position'] = index
@@ -1342,6 +1503,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 'schedule_hash': canonical_hash([
                     {
                         'example_id': row['example_id'],
+                        'check_id': row['check_id'],
                         'position': row['position'],
                     }
                     for row in ratings

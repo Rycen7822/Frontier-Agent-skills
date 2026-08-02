@@ -8,6 +8,8 @@ import json
 import re
 from typing import Any, Callable
 
+from grader_semantics import semantic_payload, semantic_payload_hash
+
 
 BLINDED_FIELDS = {
     "case_id", "repeat", "requirements", "captured_output",
@@ -365,28 +367,32 @@ def execution_item(
         }
     ):
         raise ValueError("model grader typed evidence is invalid")
+    grader_view = {
+        "captured_output": blinded["captured_output"],
+        **copy.deepcopy(observations[0]),
+        "host_assessment": assessment,
+        "workspace_evidence": _workspace_evidence(
+            evidence["workspace-evidence"],
+            assessment,
+        ),
+        "final_answer": _redact_workspace_paths(
+            evidence["final-answer"],
+            assessment,
+        ),
+    }
+    checks = []
+    for check_id in requirement_ids:
+        pass_condition = declarations[check_id]["pass_condition"]
+        payload = semantic_payload(grader_view, check_id, pass_condition)
+        checks.append({
+            "id": check_id,
+            "pass_condition": pass_condition,
+            "payload_hash": semantic_payload_hash(payload),
+        })
     return {
         "item_id": entry_id,
-        "checks": [
-            {
-                "id": check_id,
-                "pass_condition": declarations[check_id]["pass_condition"],
-            }
-            for check_id in requirement_ids
-        ],
-        "grader_view": {
-            "captured_output": blinded["captured_output"],
-            **copy.deepcopy(observations[0]),
-            "host_assessment": assessment,
-            "workspace_evidence": _workspace_evidence(
-                evidence["workspace-evidence"],
-                assessment,
-            ),
-            "final_answer": _redact_workspace_paths(
-                evidence["final-answer"],
-                assessment,
-            ),
-        },
+        "checks": checks,
+        "grader_view": grader_view,
     }
 
 
@@ -420,7 +426,7 @@ def execution_batch(
             or not checks
             or any(
                 not isinstance(check, dict)
-                or set(check) != {"id", "pass_condition"}
+                or set(check) != {"id", "pass_condition", "payload_hash"}
                 or not isinstance(check["id"], str)
                 or not check["id"]
                 or not isinstance(check["pass_condition"], str)
@@ -430,7 +436,28 @@ def execution_batch(
             or len({check["id"] for check in checks}) != len(checks)
             for checks in check_lists
         )
-        or any(checks != check_lists[0] for checks in check_lists[1:])
+        or any(
+            check["payload_hash"] != semantic_payload_hash(
+                semantic_payload(
+                    item["grader_view"],
+                    check["id"],
+                    check["pass_condition"],
+                )
+            )
+            for item in items
+            for check in item["checks"]
+        )
+        or any(
+            [
+                (check["id"], check["pass_condition"])
+                for check in checks
+            ]
+            != [
+                (check["id"], check["pass_condition"])
+                for check in check_lists[0]
+            ]
+            for checks in check_lists[1:]
+        )
     ):
         raise ValueError("model grader batch items are invalid")
     return {"batch_id": batch_id, "items": items}

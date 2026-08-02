@@ -100,6 +100,8 @@ Model rubric output appears once as `{grader_id,batch}`. The batch reference bin
 
 ## Grader semantic owner
 
+`grader_semantics.py` owns the exact `{view,check:{check_id,pass_condition}}` payload and canonical hash used by formal requests, calibration v2, and optional reviewer packets. Every formal item binds each check to the hash of that item's blinded view; a batch may share check declarations while retaining distinct item payload hashes. Absolute workspace locators and caller-defined forbidden view fields fail at the originating boundary.
+
 The JSON Schema owns transport shape only. The analyzer also enforces:
 
 - exactly the scenario-selected check IDs, each once;

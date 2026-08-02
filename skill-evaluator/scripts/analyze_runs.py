@@ -1575,7 +1575,7 @@ def _load_v5_bound_evidence(
         spec,
         spec_path,
         field="calibration",
-        schema_name="grader-calibration-v1.schema.json",
+        schema_name="grader-calibration-v2.schema.json",
         hash_field="calibration_hash",
         registry=registry,
     )
