@@ -13,6 +13,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
             'execution-plan-v1.schema.json',
             'host-manifest-v1.schema.json',
             'run-index-row-v2.schema.json',
+            'runner-status-v1.schema.json',
             'receipt-v4.schema.json',
             'grader-calibration-v2.schema.json',
             'suite-quality-v1.schema.json',
