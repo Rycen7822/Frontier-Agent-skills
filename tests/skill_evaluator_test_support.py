@@ -3354,6 +3354,162 @@ def materialize_v5_model_ready_fixture(root: Path) -> dict[str, Path]:
     return paths
 
 
+def materialize_v5_lifecycle_inputs(root: Path) -> dict[str, Path]:
+    """Build one four-entry mixed-grader fixture without ready artifacts."""
+    paths = materialize_v5_calibration_inputs(root)
+    paths.update({
+        'workspace_module': root / 'workspace_module.py',
+        'workspace_tool': root / 'workspace_tool.sh',
+        'generated_quality': root / 'generated-suite-quality-v1.json',
+    })
+    paths['workspace_module'].write_text(
+        'VALUE = "package-native"\n', encoding='utf-8',
+    )
+    paths['workspace_tool'].write_text(
+        '#!/bin/sh\nexit 0\n', encoding='utf-8',
+    )
+    paths['workspace_module'].chmod(0o444)
+    paths['workspace_tool'].chmod(0o555)
+    initial_files = [
+        {
+            'path': path.name,
+            'sha256': 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+        for path in (paths['workspace_module'], paths['workspace_tool'])
+    ]
+
+    scenario = json.loads(paths['scenarios'].read_text(encoding='utf-8'))
+    scenario['fixture']['initial_files'] = copy.deepcopy(initial_files)
+    second = copy.deepcopy(scenario)
+    second['case_id'] = 'case-lifecycle-boundary'
+    second['tags'] = sorted({*second['tags'], 'boundary'})
+    second['execution_context']['task'] = 'Complete the lifecycle boundary task.'
+    second['execution_context']['prompt_variant_group_id'] = (
+        'prompt-group-lifecycle-boundary'
+    )
+    second['turns'][0]['input']['content'] = (
+        'Complete the lifecycle boundary task.'
+    )
+    scenarios = [scenario, second]
+    paths['scenarios'].write_text(
+        ''.join(
+            json.dumps(row, separators=(',', ':')) + '\n'
+            for row in scenarios
+        ),
+        encoding='utf-8',
+    )
+    proof = json.loads(paths['quality_proof'].read_text(encoding='utf-8'))
+    proof['case_classes'].extend([
+        {
+            'case_id': second['case_id'],
+            'class': case_class,
+        }
+        for case_class in ('positive', 'boundary_or_failure')
+    ])
+    proof['golden']['case_ids'].append(second['case_id'])
+    proof['golden']['passed_ids'].append(second['case_id'])
+    proof['provenance_clusters'][0]['case_ids'].append(second['case_id'])
+    proof['duplicate_groups'].append({
+        'group_id': 'shared-lifecycle-fixture',
+        'kind': 'fixture_overlap',
+        'case_ids': [scenario['case_id'], second['case_id']],
+        'status': 'allowed',
+        'review_locator': None,
+    })
+    paths['quality_proof'].write_text(
+        json.dumps(proof, indent=2) + '\n', encoding='utf-8',
+    )
+
+    synthetic_hash = (
+        'sha256:' + hashlib.sha256(paths['synthetic_host'].read_bytes()).hexdigest()
+    )
+    spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+    model_grader = spec['graders'][0]
+    model_grader['checks'] = [
+        check for check in model_grader['checks']
+        if check['check_id'] == 'safety-check'
+    ]
+    deterministic = copy.deepcopy(
+        load_v5_committed_fixtures()['eval-spec-v5.schema.json']['graders'][0],
+    )
+    deterministic['checks'] = [
+        check for check in deterministic['checks']
+        if check['check_id'] == 'outcome-check'
+    ]
+    deterministic['verifier'].update({
+        'argv': [
+            'python3', 'synthetic-host.py', '--mode=lifecycle-conformance',
+            '--checks=outcome-check',
+        ],
+        'path': 'synthetic-host.py',
+        'sha256': synthetic_hash,
+        'env_allowlist': ['SKILL_EVALUATOR_STOP_ENTRY_ID'],
+    })
+    spec['graders'] = [deterministic, model_grader]
+    paths['spec'].write_text(
+        json.dumps(spec, indent=2) + '\n', encoding='utf-8',
+    )
+
+    for row in scenarios:
+        for requirement in row['requirements']:
+            if requirement['check_id'] == 'outcome-check':
+                requirement['owner'] = 'deterministic'
+                requirement['grader_id'] = 'fixture-grader'
+            else:
+                requirement['owner'] = 'model'
+                requirement['grader_id'] = 'model-grader'
+    paths['scenarios'].write_text(
+        ''.join(
+            json.dumps(row, separators=(',', ':')) + '\n'
+            for row in scenarios
+        ),
+        encoding='utf-8',
+    )
+
+    labels = [
+        row
+        for row in (
+            json.loads(line)
+            for line in paths['labels'].read_text(encoding='utf-8').splitlines()
+        )
+        if row['check_id'] == 'safety-check'
+    ]
+    ratings = [
+        row
+        for row in (
+            json.loads(line)
+            for line in paths['ratings'].read_text(encoding='utf-8').splitlines()
+        )
+        if row['check_id'] == 'safety-check'
+    ]
+    for position, row in enumerate(ratings, start=1):
+        row['position'] = position
+    ordering = {
+        'method': 'counterbalanced',
+        'seed': 7,
+        'schedule_hash': canonical_hash([
+            {
+                'example_id': row['example_id'],
+                'check_id': row['check_id'],
+                'position': row['position'],
+            }
+            for row in ratings
+        ]),
+    }
+    for row in ratings:
+        row['ordering'] = ordering
+    for path, rows in ((paths['labels'], labels), (paths['ratings'], ratings)):
+        path.write_text(
+            ''.join(
+                json.dumps(row, separators=(',', ':')) + '\n'
+                for row in rows
+            ),
+            encoding='utf-8',
+        )
+    set_v5_synthetic_host_mode(paths, 'lifecycle-conformance')
+    return paths
+
+
 def materialize_v5_suite_quality_input(root: Path) -> dict[str, Path]:
     paths = materialize_v5_contract_fixture(root)
     paths.update({
