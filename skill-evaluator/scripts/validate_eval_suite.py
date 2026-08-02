@@ -127,6 +127,10 @@ NONREADY_FIXTURE_SENTINEL = {
 V5_SCHEMA_DIR = Path(__file__).resolve().parents[1] / "schemas"
 V5_SCHEMA_NAMES = {
     "analysis-summary-v4.schema.json",
+    "comparison-diagnostic-index-v1.schema.json",
+    "comparison-observations-v1.schema.json",
+    "comparison-plan-v1.schema.json",
+    "comparison-report-v1.schema.json",
     "eval-spec-v5.schema.json",
     "execution-plan-v1.schema.json",
     "failure-index-v1.schema.json",

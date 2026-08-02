@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "comparison_plan_hash": "sha256:4acb80648566b33545eb26d554cd00741398557ae221b3f1ac1a277af85c8658",
+  "comparison_id": "revision-example",
+  "kind": "revision",
+  "claim_scope": "revision_closure",
+  "registration": {
+    "mode": "exploratory",
+    "registered_at": "2026-08-02T00:00:00Z",
+    "authority_id": "product-owner"
+  },
+  "owner_attestation": {
+    "owner_id": "product-owner",
+    "scope": "single_revision_hypothesis",
+    "attested_at": "2026-08-02T00:00:00Z"
+  },
+  "input_bindings": {
+    "prior": {
+      "expected_identity": {
+        "evaluation_id": "revision-prior",
+        "plan_id": "revision-prior-plan",
+        "spec_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "scenario_corpus_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "host_manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "execution_identity": {
+          "repository_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "subject_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "host_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "model_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "harness_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "prompt_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+          "tool_surface_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "policy_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "runtime_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "tokenizer_pricing_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "clock_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "as_of": "2026-08-01T00:00:00Z"
+        }
+      },
+      "spec": {
+        "path": "cycles/prior/spec.json",
+        "schema": "eval-spec-v5",
+        "file_sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "execution_plan": {
+        "path": "cycles/prior/plan.json",
+        "schema": "execution-plan-v1",
+        "file_sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "host_manifest": {
+        "path": "cycles/prior/host.json",
+        "schema": "host-manifest-v1",
+        "file_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      "summary": {
+        "path": "cycles/prior/summary.json",
+        "schema": "analysis-summary-v4"
+      },
+      "failure_index": {
+        "path": "cycles/prior/failures.json",
+        "schema": "failure-index-v1"
+      },
+      "observations": null
+    },
+    "candidate": {
+      "expected_identity": {
+        "evaluation_id": "revision-candidate",
+        "plan_id": "revision-candidate-plan",
+        "spec_hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "scenario_corpus_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "host_manifest_hash": "sha256:1212121212121212121212121212121212121212121212121212121212121212",
+        "execution_identity": {
+          "repository_hash": "sha256:1313131313131313131313131313131313131313131313131313131313131313",
+          "subject_hash": "sha256:1414141414141414141414141414141414141414141414141414141414141414",
+          "host_hash": "sha256:1515151515151515151515151515151515151515151515151515151515151515",
+          "model_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "harness_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "prompt_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+          "tool_surface_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "policy_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "runtime_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "tokenizer_pricing_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "clock_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "as_of": "2026-08-02T00:00:00Z"
+        }
+      },
+      "spec": {
+        "path": "cycles/candidate/spec.json",
+        "schema": "eval-spec-v5",
+        "file_sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "execution_plan": {
+        "path": "cycles/candidate/plan.json",
+        "schema": "execution-plan-v1",
+        "file_sha256": "sha256:1616161616161616161616161616161616161616161616161616161616161616"
+      },
+      "host_manifest": {
+        "path": "cycles/candidate/host.json",
+        "schema": "host-manifest-v1",
+        "file_sha256": "sha256:1212121212121212121212121212121212121212121212121212121212121212"
+      },
+      "summary": {
+        "path": "cycles/candidate/summary.json",
+        "schema": "analysis-summary-v4"
+      },
+      "failure_index": {
+        "path": "cycles/candidate/failures.json",
+        "schema": "failure-index-v1"
+      },
+      "observations": null
+    }
+  },
+  "decision_policy": {
+    "kind": "revision",
+    "target": {
+      "failure_class": "instruction_clarity",
+      "diagnostic_ids": ["sf-111111111111111111111111"],
+      "case_ids": ["case-1"],
+      "requirement_ids": ["requirement-1"]
+    },
+    "change_set": {
+      "category": "instruction",
+      "paths": ["skill/SKILL.md"],
+      "candidate_hash": "sha256:1414141414141414141414141414141414141414141414141414141414141414"
+    },
+    "metric_rules": [
+      {
+        "purpose": "target_improvement",
+        "metric_id": "task-benefit",
+        "direction": "higher_is_better",
+        "margin": 0.05
+      },
+      {
+        "purpose": "protected_noninferiority",
+        "metric_id": "safety-benefit",
+        "direction": "higher_is_better",
+        "margin": 0.0
+      }
+    ],
+    "minimum_distinct_cases": 2,
+    "required_gates": ["safety", "protected", "context"],
+    "require_candidate_failure_index": true
+  },
+  "output": {
+    "root": "comparison-output",
+    "report": "comparison-report.json",
+    "diagnostic_index": "comparison-diagnostic-index.json"
+  }
+}

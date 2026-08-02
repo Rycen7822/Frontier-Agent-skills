@@ -428,6 +428,20 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         )
         return json.loads(summary_path.read_text(encoding='utf-8'))
 
+    def _run_v5_comparison_observations(
+        self,
+        paths: dict[str, Path],
+        observations_path: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        return self.call_cli(
+            'scripts/analyze_runs.py',
+            str(paths['index']),
+            '--spec', str(paths['spec']),
+            '--json', str(paths['summary']),
+            '--failure-index', str(paths['failures']),
+            '--comparison-observations', str(observations_path),
+        )
+
     def test_v5_analyzer_writes_compact_bound_views(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             paths = self._materialize_v5_analysis_bundle(Path(tmp))
@@ -484,6 +498,137 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                     ).hexdigest(),
                     manifest['sha256'],
                 )
+
+    def test_v5_comparison_observations_are_bound_and_noninvasive(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._materialize_v5_analysis_bundle(
+                root,
+                case_count=2,
+            )
+            observations_path = root / 'comparison-observations.json'
+            result = self._run_v5_comparison_observations(
+                paths,
+                observations_path,
+            )
+            self.assertEqual(
+                0, result.returncode, result.stdout + result.stderr,
+            )
+            summary_bytes = paths['summary'].read_bytes()
+            failure_bytes = paths['failures'].read_bytes()
+            observations = json.loads(
+                observations_path.read_text(encoding='utf-8'),
+            )
+            validator = load_validator_module()
+            registry = validator.load_v5_schema_registry()
+            self.assertEqual([], validator.validate_v5_schema(
+                observations,
+                'comparison-observations-v1.schema.json',
+                registry,
+            ))
+            self.assertTrue(
+                load_evidence_io_module().verify_self_hash(
+                    observations,
+                    'comparison_observations_hash',
+                ),
+            )
+            summary = json.loads(summary_bytes)
+            for field in (
+                'evaluation_id',
+                'plan_id',
+                'plan_hash',
+                'spec_hash',
+                'scenario_corpus_hash',
+                'host_manifest_hash',
+                'subject',
+            ):
+                self.assertEqual(summary[field], observations[field])
+            metric = observations['metrics'][0]
+            self.assertEqual('complete', metric['status'])
+            self.assertIsNone(metric['reason'])
+            self.assertEqual(1, metric['repeat_count'])
+            self.assertEqual(
+                ['case-1', 'case-2'],
+                [item['case_id'] for item in metric['values']],
+            )
+            self.assertEqual(
+                {
+                    'case_id',
+                    'comparator_value',
+                    'candidate_value',
+                },
+                set(metric['values'][0]),
+            )
+
+            repeated = self.call_cli(
+                'scripts/analyze_runs.py',
+                str(paths['index']),
+                '--spec', str(paths['spec']),
+                '--json', str(paths['summary']),
+                '--failure-index', str(paths['failures']),
+            )
+            self.assertEqual(
+                0,
+                repeated.returncode,
+                repeated.stdout + repeated.stderr,
+            )
+            self.assertEqual(summary_bytes, paths['summary'].read_bytes())
+            self.assertEqual(failure_bytes, paths['failures'].read_bytes())
+
+    def test_v5_comparison_observations_preserve_evidence_gap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._materialize_v5_analysis_bundle(root)
+            observations_path = root / 'comparison-observations.json'
+            result = self._run_v5_comparison_observations(
+                paths,
+                observations_path,
+            )
+            self.assertEqual(
+                0, result.returncode, result.stdout + result.stderr,
+            )
+            observations = json.loads(
+                observations_path.read_text(encoding='utf-8'),
+            )
+            validator = load_validator_module()
+            registry = validator.load_v5_schema_registry()
+            self.assertEqual([], validator.validate_v5_schema(
+                observations,
+                'comparison-observations-v1.schema.json',
+                registry,
+            ))
+            metric = observations['metrics'][0]
+            self.assertEqual('not_evaluable', metric['status'])
+            self.assertEqual(
+                'at least two distinct complete cases are required',
+                metric['reason'],
+            )
+            self.assertEqual(1, len(metric['values']))
+
+    def test_v5_comparison_observations_conflict_blocks_all_outputs(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._materialize_v5_analysis_bundle(
+                root,
+                case_count=2,
+            )
+            observations_path = root / 'comparison-observations.json'
+            conflict = b'{"conflict":true}'
+            observations_path.write_bytes(conflict)
+            result = self._run_v5_comparison_observations(
+                paths,
+                observations_path,
+            )
+            self.assertEqual(
+                2, result.returncode, result.stdout + result.stderr,
+            )
+            self.assertFalse(paths['summary'].exists())
+            self.assertFalse(paths['failures'].exists())
+            self.assertEqual(conflict, observations_path.read_bytes())
 
     def test_v5_analyzer_never_starts_host_grader_or_verifier_processes(
         self,

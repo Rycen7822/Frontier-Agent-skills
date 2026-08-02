@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/comparison-diagnostic-index-v1.schema.json",
+  "title": "Skill Evaluator comparison diagnostic index v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "comparison_diagnostic_index_hash",
+    "comparison_id",
+    "comparison_plan_hash",
+    "item_count",
+    "diagnostics"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "comparison_diagnostic_index_hash": {"$ref": "#/$defs/sha256"},
+    "comparison_id": {"$ref": "#/$defs/safe_id"},
+    "comparison_plan_hash": {"$ref": "#/$defs/sha256"},
+    "item_count": {"type": "integer", "minimum": 0},
+    "diagnostics": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/diagnostic"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "role": {
+      "enum": ["prior", "candidate", "A", "B", "C"]
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": [
+        "diagnostic_id",
+        "severity",
+        "fact_type",
+        "reason_key",
+        "roles",
+        "case_ids",
+        "requirement_ids",
+        "metric_ids",
+        "expected",
+        "observed",
+        "locator",
+        "source_hash"
+      ],
+      "properties": {
+        "diagnostic_id": {
+          "type": "string",
+          "pattern": "^cd-[0-9a-f]{24}$"
+        },
+        "severity": {
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "fact_type": {
+          "enum": [
+            "input_binding",
+            "identity_mismatch",
+            "evidence_gap",
+            "registration",
+            "metric",
+            "gate",
+            "revision_closure",
+            "transition_classification",
+            "authority"
+          ]
+        },
+        "reason_key": {"$ref": "#/$defs/safe_id"},
+        "roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/role"}
+        },
+        "case_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/safe_id"}
+        },
+        "requirement_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/safe_id"}
+        },
+        "metric_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/safe_id"}
+        },
+        "expected": {"type": "string", "minLength": 1},
+        "observed": {"type": "string", "minLength": 1},
+        "locator": {
+          "$ref": "failure-index-v1.schema.json#/$defs/locator"
+        },
+        "source_hash": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

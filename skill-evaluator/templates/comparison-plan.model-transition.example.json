@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "comparison_plan_hash": "sha256:cc663cbeaa857d8d3751192d1b7bf53058f32096415dbd0e3ca73bc16d536c29",
+  "comparison_id": "model-transition-example",
+  "kind": "model_transition",
+  "claim_scope": "transition_retention",
+  "registration": {
+    "mode": "exploratory",
+    "registered_at": "2026-08-02T00:00:00Z",
+    "authority_id": "product-owner"
+  },
+  "owner_attestation": {
+    "owner_id": "product-owner",
+    "scope": "model_transition_configuration",
+    "attested_at": "2026-08-02T00:00:00Z"
+  },
+  "input_bindings": {
+    "A": {
+      "expected_identity": {
+        "evaluation_id": "transition-a",
+        "plan_id": "transition-a-plan",
+        "spec_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "scenario_corpus_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "host_manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "execution_identity": {
+          "repository_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "subject_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "host_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "model_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "harness_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "prompt_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+          "tool_surface_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "policy_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "runtime_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "tokenizer_pricing_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "clock_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "as_of": "2026-08-01T00:00:00Z"
+        }
+      },
+      "spec": {
+        "path": "cycles/A/spec.json",
+        "schema": "eval-spec-v5",
+        "file_sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "execution_plan": {
+        "path": "cycles/A/plan.json",
+        "schema": "execution-plan-v1",
+        "file_sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "host_manifest": {
+        "path": "cycles/A/host.json",
+        "schema": "host-manifest-v1",
+        "file_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      "summary": {
+        "path": "cycles/A/summary.json",
+        "schema": "analysis-summary-v4"
+      },
+      "failure_index": null,
+      "observations": {
+        "path": "cycles/A/comparison-observations.json",
+        "schema": "comparison-observations-v1"
+      }
+    },
+    "C": {
+      "expected_identity": {
+        "evaluation_id": "transition-c",
+        "plan_id": "transition-c-plan",
+        "spec_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "scenario_corpus_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "host_manifest_hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "execution_identity": {
+          "repository_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "subject_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "host_hash": "sha256:1212121212121212121212121212121212121212121212121212121212121212",
+          "model_hash": "sha256:1313131313131313131313131313131313131313131313131313131313131313",
+          "harness_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "prompt_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+          "tool_surface_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "policy_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "runtime_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "tokenizer_pricing_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "clock_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "as_of": "2026-08-02T00:00:00Z"
+        }
+      },
+      "spec": {
+        "path": "cycles/C/spec.json",
+        "schema": "eval-spec-v5",
+        "file_sha256": "sha256:1414141414141414141414141414141414141414141414141414141414141414"
+      },
+      "execution_plan": {
+        "path": "cycles/C/plan.json",
+        "schema": "execution-plan-v1",
+        "file_sha256": "sha256:1515151515151515151515151515151515151515151515151515151515151515"
+      },
+      "host_manifest": {
+        "path": "cycles/C/host.json",
+        "schema": "host-manifest-v1",
+        "file_sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "summary": {
+        "path": "cycles/C/summary.json",
+        "schema": "analysis-summary-v4"
+      },
+      "failure_index": null,
+      "observations": {
+        "path": "cycles/C/comparison-observations.json",
+        "schema": "comparison-observations-v1"
+      }
+    }
+  },
+  "decision_policy": {
+    "kind": "model_transition",
+    "mode": "direct",
+    "metric_rules": [
+      {
+        "purpose": "gain_retention",
+        "metric_id": "task-benefit",
+        "direction": "higher_is_better",
+        "threshold": 0.8
+      },
+      {
+        "purpose": "native_capability",
+        "metric_id": "task-benefit",
+        "direction": "higher_is_better",
+        "threshold": 0.05
+      }
+    ],
+    "stage_rules": [
+      {
+        "purpose": "routing",
+        "surface": "skill_tool_access",
+        "stage": "retrieved",
+        "minimum_retention": 0.9
+      },
+      {
+        "purpose": "loading",
+        "surface": "skill_tool_access",
+        "stage": "loaded",
+        "minimum_retention": 0.9
+      },
+      {
+        "purpose": "application",
+        "surface": "skill_tool_access",
+        "stage": "applied",
+        "minimum_retention": 0.9
+      }
+    ],
+    "minimum_distinct_cases": 2,
+    "required_gates": ["safety", "protected", "context"],
+    "token_policy": "require_same_tokenizer",
+    "judge_policy": "require_same_judge",
+    "apparatus_change_fields": []
+  },
+  "output": {
+    "root": "transition-output",
+    "report": "comparison-report.json",
+    "diagnostic_index": "comparison-diagnostic-index.json"
+  }
+}

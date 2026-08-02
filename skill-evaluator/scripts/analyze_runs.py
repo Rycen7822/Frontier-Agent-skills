@@ -2521,7 +2521,7 @@ def _v5_estimand_metric(
         eligible_case_ids=None,
     )
     evaluated = evaluate_benefit(raw, estimand["minimum_benefit"])
-    return {
+    public = {
         "metric_id": estimand["estimand_id"],
         "status": evaluated["status"],
         "direction": estimand["direction"],
@@ -2536,6 +2536,34 @@ def _v5_estimand_metric(
             for item in raw.get("case_differences", [])
         },
     }
+    observation = {
+        "metric_id": estimand["estimand_id"],
+        "direction": estimand["direction"],
+        "effect": estimand["effect"],
+        "scale": paired_metric_scale(estimand["metric"]),
+        "comparator_treatment_id": estimand["comparator_treatment_id"],
+        "candidate_treatment_id": estimand["candidate_treatment_id"],
+        "status": (
+            "complete"
+            if raw["status"] == "complete"
+            else "not_evaluable"
+        ),
+        "reason": (
+            None
+            if raw["status"] == "complete"
+            else raw.get("reason", "metric evidence is not evaluable")
+        ),
+        "repeat_count": raw.get("repeat_count", 0),
+        "values": [
+            {
+                "case_id": item["case_id"],
+                "comparator_value": item["comparator_value"],
+                "candidate_value": item["candidate_value"],
+            }
+            for item in raw.get("case_differences", [])
+        ],
+    }
+    return {**public, "_comparison_observation": observation}
 
 
 def _v5_gate_status(gate: dict[str, Any], observed: Any) -> str:
@@ -2606,11 +2634,19 @@ def _v5_metric_analysis(
     context_cost: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     estimands = spec["analysis"]["estimands"]
-    paired_metrics = {
-        estimand["estimand_id"]: _v5_estimand_metric(
+    metric_results = [
+        _v5_estimand_metric(
             spec, plan, records, estimand,
         )
         for estimand in estimands
+    ]
+    comparison_observations = [
+        result.pop("_comparison_observation")
+        for result in metric_results
+    ]
+    paired_metrics = {
+        result["metric_id"]: result
+        for result in metric_results
     }
     primary_definition = estimands[0]
     primary = dict(paired_metrics[primary_definition["estimand_id"]])
@@ -2828,6 +2864,7 @@ def _v5_metric_analysis(
         "comparator_failure_cases": sorted(comparator_failure_cases),
         "baseline_ceiling": baseline_ceiling,
         "usefulness_status": usefulness,
+        "comparison_observations": comparison_observations,
     }
 
 
@@ -4659,6 +4696,34 @@ def _v5_summary_base(
     return summary, metric_analysis
 
 
+def _comparison_observations(
+    summary: dict[str, Any],
+    metric_analysis: dict[str, Any],
+) -> dict[str, Any]:
+    observations = {
+        "schema_version": 1,
+        "comparison_observations_hash": "sha256:" + "0" * 64,
+        "generator": {
+            "name": "analyze_runs.py",
+            "version": "3.1.0",
+            "source_hash": file_sha256(Path(__file__)),
+        },
+        "evaluation_id": summary["evaluation_id"],
+        "plan_id": summary["plan_id"],
+        "plan_hash": summary["plan_hash"],
+        "spec_hash": summary["spec_hash"],
+        "scenario_corpus_hash": summary["scenario_corpus_hash"],
+        "host_manifest_hash": summary["host_manifest_hash"],
+        "subject": summary["subject"],
+        "metrics": metric_analysis["comparison_observations"],
+    }
+    observations["comparison_observations_hash"] = canonical_self_hash(
+        observations,
+        "comparison_observations_hash",
+    )
+    return observations
+
+
 def _relative_output_path(path: Path, root: Path) -> str:
     try:
         relative = path.resolve().relative_to(root.resolve()).as_posix()
@@ -4740,10 +4805,12 @@ def _commit_v5_outputs(
     failure_index: dict[str, Any],
     *,
     failure_details: dict[str, Any] | None,
+    comparison_observations: dict[str, Any] | None,
     summary_path: Path,
     failure_path: Path,
     markdown_path: Path | None,
     details_path: Path | None,
+    observations_path: Path | None,
     registry: dict[str, dict[str, Any]],
 ) -> None:
     root = summary_path.parent
@@ -4753,6 +4820,15 @@ def _commit_v5_outputs(
         if failure_details is not None
         else None
     )
+    observations_payload = (
+        canonical_json_bytes(comparison_observations)
+        if comparison_observations is not None
+        else None
+    )
+    if (observations_path is None) != (observations_payload is None):
+        raise ValueError(
+            "comparison observations path and payload must be provided together",
+        )
     markdown_payload = (
         _render_v5_markdown(summary, failure_index)
         if markdown_path is not None
@@ -4828,12 +4904,21 @@ def _commit_v5_outputs(
         )
         if diagnostics:
             raise ValueError(_first_v5_diagnostic(diagnostics))
+    if comparison_observations is not None:
+        diagnostics = validate_v5_schema(
+            comparison_observations,
+            "comparison-observations-v1.schema.json",
+            registry,
+        )
+        if diagnostics:
+            raise ValueError(_first_v5_diagnostic(diagnostics))
 
     outputs = [
         pair for pair in (
             (details_path, details_payload),
             (failure_path, failure_payload),
             (markdown_path, markdown_payload),
+            (observations_path, observations_payload),
             (summary_path, summary_payload),
         )
         if pair[0] is not None and pair[1] is not None
@@ -6023,6 +6108,7 @@ def _main_v5() -> int:
     parser.add_argument("--failure-index", type=Path, required=True)
     parser.add_argument("--markdown", type=Path)
     parser.add_argument("--details", type=Path)
+    parser.add_argument("--comparison-observations", type=Path)
     parser.add_argument("--manual-review-receipt", type=Path)
     parser.add_argument("--report-only", action="store_true")
     args = parser.parse_args()
@@ -6036,8 +6122,17 @@ def _main_v5() -> int:
         details_path = (
             args.details.resolve() if args.details is not None else None
         )
+        observations_path = (
+            args.comparison_observations.resolve()
+            if args.comparison_observations is not None
+            else None
+        )
         for output_path in (
-            summary_path, failure_path, markdown_path, details_path,
+            summary_path,
+            failure_path,
+            markdown_path,
+            details_path,
+            observations_path,
         ):
             if (
                 output_path is not None
@@ -6125,14 +6220,21 @@ def _main_v5() -> int:
             if details_path is not None
             else None
         )
+        observations = (
+            _comparison_observations(summary, metric_analysis)
+            if observations_path is not None
+            else None
+        )
         _commit_v5_outputs(
             summary,
             failures,
             failure_details=details,
+            comparison_observations=observations,
             summary_path=summary_path,
             failure_path=failure_path,
             markdown_path=markdown_path,
             details_path=details_path,
+            observations_path=observations_path,
             registry=registry,
         )
     except (OSError, ValueError, KeyError, TypeError) as exc:
