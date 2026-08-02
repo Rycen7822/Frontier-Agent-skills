@@ -113,6 +113,25 @@ The JSON Schema owns transport shape only. The analyzer also enforces:
 
 Every requirement declares one `owner` matching its grader type, and one grader/check binding may occur only once. Commands, exit codes, test counts, file deltas, boundaries, load counts/bytes, protocol output, and source/plugin identity belong only to deterministic evidence. Model rubrics own semantic qualities such as executability, risk coverage, and boundary clarity; they do not rescore deterministic facts. A model/deterministic disagreement is reported without changing the deterministic result. Human/domain review is a separate authority receipt, and no weaker grader erases a deterministic or safety failure.
 
+## Identity and custody matrix
+
+Semantic identity and exact-byte custody are separate contracts. The following mutation boundaries are normative:
+
+| Mutation | Changes | Remains valid or unchanged |
+|---|---|---|
+| Spec-owned check ID or pass condition | Grader/schedule, plan, formal payload/item/batch | No prior evaluation identity |
+| Blinded view for the same check | Runtime payload/item/batch and receipt | Frozen plan |
+| Calibration gold, rating, or bound hash | Calibration hash, rebound ready spec and plan | An unbound old spec fails closed |
+| Fixture bytes | Fixture/corpus binding, ready spec, plan and entry | An old plan cannot run the new bytes |
+| Fixture mode 0444 to 0644 with identical bytes | No content identity | Source mode; workspace is owner-writable and retains execute bits |
+| Bound JSON whitespace | Raw custody hash and upstream binding, or rejection of non-canonical output | No byte change is hidden as the same artifact |
+| Output item/check order with the same ID sets | Normalized judgment bytes may be canonicalized | Semantic result and batch binding |
+| Runner status or lifecycle implementation | Bundle source/version and new test evidence | Compiler plan and existing receipt/index verification |
+| Analyzer projection | Analyzer generator and report identity | Plan, receipt and index |
+| Release authorization | Authorization hash and distribution eligibility | Evaluation evidence identity |
+
+Frozen input verification always uses exact bytes. Normalization applies only at the declared semantic-output boundary; it never weakens custody of a bound source artifact.
+
 ## Process evidence levels
 
 - Skill retrieval proves retrieval only; entry reading proves body loading only; a CLI or card reference proves an attempt only.

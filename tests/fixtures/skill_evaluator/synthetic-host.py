@@ -4,7 +4,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
+import signal
 import sys
 import time
 
@@ -46,6 +48,23 @@ def _identity(prefix: str, value: object) -> str:
 
 
 def _grader() -> int:
+    mode = next(
+        (
+            argument.removeprefix("--mode=")
+            for argument in sys.argv[1:]
+            if argument.startswith("--mode=")
+        ),
+        "success",
+    )
+    if mode == "lifecycle-conformance":
+        result = json.loads(Path("result.json").read_text(encoding="utf-8"))
+        if result["envelope"]["entry_id"] == os.environ.get(
+            "SKILL_EVALUATOR_STOP_ENTRY_ID",
+        ):
+            Path("verifier-stopped").write_text(
+                str(os.getpid()), encoding="utf-8",
+            )
+            os.kill(os.getpid(), signal.SIGSTOP)
     selected = next(
         (
             argument.removeprefix("--checks=").split(",")
@@ -234,6 +253,20 @@ def _actions(
 def _host(request: dict[str, object], mode: str) -> int:
     if mode == "host-exit":
         return 7
+    if mode == "lifecycle-conformance":
+        module_path = Path("workspace_module.py")
+        module_path.write_text(
+            module_path.read_text(encoding="utf-8") + "\nTOUCHED = True\n",
+            encoding="utf-8",
+        )
+        sys.dont_write_bytecode = True
+        sys.path.insert(0, str(Path.cwd()))
+        import workspace_module
+
+        if workspace_module.VALUE != "package-native":
+            return 8
+        if not (Path("workspace_tool.sh").stat().st_mode & 0o100):
+            return 9
     envelope = request["envelope"]
     if mode == "fail-first-attempt" and envelope["attempt"] == 1:
         return 7
