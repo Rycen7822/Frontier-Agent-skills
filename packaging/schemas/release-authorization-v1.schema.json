@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/frontier-engineering/release-authorization-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "authorization_hash", "bundle_id", "bundle_version",
+    "source_revision", "source_tree_hash", "plugin_tree_hash",
+    "deterministic_report_hash", "approved_skill_activation", "remote_writes",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {"const": "release-authorization/1"},
+    "authorization_hash": {"$ref": "#/$defs/hash"},
+    "bundle_id": {"const": "frontier-engineering/6.1.0"},
+    "bundle_version": {"const": "6.1.0"},
+    "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "source_tree_hash": {"$ref": "#/$defs/hash"},
+    "plugin_tree_hash": {"$ref": "#/$defs/hash"},
+    "deterministic_report_hash": {"$ref": "#/$defs/hash"},
+    "approved_skill_activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "long-document-segmented-writing", "skill-evaluator",
+        "software-quality-workflows", "writing-plans"
+      ],
+      "properties": {
+        "long-document-segmented-writing": {"const": "implicit"},
+        "skill-evaluator": {"const": "explicit_only"},
+        "software-quality-workflows": {"const": "explicit_only"},
+        "writing-plans": {"const": "explicit_only"}
+      }
+    },
+    "remote_writes": {"const": false},
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority_id", "role", "decision", "signature_attestation"],
+      "properties": {
+        "authority_id": {"type": "string", "minLength": 1},
+        "role": {"const": "release_owner"},
+        "decision": {"const": "approve"},
+        "signature_attestation": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

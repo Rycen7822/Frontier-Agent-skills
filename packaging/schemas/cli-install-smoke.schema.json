@@ -84,7 +84,7 @@
       "then": {
         "properties": {
           "release_gate": {"const": "blocked_prerequisites"},
-          "blocking_prerequisites": {"const": ["scored_l2_gate", "activation_decision", "signed_clean_source_revision"]},
+          "blocking_prerequisites": {"const": ["release_authorization", "signed_clean_source_revision"]},
           "release_eligible": {"const": false},
           "source_revision_verified": {"const": false}
         }

@@ -42,10 +42,15 @@ def content_hash(path: Path) -> str:
 class ReleaseCliInstallTests(unittest.TestCase):
     def test_real_isolated_install_and_remove(self) -> None:
         run_root = required_absolute_path("FRONTIER_RUN_ROOT", directory=True)
-        release_evidence_path = required_absolute_path("FRONTIER_RELEASE_EVIDENCE")
+        release_authorization_path = required_absolute_path(
+            "FRONTIER_RELEASE_AUTHORIZATION"
+        )
         work_root = required_absolute_path("FRONTIER_CLI_WORK_ROOT", directory=True)
         codex_bin = required_absolute_path("FRONTIER_CODEX_BIN")
-        self.assertEqual(run_root / "release-evidence.json", release_evidence_path)
+        self.assertEqual(
+            run_root / "release-authorization.json",
+            release_authorization_path,
+        )
         self.assertTrue(codex_bin.stat().st_mode & stat.S_IXUSR, "Codex binary is not executable")
 
         release_root = run_root / "release"
@@ -60,18 +65,27 @@ class ReleaseCliInstallTests(unittest.TestCase):
             self.assertTrue(path.is_file() and not path.is_symlink(), path)
         self.assertFalse(output.exists() or output.is_symlink(), "CLI evidence output is no-overwrite")
 
-        release = _strict_json(release_evidence_path)
+        authorization = _strict_json(release_authorization_path)
         build = _strict_json(build_path)
         self.assertEqual("release", build.get("output_class"))
-        self.assertEqual(content_hash(release_evidence_path), build.get("release_evidence_hash"))
-        self.assertEqual(release.get("source_revision"), build.get("source_revision"))
-        self.assertEqual(release.get("source_tree_hash"), build.get("source_tree_hash"))
-        self.assertEqual(release.get("plugin_tree_hash"), build.get("plugin_tree_hash"))
+        self.assertEqual(
+            content_hash(release_authorization_path),
+            build.get("release_authorization_hash"),
+        )
+        self.assertEqual(
+            authorization.get("source_revision"), build.get("source_revision")
+        )
+        self.assertEqual(
+            authorization.get("source_tree_hash"), build.get("source_tree_hash")
+        )
+        self.assertEqual(
+            authorization.get("plugin_tree_hash"), build.get("plugin_tree_hash")
+        )
 
         result = run_cli_smoke(
             plugin,
             build_path,
-            release_evidence_path,
+            release_authorization_path,
             static_path,
             marketplace,
             work_root,

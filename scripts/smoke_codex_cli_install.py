@@ -130,7 +130,7 @@ def _run_json(
 def _run_validator(
     plugin_root: Path,
     build_evidence_path: Path,
-    release_evidence_path: Path,
+    release_authorization_path: Path,
     *,
     environment: dict[str, str],
     cwd: Path,
@@ -145,8 +145,8 @@ def _run_validator(
             str(plugin_root),
             "--build-evidence",
             str(build_evidence_path),
-            "--release-evidence",
-            str(release_evidence_path),
+            "--release-authorization",
+            str(release_authorization_path),
         ],
         cwd=cwd,
         env=environment,
@@ -313,7 +313,7 @@ def _verify_static_evidence(static_path: Path, build: dict[str, Any]) -> dict[st
 def run_cli_smoke(
     plugin_root: Path,
     build_evidence_path: Path,
-    release_evidence_path: Path,
+    release_authorization_path: Path,
     static_smoke_path: Path,
     marketplace_root: Path,
     work_root: Path,
@@ -346,7 +346,7 @@ def run_cli_smoke(
     source_records = _plugin_records(plugin_root)
     if tree_hash(source_records) != build.get("plugin_tree_hash"):
         raise ValueError("source plugin tree differs from build evidence")
-    release_evidence_path = release_evidence_path.resolve(strict=True)
+    release_authorization_path = release_authorization_path.resolve(strict=True)
     if not RELEASE_VALIDATOR.is_file() or RELEASE_VALIDATOR.is_symlink():
         raise ValueError("repository release validator is missing or symlinked")
     codex_bin = _resolve_codex(codex_command)
@@ -361,7 +361,7 @@ def run_cli_smoke(
         _run_validator(
             plugin_root,
             build_evidence_path,
-            release_evidence_path,
+            release_authorization_path,
             environment=environment,
             cwd=marketplace_root,
         )
@@ -440,7 +440,7 @@ def run_cli_smoke(
         _run_validator(
             installed_root,
             build_evidence_path,
-            release_evidence_path,
+            release_authorization_path,
             environment=environment,
             cwd=marketplace_root,
         )
@@ -534,13 +534,13 @@ def run_cli_smoke(
 
         activation_ceiling = build["activation_ceiling"]
         output_class = build.get("output_class")
-        release_binding = build.get("release_evidence_hash")
+        release_binding = build.get("release_authorization_hash")
         if output_class == "staging" and release_binding is not None:
-            raise ValueError("staging build must not bind release evidence")
+            raise ValueError("staging build must not bind release authorization")
         if output_class == "release" and not (
             isinstance(release_binding, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", release_binding)
         ):
-            raise ValueError("release build must bind hashed release evidence")
+            raise ValueError("release build must bind hashed release authorization")
         if output_class not in {"staging", "release"}:
             raise ValueError("build evidence output class is invalid")
         release_eligible = output_class == "release"
@@ -554,8 +554,7 @@ def run_cli_smoke(
             "activation_ceiling": activation_ceiling,
             "release_gate": "passed" if release_eligible else "blocked_prerequisites",
             "blocking_prerequisites": [] if release_eligible else [
-                "scored_l2_gate",
-                "activation_decision",
+                "release_authorization",
                 "signed_clean_source_revision",
             ],
             "release_eligible": release_eligible,
@@ -593,7 +592,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plugin-root", type=Path, required=True)
     parser.add_argument("--build-evidence", type=Path, required=True)
-    parser.add_argument("--release-evidence", type=Path, required=True)
+    parser.add_argument("--release-authorization", type=Path, required=True)
     parser.add_argument("--static-smoke", type=Path, required=True)
     parser.add_argument("--marketplace-root", type=Path, required=True)
     parser.add_argument("--work-root", type=Path, required=True)
@@ -604,7 +603,7 @@ def main(argv: list[str] | None = None) -> int:
         result = run_cli_smoke(
             args.plugin_root,
             args.build_evidence,
-            args.release_evidence,
+            args.release_authorization,
             args.static_smoke,
             args.marketplace_root,
             args.work_root,
