@@ -4,7 +4,7 @@ This repository is the development source of truth for the dual-host `frontier-e
 
 ## Release identity
 
-The indivisible release unit is bundle version 6.0.0 at schema epoch 5. The generated identity binds the four exact versions, root hashes, and mixed activation matrix:
+The indivisible release unit is bundle version 6.0.0 at schema epoch 5. Its manifest records the four exact versions and mixed activation matrix:
 
 ```json
 {
@@ -15,7 +15,7 @@ The indivisible release unit is bundle version 6.0.0 at schema epoch 5. The gene
 }
 ```
 
-`true` permits implicit local selection; `false` is explicit-only and its prompt retains the exact `$skill-name`. The bundle ceiling remains `implicit_local_pilot`, and `remote_writes` is false. Packaging, archive, static smoke, or CLI installation does not satisfy the independent scored-L2, longitudinal, signed-source, release, publication, deployment, credential, or remote-write gates.
+`true` permits implicit local selection; `false` is explicit-only and its prompt retains the exact `$skill-name`. The bundle ceiling remains `implicit_local_pilot`, and `remote_writes` is false. Bundle 6.0.0 is accepted through direct human-readable source review and ordinary signed release operations; the repository's evaluator, hash, smoke, and benchmark tooling is not a release gate for this version.
 
 ## Design boundary
 
@@ -30,72 +30,33 @@ SQW uses one fallback Markdown ledger only when the host and repository have no 
 
 Development is distinction-first: each behavior change needs an observable test, probe, smoke, property, benchmark, or runtime proof, but strict RED is not mandatory. Closeout classifies only tests added or materially changed in the current diff as `durable_contract`, `regression`, `risk_boundary`, `migration_temporary`, `temporary_probe`, `duplicate`, or `implementation_coupled`; temporary and duplicate protection is removed, while migration tests carry a deterministic removal contract.
 
-## Deterministic validation
+## Verification boundary
 
-Run the three distinct profiles from the repository root. Quick is model-free and must remain under its cold-start budget:
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_quick_*.py' -v
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s writing-plans/tests -p 'test_quick_*.py' -v
-PYTHONDONTWRITEBYTECODE=1 python3 long-document-segmented-writing/tests/test_workflow_contract.py -v
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_quick_*.py' -v
-```
-
-Extended owns runtime lifecycle, tampering, large fixtures, analyzer matrices, archive reproducibility, and plugin atomicity:
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_extended_*.py' -v
-PYTHONDONTWRITEBYTECODE=1 python3 long-document-segmented-writing/tests/test_assemble_markdown.py -v
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_extended_*.py' -v
-```
-
-Release runs only `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_release_cli_install.py -v` after all external paths and signed evidence are frozen. Verify generated identities with `python3 bundle/build_bundle_manifest.py --check` and `python3 scripts/evaluate_static_contracts.py --check`.
+Bundle 6.0.0 does not use repository tests, evaluator runs, graders, validators, generated identities, or hash chains as release evidence. Existing test and evaluator sources remain developer tools and product fixtures, but they do not authorize, block, or describe this release. The release record states only facts confirmed by direct reading and ordinary version-control operations.
 
 ## Source archives
 
-Use absent outputs under a task-owned evidence root. The builder is no-overwrite, rejects symlinks and source drift, normalizes ZIP bytes, and emits a content-bound evidence file.
+The source archive uses root `frontier-engineering-bundle`; the skills-only archive contains exactly the four canonical skill roots. Assemble either archive with ordinary file copies and ZIP tooling, exclude `.work`, worktrees, caches, local paths, credentials, and historical run artifacts, then read the archive file list before publication. Do not invoke the historical evidence-producing archive builder for this release.
 
-```bash
-scripts/build_source_archive.py \
-  --source-root . \
-  --layout bundle \
-  --output <evidence-root>/frontier-engineering-bundle-6.0.0.zip \
-  --evidence-output <evidence-root>/frontier-engineering-bundle-6.0.0.evidence.json
+## Plugin staging
 
-scripts/build_source_archive.py \
-  --source-root . \
-  --layout skills_only \
-  --output <evidence-root>/frontier-engineering-skills-6.0.0.zip \
-  --evidence-output <evidence-root>/frontier-engineering-skills-6.0.0.evidence.json
+The plugin identity is `frontier-engineering-plugin` version 6.0.0 with display name `Frontier Engineering`. Its release layout is:
+
+```text
+frontier-engineering-plugin/
+  .codex-plugin/plugin.json
+  skills/
+    long-document-segmented-writing/
+    skill-evaluator/
+    software-quality-workflows/
+    writing-plans/
 ```
 
-The bundle layout uses root `frontier-engineering-bundle`. The skills-only layout contains exactly the four canonical skill roots.
-
-## Isolated plugin staging
-
-The plugin identity is `frontier-engineering-plugin` version 6.0.0 with display name `Frontier Engineering`. Build only into an absent task-owned marketplace destination:
-
-```bash
-scripts/build_codex_plugin.py \
-  --source-root . \
-  --output <marketplace-root>/plugins/frontier-engineering-plugin \
-  --evidence-output <evidence-root>/plugin-build-evidence.json
-
-scripts/smoke_codex_plugin.py \
-  --plugin-root <marketplace-root>/plugins/frontier-engineering-plugin \
-  --build-evidence <evidence-root>/plugin-build-evidence.json \
-  --output <evidence-root>/static-plugin-smoke.json
-```
-
-The builder uses `<evidence-root>/plugin-build-staging` and atomically renames a validated tree to the absent destination on the same filesystem. A failed build leaves the staging directory intact and the destination absent. Build evidence binds the exact mixed activation matrix. Staging records `release_evidence_hash: null`; only an explicit `--release-evidence` argument enables release-mode validation.
-
-The isolated CLI smoke requires a task-owned marketplace created by the installed `plugin-creator`, with source `./plugins/frontier-engineering-plugin`, installation policy `AVAILABLE`, authentication policy `ON_INSTALL`, and category `Developer Tools`. The smoke rehomes all Codex configuration under its work root, strips credential-bearing environment variables, validates staged and installed bytes, removes the plugin and marketplace from the isolated configuration, and never invokes a model.
-
-Release-mode output requires external `release-evidence/4.0` bound to a clean signed source revision, the tracked static diagnostic, both scored L2 reports and their aggregate, the longitudinal report, an unblocked activation decision, one candidate source identity, and the staged plugin tree hash. The builder recomputes every content and self-hash; no case, fixture, receipt, longitudinal run, or activation decision is stored in the candidate repository.
+Create `plugin.json` from `packaging/codex-plugin/plugin.json.template` with version `6.0.0`, copy the four complete skill directories, and inspect the resulting tree directly. Do not call the historical plugin builder, smoke runner, release-evidence validator, or isolated-install harness for this release.
 
 ## Same-thread Codex skill reload supervisor
 
-`scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles. It never calls `fork`, never selects `--last`, never edits global Codex configuration, and never drives the TUI with synthesized keystrokes. It owns a local Unix-socket app-server and launches every TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
+This optional developer tool is not used by the Bundle 6.0.0 manual completion or release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles. It never calls `fork`, never selects `--last`, never edits global Codex configuration, and never drives the TUI with synthesized keystrokes. It owns a local Unix-socket app-server and launches every TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
 
 The protocol is fail-closed and pinned to `codex-cli 0.144.6`. Validate the CLI schema and local Unix WebSocket transport before the first run:
 
@@ -135,13 +96,7 @@ Any CLI version drift, schema drift, thread/cwd mismatch, permission mismatch, p
 
 ## Evaluation boundary
 
-`evaluation/static-contract-diagnostic.json` proves only the checked source/package contract: exact paths, links, versions, activation, entry budgets, profile hashes, package size, and absence of retired runtime owners. It does not replay routing and cannot prove model behavior, usefulness, token efficiency, longitudinal test retention, release authority, or deployment readiness.
-
-Scored L2 specs, scenarios, fixtures, graders, execution plans, index rows, receipts, analysis summaries/failure indexes, longitudinal L4 artifacts, and activation decisions remain in a revision-bound external run root. Release evidence binds their hashes without copying them into the candidate. A smaller static package is not evidence of model usefulness or lower host tokens. See [evaluation/README.md](evaluation/README.md).
-
-The [Skill Evaluator entrypoint](skill-evaluator/SKILL.md) owns the exact prepare → compile → run → analyze CLI and its L0–L4 claim ceilings. Public L1/L2 templates are valid non-ready contracts; only a separately prepared `execution.ready=true` contract may be compiled and executed.
-
-Repository `source-complete` means the declared Quick and Extended profiles, generated bundle/static checks, package audit, source-archive reproducibility, and clean-diff gates all pass for one exact source identity. It does not mean scored usefulness, activation, signed release, installation, publication, deployment, credentials, or remote writes are authorized. Those remain separate external gates.
+The [Skill Evaluator entrypoint](skill-evaluator/SKILL.md) remains an explicit-only product for users who deliberately request structured Skill evaluation. Its schemas, scripts, examples, and historical `evaluation/` fixtures are not invoked by ordinary development and are not release evidence for Bundle 6.0.0. This release makes no scored usefulness, token-efficiency, longitudinal, installation, or deployment claim.
 
 For the Skill Evaluator 3.0 upgrade, source rollback restores bundle 5.0.0 / Skill Evaluator 2.0.0 semantics at commit `d3824cfeb05ea8e37ec2c9013570b8405530bc89` through an ordinary revert or the frozen source archive; do not use a destructive worktree reset. Installed rollback uses only a verified bundle-5 staged plugin/archive through the isolated remove/install path and never implies publish or deploy authority.
 

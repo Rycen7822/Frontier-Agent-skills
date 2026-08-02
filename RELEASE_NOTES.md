@@ -4,11 +4,11 @@
 
 Bundle 6.0.0 advances Skill Evaluator from 2.0.0 to 3.0.0 and Writing Plans from 8.0.0 to 8.1.0; Long Document remains 1.0.0 and Software Quality Workflows remains 9.0.0. Compatible schema epoch advances to 5. The four-owner set, Direct-first boundary, mixed activation matrix, `implicit_local_pilot` ceiling, and `remote_writes=false` remain unchanged.
 
-Skill Evaluator 3.0 makes spec v5, scenario v1, execution plan v1, host manifest v1, run-index row v2, receipt v4, analysis summary v4, and failure index v1 the only active protocol. Preparation, deterministic compilation, bounded host execution/resume, evidence verification, compact five-axis reporting, package audit, and Pattern traceability have executable schema and test owners. Spec v4 and receipt v3 have no compatibility reader.
+Skill Evaluator 3.0 keeps one explicit-only structured evaluation protocol and does not run during ordinary software development or this bundle release. Its schemas and executable owners remain available only when a user deliberately requests that product.
 
-Writing Plans 8.1 makes the resume-attestation fallback, named milestone dependencies, and rejection of column-driven prose wrapping explicit. Release scoring retains context and token diagnostics while hard-gating attributable product behavior; planner quality uses normalized absolute effect, and native usefulness policy follows the ceiling and fixed-L1 study designs.
+Writing Plans 8.1 makes the resume-attestation fallback, named milestone dependencies, and rejection of column-driven prose wrapping explicit.
 
-This source cut proves deterministic package, bundle, static, staging, archive, and test contracts only. Scored usefulness, signed release, installation, publication, deployment, credentials, and remote writes remain separately authorized external gates. Rollback restores the frozen bundle 5.0.0 / Skill Evaluator 2.0.0 source identity rather than converting historical evidence.
+Bundle 6.0.0 is closed through direct source reading and ordinary signed release operations. No test run, validator, hash chain, model grader, benchmark, longitudinal run, isolated installation, publication, deployment, credential, or remote-write claim is made. Rollback restores the frozen bundle 5.0.0 / Skill Evaluator 2.0.0 source identity.
 
 ## Historical bundle 5.0.0 direct-first major cut
 
@@ -69,13 +69,8 @@ The checked-in activation level remains `shadow`. Implicit routing and remote wr
 - Plugin version: `6.0.0`
 - Bundle archive root: `frontier-engineering-bundle`
 - Skills-only archive roots: `long-document-segmented-writing`, `skill-evaluator`, `software-quality-workflows`, `writing-plans`
-- Build evidence: `plugin-build-evidence/3.0`
-- Release evidence: `release-evidence/4.0`
-- Static smoke: `static-plugin-smoke/3.0`
-- CLI smoke: `cli-install-smoke/3.0`
-- Source archive evidence: `source-archive-evidence/2.0`
 
-Candidate-local P5 evaluation artifacts and P6-named packaging schemas were removed. Scored L2 evidence and activation decisions now exist only in revision-bound external run roots, preventing candidate self-reference.
+Historical evidence schemas and evaluation fixtures remain developer resources but are not part of the Bundle 6.0.0 release decision. The published plugin contains only its manifest and the four complete skill directories.
 
 ## Intentional compatibility removals
 
