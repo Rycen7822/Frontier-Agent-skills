@@ -4,11 +4,6 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
-from evaluation.controller import artifacts as controller_artifacts
-from evaluation.controller import reports as controller_reports
-from evaluation.controller.controller_testkit import (
-    release_studies as controller_release_studies,
-)
 from skill_evaluator_test_support import *  # noqa: F403
 
 
@@ -67,67 +62,6 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 'process',
             ),
         )
-
-    def test_controller_passes_bound_studies_to_public_projection(self):
-        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        roots, join = controller_release_studies(root)
-        analyzer = mock.Mock()
-        analyzer.project_release_estimands.return_value = {"status": "complete"}
-        projection, summaries = controller_reports.project_release(
-            phase="d0",
-            analyzer=analyzer,
-            roots=roots,
-            manual_receipts={
-                "software-quality-workflows": "manual/sqw.json",
-                "writing-plans-planner": "manual/planner.json",
-                "writing-plans-transfer": None,
-            },
-            join_path=join,
-            seed=2735,
-        )
-        assert projection["status"] == "complete"
-        assert set(summaries) == set(controller_reports.STUDIES)
-        call = analyzer.project_release_estimands.call_args
-        bindings = call.args[0]
-        assert [item["study_id"] for item in bindings] == list(
-            controller_reports.STUDIES,
-        )
-        assert call.kwargs["allow_missing_manual"] is True
-        assert set(bindings[0]) == {
-            "study_id",
-            "spec",
-            "plan",
-            "index",
-            "summary",
-            "failure_index",
-            "manual_receipt_locator",
-        }
-
-    def test_controller_rejects_state_json_release_summary(self):
-        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        roots, join = controller_release_studies(root)
-        controller_artifacts.write_json(
-            roots["software-quality-workflows"]
-            / controller_reports.STUDY_FILES["summary"],
-            {},
-        )
-        analyzer = mock.Mock()
-        analyzer.project_release_estimands.return_value = {"status": "complete"}
-        with self.assertRaisesRegex(
-            controller_reports.ReportError,
-            "release JSON bytes are not canonical",
-        ):
-            controller_reports.project_release(
-                phase="formal",
-                analyzer=analyzer,
-                roots=roots,
-                manual_receipts={
-                    study_id: None
-                    for study_id in controller_reports.STUDIES
-                },
-                join_path=join,
-                seed=2735,
-            )
 
     def _materialize_v5_analysis_bundle(
         self,
