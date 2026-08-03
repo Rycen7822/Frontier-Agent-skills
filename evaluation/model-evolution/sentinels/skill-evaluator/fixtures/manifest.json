@@ -1,0 +1,10 @@
+{
+  "artifacts": [
+    {
+      "encoding": "utf-8",
+      "path": "task.json",
+      "sha256": "sha256:76eb44c2e40caa27c8dc93d00fa10e1311ac7e670bf687be4d5cd102c0e3cd1a"
+    }
+  ],
+  "schema_version": 1
+}

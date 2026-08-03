@@ -1,6 +1,6 @@
 # Skill Evaluator contract schemas
 
-These Draft 2020-12 schemas are the machine owners for the Skill Evaluator 3.2
+These Draft 2020-12 schemas are the machine owners for the Skill Evaluator 3.3
 contracts. Runner status is a read-only control surface; scored wires remain:
 
 - [Evaluation spec v5](eval-spec-v5.schema.json)

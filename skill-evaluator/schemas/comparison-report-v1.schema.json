@@ -121,7 +121,7 @@
       "required": ["name", "version", "source_hash"],
       "properties": {
         "name": {"const": "compare_cycles.py"},
-        "version": {"const": "3.2.0"},
+        "version": {"const": "3.3.0"},
         "source_hash": {"$ref": "#/$defs/sha256"}
       },
       "additionalProperties": false

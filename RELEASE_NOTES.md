@@ -1,5 +1,13 @@
 # Release Notes
 
+## Bundle 6.3.0 model evolution qualification
+
+Bundle 6.3.0 advances Skill Evaluator from 3.2.0 to 3.3.0 and retains the other three Skill versions, schema epoch 5, mixed activation matrix, and explicit-only evaluator boundary. It adds a bounded model-evolution controller, six inert Codex Host probes, exact four-Skill non-ready sentinel suites, deterministic suite-quality evidence, external holdout contracts, and fresh-process qualification verification.
+
+The controller reuses the existing evaluator compiler, runner, analyzer, comparison, plugin builder, static diagnostic, and release authorization. It owns no grader, reviewer, optimizer, durable worker, cache, retry loop, installation, or release authority. Unknown Host capabilities and absent calibration or holdout evidence remain explicit limits or blockers; generated source-complete evidence never becomes a model-support claim.
+
+The release candidate rollback predecessor is the signed bundle 6.2.0 / Skill Evaluator 3.2.0 source at `9687f6d0590a229c5e082b09ab548c397f27cad3`. Rollback uses an ordinary revert or separately verified staged predecessor and preserves failed campaign evidence.
+
 ## Bundle 6.2.0 Skill Evaluator 3.2 hardening
 
 Bundle 6.2.0 advances Skill Evaluator from 3.1.0 to 3.2.0 while retaining schema epoch 5 and the existing four-skill activation matrix. The evaluator now has one per-check grader semantic owner, calibration v2 preparation, POSIX child-inherited attempt custody, deterministic read-only status, explicit per-invocation attempt budgets, and one public zero-provider lifecycle fixture spanning interruption, recovery, sealing, indexing, and analysis.

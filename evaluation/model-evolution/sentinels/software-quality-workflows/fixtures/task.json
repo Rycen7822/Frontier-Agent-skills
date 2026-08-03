@@ -1,0 +1,9 @@
+{
+  "allowed_effects": [
+    "workspace-local-output"
+  ],
+  "marker": "frontier-software-quality-workflows-sentinel-v1",
+  "regression_origin": "session-card-artifact-accumulation",
+  "schema_version": 1,
+  "skill_id": "software-quality-workflows"
+}

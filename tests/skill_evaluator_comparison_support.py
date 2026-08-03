@@ -75,7 +75,7 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         )
         host = json.loads(paths['host'].read_text(encoding='utf-8'))
         if package_hash is not None:
-            spec['subject']['version'] = '3.2.0-test'
+            spec['subject']['version'] = '3.3.0-test'
             spec['subject']['package']['package_hash'] = package_hash
             subject_id = spec['subject']['skill_id']
             target = [
