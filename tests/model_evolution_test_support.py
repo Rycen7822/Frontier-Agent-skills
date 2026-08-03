@@ -89,12 +89,12 @@ def _copy_product_files(repository_root: Path) -> dict[str, Path]:
     return paths
 
 
-def _materialize_fake_host(repository_root: Path) -> Path:
+def _materialize_fake_host(repository_root: Path, campaign_root: Path) -> Path:
     fake = repository_root / "fixtures/fake-codex"
     fake.parent.mkdir(parents=True, exist_ok=True)
     fake.write_text(FAKE_CODEX, encoding="utf-8")
     fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
-    host_path = repository_root / "target-provisional-host.json"
+    host_path = campaign_root / "inputs/target-provisional-host.json"
     host = copy.deepcopy(make_v5_schema_examples()["host-manifest-v1.schema.json"])
     host["identity"]["adapter"].update(
         {
@@ -202,18 +202,23 @@ def materialize_campaign(root: Path) -> dict[str, Any]:
     repository_root.mkdir(parents=True)
     campaign_root.mkdir(parents=True)
     product = _copy_product_files(repository_root)
-    host = _materialize_fake_host(repository_root)
+    host = _materialize_fake_host(repository_root, campaign_root)
     probe_set = _materialize_probe_set(repository_root, campaign_root)
     sentinel = _materialize_sentinel(repository_root, campaign_root)
     bindings = {
         name: repository_binding(path, repository_root, campaign_root)
         for name, path in {
             **product,
-            "host": host,
             "probe_set": probe_set,
             "sentinel": sentinel,
         }.items()
     }
+    bindings["host"] = make_binding(
+        host,
+        root="campaign",
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+    )
     values = {name: json.loads(path.read_text()) for name, path in product.items()}
     campaign = build_initial_campaign(
         campaign_id="campaign-fixture",
@@ -241,7 +246,7 @@ def materialize_campaign(root: Path) -> dict[str, Any]:
         campaign_root=campaign_root,
     )
     store = CampaignStore(campaign_root, repository_root)
-    store.create(campaign)
+    store.create(campaign, bootstrap_paths=(host,))
     return {
         "repository_root": repository_root,
         "campaign_root": campaign_root,

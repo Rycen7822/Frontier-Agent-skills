@@ -103,7 +103,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         store = self.fixture["store"]
         apparatus = materialize_apparatus_report(self.fixture)
         original = store.path.read_bytes()
-        with self.assertRaisesRegex(StateError, "must be empty"):
+        with self.assertRaisesRegex(StateError, "undeclared bootstrap content"):
             store.create(self.fixture["campaign"])
         with self.assertRaisesRegex(StateError, "stale"):
             store.mutate(1, lambda state: advance_preflight(state, apparatus))
@@ -130,6 +130,33 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                 store.mutate(0, lambda state: advance_preflight(state, apparatus))
         self.assertEqual(store.path.read_bytes(), original)
         self.assertFalse(list(store.root.glob(".campaign.json.*.tmp")))
+
+    def test_create_accepts_only_declared_campaign_bootstrap_files(self) -> None:
+        source_host = self.fixture["paths"]["host"]
+        relative_host = Path(self.fixture["bindings"]["host"]["path"])
+
+        accepted_root = Path(self.temporary.name) / "accepted-campaign"
+        accepted_host = accepted_root / relative_host
+        accepted_host.parent.mkdir(parents=True)
+        accepted_host.write_bytes(source_host.read_bytes())
+        accepted = CampaignStore(accepted_root, self.fixture["repository_root"])
+        accepted.create(
+            self.fixture["campaign"],
+            bootstrap_paths=(accepted_host,),
+        )
+        self.assertTrue(accepted.path.is_file())
+
+        rejected_root = Path(self.temporary.name) / "rejected-campaign"
+        rejected_host = rejected_root / relative_host
+        rejected_host.parent.mkdir(parents=True)
+        rejected_host.write_bytes(source_host.read_bytes())
+        (rejected_root / "unbound.txt").write_text("unbound\n", encoding="utf-8")
+        rejected = CampaignStore(rejected_root, self.fixture["repository_root"])
+        with self.assertRaisesRegex(StateError, "undeclared bootstrap content"):
+            rejected.create(
+                self.fixture["campaign"],
+                bootstrap_paths=(rejected_host,),
+            )
 
     def test_unsigned_and_dirty_git_identity_are_rejected(self) -> None:
         repository = Path(self.temporary.name) / "unsigned-repository"
@@ -882,6 +909,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                 ".campaign.lock",
                 "apparatus-report.json",
                 "campaign.json",
+                "inputs",
                 "qualification",
                 "summary.json",
             },

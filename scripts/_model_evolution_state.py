@@ -471,10 +471,31 @@ class CampaignStore:
         """Read-only state access: no lock, temp file, or timestamp mutation."""
         return self._read(verify_bindings=verify_bindings)
 
-    def create(self, value: dict[str, Any]) -> None:
+    def create(
+        self,
+        value: dict[str, Any],
+        *,
+        bootstrap_paths: tuple[Path, ...] = (),
+    ) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
-        if any(self.root.iterdir()):
-            raise StateError("campaign directory must be empty at init")
+        allowed_nodes: set[Path] = set()
+        for candidate in bootstrap_paths:
+            if candidate.is_symlink() or not candidate.is_file():
+                raise StateError("campaign bootstrap input must be a regular file")
+            resolved = candidate.resolve(strict=True)
+            if not resolved.is_relative_to(self.root):
+                raise StateError("campaign bootstrap input is outside campaign root")
+            allowed_nodes.add(resolved)
+            allowed_nodes.update(
+                parent
+                for parent in resolved.parents
+                if parent != self.root and parent.is_relative_to(self.root)
+            )
+        existing_nodes = set(self.root.rglob("*"))
+        if any(path.is_symlink() for path in existing_nodes):
+            raise StateError("campaign bootstrap input cannot be a symlink")
+        if existing_nodes != allowed_nodes:
+            raise StateError("campaign directory contains undeclared bootstrap content")
         try:
             validate_document(value, "campaign")
             validate_all_bindings(value, self.repository_root, self.root)
