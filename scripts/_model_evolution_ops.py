@@ -5,8 +5,10 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import math
 import os
 from pathlib import Path
+import signal
 import shlex
 import shutil
 import subprocess
@@ -39,6 +41,7 @@ from _model_evolution_contract import (
 
 
 MAX_DIAGNOSTIC_BYTES = 64 * 1024
+PROBE_TIMEOUT_GRACE_SECONDS = 30.0
 PLUGIN_BUILD_GATE_SCRIPT = "scripts/build_codex_plugin.py"
 ALLOWED_GATE_SCRIPTS = {
     "bundle/build_bundle_manifest.py",
@@ -375,11 +378,25 @@ def _probe_argv(host: dict[str, Any], repository_root: Path) -> list[str]:
     return argv
 
 
+def _probe_process_timeout(argv: list[str]) -> float:
+    positions = [index for index, value in enumerate(argv) if value == "--timeout"]
+    if len(positions) != 1 or positions[0] + 1 >= len(argv):
+        raise OperationError("target Host timeout is invalid")
+    try:
+        host_timeout = float(argv[positions[0] + 1])
+    except (TypeError, ValueError) as exc:
+        raise OperationError("target Host timeout is invalid") from exc
+    if not math.isfinite(host_timeout) or host_timeout <= 0:
+        raise OperationError("target Host timeout is invalid")
+    return host_timeout + PROBE_TIMEOUT_GRACE_SECONDS
+
+
 def _run_probe_process(
     argv: list[str],
     row: dict[str, Any],
     *,
     workspace: Path,
+    timeout: float,
 ) -> tuple[dict[str, Any], str]:
     request = {
         "schema_version": "codex-interaction-probe/1.0",
@@ -389,25 +406,38 @@ def _run_probe_process(
         "expected_event_types": row["required_observations"],
     }
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             argv,
             cwd=workspace,
-            input=json.dumps(request, separators=(",", ":")) + "\n",
             text=True,
-            capture_output=True,
-            check=False,
-            timeout=180,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             shell=False,
             env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"),
+            start_new_session=True,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise OperationError("interaction probe process failed or timed out") from exc
-    bounded_stderr = result.stderr[:8192].replace(str(workspace), "<workspace>")
-    if result.returncode:
+    except OSError as exc:
+        raise OperationError("interaction probe process failed to start") from exc
+    try:
+        stdout, stderr = process.communicate(
+            input=json.dumps(request, separators=(",", ":")) + "\n",
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        os.killpg(process.pid, signal.SIGKILL)
+        stdout, stderr = process.communicate()
+        diagnostic = stderr[:8192].replace(str(workspace), "<workspace>").strip()
+        detail = f": {diagnostic}" if diagnostic else ""
         raise OperationError(
-            f"interaction probe exited {result.returncode}: {bounded_stderr.strip()}"
+            f"interaction probe exceeded outer timeout after {timeout:g}s{detail}"
+        ) from exc
+    bounded_stderr = stderr[:8192].replace(str(workspace), "<workspace>")
+    if process.returncode:
+        raise OperationError(
+            f"interaction probe exited {process.returncode}: {bounded_stderr.strip()}"
         )
-    lines = [line for line in result.stdout.splitlines() if line]
+    lines = [line for line in stdout.splitlines() if line]
     if len(lines) != 1:
         raise OperationError("interaction probe must emit exactly one JSON result")
     try:
@@ -491,6 +521,7 @@ def run_interaction_probes(
         label="target provisional Host",
     )
     argv = _probe_argv(provisional, repository_root)
+    process_timeout = _probe_process_timeout(argv)
     probes_root = campaign_root / "probes"
     if probes_root.is_symlink():
         raise OperationError("interaction probe artifact root is symlinked")
@@ -536,7 +567,12 @@ def run_interaction_probes(
                 if fixture.is_symlink() or not fixture.is_file():
                     raise OperationError("interaction probe fixture is invalid")
                 shutil.copy2(fixture, workspace / fixture.name)
-                value, stderr = _run_probe_process(argv, row, workspace=workspace)
+                value, stderr = _run_probe_process(
+                    argv,
+                    row,
+                    workspace=workspace,
+                    timeout=process_timeout,
+                )
             terminal = with_self_hash(
                 {
                     "schema_version": "model-evolution-probe-terminal/1",

@@ -280,6 +280,8 @@ class ModelEvolutionContractTest(unittest.TestCase):
         repaired_host["identity"]["execution"]["skill_hash"] = (
             "sha256:" + "6" * 64
         )
+        timeout_index = repaired_host["command"]["argv"].index("--timeout") + 1
+        repaired_host["command"]["argv"][timeout_index] = "10"
         repaired_host["manifest_hash"] = canonical_hash(
             {
                 key: value
@@ -303,6 +305,29 @@ class ModelEvolutionContractTest(unittest.TestCase):
             repository_root=self.fixture["repository_root"],
             campaign_root=self.fixture["campaign_root"],
         )
+        repaired_host["command"]["argv"][timeout_index] = "1"
+        repaired_host["manifest_hash"] = canonical_hash(
+            {
+                key: value
+                for key, value in repaired_host.items()
+                if key != "manifest_hash"
+            }
+        )
+        write_json(repaired_path, repaired_host)
+        shorter_timeout_binding = make_binding(
+            repaired_path,
+            root="campaign",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        with self.assertRaisesRegex(ContractError, "different Host"):
+            prepare_supersedes(
+                campaign_binding=old_binding,
+                target_host_binding=shorter_timeout_binding,
+                repository_root=self.fixture["repository_root"],
+                campaign_root=self.fixture["campaign_root"],
+            )
+        repaired_host["command"]["argv"][timeout_index] = "10"
         repaired_host["identity"]["execution"]["model"] = "different-model"
         repaired_host["manifest_hash"] = canonical_hash(
             {
@@ -355,18 +380,46 @@ class ModelEvolutionContractTest(unittest.TestCase):
         self.assertEqual(repair["budgets"]["reserved"]["provider_requests"], 2)
         self.assertEqual(repair["budgets"]["observed"]["provider_requests"], 1)
 
-        old["supersedes"] = supersedes
-        old = with_self_hash(old, "campaign_hash")
-        write_json(old_path, old)
-        old_binding = make_binding(
-            old_path,
+        repair_root = self.fixture["repository_root"] / ".work/repair"
+        shutil.copytree(self.fixture["campaign_root"], repair_root)
+        repair_path = write_json(repair_root / "campaign.json", repair)
+        write_json(
+            repair_root / "qualification/qualification.json",
+            project_qualification(
+                repair,
+                repository_root=self.fixture["repository_root"],
+                campaign_root=repair_root,
+                observed_as_of="2026-08-03T00:00:00Z",
+                valid_until="2026-08-04T00:00:00Z",
+            ),
+        )
+        repair_binding = make_binding(
+            repair_path,
             root="repository",
             repository_root=self.fixture["repository_root"],
             campaign_root=self.fixture["campaign_root"],
         )
-        with self.assertRaisesRegex(ContractError, "cannot be superseded again"):
+        second = prepare_supersedes(
+            campaign_binding=repair_binding,
+            target_host_binding=self.fixture["bindings"]["host"],
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        self.assertEqual(second["imported_reserved"], repair["budgets"]["reserved"])
+
+        final = copy.deepcopy(repair)
+        final["supersedes"] = second
+        final = with_self_hash(final, "campaign_hash")
+        final_path = write_json(repair_root / "final-campaign.json", final)
+        final_binding = make_binding(
+            final_path,
+            root="repository",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        with self.assertRaisesRegex(ContractError, "depth is exhausted"):
             prepare_supersedes(
-                campaign_binding=old_binding,
+                campaign_binding=final_binding,
                 target_host_binding=self.fixture["bindings"]["host"],
                 repository_root=self.fixture["repository_root"],
                 campaign_root=self.fixture["campaign_root"],
