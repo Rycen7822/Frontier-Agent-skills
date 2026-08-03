@@ -2,18 +2,25 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(
+    0,
+    str(Path(__file__).resolve().parents[1] / "skill-evaluator/scripts"),
+)
 
 from _model_evolution_calibration import prepare_calibrations  # noqa: E402
 from _model_evolution_contract import make_binding  # noqa: E402
 import model_evolution as controller  # noqa: E402
+import run_model_calibration as calibration_runner  # noqa: E402
 from skill_evaluator_test_support import materialize_v5_calibration_inputs
 
 
@@ -141,6 +148,34 @@ def _runner_command(
 
 
 class ModelCalibrationLifecycleTests(unittest.TestCase):
+    def test_calibration_host_uses_only_the_declared_transport_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            paths = _materialize(Path(raw), "writing-plans")
+            host = json.loads(paths["host"].read_text())
+            host["command"]["env_allowlist"] = [
+                "HTTP_PROXY",
+                "PYTHONDONTWRITEBYTECODE",
+            ]
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "HTTP_PROXY": "http://proxy.invalid:8080",
+                    "UNDECLARED_SECRET": "must-not-pass",
+                },
+                clear=True,
+            ):
+                _, environment = calibration_runner._host_command(
+                    host,
+                    paths["spec"].parent,
+                )
+            self.assertEqual(
+                {
+                    "HTTP_PROXY": "http://proxy.invalid:8080",
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                },
+                environment,
+            )
+
     maxDiff = None
 
     def test_four_skill_calibration_closes_64_fake_requests_without_replay(self) -> None:

@@ -11,6 +11,7 @@ import textwrap
 from typing import Any
 
 from _bundle_hash import inventory, tree_hash
+from _codex_eval_delivery import MODEL_EVOLUTION_ENV_ALLOWLIST
 from _model_evolution_contract import (
     SKILL_IDS,
     build_initial_campaign,
@@ -112,6 +113,12 @@ def _materialize_fake_host(
         }
     )
     host["identity"]["execution"]["model"] = "fixture-model"
+    host["identity"]["repository"] = {
+        "dirty": False,
+        "revision": FIXED_COMMIT,
+        "tree": FIXED_TREE,
+        "worktree": str(repository_root.resolve()),
+    }
     host["command"].update(
         {
             "argv": [
@@ -140,6 +147,7 @@ def _materialize_fake_host(
             ],
             "resolved_executable": str(Path(sys.executable).resolve()),
             "executable_sha256": file_hash(Path(sys.executable).resolve()),
+            "env_allowlist": list(MODEL_EVOLUTION_ENV_ALLOWLIST),
         }
     )
     prototype = host["catalog"]["entries"][0]

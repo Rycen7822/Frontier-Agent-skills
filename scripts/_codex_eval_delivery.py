@@ -16,10 +16,42 @@ from _bundle_hash import inventory, tree_hash
 
 FORCED_SKILL = re.compile(r"(?<![A-Za-z0-9_-])\$([A-Za-z0-9][A-Za-z0-9._-]{0,127})")
 INFRASTRUCTURE_ROOTS = {".agents", ".git"}
+MODEL_EVOLUTION_ENV_ALLOWLIST = tuple(sorted({
+    "ALL_PROXY",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "PYTHONDONTWRITEBYTECODE",
+    "all_proxy",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+}))
 
 
 class DeliveryError(ValueError):
     """An exact catalog, treatment, or workspace delivery contract failed."""
+
+
+def project_command_environment(
+    command: dict[str, Any],
+    source: dict[str, str],
+    *,
+    require_model_evolution: bool = False,
+) -> dict[str, str]:
+    allowlist = command.get("env_allowlist")
+    if (
+        not isinstance(allowlist, list)
+        or any(not isinstance(name, str) or not name for name in allowlist)
+        or allowlist != sorted(set(allowlist))
+    ):
+        raise DeliveryError("Host environment allowlist is invalid")
+    if require_model_evolution and allowlist != list(MODEL_EVOLUTION_ENV_ALLOWLIST):
+        raise DeliveryError("model-evolution Host transport environment differs")
+    environment = {name: source[name] for name in allowlist if name in source}
+    if "PYTHONDONTWRITEBYTECODE" in allowlist:
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    return environment
 
 
 def _skill_hashes(plugin_root: Path) -> dict[str, str]:
@@ -60,6 +92,11 @@ def validate_plugin_catalog(plugin_root: Path, manifest: dict[str, Any]) -> None
     actual = _skill_hashes(plugin_root)
     if expected != actual:
         raise DeliveryError("plugin Skill bytes differ from the Host catalog")
+    catalog_hash = "sha256:" + sha256(
+        json.dumps(entries, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    if catalog.get("catalog_hash") != catalog_hash:
+        raise DeliveryError("Host catalog hash differs from its entries")
     try:
         plugin_paths = [
             path
@@ -73,6 +110,8 @@ def validate_plugin_catalog(plugin_root: Path, manifest: dict[str, Any]) -> None
     execution = identity.get("execution") if isinstance(identity, dict) else None
     if not isinstance(execution, dict) or execution.get("skill_hash") != plugin_hash:
         raise DeliveryError("plugin tree differs from the Host identity")
+    if execution.get("catalog_hash") != catalog_hash:
+        raise DeliveryError("Host catalog identity differs from its entries")
 
 
 def skill_isolation_argv() -> list[str]:

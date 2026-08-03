@@ -426,11 +426,15 @@ def _validate_host_command(
     for argument in declared[1:]:
         candidate = contract_root / argument
         argv.append(str(candidate.resolve()) if candidate.is_file() else argument)
-    environment = {
-        name: os.environ[name]
-        for name in command["env_allowlist"]
-        if name in os.environ
-    }
+    repository_scripts = Path(__file__).resolve().parents[2] / "scripts"
+    if str(repository_scripts) not in sys.path:
+        sys.path.insert(0, str(repository_scripts))
+    from _codex_eval_delivery import DeliveryError, project_command_environment
+
+    try:
+        environment = project_command_environment(command, dict(os.environ))
+    except DeliveryError as exc:
+        raise RunnerFailure(str(exc)) from exc
     return argv, environment
 
 

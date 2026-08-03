@@ -18,7 +18,12 @@ import time
 from typing import Any
 
 import build_codex_plugin as plugin_builder
-from _codex_eval_delivery import DeliveryError, validate_plugin_catalog
+import codex_eval_host as host_adapter
+from _codex_eval_delivery import (
+    DeliveryError,
+    project_command_environment,
+    validate_plugin_catalog,
+)
 
 from _model_evolution_contract import (
     ContractError,
@@ -395,6 +400,7 @@ def _run_probe_process(
     argv: list[str],
     row: dict[str, Any],
     *,
+    environment: dict[str, str],
     workspace: Path,
     timeout: float,
 ) -> tuple[dict[str, Any], str]:
@@ -414,7 +420,7 @@ def _run_probe_process(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=False,
-            env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"),
+            env=environment,
             start_new_session=True,
         )
     except OSError as exc:
@@ -521,6 +527,14 @@ def run_interaction_probes(
         label="target provisional Host",
     )
     argv = _probe_argv(provisional, repository_root)
+    try:
+        environment = project_command_environment(
+            provisional["command"],
+            dict(os.environ),
+            require_model_evolution=True,
+        )
+    except DeliveryError as exc:
+        raise OperationError(str(exc)) from exc
     process_timeout = _probe_process_timeout(argv)
     probes_root = campaign_root / "probes"
     if probes_root.is_symlink():
@@ -570,6 +584,7 @@ def run_interaction_probes(
                 value, stderr = _run_probe_process(
                     argv,
                     row,
+                    environment=environment,
                     workspace=workspace,
                     timeout=process_timeout,
                 )
@@ -752,6 +767,29 @@ def _validate_host_plugin_binding(host: dict[str, Any], plugin_root: Path) -> No
         raise OperationError(str(exc)) from exc
 
 
+def validate_target_host_staging(
+    host_path: Path,
+    plugin_root: Path,
+    *,
+    repository_root: Path,
+    expected_commit: str,
+    expected_tree: str,
+) -> dict[str, Any]:
+    try:
+        host = host_adapter.validate_bound_manifest(host_path, plugin_root)
+    except (host_adapter.AdapterError, DeliveryError, OSError, ValueError) as exc:
+        raise OperationError(f"target Host staging validation failed: {exc}") from exc
+    expected = {
+        "dirty": False,
+        "revision": expected_commit,
+        "tree": expected_tree,
+        "worktree": str(repository_root.resolve(strict=True)),
+    }
+    if host.get("identity", {}).get("repository") != expected:
+        raise OperationError("target Host repository identity differs")
+    return host
+
+
 def preflight_operations(
     campaign: dict[str, Any],
     *,
@@ -795,16 +833,19 @@ def preflight_operations(
         repository_root=repository_root,
     )
     operations.append(fact)
-    host = load_json(
-        resolve_binding(
-            campaign["profiles"]["target_provisional"],
-            repository_root,
-            campaign_root,
-        ),
-        label="target provisional Host",
+    host_path = resolve_binding(
+        campaign["profiles"]["target_provisional"],
+        repository_root,
+        campaign_root,
     )
     started = time.monotonic()
-    _validate_host_plugin_binding(host, plugin_root)
+    host = validate_target_host_staging(
+        host_path,
+        plugin_root,
+        repository_root=repository_root,
+        expected_commit=campaign["product"]["source_commit"],
+        expected_tree=campaign["product"]["source_tree"],
+    )
     operations.append(
         _operation_fact(
             "host-plugin-binding",
