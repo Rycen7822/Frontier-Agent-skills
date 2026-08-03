@@ -219,8 +219,14 @@ def observed_skill_routing(raw: bytes, plugin_root: Path) -> list[str]:
     ]
 
 
-def observed_permission_denials(raw: bytes) -> list[str]:
-    markers = ("permission denied", "read-only file system", "operation not permitted")
+def observed_permission_denials(raw: bytes, process_stderr: bytes = b"") -> list[str]:
+    markers = (
+        "permission denied",
+        "read-only file system",
+        "operation not permitted",
+        "writing is blocked by read-only sandbox",
+        "rejected by user approval settings",
+    )
     denied: list[str] = []
     for item in _completed_command_items(raw):
         output = "\n".join(
@@ -233,7 +239,10 @@ def observed_permission_denials(raw: bytes) -> list[str]:
         ):
             item_id = item.get("id")
             denied.append(item_id if isinstance(item_id, str) else "command-denied")
-    return denied
+    diagnostic = process_stderr.decode("utf-8", errors="replace").casefold()
+    if any(marker in diagnostic for marker in markers):
+        denied.append("process-denied")
+    return sorted(set(denied))
 
 
 def is_workspace_infrastructure(path: Path) -> bool:
