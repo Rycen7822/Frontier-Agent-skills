@@ -861,7 +861,7 @@ def _probe_set(fixture_bytes: bytes) -> bytes:
         (
             "natural-routing",
             "natural_routing",
-            "Read the repository files and produce a self-contained technical report with a compact recovery record; do not modify files.",
+            "Read only probe-fixture.json and produce a concise self-contained technical report with one compact recovery record; do not inspect other files or modify files.",
             ["thread.started", "turn.completed", "direct.routing"],
         ),
         (
