@@ -294,15 +294,15 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         }
         supersedes = {
             "imported_reserved": {
-                "provider_requests": 104,
-                "model_grade": 80,
+                "provider_requests": 126,
+                "model_grade": 96,
             },
         }
         self.assertEqual(
             {
-                "provider_requests": 250,
+                "provider_requests": 272,
                 "execute": 70,
-                "model_grade": 150,
+                "model_grade": 166,
             },
             controller._cumulative_request_ceilings(
                 request_ceilings,

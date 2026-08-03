@@ -838,16 +838,56 @@ def _is_single_calibration_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _failure_receipt_request_count(
+    binding: dict[str, Any],
+    *,
+    repository_root: Path,
+    campaign_root: Path,
+    campaign_hash: str,
+) -> int:
+    receipt = load_json(
+        resolve_binding(binding, repository_root, campaign_root),
+        label="failed-request receipt",
+    )
+    validate_document(receipt, "failure_receipt")
+    validate_all_bindings(receipt, repository_root, campaign_root)
+    request_count = receipt["request_count"]
+    if (
+        receipt["campaign_hash"] != campaign_hash
+        or request_count != len(receipt["requests"])
+        or request_count != sum(receipt["outcomes"].values())
+        or sorted(row["entry_ordinal"] for row in receipt["requests"])
+        != list(range(request_count))
+    ):
+        raise ContractError("failed-request receipt differs from its campaign")
+    request_hashes: set[str] = set()
+    for row in receipt["requests"]:
+        identity = pre_turn_failure_identity(
+            resolve_binding(
+                row["host_result"],
+                repository_root,
+                campaign_root,
+            ),
+            row["entry_ordinal"],
+        )
+        if any(identity[field] != row[field] for field in identity):
+            raise ContractError("failed-request receipt differs from Host evidence")
+        request_hashes.add(identity["request_hash"])
+    if len(request_hashes) != request_count:
+        raise ContractError("failed-request receipt repeats a request hash")
+    return request_count
+
+
 def _blocked_supersession_lineage(
     old: dict[str, Any],
     old_path: Path,
     repository_root: Path,
 ) -> list[tuple[dict[str, Any], Path]]:
-    """Load at most four closed campaigns and verify every budget carry."""
+    """Load at most five closed campaigns and verify every budget carry."""
     lineage = [(old, old_path)]
     current, current_path = old, old_path
     while current["supersedes"] is not None:
-        if len(lineage) == 4:
+        if len(lineage) == 5:
             raise ContractError("supersession repair depth is exhausted")
         parent_path = resolve_binding(
             current["supersedes"]["campaign"],
@@ -859,12 +899,23 @@ def _blocked_supersession_lineage(
         lineage.append((parent, parent_path))
         current, current_path = parent, parent_path
     for (child, _), (parent, parent_path) in zip(lineage, lineage[1:]):
-        for field in ("reserved", "observed"):
-            if (
-                child["supersedes"][f"imported_{field}"]
-                != parent["budgets"][field]
-            ):
-                raise ContractError("supersession lineage budget differs")
+        expected_reserved = dict(parent["budgets"]["reserved"])
+        receipt_binding = child["supersedes"].get("failure_receipt")
+        if receipt_binding is not None:
+            request_count = _failure_receipt_request_count(
+                receipt_binding,
+                repository_root=repository_root,
+                campaign_root=parent_path.parent,
+                campaign_hash=parent["campaign_hash"],
+            )
+            expected_reserved["provider_requests"] += request_count
+            expected_reserved["model_grade"] += request_count
+        if (
+            child["supersedes"]["imported_reserved"] != expected_reserved
+            or child["supersedes"]["imported_observed"]
+            != parent["budgets"]["observed"]
+        ):
+            raise ContractError("supersession lineage budget differs")
         qualification = load_json(
             parent_path.parent / "qualification/qualification.json",
             label="supersession ancestor qualification",
@@ -893,11 +944,11 @@ def prepare_supersedes(
     lineage = _blocked_supersession_lineage(old, old_path, repository_root)
     if len(lineage) >= 3 and not _is_single_calibration_correction(old):
         raise ContractError("supersession repair depth is exhausted")
-    fourth_hop = len(lineage) == 4
-    if fourth_hop and failure_receipt_binding is None:
-        raise ContractError("fourth supersession requires a failed-request receipt")
-    if failure_receipt_binding is not None and not fourth_hop:
-        raise ContractError("failed-request receipt is only legal for the final repair")
+    receipt_hop = len(lineage) in {4, 5}
+    if receipt_hop and failure_receipt_binding is None:
+        raise ContractError("late supersession requires a failed-request receipt")
+    if failure_receipt_binding is not None and not receipt_hop:
+        raise ContractError("failed-request receipt is only legal for a late repair")
     old_host = load_json(
         resolve_binding(
             old["profiles"]["target_provisional"],
@@ -1000,44 +1051,12 @@ def prepare_supersedes(
         "imported_observed": dict(old["budgets"]["observed"]),
     }
     if failure_receipt_binding is not None:
-        failure_receipt = load_json(
-            resolve_binding(
-                failure_receipt_binding,
-                repository_root,
-                campaign_root,
-            ),
-            label="failed-request receipt",
+        request_count = _failure_receipt_request_count(
+            failure_receipt_binding,
+            repository_root=repository_root,
+            campaign_root=old_path.parent,
+            campaign_hash=old["campaign_hash"],
         )
-        validate_document(failure_receipt, "failure_receipt")
-        validate_all_bindings(
-            failure_receipt,
-            repository_root,
-            old_path.parent,
-        )
-        request_count = failure_receipt["request_count"]
-        if (
-            failure_receipt["campaign_hash"] != old["campaign_hash"]
-            or request_count != len(failure_receipt["requests"])
-            or request_count != sum(failure_receipt["outcomes"].values())
-            or sorted(row["entry_ordinal"] for row in failure_receipt["requests"])
-            != list(range(request_count))
-        ):
-            raise ContractError("failed-request receipt differs from its campaign")
-        request_hashes: set[str] = set()
-        for row in failure_receipt["requests"]:
-            identity = pre_turn_failure_identity(
-                resolve_binding(
-                    row["host_result"],
-                    repository_root,
-                    old_path.parent,
-                ),
-                row["entry_ordinal"],
-            )
-            if any(identity[field] != row[field] for field in identity):
-                raise ContractError("failed-request receipt differs from Host evidence")
-            request_hashes.add(identity["request_hash"])
-        if len(request_hashes) != request_count:
-            raise ContractError("failed-request receipt repeats a request hash")
         imported_reserved["provider_requests"] += request_count
         imported_reserved["model_grade"] += request_count
         result["failure_receipt"] = failure_receipt_binding

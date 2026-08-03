@@ -54,6 +54,8 @@ FAKE_CODEX_SOURCE = textwrap.dedent(
     stderr = config.get("stderr")
     if stderr:
         sys.stderr.write(stderr)
+    for line in config.get("stdout_lines", []):
+        print(line, flush=True)
     mode = config.get("mode", "normal")
     if mode == "timeout":
         time.sleep(config.get("sleep_seconds", 5))
@@ -421,7 +423,7 @@ class TestCodexEventNormalization(unittest.TestCase):
                 if "failures" in expected:
                     self.assertEqual(expected["failures"], actual["failures"])
 
-    def test_model_grade_schema_binds_batch_and_check_order(self) -> None:
+    def test_model_grade_schema_uses_provider_supported_array_shape(self) -> None:
         batch = {
             "batch_id": "batch-1",
             "items": [
@@ -432,16 +434,13 @@ class TestCodexEventNormalization(unittest.TestCase):
             ],
         }
         schema = self.events.model_grade_schema(batch)
-        self.assertEqual("batch-1", schema["properties"]["batch_id"]["const"])
-        item = schema["properties"]["items"]["prefixItems"][0]
-        self.assertEqual("item-1", item["properties"]["item_id"]["const"])
-        self.assertEqual(
-            ["check-a", "check-b"],
-            [
-                entry["properties"]["id"]["const"]
-                for entry in item["properties"]["checks"]["prefixItems"]
-            ],
-        )
+        self.assertEqual(["batch-1"], schema["properties"]["batch_id"]["enum"])
+        items = schema["properties"]["items"]
+        checks = items["items"]["properties"]["checks"]
+        self.assertNotIn("prefixItems", json.dumps(schema))
+        self.assertEqual((1, 1), (items["minItems"], items["maxItems"]))
+        self.assertEqual((2, 2), (checks["minItems"], checks["maxItems"]))
+        self.assertEqual("string", checks["items"]["properties"]["id"]["type"])
 
 
 class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
@@ -856,7 +855,20 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                 root = Path(tmp)
                 workspace = root / "workspace"
                 workspace.mkdir()
-                fake, _ = _write_fake_codex(root, mode=mode, sleep_seconds=5)
+                stdout_lines = (
+                    [json.dumps({
+                        "type": "error",
+                        "message": "Invalid response schema: prefixItems is unsupported",
+                    })]
+                    if mode == "nonzero"
+                    else []
+                )
+                fake, _ = _write_fake_codex(
+                    root,
+                    mode=mode,
+                    sleep_seconds=5,
+                    stdout_lines=stdout_lines,
+                )
                 manifest_path = root / "host.json"
                 _host_manifest(manifest_path, fake, timeout=timeout)
                 started = time.monotonic()
@@ -872,6 +884,8 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                 terminal = _jsonl(result.stdout)[-1]
                 self.assertEqual(status, terminal["terminal_status"])
                 self.assertEqual(code, terminal["provider_error_code"])
+                if mode == "nonzero":
+                    self.assertIn("prefixItems is unsupported", terminal["treatment_error"])
                 self.assertEqual([], list(workspace.iterdir()))
 
         with tempfile.TemporaryDirectory() as tmp:

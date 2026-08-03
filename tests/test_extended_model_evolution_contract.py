@@ -621,10 +621,25 @@ class ModelEvolutionContractTest(unittest.TestCase):
 
         exhausted = copy.deepcopy(corrected)
         exhausted["supersedes"] = final_repair
+        exhausted["budgets"]["reserved"] = copy.deepcopy(
+            final_repair["imported_reserved"]
+        )
+        exhausted["budgets"]["observed"] = copy.deepcopy(
+            final_repair["imported_observed"]
+        )
         exhausted = with_self_hash(exhausted, "campaign_hash")
-        exhausted_path = write_json(
-            corrected_root / "exhausted-campaign.json",
-            exhausted,
+        exhausted_root = self.fixture["repository_root"] / ".work/exhausted"
+        shutil.copytree(corrected_root, exhausted_root)
+        exhausted_path = write_json(exhausted_root / "campaign.json", exhausted)
+        exhausted_qualification = write_json(
+            exhausted_root / "qualification/qualification.json",
+            project_qualification(
+                exhausted,
+                repository_root=self.fixture["repository_root"],
+                campaign_root=exhausted_root,
+                observed_as_of="2026-08-03T00:00:00Z",
+                valid_until="2026-08-04T00:00:00Z",
+            ),
         )
         exhausted_binding = make_binding(
             exhausted_path,
@@ -632,11 +647,64 @@ class ModelEvolutionContractTest(unittest.TestCase):
             repository_root=self.fixture["repository_root"],
             campaign_root=self.fixture["campaign_root"],
         )
+        exhausted_receipt = copy.deepcopy(receipt)
+        exhausted_receipt["campaign_hash"] = exhausted["campaign_hash"]
+        exhausted_receipt["qualification"] = make_binding(
+            exhausted_qualification,
+            root="campaign",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=exhausted_root,
+        )
+        exhausted_receipt = with_self_hash(
+            exhausted_receipt,
+            "failure_receipt_hash",
+        )
+        exhausted_receipt_path = write_json(
+            exhausted_root / "calibration/final-failure-receipt.json",
+            exhausted_receipt,
+        )
+        exhausted_receipt_binding = make_binding(
+            exhausted_receipt_path,
+            root="repository",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        last_repair = prepare_supersedes(
+            campaign_binding=exhausted_binding,
+            target_host_binding=self.fixture["bindings"]["host"],
+            failure_receipt_binding=exhausted_receipt_binding,
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        self.assertEqual(
+            exhausted["budgets"]["reserved"]["model_grade"] + 1,
+            last_repair["imported_reserved"]["model_grade"],
+        )
+
+        terminal = copy.deepcopy(exhausted)
+        terminal["supersedes"] = last_repair
+        terminal["budgets"]["reserved"] = copy.deepcopy(
+            last_repair["imported_reserved"]
+        )
+        terminal["budgets"]["observed"] = copy.deepcopy(
+            last_repair["imported_observed"]
+        )
+        terminal = with_self_hash(terminal, "campaign_hash")
+        terminal_path = write_json(
+            exhausted_root / "terminal-campaign.json",
+            terminal,
+        )
+        terminal_binding = make_binding(
+            terminal_path,
+            root="repository",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
         with self.assertRaisesRegex(ContractError, "depth is exhausted"):
             prepare_supersedes(
-                campaign_binding=exhausted_binding,
+                campaign_binding=terminal_binding,
                 target_host_binding=self.fixture["bindings"]["host"],
-                failure_receipt_binding=receipt_binding,
+                failure_receipt_binding=exhausted_receipt_binding,
                 repository_root=self.fixture["repository_root"],
                 campaign_root=self.fixture["campaign_root"],
             )
