@@ -17,10 +17,23 @@ sys.path.insert(
     str(Path(__file__).resolve().parents[1] / "skill-evaluator/scripts"),
 )
 
-from _model_evolution_calibration import prepare_calibrations  # noqa: E402
-from _model_evolution_contract import make_binding  # noqa: E402
+from _model_evolution_calibration import (  # noqa: E402
+    CalibrationPreparationError,
+    close_calibration_failure,
+    prepare_calibrations,
+)
+from _model_evolution_contract import (  # noqa: E402
+    make_binding,
+    project_qualification,
+    validate_document,
+    with_self_hash,
+)
 import model_evolution as controller  # noqa: E402
 import run_model_calibration as calibration_runner  # noqa: E402
+from model_evolution_test_support import (  # noqa: E402
+    materialize_campaign,
+    write_json,
+)
 from skill_evaluator_test_support import materialize_v5_calibration_inputs
 
 
@@ -175,6 +188,109 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                 },
                 environment,
             )
+
+    def test_pre_turn_failure_receipt_is_canonical_and_no_overwrite(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            fixture = materialize_campaign(Path(raw))
+            campaign = fixture["campaign"]
+            campaign_root = fixture["campaign_root"]
+            write_json(
+                campaign_root / "qualification/qualification.json",
+                project_qualification(
+                    campaign,
+                    repository_root=fixture["repository_root"],
+                    campaign_root=campaign_root,
+                    observed_as_of="2026-08-03T00:00:00Z",
+                    valid_until="2026-08-04T00:00:00Z",
+                ),
+            )
+            preparation = with_self_hash({
+                "schema_version": "model-evolution-calibration-preparation/1",
+                "campaign_id": campaign["campaign_id"],
+                "campaign_hash": campaign["campaign_hash"],
+                "state_revision": campaign["state_revision"],
+                "as_of": "2026-08-03T00:00:00Z",
+                "created": "2026-08-03T00:00:00Z",
+                "expires": "2026-08-04T00:00:00Z",
+                "commands": [{
+                    "skill_id": "writing-plans",
+                    "request_count": 1,
+                    "run": [],
+                    "validate": [],
+                    "record": [],
+                }],
+            }, "preparation_hash")
+            write_json(
+                campaign_root / "calibration/preparation.json",
+                preparation,
+            )
+            terminal_root = (
+                campaign_root
+                / "calibration/writing-plans/run/terminals/001"
+            )
+            terminal_root.mkdir(parents=True)
+            result = {
+                "actions": [],
+                "artifacts": [],
+                "assertions": [],
+                "cleanup": {"status": "clean"},
+                "context": {"bytes": 0},
+                "envelope": {
+                    "entry_id": "writing-plans-calibration-01",
+                    "entry_ordinal": 0,
+                    "request_kind": "model_grade",
+                },
+                "failure_class": "model_task_timeout",
+                "handoffs": [],
+                "principals": [],
+                "record_type": "skill-evaluator-host-result/1",
+                "request_hash": "sha256:" + "2" * 64,
+                "state": [],
+                "terminal": True,
+                "terminal_status": "timeout",
+                "usage": {"records": []},
+            }
+            (terminal_root / "host-stdout.jsonl").write_text(
+                json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+            stderr = terminal_root / "host-stderr.txt"
+            stderr.write_text("transport unavailable\n", encoding="utf-8")
+            output = campaign_root / "calibration/failure-writing-plans.json"
+            receipt = close_calibration_failure(
+                repository_root=fixture["repository_root"],
+                campaign_root=campaign_root,
+                campaign=campaign,
+                skill_id="writing-plans",
+                output=output,
+            )
+            validate_document(receipt, "failure_receipt")
+            self.assertEqual(1, receipt["request_count"])
+            self.assertEqual({"timeout": 1, "failed": 0}, receipt["outcomes"])
+            self.assertEqual(
+                receipt,
+                close_calibration_failure(
+                    repository_root=fixture["repository_root"],
+                    campaign_root=campaign_root,
+                    campaign=campaign,
+                    skill_id="writing-plans",
+                    output=output,
+                ),
+            )
+            original = output.read_bytes()
+            stderr.write_text("changed evidence\n", encoding="utf-8")
+            with self.assertRaisesRegex(
+                CalibrationPreparationError,
+                "refusing to replace different calibration bytes",
+            ):
+                close_calibration_failure(
+                    repository_root=fixture["repository_root"],
+                    campaign_root=campaign_root,
+                    campaign=campaign,
+                    skill_id="writing-plans",
+                    output=output,
+                )
+            self.assertEqual(original, output.read_bytes())
 
     maxDiff = None
 

@@ -24,6 +24,7 @@ SCHEMA_ROOT = REPOSITORY_ROOT / "evaluation/model-evolution/schemas"
 SCHEMA_FILES = {
     "budget_approval": "budget-approval-v1.schema.json",
     "campaign": "campaign-v1.schema.json",
+    "failure_receipt": "failure-receipt-v1.schema.json",
     "interaction_probes": "interaction-probes-v1.schema.json",
     "sentinel_index": "sentinel-index-v1.schema.json",
     "qualification": "qualification-v1.schema.json",
@@ -55,6 +56,7 @@ CRITICAL_PROBE_CAPABILITIES = {
 HASH_FIELDS = {
     "model-evolution-budget-approval/1": "approval_hash",
     "model-evolution-campaign/1": "campaign_hash",
+    "model-evolution-failure-receipt/1": "failure_receipt_hash",
     "model-evolution-interaction-probes/1": "probe_set_hash",
     "model-evolution-sentinel-index/1": "sentinel_hash",
     "model-qualification/1": "qualification_hash",
@@ -117,6 +119,70 @@ def load_json(path: Path, *, label: str | None = None) -> Any:
     if path.is_symlink() or not path.is_file():
         raise ContractError(f"{label or path.name} must be a regular non-symlink file")
     return strict_json_bytes(path.read_bytes(), label=label or path.name)
+
+
+def pre_turn_failure_identity(path: Path, ordinal: int) -> dict[str, Any]:
+    """Validate one raw Host terminal that failed before a completed model turn."""
+    if path.is_symlink() or not path.is_file():
+        raise ContractError("Host result must be a regular non-symlink file")
+    lines = [line for line in path.read_bytes().splitlines() if line.strip()]
+    if len(lines) != 1:
+        raise ContractError("Host result must contain one record")
+    result = strict_json_bytes(lines[0], label="Host result")
+    if not isinstance(result, dict):
+        raise ContractError("Host result must be an object")
+    envelope = result.get("envelope")
+    usage = result.get("usage")
+    context = result.get("context")
+    cleanup = result.get("cleanup")
+    terminal_status = result.get("terminal_status")
+    failure_class = result.get("failure_class")
+    expected_failure = {
+        "timeout": "model_task_timeout",
+        "failed": "provider_nonretryable",
+    }
+    if (
+        result.get("record_type") != "skill-evaluator-host-result/1"
+        or not isinstance(envelope, dict)
+        or envelope.get("entry_ordinal") != ordinal
+        or envelope.get("request_kind") != "model_grade"
+        or result.get("terminal") is not True
+        or expected_failure.get(terminal_status) != failure_class
+        or not isinstance(usage, dict)
+        or usage.get("records") != []
+        or not isinstance(context, dict)
+        or context.get("bytes") != 0
+        or not isinstance(cleanup, dict)
+        or cleanup.get("status") != "clean"
+        or any(
+            result.get(field) != []
+            for field in (
+                "actions",
+                "artifacts",
+                "assertions",
+                "handoffs",
+                "principals",
+                "state",
+            )
+        )
+    ):
+        raise ContractError("Host result is not a clean pre-turn terminal failure")
+    entry_id = envelope.get("entry_id")
+    request_hash = result.get("request_hash")
+    if (
+        not isinstance(entry_id, str)
+        or not SAFE_ID.fullmatch(entry_id)
+        or not isinstance(request_hash, str)
+        or not HASH.fullmatch(request_hash)
+    ):
+        raise ContractError("Host request identity is invalid")
+    return {
+        "entry_ordinal": ordinal,
+        "entry_id": entry_id,
+        "request_hash": request_hash,
+        "terminal_status": terminal_status,
+        "failure_class": failure_class,
+    }
 
 
 def _schema(name: str) -> dict[str, Any]:
@@ -772,10 +838,51 @@ def _is_single_calibration_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _blocked_supersession_lineage(
+    old: dict[str, Any],
+    old_path: Path,
+    repository_root: Path,
+) -> list[tuple[dict[str, Any], Path]]:
+    """Load at most four closed campaigns and verify every budget carry."""
+    lineage = [(old, old_path)]
+    current, current_path = old, old_path
+    while current["supersedes"] is not None:
+        if len(lineage) == 4:
+            raise ContractError("supersession repair depth is exhausted")
+        parent_path = resolve_binding(
+            current["supersedes"]["campaign"],
+            repository_root,
+            current_path.parent,
+        )
+        parent = load_json(parent_path, label="supersession ancestor campaign")
+        _validate_lineage_campaign(parent, "supersession ancestor campaign")
+        lineage.append((parent, parent_path))
+        current, current_path = parent, parent_path
+    for (child, _), (parent, parent_path) in zip(lineage, lineage[1:]):
+        for field in ("reserved", "observed"):
+            if (
+                child["supersedes"][f"imported_{field}"]
+                != parent["budgets"][field]
+            ):
+                raise ContractError("supersession lineage budget differs")
+        qualification = load_json(
+            parent_path.parent / "qualification/qualification.json",
+            label="supersession ancestor qualification",
+        )
+        validate_document(qualification, "qualification")
+        if (
+            qualification["campaign_hash"] != parent["campaign_hash"]
+            or qualification["decision"] != "blocked"
+        ):
+            raise ContractError("supersession ancestor is not closed as blocked")
+    return lineage
+
+
 def prepare_supersedes(
     *,
     campaign_binding: dict[str, Any],
     target_host_binding: dict[str, Any],
+    failure_receipt_binding: dict[str, Any] | None = None,
     repository_root: Path,
     campaign_root: Path,
 ) -> dict[str, Any]:
@@ -783,62 +890,14 @@ def prepare_supersedes(
     old_path = resolve_binding(campaign_binding, repository_root, campaign_root)
     old = load_json(old_path, label="superseded campaign")
     _validate_lineage_campaign(old, "superseded campaign")
-    if old["supersedes"] is not None:
-        parent_path = resolve_binding(
-            old["supersedes"]["campaign"], repository_root, old_path.parent
-        )
-        parent = load_json(parent_path, label="supersession parent campaign")
-        _validate_lineage_campaign(parent, "supersession parent campaign")
-        if parent["supersedes"] is not None:
-            grandparent_path = resolve_binding(
-                parent["supersedes"]["campaign"],
-                repository_root,
-                parent_path.parent,
-            )
-            grandparent = load_json(
-                grandparent_path,
-                label="supersession grandparent campaign",
-            )
-            _validate_lineage_campaign(
-                grandparent, "supersession grandparent campaign"
-            )
-            if (
-                grandparent["supersedes"] is not None
-                or not _is_single_calibration_correction(old)
-            ):
-                raise ContractError("supersession repair depth is exhausted")
-            for field in ("reserved", "observed"):
-                if (
-                    parent["supersedes"][f"imported_{field}"]
-                    != grandparent["budgets"][field]
-                ):
-                    raise ContractError("supersession lineage budget differs")
-            grandparent_qualification = load_json(
-                grandparent_path.parent / "qualification/qualification.json",
-                label="supersession grandparent qualification",
-            )
-            validate_document(grandparent_qualification, "qualification")
-            if (
-                grandparent_qualification["campaign_hash"]
-                != grandparent["campaign_hash"]
-                or grandparent_qualification["decision"] != "blocked"
-            ):
-                raise ContractError(
-                    "supersession grandparent is not closed as blocked"
-                )
-        for field in ("reserved", "observed"):
-            if old["supersedes"][f"imported_{field}"] != parent["budgets"][field]:
-                raise ContractError("supersession lineage budget differs")
-        parent_qualification = load_json(
-            parent_path.parent / "qualification/qualification.json",
-            label="supersession parent qualification",
-        )
-        validate_document(parent_qualification, "qualification")
-        if (
-            parent_qualification["campaign_hash"] != parent["campaign_hash"]
-            or parent_qualification["decision"] != "blocked"
-        ):
-            raise ContractError("supersession parent is not closed as blocked")
+    lineage = _blocked_supersession_lineage(old, old_path, repository_root)
+    if len(lineage) >= 3 and not _is_single_calibration_correction(old):
+        raise ContractError("supersession repair depth is exhausted")
+    fourth_hop = len(lineage) == 4
+    if fourth_hop and failure_receipt_binding is None:
+        raise ContractError("fourth supersession requires a failed-request receipt")
+    if failure_receipt_binding is not None and not fourth_hop:
+        raise ContractError("failed-request receipt is only legal for the final repair")
     old_host = load_json(
         resolve_binding(
             old["profiles"]["target_provisional"],
@@ -934,11 +993,55 @@ def prepare_supersedes(
         raise ContractError("superseded qualification differs from its campaign")
     if qualification["decision"] != "blocked":
         raise ContractError("only a blocked pre-public campaign may be superseded")
-    return {
+    imported_reserved = dict(old["budgets"]["reserved"])
+    result = {
         "campaign": campaign_binding,
-        "imported_reserved": dict(old["budgets"]["reserved"]),
+        "imported_reserved": imported_reserved,
         "imported_observed": dict(old["budgets"]["observed"]),
     }
+    if failure_receipt_binding is not None:
+        failure_receipt = load_json(
+            resolve_binding(
+                failure_receipt_binding,
+                repository_root,
+                campaign_root,
+            ),
+            label="failed-request receipt",
+        )
+        validate_document(failure_receipt, "failure_receipt")
+        validate_all_bindings(
+            failure_receipt,
+            repository_root,
+            old_path.parent,
+        )
+        request_count = failure_receipt["request_count"]
+        if (
+            failure_receipt["campaign_hash"] != old["campaign_hash"]
+            or request_count != len(failure_receipt["requests"])
+            or request_count != sum(failure_receipt["outcomes"].values())
+            or sorted(row["entry_ordinal"] for row in failure_receipt["requests"])
+            != list(range(request_count))
+        ):
+            raise ContractError("failed-request receipt differs from its campaign")
+        request_hashes: set[str] = set()
+        for row in failure_receipt["requests"]:
+            identity = pre_turn_failure_identity(
+                resolve_binding(
+                    row["host_result"],
+                    repository_root,
+                    old_path.parent,
+                ),
+                row["entry_ordinal"],
+            )
+            if any(identity[field] != row[field] for field in identity):
+                raise ContractError("failed-request receipt differs from Host evidence")
+            request_hashes.add(identity["request_hash"])
+        if len(request_hashes) != request_count:
+            raise ContractError("failed-request receipt repeats a request hash")
+        imported_reserved["provider_requests"] += request_count
+        imported_reserved["model_grade"] += request_count
+        result["failure_receipt"] = failure_receipt_binding
+    return result
 
 
 def derive_decision(

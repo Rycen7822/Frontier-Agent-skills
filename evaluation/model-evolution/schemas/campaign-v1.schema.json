@@ -368,6 +368,9 @@
       "required": ["campaign", "imported_reserved", "imported_observed"],
       "properties": {
         "campaign": {"$ref": "#/$defs/binding"},
+        "failure_receipt": {
+          "anyOf": [{"$ref": "#/$defs/binding"}, {"type": "null"}]
+        },
         "imported_reserved": {"$ref": "#/$defs/counts"},
         "imported_observed": {"$ref": "#/$defs/counts"}
       }
