@@ -1,0 +1,743 @@
+#!/usr/bin/env python3
+"""Run bound Codex CLI requests behind the Skill Evaluator host protocol."""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+from hashlib import sha256
+import json
+import math
+import os
+from pathlib import Path
+import re
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+from typing import Any
+
+from _codex_eval_events import (
+    base_host_result,
+    execute_evidence_diagnostics,
+    host_protocol_error,
+    model_grade_schema,
+    normalize_jsonl,
+    project_execute_result,
+)
+
+
+MAX_STDERR_BYTES = 64 * 1024
+SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
+SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+
+class AdapterError(ValueError):
+    """A deterministic adapter contract failure."""
+
+
+def _canonical_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return "sha256:" + sha256(value).hexdigest()
+
+
+def _file_sha256(path: Path) -> str:
+    if path.is_symlink() or not path.is_file():
+        raise AdapterError(
+            f"required regular file is missing or symlinked: {path.name}"
+        )
+    return _sha256_bytes(path.read_bytes())
+
+
+def _load_json_object(path: Path) -> dict[str, Any]:
+    if path.is_symlink() or not path.is_file():
+        raise AdapterError("host manifest is missing or symlinked")
+
+    def no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise AdapterError(f"duplicate JSON key: {key}")
+            result[key] = value
+        return result
+
+    def reject_constant(item: str) -> None:
+        raise AdapterError(f"non-finite JSON number: {item}")
+
+    value = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=no_duplicates,
+        parse_constant=reject_constant,
+    )
+    if not isinstance(value, dict):
+        raise AdapterError("JSON input must be an object")
+    return value
+
+
+def _bound_command_option(argv: list[str], name: str) -> str:
+    positions = [index for index, value in enumerate(argv) if value == name]
+    if len(positions) != 1 or positions[0] + 1 >= len(argv):
+        raise AdapterError(f"host manifest command must bind {name} exactly once")
+    return argv[positions[0] + 1]
+
+
+def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
+    manifest = _load_json_object(path)
+    expected_hash = _sha256_bytes(
+        _canonical_bytes(
+            {key: value for key, value in manifest.items() if key != "manifest_hash"}
+        )
+    )
+    if manifest.get("manifest_hash") != expected_hash:
+        raise AdapterError("host manifest self-hash differs")
+    identity = manifest.get("identity")
+    execution = identity.get("execution") if isinstance(identity, dict) else None
+    adapter = identity.get("adapter") if isinstance(identity, dict) else None
+    if (
+        not isinstance(execution, dict)
+        or execution.get("model") != args.model
+        or not isinstance(adapter, dict)
+        or adapter.get("sha256") != _file_sha256(Path(__file__).resolve())
+    ):
+        raise AdapterError("adapter or model identity differs from the host manifest")
+    if _file_sha256(args.codex) != args.codex_sha256:
+        raise AdapterError("Codex executable bytes differ from the bound hash")
+    command = manifest.get("command")
+    argv = command.get("argv") if isinstance(command, dict) else None
+    if not isinstance(argv, list) or any(not isinstance(item, str) for item in argv):
+        raise AdapterError("host manifest command argv is invalid")
+    try:
+        bound_codex = Path(_bound_command_option(argv, "--codex")).resolve(strict=True)
+        bound_manifest = Path(_bound_command_option(argv, "--host-manifest")).resolve(
+            strict=True
+        )
+        bound_timeout = float(_bound_command_option(argv, "--timeout"))
+    except (OSError, ValueError) as exc:
+        raise AdapterError("host manifest command binding is invalid") from exc
+    expected = {
+        "--codex-sha256": args.codex_sha256,
+        "--model": args.model,
+        "--effort": args.effort,
+        "--profile": args.profile,
+        "--sandbox": args.sandbox,
+        "--mode": args.mode,
+    }
+    if (
+        bound_codex != args.codex
+        or bound_manifest != path
+        or bound_timeout != args.timeout
+        or any(
+            _bound_command_option(argv, option) != value
+            for option, value in expected.items()
+        )
+    ):
+        raise AdapterError(
+            "runtime options differ from the bound host manifest command"
+        )
+    return manifest
+
+
+def _artifact_bytes(
+    name: str, payload: bytes, *, encoding: str = "utf-8"
+) -> dict[str, str]:
+    if not SAFE_ID.fullmatch(name.split(".", 1)[0]):
+        raise AdapterError("artifact name is unsafe")
+    path = Path(name)
+    if path.parent != Path(".") or path.exists() or path.is_symlink():
+        raise AdapterError(f"refusing to replace adapter artifact: {name}")
+    with path.open("xb") as handle:
+        handle.write(payload)
+    return {
+        "path": f"workspace/{name}",
+        "sha256": _sha256_bytes(payload),
+        "encoding": encoding,
+    }
+
+
+def _artifact_json(name: str, value: Any) -> dict[str, str]:
+    return _artifact_bytes(name, _canonical_bytes(value))
+
+
+def _utc_now() -> str:
+    return (
+        datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
+
+
+def _redact_text(text: str, workspace: Path) -> str:
+    redacted = text.replace(str(workspace), "<workspace>")
+    for name, value in os.environ.items():
+        if SECRET_NAME.search(name) and len(value) >= 4:
+            redacted = redacted.replace(value, "<redacted>")
+    redacted = re.sub(r"\bsk-[A-Za-z0-9_-]{8,}\b", "<redacted>", redacted)
+    return redacted
+
+
+def _write_child_stderr(raw: bytes, workspace: Path) -> None:
+    text = raw[:MAX_STDERR_BYTES].decode("utf-8", errors="replace")
+    if len(raw) > MAX_STDERR_BYTES:
+        text += "\n[stderr truncated by codex_eval_host]\n"
+    if text:
+        sys.stderr.write(_redact_text(text, workspace))
+        sys.stderr.flush()
+
+
+def _run_child(
+    argv: list[str],
+    *,
+    prompt: str,
+    workspace: Path,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    started = time.monotonic()
+    process = subprocess.Popen(
+        argv,
+        cwd=workspace,
+        env=dict(os.environ),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=False,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(
+            input=prompt.encode("utf-8"),
+            timeout=max(timeout_seconds, 0.001),
+        )
+        timed_out = False
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        stdout, stderr = process.communicate()
+        timed_out = True
+    return {
+        "returncode": process.returncode,
+        "stdout": stdout,
+        "stderr": stderr,
+        "timed_out": timed_out,
+        "runtime_ms": round((time.monotonic() - started) * 1000, 3),
+    }
+
+
+def _config_override(name: str, value: str) -> str:
+    return f"{name}={json.dumps(value, ensure_ascii=False)}"
+
+
+def _fresh_argv(
+    args: argparse.Namespace,
+    workspace: Path,
+    last_message: Path,
+    *,
+    output_schema: Path | None = None,
+    ephemeral: bool,
+) -> list[str]:
+    argv = [
+        str(args.codex),
+        "exec",
+        "--json",
+        "--strict-config",
+        "--color",
+        "never",
+        "--model",
+        args.model,
+        "--profile",
+        args.profile,
+        "--sandbox",
+        args.sandbox,
+        "--cd",
+        str(workspace),
+        "--config",
+        _config_override("model_reasoning_effort", args.effort),
+        "--output-last-message",
+        str(last_message),
+    ]
+    if ephemeral:
+        argv.append("--ephemeral")
+    if output_schema is not None:
+        argv.extend(["--output-schema", str(output_schema)])
+    argv.append("-")
+    return argv
+
+
+def _resume_argv(
+    args: argparse.Namespace,
+    session_id: str,
+    last_message: Path,
+) -> list[str]:
+    return [
+        str(args.codex),
+        "exec",
+        "resume",
+        "--json",
+        "--strict-config",
+        "--model",
+        args.model,
+        "--config",
+        _config_override("model_reasoning_effort", args.effort),
+        "--output-last-message",
+        str(last_message),
+        session_id,
+        "-",
+    ]
+
+
+def _output_message(path: Path, normalized: dict[str, Any]) -> str | None:
+    if path.is_symlink() or not path.is_file():
+        return normalized["final_message"]
+    file_message = path.read_text(encoding="utf-8")
+    event_message = normalized["final_message"]
+    if event_message is not None and file_message.strip() != event_message.strip():
+        raise AdapterError("Codex event and output-last-message differ")
+    return event_message if event_message is not None else file_message
+
+
+def _snapshot_workspace(workspace: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for path in sorted(workspace.rglob("*")):
+        if path.is_symlink():
+            raise AdapterError("workspace contains a symlink")
+        if path.is_file():
+            result[path.relative_to(workspace).as_posix()] = _file_sha256(path)
+    return result
+
+
+def _emit(value: dict[str, Any]) -> None:
+    sys.stdout.buffer.write(_canonical_bytes(value) + b"\n")
+    sys.stdout.buffer.flush()
+
+
+def _validate_request(request: dict[str, Any]) -> None:
+    if (
+        set(request) != {"record_type", "request_hash", "envelope", "payload"}
+        or request.get("record_type") != "skill-evaluator-host-request/1"
+        or request.get("request_hash")
+        != _sha256_bytes(
+            _canonical_bytes(
+                {key: value for key, value in request.items() if key != "request_hash"}
+            )
+        )
+        or not isinstance(request.get("envelope"), dict)
+        or not isinstance(request.get("payload"), dict)
+    ):
+        raise AdapterError("host request identity or shape is invalid")
+
+
+def _reset_probe(
+    request: dict[str, Any],
+    manifest: dict[str, Any],
+) -> dict[str, Any]:
+    proof = _artifact_json(
+        f"reset-proof-{request['request_hash'][7:19]}.json",
+        {
+            "capability": request["payload"].get("capability"),
+            "request_hash": request["request_hash"],
+            "workspace": "contained",
+        },
+    )
+    result = base_host_result(request, manifest)
+    result["artifacts"] = [proof]
+    result["assertions"] = [
+        {
+            "claim": "reset probe passed",
+            "artifact": proof,
+            "locally_verifiable": True,
+        }
+    ]
+    return result
+
+
+def _child_failure_result(
+    request: dict[str, Any],
+    manifest: dict[str, Any],
+    child: dict[str, Any],
+) -> dict[str, Any]:
+    result = base_host_result(request, manifest)
+    if child["timed_out"]:
+        result.update(
+            {
+                "terminal_status": "timeout",
+                "timeout": True,
+                "treatment_error": "Codex child exceeded the adapter timeout",
+                "provider_error_code": None,
+                "failure_class": "model_task_timeout",
+            }
+        )
+    else:
+        code = child["returncode"]
+        result.update(
+            {
+                "terminal_status": "failed",
+                "treatment_error": "Codex child exited without a completed turn",
+                "provider_error_code": f"codex_signal_{-code}"
+                if code < 0
+                else f"codex_exit_{code}",
+                "failure_class": "provider_nonretryable",
+            }
+        )
+    return result
+
+
+def _run_model_grade(
+    request: dict[str, Any],
+    manifest: dict[str, Any],
+    args: argparse.Namespace,
+    workspace: Path,
+) -> dict[str, Any]:
+    batch = request["payload"].get("blinded_input")
+    if (
+        not isinstance(batch, dict)
+        or not isinstance(batch.get("batch_id"), str)
+        or not isinstance(batch.get("items"), list)
+        or not batch["items"]
+    ):
+        raise AdapterError("model-grade blinded batch is invalid")
+    with tempfile.TemporaryDirectory(prefix="frontier-codex-grade-") as temp_dir:
+        temporary = Path(temp_dir)
+        schema_path = temporary / "output.schema.json"
+        last_message = temporary / "last-message.json"
+        schema_path.write_bytes(_canonical_bytes(model_grade_schema(batch)))
+        prompt = (
+            "Evaluate only the blinded batch below. Return exactly the JSON shape "
+            "required by the supplied output schema. Do not add Markdown or prose.\n"
+            + json.dumps(batch, ensure_ascii=False, sort_keys=True)
+        )
+        child = _run_child(
+            _fresh_argv(
+                args,
+                workspace,
+                last_message,
+                output_schema=schema_path,
+                ephemeral=True,
+            ),
+            prompt=prompt,
+            workspace=workspace,
+            timeout_seconds=args.timeout,
+        )
+        _write_child_stderr(child["stderr"], workspace)
+        if child["timed_out"] or child["returncode"] != 0:
+            return _child_failure_result(request, manifest, child)
+        normalized = normalize_jsonl(child["stdout"])
+        if normalized["status"] == "protocol_error":
+            result = base_host_result(request, manifest)
+            result["terminal_status"] = "protocol_error"
+            result["protocol_error"] = host_protocol_error(normalized["diagnostics"])
+            return result
+        message = _output_message(last_message, normalized)
+    try:
+        output = json.loads(message) if message is not None else None
+    except json.JSONDecodeError as exc:
+        raise AdapterError("model-grade final message is not JSON") from exc
+    if not isinstance(output, dict):
+        raise AdapterError("model-grade final message is not an object")
+    artifact = _artifact_json(
+        f"model-grade-{request['request_hash'][7:19]}.json",
+        output,
+    )
+    result = base_host_result(request, manifest)
+    result["artifacts"] = [artifact]
+    return result
+
+
+def _run_execute(
+    request: dict[str, Any],
+    manifest: dict[str, Any],
+    args: argparse.Namespace,
+    workspace: Path,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    payload = request["payload"]
+    preflight_diagnostics = execute_evidence_diagnostics(payload, [])
+    if preflight_diagnostics:
+        result = base_host_result(request, manifest)
+        result["terminal_status"] = "protocol_error"
+        result["protocol_error"] = host_protocol_error(preflight_diagnostics)
+        return [], result
+    initial_files = _snapshot_workspace(workspace)
+    started_at = _utc_now()
+    deadline = time.monotonic() + args.timeout
+    normalized_turns: list[dict[str, Any]] = []
+    session_id: str | None = None
+    child_failure: dict[str, Any] | None = None
+    with tempfile.TemporaryDirectory(prefix="frontier-codex-exec-") as temp_dir:
+        temporary = Path(temp_dir)
+        for index, turn in enumerate(payload["turns"]):
+            last_message = temporary / f"last-message-{index}.txt"
+            argv = (
+                _fresh_argv(
+                    args,
+                    workspace,
+                    last_message,
+                    ephemeral=len(payload["turns"]) == 1,
+                )
+                if session_id is None
+                else _resume_argv(args, session_id, last_message)
+            )
+            child = _run_child(
+                argv,
+                prompt=turn["input"]["content"],
+                workspace=workspace,
+                timeout_seconds=deadline - time.monotonic(),
+            )
+            _write_child_stderr(child["stderr"], workspace)
+            if child["timed_out"] or child["returncode"] != 0:
+                child_failure = child
+                break
+            normalized = normalize_jsonl(child["stdout"])
+            try:
+                normalized["final_message"] = _output_message(last_message, normalized)
+            except (OSError, UnicodeDecodeError) as exc:
+                raise AdapterError("Codex output-last-message is unreadable") from exc
+            if normalized["status"] == "protocol_error":
+                normalized_turns.append(normalized)
+                break
+            if session_id is None:
+                session_id = normalized["thread_id"]
+            elif normalized["thread_id"] != session_id:
+                normalized["diagnostics"].append(
+                    {
+                        "kind": "identity_mismatch",
+                        "index": None,
+                        "message": "Codex resume returned a different thread identity",
+                    }
+                )
+                normalized["status"] = "protocol_error"
+            normalized_turns.append(normalized)
+            if normalized["status"] != "completed":
+                break
+
+    if child_failure is not None:
+        return [], _child_failure_result(request, manifest, child_failure)
+    if not normalized_turns or session_id is None:
+        result = base_host_result(request, manifest)
+        result["terminal_status"] = "protocol_error"
+        result["protocol_error"] = host_protocol_error(
+            normalized_turns[-1]["diagnostics"] if normalized_turns else []
+        )
+        return [], result
+    protocol_diagnostics = execute_evidence_diagnostics(payload, normalized_turns)
+    if protocol_diagnostics:
+        result = base_host_result(request, manifest)
+        result["terminal_status"] = "protocol_error"
+        result["protocol_error"] = host_protocol_error(protocol_diagnostics)
+        return [], result
+
+    final_message = normalized_turns[-1]["final_message"] or ""
+    suffix = request["request_hash"][7:19]
+    final_artifact = _artifact_bytes(
+        f"final-answer-{suffix}.md",
+        _redact_text(final_message, workspace).encode("utf-8"),
+    )
+    artifacts = [final_artifact]
+    assertions = [
+        {
+            "claim": "captured final Codex message",
+            "artifact": final_artifact,
+            "locally_verifiable": True,
+        }
+    ]
+    if any(item.get("owner") == "model" for item in payload["case"]["requirements"]):
+        final_files = _snapshot_workspace(workspace)
+        changed_paths = sorted(
+            {
+                *{
+                    path
+                    for path in initial_files
+                    if initial_files.get(path) != final_files.get(path)
+                },
+                *{
+                    path
+                    for path in final_files
+                    if initial_files.get(path) != final_files.get(path)
+                },
+            }
+        )
+        verification = {"codex_status": normalized_turns[-1]["status"]}
+        observation = {
+            "allowed_change_paths": [],
+            "changed_paths": changed_paths,
+            "protected_paths": [],
+            "verification": verification,
+        }
+        host_observation = _artifact_json(
+            f"host-observation-{suffix}.json",
+            observation,
+        )
+        workspace_evidence = _artifact_json(
+            f"workspace-evidence-{suffix}.json",
+            {
+                "initial_files": {},
+                "final_files": {},
+                "changed_paths": changed_paths,
+                "diff": "",
+                "verification": verification,
+            },
+        )
+        artifacts.extend([host_observation, workspace_evidence])
+
+    return project_execute_result(
+        request=request,
+        manifest=manifest,
+        normalized_turns=normalized_turns,
+        session_id=session_id,
+        started_at=started_at,
+        ended_at=_utc_now(),
+        artifacts=artifacts,
+        assertions=assertions,
+    )
+
+
+def _run_host_mode(
+    args: argparse.Namespace,
+    manifest: dict[str, Any],
+    workspace: Path,
+) -> int:
+    line = sys.stdin.buffer.readline()
+    if not line or sys.stdin.buffer.readline():
+        raise AdapterError("host mode requires exactly one JSON request line")
+    request = json.loads(line)
+    if not isinstance(request, dict):
+        raise AdapterError("host request must be an object")
+    _validate_request(request)
+    request_kind = request["envelope"].get("request_kind")
+    if request_kind == "probe_capability":
+        result = _reset_probe(request, manifest)
+        events: list[dict[str, Any]] = []
+    elif request_kind == "model_grade":
+        result = _run_model_grade(request, manifest, args, workspace)
+        events = []
+    elif request_kind == "execute_case":
+        events, result = _run_execute(request, manifest, args, workspace)
+    elif request_kind == "cleanup":
+        result = base_host_result(request, manifest)
+        events = []
+    else:
+        raise AdapterError("unsupported host request kind")
+    for event in events:
+        _emit(event)
+    _emit(result)
+    return 0
+
+
+def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
+    line = sys.stdin.buffer.readline()
+    if not line or sys.stdin.buffer.readline():
+        raise AdapterError("probe mode requires exactly one JSON row")
+    row = json.loads(line)
+    required = {
+        "schema_version",
+        "probe_id",
+        "capability",
+        "prompt",
+        "expected_event_types",
+    }
+    if (
+        not isinstance(row, dict)
+        or set(row) != required
+        or row["schema_version"] != "codex-interaction-probe/1.0"
+        or not isinstance(row["probe_id"], str)
+        or not SAFE_ID.fullmatch(row["probe_id"])
+        or not isinstance(row["capability"], str)
+        or not SAFE_ID.fullmatch(row["capability"])
+        or not isinstance(row["prompt"], str)
+        or not row["prompt"]
+        or not isinstance(row["expected_event_types"], list)
+        or any(not isinstance(item, str) for item in row["expected_event_types"])
+    ):
+        raise AdapterError("interaction probe row is invalid")
+    with tempfile.TemporaryDirectory(prefix="frontier-codex-probe-") as temp_dir:
+        last_message = Path(temp_dir) / "last-message.txt"
+        child = _run_child(
+            _fresh_argv(
+                args,
+                workspace,
+                last_message,
+                ephemeral=True,
+            ),
+            prompt=row["prompt"],
+            workspace=workspace,
+            timeout_seconds=args.timeout,
+        )
+        _write_child_stderr(child["stderr"], workspace)
+        normalized = (
+            normalize_jsonl(child["stdout"])
+            if not child["timed_out"] and child["returncode"] == 0
+            else None
+        )
+    observed_types = normalized["event_types"] if normalized is not None else []
+    status = (
+        "pass"
+        if normalized is not None
+        and normalized["status"] == "completed"
+        and set(row["expected_event_types"]) <= set(observed_types)
+        else "unknown"
+    )
+    _emit(
+        {
+            "schema_version": "codex-interaction-probe-result/1.0",
+            "probe_id": row["probe_id"],
+            "capability": row["capability"],
+            "status": status,
+            "observed": (
+                "required direct Codex events observed"
+                if status == "pass"
+                else "required direct Codex events were not established"
+            ),
+            "session_id": normalized["thread_id"] if normalized is not None else None,
+            "event_types": observed_types,
+            "usage": normalized["usage"] if normalized is not None else None,
+            "diagnostics": normalized["diagnostics"] if normalized is not None else [],
+        }
+    )
+    return 0
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--mode", choices=("host", "probe"), default="host")
+    parser.add_argument("--codex", type=Path, required=True)
+    parser.add_argument("--codex-sha256", required=True)
+    parser.add_argument("--host-manifest", type=Path, required=True)
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--effort", required=True)
+    parser.add_argument("--profile", required=True)
+    parser.add_argument(
+        "--sandbox", choices=("read-only", "workspace-write"), required=True
+    )
+    parser.add_argument("--timeout", type=float, required=True)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _parser()
+    args = parser.parse_args(argv)
+    try:
+        args.codex = args.codex.resolve(strict=True)
+        if (
+            not math.isfinite(args.timeout)
+            or args.timeout <= 0
+            or not args.codex_sha256.startswith("sha256:")
+        ):
+            raise AdapterError("adapter timeout or Codex hash is invalid")
+        workspace = Path.cwd().resolve(strict=True)
+        manifest = _validate_manifest(args.host_manifest.resolve(strict=True), args)
+        return (
+            _run_probe_mode(args, workspace)
+            if args.mode == "probe"
+            else _run_host_mode(args, manifest, workspace)
+        )
+    except (AdapterError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        print(f"codex_eval_host: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
