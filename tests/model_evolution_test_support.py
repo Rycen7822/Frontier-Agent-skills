@@ -10,6 +10,7 @@ import sys
 import textwrap
 from typing import Any
 
+from _bundle_hash import inventory, tree_hash
 from _model_evolution_contract import (
     SKILL_IDS,
     build_initial_campaign,
@@ -89,7 +90,14 @@ def _copy_product_files(repository_root: Path) -> dict[str, Path]:
     return paths
 
 
-def _materialize_fake_host(repository_root: Path, campaign_root: Path) -> Path:
+def _root_hash(root: Path) -> str:
+    members = [path for path in root.rglob("*") if path.is_file() or path.is_symlink()]
+    return tree_hash(inventory(root, members))
+
+
+def _materialize_fake_host(
+    repository_root: Path, campaign_root: Path, plugin_root: Path
+) -> Path:
     fake = repository_root / "fixtures/fake-codex"
     fake.parent.mkdir(parents=True, exist_ok=True)
     fake.write_text(FAKE_CODEX, encoding="utf-8")
@@ -127,11 +135,31 @@ def _materialize_fake_host(repository_root: Path, campaign_root: Path) -> Path:
                 "workspace-write",
                 "--timeout",
                 "5",
+                "--plugin-root",
+                str(plugin_root),
             ],
             "resolved_executable": str(Path(sys.executable).resolve()),
             "executable_sha256": file_hash(Path(sys.executable).resolve()),
         }
     )
+    prototype = host["catalog"]["entries"][0]
+    host["catalog"]["entries"] = [
+        {
+            **prototype,
+            "id": skill_root.name,
+            "name": skill_root.name,
+            "version": "1.0.0",
+            "root_hash": _root_hash(skill_root),
+        }
+        for skill_root in sorted((plugin_root / "skills").iterdir())
+    ]
+    host["catalog"]["catalog_hash"] = canonical_hash(
+        host["catalog"]["entries"]
+    )
+    host["identity"]["execution"]["catalog_hash"] = host["catalog"][
+        "catalog_hash"
+    ]
+    host["identity"]["execution"]["skill_hash"] = _root_hash(plugin_root)
     host["capabilities"][0]["probe"]["status"] = "unknown"
     host["manifest_hash"] = canonical_hash(
         {key: value for key, value in host.items() if key != "manifest_hash"}
@@ -141,14 +169,24 @@ def _materialize_fake_host(repository_root: Path, campaign_root: Path) -> Path:
 
 def _materialize_plugin_staging(campaign_root: Path) -> tuple[Path, Path]:
     plugin_root = campaign_root / "staging/frontier-engineering-plugin"
-    plugin_file = plugin_root / ".codex-plugin/plugin.json"
-    plugin_file.parent.mkdir(parents=True)
-    plugin_file.write_text("{}\n", encoding="utf-8")
+    (plugin_root / ".codex-plugin").mkdir(parents=True)
+    (plugin_root / ".codex-plugin/plugin.json").write_text(
+        "{}\n", encoding="utf-8"
+    )
+    for skill_id in SKILL_IDS:
+        shutil.copytree(
+            SOURCE_ROOT / skill_id,
+            plugin_root / "skills" / skill_id,
+            ignore=shutil.ignore_patterns(
+                "__pycache__", "*.pyc", ".pytest_cache", ".closure", ".workflow", "dist"
+            ),
+        )
+    plugin_tree_hash = _root_hash(plugin_root)
     evidence = with_self_hash(
         {
             "schema_version": "plugin-build-evidence/3.0",
             "source_revision": FIXED_COMMIT,
-            "plugin_tree_hash": "sha256:" + "9" * 64,
+            "plugin_tree_hash": plugin_tree_hash,
         },
         "evidence_hash",
     )
@@ -170,7 +208,7 @@ def _materialize_probe_set(repository_root: Path, campaign_root: Path) -> Path:
                 {
                     "probe_id": "force-load",
                     "capability": "force_load",
-                    "prompt": "Return a short inert completion.",
+                    "prompt": "$skill-evaluator Return a short inert completion.",
                     "fixture": repository_binding(
                         fixture, repository_root, campaign_root
                     ),
@@ -226,8 +264,8 @@ def materialize_campaign(root: Path) -> dict[str, Any]:
     repository_root.mkdir(parents=True)
     campaign_root.mkdir(parents=True)
     product = _copy_product_files(repository_root)
-    host = _materialize_fake_host(repository_root, campaign_root)
     plugin_root, plugin_build = _materialize_plugin_staging(campaign_root)
+    host = _materialize_fake_host(repository_root, campaign_root, plugin_root)
     probe_set = _materialize_probe_set(repository_root, campaign_root)
     sentinel = _materialize_sentinel(repository_root, campaign_root)
     bindings = {
@@ -260,7 +298,7 @@ def materialize_campaign(root: Path) -> dict[str, Any]:
         bundle_build_binding=bindings["bundle_build"],
         plugin_build_binding=bindings["plugin_build"],
         plugin_root=plugin_root.relative_to(campaign_root).as_posix(),
-        plugin_tree_hash="sha256:" + "9" * 64,
+        plugin_tree_hash=json.loads(plugin_build.read_text())["plugin_tree_hash"],
         calibration_requests=4,
         static_report=values["static_report"],
         static_report_binding=bindings["static_report"],
@@ -283,7 +321,11 @@ def materialize_campaign(root: Path) -> dict[str, Any]:
     store = CampaignStore(campaign_root, repository_root)
     store.create(
         campaign,
-        bootstrap_paths=(host, plugin_build, plugin_root / ".codex-plugin/plugin.json"),
+        bootstrap_paths=(
+            host,
+            plugin_build,
+            *(path for path in plugin_root.rglob("*") if path.is_file()),
+        ),
     )
     return {
         "repository_root": repository_root,

@@ -1,6 +1,6 @@
 {
   "adapter_protocol_version": "codex-interaction-probe/1.0",
-  "probe_set_hash": "sha256:837000e0f14f9c2304d2ad4aa19207f522d306443eb6d8cf8bca77b071390a7c",
+  "probe_set_hash": "sha256:430de92d4c80a3a32338aad54e7f5eb3dada92bcf7f0074f50786795021907ad",
   "probe_set_id": "frontier-codex-interaction-probes-v1",
   "probes": [
     {
@@ -30,7 +30,7 @@
       },
       "network": "denied",
       "probe_id": "natural-routing",
-      "prompt": "Outline two source-bound implementation steps without modifying files.",
+      "prompt": "Read the repository files and produce a self-contained technical report with a compact recovery record; do not modify files.",
       "request_ceiling": 1,
       "required_observations": [
         "thread.started",

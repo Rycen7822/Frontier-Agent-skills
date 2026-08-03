@@ -18,6 +18,19 @@ import tempfile
 import time
 from typing import Any
 
+from _codex_eval_delivery import (
+    DeliveryError,
+    ensure_trusted_workspace,
+    force_loaded_prompt,
+    forced_probe_delivery,
+    is_workspace_infrastructure,
+    observed_permission_denials,
+    observed_skill_routing,
+    prepare_workspace,
+    skill_isolation_argv,
+    treatment_delivery,
+    validate_plugin_catalog,
+)
 from _codex_eval_events import (
     base_host_result,
     execute_evidence_diagnostics,
@@ -151,6 +164,18 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         raise AdapterError(
             "runtime options differ from the bound host manifest command"
         )
+    if args.plugin_root is None and "--plugin-root" in argv:
+        raise AdapterError("runtime omitted the host manifest plugin root")
+    if args.plugin_root is not None:
+        try:
+            bound_plugin = Path(
+                _bound_command_option(argv, "--plugin-root")
+            ).resolve(strict=True)
+        except OSError as exc:
+            raise AdapterError("host manifest plugin binding is invalid") from exc
+        if bound_plugin != args.plugin_root:
+            raise AdapterError("runtime plugin root differs from the host manifest")
+        validate_plugin_catalog(args.plugin_root, manifest)
     return manifest
 
 
@@ -262,6 +287,7 @@ def _fresh_argv(
         "--model",
         args.model,
         *_profile_argv(args.profile),
+        *(skill_isolation_argv() if args.plugin_root else []),
         "--sandbox",
         args.sandbox,
         "--cd",
@@ -293,6 +319,7 @@ def _resume_argv(
         "--model",
         args.model,
         *_profile_argv(args.profile),
+        *(skill_isolation_argv() if args.plugin_root else []),
         "--config",
         _config_override("model_reasoning_effort", args.effort),
         "--output-last-message",
@@ -315,10 +342,13 @@ def _output_message(path: Path, normalized: dict[str, Any]) -> str | None:
 def _snapshot_workspace(workspace: Path) -> dict[str, str]:
     result: dict[str, str] = {}
     for path in sorted(workspace.rglob("*")):
+        relative = path.relative_to(workspace)
+        if is_workspace_infrastructure(relative):
+            continue
         if path.is_symlink():
             raise AdapterError("workspace contains a symlink")
         if path.is_file():
-            result[path.relative_to(workspace).as_posix()] = _file_sha256(path)
+            result[relative.as_posix()] = _file_sha256(path)
     return result
 
 
@@ -414,6 +444,7 @@ def _run_model_grade(
         raise AdapterError("model-grade blinded batch is invalid")
     with tempfile.TemporaryDirectory(prefix="frontier-codex-grade-") as temp_dir:
         temporary = Path(temp_dir)
+        ensure_trusted_workspace(temporary)
         schema_path = temporary / "output.schema.json"
         last_message = temporary / "last-message.json"
         schema_path.write_bytes(_canonical_bytes(model_grade_schema(batch)))
@@ -425,13 +456,13 @@ def _run_model_grade(
         child = _run_child(
             _fresh_argv(
                 args,
-                workspace,
+                temporary,
                 last_message,
                 output_schema=schema_path,
                 ephemeral=True,
             ),
             prompt=prompt,
-            workspace=workspace,
+            workspace=temporary,
             timeout_seconds=args.timeout,
         )
         _write_child_stderr(child["stderr"], workspace)
@@ -472,6 +503,16 @@ def _run_execute(
         result["terminal_status"] = "protocol_error"
         result["protocol_error"] = host_protocol_error(preflight_diagnostics)
         return [], result
+    delivery: tuple[str, str, str | None] | None = None
+    if args.plugin_root is not None:
+        delivery = treatment_delivery(payload, args.plugin_root)
+        skill_id, profile, _ = delivery
+        excluded = skill_id if profile.endswith(("/skill_disabled", "/force_loaded")) else None
+        prepare_workspace(
+            workspace,
+            args.plugin_root,
+            exclude_skill_id=excluded,
+        )
     initial_files = _snapshot_workspace(workspace)
     started_at = _utc_now()
     deadline = time.monotonic() + args.timeout
@@ -494,7 +535,15 @@ def _run_execute(
             )
             child = _run_child(
                 argv,
-                prompt=turn["input"]["content"],
+                prompt=(
+                    force_loaded_prompt(
+                        delivery[0],
+                        delivery[2],
+                        turn["input"]["content"],
+                    )
+                    if index == 0 and delivery is not None and delivery[2] is not None
+                    else turn["input"]["content"]
+                ),
                 workspace=workspace,
                 timeout_seconds=deadline - time.monotonic(),
             )
@@ -503,6 +552,34 @@ def _run_execute(
                 child_failure = child
                 break
             normalized = normalize_jsonl(child["stdout"])
+            normalized["permission_denials"] = sorted(
+                {
+                    *normalized["permission_denials"],
+                    *observed_permission_denials(child["stdout"]),
+                }
+            )
+            if (
+                index == 0
+                and delivery is not None
+                and delivery[1].endswith("/force_loaded")
+            ):
+                normalized["routing"] = {
+                    "selected": [delivery[0]],
+                    "loaded": [delivery[0]],
+                    "applied": [delivery[0]],
+                }
+            elif (
+                delivery is not None
+                and delivery[1].endswith("/natural_routing")
+                and normalized["routing"] is None
+            ):
+                routed = observed_skill_routing(child["stdout"], args.plugin_root)
+                if routed:
+                    normalized["routing"] = {
+                        "selected": routed,
+                        "loaded": routed,
+                        "applied": routed,
+                    }
             try:
                 normalized["final_message"] = _output_message(last_message, normalized)
             except (OSError, UnicodeDecodeError) as exc:
@@ -664,6 +741,15 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
         or any(not isinstance(item, str) for item in row["expected_event_types"])
     ):
         raise AdapterError("interaction probe row is invalid")
+    forced: tuple[str, str] | None = None
+    if args.plugin_root is not None:
+        if row["capability"] == "force_load":
+            forced = forced_probe_delivery(row["prompt"], args.plugin_root)
+        prepare_workspace(
+            workspace,
+            args.plugin_root,
+            exclude_skill_id=forced[0] if forced is not None else None,
+        )
     with tempfile.TemporaryDirectory(prefix="frontier-codex-probe-") as temp_dir:
         last_message = Path(temp_dir) / "last-message.txt"
         child = _run_child(
@@ -673,7 +759,11 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
                 last_message,
                 ephemeral=True,
             ),
-            prompt=row["prompt"],
+            prompt=(
+                force_loaded_prompt(forced[0], forced[1], row["prompt"])
+                if forced is not None
+                else row["prompt"]
+            ),
             workspace=workspace,
             timeout_seconds=args.timeout,
         )
@@ -683,6 +773,40 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             if not child["timed_out"] and child["returncode"] == 0
             else None
         )
+        if normalized is not None:
+            normalized["permission_denials"] = sorted(
+                {
+                    *normalized["permission_denials"],
+                    *observed_permission_denials(child["stdout"]),
+                }
+            )
+            if args.plugin_root is not None and normalized["routing"] is None:
+                routed = observed_skill_routing(child["stdout"], args.plugin_root)
+                if routed:
+                    normalized["routing"] = {
+                        "selected": routed,
+                        "loaded": routed,
+                        "applied": routed,
+                    }
+    child_diagnostics = []
+    if normalized is None:
+        child_diagnostics.append(
+            {
+                "kind": "child_process",
+                "index": None,
+                "message": (
+                    "Codex child timed out"
+                    if child["timed_out"]
+                    else f"Codex child exited {child['returncode']}"
+                ),
+            }
+        )
+    elif forced is not None and normalized["status"] == "completed":
+        normalized["routing"] = {
+            "selected": [forced[0]],
+            "loaded": [forced[0]],
+            "applied": [forced[0]],
+        }
     observed_types = normalized["event_types"] if normalized is not None else []
     direct_observations = []
     if normalized is not None:
@@ -696,8 +820,8 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
     capability_observed = {
         "force_load": bool(
             normalized is not None
-            and normalized["routing"] is not None
-            and normalized["routing"]["loaded"]
+            and forced is not None
+            and normalized["status"] == "completed"
         ),
         "natural_routing": bool(
             normalized is not None
@@ -738,7 +862,11 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             "event_types": observed_types,
             "direct_observations": direct_observations,
             "usage": normalized["usage"] if normalized is not None else None,
-            "diagnostics": normalized["diagnostics"] if normalized is not None else [],
+            "diagnostics": (
+                normalized["diagnostics"]
+                if normalized is not None
+                else child_diagnostics
+            ),
         }
     )
     return 0
@@ -753,6 +881,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", required=True)
     parser.add_argument("--effort", required=True)
     parser.add_argument("--profile", required=True)
+    parser.add_argument("--plugin-root", type=Path)
     parser.add_argument(
         "--sandbox", choices=("read-only", "workspace-write"), required=True
     )
@@ -765,6 +894,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         args.codex = args.codex.resolve(strict=True)
+        if args.plugin_root is not None:
+            args.plugin_root = args.plugin_root.resolve(strict=True)
         if (
             not math.isfinite(args.timeout)
             or args.timeout <= 0
@@ -778,7 +909,13 @@ def main(argv: list[str] | None = None) -> int:
             if args.mode == "probe"
             else _run_host_mode(args, manifest, workspace)
         )
-    except (AdapterError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (
+        AdapterError,
+        DeliveryError,
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ) as exc:
         print(f"codex_eval_host: {exc}", file=sys.stderr)
         return 2
 

@@ -11,7 +11,12 @@ import textwrap
 import time
 import unittest
 
-from skill_evaluator_test_support import (
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
+
+from _bundle_hash import inventory, tree_hash  # noqa: E402
+from skill_evaluator_test_support import (  # noqa: E402
     SkillEvaluatorTestCase,
     canonical_hash,
     materialize_v5_contract_fixture,
@@ -20,7 +25,6 @@ from skill_evaluator_test_support import (
 )
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = REPOSITORY_ROOT / "scripts/codex_eval_host.py"
 EVENTS = REPOSITORY_ROOT / "scripts/_codex_eval_events.py"
 CASES = REPOSITORY_ROOT / "tests/fixtures/model_evolution/codex-exec-cases.json"
@@ -90,6 +94,51 @@ def _sha256_file(path: Path) -> str:
     import hashlib
 
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _tree_hash(root: Path) -> str:
+    members = [path for path in root.rglob("*") if path.is_file() or path.is_symlink()]
+    return tree_hash(inventory(root, members))
+
+
+def _materialize_plugin(root: Path) -> tuple[Path, str]:
+    plugin = root / "plugin"
+    skill = plugin / "skills/writing-plans"
+    skill.mkdir(parents=True)
+    (plugin / ".codex-plugin").mkdir()
+    (plugin / ".codex-plugin/plugin.json").write_text("{}\n", encoding="utf-8")
+    body = "---\nname: writing-plans\ndescription: Fixture planner.\n---\nUse exact anchors.\n"
+    (skill / "SKILL.md").write_text(body, encoding="utf-8")
+    return plugin, body
+
+
+def _plugin_bound_manifest(path: Path, fake: Path, plugin: Path, *, mode: str = "host") -> dict:
+    manifest = _host_manifest(path, fake, mode=mode)
+    entry = manifest["catalog"]["entries"][0]
+    entry.update({"id": "writing-plans", "name": "Writing Plans", "root_hash": _tree_hash(plugin / "skills/writing-plans")})
+    manifest["catalog"]["catalog_hash"] = canonical_hash([entry])
+    manifest["identity"]["execution"]["catalog_hash"] = manifest["catalog"]["catalog_hash"]
+    manifest["identity"]["execution"]["skill_hash"] = _tree_hash(plugin)
+    manifest["command"]["argv"].extend(["--plugin-root", str(plugin)])
+    manifest["manifest_hash"] = canonical_hash(
+        {key: value for key, value in manifest.items() if key != "manifest_hash"}
+    )
+    path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return manifest
+
+
+def _run_bound_adapter(
+    workspace: Path, manifest: dict, request: dict
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        manifest["command"]["argv"],
+        cwd=workspace,
+        input=json.dumps(request, separators=(",", ":")) + "\n",
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=5,
+    )
 
 
 def _load_events_module():
@@ -456,6 +505,193 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(2, len(calls))
             for call in calls:
                 self.assertNotIn("--profile", call["argv"])
+
+    def test_bound_plugin_delivers_force_loaded_treatment_and_isolates_catalog(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            plugin, body = _materialize_plugin(root)
+            fake, state = _write_fake_codex(root)
+            manifest_path = root / "host.json"
+            manifest = _plugin_bound_manifest(manifest_path, fake, plugin)
+
+            candidate = _execute_payload()
+            candidate.update(
+                {
+                    "subject_skill_id": "writing-plans",
+                    "catalog": manifest["catalog"]["entries"],
+                    "treatment": {"profile": "candidate/force_loaded"},
+                }
+            )
+            candidate_workspace = root / "candidate"
+            candidate_workspace.mkdir()
+            result = _run_bound_adapter(
+                candidate_workspace,
+                manifest,
+                _request("execute_case", candidate),
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            call = _jsonl(state.read_text(encoding="utf-8"))[0]
+            self.assertIn(body, call["prompt"])
+            self.assertIn("fixture turn 1", call["prompt"])
+            self.assertIn("--disable", call["argv"])
+            self.assertIn("plugins", call["argv"])
+            self.assertTrue((candidate_workspace / ".git").is_dir())
+            repository = subprocess.check_output(
+                ["git", "-C", str(candidate_workspace), "rev-parse", "--show-toplevel"],
+                text=True,
+            ).strip()
+            self.assertEqual(candidate_workspace.resolve(), Path(repository).resolve())
+            self.assertFalse(
+                (candidate_workspace / ".agents/skills/writing-plans").exists()
+            )
+            omitted = subprocess.run(
+                manifest["command"]["argv"][:-2],
+                cwd=candidate_workspace,
+                input=json.dumps(_request("execute_case", candidate)) + "\n",
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=5,
+            )
+            self.assertEqual(2, omitted.returncode)
+            self.assertIn("omitted", omitted.stderr)
+
+            baseline = json.loads(json.dumps(candidate))
+            baseline["treatment"]["profile"] = "baseline/skill_disabled"
+            baseline_workspace = root / "baseline"
+            baseline_workspace.mkdir()
+            result = _run_bound_adapter(
+                baseline_workspace,
+                manifest,
+                _request("execute_case", baseline),
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            call = _jsonl(state.read_text(encoding="utf-8"))[1]
+            self.assertNotIn(body, call["prompt"])
+            self.assertEqual("fixture turn 1", call["prompt"])
+
+    def test_bound_plugin_tamper_and_probe_child_failure_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plugin, _ = _materialize_plugin(root)
+            fake, state = _write_fake_codex(root, mode="nonzero")
+            manifest_path = root / "probe-host.json"
+            manifest = _plugin_bound_manifest(
+                manifest_path,
+                fake,
+                plugin,
+                mode="probe",
+            )
+            workspace = root / "probe"
+            workspace.mkdir()
+            probe = {
+                "schema_version": "codex-interaction-probe/1.0",
+                "probe_id": "probe-force-load",
+                "capability": "force_load",
+                "prompt": "$writing-plans produce a plan",
+                "expected_event_types": ["thread.started", "turn.completed"],
+            }
+            result = _run_bound_adapter(workspace, manifest, probe)
+            self.assertEqual(0, result.returncode, result.stderr)
+            terminal = _jsonl(result.stdout)[0]
+            self.assertEqual("unknown", terminal["status"])
+            self.assertEqual("child_process", terminal["diagnostics"][0]["kind"])
+
+            (plugin / "skills/writing-plans/SKILL.md").write_text(
+                "tampered\n",
+                encoding="utf-8",
+            )
+            rejected_workspace = root / "rejected"
+            rejected_workspace.mkdir()
+            rejected = _run_bound_adapter(rejected_workspace, manifest, probe)
+            self.assertEqual(2, rejected.returncode)
+            self.assertIn("plugin Skill bytes differ", rejected.stderr)
+            self.assertEqual(1, len(_jsonl(state.read_text(encoding="utf-8"))))
+
+    def test_bound_plugin_projects_observed_skill_read_and_sandbox_denial(self) -> None:
+        cases = (
+            (
+                "natural_routing",
+                "produce a repository plan",
+                {
+                    "id": "command-read-skill",
+                    "type": "command_execution",
+                    "command": "rtk read .agents/skills/writing-plans/SKILL.md",
+                    "aggregated_output": "skill body",
+                    "exit_code": 0,
+                    "status": "completed",
+                },
+                "direct.routing",
+            ),
+            (
+                "action_authorization_trace",
+                "attempt a denied write",
+                {
+                    "id": "command-denied",
+                    "type": "command_execution",
+                    "command": "touch probe-output.txt",
+                    "aggregated_output": "Read-only file system",
+                    "exit_code": 1,
+                    "status": "failed",
+                },
+                "permission.denied",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plugin, _ = _materialize_plugin(root)
+            for capability, prompt, command, direct in cases:
+                with self.subTest(capability=capability):
+                    case_root = root / capability
+                    case_root.mkdir()
+                    records = [
+                        {"type": "thread.started", "thread_id": THREAD_ID},
+                        {"type": "turn.started"},
+                        {"type": "item.completed", "item": command},
+                        {
+                            "type": "item.completed",
+                            "item": {
+                                "id": "message-1",
+                                "type": "agent_message",
+                                "text": "fixture complete",
+                            },
+                        },
+                        {
+                            "type": "turn.completed",
+                            "usage": {"input_tokens": 10, "output_tokens": 3},
+                        },
+                    ]
+                    fake, _ = _write_fake_codex(
+                        case_root,
+                        turns=[{"records": records}],
+                    )
+                    manifest = _plugin_bound_manifest(
+                        case_root / "host.json",
+                        fake,
+                        plugin,
+                        mode="probe",
+                    )
+                    workspace = case_root / "workspace"
+                    workspace.mkdir()
+                    probe = {
+                        "schema_version": "codex-interaction-probe/1.0",
+                        "probe_id": f"probe-{capability}",
+                        "capability": capability,
+                        "prompt": prompt,
+                        "expected_event_types": [
+                            "thread.started",
+                            "turn.completed",
+                            direct,
+                        ],
+                    }
+                    result = _run_bound_adapter(workspace, manifest, probe)
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    terminal = _jsonl(result.stdout)[0]
+                    self.assertEqual("pass", terminal["status"])
+                    self.assertIn(direct, terminal["direct_observations"])
 
     def test_model_grade_and_probe_use_closed_outputs(self) -> None:
         grade = {

@@ -726,7 +726,79 @@ def prepare_supersedes(
     validate_document(old, "campaign")
     if old["supersedes"] is not None:
         raise ContractError("a superseding campaign cannot be superseded again")
-    if old["profiles"]["target_provisional"]["sha256"] != target_host_binding["sha256"]:
+    old_host = load_json(
+        resolve_binding(
+            old["profiles"]["target_provisional"],
+            repository_root,
+            old_path.parent,
+        ),
+        label="superseded target Host",
+    )
+    target_host = load_json(
+        resolve_binding(target_host_binding, repository_root, campaign_root),
+        label="replacement target Host",
+    )
+    stable_execution = (
+        "provider",
+        "model",
+        "model_revision",
+        "harness",
+        "prompt_hash",
+        "tool_schema_hash",
+        "policy_hash",
+        "tokenizer_id",
+        "pricing_id",
+        "utc_clock_id",
+        "monotonic_clock_id",
+    )
+    stable_options = (
+        "--codex-sha256",
+        "--model",
+        "--effort",
+        "--profile",
+        "--sandbox",
+        "--timeout",
+    )
+
+    def stable_host_identity(host: dict[str, Any]) -> dict[str, Any]:
+        identity = host.get("identity")
+        execution = identity.get("execution") if isinstance(identity, dict) else None
+        adapter = identity.get("adapter") if isinstance(identity, dict) else None
+        command = host.get("command")
+        argv = command.get("argv") if isinstance(command, dict) else None
+        capabilities = host.get("capabilities")
+        if (
+            not isinstance(execution, dict)
+            or not isinstance(adapter, dict)
+            or not isinstance(argv, list)
+            or not isinstance(capabilities, list)
+        ):
+            raise ContractError("supersession Host identity is invalid")
+
+        def option(name: str) -> str:
+            positions = [index for index, value in enumerate(argv) if value == name]
+            if len(positions) != 1 or positions[0] + 1 >= len(argv):
+                raise ContractError("supersession Host command is invalid")
+            value = argv[positions[0] + 1]
+            if not isinstance(value, str):
+                raise ContractError("supersession Host command is invalid")
+            return value
+
+        capability_contract = [
+            (row.get("capability"), row.get("declared"))
+            for row in capabilities
+            if isinstance(row, dict)
+        ]
+        if len(capability_contract) != len(capabilities):
+            raise ContractError("supersession Host capabilities are invalid")
+        return {
+            "execution": {field: execution.get(field) for field in stable_execution},
+            "adapter": {field: adapter.get(field) for field in ("id", "version")},
+            "command": {name: option(name) for name in stable_options},
+            "capabilities": capability_contract,
+        }
+
+    if stable_host_identity(old_host) != stable_host_identity(target_host):
         raise ContractError("superseded campaign targets a different Host")
     qualification_path = old_path.parent / "qualification/qualification.json"
     qualification = load_json(qualification_path, label="superseded qualification")

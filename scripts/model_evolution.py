@@ -9,6 +9,7 @@ import sys
 from typing import Any, Callable
 
 from _model_evolution_contract import (
+    CRITICAL_PROBE_CAPABILITIES,
     ContractError,
     SKILL_IDS,
     assess_interaction_probes,
@@ -539,6 +540,21 @@ def _probe(args: argparse.Namespace) -> None:
             lambda state: block_probes(state, reason),
         )
         raise
+    request_ids = {
+        request["probe_id"]: request["request_id"]
+        for request in reserved["interaction_probes"]["requests"]
+    }
+    critical_failures = sorted(
+        row["capability"]
+        for row in probe_set["probes"]
+        if row["capability"] in CRITICAL_PROBE_CAPABILITIES
+        and outcome["statuses"][request_ids[row["probe_id"]]] != "pass"
+    )
+    blocker = (
+        "critical interaction probes did not pass: " + ", ".join(critical_failures)
+        if critical_failures
+        else None
+    )
     updated = store.mutate(
         reserved["state_revision"],
         lambda state: close_probes(
@@ -547,8 +563,11 @@ def _probe(args: argparse.Namespace) -> None:
             statuses=outcome["statuses"],
             results_binding=outcome["results_binding"],
             observed_host_binding=outcome["observed_host_binding"],
+            blocker=blocker,
         ),
     )
+    if updated["interaction_probes"]["blocker"] is not None:
+        raise CliError(updated["interaction_probes"]["blocker"])
     _emit(
         {
             "campaign_id": updated["campaign_id"],
@@ -625,6 +644,14 @@ def _register_plan(args: argparse.Namespace) -> None:
         expected_package_hash = selected_skills[args.skill_id]["root_hash"]
     if plan["package_hashes"][args.skill_id] != expected_package_hash:
         raise CliError("execution plan Skill package differs from its selected product")
+    entries = plan.get("entries")
+    if not isinstance(entries, list) or not entries or any(
+        not isinstance(entry, dict)
+        or not isinstance(entry.get("execute_case_payload"), dict)
+        or entry["execute_case_payload"].get("subject_skill_id") != args.skill_id
+        for entry in entries
+    ):
+        raise CliError("execution plan entries differ from the selected Skill")
     index_path = _plan_index_path(plan_path, plan)
     status = runner_status(plan_path, index_path, repository_root=repository_root)
     if any(

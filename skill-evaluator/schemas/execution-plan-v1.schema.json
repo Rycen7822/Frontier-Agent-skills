@@ -192,6 +192,7 @@
     "execute_case_payload": {
       "type": "object",
       "required": [
+        "subject_skill_id",
         "case",
         "treatment",
         "repeat",
@@ -212,6 +213,7 @@
         "capture_contract"
       ],
       "properties": {
+        "subject_skill_id": {"$ref": "#/$defs/safe_id"},
         "case": {"$ref": "scenario-v1.schema.json"},
         "treatment": {"$ref": "eval-spec-v5.schema.json#/$defs/treatment"},
         "repeat": {"type": "integer", "minimum": 1},

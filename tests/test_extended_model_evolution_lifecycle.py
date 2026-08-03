@@ -469,6 +469,18 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             )
             validate_document(fixture, name)
 
+    def test_preflight_binds_the_exact_staged_plugin_catalog(self) -> None:
+        host = json.loads(self.fixture["paths"]["host"].read_text())
+        plugin_root = self.fixture["paths"]["plugin_root"]
+        operations._validate_host_plugin_binding(host, plugin_root)
+
+        host["command"]["argv"].extend(["--plugin-root", str(plugin_root)])
+        with self.assertRaisesRegex(
+            operations.OperationError,
+            "does not bind one plugin root",
+        ):
+            operations._validate_host_plugin_binding(host, plugin_root)
+
     def test_probe_closes_once_and_partial_reservation_never_resends(self) -> None:
         store = self.fixture["store"]
         apparatus = materialize_apparatus_report(self.fixture)
@@ -583,6 +595,42 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(call_count, len(calls.read_text().splitlines()))
 
+    def test_unknown_critical_probe_closes_terminals_without_advancing(self) -> None:
+        store = self.fixture["store"]
+        apparatus = materialize_apparatus_report(self.fixture)
+        store.mutate(0, lambda state: advance_preflight(state, apparatus))
+        approval = materialize_budget_approval(self.fixture, store.read())
+
+        def unknown_outcome(campaign, **_kwargs):
+            request_id = campaign["interaction_probes"]["requests"][0]["request_id"]
+            return {
+                "artifacts": {request_id: self.fixture["bindings"]["host"]},
+                "statuses": {request_id: "unknown"},
+                "results_binding": self.fixture["bindings"]["host"],
+                "observed_host_binding": self.fixture["bindings"]["host"],
+            }
+
+        with (
+            mock.patch.object(
+                controller,
+                "run_interaction_probes",
+                side_effect=unknown_outcome,
+            ),
+            self.assertRaisesRegex(controller.CliError, "force_load"),
+        ):
+            controller._probe(
+                argparse.Namespace(
+                    repository_root=self.fixture["repository_root"],
+                    campaign_root=self.fixture["campaign_root"],
+                    expected_revision=1,
+                    budget_approval=approval,
+                )
+            )
+        state = store.read()
+        self.assertEqual("apparatus_ready", state["phase"])
+        self.assertIn("force_load", state["interaction_probes"]["blocker"])
+        self.assertEqual(1, state["budgets"]["observed"]["provider_requests"])
+
     def test_probe_diagnostic_stops_remaining_rows(self) -> None:
         campaign = copy.deepcopy(self.fixture["campaign"])
         campaign["phase"] = "apparatus_ready"
@@ -670,6 +718,13 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                             "root_hash"
                         ]
                     },
+                    "entries": [
+                        {
+                            "execute_case_payload": {
+                                "subject_skill_id": SKILL_IDS[0]
+                            }
+                        }
+                    ],
                     "artifacts": {"root": "artifacts", "index_relpath": "index.jsonl"},
                 },
                 "plan_hash",
@@ -692,6 +747,16 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             "worst_case_remaining_attempts": 1,
         }
         before = self.fixture["store"].path.read_bytes()
+        wrong = json.loads(plan_path.read_text())
+        wrong["entries"][0]["execute_case_payload"]["subject_skill_id"] = SKILL_IDS[1]
+        wrong = with_self_hash(wrong, "plan_hash")
+        wrong_path = write_json(self.fixture["campaign_root"] / "wrong-plan.json", wrong)
+        wrong_args = copy.copy(args)
+        wrong_args.plan = wrong_path
+        with self.assertRaisesRegex(controller.CliError, "selected Skill"):
+            controller._register_plan(wrong_args)
+        self.assertEqual(before, self.fixture["store"].path.read_bytes())
+
         for field in ("indexed_attempts", "active_attempts", "recoverable_attempts"):
             blocked = dict(status, **{field: 1})
             with (
