@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import unittest
@@ -35,6 +36,23 @@ class QuickBundleContractTests(unittest.TestCase):
         self.assertEqual(EXPECTED_VERSIONS, {item["id"]: item["version"] for item in source["skills"]})
         self.assertEqual({"quick", "extended", "release"}, set(source["test_profiles"]))
         self.assertEqual(3, len({tuple(commands) for commands in source["test_profiles"].values()}))
+        extended = source["test_profiles"]["extended"]
+        required_modules = {
+            2: {
+                "tests/test_extended_runner_lifecycle.py",
+                "tests/test_extended_lifecycle_conformance.py",
+            },
+            3: {
+                "tests/test_extended_eval_comparison.py",
+                "tests/test_extended_eval_revision.py",
+                "tests/test_extended_eval_transition.py",
+            },
+        }
+        for command_index, expected in required_modules.items():
+            command_modules = set(shlex.split(extended[command_index]))
+            self.assertLessEqual(expected, command_modules)
+            for module in expected:
+                self.assertEqual(1, sum(module in shlex.split(command) for command in extended), module)
 
         builder = load_module("frontier_bundle_builder", ROOT / "bundle" / "build_bundle_manifest.py")
         generated = json.loads((ROOT / "frontier-engineering.bundle.json").read_text(encoding="utf-8"))
