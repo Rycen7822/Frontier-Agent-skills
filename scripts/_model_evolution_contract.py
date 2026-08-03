@@ -838,6 +838,27 @@ def _is_single_calibration_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _is_single_probe_contract_correction(value: dict[str, Any]) -> bool:
+    evidence = value["skill_evidence"]
+    per_skill = [evidence[skill_id] for skill_id in SKILL_IDS]
+    requests = value["interaction_probes"]["requests"]
+    return (
+        value["phase"] == "apparatus_ready"
+        and value["interaction_probes"]["blocker"]
+        == "critical interaction probes did not pass: natural_routing"
+        and requests
+        and all(request["status"] == "closed" for request in requests)
+        and any(request["result_status"] == "unknown" for request in requests)
+        and value["interaction_probes"]["results"] is not None
+        and value["profiles"]["target_observed"] is not None
+        and value["apparatus_report"] is not None
+        and value["plans"] == []
+        and value["candidate"] is None
+        and evidence["plugin_build"] is None
+        and all(all(binding is None for binding in item.values()) for item in per_skill)
+    )
+
+
 def _failure_receipt_request_count(
     binding: dict[str, Any],
     *,
@@ -883,11 +904,11 @@ def _blocked_supersession_lineage(
     old_path: Path,
     repository_root: Path,
 ) -> list[tuple[dict[str, Any], Path]]:
-    """Load at most five closed campaigns and verify every budget carry."""
+    """Load at most six closed campaigns and verify every budget carry."""
     lineage = [(old, old_path)]
     current, current_path = old, old_path
     while current["supersedes"] is not None:
-        if len(lineage) == 5:
+        if len(lineage) == 6:
             raise ContractError("supersession repair depth is exhausted")
         parent_path = resolve_binding(
             current["supersedes"]["campaign"],
@@ -942,7 +963,14 @@ def prepare_supersedes(
     old = load_json(old_path, label="superseded campaign")
     _validate_lineage_campaign(old, "superseded campaign")
     lineage = _blocked_supersession_lineage(old, old_path, repository_root)
-    if len(lineage) >= 3 and not _is_single_calibration_correction(old):
+    probe_contract_correction = (
+        len(lineage) == 6 and _is_single_probe_contract_correction(old)
+    )
+    if len(lineage) == 6 and not probe_contract_correction:
+        raise ContractError("supersession repair depth is exhausted")
+    if len(lineage) >= 3 and not (
+        _is_single_calibration_correction(old) or probe_contract_correction
+    ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = len(lineage) in {4, 5}
     if receipt_hop and failure_receipt_binding is None:

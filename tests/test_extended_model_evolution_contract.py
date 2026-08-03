@@ -709,6 +709,66 @@ class ModelEvolutionContractTest(unittest.TestCase):
                 campaign_root=self.fixture["campaign_root"],
             )
 
+        probe_only = copy.deepcopy(terminal)
+        probe_only["phase"] = "apparatus_ready"
+        probe_only["interaction_probes"]["blocker"] = (
+            "critical interaction probes did not pass: natural_routing"
+        )
+        probe_only["interaction_probes"]["requests"][0][
+            "result_status"
+        ] = "unknown"
+        probe_only = with_self_hash(probe_only, "campaign_hash")
+        probe_root = self.fixture["repository_root"] / ".work/probe-contract"
+        shutil.copytree(self.fixture["campaign_root"], probe_root)
+        probe_path = write_json(probe_root / "campaign.json", probe_only)
+        write_json(
+            probe_root / "qualification/qualification.json",
+            project_qualification(
+                probe_only,
+                repository_root=self.fixture["repository_root"],
+                campaign_root=probe_root,
+                observed_as_of="2026-08-03T00:00:00Z",
+                valid_until="2026-08-04T00:00:00Z",
+            ),
+        )
+        probe_binding = make_binding(
+            probe_path,
+            root="repository",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        probe_repair = prepare_supersedes(
+            campaign_binding=probe_binding,
+            target_host_binding=self.fixture["bindings"]["host"],
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        self.assertEqual(
+            probe_only["budgets"]["reserved"],
+            probe_repair["imported_reserved"],
+        )
+        self.assertNotIn("failure_receipt", probe_repair)
+
+        final_probe = copy.deepcopy(probe_only)
+        final_probe["supersedes"] = probe_repair
+        final_probe = with_self_hash(final_probe, "campaign_hash")
+        final_probe_path = write_json(
+            probe_root / "final-campaign.json", final_probe
+        )
+        final_probe_binding = make_binding(
+            final_probe_path,
+            root="repository",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        with self.assertRaisesRegex(ContractError, "depth is exhausted"):
+            prepare_supersedes(
+                campaign_binding=final_probe_binding,
+                target_host_binding=self.fixture["bindings"]["host"],
+                repository_root=self.fixture["repository_root"],
+                campaign_root=self.fixture["campaign_root"],
+            )
+
     def test_observed_host_projection_requires_exact_capability_and_result_set(
         self,
     ) -> None:
