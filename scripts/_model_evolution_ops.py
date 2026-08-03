@@ -38,8 +38,10 @@ from _model_evolution_contract import (
 
 
 MAX_DIAGNOSTIC_BYTES = 64 * 1024
+PLUGIN_BUILD_GATE_SCRIPT = "scripts/build_codex_plugin.py"
 ALLOWED_GATE_SCRIPTS = {
     "bundle/build_bundle_manifest.py",
+    PLUGIN_BUILD_GATE_SCRIPT,
     "scripts/evaluate_static_contracts.py",
     "scripts/build_model_evolution_sentinels.py",
     "skill-evaluator/scripts/compile_eval_plan.py",
@@ -718,7 +720,7 @@ def preflight_operations(
         "plugin-build-check",
         [
             sys.executable,
-            "scripts/build_codex_plugin.py",
+            PLUGIN_BUILD_GATE_SCRIPT,
             "--source-root",
             str(repository_root),
             "--validate-plugin-root",
