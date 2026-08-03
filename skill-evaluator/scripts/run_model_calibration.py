@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import sys
 from typing import Any
 
 from evidence_io import (
@@ -131,11 +132,16 @@ def _host_command(host: dict[str, Any], root: Path) -> tuple[list[str], dict[str
     for argument in declared[1:]:
         candidate = root / argument
         argv.append(str(candidate.resolve()) if candidate.is_file() else argument)
-    return argv, {
-        name: os.environ[name]
-        for name in command["env_allowlist"]
-        if name in os.environ
-    }
+    repository_scripts = Path(__file__).resolve().parents[2] / "scripts"
+    if str(repository_scripts) not in sys.path:
+        sys.path.insert(0, str(repository_scripts))
+    from _codex_eval_delivery import DeliveryError, project_command_environment
+
+    try:
+        environment = project_command_environment(command, dict(os.environ))
+    except DeliveryError as exc:
+        raise CalibrationFailure(str(exc)) from exc
+    return argv, environment
 
 
 def _invoke(

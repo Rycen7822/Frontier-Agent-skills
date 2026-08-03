@@ -47,6 +47,7 @@ from _model_evolution_ops import (
     runner_status,
     systemd_probe_argv,
     validate_plugin_staging,
+    validate_target_host_staging,
 )
 from _model_evolution_state import (
     CampaignStore,
@@ -317,6 +318,13 @@ def _init(args: argparse.Namespace) -> None:
             skill_id: bundle_build["skills"][skill_id]["version"]
             for skill_id in SKILL_IDS
         },
+    )
+    validate_target_host_staging(
+        fixed["target_host"],
+        plugin_root,
+        repository_root=repository_root,
+        expected_commit=identity["commit"],
+        expected_tree=identity["tree"],
     )
     probe_set = load_json(fixed["probe_set"], label="interaction probe set")
     sentinel = load_json(fixed["sentinel"], label="sentinel index")

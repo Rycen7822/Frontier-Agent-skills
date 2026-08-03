@@ -27,6 +27,7 @@ from _codex_eval_delivery import (
     observed_permission_denials,
     observed_skill_routing,
     prepare_workspace,
+    project_command_environment,
     skill_isolation_argv,
     treatment_delivery,
     validate_plugin_catalog,
@@ -178,6 +179,52 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
             raise AdapterError("runtime plugin root differs from the host manifest")
         validate_plugin_catalog(args.plugin_root, manifest)
     return manifest
+
+
+def validate_bound_manifest(path: Path, plugin_root: Path) -> dict[str, Any]:
+    """Validate one model-evolution Host before campaign state is created."""
+    manifest = _load_json_object(path)
+    command = manifest.get("command")
+    argv = command.get("argv") if isinstance(command, dict) else None
+    if not isinstance(argv, list) or any(not isinstance(item, str) for item in argv):
+        raise AdapterError("host manifest command argv is invalid")
+    try:
+        executable_path = Path(command["resolved_executable"])
+        if not executable_path.is_absolute() or executable_path.is_symlink():
+            raise AdapterError("host manifest executable identity differs")
+        executable = executable_path.resolve(strict=True)
+        declared = Path(argv[0])
+        declared = (
+            declared.resolve(strict=True)
+            if declared.is_absolute()
+            else (executable.parent / declared).resolve(strict=True)
+        )
+        codex = Path(_bound_command_option(argv, "--codex")).resolve(strict=True)
+        timeout = float(_bound_command_option(argv, "--timeout"))
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        raise AdapterError("host manifest command binding is invalid") from exc
+    if (
+        declared != executable
+        or command.get("executable_sha256") != _file_sha256(executable)
+    ):
+        raise AdapterError("host manifest executable identity differs")
+    args = argparse.Namespace(
+        codex=codex,
+        codex_sha256=_bound_command_option(argv, "--codex-sha256"),
+        model=_bound_command_option(argv, "--model"),
+        effort=_bound_command_option(argv, "--effort"),
+        profile=_bound_command_option(argv, "--profile"),
+        sandbox=_bound_command_option(argv, "--sandbox"),
+        timeout=timeout,
+        plugin_root=plugin_root.resolve(strict=True),
+    )
+    validated = _validate_manifest(path, args)
+    project_command_environment(
+        validated["command"],
+        dict(os.environ),
+        require_model_evolution=True,
+    )
+    return validated
 
 
 def _artifact_bytes(

@@ -19,7 +19,9 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 
 import _model_evolution_ops as operations  # noqa: E402
 import _model_evolution_state as state_module  # noqa: E402
+import build_model_evolution_host as host_builder  # noqa: E402
 import model_evolution as controller  # noqa: E402
+from _codex_eval_delivery import MODEL_EVOLUTION_ENV_ALLOWLIST  # noqa: E402
 from _model_evolution_contract import (  # noqa: E402
     ContractError,
     SKILL_IDS,
@@ -184,6 +186,11 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         shutil.copyfile(self.fixture["paths"]["plugin_build"], plugin_build)
         plugin_root = campaign_root / "staging/frontier-engineering-plugin"
         shutil.copytree(self.fixture["paths"]["plugin_root"], plugin_root)
+        rebound_host = json.loads(host.read_text())
+        argv = rebound_host["command"]["argv"]
+        argv[argv.index("--host-manifest") + 1] = str(host)
+        argv[argv.index("--plugin-root") + 1] = str(plugin_root)
+        write_json(host, with_self_hash(rebound_host, "manifest_hash"))
         args = argparse.Namespace(
             repository_root=self.fixture["repository_root"],
             campaign_root=campaign_root,
@@ -227,6 +234,44 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             with self.assertRaisesRegex(controller.CliError, "worst-case"):
                 controller._init(invalid_args)
             self.assertFalse((campaign_root / "campaign.json").exists())
+            valid_host = json.loads(host.read_text())
+            mutations = (
+                ("skill-root", "plugin Skill bytes differ"),
+                ("catalog", "catalog hash differs"),
+                ("adapter", "adapter or model identity differs"),
+                ("source-commit", "repository identity differs"),
+                ("source-tree", "repository identity differs"),
+                ("source-path", "repository identity differs"),
+                ("host-path", "command binding is invalid"),
+                ("transport-env", "transport environment differs"),
+            )
+            for mutation, message in mutations:
+                invalid_host = copy.deepcopy(valid_host)
+                if mutation == "skill-root":
+                    invalid_host["catalog"]["entries"][0]["root_hash"] = "sha256:" + "0" * 64
+                elif mutation == "catalog":
+                    invalid_host["catalog"]["catalog_hash"] = "sha256:" + "0" * 64
+                elif mutation == "adapter":
+                    invalid_host["identity"]["adapter"]["sha256"] = "sha256:" + "0" * 64
+                elif mutation == "source-commit":
+                    invalid_host["identity"]["repository"]["revision"] = "0" * 40
+                elif mutation == "source-tree":
+                    invalid_host["identity"]["repository"]["tree"] = "0" * 40
+                elif mutation == "source-path":
+                    invalid_host["identity"]["repository"]["worktree"] = "/wrong"
+                elif mutation == "host-path":
+                    position = invalid_host["command"]["argv"].index("--host-manifest")
+                    invalid_host["command"]["argv"][position + 1] = "/missing"
+                else:
+                    invalid_host["command"]["env_allowlist"] = []
+                write_json(host, with_self_hash(invalid_host, "manifest_hash"))
+                with self.subTest(mutation=mutation), self.assertRaisesRegex(
+                    operations.OperationError,
+                    message,
+                ):
+                    controller._init(args)
+                self.assertFalse((campaign_root / "campaign.json").exists())
+            write_json(host, valid_host)
             controller._init(args)
         state = CampaignStore(
             campaign_root,
@@ -474,12 +519,102 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         plugin_root = self.fixture["paths"]["plugin_root"]
         operations._validate_host_plugin_binding(host, plugin_root)
 
+        stale_catalog = copy.deepcopy(host)
+        stale_catalog["catalog"]["catalog_hash"] = "sha256:" + "0" * 64
+        with self.assertRaisesRegex(
+            operations.OperationError,
+            "catalog hash differs",
+        ):
+            operations._validate_host_plugin_binding(stale_catalog, plugin_root)
+
         host["command"]["argv"].extend(["--plugin-root", str(plugin_root)])
         with self.assertRaisesRegex(
             operations.OperationError,
             "does not bind one plugin root",
         ):
             operations._validate_host_plugin_binding(host, plugin_root)
+
+    def test_host_builder_replaces_all_derived_identity_before_init(self) -> None:
+        template = json.loads(self.fixture["paths"]["host"].read_text())
+        template["command"]["env_allowlist"] = []
+        template["catalog"]["entries"][0]["root_hash"] = "sha256:" + "0" * 64
+        template["catalog"]["catalog_hash"] = "sha256:" + "0" * 64
+        template["identity"]["execution"]["catalog_hash"] = "sha256:" + "0" * 64
+        template["identity"]["execution"]["skill_hash"] = "sha256:" + "0" * 64
+        template["identity"]["adapter"]["sha256"] = "sha256:" + "0" * 64
+        probe_path = "codex-interaction-probes-v1.json"
+        template["reset"]["probe"]["artifact"]["path"] = probe_path
+        for capability in template["capabilities"]:
+            capability["probe"]["artifact"]["path"] = probe_path
+        template_path = write_json(
+            Path(self.temporary.name) / "stale-host-template.json",
+            template,
+        )
+        builder_evidence = json.loads(
+            self.fixture["paths"]["plugin_build"].read_text()
+        )
+        builder_evidence["skill_versions"] = {
+            entry["id"]: entry["version"] for entry in template["catalog"]["entries"]
+        }
+        builder_evidence_path = write_json(
+            Path(self.temporary.name) / "builder-evidence.json",
+            builder_evidence,
+        )
+        output = Path(self.temporary.name) / "built-host.json"
+        adapter_target = self.fixture["repository_root"] / "scripts/codex_eval_host.py"
+        adapter_target.parent.mkdir()
+        shutil.copyfile(REPOSITORY_ROOT / "scripts/codex_eval_host.py", adapter_target)
+        identity = {
+            "dirty": False,
+            "revision": FIXED_COMMIT,
+            "tree": FIXED_TREE,
+            "worktree": str(self.fixture["repository_root"]),
+        }
+        with mock.patch.object(
+            host_builder,
+            "_repository_identity",
+            return_value=identity,
+        ):
+            built = host_builder.build_host(
+                repository_root=self.fixture["repository_root"],
+                template_path=template_path,
+                plugin_root=self.fixture["paths"]["plugin_root"],
+                plugin_build_path=builder_evidence_path,
+                output_path=output,
+                manifest_id="built-host-fixture",
+                session_id="built-host-session",
+            )
+        self.assertEqual(
+            list(MODEL_EVOLUTION_ENV_ALLOWLIST),
+            built["command"]["env_allowlist"],
+        )
+        self.assertEqual(identity, built["identity"]["repository"])
+        operations.validate_target_host_staging(
+            output,
+            self.fixture["paths"]["plugin_root"],
+            repository_root=self.fixture["repository_root"],
+            expected_commit=FIXED_COMMIT,
+            expected_tree=FIXED_TREE,
+        )
+        original = output.read_bytes()
+        with (
+            mock.patch.object(
+                host_builder,
+                "_repository_identity",
+                return_value=identity,
+            ),
+            self.assertRaisesRegex(host_builder.HostBuildError, "refusing to replace"),
+        ):
+            host_builder.build_host(
+                repository_root=self.fixture["repository_root"],
+                template_path=template_path,
+                plugin_root=self.fixture["paths"]["plugin_root"],
+                plugin_build_path=builder_evidence_path,
+                output_path=output,
+                manifest_id="built-host-fixture",
+                session_id="built-host-session",
+            )
+        self.assertEqual(original, output.read_bytes())
 
     def test_probe_closes_once_and_partial_reservation_never_resends(self) -> None:
         store = self.fixture["store"]
@@ -631,6 +766,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                     "prompt": "fixture prompt",
                     "required_observations": [],
                 },
+                environment={},
                 workspace=self.fixture["repository_root"],
                 timeout=0.1,
             )
