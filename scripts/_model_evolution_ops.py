@@ -842,7 +842,7 @@ def _minimal_schema_fixture(name: str, campaign: dict[str, Any]) -> dict[str, An
             "probes": [
                 {
                     "probe_id": "preflight-probe",
-                    "capability": "session_resume",
+                    "capability": "multi_turn",
                     "prompt": "Return one inert completion.",
                     "fixture": campaign["sentinel_index"],
                     "sandbox": "read-only",

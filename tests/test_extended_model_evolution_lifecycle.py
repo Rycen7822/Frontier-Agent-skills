@@ -454,6 +454,21 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             ],
         )
 
+    def test_preflight_schema_fixtures_match_their_live_contracts(self) -> None:
+        campaign = self.fixture["store"].read()
+        hash_fields = {
+            "budget_approval": "approval_hash",
+            "campaign": "campaign_hash",
+            "interaction_probes": "probe_set_hash",
+            "sentinel_index": "sentinel_hash",
+        }
+        for name, hash_field in hash_fields.items():
+            fixture = with_self_hash(
+                operations._minimal_schema_fixture(name, campaign),
+                hash_field,
+            )
+            validate_document(fixture, name)
+
     def test_probe_closes_once_and_partial_reservation_never_resends(self) -> None:
         store = self.fixture["store"]
         apparatus = materialize_apparatus_report(self.fixture)
