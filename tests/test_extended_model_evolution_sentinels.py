@@ -175,19 +175,42 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
 
     def test_calibration_gold_uses_the_evaluator_semantic_owner(self) -> None:
         for skill_id in SKILL_IDS:
-            path = SENTINEL_ROOT / skill_id / "calibration-gold.jsonl"
+            root = SENTINEL_ROOT / skill_id
+            path = root / "calibration-gold.jsonl"
             rows = [json.loads(line) for line in path.read_text().splitlines()]
+            spec = load_json(root / "eval-spec.template.json", label="sentinel spec")
+            grader = next(item for item in spec["graders"] if item["type"] == "model")
+            checks = {item["check_id"]: item for item in grader["checks"]}
             self.assertEqual(len(rows), 16)
             self.assertEqual(
                 {row["check_id"] for row in rows},
                 {"process-check", "quality-check"},
             )
             self.assertEqual(len({row["example_id"] for row in rows}), 16)
+            self.assertEqual(
+                {row["class"] for row in rows},
+                {"known_good", "known_bad", "boundary", "abstain"},
+            )
             for row in rows:
                 self.assertEqual(
                     row["payload_hash"],
                     grader_semantics.semantic_payload_hash(row["payload"]),
                 )
+                self.assertEqual(
+                    checks[row["check_id"]]["pass_condition"],
+                    row["payload"]["check"]["pass_condition"],
+                )
+                exposed = json.dumps(
+                    {
+                        "example_id": row["example_id"],
+                        "view": row["payload"]["view"],
+                    },
+                    sort_keys=True,
+                ).lower()
+                for label in ("known_good", "known_bad", "boundary", "abstain"):
+                    self.assertNotIn(label, exposed)
+            prompt = (root / grader["prompt"]["path"]).read_text()
+            self.assertIn("`uncertainty` to `high`", prompt)
 
     def test_deterministic_verifier_has_positive_and_negative_behavior(self) -> None:
         verifier = SENTINEL_ROOT / SKILL_IDS[0] / "verify.py"

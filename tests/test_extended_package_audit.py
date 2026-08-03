@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from skill_evaluator_test_support import *  # noqa: F403
 
 
@@ -43,10 +45,13 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
             isolated = Path(tmp) / 'skill-evaluator'
             shutil.copytree(ROOT, isolated)
             skill_path = isolated / 'SKILL.md'
+            skill_text = skill_path.read_text(encoding='utf-8')
             skill_path.write_text(
-                skill_path.read_text(encoding='utf-8').replace(
-                    '- Supporting owners: [source map](references/source-map.md), [Draft 2020-12 schemas](schemas/README.md), and the conditional [evaluation report](templates/evaluation-report.md).\n',
+                re.sub(
+                    r'\[[^\]\n]+\]\(schemas/README\.md\),? ?',
                     '',
+                    skill_text,
+                    count=1,
                 ),
                 encoding='utf-8',
             )

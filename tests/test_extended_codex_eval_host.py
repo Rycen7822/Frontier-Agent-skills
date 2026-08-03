@@ -96,6 +96,22 @@ def _sha256_file(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _grade_payload(batch: dict[str, object]) -> dict[str, object]:
+    import hashlib
+
+    prompt = "Judge the blinded fixture evidence.\n"
+    prompt_hash = "sha256:" + hashlib.sha256(prompt.encode()).hexdigest()
+    return {
+        "grader_id": "fixture-grader",
+        "batch_hash": "sha256:" + "1" * 64,
+        "schedule_hash": "sha256:" + "2" * 64,
+        "grader_prompt": prompt,
+        "grader_prompt_hash": prompt_hash,
+        "grader_schema_hash": "sha256:" + "3" * 64,
+        "blinded_input": batch,
+    }
+
+
 def _tree_hash(root: Path) -> str:
     members = [path for path in root.rglob("*") if path.is_file() or path.is_symlink()]
     return tree_hash(inventory(root, members))
@@ -761,7 +777,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                 workspace,
                 fake,
                 manifest_path,
-                _request("model_grade", {"blinded_input": batch}),
+                _request("model_grade", _grade_payload(batch)),
             )
             self.assertEqual(0, grade_result.returncode, grade_result.stderr)
             grade_record = _jsonl(grade_result.stdout)[-1]
@@ -771,7 +787,18 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(grade, json.loads(artifact.read_text(encoding="utf-8")))
             grade_call = _jsonl(state.read_text(encoding="utf-8"))[0]
             self.assertIn("--output-schema", grade_call["argv"])
+            self.assertIn("Judge the blinded fixture evidence.", grade_call["prompt"])
             self.assertNotIn("treatment", grade_call["prompt"].lower())
+            tampered = _grade_payload(batch)
+            tampered["grader_prompt"] = "Different instruction.\n"
+            rejected = _run_adapter(
+                workspace,
+                fake,
+                manifest_path,
+                _request("model_grade", tampered),
+            )
+            self.assertEqual(2, rejected.returncode)
+            self.assertIn("instruction identity is invalid", rejected.stderr)
 
             probe = {
                 "schema_version": "codex-interaction-probe/1.0",

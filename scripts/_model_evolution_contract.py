@@ -473,6 +473,7 @@ def build_initial_campaign(
         if skills[skill_id]["version"] != manifest_skills[skill_id]["version"]:
             raise ContractError(f"Bundle Skill version differs for {skill_id}")
     evidence_item = {
+        "grader_calibration": None,
         "current_summary": None,
         "transition_report": None,
         "candidate_summary": None,
@@ -522,7 +523,6 @@ def build_initial_campaign(
         "plans": [],
         "skill_evidence": {
             **{skill_id: dict(evidence_item) for skill_id in SKILL_IDS},
-            "grader_calibration": None,
             "plugin_build": None,
         },
         "candidate": None,

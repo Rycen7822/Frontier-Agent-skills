@@ -16,6 +16,7 @@ BLINDED_FIELDS = {
     "artifacts", "observations",
 }
 UNCERTAINTY = {"none", "low", "medium", "high"}
+SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 CONTEXT_FIELDS = {
     "controlled_bytes": "controlled_bytes",
     "controlled_core_bytes": "controlled_core_bytes",
@@ -461,6 +462,78 @@ def execution_batch(
     ):
         raise ValueError("model grader batch items are invalid")
     return {"batch_id": batch_id, "items": items}
+
+
+def request_payload(
+    *,
+    grader_id: str,
+    batch: dict[str, Any],
+    batch_hash: str,
+    schedule_hash: str,
+    prompt_bytes: bytes,
+    prompt_hash: str,
+    schema_hash: str,
+) -> dict[str, Any]:
+    """Bind the declared grader instruction into one Host request."""
+    try:
+        prompt = prompt_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("model grader prompt is not UTF-8") from exc
+    observed_prompt_hash = "sha256:" + sha256(prompt_bytes).hexdigest()
+    if (
+        not isinstance(grader_id, str)
+        or not grader_id
+        or not isinstance(batch, dict)
+        or observed_prompt_hash != prompt_hash
+        or not SHA256.fullmatch(batch_hash)
+        or not SHA256.fullmatch(schedule_hash)
+        or not SHA256.fullmatch(schema_hash)
+    ):
+        raise ValueError("model grader request identity is invalid")
+    return {
+        "grader_id": grader_id,
+        "batch_hash": batch_hash,
+        "schedule_hash": schedule_hash,
+        "grader_prompt": prompt,
+        "grader_prompt_hash": prompt_hash,
+        "grader_schema_hash": schema_hash,
+        "blinded_input": copy.deepcopy(batch),
+    }
+
+
+def calibration_item(label: dict[str, Any]) -> dict[str, Any]:
+    """Project one blinded gold payload into the public grader batch shape."""
+    payload = label.get("payload")
+    if (
+        not isinstance(payload, dict)
+        or label.get("payload_hash") != semantic_payload_hash(payload)
+        or label.get("check_id") != payload["check"]["check_id"]
+    ):
+        raise ValueError("calibration label semantic payload is invalid")
+    return {
+        "item_id": label["example_id"],
+        "checks": [{
+            "id": label["check_id"],
+            "pass_condition": payload["check"]["pass_condition"],
+            "payload_hash": label["payload_hash"],
+        }],
+        "grader_view": copy.deepcopy(payload["view"]),
+    }
+
+
+def calibration_projection(check: dict[str, Any]) -> tuple[str, int]:
+    """Map the public raw check contract onto calibration label semantics."""
+    if (
+        not isinstance(check, dict)
+        or set(check) != {"id", "pass", "notes", "uncertainty"}
+        or not isinstance(check.get("pass"), bool)
+        or not isinstance(check.get("notes"), str)
+        or check.get("uncertainty") not in UNCERTAINTY
+    ):
+        raise ValueError("calibration judgment check is invalid")
+    if check["uncertainty"] == "high":
+        return "abstain", 0
+    return ("pass", 0) if check["pass"] else ("fail", 1)
 
 
 def normalize_judgment(

@@ -925,6 +925,34 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                 campaign_root=self.fixture["campaign_root"],
             )
 
+    def test_all_four_skill_calibrations_are_required_before_ready(self) -> None:
+        state = self._prepared_state()
+        binding = self.fixture["bindings"]["host"]
+        graded_plan = plan_record(SKILL_IDS[0])
+        graded_plan["model_grade_ceiling"] = 1
+        with self.assertRaisesRegex(StateError, "requires all calibrations"):
+            register_plan(state, graded_plan)
+        for skill_id in SKILL_IDS[:-1]:
+            record_evidence(
+                state,
+                role="grader_calibration",
+                binding=binding,
+                skill_id=skill_id,
+            )
+            self.assertEqual("target_profile_ready", state["phase"])
+        last = SKILL_IDS[-1]
+        record_evidence(
+            state,
+            role="grader_calibration",
+            binding=binding,
+            skill_id=last,
+        )
+        self.assertEqual("calibration_ready", state["phase"])
+        self.assertTrue(all(
+            state["skill_evidence"][skill_id]["grader_calibration"] == binding
+            for skill_id in SKILL_IDS
+        ))
+
     def test_no_candidate_and_candidate_state_chains_are_bounded(self) -> None:
         summary_path = write_json(
             self.fixture["campaign_root"] / "summary.json",

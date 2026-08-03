@@ -222,7 +222,11 @@ def register_plan(
     ):
         raise StateError("plan role and Skill are already registered")
     if role == "target_current" and plan_record["model_grade_ceiling"]:
-        if state["skill_evidence"]["grader_calibration"] is None:
+        if state["phase"] != "calibration_ready":
+            raise StateError("model-graded current plan requires all calibrations")
+        if state["skill_evidence"][plan_record["skill_id"]][
+            "grader_calibration"
+        ] is None:
             raise StateError("model-graded current plan requires calibration")
     reserve_budget(
         state,
@@ -254,12 +258,20 @@ def record_evidence(
     skill_id: str | None,
 ) -> None:
     if role == "grader_calibration":
-        if state["phase"] != "target_profile_ready" or skill_id is not None:
+        if (
+            state["phase"] != "target_profile_ready"
+            or skill_id not in SKILL_IDS
+        ):
             raise StateError("grader calibration is not legal from the current phase")
-        if state["skill_evidence"]["grader_calibration"] is not None:
+        evidence = state["skill_evidence"][skill_id]
+        if evidence["grader_calibration"] is not None:
             raise StateError("grader calibration is already recorded")
-        state["skill_evidence"]["grader_calibration"] = binding
-        state["phase"] = "calibration_ready"
+        evidence["grader_calibration"] = binding
+        if all(
+            state["skill_evidence"][selected]["grader_calibration"] is not None
+            for selected in SKILL_IDS
+        ):
+            state["phase"] = "calibration_ready"
         return
     if role == "plugin_build":
         if skill_id is not None or state["skill_evidence"]["plugin_build"] is not None:
