@@ -1711,6 +1711,15 @@ def _run_model_graders(
             items,
             batch_id=model_spec["batch_id"],
         )
+        _, prompt_path = resolve_contained_path(
+            spec_path.parent,
+            model_spec["prompt"]["path"],
+            "model grader prompt",
+            kind="file",
+        )
+        prompt_bytes = prompt_path.read_bytes()
+        if file_sha256(prompt_path) != model_spec["prompt"]["sha256"]:
+            raise RunnerFailure("model grader prompt binding differs")
         blinded_path = grader_dir / "blinded-input.json"
         atomic_write_json(blinded_path, batch)
         request = _host_request(
@@ -1719,12 +1728,15 @@ def _run_model_graders(
             run_id,
             attempt,
             request_kind="model_grade",
-            payload={
-                "grader_id": grader_id,
-                "batch_hash": model_spec["batch_hash"],
-                "schedule_hash": model_spec["schedule_hash"],
-                "blinded_input": batch,
-            },
+            payload=model_transport.request_payload(
+                grader_id=grader_id,
+                batch=batch,
+                batch_hash=model_spec["batch_hash"],
+                schedule_hash=model_spec["schedule_hash"],
+                prompt_bytes=prompt_bytes,
+                prompt_hash=model_spec["prompt"]["sha256"],
+                schema_hash=model_spec["schema"]["sha256"],
+            ),
         )
         diagnostics = validate_host_protocol_record(
             "host_request", request, registry,

@@ -44,6 +44,7 @@ from _codex_eval_events import (
 MAX_STDERR_BYTES = 64 * 1024
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
 PROBE_CAPABILITIES = {
     "force_load",
     "natural_routing",
@@ -434,7 +435,38 @@ def _run_model_grade(
     args: argparse.Namespace,
     workspace: Path,
 ) -> dict[str, Any]:
-    batch = request["payload"].get("blinded_input")
+    payload = request["payload"]
+    required = {
+        "grader_id",
+        "batch_hash",
+        "schedule_hash",
+        "grader_prompt",
+        "grader_prompt_hash",
+        "grader_schema_hash",
+        "blinded_input",
+    }
+    grader_prompt = payload.get("grader_prompt")
+    if (
+        set(payload) != required
+        or not isinstance(payload.get("grader_id"), str)
+        or not SAFE_ID.fullmatch(payload["grader_id"])
+        or not isinstance(grader_prompt, str)
+        or not grader_prompt.strip()
+        or payload.get("grader_prompt_hash")
+        != _sha256_bytes(grader_prompt.encode("utf-8"))
+        or any(
+            not isinstance(payload.get(field), str)
+            or not HASH.fullmatch(payload[field])
+            for field in (
+                "batch_hash",
+                "schedule_hash",
+                "grader_prompt_hash",
+                "grader_schema_hash",
+            )
+        )
+    ):
+        raise AdapterError("model-grade instruction identity is invalid")
+    batch = payload["blinded_input"]
     if (
         not isinstance(batch, dict)
         or not isinstance(batch.get("batch_id"), str)
@@ -449,7 +481,9 @@ def _run_model_grade(
         last_message = temporary / "last-message.json"
         schema_path.write_bytes(_canonical_bytes(model_grade_schema(batch)))
         prompt = (
-            "Evaluate only the blinded batch below. Return exactly the JSON shape "
+            grader_prompt
+            + ("" if grader_prompt.endswith("\n") else "\n")
+            + "\nEvaluate only the blinded batch below. Return exactly the JSON shape "
             "required by the supplied output schema. Do not add Markdown or prose.\n"
             + json.dumps(batch, ensure_ascii=False, sort_keys=True)
         )

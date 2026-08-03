@@ -35,7 +35,7 @@
     "extended": [
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_extended_*.py' -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 long-document-segmented-writing/tests/test_assemble_markdown.py -v",
-      "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tests python3 -m unittest tests/test_extended_codex_skill_reload_supervisor.py tests/test_extended_codex_eval_host.py tests/test_extended_model_evolution_contract.py tests/test_extended_model_evolution_lifecycle.py tests/test_extended_model_evolution_sentinels.py tests/test_extended_eval_execution.py tests/test_extended_runner_lifecycle.py tests/test_extended_lifecycle_conformance.py -v",
+      "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tests python3 -m unittest tests/test_extended_codex_skill_reload_supervisor.py tests/test_extended_codex_eval_host.py tests/test_extended_model_calibration.py tests/test_extended_model_evolution_contract.py tests/test_extended_model_evolution_lifecycle.py tests/test_extended_model_evolution_sentinels.py tests/test_extended_eval_execution.py tests/test_extended_runner_lifecycle.py tests/test_extended_lifecycle_conformance.py -v",
       "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tests python3 -m unittest tests/test_extended_eval_quality.py tests/test_extended_eval_spec.py tests/test_extended_module_e2e.py tests/test_extended_eval_comparison.py tests/test_extended_eval_revision.py tests/test_extended_eval_transition.py -v",
       "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tests python3 -m unittest tests/test_extended_package_audit.py tests/test_extended_plugin_build.py tests/test_extended_receipts.py tests/test_extended_release_authorization.py tests/test_extended_reporting.py tests/test_extended_source_archive.py -v"
     ],

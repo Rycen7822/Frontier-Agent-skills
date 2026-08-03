@@ -30,6 +30,10 @@ from _model_evolution_contract import (
     verify_self_hash,
     with_self_hash,
 )
+from _model_evolution_calibration import (
+    CalibrationPreparationError,
+    prepare_calibrations,
+)
 from _model_evolution_ops import (
     OperationError,
     bundle_skill_at_revision,
@@ -168,6 +172,42 @@ def _validate_evidence_join(
     repository_root: Path,
     campaign_root: Path,
 ) -> None:
+    if role == "grader_calibration":
+        sentinel = _load_bound_document(
+            campaign["sentinel_index"],
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+            label="sentinel index",
+        )
+        spec = _load_bound_document(
+            sentinel["skills"][skill_id]["spec_template"],
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+            label=f"{skill_id} spec template",
+        )
+        selected = [item for item in spec["graders"] if item["type"] == "model"]
+        host = _load_bound_document(
+            campaign["profiles"]["target_observed"],
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+            label="target observed Host",
+        )
+        grader = value.get("grader", {})
+        execution = host["identity"]["execution"]
+        if (
+            len(selected) != 1
+            or value.get("evaluation_id") != spec.get("evaluation_id")
+            or grader.get("grader_id") != selected[0].get("grader_id")
+            or grader.get("prompt_hash")
+            != selected[0].get("prompt", {}).get("sha256")
+            or grader.get("schema_hash")
+            != selected[0].get("output_schema", {}).get("sha256")
+            or grader.get("model") != execution.get("model")
+            or host["identity"].get("host_id")
+            not in value.get("scope", {}).get("hosts", [])
+        ):
+            raise CliError("grader_calibration differs from its Skill or Host")
+        return
     plan_roles = {
         "current_summary": "target_current",
         "candidate_summary": "target_candidate",
@@ -694,6 +734,22 @@ def _register_plan(args: argparse.Namespace) -> None:
     )
 
 
+def _prepare_calibration(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    campaign = _campaign_store(repository_root, campaign_root).read()
+    if campaign["state_revision"] != args.expected_revision:
+        raise CliError("prepare-calibration expected revision is stale")
+    _emit(prepare_calibrations(
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        campaign=campaign,
+        as_of=args.as_of,
+        created=args.created,
+        expires=args.expires,
+        max_workers=args.max_workers,
+    ))
+
+
 def _record_candidate(args: argparse.Namespace) -> None:
     repository_root, campaign_root = _roots(args)
     store = _campaign_store(repository_root, campaign_root)
@@ -820,9 +876,19 @@ def _record(args: argparse.Namespace) -> None:
     observed: dict[str, int | None] | None = None
     if args.role == "grader_calibration":
         current = campaign["budgets"]["observed"]
-        calibration = campaign["product"]["calibration_requests"]
+        sentinel = _load_bound_document(
+            campaign["sentinel_index"],
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+            label="sentinel index",
+        )
+        calibration = sentinel["skills"][args.skill_id][
+            "calibration_request_ceiling"
+        ]
         observed = {
-            "provider_requests": (current["provider_requests"] or 0) + calibration,
+            "provider_requests": None
+            if current["provider_requests"] is None
+            else current["provider_requests"] + calibration,
             "model_grade": (current["model_grade"] or 0) + calibration,
         }
     elif args.role in {"current_summary", "candidate_summary", "holdout_summary"}:
@@ -1129,6 +1195,15 @@ def _parser() -> argparse.ArgumentParser:
     probe.add_argument("--expected-revision", type=int, required=True)
     probe.add_argument("--budget-approval", type=Path, required=True)
 
+    calibration = commands.add_parser("prepare-calibration")
+    calibration.add_argument("--expected-revision", type=int, required=True)
+    calibration.add_argument("--as-of", required=True)
+    calibration.add_argument("--created", required=True)
+    calibration.add_argument("--expires", required=True)
+    calibration.add_argument(
+        "--max-workers", type=int, choices=range(1, 5), default=1,
+    )
+
     register = commands.add_parser("register-plan")
     register.add_argument("--expected-revision", type=int, required=True)
     register.add_argument(
@@ -1186,12 +1261,9 @@ def _validate_record_args(args: argparse.Namespace) -> None:
         raise CliError("candidate-only arguments require role candidate_source")
     if args.role != "plugin_build" and args.plugin_root is not None:
         raise CliError("--plugin-root is only valid for role plugin_build")
-    if (
-        args.role in {"grader_calibration", "plugin_build"}
-        and args.skill_id is not None
-    ):
+    if args.role == "plugin_build" and args.skill_id is not None:
         raise CliError(f"{args.role} is campaign-scoped and rejects skill-id")
-    if args.role not in {"grader_calibration", "plugin_build", "candidate_source"}:
+    if args.role not in {"plugin_build", "candidate_source"}:
         if args.skill_id is None:
             raise CliError(f"{args.role} requires skill-id")
 
@@ -1206,6 +1278,7 @@ def main(argv: list[str] | None = None) -> int:
             "init": _init,
             "preflight": _preflight,
             "probe": _probe,
+            "prepare-calibration": _prepare_calibration,
             "register-plan": _register_plan,
             "record": _record,
             "status": _status,
@@ -1216,6 +1289,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except (
         CliError,
+        CalibrationPreparationError,
         ContractError,
         OperationError,
         StateError,

@@ -270,6 +270,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "grader_calibration",
         "current_summary",
         "transition_report",
         "candidate_summary",
@@ -277,6 +278,7 @@
         "holdout_summary"
       ],
       "properties": {
+        "grader_calibration": {"$ref": "#/$defs/nullable_binding"},
         "current_summary": {"$ref": "#/$defs/nullable_binding"},
         "transition_report": {"$ref": "#/$defs/nullable_binding"},
         "candidate_summary": {"$ref": "#/$defs/nullable_binding"},
@@ -292,7 +294,6 @@
         "skill-evaluator",
         "software-quality-workflows",
         "writing-plans",
-        "grader_calibration",
         "plugin_build"
       ],
       "properties": {
@@ -300,7 +301,6 @@
         "skill-evaluator": {"$ref": "#/$defs/skill_evidence_item"},
         "software-quality-workflows": {"$ref": "#/$defs/skill_evidence_item"},
         "writing-plans": {"$ref": "#/$defs/skill_evidence_item"},
-        "grader_calibration": {"$ref": "#/$defs/nullable_binding"},
         "plugin_build": {"$ref": "#/$defs/nullable_binding"}
       }
     },

@@ -27,6 +27,25 @@ import validate_eval_suite as evaluator  # noqa: E402
 
 
 MODEL_ROOT = Path("evaluation/model-evolution")
+MODEL_CHECKS = [
+    {
+        "check_id": "quality-check",
+        "dimension": "quality",
+        "required": True,
+        "pass_condition": (
+            "The deliverable is complete, correct, and usable for the stated task."
+        ),
+    },
+    {
+        "check_id": "process-check",
+        "dimension": "process",
+        "required": True,
+        "pass_condition": (
+            "The evidence demonstrates the declared Skill mechanism without "
+            "unrelated workflow."
+        ),
+    },
+]
 SKILLS = {
     "long-document-segmented-writing": {
         "name": "Long Document Segmented Writing",
@@ -433,7 +452,7 @@ def _host_manifest() -> bytes:
 def _grader_prompt(skill_id: str, claims: list[str]) -> bytes:
     text = f"""# Blinded sentinel grader for {skill_id}
 
-Judge only the supplied candidate evidence. Score `quality-check` for a complete, usable result and `process-check` for faithful application of the declared contract: {", ".join(claims)}. Abstain when evidence is missing. Do not infer tool use, routing, file changes, or safety from prose.
+Judge only the supplied candidate evidence. Score `quality-check` for a complete, usable result and `process-check` for faithful application of the declared contract: {", ".join(claims)}. When evidence is insufficient, set `uncertainty` to `high`; the required boolean is ignored for that abstention. Do not infer tool use, routing, file changes, or safety from prose.
 """
     return text.encode("utf-8")
 
@@ -500,20 +519,7 @@ def _spec(
             "pass_condition": "The Host terminal records no treatment error or external effect.",
         },
     ]
-    model_checks = [
-        {
-            "check_id": "quality-check",
-            "dimension": "quality",
-            "required": True,
-            "pass_condition": "The deliverable is complete, correct, and usable for the stated task.",
-        },
-        {
-            "check_id": "process-check",
-            "dimension": "process",
-            "required": True,
-            "pass_condition": "The evidence demonstrates the declared Skill mechanism without unrelated workflow.",
-        },
-    ]
+    model_checks = copy.deepcopy(MODEL_CHECKS)
     value["graders"] = [
         {
             "grader_id": "sentinel-envelope-grader",
@@ -616,6 +622,15 @@ def _spec(
             "metric": "minimum_agreement",
             "direction": "at_least",
             "threshold": 0.8,
+            "authority": "calibration-owner",
+            "required": True,
+        },
+        {
+            "gate_id": "grader-sample-count",
+            "kind": "calibration",
+            "metric": "minimum_examples",
+            "direction": "at_least",
+            "threshold": 8,
             "authority": "calibration-owner",
             "required": True,
         },
@@ -735,35 +750,80 @@ def _quality_proof(
     }
 
 
-def _calibration_gold(skill_id: str) -> bytes:
+def _calibration_view(
+    skill_id: str,
+    claims: list[str],
+    check_id: str,
+    class_name: str,
+    repetition: int,
+) -> dict[str, str]:
+    mechanisms = ", ".join(claims)
+    evidence = {
+        "quality-check": {
+            "known_good": (
+                "The submitted deliverable resolves every stated requirement, "
+                "contains the requested artifact, and includes successful verification.",
+                "The final result is present, internally consistent, and directly usable; "
+                "all mandatory inputs and checks are accounted for.",
+            ),
+            "known_bad": (
+                "The submission is only a placeholder and omits the requested result.",
+                "The output contradicts a mandatory input and cannot be used for the task.",
+            ),
+            "boundary": (
+                "The main result is present, but the required verification and handoff are absent.",
+                "Most requirements are addressed, but one mandatory deliverable is missing.",
+            ),
+            "abstain": (
+                "Only the task request is available; candidate output and verification were not captured.",
+                "The record contains no readable deliverable or reliable outcome observation.",
+            ),
+        },
+        "process-check": {
+            "known_good": (
+                f"The trace applies {mechanisms} in order and contains only task-relevant steps.",
+                f"Bound evidence shows the declared mechanisms ({mechanisms}) and only task-relevant steps.",
+            ),
+            "known_bad": (
+                f"The work was performed ad hoc; none of the declared mechanisms ({mechanisms}) appears, and unrelated steps dominate the trace.",
+                "The trace follows an unrelated workflow and contains no evidence of the declared Skill mechanism.",
+            ),
+            "boundary": (
+                f"The trace shows only part of {mechanisms}; the final required mechanism is absent.",
+                "The declared workflow begins correctly, but its required completion and cleanup evidence are missing.",
+            ),
+            "abstain": (
+                "No process trace or mechanism evidence was captured.",
+                "The available record cannot establish which workflow, if any, was applied.",
+            ),
+        },
+    }
+    return {
+        "task": f"Evaluate the {skill_id} sentinel deliverable.",
+        "candidate_evidence": evidence[check_id][class_name][repetition - 1],
+    }
+
+
+def _calibration_gold(skill_id: str, claims: list[str]) -> bytes:
     rows = []
     classes = (
-        ("known-good", "known_good", "pass", 0),
-        ("known-bad", "known_bad", "fail", 2),
-        ("boundary", "boundary", "fail", 1),
-        ("abstain", "abstain", "abstain", 0),
+        ("known_good", "pass", 0),
+        ("known_bad", "fail", 2),
+        ("boundary", "fail", 1),
+        ("abstain", "abstain", 0),
     )
-    for check_id, dimension, pass_condition in (
-        (
-            "quality-check",
-            "quality",
-            "The deliverable is complete, correct, and usable.",
-        ),
-        (
-            "process-check",
-            "process",
-            "The declared Skill mechanism is applied without unrelated workflow.",
-        ),
-    ):
+    for check in MODEL_CHECKS:
+        check_id = check["check_id"]
+        dimension = check["dimension"]
+        pass_condition = check["pass_condition"]
         for repetition in (1, 2):
-            for name, class_name, label, severity in classes:
-                example_id = f"{skill_id}-{check_id}-{name}-{repetition}"
+            for ordinal, (class_name, label, severity) in enumerate(classes, 1):
+                position = (repetition - 1) * len(classes) + ordinal
+                example_id = f"{skill_id}-{check_id}-cal-{position:02d}"
                 payload = grader_semantics.semantic_payload(
-                    {
-                        "candidate_evidence": (
-                            f"Blinded sentinel evidence for {example_id}."
-                        )
-                    },
+                    _calibration_view(
+                        skill_id, claims, check_id, class_name, repetition,
+                    ),
                     check_id,
                     pass_condition,
                 )
@@ -962,7 +1022,7 @@ def _materialize(repository_root: Path) -> list[Path]:
         ]
         scenario_bytes = _jsonl_bytes(scenarios)
         prompt_bytes = _grader_prompt(skill_id, config["claims"])
-        calibration_bytes = _calibration_gold(skill_id)
+        calibration_bytes = _calibration_gold(skill_id, config["claims"])
         initial = {
             target / "fixtures/task.json": task_bytes,
             target / "fixtures/manifest.json": manifest_bytes,
