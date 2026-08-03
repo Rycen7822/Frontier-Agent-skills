@@ -1,10 +1,10 @@
 # Frontier Agent Skills
 
-This repository is the development source of truth for the dual-host `frontier-engineering/6.2.0` bundle. It contains exactly four skills: `long-document-segmented-writing` 1.0.0, `skill-evaluator` 3.2.0, `software-quality-workflows` 9.0.0, and `writing-plans` 8.1.0. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository never mutates an active installation.
+This repository is the development source of truth for the dual-host `frontier-engineering/6.3.0` bundle. It contains exactly four skills: `long-document-segmented-writing` 1.0.0, `skill-evaluator` 3.3.0, `software-quality-workflows` 9.0.0, and `writing-plans` 8.1.0. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository never mutates an active installation.
 
 ## Release identity
 
-The indivisible release unit is bundle version 6.2.0 at schema epoch 5. Its manifest records the four exact versions and mixed activation matrix:
+The indivisible release unit is bundle version 6.3.0 at schema epoch 5. Its manifest records the four exact versions and mixed activation matrix:
 
 ```json
 {
@@ -15,7 +15,7 @@ The indivisible release unit is bundle version 6.2.0 at schema epoch 5. Its mani
 }
 ```
 
-`true` permits implicit local selection; `false` is explicit-only and its prompt retains the exact `$skill-name`. The bundle ceiling remains `implicit_local_pilot`, and `remote_writes` is false. Bundle 6.2.0 requires a signed, clean source candidate plus the repository's deterministic source, schema, bundle, plugin, archive, and test gates. Passing those local gates establishes source completeness only; it never grants installation, publication, deployment, or other external authority.
+`true` permits implicit local selection; `false` is explicit-only and its prompt retains the exact `$skill-name`. The bundle ceiling remains `implicit_local_pilot`, and `remote_writes` is false. Bundle 6.3.0 requires a signed, clean source candidate plus the repository's deterministic source, schema, bundle, plugin, archive, and test gates. Passing those local gates establishes source completeness only; it never grants installation, publication, deployment, or other external authority.
 
 ## Design boundary
 
@@ -32,7 +32,13 @@ Development is distinction-first: each behavior change needs an observable test,
 
 ## Verification boundary
 
-Bundle 6.2.0 uses model-free repository tests, validators, canonical generated identities, and static smoke as local source-complete gates. Scored evaluator runs, graders, providers, and reviewer campaigns are not triggered by this release path. Deterministic local evidence can block a candidate but cannot authorize an external release. A canonical `release-authorization/1` binds the signed source, staged plugin, and static diagnostic to a human release-owner approval; it is identity authorization only, never scored usefulness evidence.
+Bundle 6.3.0 uses model-free repository tests, validators, canonical generated identities, and static smoke as local source-complete gates. Scored evaluator runs, graders, providers, and reviewer campaigns are not triggered by this release path. Deterministic local evidence can block a candidate but cannot authorize an external release. A canonical `release-authorization/1` binds the signed source, staged plugin, and static diagnostic to a human release-owner approval; it is identity authorization only, never scored usefulness evidence.
+
+## Model evolution qualification
+
+The tracked `evaluation/model-evolution/` corpus defines six inert Host probes and one non-ready sentinel suite for each Skill. The suites contain public scenarios, deterministic verifiers, suite-quality proof, and calibration gold contracts; they contain no live Host identity, provider output, ratings, or holdout payload. `scripts/build_model_evolution_sentinels.py --check` verifies all generated bindings without contacting a provider.
+
+`scripts/model_evolution.py` owns one bounded external campaign. It freezes a signed source identity, project-wide budget, observed Host, existing Skill Evaluator plans and reports, at most one allowlisted candidate, and a deterministic qualification. The controller never implements grading, optimization, worker supervision, reviewer selection, release authorization, installation, or publication. A model qualification and a separate `release-authorization/1` are both required for a model-support release claim; neither can substitute for the other.
 
 ## Source archives
 
@@ -40,7 +46,7 @@ The source archive uses root `frontier-engineering-bundle`; the skills-only arch
 
 ## Plugin staging
 
-The plugin identity is `frontier-engineering-plugin` version 6.2.0 with display name `Frontier Engineering`. Its release layout is:
+The plugin identity is `frontier-engineering-plugin` version 6.3.0 with display name `Frontier Engineering`. Its release layout is:
 
 ```text
 frontier-engineering-plugin/
@@ -58,7 +64,7 @@ A release build additionally requires a canonical `release-authorization/1` file
 
 ## Same-thread Codex skill reload supervisor
 
-This optional developer tool is not used by the Bundle 6.2.0 source-complete or release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles. It never calls `fork`, never selects `--last`, never edits global Codex configuration, and never drives the TUI with synthesized keystrokes. It owns a local Unix-socket app-server and launches every TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
+This optional developer tool is not used by the Bundle 6.3.0 source-complete or release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles. It never calls `fork`, never selects `--last`, never edits global Codex configuration, and never drives the TUI with synthesized keystrokes. It owns a local Unix-socket app-server and launches every TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
 
 The protocol is fail-closed and pinned to `codex-cli 0.144.6`. Validate the CLI schema and local Unix WebSocket transport before the first run:
 
@@ -98,8 +104,8 @@ Any CLI version drift, schema drift, thread/cwd mismatch, permission mismatch, p
 
 ## Evaluation boundary
 
-The [Skill Evaluator entrypoint](skill-evaluator/SKILL.md) remains an explicit-only product for users who deliberately request structured Skill evaluation. Its runtime evaluator and historical `evaluation/` fixtures are not invoked by ordinary development or the Bundle 6.2.0 source-complete path. The offline comparator consumes only explicitly supplied immutable cycle capsules and makes no scored usefulness, installation, or deployment claim on behalf of this bundle.
+The [Skill Evaluator entrypoint](skill-evaluator/SKILL.md) remains an explicit-only product for users who deliberately request structured Skill evaluation. Its runtime evaluator and model-evolution sentinels are not invoked by ordinary development or the Bundle 6.3.0 source-complete path. The offline comparator consumes only explicitly supplied immutable cycle capsules and makes no scored usefulness, installation, or deployment claim on behalf of this bundle.
 
-For the Skill Evaluator 3.2 upgrade, source rollback restores bundle 6.1.0 / Skill Evaluator 3.1.0 semantics at signed commit `b8d40446bb7e746823ee4ef817ab6010fd40ecac` through an ordinary revert; do not use a destructive worktree reset. Installed rollback requires a separately verified bundle-6.1 staged plugin/archive and never implies publication or deployment authority.
+For the Bundle 6.3 / Skill Evaluator 3.3 upgrade, source rollback restores bundle 6.2.0 / Skill Evaluator 3.2.0 semantics at signed commit `9687f6d0590a229c5e082b09ab548c397f27cad3` through an ordinary revert; do not use a destructive worktree reset. Installed rollback requires a separately verified bundle-6.2 staged plugin/archive and never implies publication or deployment authority.
 
 Version 4 workflow/card/plan state is not read, migrated, aliased, or dual-written. Finish an active 4.x task under 4.x, or terminate it explicitly and restart from current repository truth.

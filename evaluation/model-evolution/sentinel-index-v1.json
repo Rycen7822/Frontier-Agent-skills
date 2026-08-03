@@ -1,0 +1,183 @@
+{
+  "schema_version": "model-evolution-sentinel-index/1",
+  "sentinel_hash": "sha256:5891b09ece3ab92c06d89d03e262b3d6cd3298b3c69fa47ab639362673b279e7",
+  "sentinel_id": "frontier-four-skill-sentinel-v1",
+  "skills": {
+    "long-document-segmented-writing": {
+      "critical_bucket_id": "long-document-segmented-writing-critical",
+      "external_holdout_contract_id": "long-document-segmented-writing-external-holdout-v1",
+      "fixture_roots": [
+        {
+          "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/fixtures/manifest.json",
+          "root": "repository",
+          "sha256": "sha256:8baf29c426b87f49e328213ec5e9889bfc380e1fa6e0e1259108a4804af4ab01"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/fixtures/task.json",
+          "root": "repository",
+          "sha256": "sha256:4b1b8d1fc191a06182374b2acee7da7a73bf78d64b37f7ba6cd66d3b92b7d001"
+        }
+      ],
+      "protected_case_ids": [
+        "long-document-segmented-writing-protected-no-scratch"
+      ],
+      "public_scenarios": {
+        "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/scenarios.public.jsonl",
+        "root": "repository",
+        "sha256": "sha256:36d0a4cb62aa90abe4bc48c4952fd1477bc963553074ba89cfd103f718d72c06"
+      },
+      "required_coverage_tags": [
+        "direct",
+        "compact-recovery",
+        "segmented-draft",
+        "compaction-resume",
+        "whole-draft-review",
+        "protected"
+      ],
+      "spec_template": {
+        "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/eval-spec.template.json",
+        "root": "repository",
+        "sha256": "sha256:d75e1a3c83637b664d5cccb2678958f9f1042583d7fc20f9d268607b1617c7ad"
+      },
+      "verifier_roots": [
+        {
+          "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/verify.py",
+          "root": "repository",
+          "sha256": "sha256:11a177a2d4042db62240fe27a25871e12b675ceedbf2001705538ac686d7a941"
+        }
+      ]
+    },
+    "skill-evaluator": {
+      "critical_bucket_id": "skill-evaluator-critical",
+      "external_holdout_contract_id": "skill-evaluator-external-holdout-v1",
+      "fixture_roots": [
+        {
+          "path": "evaluation/model-evolution/sentinels/skill-evaluator/fixtures/manifest.json",
+          "root": "repository",
+          "sha256": "sha256:a2142fb43c5e2f4e3e400e19111526584c9188aa9458ff31b51b01f4d43b0f19"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/skill-evaluator/fixtures/task.json",
+          "root": "repository",
+          "sha256": "sha256:76eb44c2e40caa27c8dc93d00fa10e1311ac7e670bf687be4d5cd102c0e3cd1a"
+        }
+      ],
+      "protected_case_ids": [
+        "skill-evaluator-protected-no-reviewer"
+      ],
+      "public_scenarios": {
+        "path": "evaluation/model-evolution/sentinels/skill-evaluator/scenarios.public.jsonl",
+        "root": "repository",
+        "sha256": "sha256:a8341af275173903d1137194446b0d335249c8cff5f2d993338eb019f4a638a4"
+      },
+      "required_coverage_tags": [
+        "owner-selection",
+        "deterministic-first",
+        "five-axis",
+        "cli-diagnosis",
+        "transition-revision",
+        "protected"
+      ],
+      "spec_template": {
+        "path": "evaluation/model-evolution/sentinels/skill-evaluator/eval-spec.template.json",
+        "root": "repository",
+        "sha256": "sha256:779586781078e067f1228707d5f05b9a9809ebed07c17af65d9f8db88781831c"
+      },
+      "verifier_roots": [
+        {
+          "path": "evaluation/model-evolution/sentinels/skill-evaluator/verify.py",
+          "root": "repository",
+          "sha256": "sha256:11a177a2d4042db62240fe27a25871e12b675ceedbf2001705538ac686d7a941"
+        }
+      ]
+    },
+    "software-quality-workflows": {
+      "critical_bucket_id": "software-quality-workflows-critical",
+      "external_holdout_contract_id": "software-quality-workflows-external-holdout-v1",
+      "fixture_roots": [
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/manifest.json",
+          "root": "repository",
+          "sha256": "sha256:9c8b6df4d888195d3c4fb30e7224ecdfad41417221359405beedc1ae999ae7ff"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/task.json",
+          "root": "repository",
+          "sha256": "sha256:074bea64640ab57fa6701c7bdb6c9d3abcb240276113c8bc9e2129b888f6cafd"
+        }
+      ],
+      "protected_case_ids": [
+        "software-quality-workflows-protected-no-state"
+      ],
+      "public_scenarios": {
+        "path": "evaluation/model-evolution/sentinels/software-quality-workflows/scenarios.public.jsonl",
+        "root": "repository",
+        "sha256": "sha256:722f4ddf649c3d143bc9191b9664acf0976faec46d8884e4081919d919b81fd2"
+      },
+      "required_coverage_tags": [
+        "direct",
+        "single-risk",
+        "dual-risk",
+        "proportionate-validation",
+        "dead-code-removal",
+        "protected"
+      ],
+      "spec_template": {
+        "path": "evaluation/model-evolution/sentinels/software-quality-workflows/eval-spec.template.json",
+        "root": "repository",
+        "sha256": "sha256:0f6ed47ef0fccd2127d31cd137405db6ec4d22b4a76044fb9ae2e9b53ab1a496"
+      },
+      "verifier_roots": [
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/verify.py",
+          "root": "repository",
+          "sha256": "sha256:11a177a2d4042db62240fe27a25871e12b675ceedbf2001705538ac686d7a941"
+        }
+      ]
+    },
+    "writing-plans": {
+      "critical_bucket_id": "writing-plans-critical",
+      "external_holdout_contract_id": "writing-plans-external-holdout-v1",
+      "fixture_roots": [
+        {
+          "path": "evaluation/model-evolution/sentinels/writing-plans/fixtures/manifest.json",
+          "root": "repository",
+          "sha256": "sha256:c50eb988ab868884aed3e4449122648927bc0ad01ee87c42234402500cb87cb1"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/writing-plans/fixtures/task.json",
+          "root": "repository",
+          "sha256": "sha256:3c9788232fabb0f233aaf310ca78a0ff5852036fc4ae6139eb9a501958be2c06"
+        }
+      ],
+      "protected_case_ids": [
+        "writing-plans-protected-description"
+      ],
+      "public_scenarios": {
+        "path": "evaluation/model-evolution/sentinels/writing-plans/scenarios.public.jsonl",
+        "root": "repository",
+        "sha256": "sha256:b231d7aebead75556168cd7a6455d63fae81829b17fc4e529ae46e573d06676c"
+      },
+      "required_coverage_tags": [
+        "source-bound",
+        "resume-preflight",
+        "proof-owner",
+        "handoff",
+        "continuous-execution",
+        "protected"
+      ],
+      "spec_template": {
+        "path": "evaluation/model-evolution/sentinels/writing-plans/eval-spec.template.json",
+        "root": "repository",
+        "sha256": "sha256:ca3f9c3feb4a5bb4df68bded828e02f3986993f6715c45ec9304a784f54f3b11"
+      },
+      "verifier_roots": [
+        {
+          "path": "evaluation/model-evolution/sentinels/writing-plans/verify.py",
+          "root": "repository",
+          "sha256": "sha256:11a177a2d4042db62240fe27a25871e12b675ceedbf2001705538ac686d7a941"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,152 @@
+{
+  "authority": "suite-quality-owner",
+  "boundary_coverage": [
+    {
+      "case_classes": [
+        "boundary_or_failure"
+      ],
+      "status": "pass",
+      "surface": "scenario-oracle"
+    }
+  ],
+  "case_classes": [
+    {
+      "case_id": "software-quality-workflows-direct-routine-change",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-single-specialist-risk",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-two-independent-risks",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-proportionate-validation",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-retire-dead-code",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-protected-no-state",
+      "class": "boundary_or_failure"
+    }
+  ],
+  "custody": {
+    "author_visible_paths": [
+      "scenarios.public.jsonl"
+    ],
+    "custodian": "evaluation-owner",
+    "executor_visible_paths": [
+      "scenarios.public.jsonl"
+    ],
+    "exposure_status": "not_applicable",
+    "split_hashes": {
+      "dev": "sha256:ad146f371f52c69e716871164de2fffa6d0c2881e8e8c094d3a3a426357d2405",
+      "heldout": null,
+      "regression": "sha256:2b4213e73be1e26912da8ee2b6444ec024f4aab5842580ab2780727c98731973"
+    }
+  },
+  "duplicate_groups": [
+    {
+      "case_ids": [
+        "software-quality-workflows-direct-routine-change",
+        "software-quality-workflows-proportionate-validation",
+        "software-quality-workflows-protected-no-state",
+        "software-quality-workflows-retire-dead-code",
+        "software-quality-workflows-single-specialist-risk",
+        "software-quality-workflows-two-independent-risks"
+      ],
+      "group_id": "fixture_overlap-1",
+      "kind": "fixture_overlap",
+      "review_locator": null,
+      "status": "allowed"
+    }
+  ],
+  "evaluation_id": "frontier-software-quality-workflows-sentinel-v1",
+  "golden": {
+    "case_ids": [
+      "software-quality-workflows-direct-routine-change",
+      "software-quality-workflows-single-specialist-risk",
+      "software-quality-workflows-two-independent-risks",
+      "software-quality-workflows-proportionate-validation",
+      "software-quality-workflows-retire-dead-code",
+      "software-quality-workflows-protected-no-state"
+    ],
+    "passed_ids": [
+      "software-quality-workflows-direct-routine-change",
+      "software-quality-workflows-single-specialist-risk",
+      "software-quality-workflows-two-independent-risks",
+      "software-quality-workflows-proportionate-validation",
+      "software-quality-workflows-retire-dead-code",
+      "software-quality-workflows-protected-no-state"
+    ]
+  },
+  "known_bad": {
+    "case_ids": [
+      "known-bad-missing-required-contract"
+    ],
+    "detected_ids": [
+      "known-bad-missing-required-contract"
+    ]
+  },
+  "leakage_probes": [
+    {
+      "artifact": {
+        "path": "grader-prompt.md",
+        "sha256": "sha256:c20a0963d1498dfb5d01135cf8aeab06e5ac598cc27f41b43ef810d8968b1e0a"
+      },
+      "locator": {
+        "artifact": "grader-prompt.md",
+        "end_line": 1,
+        "kind": "text_lines",
+        "start_line": 1
+      },
+      "probe_id": "tracked-holdout-absence",
+      "status": "pass",
+      "surface": "holdout"
+    }
+  ],
+  "mutations": {
+    "detected_ids": [
+      "mutation-remove-protected-requirement"
+    ],
+    "mutation_ids": [
+      "mutation-remove-protected-requirement"
+    ]
+  },
+  "provenance_clusters": [
+    {
+      "case_ids": [
+        "software-quality-workflows-direct-routine-change",
+        "software-quality-workflows-single-specialist-risk",
+        "software-quality-workflows-two-independent-risks",
+        "software-quality-workflows-proportionate-validation",
+        "software-quality-workflows-retire-dead-code",
+        "software-quality-workflows-protected-no-state"
+      ],
+      "cluster_id": "frontier-model-evolution-analysis",
+      "review_locator": {
+        "artifact": "grader-prompt.md",
+        "end_line": 1,
+        "kind": "text_lines",
+        "start_line": 1
+      },
+      "source_hashes": [
+        "sha256:c20a0963d1498dfb5d01135cf8aeab06e5ac598cc27f41b43ef810d8968b1e0a"
+      ],
+      "status": "closed"
+    }
+  ],
+  "review_status": {
+    "duplicate_and_provenance_review": "pass",
+    "leakage_review": "pass"
+  },
+  "schema_version": 1,
+  "thresholds": {
+    "minimum_detection": 1.0
+  }
+}

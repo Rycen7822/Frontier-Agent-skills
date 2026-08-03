@@ -8,6 +8,10 @@ This directory defines the bounded qualification campaign used when a new Codex 
 - `schemas/interaction-probes-v1.schema.json` owns the model-independent Host probe set contract.
 - `schemas/sentinel-index-v1.schema.json` indexes the four Skill sentinel surfaces without copying evaluator specifications.
 - `schemas/qualification-v1.schema.json` owns the deterministic qualification projection.
+- `codex-interaction-probes-v1.json` freezes six inert, model-independent Host observations; unsupported direct evidence remains `unknown`.
+- `sentinel-index-v1.json` binds the exact four non-ready public suites under `sentinels/`.
+- Each Skill sentinel contains six public cases, minimal fixture/verifier inputs, deterministic suite-quality evidence, and calibration gold. Ratings and holdout payloads are external.
+- `scripts/build_model_evolution_sentinels.py` is the only generator for those tracked artifacts.
 - `scripts/model_evolution.py` is the only command-line entry point.
 
 Repository bindings contain a relative path and SHA-256 hash. Campaign bindings use the same shape but resolve below one campaign directory. Absolute paths, URIs, symlinks, path traversal, and hash drift fail closed. Historical predecessor or superseded evidence must remain inside the repository so the campaign can store a relative binding; it need not be Git-tracked.

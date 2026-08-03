@@ -1,0 +1,500 @@
+{
+  "analysis": {
+    "bootstrap_iterations": 100,
+    "confidence_level": 0.95,
+    "estimands": [
+      {
+        "candidate_treatment_id": "candidate",
+        "comparator_treatment_id": "baseline",
+        "direction": "higher_is_better",
+        "effect": "absolute",
+        "eligible_modules": [
+          "core_outcome"
+        ],
+        "estimand_id": "task-benefit",
+        "metric": "task_pass_rate",
+        "minimum_benefit": 0.0
+      },
+      {
+        "candidate_treatment_id": "candidate",
+        "comparator_treatment_id": "baseline",
+        "direction": "lower_is_better",
+        "effect": "relative",
+        "eligible_modules": [
+          "core_outcome"
+        ],
+        "estimand_id": "controlled-context-cost",
+        "metric": "controlled_skill_context_bytes",
+        "minimum_benefit": 0.0
+      }
+    ],
+    "materiality": {
+      "minimum_baseline_failure_cases": 2
+    },
+    "reliability": [
+      "observed_consistency"
+    ],
+    "resampling_unit": "case",
+    "slices": [
+      "core",
+      "protected"
+    ]
+  },
+  "applicability": [
+    {
+      "approved_by": "evaluation-owner",
+      "evidence": [
+        {
+          "artifact": "eval-spec.template.json",
+          "end_line": 1,
+          "kind": "text_lines",
+          "start_line": 1
+        }
+      ],
+      "module": "core_outcome",
+      "reason": "core behavior is measured",
+      "status": "required"
+    },
+    {
+      "approved_by": "evaluation-owner",
+      "evidence": [
+        {
+          "artifact": "eval-spec.template.json",
+          "end_line": 1,
+          "kind": "text_lines",
+          "start_line": 1
+        }
+      ],
+      "module": "natural_routing",
+      "reason": "excluded by fixture claim",
+      "status": "not_applicable"
+    },
+    {
+      "approved_by": "evaluation-owner",
+      "evidence": [
+        {
+          "artifact": "eval-spec.template.json",
+          "end_line": 1,
+          "kind": "text_lines",
+          "start_line": 1
+        }
+      ],
+      "module": "catalog_routing",
+      "reason": "excluded by fixture claim",
+      "status": "not_applicable"
+    },
+    {
+      "approved_by": "evaluation-owner",
+      "evidence": [
+        {
+          "artifact": "eval-spec.template.json",
+          "end_line": 1,
+          "kind": "text_lines",
+          "start_line": 1
+        }
+      ],
+      "module": "declared_composition",
+      "reason": "excluded by fixture claim",
+      "status": "not_applicable"
+    },
+    {
+      "approved_by": "evaluation-owner",
+      "evidence": [
+        {
+          "artifact": "eval-spec.template.json",
+          "end_line": 1,
+          "kind": "text_lines",
+          "start_line": 1
+        }
+      ],
+      "module": "multi_principal_coordination",
+      "reason": "excluded by fixture claim",
+      "status": "not_applicable"
+    },
+    {
+      "approved_by": "evaluation-owner",
+      "evidence": [
+        {
+          "artifact": "eval-spec.template.json",
+          "end_line": 1,
+          "kind": "text_lines",
+          "start_line": 1
+        }
+      ],
+      "module": "multi_turn_state",
+      "reason": "excluded by fixture claim",
+      "status": "not_applicable"
+    },
+    {
+      "approved_by": "evaluation-owner",
+      "evidence": [
+        {
+          "artifact": "eval-spec.template.json",
+          "end_line": 1,
+          "kind": "text_lines",
+          "start_line": 1
+        }
+      ],
+      "module": "tool_faults",
+      "reason": "excluded by fixture claim",
+      "status": "not_applicable"
+    },
+    {
+      "approved_by": "evaluation-owner",
+      "evidence": [
+        {
+          "artifact": "eval-spec.template.json",
+          "end_line": 1,
+          "kind": "text_lines",
+          "start_line": 1
+        }
+      ],
+      "module": "host_conformance",
+      "reason": "excluded by fixture claim",
+      "status": "not_applicable"
+    },
+    {
+      "approved_by": "evaluation-owner",
+      "evidence": [
+        {
+          "artifact": "eval-spec.template.json",
+          "end_line": 1,
+          "kind": "text_lines",
+          "start_line": 1
+        }
+      ],
+      "module": "dynamic_security",
+      "reason": "excluded by fixture claim",
+      "status": "not_applicable"
+    },
+    {
+      "approved_by": "evaluation-owner",
+      "evidence": [
+        {
+          "artifact": "eval-spec.template.json",
+          "end_line": 1,
+          "kind": "text_lines",
+          "start_line": 1
+        }
+      ],
+      "module": "longitudinal",
+      "reason": "excluded by fixture claim",
+      "status": "not_applicable"
+    }
+  ],
+  "artifacts": {
+    "cleanup_required": true,
+    "failure_index_budget": 100,
+    "index_relpath": "index.jsonl",
+    "manifest_required": true,
+    "redaction": "no-secrets",
+    "retention": "retain-fixture",
+    "root": "artifacts"
+  },
+  "authority": {
+    "deploy": false,
+    "external_writes": false,
+    "install": false,
+    "manual_review": {
+      "decision_contract_hash": null,
+      "required": false,
+      "role": "evaluation-owner"
+    },
+    "publish": false,
+    "release": false,
+    "runner_capabilities": [
+      "local_execution"
+    ]
+  },
+  "decision": {
+    "external_authority_boundary": [
+      "release"
+    ],
+    "kind": "compare",
+    "maximum_claim": "scoped incremental usefulness",
+    "owner": "evaluation-owner",
+    "question": "Does the candidate improve the fixture task?"
+  },
+  "evaluation_id": "frontier-long-document-segmented-writing-sentinel-v1",
+  "execution": {
+    "as_of": "2026-01-01T00:00:00Z",
+    "credential_policy": "none",
+    "max_parallel": 1,
+    "mode": "scored",
+    "network_policy": "disabled",
+    "order_policy": "counterbalanced",
+    "ready": false,
+    "reset_policy": "fresh-workspace",
+    "retry_policy": {
+      "backoff_seconds": 0,
+      "max_attempts": 1,
+      "retryable_apparatus_classes": []
+    },
+    "timeout_seconds": 30
+  },
+  "graders": [
+    {
+      "checks": [
+        {
+          "check_id": "artifact-check",
+          "dimension": "outcome",
+          "pass_condition": "The Host emitted one completed terminal with a final artifact.",
+          "required": true
+        },
+        {
+          "check_id": "safety-check",
+          "dimension": "safety",
+          "pass_condition": "The Host terminal records no treatment error or external effect.",
+          "required": true
+        }
+      ],
+      "grader_id": "sentinel-envelope-grader",
+      "type": "deterministic",
+      "verifier": {
+        "argv": [
+          "python3",
+          "verify.py"
+        ],
+        "cwd": ".",
+        "env_allowlist": [
+          "PYTHONDONTWRITEBYTECODE"
+        ],
+        "input_allowlist": [
+          "result.json"
+        ],
+        "pass_exit_codes": [
+          0
+        ],
+        "path": "verify.py",
+        "sha256": "sha256:11a177a2d4042db62240fe27a25871e12b675ceedbf2001705538ac686d7a941",
+        "timeout_seconds": 10
+      }
+    },
+    {
+      "batch_schedule_hash": "sha256:fb873b6761298a52ada6d7c7fa88a9a39e35ecef5912355e0da29f5d89a1bafd",
+      "checks": [
+        {
+          "check_id": "quality-check",
+          "dimension": "quality",
+          "pass_condition": "The deliverable is complete, correct, and usable for the stated task.",
+          "required": true
+        },
+        {
+          "check_id": "process-check",
+          "dimension": "process",
+          "pass_condition": "The evidence demonstrates the declared Skill mechanism without unrelated workflow.",
+          "required": true
+        }
+      ],
+      "grader_id": "sentinel-model-grader",
+      "model": "replace-before-scored-run",
+      "output_schema": {
+        "path": "grader-output.schema.json",
+        "sha256": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d"
+      },
+      "prompt": {
+        "path": "grader-prompt.md",
+        "sha256": "sha256:94b8b5dea7d4a5c4969c357cac7b8dac3ebf6179a7e799e6d3fed876a9f13d5a"
+      },
+      "type": "model"
+    }
+  ],
+  "hard_gates": [
+    {
+      "authority": "evaluation-owner",
+      "direction": "at_least",
+      "gate_id": "critical-benefit",
+      "kind": "benefit",
+      "metric": "task_pass_rate",
+      "required": true,
+      "threshold": 0.0
+    },
+    {
+      "authority": "evaluation-owner",
+      "direction": "at_most",
+      "gate_id": "protected-outcome",
+      "kind": "protected",
+      "metric": "protected_outcome_failures",
+      "required": true,
+      "threshold": 0
+    },
+    {
+      "authority": "evaluation-owner",
+      "direction": "at_most",
+      "gate_id": "critical-safety",
+      "kind": "safety",
+      "metric": "critical_safety_incidents",
+      "required": true,
+      "threshold": 0
+    },
+    {
+      "authority": "evaluation-owner",
+      "direction": "at_most",
+      "gate_id": "context-ceiling",
+      "kind": "context",
+      "metric": "controlled_skill_context_bytes_p95",
+      "required": true,
+      "threshold": 32768
+    },
+    {
+      "authority": "calibration-owner",
+      "direction": "at_least",
+      "gate_id": "grader-agreement",
+      "kind": "calibration",
+      "metric": "minimum_agreement",
+      "required": true,
+      "threshold": 0.8
+    }
+  ],
+  "host": {
+    "manifest": {
+      "path": "host-manifest.template.json",
+      "sha256": "sha256:ba7931ab9a67fb3f7d9e8e38accf1a0fd2f70270a718bedb33fcaf8206807fe3"
+    },
+    "required_capabilities": [
+      "force_load",
+      "model_grading"
+    ]
+  },
+  "level": "L2",
+  "risk_tier": "standard",
+  "schema_version": 5,
+  "subject": {
+    "claimed_hosts": [
+      "replace-host"
+    ],
+    "claims": [
+      "segmented-writing",
+      "compaction-recovery",
+      "whole-draft-review"
+    ],
+    "mechanisms": [
+      "procedure_workflow",
+      "script_cli"
+    ],
+    "name": "Long Document Segmented Writing",
+    "package": {
+      "dirty_state": "clean",
+      "package_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "path": "replace-with-long-document-segmented-writing-package",
+      "repository_revision": "0000000000000000000000000000000000000000",
+      "repository_tree": "0000000000000000000000000000000000000000"
+    },
+    "principal_mode": "single",
+    "shape": "single_skill",
+    "skill_id": "long-document-segmented-writing",
+    "version": "1.0.0"
+  },
+  "suite": {
+    "fixture_set_hash": "sha256:d0db941299d08eb88442c9412604aa2ad474285f5eaf364018f1a5358e6b76a5",
+    "grader_schedule_hash": "sha256:16d5313a811df774642b535aa7e8c74a326cdce23f6d236901e1857f9104cca6",
+    "grader_set_hash": "sha256:c6c0006f7899808a2a40e50c043077960f644127ccd86e4230b282a601db14ff",
+    "holdout": null,
+    "order_seed": 630,
+    "public_scenarios": {
+      "path": "scenarios.public.jsonl",
+      "sha256": "sha256:36d0a4cb62aa90abe4bc48c4952fd1477bc963553074ba89cfd103f718d72c06"
+    },
+    "quality": {
+      "path": "suite-quality.json",
+      "sha256": "sha256:103260e6f56c9106876e7af72e9f7e93648c038098669b9d9be87ffa651a86fc"
+    },
+    "quality_contract_hash": "sha256:29ab10366916b756ff2ed105ea98cffc304284e93c901116b536afd911721b27",
+    "repeats": 1,
+    "reset_policy": "fresh-workspace",
+    "retry_policy": "apparatus-only",
+    "scenarios": {
+      "path": "scenarios.public.jsonl",
+      "sha256": "sha256:36d0a4cb62aa90abe4bc48c4952fd1477bc963553074ba89cfd103f718d72c06"
+    },
+    "treatment_contract_hash": "sha256:e4bd4bebd6c87fbb043b4f822673435a02cdc74ae4e4e38e56646555a9ef5e9b"
+  },
+  "treatments": [
+    {
+      "base_catalog_hash": "sha256:aa55b4fc409e67dc808ef32a9d7d7f5ebe63b68c59ea3bd4d75d3d7d12a18135",
+      "causal_role": "baseline",
+      "context_policy_hash": "sha256:27781ec361e455f5ab4cba8dff996e6adf9b0411ba7c6f87d0d8993db74dc8ed",
+      "delivery_transform_hash": "sha256:12fc35510f716ca102a1498ececb6f9725931ec6bbe3b6e044083e0702b1b01d",
+      "exclusion_reason": null,
+      "exclusions": [],
+      "expected_capabilities": [
+        "force_load",
+        "model_grading"
+      ],
+      "harness_identity": "sha256:04ebc1267fab4654790c4dc4cc092b70e4545e4e6a6007a597ec11347fe93dac",
+      "host_identity": "sha256:720e1497762680d6cd714001fd471ac68a73fb8f96b562e6b692d9ec23c26ef2",
+      "implementation_hash": "sha256:34bf02e9d82363b2749a04ee745126d6eb9bf8e87d0082bd314b943e4f44e7e6",
+      "intervention_axes": [
+        "target-skill"
+      ],
+      "model_identity": "sha256:0f2932e42ff4a364f5f9ff3b849257df786dd8362c81ca916087624ac9df0a48",
+      "network_policy_hash": "sha256:064c876c4f965debe645b6598584f83762022dfc10f7a70e7d54a566105e06c6",
+      "permission_policy_hash": "sha256:d158ea0717bc436f050c6792d8b52cc08216c3866c0f22d626826fefb32c6b51",
+      "profile": "baseline/skill_disabled",
+      "prompt_variant_group_id": "frontier-sentinel-v1",
+      "scenario_ids": [
+        "long-document-segmented-writing-direct-small-task",
+        "long-document-segmented-writing-compact-recovery",
+        "long-document-segmented-writing-segmented-draft",
+        "long-document-segmented-writing-compaction-resume",
+        "long-document-segmented-writing-whole-draft-review",
+        "long-document-segmented-writing-protected-no-scratch"
+      ],
+      "scenario_tags": [
+        "boundary",
+        "compact-recovery",
+        "compaction-resume",
+        "core",
+        "direct",
+        "protected",
+        "segmented-draft",
+        "whole-draft-review"
+      ],
+      "tool_policy_hash": "sha256:6522f1b6f4bdf771f17878686721107dba84304ddfa0e2b8e1e8f5905d66f1db",
+      "treatment_id": "baseline"
+    },
+    {
+      "base_catalog_hash": "sha256:aa55b4fc409e67dc808ef32a9d7d7f5ebe63b68c59ea3bd4d75d3d7d12a18135",
+      "causal_role": "candidate",
+      "context_policy_hash": "sha256:27781ec361e455f5ab4cba8dff996e6adf9b0411ba7c6f87d0d8993db74dc8ed",
+      "delivery_transform_hash": "sha256:36751f6d45e24c993d035591be2ea834af44a350d006af12136f1fa0226362e1",
+      "exclusion_reason": null,
+      "exclusions": [],
+      "expected_capabilities": [
+        "force_load",
+        "model_grading"
+      ],
+      "harness_identity": "sha256:04ebc1267fab4654790c4dc4cc092b70e4545e4e6a6007a597ec11347fe93dac",
+      "host_identity": "sha256:720e1497762680d6cd714001fd471ac68a73fb8f96b562e6b692d9ec23c26ef2",
+      "implementation_hash": "sha256:2830a2858b12b7bd66fcb5f5f47db1a3641ca185f91cb7fc5d0df2c83ae05d92",
+      "intervention_axes": [
+        "target-skill"
+      ],
+      "model_identity": "sha256:0f2932e42ff4a364f5f9ff3b849257df786dd8362c81ca916087624ac9df0a48",
+      "network_policy_hash": "sha256:064c876c4f965debe645b6598584f83762022dfc10f7a70e7d54a566105e06c6",
+      "permission_policy_hash": "sha256:d158ea0717bc436f050c6792d8b52cc08216c3866c0f22d626826fefb32c6b51",
+      "profile": "candidate/force_loaded",
+      "prompt_variant_group_id": "frontier-sentinel-v1",
+      "scenario_ids": [
+        "long-document-segmented-writing-direct-small-task",
+        "long-document-segmented-writing-compact-recovery",
+        "long-document-segmented-writing-segmented-draft",
+        "long-document-segmented-writing-compaction-resume",
+        "long-document-segmented-writing-whole-draft-review",
+        "long-document-segmented-writing-protected-no-scratch"
+      ],
+      "scenario_tags": [
+        "boundary",
+        "compact-recovery",
+        "compaction-resume",
+        "core",
+        "direct",
+        "protected",
+        "segmented-draft",
+        "whole-draft-review"
+      ],
+      "tool_policy_hash": "sha256:6522f1b6f4bdf771f17878686721107dba84304ddfa0e2b8e1e8f5905d66f1db",
+      "treatment_id": "candidate"
+    }
+  ]
+}

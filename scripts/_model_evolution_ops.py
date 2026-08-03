@@ -39,9 +39,11 @@ MAX_DIAGNOSTIC_BYTES = 64 * 1024
 ALLOWED_GATE_SCRIPTS = {
     "bundle/build_bundle_manifest.py",
     "scripts/evaluate_static_contracts.py",
+    "scripts/build_model_evolution_sentinels.py",
     "skill-evaluator/scripts/compile_eval_plan.py",
     "skill-evaluator/scripts/run_eval_plan.py",
     "skill-evaluator/scripts/analyze_runs.py",
+    "skill-evaluator/scripts/validate_eval_suite.py",
 }
 
 
@@ -662,10 +664,37 @@ def preflight_operations(
     for operation_id, script in (
         ("bundle-check", "bundle/build_bundle_manifest.py"),
         ("static-check", "scripts/evaluate_static_contracts.py"),
+        ("sentinel-check", "scripts/build_model_evolution_sentinels.py"),
     ):
         fact, _ = run_model_free_command(
             operation_id,
             [sys.executable, script, "--check"],
+            repository_root=repository_root,
+        )
+        operations.append(fact)
+    sentinel = load_json(
+        resolve_binding(campaign["sentinel_index"], repository_root, campaign_root),
+        label="sentinel index",
+    )
+    for skill_id in SKILL_IDS:
+        record = sentinel["skills"][skill_id]
+        spec = resolve_binding(record["spec_template"], repository_root, campaign_root)
+        scenarios = resolve_binding(
+            record["public_scenarios"], repository_root, campaign_root
+        )
+        host = spec.parent / "host-manifest.template.json"
+        fact, _ = run_model_free_command(
+            f"sentinel-contract-{skill_id}",
+            [
+                sys.executable,
+                "skill-evaluator/scripts/validate_eval_suite.py",
+                "contract",
+                str(spec),
+                str(scenarios),
+                str(host),
+                "--json",
+                "-",
+            ],
             repository_root=repository_root,
         )
         operations.append(fact)

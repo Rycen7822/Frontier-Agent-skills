@@ -1,0 +1,152 @@
+{
+  "authority": "suite-quality-owner",
+  "boundary_coverage": [
+    {
+      "case_classes": [
+        "boundary_or_failure"
+      ],
+      "status": "pass",
+      "surface": "scenario-oracle"
+    }
+  ],
+  "case_classes": [
+    {
+      "case_id": "writing-plans-source-bound-plan",
+      "class": "positive"
+    },
+    {
+      "case_id": "writing-plans-resume-preflight",
+      "class": "positive"
+    },
+    {
+      "case_id": "writing-plans-proof-owner",
+      "class": "positive"
+    },
+    {
+      "case_id": "writing-plans-explicit-handoff",
+      "class": "positive"
+    },
+    {
+      "case_id": "writing-plans-continuous-execution",
+      "class": "positive"
+    },
+    {
+      "case_id": "writing-plans-protected-description",
+      "class": "boundary_or_failure"
+    }
+  ],
+  "custody": {
+    "author_visible_paths": [
+      "scenarios.public.jsonl"
+    ],
+    "custodian": "evaluation-owner",
+    "executor_visible_paths": [
+      "scenarios.public.jsonl"
+    ],
+    "exposure_status": "not_applicable",
+    "split_hashes": {
+      "dev": "sha256:f179644f033f5f4aa02c3f65481176e38d0e2a4b8e9e4d7176ea49e6c1e3302e",
+      "heldout": null,
+      "regression": "sha256:7d8fff2f221e697aae2c5ed7de9a1beda409b28ef45f3715b3fd0116c7ff7fc7"
+    }
+  },
+  "duplicate_groups": [
+    {
+      "case_ids": [
+        "writing-plans-continuous-execution",
+        "writing-plans-explicit-handoff",
+        "writing-plans-proof-owner",
+        "writing-plans-protected-description",
+        "writing-plans-resume-preflight",
+        "writing-plans-source-bound-plan"
+      ],
+      "group_id": "fixture_overlap-1",
+      "kind": "fixture_overlap",
+      "review_locator": null,
+      "status": "allowed"
+    }
+  ],
+  "evaluation_id": "frontier-writing-plans-sentinel-v1",
+  "golden": {
+    "case_ids": [
+      "writing-plans-source-bound-plan",
+      "writing-plans-resume-preflight",
+      "writing-plans-proof-owner",
+      "writing-plans-explicit-handoff",
+      "writing-plans-continuous-execution",
+      "writing-plans-protected-description"
+    ],
+    "passed_ids": [
+      "writing-plans-source-bound-plan",
+      "writing-plans-resume-preflight",
+      "writing-plans-proof-owner",
+      "writing-plans-explicit-handoff",
+      "writing-plans-continuous-execution",
+      "writing-plans-protected-description"
+    ]
+  },
+  "known_bad": {
+    "case_ids": [
+      "known-bad-missing-required-contract"
+    ],
+    "detected_ids": [
+      "known-bad-missing-required-contract"
+    ]
+  },
+  "leakage_probes": [
+    {
+      "artifact": {
+        "path": "grader-prompt.md",
+        "sha256": "sha256:91ffa16fd83c72e5712c85bf37fd75392daf4625783de8c90132e3a83e625107"
+      },
+      "locator": {
+        "artifact": "grader-prompt.md",
+        "end_line": 1,
+        "kind": "text_lines",
+        "start_line": 1
+      },
+      "probe_id": "tracked-holdout-absence",
+      "status": "pass",
+      "surface": "holdout"
+    }
+  ],
+  "mutations": {
+    "detected_ids": [
+      "mutation-remove-protected-requirement"
+    ],
+    "mutation_ids": [
+      "mutation-remove-protected-requirement"
+    ]
+  },
+  "provenance_clusters": [
+    {
+      "case_ids": [
+        "writing-plans-source-bound-plan",
+        "writing-plans-resume-preflight",
+        "writing-plans-proof-owner",
+        "writing-plans-explicit-handoff",
+        "writing-plans-continuous-execution",
+        "writing-plans-protected-description"
+      ],
+      "cluster_id": "frontier-model-evolution-analysis",
+      "review_locator": {
+        "artifact": "grader-prompt.md",
+        "end_line": 1,
+        "kind": "text_lines",
+        "start_line": 1
+      },
+      "source_hashes": [
+        "sha256:91ffa16fd83c72e5712c85bf37fd75392daf4625783de8c90132e3a83e625107"
+      ],
+      "status": "closed"
+    }
+  ],
+  "review_status": {
+    "duplicate_and_provenance_review": "pass",
+    "leakage_review": "pass"
+  },
+  "schema_version": 1,
+  "thresholds": {
+    "minimum_detection": 1.0
+  }
+}

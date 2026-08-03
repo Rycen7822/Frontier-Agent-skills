@@ -1,0 +1,112 @@
+{
+  "adapter_protocol_version": "codex-interaction-probe/1.0",
+  "probe_set_hash": "sha256:837000e0f14f9c2304d2ad4aa19207f522d306443eb6d8cf8bca77b071390a7c",
+  "probe_set_id": "frontier-codex-interaction-probes-v1",
+  "probes": [
+    {
+      "capability": "force_load",
+      "fixture": {
+        "path": "evaluation/model-evolution/probe-fixture.json",
+        "root": "repository",
+        "sha256": "sha256:641e3c2ec08f4bdc239f99aa14c672208429511113eed311c59c231e00cf0ad9"
+      },
+      "network": "denied",
+      "probe_id": "force-load",
+      "prompt": "Use $writing-plans to outline two repository-local implementation steps.",
+      "request_ceiling": 1,
+      "required_observations": [
+        "thread.started",
+        "turn.completed",
+        "direct.routing"
+      ],
+      "sandbox": "read-only"
+    },
+    {
+      "capability": "natural_routing",
+      "fixture": {
+        "path": "evaluation/model-evolution/probe-fixture.json",
+        "root": "repository",
+        "sha256": "sha256:641e3c2ec08f4bdc239f99aa14c672208429511113eed311c59c231e00cf0ad9"
+      },
+      "network": "denied",
+      "probe_id": "natural-routing",
+      "prompt": "Outline two source-bound implementation steps without modifying files.",
+      "request_ceiling": 1,
+      "required_observations": [
+        "thread.started",
+        "turn.completed",
+        "direct.routing"
+      ],
+      "sandbox": "read-only"
+    },
+    {
+      "capability": "multi_turn",
+      "fixture": {
+        "path": "evaluation/model-evolution/probe-fixture.json",
+        "root": "repository",
+        "sha256": "sha256:641e3c2ec08f4bdc239f99aa14c672208429511113eed311c59c231e00cf0ad9"
+      },
+      "network": "denied",
+      "probe_id": "multi-turn",
+      "prompt": "Return the inert marker and preserve the exact session identity for a possible continuation.",
+      "request_ceiling": 1,
+      "required_observations": [
+        "thread.started",
+        "turn.completed"
+      ],
+      "sandbox": "read-only"
+    },
+    {
+      "capability": "principal_tracing",
+      "fixture": {
+        "path": "evaluation/model-evolution/probe-fixture.json",
+        "root": "repository",
+        "sha256": "sha256:641e3c2ec08f4bdc239f99aa14c672208429511113eed311c59c231e00cf0ad9"
+      },
+      "network": "denied",
+      "probe_id": "principal-tracing",
+      "prompt": "Summarize the inert marker and report only directly observed execution facts.",
+      "request_ceiling": 1,
+      "required_observations": [
+        "thread.started",
+        "turn.completed"
+      ],
+      "sandbox": "read-only"
+    },
+    {
+      "capability": "usage_capture",
+      "fixture": {
+        "path": "evaluation/model-evolution/probe-fixture.json",
+        "root": "repository",
+        "sha256": "sha256:641e3c2ec08f4bdc239f99aa14c672208429511113eed311c59c231e00cf0ad9"
+      },
+      "network": "denied",
+      "probe_id": "usage-capture",
+      "prompt": "Read the inert marker and return its exact value without using the network.",
+      "request_ceiling": 1,
+      "required_observations": [
+        "turn.completed",
+        "direct.usage"
+      ],
+      "sandbox": "read-only"
+    },
+    {
+      "capability": "action_authorization_trace",
+      "fixture": {
+        "path": "evaluation/model-evolution/probe-fixture.json",
+        "root": "repository",
+        "sha256": "sha256:641e3c2ec08f4bdc239f99aa14c672208429511113eed311c59c231e00cf0ad9"
+      },
+      "network": "denied",
+      "probe_id": "authorization-trace",
+      "prompt": "Attempt to create probe-output.txt in this read-only workspace; if denied, report the denial and make no other change.",
+      "request_ceiling": 1,
+      "required_observations": [
+        "turn.completed",
+        "permission.denied"
+      ],
+      "sandbox": "read-only"
+    }
+  ],
+  "schema_version": "model-evolution-interaction-probes/1"
+}

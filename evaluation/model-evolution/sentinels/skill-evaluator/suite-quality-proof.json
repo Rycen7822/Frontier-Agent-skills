@@ -1,0 +1,152 @@
+{
+  "authority": "suite-quality-owner",
+  "boundary_coverage": [
+    {
+      "case_classes": [
+        "boundary_or_failure"
+      ],
+      "status": "pass",
+      "surface": "scenario-oracle"
+    }
+  ],
+  "case_classes": [
+    {
+      "case_id": "skill-evaluator-level-owner-selection",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-deterministic-first",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-five-axis-interpretation",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-cli-schema-diagnosis",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-transition-vs-revision",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-protected-no-reviewer",
+      "class": "boundary_or_failure"
+    }
+  ],
+  "custody": {
+    "author_visible_paths": [
+      "scenarios.public.jsonl"
+    ],
+    "custodian": "evaluation-owner",
+    "executor_visible_paths": [
+      "scenarios.public.jsonl"
+    ],
+    "exposure_status": "not_applicable",
+    "split_hashes": {
+      "dev": "sha256:6fb13433f46946a38cd5207fbd835fc2a394ae8aa2ad85b2022fc20ea5932820",
+      "heldout": null,
+      "regression": "sha256:730885c9bd73623c8a9e2ddb737fbf0e6b2c8043e0a4fb1d0d64bb2e753f455b"
+    }
+  },
+  "duplicate_groups": [
+    {
+      "case_ids": [
+        "skill-evaluator-cli-schema-diagnosis",
+        "skill-evaluator-deterministic-first",
+        "skill-evaluator-five-axis-interpretation",
+        "skill-evaluator-level-owner-selection",
+        "skill-evaluator-protected-no-reviewer",
+        "skill-evaluator-transition-vs-revision"
+      ],
+      "group_id": "fixture_overlap-1",
+      "kind": "fixture_overlap",
+      "review_locator": null,
+      "status": "allowed"
+    }
+  ],
+  "evaluation_id": "frontier-skill-evaluator-sentinel-v1",
+  "golden": {
+    "case_ids": [
+      "skill-evaluator-level-owner-selection",
+      "skill-evaluator-deterministic-first",
+      "skill-evaluator-five-axis-interpretation",
+      "skill-evaluator-cli-schema-diagnosis",
+      "skill-evaluator-transition-vs-revision",
+      "skill-evaluator-protected-no-reviewer"
+    ],
+    "passed_ids": [
+      "skill-evaluator-level-owner-selection",
+      "skill-evaluator-deterministic-first",
+      "skill-evaluator-five-axis-interpretation",
+      "skill-evaluator-cli-schema-diagnosis",
+      "skill-evaluator-transition-vs-revision",
+      "skill-evaluator-protected-no-reviewer"
+    ]
+  },
+  "known_bad": {
+    "case_ids": [
+      "known-bad-missing-required-contract"
+    ],
+    "detected_ids": [
+      "known-bad-missing-required-contract"
+    ]
+  },
+  "leakage_probes": [
+    {
+      "artifact": {
+        "path": "grader-prompt.md",
+        "sha256": "sha256:7b20a83763a99acbb4e020975e196fb9b16182c8a927017b63f7d43514a9d0b4"
+      },
+      "locator": {
+        "artifact": "grader-prompt.md",
+        "end_line": 1,
+        "kind": "text_lines",
+        "start_line": 1
+      },
+      "probe_id": "tracked-holdout-absence",
+      "status": "pass",
+      "surface": "holdout"
+    }
+  ],
+  "mutations": {
+    "detected_ids": [
+      "mutation-remove-protected-requirement"
+    ],
+    "mutation_ids": [
+      "mutation-remove-protected-requirement"
+    ]
+  },
+  "provenance_clusters": [
+    {
+      "case_ids": [
+        "skill-evaluator-level-owner-selection",
+        "skill-evaluator-deterministic-first",
+        "skill-evaluator-five-axis-interpretation",
+        "skill-evaluator-cli-schema-diagnosis",
+        "skill-evaluator-transition-vs-revision",
+        "skill-evaluator-protected-no-reviewer"
+      ],
+      "cluster_id": "frontier-model-evolution-analysis",
+      "review_locator": {
+        "artifact": "grader-prompt.md",
+        "end_line": 1,
+        "kind": "text_lines",
+        "start_line": 1
+      },
+      "source_hashes": [
+        "sha256:7b20a83763a99acbb4e020975e196fb9b16182c8a927017b63f7d43514a9d0b4"
+      ],
+      "status": "closed"
+    }
+  ],
+  "review_status": {
+    "duplicate_and_provenance_review": "pass",
+    "leakage_review": "pass"
+  },
+  "schema_version": 1,
+  "thresholds": {
+    "minimum_detection": 1.0
+  }
+}

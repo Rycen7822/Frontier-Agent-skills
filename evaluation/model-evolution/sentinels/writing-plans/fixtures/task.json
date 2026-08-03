@@ -1,0 +1,9 @@
+{
+  "allowed_effects": [
+    "workspace-local-output"
+  ],
+  "marker": "frontier-writing-plans-sentinel-v1",
+  "regression_origin": "writing-plans-description-semantic-collapse",
+  "schema_version": 1,
+  "skill_id": "writing-plans"
+}

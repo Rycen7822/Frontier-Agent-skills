@@ -459,7 +459,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             probe = {
                 "schema_version": "codex-interaction-probe/1.0",
                 "probe_id": "probe-fixture",
-                "capability": "session-events",
+                "capability": "usage_capture",
                 "prompt": "emit fixture events",
                 "expected_event_types": ["thread.started", "turn.completed"],
             }
@@ -477,6 +477,29 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual("pass", normalized["status"])
             self.assertEqual(THREAD_ID, normalized["session_id"])
             self.assertEqual(["direct.usage"], normalized["direct_observations"])
+
+            probe["probe_id"] = "probe-multi-turn"
+            probe["capability"] = "multi_turn"
+            unsupported = _run_adapter(
+                workspace,
+                fake,
+                probe_manifest,
+                probe,
+                mode="probe",
+            )
+            self.assertEqual(0, unsupported.returncode, unsupported.stderr)
+            self.assertEqual("unknown", _jsonl(unsupported.stdout)[0]["status"])
+
+            probe["capability"] = "undeclared-capability"
+            rejected = _run_adapter(
+                workspace,
+                fake,
+                probe_manifest,
+                probe,
+                mode="probe",
+            )
+            self.assertEqual(2, rejected.returncode)
+            self.assertIn("interaction probe row is invalid", rejected.stderr)
 
     def test_process_failures_are_typed_and_stderr_is_redacted(self) -> None:
         cases = {

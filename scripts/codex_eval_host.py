@@ -31,6 +31,14 @@ from _codex_eval_events import (
 MAX_STDERR_BYTES = 64 * 1024
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+PROBE_CAPABILITIES = {
+    "force_load",
+    "natural_routing",
+    "multi_turn",
+    "principal_tracing",
+    "usage_capture",
+    "action_authorization_trace",
+}
 
 
 class AdapterError(ValueError):
@@ -645,7 +653,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
         or not isinstance(row["probe_id"], str)
         or not SAFE_ID.fullmatch(row["probe_id"])
         or not isinstance(row["capability"], str)
-        or not SAFE_ID.fullmatch(row["capability"])
+        or row["capability"] not in PROBE_CAPABILITIES
         or not isinstance(row["prompt"], str)
         or not row["prompt"]
         or not isinstance(row["expected_event_types"], list)
@@ -681,10 +689,33 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
         if normalized["permission_denials"]:
             direct_observations.append("permission.denied")
     observations = [*observed_types, *direct_observations]
+    capability_observed = {
+        "force_load": bool(
+            normalized is not None
+            and normalized["routing"] is not None
+            and normalized["routing"]["loaded"]
+        ),
+        "natural_routing": bool(
+            normalized is not None
+            and normalized["routing"] is not None
+            and normalized["routing"]["selected"]
+        ),
+        "usage_capture": bool(
+            normalized is not None and normalized["usage"] is not None
+        ),
+        "action_authorization_trace": bool(
+            normalized is not None and normalized["permission_denials"]
+        ),
+        # Current Codex JSONL has no direct principal record, and one probe request
+        # cannot establish same-thread resume. Preserve both as unknown.
+        "principal_tracing": False,
+        "multi_turn": False,
+    }[row["capability"]]
     status = (
         "pass"
         if normalized is not None
         and normalized["status"] == "completed"
+        and capability_observed
         and set(row["expected_event_types"]) <= set(observations)
         else "unknown"
     )

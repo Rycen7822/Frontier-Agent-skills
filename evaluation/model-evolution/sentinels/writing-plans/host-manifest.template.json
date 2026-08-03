@@ -1,0 +1,191 @@
+{
+  "capabilities": [
+    {
+      "capability": "force_load",
+      "declared": true,
+      "probe": {
+        "artifact": {
+          "encoding": "utf-8",
+          "path": "grader-output.schema.json",
+          "sha256": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d"
+        },
+        "locator": {
+          "artifact": "grader-output.schema.json",
+          "end_line": 1,
+          "kind": "text_lines",
+          "start_line": 1
+        },
+        "observed": "capability probe passed",
+        "status": "pass"
+      }
+    },
+    {
+      "capability": "model_grading",
+      "declared": true,
+      "probe": {
+        "artifact": {
+          "encoding": "utf-8",
+          "path": "grader-output.schema.json",
+          "sha256": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d"
+        },
+        "locator": {
+          "artifact": "grader-output.schema.json",
+          "end_line": 1,
+          "kind": "text_lines",
+          "start_line": 1
+        },
+        "observed": "non-ready model-grading fixture",
+        "status": "pass"
+      }
+    }
+  ],
+  "capture": {
+    "available": [
+      "events",
+      "stdout",
+      "stderr",
+      "state",
+      "artifacts",
+      "usage",
+      "context",
+      "utc_start_end",
+      "monotonic_latency"
+    ],
+    "missing": []
+  },
+  "catalog": {
+    "catalog_hash": "sha256:aa55b4fc409e67dc808ef32a9d7d7f5ebe63b68c59ea3bd4d75d3d7d12a18135",
+    "entries": [
+      {
+        "description": "Fixture skill",
+        "id": "skill-evaluator",
+        "name": "Skill Evaluator",
+        "root_hash": "sha256:d8a26e69b3928afa0ced5f83deb8319af4cc828139264edc11e43268c661e0c6",
+        "scope": "fixture",
+        "source": "local",
+        "version": "3.0.0"
+      }
+    ]
+  },
+  "command": {
+    "argv": [
+      "python3",
+      "replace-with-host-adapter.py"
+    ],
+    "env_allowlist": [
+      "PYTHONDONTWRITEBYTECODE"
+    ],
+    "executable_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "protocol_version": 1,
+    "resolved_executable": "/path/to/python3"
+  },
+  "identity": {
+    "adapter": {
+      "id": "jsonl-adapter",
+      "sha256": "sha256:7b9414b00ddf9aebc29f3a117a019f5cdee9e744a2d995fc9da70ebe17332f0a",
+      "version": "1"
+    },
+    "execution": {
+      "catalog_hash": "sha256:aa55b4fc409e67dc808ef32a9d7d7f5ebe63b68c59ea3bd4d75d3d7d12a18135",
+      "harness": "fixture-harness",
+      "model": "fixture-model",
+      "model_revision": "fixture-revision",
+      "monotonic_clock_id": "fixture-monotonic",
+      "policy_hash": "sha256:20298729b16ab50efb932bc666f6286e50934391decbf14a42e31a8c49b09a70",
+      "pricing_id": "fixture-pricing",
+      "prompt_hash": "sha256:fac5cd812575806bc5875a84cd1f149b6d45874239a70270a387daa252d75a61",
+      "provider": "fixture-provider",
+      "skill_hash": "sha256:d8a26e69b3928afa0ced5f83deb8319af4cc828139264edc11e43268c661e0c6",
+      "tokenizer_id": "fixture-tokenizer",
+      "tool_schema_hash": "sha256:3e086143a06bdaae38d8cb9619a8eb0a58ef2969a3d27b4788110337df6fcf18",
+      "utc_clock_id": "fixture-utc"
+    },
+    "host_build": "replace-build",
+    "host_id": "replace-host",
+    "host_name": "Replace Host",
+    "host_version": "1.0.0",
+    "platform": {
+      "os": "test-os",
+      "runtime": "python-3"
+    },
+    "repository": {
+      "dirty": false,
+      "revision": "1111111111111111111111111111111111111111",
+      "tree": "2222222222222222222222222222222222222222",
+      "worktree": "replace-worktree"
+    },
+    "session": {
+      "session_id": "replace-session",
+      "topology": "single"
+    }
+  },
+  "manifest_hash": "sha256:01b22f0afecd55b9bf9c02599ca7f99283d2fbadd1bcb681d1cc9f22301f5c88",
+  "manifest_id": "host-template",
+  "policy": {
+    "approval": {
+      "identity_hash": "sha256:7b6bf563884465dadd7eda39a17dba65b59a3ce037b76db4ef251c1dda9028f6",
+      "mode": "isolated",
+      "rules": [
+        "fixture-only"
+      ]
+    },
+    "credentials": {
+      "identity_hash": "sha256:7b6bf563884465dadd7eda39a17dba65b59a3ce037b76db4ef251c1dda9028f6",
+      "mode": "isolated",
+      "rules": [
+        "fixture-only"
+      ]
+    },
+    "filesystem": {
+      "identity_hash": "sha256:7b6bf563884465dadd7eda39a17dba65b59a3ce037b76db4ef251c1dda9028f6",
+      "mode": "isolated",
+      "rules": [
+        "fixture-only"
+      ]
+    },
+    "network": {
+      "identity_hash": "sha256:7b6bf563884465dadd7eda39a17dba65b59a3ce037b76db4ef251c1dda9028f6",
+      "mode": "isolated",
+      "rules": [
+        "fixture-only"
+      ]
+    },
+    "permissions": {
+      "identity_hash": "sha256:7b6bf563884465dadd7eda39a17dba65b59a3ce037b76db4ef251c1dda9028f6",
+      "mode": "isolated",
+      "rules": [
+        "fixture-only"
+      ]
+    },
+    "sandbox": {
+      "identity_hash": "sha256:7b6bf563884465dadd7eda39a17dba65b59a3ce037b76db4ef251c1dda9028f6",
+      "mode": "isolated",
+      "rules": [
+        "fixture-only"
+      ]
+    }
+  },
+  "reset": {
+    "probe": {
+      "artifact": {
+        "encoding": "utf-8",
+        "path": "grader-output.schema.json",
+        "sha256": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d"
+      },
+      "locator": {
+        "artifact": "grader-output.schema.json",
+        "end_line": 1,
+        "kind": "text_lines",
+        "start_line": 1
+      },
+      "observed": "capability probe passed",
+      "status": "pass"
+    },
+    "scopes": [
+      "session",
+      "workspace"
+    ],
+    "strategy": "fresh-workspace"
+  },
+  "schema_version": 1
+}

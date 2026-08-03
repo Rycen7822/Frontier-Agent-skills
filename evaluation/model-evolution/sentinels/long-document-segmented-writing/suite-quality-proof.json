@@ -1,0 +1,169 @@
+{
+  "authority": "suite-quality-owner",
+  "boundary_coverage": [
+    {
+      "case_classes": [
+        "dependent",
+        "unknown"
+      ],
+      "status": "pass",
+      "surface": "independence"
+    },
+    {
+      "case_classes": [
+        "correct-critique-applied",
+        "correct-critique-ignored",
+        "harmful-uptake"
+      ],
+      "status": "pass",
+      "surface": "review"
+    },
+    {
+      "case_classes": [
+        "boundary_or_failure"
+      ],
+      "status": "pass",
+      "surface": "scenario-oracle"
+    }
+  ],
+  "case_classes": [
+    {
+      "case_id": "long-document-segmented-writing-direct-small-task",
+      "class": "positive"
+    },
+    {
+      "case_id": "long-document-segmented-writing-compact-recovery",
+      "class": "positive"
+    },
+    {
+      "case_id": "long-document-segmented-writing-segmented-draft",
+      "class": "positive"
+    },
+    {
+      "case_id": "long-document-segmented-writing-compaction-resume",
+      "class": "positive"
+    },
+    {
+      "case_id": "long-document-segmented-writing-whole-draft-review",
+      "class": "positive"
+    },
+    {
+      "case_id": "long-document-segmented-writing-protected-no-scratch",
+      "class": "boundary_or_failure"
+    }
+  ],
+  "custody": {
+    "author_visible_paths": [
+      "scenarios.public.jsonl"
+    ],
+    "custodian": "evaluation-owner",
+    "executor_visible_paths": [
+      "scenarios.public.jsonl"
+    ],
+    "exposure_status": "not_applicable",
+    "split_hashes": {
+      "dev": "sha256:8ffc34e0c27cbb2db6ab4b3c0fa648a134dcc9d07f61b2b6cdae0b45ef61160d",
+      "heldout": null,
+      "regression": "sha256:24389fcb7fca30c35c426f653ddcf0443a361d05a096e54a86df884554ff9e9c"
+    }
+  },
+  "duplicate_groups": [
+    {
+      "case_ids": [
+        "long-document-segmented-writing-compact-recovery",
+        "long-document-segmented-writing-compaction-resume",
+        "long-document-segmented-writing-direct-small-task",
+        "long-document-segmented-writing-protected-no-scratch",
+        "long-document-segmented-writing-segmented-draft",
+        "long-document-segmented-writing-whole-draft-review"
+      ],
+      "group_id": "fixture_overlap-1",
+      "kind": "fixture_overlap",
+      "review_locator": null,
+      "status": "allowed"
+    }
+  ],
+  "evaluation_id": "frontier-long-document-segmented-writing-sentinel-v1",
+  "golden": {
+    "case_ids": [
+      "long-document-segmented-writing-direct-small-task",
+      "long-document-segmented-writing-compact-recovery",
+      "long-document-segmented-writing-segmented-draft",
+      "long-document-segmented-writing-compaction-resume",
+      "long-document-segmented-writing-whole-draft-review",
+      "long-document-segmented-writing-protected-no-scratch"
+    ],
+    "passed_ids": [
+      "long-document-segmented-writing-direct-small-task",
+      "long-document-segmented-writing-compact-recovery",
+      "long-document-segmented-writing-segmented-draft",
+      "long-document-segmented-writing-compaction-resume",
+      "long-document-segmented-writing-whole-draft-review",
+      "long-document-segmented-writing-protected-no-scratch"
+    ]
+  },
+  "known_bad": {
+    "case_ids": [
+      "known-bad-missing-required-contract"
+    ],
+    "detected_ids": [
+      "known-bad-missing-required-contract"
+    ]
+  },
+  "leakage_probes": [
+    {
+      "artifact": {
+        "path": "grader-prompt.md",
+        "sha256": "sha256:94b8b5dea7d4a5c4969c357cac7b8dac3ebf6179a7e799e6d3fed876a9f13d5a"
+      },
+      "locator": {
+        "artifact": "grader-prompt.md",
+        "end_line": 1,
+        "kind": "text_lines",
+        "start_line": 1
+      },
+      "probe_id": "tracked-holdout-absence",
+      "status": "pass",
+      "surface": "holdout"
+    }
+  ],
+  "mutations": {
+    "detected_ids": [
+      "mutation-remove-protected-requirement"
+    ],
+    "mutation_ids": [
+      "mutation-remove-protected-requirement"
+    ]
+  },
+  "provenance_clusters": [
+    {
+      "case_ids": [
+        "long-document-segmented-writing-direct-small-task",
+        "long-document-segmented-writing-compact-recovery",
+        "long-document-segmented-writing-segmented-draft",
+        "long-document-segmented-writing-compaction-resume",
+        "long-document-segmented-writing-whole-draft-review",
+        "long-document-segmented-writing-protected-no-scratch"
+      ],
+      "cluster_id": "frontier-model-evolution-analysis",
+      "review_locator": {
+        "artifact": "grader-prompt.md",
+        "end_line": 1,
+        "kind": "text_lines",
+        "start_line": 1
+      },
+      "source_hashes": [
+        "sha256:94b8b5dea7d4a5c4969c357cac7b8dac3ebf6179a7e799e6d3fed876a9f13d5a"
+      ],
+      "status": "closed"
+    }
+  ],
+  "review_status": {
+    "duplicate_and_provenance_review": "pass",
+    "leakage_review": "pass"
+  },
+  "schema_version": 1,
+  "thresholds": {
+    "minimum_detection": 1.0
+  }
+}
