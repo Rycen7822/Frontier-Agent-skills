@@ -39,6 +39,7 @@ class QuickBundleContractTests(unittest.TestCase):
         extended = source["test_profiles"]["extended"]
         required_modules = {
             2: {
+                "tests/test_extended_codex_eval_host.py",
                 "tests/test_extended_runner_lifecycle.py",
                 "tests/test_extended_lifecycle_conformance.py",
             },
