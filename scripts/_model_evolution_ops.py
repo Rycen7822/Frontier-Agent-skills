@@ -16,6 +16,7 @@ import time
 from typing import Any
 
 import build_codex_plugin as plugin_builder
+from _codex_eval_delivery import DeliveryError, validate_plugin_catalog
 
 from _model_evolution_contract import (
     ContractError,
@@ -528,7 +529,14 @@ def run_interaction_probes(
             with tempfile.TemporaryDirectory(
                 prefix="frontier-interaction-probe-"
             ) as tmp:
-                value, stderr = _run_probe_process(argv, row, workspace=Path(tmp))
+                workspace = Path(tmp)
+                fixture = resolve_binding(
+                    row["fixture"], repository_root, campaign_root
+                )
+                if fixture.is_symlink() or not fixture.is_file():
+                    raise OperationError("interaction probe fixture is invalid")
+                shutil.copy2(fixture, workspace / fixture.name)
+                value, stderr = _run_probe_process(argv, row, workspace=workspace)
             terminal = with_self_hash(
                 {
                     "schema_version": "model-evolution-probe-terminal/1",
@@ -688,6 +696,26 @@ def validate_plugin_staging(
     return evidence
 
 
+def _validate_host_plugin_binding(host: dict[str, Any], plugin_root: Path) -> None:
+    command = host.get("command")
+    argv = command.get("argv") if isinstance(command, dict) else None
+    if not isinstance(argv, list):
+        raise OperationError("target Host command is invalid")
+    positions = [index for index, item in enumerate(argv) if item == "--plugin-root"]
+    if len(positions) != 1 or positions[0] + 1 >= len(argv):
+        raise OperationError("target Host does not bind one plugin root")
+    try:
+        bound = Path(argv[positions[0] + 1]).resolve(strict=True)
+    except OSError as exc:
+        raise OperationError("target Host plugin root is unavailable") from exc
+    if bound != plugin_root.resolve(strict=True):
+        raise OperationError("target Host plugin root differs from campaign staging")
+    try:
+        validate_plugin_catalog(plugin_root, host)
+    except DeliveryError as exc:
+        raise OperationError(str(exc)) from exc
+
+
 def preflight_operations(
     campaign: dict[str, Any],
     *,
@@ -731,6 +759,24 @@ def preflight_operations(
         repository_root=repository_root,
     )
     operations.append(fact)
+    host = load_json(
+        resolve_binding(
+            campaign["profiles"]["target_provisional"],
+            repository_root,
+            campaign_root,
+        ),
+        label="target provisional Host",
+    )
+    started = time.monotonic()
+    _validate_host_plugin_binding(host, plugin_root)
+    operations.append(
+        _operation_fact(
+            "host-plugin-binding",
+            ["validate-host-plugin-binding"],
+            host["manifest_hash"],
+            round((time.monotonic() - started) * 1000),
+        )
+    )
     sentinel = load_json(
         resolve_binding(campaign["sentinel_index"], repository_root, campaign_root),
         label="sentinel index",

@@ -161,12 +161,15 @@ def close_probes(
     statuses: dict[str, str],
     results_binding: dict[str, Any],
     observed_host_binding: dict[str, Any],
+    blocker: str | None = None,
 ) -> None:
     requests = state["interaction_probes"]["requests"]
     if state["phase"] != "apparatus_ready" or not requests:
         raise StateError("probe closure has no matching reservation")
     if any(item["status"] != "reserved" for item in requests):
         raise StateError("probe reservation is not uniformly open")
+    if blocker is not None and not blocker.strip():
+        raise StateError("probe blocker is empty")
     request_ids = {item["request_id"] for item in requests}
     if set(artifacts) != request_ids or set(statuses) != request_ids:
         raise StateError("probe terminal set differs from reservation")
@@ -180,12 +183,15 @@ def close_probes(
             }
         )
     state["interaction_probes"]["results"] = results_binding
+    state["interaction_probes"]["blocker"] = (
+        blocker.strip()[:512] if blocker is not None else None
+    )
     state["profiles"]["target_observed"] = observed_host_binding
     previous_requests = state["budgets"]["observed"]["provider_requests"]
     state["budgets"]["observed"]["provider_requests"] = (
         None if previous_requests is None else previous_requests + len(requests)
     )
-    state["phase"] = "target_profile_ready"
+    state["phase"] = "apparatus_ready" if blocker is not None else "target_profile_ready"
 
 
 def block_probes(state: dict[str, Any], reason: str) -> None:

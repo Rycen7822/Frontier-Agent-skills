@@ -734,6 +734,7 @@ def _build_entry(
         "repeat": repeat,
         "attempt_policy": copy.deepcopy(spec["execution"]["retry_policy"]),
         "execute_case_payload": {
+            "subject_skill_id": spec["subject"]["skill_id"],
             "case": copy.deepcopy(scenario),
             "treatment": copy.deepcopy(treatment),
             "repeat": repeat,

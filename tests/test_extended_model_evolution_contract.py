@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import unittest
@@ -33,7 +34,10 @@ from model_evolution_test_support import (  # noqa: E402
     materialize_campaign,
     write_json,
 )
-from skill_evaluator_test_support import make_v5_schema_examples  # noqa: E402
+from skill_evaluator_test_support import (  # noqa: E402
+    canonical_hash,
+    make_v5_schema_examples,
+)
 
 
 def closed_transition_report() -> dict:
@@ -246,14 +250,15 @@ class ModelEvolutionContractTest(unittest.TestCase):
         old["budgets"]["reserved"]["provider_requests"] = 2
         old["budgets"]["observed"]["provider_requests"] = 1
         old = with_self_hash(old, "campaign_hash")
+        historical = self.fixture["repository_root"] / ".work/blocked"
+        shutil.copytree(self.fixture["campaign_root"], historical)
         qualification = project_qualification(
             old,
             repository_root=self.fixture["repository_root"],
-            campaign_root=self.fixture["campaign_root"],
+            campaign_root=historical,
             observed_as_of="2026-08-03T00:00:00Z",
             valid_until="2026-08-04T00:00:00Z",
         )
-        historical = self.fixture["repository_root"] / ".work/blocked"
         old_path = write_json(historical / "campaign.json", old)
         write_json(historical / "qualification/qualification.json", qualification)
         old_binding = make_binding(
@@ -270,6 +275,56 @@ class ModelEvolutionContractTest(unittest.TestCase):
         )
         self.assertEqual(supersedes["imported_reserved"]["provider_requests"], 2)
         self.assertEqual(supersedes["imported_observed"]["provider_requests"], 1)
+        repaired_host = json.loads(self.fixture["paths"]["host"].read_text())
+        repaired_host["identity"]["adapter"]["sha256"] = "sha256:" + "7" * 64
+        repaired_host["identity"]["execution"]["skill_hash"] = (
+            "sha256:" + "6" * 64
+        )
+        repaired_host["manifest_hash"] = canonical_hash(
+            {
+                key: value
+                for key, value in repaired_host.items()
+                if key != "manifest_hash"
+            }
+        )
+        repaired_path = write_json(
+            self.fixture["campaign_root"] / "inputs/repaired-host.json",
+            repaired_host,
+        )
+        repaired_binding = make_binding(
+            repaired_path,
+            root="campaign",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        prepare_supersedes(
+            campaign_binding=old_binding,
+            target_host_binding=repaired_binding,
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        repaired_host["identity"]["execution"]["model"] = "different-model"
+        repaired_host["manifest_hash"] = canonical_hash(
+            {
+                key: value
+                for key, value in repaired_host.items()
+                if key != "manifest_hash"
+            }
+        )
+        write_json(repaired_path, repaired_host)
+        different_binding = make_binding(
+            repaired_path,
+            root="campaign",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        with self.assertRaisesRegex(ContractError, "different Host"):
+            prepare_supersedes(
+                campaign_binding=old_binding,
+                target_host_binding=different_binding,
+                repository_root=self.fixture["repository_root"],
+                campaign_root=self.fixture["campaign_root"],
+            )
         product = {
             name: json.loads(self.fixture["paths"][name].read_text())
             for name in ("bundle_manifest", "bundle_build", "static_report")
