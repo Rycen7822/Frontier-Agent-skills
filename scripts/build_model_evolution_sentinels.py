@@ -962,6 +962,7 @@ def _materialize(repository_root: Path) -> list[Path]:
         ]
         scenario_bytes = _jsonl_bytes(scenarios)
         prompt_bytes = _grader_prompt(skill_id, config["claims"])
+        calibration_bytes = _calibration_gold(skill_id)
         initial = {
             target / "fixtures/task.json": task_bytes,
             target / "fixtures/manifest.json": manifest_bytes,
@@ -970,7 +971,7 @@ def _materialize(repository_root: Path) -> list[Path]:
             target / "grader-output.schema.json": output_schema_bytes,
             target / "host-manifest.template.json": host_bytes,
             target / "scenarios.public.jsonl": scenario_bytes,
-            target / "calibration-gold.jsonl": _calibration_gold(skill_id),
+            target / "calibration-gold.jsonl": calibration_bytes,
         }
         for path, payload in initial.items():
             _write(path, payload)
@@ -1033,6 +1034,11 @@ def _materialize(repository_root: Path) -> list[Path]:
             "public_scenarios": _binding(
                 (relative_root / "scenarios.public.jsonl").as_posix(), scenario_bytes
             ),
+            "calibration_gold": _binding(
+                (relative_root / "calibration-gold.jsonl").as_posix(),
+                calibration_bytes,
+            ),
+            "calibration_request_ceiling": len(calibration_bytes.splitlines()),
             "fixture_roots": [
                 _binding(
                     (relative_root / "fixtures/manifest.json").as_posix(),
@@ -1048,6 +1054,7 @@ def _materialize(repository_root: Path) -> list[Path]:
                 f"{skill_id}-{case[0]}" for case in config["cases"] if case[3]
             ],
             "external_holdout_contract_id": f"{skill_id}-external-holdout-v1",
+            "holdout_case_ceiling": 1,
         }
     fixture_bytes = _json_bytes(
         {

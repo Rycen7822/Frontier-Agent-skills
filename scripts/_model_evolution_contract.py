@@ -20,6 +20,7 @@ from referencing.exceptions import NoSuchResource, Unresolvable
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_ROOT = REPOSITORY_ROOT / "evaluation/model-evolution/schemas"
 SCHEMA_FILES = {
+    "budget_approval": "budget-approval-v1.schema.json",
     "campaign": "campaign-v1.schema.json",
     "interaction_probes": "interaction-probes-v1.schema.json",
     "sentinel_index": "sentinel-index-v1.schema.json",
@@ -50,6 +51,7 @@ CRITICAL_PROBE_CAPABILITIES = {
     "action_authorization_trace",
 }
 HASH_FIELDS = {
+    "model-evolution-budget-approval/1": "approval_hash",
     "model-evolution-campaign/1": "campaign_hash",
     "model-evolution-interaction-probes/1": "probe_set_hash",
     "model-evolution-sentinel-index/1": "sentinel_hash",
@@ -312,6 +314,59 @@ def parse_utc(value: str) -> datetime:
         raise ContractError("timestamp is not ISO-8601 UTC") from exc
 
 
+def qualification_request_ceilings(
+    sentinel: dict[str, Any],
+    *,
+    repository_root: Path,
+    campaign_root: Path,
+    probe_count: int,
+) -> dict[str, int]:
+    public_cases: dict[str, int] = {}
+    calibration_requests = 0
+    holdout_cases = 0
+    for skill_id in SKILL_IDS:
+        record = sentinel["skills"][skill_id]
+        scenarios = (
+            resolve_binding(record["public_scenarios"], repository_root, campaign_root)
+            .read_bytes()
+            .splitlines()
+        )
+        calibration = (
+            resolve_binding(record["calibration_gold"], repository_root, campaign_root)
+            .read_bytes()
+            .splitlines()
+        )
+        if not scenarios or not calibration:
+            raise ContractError(f"{skill_id} sentinel request corpus is empty")
+        for index, row in enumerate((*scenarios, *calibration), start=1):
+            strict_json_bytes(row, label=f"{skill_id} request row {index}")
+        if len(calibration) != record["calibration_request_ceiling"]:
+            raise ContractError(
+                f"{skill_id} calibration request ceiling differs from gold"
+            )
+        public_cases[skill_id] = len(scenarios)
+        calibration_requests += len(calibration)
+        holdout_cases += record["holdout_case_ceiling"]
+    current_execute = sum(public_cases.values()) * 2
+    candidate_cases = max(
+        public_cases[owner]
+        + sum(
+            len(sentinel["skills"][skill_id]["protected_case_ids"])
+            for skill_id in SKILL_IDS
+            if skill_id != owner
+        )
+        for owner in SKILL_IDS
+    )
+    execute = current_execute + candidate_cases * 2 + holdout_cases
+    model_grade = calibration_requests + execute
+    return {
+        "provider_requests": probe_count + execute + model_grade,
+        "execute": execute,
+        "model_grade": model_grade,
+        "calibration": calibration_requests,
+    }
+
+
 def build_initial_campaign(
     *,
     campaign_id: str,
@@ -320,6 +375,10 @@ def build_initial_campaign(
     bundle_manifest_binding: dict[str, Any],
     bundle_build: dict[str, Any],
     bundle_build_binding: dict[str, Any],
+    plugin_build_binding: dict[str, Any],
+    plugin_root: str,
+    plugin_tree_hash: str,
+    calibration_requests: int,
     static_report: dict[str, Any],
     static_report_binding: dict[str, Any],
     target_host_binding: dict[str, Any],
@@ -432,7 +491,10 @@ def build_initial_campaign(
             "source_commit": git_identity["commit"],
             "source_tree": git_identity["tree"],
             "dirty": False,
-            "plugin_tree": bundle_build_binding["sha256"],
+            "plugin_tree": plugin_tree_hash,
+            "plugin_build": plugin_build_binding,
+            "plugin_root": plugin_root,
+            "calibration_requests": calibration_requests,
             "bundle_manifest": bundle_manifest_binding,
             "bundle_build": bundle_build_binding,
             "static_report": static_report_binding,
@@ -843,17 +905,12 @@ def _gate(
 
 def _final_skill_identities(
     campaign: dict[str, Any],
-    repository_root: Path,
-    campaign_root: Path,
 ) -> dict[str, Any]:
-    build = campaign["skill_evidence"]["plugin_build"]
-    if build is None:
-        skills = campaign["product"]["skills"]
-    else:
-        value = load_json(
-            resolve_binding(build, repository_root, campaign_root), label="plugin build"
-        )
-        skills = value.get("skills") if isinstance(value, dict) else None
+    skills = (
+        campaign["candidate"]["skills"]
+        if campaign["candidate"] is not None
+        else campaign["product"]["skills"]
+    )
     if not isinstance(skills, dict) or set(skills) != set(SKILL_IDS):
         raise ContractError(
             "plugin build does not bind the exact four Skill identities"
@@ -865,6 +922,27 @@ def _final_skill_identities(
         }
         for skill_id in SKILL_IDS
     }
+
+
+def _selected_plugin_tree(
+    campaign: dict[str, Any],
+    repository_root: Path,
+    campaign_root: Path,
+) -> str:
+    binding = campaign["skill_evidence"]["plugin_build"]
+    if binding is None:
+        return campaign["product"]["plugin_tree"]
+    evidence = load_json(
+        resolve_binding(binding, repository_root, campaign_root),
+        label="plugin build evidence",
+    )
+    if not isinstance(evidence, dict):
+        raise ContractError("plugin build evidence must be an object")
+    verify_self_hash(evidence, "evidence_hash")
+    plugin_tree = evidence.get("plugin_tree_hash")
+    if not isinstance(plugin_tree, str) or not HASH.fullmatch(plugin_tree):
+        raise ContractError("plugin build evidence lacks a valid plugin tree")
+    return plugin_tree
 
 
 def project_qualification(
@@ -1136,12 +1214,14 @@ def project_qualification(
         "identity": {
             "source_commit": final_commit,
             "source_tree": final_tree,
-            "plugin_tree": plugin_build["sha256"]
-            if plugin_build
-            else campaign["product"]["plugin_tree"],
+            "plugin_tree": _selected_plugin_tree(
+                campaign,
+                repository_root,
+                campaign_root,
+            ),
             "bundle_id": campaign["product"]["bundle_id"],
             "bundle_version": campaign["product"]["bundle_version"],
-            "skills": _final_skill_identities(campaign, repository_root, campaign_root),
+            "skills": _final_skill_identities(campaign),
             "target_observed_host": observed_host,
         },
         "claim": {

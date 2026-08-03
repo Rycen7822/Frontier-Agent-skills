@@ -15,6 +15,8 @@ import tempfile
 import time
 from typing import Any
 
+import build_codex_plugin as plugin_builder
+
 from _model_evolution_contract import (
     ContractError,
     SAFE_ID,
@@ -650,6 +652,40 @@ def verify_systemd_user(campaign_id: str) -> dict[str, Any]:
         )
 
 
+def validate_plugin_staging(
+    *,
+    repository_root: Path,
+    plugin_root: Path,
+    evidence_path: Path,
+    expected_commit: str,
+    expected_bundle_id: str,
+    expected_bundle_version: str,
+    expected_skill_versions: dict[str, str],
+) -> dict[str, Any]:
+    try:
+        evidence = plugin_builder.validate_plugin_build(
+            plugin_root,
+            evidence_path,
+            source_root=repository_root,
+            release_authorization=None,
+        )
+    except (OSError, ValueError) as exc:
+        raise OperationError(f"plugin staging validation failed: {exc}") from exc
+    expected = {
+        "source_revision": expected_commit,
+        "bundle_id": expected_bundle_id,
+        "bundle_version": expected_bundle_version,
+        "skill_versions": expected_skill_versions,
+        "output_class": "staging",
+    }
+    for field, value in expected.items():
+        if evidence.get(field) != value:
+            raise OperationError(
+                f"plugin staging {field} differs from selected product"
+            )
+    return evidence
+
+
 def preflight_operations(
     campaign: dict[str, Any],
     *,
@@ -672,6 +708,27 @@ def preflight_operations(
             repository_root=repository_root,
         )
         operations.append(fact)
+    plugin_build = resolve_binding(
+        campaign["product"]["plugin_build"],
+        repository_root,
+        campaign_root,
+    )
+    plugin_root = campaign_root / campaign["product"]["plugin_root"]
+    fact, _ = run_model_free_command(
+        "plugin-build-check",
+        [
+            sys.executable,
+            "scripts/build_codex_plugin.py",
+            "--source-root",
+            str(repository_root),
+            "--validate-plugin-root",
+            str(plugin_root),
+            "--build-evidence",
+            str(plugin_build),
+        ],
+        repository_root=repository_root,
+    )
+    operations.append(fact)
     sentinel = load_json(
         resolve_binding(campaign["sentinel_index"], repository_root, campaign_root),
         label="sentinel index",
@@ -698,12 +755,18 @@ def preflight_operations(
             repository_root=repository_root,
         )
         operations.append(fact)
-    for name in ("campaign", "interaction_probes", "sentinel_index"):
+    for name in (
+        "budget_approval",
+        "campaign",
+        "interaction_probes",
+        "sentinel_index",
+    ):
         started = time.monotonic()
         validate_document(
             with_self_hash(
                 _minimal_schema_fixture(name, campaign),
                 {
+                    "budget_approval": "approval_hash",
                     "campaign": "campaign_hash",
                     "interaction_probes": "probe_set_hash",
                     "sentinel_index": "sentinel_hash",
@@ -750,6 +813,23 @@ def preflight_operations(
 
 
 def _minimal_schema_fixture(name: str, campaign: dict[str, Any]) -> dict[str, Any]:
+    if name == "budget_approval":
+        return {
+            "schema_version": "model-evolution-budget-approval/1",
+            "campaign_id": campaign["campaign_id"],
+            "campaign_hash": campaign["campaign_hash"],
+            "state_revision": campaign["state_revision"],
+            "ceilings": campaign["budgets"]["ceiling"],
+            "planned": {
+                "interaction_probe_requests": 1,
+                "public_plan_count": 4,
+                "artifact_file_ceiling": 1,
+                "wall_clock_seconds": 1,
+            },
+            "approved": True,
+            "approved_by": "preflight-fixture",
+            "approved_at": "2026-08-03T00:00:00Z",
+        }
     if name == "campaign":
         return {key: value for key, value in campaign.items() if key != "campaign_hash"}
     if name == "interaction_probes":
@@ -776,11 +856,14 @@ def _minimal_schema_fixture(name: str, campaign: dict[str, Any]) -> dict[str, An
             "critical_bucket_id": "preflight-critical",
             "spec_template": source,
             "public_scenarios": source,
+            "calibration_gold": source,
+            "calibration_request_ceiling": 1,
             "fixture_roots": [source],
             "verifier_roots": [source],
             "required_coverage_tags": ["preflight"],
             "protected_case_ids": ["preflight-case"],
             "external_holdout_contract_id": "preflight-holdout",
+            "holdout_case_ceiling": 1,
         }
         return {
             "schema_version": "model-evolution-sentinel-index/1",
@@ -1161,6 +1244,14 @@ def candidate_source(
         "changed_paths": changed_paths,
         "root_cause_ids": sorted(set(root_cause_ids)),
         "owner_surface": owner_surface,
+        "skills": {
+            skill_id: bundle_skill_at_revision(
+                repository_root,
+                candidate_commit,
+                skill_id,
+            )
+            for skill_id in SKILL_IDS
+        },
         "semantic_changes": semantic_changes,
         "operations": operations,
     }

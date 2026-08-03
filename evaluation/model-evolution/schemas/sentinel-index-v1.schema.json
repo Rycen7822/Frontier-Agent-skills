@@ -67,21 +67,27 @@
         "critical_bucket_id",
         "spec_template",
         "public_scenarios",
+        "calibration_gold",
+        "calibration_request_ceiling",
         "fixture_roots",
         "verifier_roots",
         "required_coverage_tags",
         "protected_case_ids",
-        "external_holdout_contract_id"
+        "external_holdout_contract_id",
+        "holdout_case_ceiling"
       ],
       "properties": {
         "critical_bucket_id": {"$ref": "#/$defs/safe_id"},
         "spec_template": {"$ref": "#/$defs/binding"},
         "public_scenarios": {"$ref": "#/$defs/binding"},
+        "calibration_gold": {"$ref": "#/$defs/binding"},
+        "calibration_request_ceiling": {"type": "integer", "minimum": 1},
         "fixture_roots": {"$ref": "#/$defs/binding_list"},
         "verifier_roots": {"$ref": "#/$defs/binding_list"},
         "required_coverage_tags": {"$ref": "#/$defs/safe_id_list"},
         "protected_case_ids": {"$ref": "#/$defs/safe_id_list"},
-        "external_holdout_contract_id": {"$ref": "#/$defs/safe_id"}
+        "external_holdout_contract_id": {"$ref": "#/$defs/safe_id"},
+        "holdout_case_ceiling": {"const": 1}
       }
     }
   }

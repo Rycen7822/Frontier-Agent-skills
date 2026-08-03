@@ -139,6 +139,25 @@ def _materialize_fake_host(repository_root: Path, campaign_root: Path) -> Path:
     return write_json(host_path, host)
 
 
+def _materialize_plugin_staging(campaign_root: Path) -> tuple[Path, Path]:
+    plugin_root = campaign_root / "staging/frontier-engineering-plugin"
+    plugin_file = plugin_root / ".codex-plugin/plugin.json"
+    plugin_file.parent.mkdir(parents=True)
+    plugin_file.write_text("{}\n", encoding="utf-8")
+    evidence = with_self_hash(
+        {
+            "schema_version": "plugin-build-evidence/3.0",
+            "source_revision": FIXED_COMMIT,
+            "plugin_tree_hash": "sha256:" + "9" * 64,
+        },
+        "evidence_hash",
+    )
+    return plugin_root, write_json(
+        campaign_root / "inputs/plugin-build-evidence.json",
+        evidence,
+    )
+
+
 def _materialize_probe_set(repository_root: Path, campaign_root: Path) -> Path:
     fixture = repository_root / "fixtures/probe.txt"
     fixture.write_text("inert probe fixture\n", encoding="utf-8")
@@ -172,16 +191,21 @@ def _materialize_sentinel(repository_root: Path, campaign_root: Path) -> Path:
     fixture.parent.mkdir(parents=True, exist_ok=True)
     fixture.write_text("sentinel fixture\n", encoding="utf-8")
     binding = repository_binding(fixture, repository_root, campaign_root)
+    requests = write_json(repository_root / "sentinels/requests.jsonl", {})
+    request_binding = repository_binding(requests, repository_root, campaign_root)
     skills = {
         skill_id: {
             "critical_bucket_id": f"{skill_id}-critical",
             "spec_template": binding,
-            "public_scenarios": binding,
+            "public_scenarios": request_binding,
+            "calibration_gold": request_binding,
+            "calibration_request_ceiling": 1,
             "fixture_roots": [binding],
             "verifier_roots": [binding],
             "required_coverage_tags": ["critical"],
             "protected_case_ids": [f"{skill_id}-protected"],
             "external_holdout_contract_id": f"{skill_id}-holdout",
+            "holdout_case_ceiling": 1,
         }
         for skill_id in SKILL_IDS
     }
@@ -203,6 +227,7 @@ def materialize_campaign(root: Path) -> dict[str, Any]:
     campaign_root.mkdir(parents=True)
     product = _copy_product_files(repository_root)
     host = _materialize_fake_host(repository_root, campaign_root)
+    plugin_root, plugin_build = _materialize_plugin_staging(campaign_root)
     probe_set = _materialize_probe_set(repository_root, campaign_root)
     sentinel = _materialize_sentinel(repository_root, campaign_root)
     bindings = {
@@ -219,6 +244,12 @@ def materialize_campaign(root: Path) -> dict[str, Any]:
         repository_root=repository_root,
         campaign_root=campaign_root,
     )
+    bindings["plugin_build"] = make_binding(
+        plugin_build,
+        root="campaign",
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+    )
     values = {name: json.loads(path.read_text()) for name, path in product.items()}
     campaign = build_initial_campaign(
         campaign_id="campaign-fixture",
@@ -227,6 +258,10 @@ def materialize_campaign(root: Path) -> dict[str, Any]:
         bundle_manifest_binding=bindings["bundle_manifest"],
         bundle_build=values["bundle_build"],
         bundle_build_binding=bindings["bundle_build"],
+        plugin_build_binding=bindings["plugin_build"],
+        plugin_root=plugin_root.relative_to(campaign_root).as_posix(),
+        plugin_tree_hash="sha256:" + "9" * 64,
+        calibration_requests=4,
         static_report=values["static_report"],
         static_report_binding=bindings["static_report"],
         target_host_binding=bindings["host"],
@@ -246,7 +281,10 @@ def materialize_campaign(root: Path) -> dict[str, Any]:
         campaign_root=campaign_root,
     )
     store = CampaignStore(campaign_root, repository_root)
-    store.create(campaign, bootstrap_paths=(host,))
+    store.create(
+        campaign,
+        bootstrap_paths=(host, plugin_build, plugin_root / ".codex-plugin/plugin.json"),
+    )
     return {
         "repository_root": repository_root,
         "campaign_root": campaign_root,
@@ -256,6 +294,8 @@ def materialize_campaign(root: Path) -> dict[str, Any]:
         "paths": {
             **product,
             "host": host,
+            "plugin_build": plugin_build,
+            "plugin_root": plugin_root,
             "probe_set": probe_set,
             "sentinel": sentinel,
         },
@@ -284,7 +324,7 @@ def materialize_bootstrap_evidence(fixture: dict[str, Any]) -> dict[str, Any]:
     state["apparatus_report"] = apparatus
     state["profiles"]["target_observed"] = fixture["bindings"]["host"]
     mark_probe_passed(state, fixture)
-    state["skill_evidence"]["plugin_build"] = fixture["bindings"]["bundle_build"]
+    state["skill_evidence"]["plugin_build"] = fixture["bindings"]["plugin_build"]
     for skill_id in SKILL_IDS:
         state["skill_evidence"][skill_id]["current_summary"] = summary
         state["skill_evidence"][skill_id]["holdout_summary"] = summary
@@ -302,6 +342,36 @@ def mark_probe_passed(state: dict[str, Any], fixture: dict[str, Any]) -> None:
         }
     ]
     state["interaction_probes"]["results"] = fixture["bindings"]["host"]
+
+
+def materialize_budget_approval(
+    fixture: dict[str, Any],
+    state: dict[str, Any],
+    name: str = "budget-approval.json",
+) -> Path:
+    probe_set = json.loads(fixture["paths"]["probe_set"].read_text())
+    return write_json(
+        fixture["campaign_root"] / name,
+        with_self_hash(
+            {
+                "schema_version": "model-evolution-budget-approval/1",
+                "campaign_id": state["campaign_id"],
+                "campaign_hash": state["campaign_hash"],
+                "state_revision": state["state_revision"],
+                "ceilings": state["budgets"]["ceiling"],
+                "planned": {
+                    "interaction_probe_requests": len(probe_set["probes"]),
+                    "public_plan_count": 4,
+                    "artifact_file_ceiling": 5_000,
+                    "wall_clock_seconds": 21_600,
+                },
+                "approved": True,
+                "approved_by": "fixture-release-owner",
+                "approved_at": "2026-08-03T00:00:00Z",
+            },
+            "approval_hash",
+        ),
+    )
 
 
 def materialize_apparatus_report(fixture: dict[str, Any]) -> dict[str, str]:

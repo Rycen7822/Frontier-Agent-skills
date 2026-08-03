@@ -112,6 +112,9 @@
         "source_tree",
         "dirty",
         "plugin_tree",
+        "plugin_build",
+        "plugin_root",
+        "calibration_requests",
         "bundle_manifest",
         "bundle_build",
         "static_report",
@@ -124,6 +127,12 @@
         "source_tree": {"$ref": "#/$defs/git_commit"},
         "dirty": {"const": false},
         "plugin_tree": {"$ref": "#/$defs/hash"},
+        "plugin_build": {"$ref": "#/$defs/binding"},
+        "plugin_root": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*://)[A-Za-z0-9._/-]+$"
+        },
+        "calibration_requests": {"type": "integer", "minimum": 1},
         "bundle_manifest": {"$ref": "#/$defs/binding"},
         "bundle_build": {"$ref": "#/$defs/binding"},
         "static_report": {"$ref": "#/$defs/binding"},
@@ -317,6 +326,7 @@
         "changed_paths",
         "root_cause_ids",
         "owner_surface",
+        "skills",
         "semantic_changes",
         "operations"
       ],
@@ -337,6 +347,7 @@
           "items": {"$ref": "#/$defs/safe_id"}
         },
         "owner_surface": {"$ref": "#/$defs/skill_id"},
+        "skills": {"$ref": "#/$defs/skill_identities"},
         "semantic_changes": {
           "type": "array",
           "minItems": 1,
