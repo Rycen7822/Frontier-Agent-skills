@@ -126,6 +126,7 @@ def _bound_adapter_argv(
     *,
     mode: str = "host",
     timeout: float = 2,
+    profile: str = "fixture-profile",
 ) -> list[str]:
     return [
         sys.executable,
@@ -143,7 +144,7 @@ def _bound_adapter_argv(
         "--effort",
         "high",
         "--profile",
-        "fixture-profile",
+        profile,
         "--sandbox",
         "workspace-write",
         "--timeout",
@@ -157,6 +158,7 @@ def _host_manifest(
     *,
     mode: str = "host",
     timeout: float = 2,
+    profile: str = "fixture-profile",
 ) -> dict:
     manifest = json.loads(
         (
@@ -173,7 +175,13 @@ def _host_manifest(
     manifest["identity"]["execution"]["model"] = MODEL
     manifest["command"].update(
         {
-            "argv": _bound_adapter_argv(fake, path, mode=mode, timeout=timeout),
+            "argv": _bound_adapter_argv(
+                fake,
+                path,
+                mode=mode,
+                timeout=timeout,
+                profile=profile,
+            ),
             "resolved_executable": str(Path(sys.executable).resolve()),
             "executable_sha256": _sha256_file(Path(sys.executable).resolve()),
         }
@@ -261,9 +269,20 @@ def _execute_payload(turn_count: int = 1) -> dict:
 
 
 def _adapter_argv(
-    fake: Path, manifest: Path, *, mode: str = "host", timeout: float = 2
+    fake: Path,
+    manifest: Path,
+    *,
+    mode: str = "host",
+    timeout: float = 2,
+    profile: str = "fixture-profile",
 ) -> list[str]:
-    return _bound_adapter_argv(fake, manifest, mode=mode, timeout=timeout)
+    return _bound_adapter_argv(
+        fake,
+        manifest,
+        mode=mode,
+        timeout=timeout,
+        profile=profile,
+    )
 
 
 def _run_adapter(
@@ -274,12 +293,19 @@ def _run_adapter(
     *,
     mode: str = "host",
     timeout: float = 2,
+    profile: str = "fixture-profile",
     environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     child_environment = dict(os.environ)
     child_environment.update(environment or {})
     return subprocess.run(
-        _adapter_argv(fake, manifest, mode=mode, timeout=timeout),
+        _adapter_argv(
+            fake,
+            manifest,
+            mode=mode,
+            timeout=timeout,
+            profile=profile,
+        ),
         cwd=workspace,
         input=json.dumps(request, separators=(",", ":")) + "\n",
         text=True,
@@ -399,6 +425,9 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                 self.assertNotIn(forbidden, flattened)
             self.assertIn(MODEL, flattened)
             self.assertIn('model_reasoning_effort="high"', flattened)
+            for call in calls:
+                self.assertIn("--profile", call["argv"])
+                self.assertIn("fixture-profile", call["argv"])
             artifacts = records[-1]["artifacts"]
             self.assertEqual(1, len(artifacts))
             self.assertTrue((workspace / Path(artifacts[0]["path"]).name).is_file())
@@ -406,6 +435,27 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                 [Path(artifacts[0]["path"]).name],
                 sorted(path.name for path in workspace.iterdir()),
             )
+
+    def test_default_profile_sentinel_is_omitted_on_fresh_and_resume(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            fake, state = _write_fake_codex(root)
+            manifest_path = root / "host.json"
+            _host_manifest(manifest_path, fake, profile="none")
+            result = _run_adapter(
+                workspace,
+                fake,
+                manifest_path,
+                _request("execute_case", _execute_payload(2)),
+                profile="none",
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            calls = _jsonl(state.read_text(encoding="utf-8"))
+            self.assertEqual(2, len(calls))
+            for call in calls:
+                self.assertNotIn("--profile", call["argv"])
 
     def test_model_grade_and_probe_use_closed_outputs(self) -> None:
         grade = {
