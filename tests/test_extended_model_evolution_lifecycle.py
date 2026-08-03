@@ -424,6 +424,10 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             )
 
     def test_existing_evaluator_fake_chain_and_systemd_argv_are_reused(self) -> None:
+        self.assertIn(
+            operations.PLUGIN_BUILD_GATE_SCRIPT,
+            operations.ALLOWED_GATE_SCRIPTS,
+        )
         facts = operations.fake_full_chain(REPOSITORY_ROOT)
         self.assertEqual(
             [fact["operation_id"] for fact in facts],
