@@ -476,6 +476,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             normalized = _jsonl(probe_result.stdout)[0]
             self.assertEqual("pass", normalized["status"])
             self.assertEqual(THREAD_ID, normalized["session_id"])
+            self.assertEqual(["direct.usage"], normalized["direct_observations"])
 
     def test_process_failures_are_typed_and_stderr_is_redacted(self) -> None:
         cases = {

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontier.local/model-evolution/interaction-probes-v1.schema.json",
+  "title": "Frontier model evolution interaction probes v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "probe_set_id",
+    "adapter_protocol_version",
+    "probes",
+    "probe_set_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "model-evolution-interaction-probes/1"},
+    "probe_set_id": {"$ref": "#/$defs/safe_id"},
+    "adapter_protocol_version": {"const": "codex-interaction-probe/1.0"},
+    "probes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "items": {"$ref": "#/$defs/probe"}
+    },
+    "probe_set_hash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "path", "sha256"],
+      "properties": {
+        "root": {"const": "repository"},
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*://)[A-Za-z0-9._/-]+$"
+        },
+        "sha256": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "probe_id",
+        "capability",
+        "prompt",
+        "fixture",
+        "sandbox",
+        "network",
+        "required_observations",
+        "request_ceiling"
+      ],
+      "properties": {
+        "probe_id": {"$ref": "#/$defs/safe_id"},
+        "capability": {
+          "enum": [
+            "force_load",
+            "natural_routing",
+            "multi_turn",
+            "principal_tracing",
+            "usage_capture",
+            "action_authorization_trace"
+          ]
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "not": {"pattern": "(?i:gpt|claude|gemini|llama|qwen|deepseek)"}
+        },
+        "fixture": {"$ref": "#/$defs/binding"},
+        "sandbox": {"enum": ["read-only", "workspace-write"]},
+        "network": {"const": "denied"},
+        "required_observations": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "thread.started",
+              "turn.completed",
+              "item.completed",
+              "direct.routing",
+              "direct.usage",
+              "permission.denied"
+            ]
+          }
+        },
+        "request_ceiling": {"const": 1}
+      }
+    }
+  }
+}

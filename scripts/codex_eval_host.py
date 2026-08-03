@@ -130,7 +130,6 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         "--effort": args.effort,
         "--profile": args.profile,
         "--sandbox": args.sandbox,
-        "--mode": args.mode,
     }
     if (
         bound_codex != args.codex
@@ -673,11 +672,20 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             else None
         )
     observed_types = normalized["event_types"] if normalized is not None else []
+    direct_observations = []
+    if normalized is not None:
+        if normalized["routing"] is not None:
+            direct_observations.append("direct.routing")
+        if normalized["usage"] is not None:
+            direct_observations.append("direct.usage")
+        if normalized["permission_denials"]:
+            direct_observations.append("permission.denied")
+    observations = [*observed_types, *direct_observations]
     status = (
         "pass"
         if normalized is not None
         and normalized["status"] == "completed"
-        and set(row["expected_event_types"]) <= set(observed_types)
+        and set(row["expected_event_types"]) <= set(observations)
         else "unknown"
     )
     _emit(
@@ -693,6 +701,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             ),
             "session_id": normalized["thread_id"] if normalized is not None else None,
             "event_types": observed_types,
+            "direct_observations": direct_observations,
             "usage": normalized["usage"] if normalized is not None else None,
             "diagnostics": normalized["diagnostics"] if normalized is not None else [],
         }

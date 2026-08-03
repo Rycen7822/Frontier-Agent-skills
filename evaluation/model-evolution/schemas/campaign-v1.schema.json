@@ -1,0 +1,365 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontier.local/model-evolution/campaign-v1.schema.json",
+  "title": "Frontier model evolution campaign v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "campaign_id",
+    "supersedes",
+    "state_revision",
+    "phase",
+    "apparatus_report",
+    "product",
+    "profiles",
+    "interaction_probes",
+    "sentinel_index",
+    "budgets",
+    "plans",
+    "skill_evidence",
+    "candidate",
+    "campaign_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "model-evolution-campaign/1"},
+    "campaign_id": {"$ref": "#/$defs/safe_id"},
+    "supersedes": {
+      "anyOf": [{"$ref": "#/$defs/supersedes"}, {"type": "null"}]
+    },
+    "state_revision": {"type": "integer", "minimum": 0},
+    "phase": {
+      "enum": [
+        "declared",
+        "apparatus_ready",
+        "target_profile_ready",
+        "calibration_ready",
+        "current_evidence_ready",
+        "decision_ready",
+        "candidate_registered",
+        "candidate_evidence_ready",
+        "final_plugin_ready",
+        "holdout_ready"
+      ]
+    },
+    "apparatus_report": {"$ref": "#/$defs/nullable_binding"},
+    "product": {"$ref": "#/$defs/product"},
+    "profiles": {"$ref": "#/$defs/profiles"},
+    "interaction_probes": {"$ref": "#/$defs/interaction_probes"},
+    "sentinel_index": {"$ref": "#/$defs/binding"},
+    "budgets": {"$ref": "#/$defs/budgets"},
+    "plans": {"type": "array", "items": {"$ref": "#/$defs/plan"}},
+    "skill_evidence": {"$ref": "#/$defs/skill_evidence"},
+    "candidate": {"anyOf": [{"$ref": "#/$defs/candidate"}, {"type": "null"}]},
+    "campaign_hash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "git_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "path", "sha256"],
+      "properties": {
+        "root": {"enum": ["repository", "campaign"]},
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*://)[A-Za-z0-9._/-]+$"
+        },
+        "sha256": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "nullable_binding": {
+      "anyOf": [{"$ref": "#/$defs/binding"}, {"type": "null"}]
+    },
+    "skill_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "root_hash", "allow_implicit_invocation"],
+      "properties": {
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "root_hash": {"$ref": "#/$defs/hash"},
+        "allow_implicit_invocation": {"type": "boolean"}
+      }
+    },
+    "skill_identities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "long-document-segmented-writing",
+        "skill-evaluator",
+        "software-quality-workflows",
+        "writing-plans"
+      ],
+      "properties": {
+        "long-document-segmented-writing": {"$ref": "#/$defs/skill_identity"},
+        "skill-evaluator": {"$ref": "#/$defs/skill_identity"},
+        "software-quality-workflows": {"$ref": "#/$defs/skill_identity"},
+        "writing-plans": {"$ref": "#/$defs/skill_identity"}
+      }
+    },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundle_id",
+        "bundle_version",
+        "source_commit",
+        "source_tree",
+        "dirty",
+        "plugin_tree",
+        "bundle_manifest",
+        "bundle_build",
+        "static_report",
+        "skills"
+      ],
+      "properties": {
+        "bundle_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "bundle_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "source_commit": {"$ref": "#/$defs/git_commit"},
+        "source_tree": {"$ref": "#/$defs/git_commit"},
+        "dirty": {"const": false},
+        "plugin_tree": {"$ref": "#/$defs/hash"},
+        "bundle_manifest": {"$ref": "#/$defs/binding"},
+        "bundle_build": {"$ref": "#/$defs/binding"},
+        "static_report": {"$ref": "#/$defs/binding"},
+        "skills": {"$ref": "#/$defs/skill_identities"}
+      }
+    },
+    "predecessor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cycle",
+        "host",
+        "product_hash",
+        "sentinel_hash",
+        "comparison_hash",
+        "qualification"
+      ],
+      "properties": {
+        "cycle": {"$ref": "#/$defs/binding"},
+        "host": {"$ref": "#/$defs/binding"},
+        "product_hash": {"$ref": "#/$defs/hash"},
+        "sentinel_hash": {"$ref": "#/$defs/hash"},
+        "comparison_hash": {"$ref": "#/$defs/hash"},
+        "qualification": {"$ref": "#/$defs/nullable_binding"}
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["predecessor", "target_provisional", "target_observed"],
+      "properties": {
+        "predecessor": {
+          "anyOf": [{"$ref": "#/$defs/predecessor"}, {"type": "null"}]
+        },
+        "target_provisional": {"$ref": "#/$defs/binding"},
+        "target_observed": {"$ref": "#/$defs/nullable_binding"}
+      }
+    },
+    "probe_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_id", "probe_id", "status", "artifact", "result_status"],
+      "properties": {
+        "request_id": {"$ref": "#/$defs/safe_id"},
+        "probe_id": {"$ref": "#/$defs/safe_id"},
+        "status": {"enum": ["reserved", "closed", "blocked"]},
+        "artifact": {"$ref": "#/$defs/nullable_binding"},
+        "result_status": {
+          "type": ["string", "null"],
+          "enum": ["pass", "unsupported", "unknown", null]
+        }
+      }
+    },
+    "interaction_probes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["probe_set", "results", "requests", "blocker"],
+      "properties": {
+        "probe_set": {"$ref": "#/$defs/binding"},
+        "results": {"$ref": "#/$defs/nullable_binding"},
+        "requests": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {"$ref": "#/$defs/probe_request"}
+        },
+        "blocker": {"type": ["string", "null"], "maxLength": 512}
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_requests",
+        "execute",
+        "model_grade",
+        "reviewer",
+        "optimizer",
+        "download_bytes",
+        "artifact_bytes",
+        "candidates"
+      ],
+      "properties": {
+        "provider_requests": {"type": ["integer", "null"], "minimum": 0},
+        "execute": {"type": ["integer", "null"], "minimum": 0},
+        "model_grade": {"type": ["integer", "null"], "minimum": 0},
+        "reviewer": {"type": ["integer", "null"], "minimum": 0},
+        "optimizer": {"type": ["integer", "null"], "minimum": 0},
+        "download_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "artifact_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "candidates": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ceiling", "reserved", "observed", "candidate_count"],
+      "properties": {
+        "ceiling": {"$ref": "#/$defs/counts"},
+        "reserved": {"$ref": "#/$defs/counts"},
+        "observed": {"$ref": "#/$defs/counts"},
+        "candidate_count": {"type": "integer", "minimum": 0, "maximum": 1}
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "skill_id",
+        "plan",
+        "host_hash",
+        "execute_ceiling",
+        "model_grade_ceiling",
+        "runner_status_hash"
+      ],
+      "properties": {
+        "role": {"enum": ["target_current", "target_candidate", "target_holdout"]},
+        "skill_id": {"$ref": "#/$defs/skill_id"},
+        "plan": {"$ref": "#/$defs/binding"},
+        "host_hash": {"$ref": "#/$defs/hash"},
+        "execute_ceiling": {"type": "integer", "minimum": 0},
+        "model_grade_ceiling": {"type": "integer", "minimum": 0},
+        "runner_status_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "skill_id": {
+      "enum": [
+        "long-document-segmented-writing",
+        "skill-evaluator",
+        "software-quality-workflows",
+        "writing-plans"
+      ]
+    },
+    "skill_evidence_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "current_summary",
+        "transition_report",
+        "candidate_summary",
+        "revision_report",
+        "holdout_summary"
+      ],
+      "properties": {
+        "current_summary": {"$ref": "#/$defs/nullable_binding"},
+        "transition_report": {"$ref": "#/$defs/nullable_binding"},
+        "candidate_summary": {"$ref": "#/$defs/nullable_binding"},
+        "revision_report": {"$ref": "#/$defs/nullable_binding"},
+        "holdout_summary": {"$ref": "#/$defs/nullable_binding"}
+      }
+    },
+    "skill_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "long-document-segmented-writing",
+        "skill-evaluator",
+        "software-quality-workflows",
+        "writing-plans",
+        "grader_calibration",
+        "plugin_build"
+      ],
+      "properties": {
+        "long-document-segmented-writing": {"$ref": "#/$defs/skill_evidence_item"},
+        "skill-evaluator": {"$ref": "#/$defs/skill_evidence_item"},
+        "software-quality-workflows": {"$ref": "#/$defs/skill_evidence_item"},
+        "writing-plans": {"$ref": "#/$defs/skill_evidence_item"},
+        "grader_calibration": {"$ref": "#/$defs/nullable_binding"},
+        "plugin_build": {"$ref": "#/$defs/nullable_binding"}
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation_id", "input_hash", "command_hash", "status", "duration_ms"],
+      "properties": {
+        "operation_id": {"$ref": "#/$defs/safe_id"},
+        "input_hash": {"$ref": "#/$defs/hash"},
+        "command_hash": {"$ref": "#/$defs/hash"},
+        "status": {"enum": ["pass", "fail"]},
+        "duration_ms": {"type": "integer", "minimum": 0}
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "base_commit",
+        "candidate_commit",
+        "candidate_tree",
+        "changed_paths",
+        "root_cause_ids",
+        "owner_surface",
+        "semantic_changes",
+        "operations"
+      ],
+      "properties": {
+        "base_commit": {"$ref": "#/$defs/git_commit"},
+        "candidate_commit": {"$ref": "#/$defs/git_commit"},
+        "candidate_tree": {"$ref": "#/$defs/git_commit"},
+        "changed_paths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+$"}
+        },
+        "root_cause_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/safe_id"}
+        },
+        "owner_surface": {"$ref": "#/$defs/skill_id"},
+        "semantic_changes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 500}
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/operation"}
+        }
+      }
+    },
+    "supersedes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["campaign", "imported_reserved", "imported_observed"],
+      "properties": {
+        "campaign": {"$ref": "#/$defs/binding"},
+        "imported_reserved": {"$ref": "#/$defs/counts"},
+        "imported_observed": {"$ref": "#/$defs/counts"}
+      }
+    }
+  }
+}

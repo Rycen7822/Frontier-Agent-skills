@@ -1,0 +1,1273 @@
+#!/usr/bin/env python3
+"""Closed contracts, artifact bindings, and qualification projection."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from functools import lru_cache
+from hashlib import sha256
+import json
+from pathlib import Path, PurePosixPath
+import re
+from typing import Any, Callable
+from urllib.parse import urljoin
+
+import jsonschema
+from referencing import Registry, Resource
+from referencing.exceptions import NoSuchResource, Unresolvable
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+SCHEMA_ROOT = REPOSITORY_ROOT / "evaluation/model-evolution/schemas"
+SCHEMA_FILES = {
+    "campaign": "campaign-v1.schema.json",
+    "interaction_probes": "interaction-probes-v1.schema.json",
+    "sentinel_index": "sentinel-index-v1.schema.json",
+    "qualification": "qualification-v1.schema.json",
+}
+HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
+SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+SKILL_IDS = (
+    "long-document-segmented-writing",
+    "skill-evaluator",
+    "software-quality-workflows",
+    "writing-plans",
+)
+GATE_IDS = (
+    "apparatus",
+    "identity_comparability",
+    "critical_function",
+    "safety_protected",
+    "incremental_value",
+    "revision",
+    "context_cost",
+    "statistical_support",
+    "release_identity",
+)
+CRITICAL_PROBE_CAPABILITIES = {
+    "force_load",
+    "natural_routing",
+    "action_authorization_trace",
+}
+HASH_FIELDS = {
+    "model-evolution-campaign/1": "campaign_hash",
+    "model-evolution-interaction-probes/1": "probe_set_hash",
+    "model-evolution-sentinel-index/1": "sentinel_hash",
+    "model-qualification/1": "qualification_hash",
+}
+
+
+class ContractError(ValueError):
+    """A deterministic contract or binding failure."""
+
+
+def canonical_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def content_hash(value: bytes) -> str:
+    return "sha256:" + sha256(value).hexdigest()
+
+
+def self_hash(value: dict[str, Any], field: str) -> str:
+    return content_hash(
+        canonical_bytes({key: item for key, item in value.items() if key != field})
+    )
+
+
+def with_self_hash(value: dict[str, Any], field: str) -> dict[str, Any]:
+    result = dict(value)
+    result[field] = self_hash(result, field)
+    return result
+
+
+def strict_json_bytes(raw: bytes, *, label: str) -> Any:
+    def no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ContractError(f"{label} contains duplicate key {key!r}")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> None:
+        raise ContractError(f"{label} contains non-finite number {value}")
+
+    try:
+        return json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=no_duplicates,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ContractError(f"{label} is not strict UTF-8 JSON") from exc
+
+
+def load_json(path: Path, *, label: str | None = None) -> Any:
+    if path.is_symlink() or not path.is_file():
+        raise ContractError(f"{label or path.name} must be a regular non-symlink file")
+    return strict_json_bytes(path.read_bytes(), label=label or path.name)
+
+
+def _schema(name: str) -> dict[str, Any]:
+    try:
+        path = SCHEMA_ROOT / SCHEMA_FILES[name]
+    except KeyError as exc:
+        raise ContractError(f"unknown schema {name!r}") from exc
+    value = load_json(path, label=f"{name} schema")
+    if not isinstance(value, dict):
+        raise ContractError(f"{name} schema is not an object")
+    return value
+
+
+def validate_schema(value: Any, name: str) -> None:
+    try:
+        jsonschema.Draft202012Validator(
+            _schema(name), format_checker=jsonschema.FormatChecker()
+        ).validate(value)
+    except jsonschema.ValidationError as exc:
+        location = "/" + "/".join(str(item) for item in exc.absolute_path)
+        raise ContractError(
+            f"{name} schema violation at {location}: {exc.message}"
+        ) from exc
+
+
+def verify_self_hash(value: dict[str, Any], field: str) -> None:
+    claimed = value.get(field)
+    if not isinstance(claimed, str) or claimed != self_hash(value, field):
+        raise ContractError(f"{field} differs from canonical content")
+
+
+def validate_document(value: Any, name: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ContractError(f"{name} document must be an object")
+    validate_schema(value, name)
+    schema_version = value.get("schema_version")
+    field = HASH_FIELDS.get(schema_version)
+    if field is None:
+        raise ContractError(f"{name} schema version has no hash owner")
+    verify_self_hash(value, field)
+    if name == "interaction_probes":
+        probe_ids = [probe["probe_id"] for probe in value["probes"]]
+        if len(probe_ids) != len(set(probe_ids)):
+            raise ContractError("interaction probe IDs must be unique")
+        capabilities = [probe["capability"] for probe in value["probes"]]
+        if len(capabilities) != len(set(capabilities)):
+            raise ContractError("interaction probe capabilities must be unique")
+    elif name == "campaign":
+        has_apparatus = value["apparatus_report"] is not None
+        if (value["phase"] == "declared" and has_apparatus) or (
+            value["phase"] != "declared" and not has_apparatus
+        ):
+            raise ContractError("campaign phase and apparatus report differ")
+        observed_host = value["profiles"]["target_observed"]
+        requests = value["interaction_probes"]["requests"]
+        results = value["interaction_probes"]["results"]
+        if observed_host is not None and (
+            not requests
+            or results is None
+            or any(request["status"] != "closed" for request in requests)
+        ):
+            raise ContractError("observed Host lacks a closed probe result set")
+        if (
+            value["phase"] not in {"declared", "apparatus_ready"}
+            and observed_host is None
+        ):
+            raise ContractError("campaign phase requires an observed Host")
+    elif name == "qualification":
+        if [gate["gate_id"] for gate in value["gates"]] != list(GATE_IDS):
+            raise ContractError("qualification gates are not in canonical order")
+        if (
+            derive_decision(value["gates"], value["limits"], value["blockers"])
+            != value["decision"]
+        ):
+            raise ContractError("qualification decision differs from ordered gates")
+    return value
+
+
+def _relative_path(path: str) -> PurePosixPath:
+    if not isinstance(path, str) or not path or "://" in path or "\\" in path:
+        raise ContractError("artifact path must be a normalized relative POSIX path")
+    relative = PurePosixPath(path)
+    if relative.is_absolute() or any(
+        part in {"", ".", ".."} for part in relative.parts
+    ):
+        raise ContractError("artifact path escapes its declared root")
+    if relative.as_posix() != path:
+        raise ContractError("artifact path is not normalized")
+    return relative
+
+
+def resolve_binding(
+    binding: dict[str, Any],
+    repository_root: Path,
+    campaign_root: Path,
+) -> Path:
+    if set(binding) != {"root", "path", "sha256"} or not HASH.fullmatch(
+        str(binding.get("sha256"))
+    ):
+        raise ContractError("artifact binding shape is invalid")
+    roots = {"repository": repository_root, "campaign": campaign_root}
+    try:
+        root = roots[binding["root"]].resolve(strict=True)
+    except (KeyError, OSError) as exc:
+        raise ContractError("artifact binding root is invalid") from exc
+    relative = _relative_path(binding["path"])
+    candidate = root.joinpath(*relative.parts)
+    if candidate.is_symlink() or not candidate.is_file():
+        raise ContractError(
+            f"bound artifact is missing or symlinked: {binding['path']}"
+        )
+    resolved = candidate.resolve(strict=True)
+    if not resolved.is_relative_to(root):
+        raise ContractError("bound artifact escapes its declared root")
+    if content_hash(resolved.read_bytes()) != binding["sha256"]:
+        raise ContractError(f"bound artifact hash differs: {binding['path']}")
+    return resolved
+
+
+def make_binding(
+    path: Path,
+    *,
+    root: str,
+    repository_root: Path,
+    campaign_root: Path,
+) -> dict[str, str]:
+    roots = {"repository": repository_root, "campaign": campaign_root}
+    if root not in roots:
+        raise ContractError("artifact binding root is invalid")
+    base = roots[root].resolve(strict=True)
+    if path.is_symlink() or not path.is_file():
+        raise ContractError(
+            "artifact binding target must be a regular non-symlink file"
+        )
+    resolved = path.resolve(strict=True)
+    if not resolved.is_relative_to(base):
+        raise ContractError("artifact is outside its declared root")
+    relative = resolved.relative_to(base).as_posix()
+    _relative_path(relative)
+    return {
+        "root": root,
+        "path": relative,
+        "sha256": content_hash(resolved.read_bytes()),
+    }
+
+
+def validate_all_bindings(
+    value: Any,
+    repository_root: Path,
+    campaign_root: Path,
+    repository_fallback: Callable[[str, str], bool] | None = None,
+) -> None:
+    if isinstance(value, dict):
+        if set(value) == {"root", "path", "sha256"}:
+            if value["root"] == "repository" and repository_fallback is not None:
+                if not HASH.fullmatch(str(value["sha256"])):
+                    raise ContractError("artifact binding shape is invalid")
+                relative = _relative_path(value["path"])
+                candidate = repository_root.joinpath(*relative.parts)
+                if candidate.is_symlink() or not candidate.resolve(
+                    strict=False
+                ).is_relative_to(repository_root.resolve(strict=True)):
+                    raise ContractError(
+                        f"bound artifact is symlinked or escapes: {value['path']}"
+                    )
+                try:
+                    resolve_binding(value, repository_root, campaign_root)
+                except ContractError:
+                    if not repository_fallback(value["path"], value["sha256"]):
+                        raise
+            else:
+                resolve_binding(value, repository_root, campaign_root)
+            return
+        for item in value.values():
+            validate_all_bindings(
+                item,
+                repository_root,
+                campaign_root,
+                repository_fallback,
+            )
+    elif isinstance(value, list):
+        for item in value:
+            validate_all_bindings(
+                item,
+                repository_root,
+                campaign_root,
+                repository_fallback,
+            )
+
+
+def parse_utc(value: str) -> datetime:
+    if not isinstance(value, str) or not value.endswith("Z"):
+        raise ContractError("timestamp must be UTC and end in Z")
+    try:
+        return datetime.fromisoformat(value.removesuffix("Z") + "+00:00")
+    except ValueError as exc:
+        raise ContractError("timestamp is not ISO-8601 UTC") from exc
+
+
+def build_initial_campaign(
+    *,
+    campaign_id: str,
+    git_identity: dict[str, str],
+    bundle_manifest: dict[str, Any],
+    bundle_manifest_binding: dict[str, Any],
+    bundle_build: dict[str, Any],
+    bundle_build_binding: dict[str, Any],
+    static_report: dict[str, Any],
+    static_report_binding: dict[str, Any],
+    target_host_binding: dict[str, Any],
+    probe_set_binding: dict[str, Any],
+    sentinel_binding: dict[str, Any],
+    ceilings: dict[str, int | None],
+    repository_root: Path,
+    campaign_root: Path,
+    predecessor: dict[str, Any] | None = None,
+    supersedes: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if not SAFE_ID.fullmatch(campaign_id):
+        raise ContractError("campaign ID is unsafe")
+    if set(bundle_build.get("skills", {})) != set(SKILL_IDS):
+        raise ContractError("Bundle build does not contain the exact four Skills")
+    manifest_skills = {
+        item["id"]: item
+        for item in bundle_manifest.get("skills", [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    if set(manifest_skills) != set(SKILL_IDS):
+        raise ContractError(
+            "Bundle source manifest does not contain the exact four Skills"
+        )
+    if (
+        static_report.get("bundle_id")
+        != f"frontier-engineering/{bundle_manifest.get('bundle_version')}"
+    ):
+        raise ContractError("Bundle and static report identities differ")
+    verify_self_hash(static_report, "report_hash")
+    probe_set = load_json(
+        resolve_binding(probe_set_binding, repository_root, campaign_root),
+        label="interaction probe set",
+    )
+    sentinel = load_json(
+        resolve_binding(sentinel_binding, repository_root, campaign_root),
+        label="sentinel index",
+    )
+    host = load_json(
+        resolve_binding(target_host_binding, repository_root, campaign_root),
+        label="target provisional Host",
+    )
+    validate_document(probe_set, "interaction_probes")
+    validate_document(sentinel, "sentinel_index")
+    _validate_external_schema(
+        host,
+        REPOSITORY_ROOT / "skill-evaluator/schemas/host-manifest-v1.schema.json",
+        "target provisional Host",
+    )
+    verify_self_hash(host, "manifest_hash")
+    expected_counts = {
+        "provider_requests",
+        "execute",
+        "model_grade",
+        "reviewer",
+        "optimizer",
+        "download_bytes",
+        "artifact_bytes",
+        "candidates",
+    }
+    if set(ceilings) != expected_counts:
+        raise ContractError("campaign budget ceilings are incomplete")
+    reserved = (
+        dict(supersedes["imported_reserved"])
+        if supersedes is not None
+        else {field: 0 for field in ceilings}
+    )
+    observed: dict[str, int | None] = (
+        dict(supersedes["imported_observed"])
+        if supersedes is not None
+        else {field: 0 for field in ceilings}
+    )
+    if supersedes is None:
+        observed["artifact_bytes"] = None
+    for field, amount in reserved.items():
+        if amount is None or (ceilings[field] is not None and amount > ceilings[field]):
+            raise ContractError(
+                f"imported reservation exceeds campaign ceiling for {field}"
+            )
+    skills = {
+        skill_id: {
+            "version": bundle_build["skills"][skill_id]["version"],
+            "root_hash": bundle_build["skills"][skill_id]["root_hash"],
+            "allow_implicit_invocation": bundle_build["skills"][skill_id][
+                "allow_implicit_invocation"
+            ],
+        }
+        for skill_id in SKILL_IDS
+    }
+    for skill_id in SKILL_IDS:
+        if skills[skill_id]["version"] != manifest_skills[skill_id]["version"]:
+            raise ContractError(f"Bundle Skill version differs for {skill_id}")
+    evidence_item = {
+        "current_summary": None,
+        "transition_report": None,
+        "candidate_summary": None,
+        "revision_report": None,
+        "holdout_summary": None,
+    }
+    state = {
+        "schema_version": "model-evolution-campaign/1",
+        "campaign_id": campaign_id,
+        "supersedes": supersedes,
+        "state_revision": 0,
+        "phase": "declared",
+        "apparatus_report": None,
+        "product": {
+            "bundle_id": static_report["bundle_id"],
+            "bundle_version": bundle_manifest["bundle_version"],
+            "source_commit": git_identity["commit"],
+            "source_tree": git_identity["tree"],
+            "dirty": False,
+            "plugin_tree": bundle_build_binding["sha256"],
+            "bundle_manifest": bundle_manifest_binding,
+            "bundle_build": bundle_build_binding,
+            "static_report": static_report_binding,
+            "skills": skills,
+        },
+        "profiles": {
+            "predecessor": predecessor,
+            "target_provisional": target_host_binding,
+            "target_observed": None,
+        },
+        "interaction_probes": {
+            "probe_set": probe_set_binding,
+            "results": None,
+            "requests": [],
+            "blocker": None,
+        },
+        "sentinel_index": sentinel_binding,
+        "budgets": {
+            "ceiling": ceilings,
+            "reserved": reserved,
+            "observed": observed,
+            "candidate_count": reserved["candidates"],
+        },
+        "plans": [],
+        "skill_evidence": {
+            **{skill_id: dict(evidence_item) for skill_id in SKILL_IDS},
+            "grader_calibration": None,
+            "plugin_build": None,
+        },
+        "candidate": None,
+    }
+    state = with_self_hash(state, "campaign_hash")
+    validate_document(state, "campaign")
+    return state
+
+
+@lru_cache(maxsize=1)
+def _external_schema_store() -> dict[str, dict[str, Any]]:
+    root = REPOSITORY_ROOT / "skill-evaluator/schemas"
+    store: dict[str, dict[str, Any]] = {}
+    for path in sorted(root.glob("*.json")):
+        value = load_json(path, label=f"evaluator schema {path.name}")
+        if not isinstance(value, dict) or not isinstance(value.get("$id"), str):
+            raise ContractError(f"evaluator schema lacks local $id: {path.name}")
+        store[value["$id"]] = value
+        store[path.name] = value
+    return store
+
+
+def _no_remote_schema(uri: str) -> Resource:
+    raise NoSuchResource(ref=uri)
+
+
+def _validate_external_schema(
+    value: dict[str, Any], schema_path: Path, label: str
+) -> None:
+    schema = load_json(schema_path, label=f"{label} schema")
+    store = _external_schema_store()
+    base = schema.get("$id", "")
+    for name, item in list(store.items()):
+        if "://" not in name:
+            store[urljoin(base, name)] = item
+    registry = Registry(retrieve=_no_remote_schema).with_resources(
+        (uri, Resource.from_contents(item))
+        for uri, item in store.items()
+        if "://" in uri
+    )
+    try:
+        jsonschema.Draft202012Validator(schema, registry=registry).validate(value)
+    except jsonschema.ValidationError as exc:
+        location = "/" + "/".join(str(item) for item in exc.absolute_path)
+        raise ContractError(f"{label} violation at {location}: {exc.message}") from exc
+    except Unresolvable as exc:
+        raise ContractError(
+            f"{label} has an unresolved local schema reference"
+        ) from exc
+
+
+def evaluator_evidence_status(path: Path, *, kind: str) -> str:
+    value = load_json(path, label=f"{kind} evidence")
+    if not isinstance(value, dict):
+        raise ContractError(f"{kind} evidence must be an object")
+    if kind in {"current_summary", "candidate_summary", "holdout_summary"}:
+        _validate_external_schema(
+            value,
+            REPOSITORY_ROOT / "skill-evaluator/schemas/analysis-summary-v4.schema.json",
+            kind,
+        )
+        verify_self_hash(value, "summary_hash")
+        if (
+            value["evidence_status"] != "complete"
+            or value["final_authority_status"] != "eligible"
+        ):
+            return "blocked"
+        return "pass" if value["usefulness_status"] == "supported" else "limited"
+    if kind in {"transition_report", "revision_report"}:
+        _validate_external_schema(
+            value,
+            REPOSITORY_ROOT
+            / "skill-evaluator/schemas/comparison-report-v1.schema.json",
+            kind,
+        )
+        verify_self_hash(value, "comparison_report_hash")
+        if value["authority_eligibility"] != "eligible":
+            return "blocked"
+        result = value["result"]
+        if kind == "revision_report":
+            return (
+                "pass"
+                if result.get("kind") == "revision" and result.get("status") == "closed"
+                else "blocked"
+            )
+        if result.get("kind") != "model_transition":
+            return "blocked"
+        return (
+            "pass"
+            if result.get("classification") == "retained_specialized_value"
+            else "limited"
+        )
+    if kind == "grader_calibration":
+        _validate_external_schema(
+            value,
+            REPOSITORY_ROOT
+            / "skill-evaluator/schemas/grader-calibration-v2.schema.json",
+            kind,
+        )
+        verify_self_hash(value, "calibration_hash")
+        return "pass"
+    raise ContractError(f"unsupported evaluator evidence kind {kind!r}")
+
+
+def validate_bundle_build(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ContractError("plugin build must be a JSON object")
+    schema = load_json(
+        REPOSITORY_ROOT / "bundle/frontier-engineering-bundle.schema.json",
+        label="Bundle build schema",
+    )
+    try:
+        jsonschema.Draft202012Validator(schema).validate(value)
+    except jsonschema.ValidationError as exc:
+        location = "/" + "/".join(str(item) for item in exc.absolute_path)
+        raise ContractError(
+            f"plugin build schema violation at {location}: {exc.message}"
+        ) from exc
+    unsigned = {key: item for key, item in value.items() if key != "release_build_id"}
+    expected = "build-" + sha256(canonical_bytes(unsigned)).hexdigest()[:24]
+    if value["release_build_id"] != expected:
+        raise ContractError(
+            "plugin build release_build_id differs from canonical content"
+        )
+    if set(value["skills"]) != set(SKILL_IDS):
+        raise ContractError("plugin build does not contain exact four Skill identities")
+    return value
+
+
+def prepare_predecessor(
+    *,
+    cycle_binding: dict[str, Any],
+    host_binding: dict[str, Any],
+    comparison_binding: dict[str, Any],
+    qualification_binding: dict[str, Any] | None,
+    current_bundle_id: str,
+    repository_root: Path,
+    campaign_root: Path,
+) -> dict[str, Any]:
+    cycle = load_json(
+        resolve_binding(cycle_binding, repository_root, campaign_root),
+        label="predecessor campaign",
+    )
+    validate_document(cycle, "campaign")
+    if cycle["phase"] != "holdout_ready":
+        raise ContractError("predecessor campaign is not closed at holdout_ready")
+    if cycle["product"]["bundle_id"] != current_bundle_id:
+        raise ContractError("predecessor product differs from current Bundle")
+    observed_host = cycle["profiles"]["target_observed"]
+    if observed_host is None or observed_host["sha256"] != host_binding["sha256"]:
+        raise ContractError("predecessor Host differs from its closed campaign")
+    host = load_json(
+        resolve_binding(host_binding, repository_root, campaign_root),
+        label="predecessor Host",
+    )
+    _validate_external_schema(
+        host,
+        REPOSITORY_ROOT / "skill-evaluator/schemas/host-manifest-v1.schema.json",
+        "predecessor Host",
+    )
+    verify_self_hash(host, "manifest_hash")
+    comparison_path = resolve_binding(
+        comparison_binding, repository_root, campaign_root
+    )
+    if (
+        evaluator_evidence_status(comparison_path, kind="transition_report")
+        == "blocked"
+    ):
+        raise ContractError("predecessor comparison is not closed evidence")
+    comparison = load_json(comparison_path, label="predecessor comparison")
+    product_hash = cycle["product"]["plugin_tree"]
+    if qualification_binding is not None:
+        qualification = load_json(
+            resolve_binding(qualification_binding, repository_root, campaign_root),
+            label="predecessor qualification",
+        )
+        validate_document(qualification, "qualification")
+        if qualification["campaign_hash"] != cycle["campaign_hash"]:
+            raise ContractError("predecessor qualification differs from its campaign")
+        if qualification["decision"] == "blocked":
+            raise ContractError("blocked qualification cannot be a predecessor")
+        product_hash = qualification["identity"]["plugin_tree"]
+    return {
+        "cycle": cycle_binding,
+        "host": host_binding,
+        "product_hash": product_hash,
+        "sentinel_hash": cycle["sentinel_index"]["sha256"],
+        "comparison_hash": comparison["comparison_report_hash"],
+        "qualification": qualification_binding,
+    }
+
+
+def prepare_supersedes(
+    *,
+    campaign_binding: dict[str, Any],
+    target_host_binding: dict[str, Any],
+    repository_root: Path,
+    campaign_root: Path,
+) -> dict[str, Any]:
+    old_path = resolve_binding(campaign_binding, repository_root, campaign_root)
+    old = load_json(old_path, label="superseded campaign")
+    validate_document(old, "campaign")
+    if old["supersedes"] is not None:
+        raise ContractError("a superseding campaign cannot be superseded again")
+    if old["profiles"]["target_provisional"]["sha256"] != target_host_binding["sha256"]:
+        raise ContractError("superseded campaign targets a different Host")
+    qualification_path = old_path.parent / "qualification/qualification.json"
+    qualification = load_json(qualification_path, label="superseded qualification")
+    validate_document(qualification, "qualification")
+    if qualification["campaign_hash"] != old["campaign_hash"]:
+        raise ContractError("superseded qualification differs from its campaign")
+    if qualification["decision"] != "blocked":
+        raise ContractError("only a blocked pre-public campaign may be superseded")
+    return {
+        "campaign": campaign_binding,
+        "imported_reserved": dict(old["budgets"]["reserved"]),
+        "imported_observed": dict(old["budgets"]["observed"]),
+    }
+
+
+def derive_decision(
+    gates: list[dict[str, Any]],
+    limits: list[dict[str, Any]],
+    blockers: list[dict[str, Any]],
+) -> str:
+    statuses = {gate["status"] for gate in gates}
+    if blockers or statuses & {"blocked", "unobserved"}:
+        return "blocked"
+    if limits or "limited" in statuses:
+        return "qualified_with_limits"
+    return "qualified"
+
+
+def _counts_remaining(
+    ceiling: dict[str, Any], reserved: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        field: (
+            None
+            if ceiling[field] is None or reserved[field] is None
+            else ceiling[field] - reserved[field]
+        )
+        for field in ceiling
+    }
+
+
+def _apparatus_artifact(
+    campaign: dict[str, Any],
+    repository_root: Path,
+    campaign_root: Path,
+) -> dict[str, str] | None:
+    binding = campaign["apparatus_report"]
+    if binding is None:
+        return None
+    value = load_json(
+        resolve_binding(binding, repository_root, campaign_root),
+        label="apparatus report",
+    )
+    required = {
+        "schema_version",
+        "campaign_id",
+        "source_commit",
+        "source_tree",
+        "campaign_hash",
+        "status",
+        "operations",
+        "apparatus_report_hash",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        raise ContractError("apparatus report shape is invalid")
+    verify_self_hash(value, "apparatus_report_hash")
+    operation_fields = {
+        "operation_id",
+        "input_hash",
+        "command_hash",
+        "status",
+        "duration_ms",
+    }
+
+    def valid_operation(operation: Any) -> bool:
+        return (
+            isinstance(operation, dict)
+            and set(operation) == operation_fields
+            and isinstance(operation.get("operation_id"), str)
+            and SAFE_ID.fullmatch(operation["operation_id"]) is not None
+            and HASH.fullmatch(str(operation.get("input_hash"))) is not None
+            and HASH.fullmatch(str(operation.get("command_hash"))) is not None
+            and operation.get("status") == "pass"
+            and isinstance(operation.get("duration_ms"), int)
+            and not isinstance(operation["duration_ms"], bool)
+            and operation["duration_ms"] >= 0
+        )
+
+    if (
+        value["schema_version"] != "model-evolution-apparatus-report/1"
+        or value["campaign_id"] != campaign["campaign_id"]
+        or value["source_commit"] != campaign["product"]["source_commit"]
+        or value["source_tree"] != campaign["product"]["source_tree"]
+        or value["status"] != "pass"
+        or not value["operations"]
+        or any(not valid_operation(operation) for operation in value["operations"])
+    ):
+        raise ContractError("apparatus report identity or operation status is invalid")
+    return binding
+
+
+def _evidence_result(
+    binding: dict[str, Any] | None,
+    *,
+    kind: str,
+    repository_root: Path,
+    campaign_root: Path,
+) -> str:
+    if binding is None:
+        return "unobserved"
+    path = resolve_binding(binding, repository_root, campaign_root)
+    return evaluator_evidence_status(path, kind=kind)
+
+
+def _issue(
+    code: str, scope: str, evidence: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    return {"code": code, "scope": scope, "evidence": evidence}
+
+
+def assess_interaction_probes(
+    campaign: dict[str, Any],
+    *,
+    repository_root: Path,
+    campaign_root: Path,
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    requests = campaign["interaction_probes"]["requests"]
+    if not requests:
+        return "unobserved", [], []
+    probe_set = load_json(
+        resolve_binding(
+            campaign["interaction_probes"]["probe_set"],
+            repository_root,
+            campaign_root,
+        ),
+        label="interaction probe set",
+    )
+    validate_document(probe_set, "interaction_probes")
+    capabilities = {row["probe_id"]: row["capability"] for row in probe_set["probes"]}
+    blockers: list[dict[str, Any]] = []
+    limits: list[dict[str, Any]] = []
+    for request in requests:
+        if request["result_status"] == "pass":
+            continue
+        capability = capabilities[request["probe_id"]]
+        issue = _issue(
+            "critical-probe-not-pass"
+            if capability in CRITICAL_PROBE_CAPABILITIES
+            else "noncritical-probe-not-pass",
+            capability,
+            request["artifact"],
+        )
+        (blockers if capability in CRITICAL_PROBE_CAPABILITIES else limits).append(
+            issue
+        )
+    return (
+        ("blocked" if blockers else "limited" if limits else "pass"),
+        limits,
+        blockers,
+    )
+
+
+def _gate(
+    gate_id: str,
+    status: str,
+    evidence: dict[str, Any] | None,
+    reason_code: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "gate_id": gate_id,
+        "status": status,
+        "evidence": evidence,
+        "reason_code": reason_code,
+    }
+
+
+def _final_skill_identities(
+    campaign: dict[str, Any],
+    repository_root: Path,
+    campaign_root: Path,
+) -> dict[str, Any]:
+    build = campaign["skill_evidence"]["plugin_build"]
+    if build is None:
+        skills = campaign["product"]["skills"]
+    else:
+        value = load_json(
+            resolve_binding(build, repository_root, campaign_root), label="plugin build"
+        )
+        skills = value.get("skills") if isinstance(value, dict) else None
+    if not isinstance(skills, dict) or set(skills) != set(SKILL_IDS):
+        raise ContractError(
+            "plugin build does not bind the exact four Skill identities"
+        )
+    return {
+        skill_id: {
+            "version": skills[skill_id]["version"],
+            "root_hash": skills[skill_id]["root_hash"],
+        }
+        for skill_id in SKILL_IDS
+    }
+
+
+def project_qualification(
+    campaign: dict[str, Any],
+    *,
+    repository_root: Path,
+    campaign_root: Path,
+    observed_as_of: str,
+    valid_until: str,
+    repository_fallback: Callable[[str, str], bool] | None = None,
+) -> dict[str, Any]:
+    validate_document(campaign, "campaign")
+    validate_all_bindings(
+        campaign,
+        repository_root,
+        campaign_root,
+        repository_fallback,
+    )
+    if parse_utc(valid_until) <= parse_utc(observed_as_of):
+        raise ContractError("qualification valid-until must be after observed-as-of")
+
+    apparatus = _apparatus_artifact(campaign, repository_root, campaign_root)
+    observed_host = campaign["profiles"]["target_observed"]
+    plugin_build = campaign["skill_evidence"]["plugin_build"]
+    skill_status: dict[str, dict[str, str]] = {}
+    limits: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+    probe_status, probe_limits, probe_blockers = assess_interaction_probes(
+        campaign,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+    )
+    limits.extend(probe_limits)
+    blockers.extend(probe_blockers)
+    for skill_id in SKILL_IDS:
+        evidence = campaign["skill_evidence"][skill_id]
+        current = _evidence_result(
+            evidence["current_summary"],
+            kind="current_summary",
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+        )
+        transition = (
+            "limited"
+            if campaign["profiles"]["predecessor"] is None
+            else _evidence_result(
+                evidence["transition_report"],
+                kind="transition_report",
+                repository_root=repository_root,
+                campaign_root=campaign_root,
+            )
+        )
+        revision = (
+            "pass"
+            if campaign["candidate"] is None
+            else _evidence_result(
+                evidence["revision_report"],
+                kind="revision_report",
+                repository_root=repository_root,
+                campaign_root=campaign_root,
+            )
+        )
+        holdout = _evidence_result(
+            evidence["holdout_summary"],
+            kind="holdout_summary",
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+        )
+        blocking = next(
+            (
+                f"{skill_id}-{name.replace('_', '-')}"
+                for name, status in (
+                    ("current", current),
+                    ("transition", transition),
+                    ("revision", revision),
+                    ("holdout", holdout),
+                )
+                if status in {"blocked", "unobserved"}
+            ),
+            None,
+        )
+        skill_status[skill_id] = {
+            "current_usefulness": current,
+            "critical_protected_safety": current,
+            "transition": transition,
+            "revision": revision,
+            "holdout": holdout,
+            "blocker": blocking,
+        }
+    if apparatus is None:
+        blockers.append(_issue("apparatus-unobserved", "campaign"))
+    if observed_host is None:
+        blockers.append(_issue("target-host-unobserved", "host"))
+    if campaign["interaction_probes"]["blocker"] is not None:
+        blockers.append(_issue("interaction-probe-blocked", "host"))
+    if plugin_build is None:
+        blockers.append(_issue("final-plugin-unobserved", "release"))
+    for skill_id, result in skill_status.items():
+        if result["blocker"] is not None:
+            blockers.append(_issue(result["blocker"], skill_id))
+    if campaign["profiles"]["predecessor"] is None:
+        limits.append(_issue("bootstrap-lineage", "longitudinal"))
+
+    all_current = [result["current_usefulness"] for result in skill_status.values()]
+    all_transition = [result["transition"] for result in skill_status.values()]
+    all_revision = [result["revision"] for result in skill_status.values()]
+    all_holdout = [result["holdout"] for result in skill_status.values()]
+
+    def combined(values: list[str]) -> str:
+        if "blocked" in values:
+            return "blocked"
+        if "unobserved" in values:
+            return "unobserved"
+        if "limited" in values:
+            return "limited"
+        return "pass"
+
+    lanes = {
+        "static_product": {
+            "status": "pass",
+            "evidence": campaign["product"]["static_report"],
+        },
+        "host_integration": {
+            "status": probe_status if observed_host is not None else "unobserved",
+            "evidence": observed_host,
+        },
+        "task_behavior": {
+            "status": combined(all_current + all_holdout),
+            "evidence": next(
+                (
+                    campaign["skill_evidence"][skill_id]["holdout_summary"]
+                    for skill_id in SKILL_IDS
+                    if campaign["skill_evidence"][skill_id]["holdout_summary"]
+                    is not None
+                ),
+                None,
+            ),
+        },
+        "context_cost": {
+            "status": combined(all_current),
+            "evidence": next(
+                (
+                    campaign["skill_evidence"][skill_id]["current_summary"]
+                    for skill_id in SKILL_IDS
+                    if campaign["skill_evidence"][skill_id]["current_summary"]
+                    is not None
+                ),
+                None,
+            ),
+        },
+        "longitudinal": {
+            "status": "limited"
+            if campaign["profiles"]["predecessor"] is None
+            else combined(all_transition),
+            "evidence": next(
+                (
+                    campaign["skill_evidence"][skill_id]["transition_report"]
+                    for skill_id in SKILL_IDS
+                    if campaign["skill_evidence"][skill_id]["transition_report"]
+                    is not None
+                ),
+                None,
+            ),
+        },
+    }
+    gates = [
+        _gate(
+            "apparatus",
+            "pass" if apparatus else "unobserved",
+            apparatus,
+            "apparatus-unobserved" if apparatus is None else None,
+        ),
+        _gate(
+            "identity_comparability",
+            probe_status if observed_host else "unobserved",
+            observed_host,
+            (
+                "target-host-unobserved"
+                if observed_host is None
+                else "interaction-probe-not-pass"
+                if probe_status != "pass"
+                else None
+            ),
+        ),
+        _gate(
+            "critical_function",
+            combined(all_current + all_holdout),
+            lanes["task_behavior"]["evidence"],
+        ),
+        _gate(
+            "safety_protected",
+            combined(all_current + all_holdout),
+            lanes["task_behavior"]["evidence"],
+        ),
+        _gate(
+            "incremental_value",
+            combined(all_current),
+            lanes["task_behavior"]["evidence"],
+        ),
+        _gate(
+            "revision",
+            combined(all_revision),
+            next(
+                (
+                    campaign["skill_evidence"][skill_id]["revision_report"]
+                    for skill_id in SKILL_IDS
+                    if campaign["skill_evidence"][skill_id]["revision_report"]
+                ),
+                None,
+            ),
+        ),
+        _gate("context_cost", combined(all_current), lanes["context_cost"]["evidence"]),
+        _gate(
+            "statistical_support",
+            combined(all_holdout),
+            lanes["task_behavior"]["evidence"],
+        ),
+        _gate(
+            "release_identity",
+            "pass" if plugin_build else "unobserved",
+            plugin_build,
+            "final-plugin-unobserved" if plugin_build is None else None,
+        ),
+    ]
+    decision = derive_decision(gates, limits, blockers)
+    final_commit = (
+        campaign["candidate"]["candidate_commit"]
+        if campaign["candidate"] is not None
+        else campaign["product"]["source_commit"]
+    )
+    final_tree = (
+        campaign["candidate"]["candidate_tree"]
+        if campaign["candidate"] is not None
+        else campaign["product"]["source_tree"]
+    )
+    host_binding = observed_host or campaign["profiles"]["target_provisional"]
+    host = load_json(
+        resolve_binding(host_binding, repository_root, campaign_root),
+        label="target host",
+    )
+    execution = (
+        host.get("identity", {}).get("execution", {}) if isinstance(host, dict) else {}
+    )
+    host_revision = (
+        "/".join(
+            str(item)
+            for item in (
+                host.get("identity", {}).get("host_version")
+                if isinstance(host, dict)
+                else None,
+                execution.get("model_revision"),
+            )
+            if item
+        )
+        or "unobserved"
+    )
+    sentinel = load_json(
+        resolve_binding(campaign["sentinel_index"], repository_root, campaign_root),
+        label="sentinel index",
+    )
+    budget = campaign["budgets"]
+    qualification = {
+        "schema_version": "model-qualification/1",
+        "qualification_id": "mq-"
+        + content_hash(
+            canonical_bytes([campaign["campaign_hash"], observed_as_of, valid_until])
+        ).removeprefix("sha256:")[:24],
+        "campaign_hash": campaign["campaign_hash"],
+        "identity": {
+            "source_commit": final_commit,
+            "source_tree": final_tree,
+            "plugin_tree": plugin_build["sha256"]
+            if plugin_build
+            else campaign["product"]["plugin_tree"],
+            "bundle_id": campaign["product"]["bundle_id"],
+            "bundle_version": campaign["product"]["bundle_version"],
+            "skills": _final_skill_identities(campaign, repository_root, campaign_root),
+            "target_observed_host": observed_host,
+        },
+        "claim": {
+            "host_model_revision": host_revision,
+            "activation_modes": ["catalog", "force_loaded", "skill_disabled"],
+            "skill_scope": list(SKILL_IDS),
+            "task_version": sentinel["sentinel_id"],
+            "sentinel_version": sentinel["sentinel_id"],
+            "ceiling": "diagnostic_only"
+            if decision == "blocked"
+            else "bounded"
+            if limits
+            else "full",
+        },
+        "lanes": lanes,
+        "skills": skill_status,
+        "gates": gates,
+        "budget": {
+            "ceiling": budget["ceiling"],
+            "reserved": budget["reserved"],
+            "observed": budget["observed"],
+            "remaining": _counts_remaining(budget["ceiling"], budget["reserved"]),
+        },
+        "decision": decision,
+        "limits": limits,
+        "blockers": blockers,
+        "validity": {
+            "observed_as_of": observed_as_of,
+            "valid_until": valid_until,
+            "drift_triggers": [
+                "source_commit",
+                "plugin_tree",
+                "host_identity",
+                "model_revision",
+                "tool_policy",
+                "interaction_probe_set",
+                "sentinel_index",
+            ],
+            "predecessor": (
+                campaign["profiles"]["predecessor"]["qualification"]
+                if campaign["profiles"]["predecessor"] is not None
+                else None
+            ),
+        },
+    }
+    qualification = with_self_hash(qualification, "qualification_hash")
+    validate_document(qualification, "qualification")
+    return qualification
+
+
+def render_qualification_markdown(value: dict[str, Any]) -> str:
+    validate_document(value, "qualification")
+    lines = [
+        f"# Model qualification {value['qualification_id']}",
+        "",
+        f"Decision: `{value['decision']}`",
+        f"Campaign: `{value['campaign_hash']}`",
+        f"Validity: `{value['validity']['observed_as_of']}` to `{value['validity']['valid_until']}`",
+        "",
+        "## Ordered gates",
+        "",
+    ]
+    lines.extend(
+        f"- `{gate['gate_id']}`: `{gate['status']}`"
+        + (f" ({gate['reason_code']})" if gate["reason_code"] else "")
+        for gate in value["gates"]
+    )
+    lines.extend(["", "## Skill results", ""])
+    lines.extend(
+        f"- `{skill_id}`: current `{result['current_usefulness']}`, holdout `{result['holdout']}`"
+        for skill_id, result in value["skills"].items()
+    )
+    if value["limits"]:
+        lines.extend(["", "## Limits", ""])
+        lines.extend(
+            f"- `{item['code']}` ({item['scope']})" for item in value["limits"]
+        )
+    if value["blockers"]:
+        lines.extend(["", "## Blockers", ""])
+        lines.extend(
+            f"- `{item['code']}` ({item['scope']})" for item in value["blockers"]
+        )
+    lines.extend(["", f"Qualification hash: `{value['qualification_hash']}`", ""])
+    return "\n".join(lines)
+
+
+def project_observed_host(
+    provisional: dict[str, Any],
+    *,
+    probe_set: dict[str, Any],
+    results: list[dict[str, Any]],
+    observed_manifest_path: Path,
+) -> dict[str, Any]:
+    observed = json.loads(json.dumps(provisional))
+    by_probe = {row["probe_id"]: row for row in probe_set["probes"]}
+    by_capability = {row["capability"]: row for row in probe_set["probes"]}
+    by_result = {row["probe_id"]: row for row in results}
+    if set(by_probe) != set(by_result):
+        raise ContractError("probe result set differs from the frozen probe set")
+    host_capabilities = {row["capability"] for row in observed["capabilities"]}
+    missing = set(by_capability) - host_capabilities
+    if missing:
+        raise ContractError(f"target Host lacks probed capability {sorted(missing)[0]}")
+    for capability in observed["capabilities"]:
+        row = by_capability.get(capability["capability"])
+        if row is None:
+            continue
+        result = by_result[row["probe_id"]]
+        terminal = result["terminal"]
+        capability["probe"] = {
+            "status": result["status"],
+            "artifact": {
+                "path": terminal["path"],
+                "sha256": terminal["sha256"],
+                "encoding": "utf-8",
+            },
+            "locator": {
+                "kind": "json_pointer",
+                "artifact": terminal["path"],
+                "json_pointer": "/result",
+            },
+            "observed": "bound interaction probe terminal",
+        }
+    command = observed["command"]["argv"]
+    if "--host-manifest" not in command:
+        raise ContractError("target Host command does not bind its manifest path")
+    command[command.index("--host-manifest") + 1] = str(observed_manifest_path)
+    observed["manifest_hash"] = self_hash(observed, "manifest_hash")
+    return observed
