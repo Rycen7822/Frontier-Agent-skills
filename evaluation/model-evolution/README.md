@@ -1,0 +1,52 @@
+# Model evolution campaign controller
+
+This directory defines the bounded qualification campaign used when a new Codex Host or model revision may change the behavior of the Frontier Engineering plugin. The controller records identity, phase, budget, existing Skill Evaluator evidence, and the final qualification. It does not implement evaluation, grading, optimization, worker supervision, or release authorization.
+
+## Owned artifacts
+
+- `schemas/campaign-v1.schema.json` owns campaign state and budget accounting.
+- `schemas/interaction-probes-v1.schema.json` owns the model-independent Host probe set contract.
+- `schemas/sentinel-index-v1.schema.json` indexes the four Skill sentinel surfaces without copying evaluator specifications.
+- `schemas/qualification-v1.schema.json` owns the deterministic qualification projection.
+- `scripts/model_evolution.py` is the only command-line entry point.
+
+Repository bindings contain a relative path and SHA-256 hash. Campaign bindings use the same shape but resolve below one campaign directory. Absolute paths, URIs, symlinks, path traversal, and hash drift fail closed. Historical predecessor or superseded evidence must remain inside the repository so the campaign can store a relative binding; it need not be Git-tracked.
+
+## Lifecycle
+
+The legal commands are:
+
+1. `init` freezes a signed, tracked-clean source identity, the provisional Host, probe set, sentinel index, and project-wide ceilings.
+2. `preflight` runs only local deterministic checks and the existing evaluator's fake compile/run/analyze chain.
+3. `probe` spends the separately approved Host-probe budget and publishes the observed Host manifest.
+4. `register-plan` verifies an existing evaluator plan has zero attempts, reserves its worst-case requests, and renders the exact `systemd-run --user` command. It never starts the worker.
+5. `record` binds existing calibration, analysis, comparison, revision, build, or holdout evidence. The one optional candidate is accepted only from a signed allowlisted Git diff after canonical focused gates pass.
+6. `status` is read-only and renders the next legal event, runner status, blockers, and reserved/observed budget.
+7. `qualify` atomically publishes deterministic JSON and Markdown without changing campaign revision.
+8. `verify` reprojects the qualification in a fresh process without provider access.
+
+Every mutation requires `--expected-revision`. A stale revision, held lock, failed operation, invalid binding, exceeded ceiling, or published qualification leaves `campaign.json` unchanged. A qualification directory makes the campaign immutable.
+
+## Predecessor and repair bindings
+
+An optional predecessor is supplied at `init` with a closed campaign, its observed Host, and an eligible model-transition comparison. An optional qualification may strengthen the exact product identity. The controller derives all stored hashes from those files.
+
+`--supersedes` is reserved for one pre-public adapter repair. The old campaign must target the same provisional Host, have a blocked qualification, and must not itself supersede another campaign. Its reserved and observed counts are imported into the new ceilings; this prevents a repair from resetting project budget.
+
+## Operational boundary
+
+The controller calls the Skill Evaluator only through its public compiler, runner status, runner, analyzer, and comparison command surfaces. Fake preflight output proves apparatus plumbing only and never becomes model qualification evidence. Live evaluator attempts remain owned by `skill-evaluator/scripts/run_eval_plan.py`; durability remains owned by `systemd --user`.
+
+The campaign never creates reviewers, optimizer loops, retry candidates, provider caches, or downloaded model assets. Reviewer, optimizer, and download ceilings are fixed at zero, and the candidate ceiling is at most one.
+
+## Development verification
+
+Run the focused zero-provider modules:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tests python3 -m unittest \
+  tests/test_extended_model_evolution_contract.py \
+  tests/test_extended_model_evolution_lifecycle.py -v
+```
+
+Then run the canonical Quick profile, the registered Extended command containing these modules, Bundle `--check`, static-contract `--check`, Ruff, and schema meta-validation. These checks must not contact a provider, reviewer, optimizer, or download endpoint.

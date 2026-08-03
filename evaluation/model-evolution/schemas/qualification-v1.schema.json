@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontier.local/model-evolution/qualification-v1.schema.json",
+  "title": "Frontier model qualification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "qualification_id",
+    "campaign_hash",
+    "identity",
+    "claim",
+    "lanes",
+    "skills",
+    "gates",
+    "budget",
+    "decision",
+    "limits",
+    "blockers",
+    "validity",
+    "qualification_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "model-qualification/1"},
+    "qualification_id": {"$ref": "#/$defs/safe_id"},
+    "campaign_hash": {"$ref": "#/$defs/hash"},
+    "identity": {"$ref": "#/$defs/identity"},
+    "claim": {"$ref": "#/$defs/claim"},
+    "lanes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "static_product",
+        "host_integration",
+        "task_behavior",
+        "context_cost",
+        "longitudinal"
+      ],
+      "properties": {
+        "static_product": {"$ref": "#/$defs/lane"},
+        "host_integration": {"$ref": "#/$defs/lane"},
+        "task_behavior": {"$ref": "#/$defs/lane"},
+        "context_cost": {"$ref": "#/$defs/lane"},
+        "longitudinal": {"$ref": "#/$defs/lane"}
+      }
+    },
+    "skills": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "long-document-segmented-writing",
+        "skill-evaluator",
+        "software-quality-workflows",
+        "writing-plans"
+      ],
+      "properties": {
+        "long-document-segmented-writing": {"$ref": "#/$defs/skill_result"},
+        "skill-evaluator": {"$ref": "#/$defs/skill_result"},
+        "software-quality-workflows": {"$ref": "#/$defs/skill_result"},
+        "writing-plans": {"$ref": "#/$defs/skill_result"}
+      }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "items": {"$ref": "#/$defs/gate"}
+    },
+    "budget": {"$ref": "#/$defs/budget"},
+    "decision": {"enum": ["qualified", "qualified_with_limits", "blocked"]},
+    "limits": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+    "blockers": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+    "validity": {"$ref": "#/$defs/validity"},
+    "qualification_hash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "path", "sha256"],
+      "properties": {
+        "root": {"enum": ["repository", "campaign"]},
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*://)[A-Za-z0-9._/-]+$"
+        },
+        "sha256": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "skill_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "root_hash"],
+      "properties": {
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "root_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "skill_identities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "long-document-segmented-writing",
+        "skill-evaluator",
+        "software-quality-workflows",
+        "writing-plans"
+      ],
+      "properties": {
+        "long-document-segmented-writing": {"$ref": "#/$defs/skill_identity"},
+        "skill-evaluator": {"$ref": "#/$defs/skill_identity"},
+        "software-quality-workflows": {"$ref": "#/$defs/skill_identity"},
+        "writing-plans": {"$ref": "#/$defs/skill_identity"}
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_commit",
+        "source_tree",
+        "plugin_tree",
+        "bundle_id",
+        "bundle_version",
+        "skills",
+        "target_observed_host"
+      ],
+      "properties": {
+        "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "source_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "plugin_tree": {"$ref": "#/$defs/hash"},
+        "bundle_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$"
+        },
+        "bundle_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "skills": {"$ref": "#/$defs/skill_identities"},
+        "target_observed_host": {
+          "anyOf": [{"$ref": "#/$defs/binding"}, {"type": "null"}]
+        }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host_model_revision",
+        "activation_modes",
+        "skill_scope",
+        "task_version",
+        "sentinel_version",
+        "ceiling"
+      ],
+      "properties": {
+        "host_model_revision": {"type": "string", "minLength": 1, "maxLength": 256},
+        "activation_modes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["catalog", "force_loaded", "skill_disabled"]}
+        },
+        "skill_scope": {
+          "type": "array",
+          "prefixItems": [
+            {"const": "long-document-segmented-writing"},
+            {"const": "skill-evaluator"},
+            {"const": "software-quality-workflows"},
+            {"const": "writing-plans"}
+          ],
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "task_version": {"$ref": "#/$defs/safe_id"},
+        "sentinel_version": {"$ref": "#/$defs/safe_id"},
+        "ceiling": {"enum": ["full", "bounded", "diagnostic_only"]}
+      }
+    },
+    "lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidence"],
+      "properties": {
+        "status": {"enum": ["pass", "limited", "blocked", "unobserved"]},
+        "evidence": {"anyOf": [{"$ref": "#/$defs/binding"}, {"type": "null"}]}
+      }
+    },
+    "skill_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "current_usefulness",
+        "critical_protected_safety",
+        "transition",
+        "revision",
+        "holdout",
+        "blocker"
+      ],
+      "properties": {
+        "current_usefulness": {"enum": ["pass", "limited", "blocked", "unobserved"]},
+        "critical_protected_safety": {"enum": ["pass", "limited", "blocked", "unobserved"]},
+        "transition": {"enum": ["pass", "limited", "blocked", "unobserved"]},
+        "revision": {"enum": ["pass", "limited", "blocked", "unobserved"]},
+        "holdout": {"enum": ["pass", "limited", "blocked", "unobserved"]},
+        "blocker": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]}
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate_id", "status", "evidence", "reason_code"],
+      "properties": {
+        "gate_id": {
+          "enum": [
+            "apparatus",
+            "identity_comparability",
+            "critical_function",
+            "safety_protected",
+            "incremental_value",
+            "revision",
+            "context_cost",
+            "statistical_support",
+            "release_identity"
+          ]
+        },
+        "status": {"enum": ["pass", "limited", "blocked", "unobserved"]},
+        "evidence": {"anyOf": [{"$ref": "#/$defs/binding"}, {"type": "null"}]},
+        "reason_code": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]}
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_requests",
+        "execute",
+        "model_grade",
+        "reviewer",
+        "optimizer",
+        "download_bytes",
+        "artifact_bytes",
+        "candidates"
+      ],
+      "properties": {
+        "provider_requests": {"type": ["integer", "null"], "minimum": 0},
+        "execute": {"type": ["integer", "null"], "minimum": 0},
+        "model_grade": {"type": ["integer", "null"], "minimum": 0},
+        "reviewer": {"type": ["integer", "null"], "minimum": 0},
+        "optimizer": {"type": ["integer", "null"], "minimum": 0},
+        "download_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "artifact_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "candidates": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ceiling", "reserved", "observed", "remaining"],
+      "properties": {
+        "ceiling": {"$ref": "#/$defs/counts"},
+        "reserved": {"$ref": "#/$defs/counts"},
+        "observed": {"$ref": "#/$defs/counts"},
+        "remaining": {"$ref": "#/$defs/counts"}
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "scope", "evidence"],
+      "properties": {
+        "code": {"$ref": "#/$defs/safe_id"},
+        "scope": {"$ref": "#/$defs/safe_id"},
+        "evidence": {"anyOf": [{"$ref": "#/$defs/binding"}, {"type": "null"}]}
+      }
+    },
+    "validity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed_as_of", "valid_until", "drift_triggers", "predecessor"],
+      "properties": {
+        "observed_as_of": {"$ref": "#/$defs/timestamp"},
+        "valid_until": {"$ref": "#/$defs/timestamp"},
+        "drift_triggers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "source_commit",
+              "plugin_tree",
+              "host_identity",
+              "model_revision",
+              "tool_policy",
+              "interaction_probe_set",
+              "sentinel_index"
+            ]
+          }
+        },
+        "predecessor": {"anyOf": [{"$ref": "#/$defs/binding"}, {"type": "null"}]}
+      }
+    }
+  }
+}
