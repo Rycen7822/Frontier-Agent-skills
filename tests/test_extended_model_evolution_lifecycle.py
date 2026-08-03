@@ -205,6 +205,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             predecessor_comparison=None,
             predecessor_qualification=None,
             supersedes=None,
+            supersession_failure_receipt=None,
             provider_request_ceiling=45,
             execute_ceiling=20,
             model_grade_ceiling=24,
@@ -283,6 +284,31 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             state["product"]["plugin_root"],
         )
         self.assertEqual(evidence["plugin_tree_hash"], state["product"]["plugin_tree"])
+
+    def test_cumulative_request_ceilings_charge_prior_failures_once(self) -> None:
+        request_ceilings = {
+            "provider_requests": 210,
+            "execute": 70,
+            "model_grade": 134,
+            "calibration": 64,
+        }
+        supersedes = {
+            "imported_reserved": {
+                "provider_requests": 104,
+                "model_grade": 80,
+            },
+        }
+        self.assertEqual(
+            {
+                "provider_requests": 250,
+                "execute": 70,
+                "model_grade": 150,
+            },
+            controller._cumulative_request_ceilings(
+                request_ceilings,
+                supersedes,
+            ),
+        )
 
     def test_unsigned_and_dirty_git_identity_are_rejected(self) -> None:
         repository = Path(self.temporary.name) / "unsigned-repository"

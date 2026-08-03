@@ -32,6 +32,7 @@ from _model_evolution_contract import (
 )
 from _model_evolution_calibration import (
     CalibrationPreparationError,
+    close_calibration_failure,
     prepare_calibrations,
 )
 from _model_evolution_ops import (
@@ -254,6 +255,27 @@ def _validate_evidence_join(
         raise CliError(f"{role} inputs differ from the selected summaries")
 
 
+def _cumulative_request_ceilings(
+    request_ceilings: dict[str, int],
+    supersedes: dict[str, Any] | None,
+) -> dict[str, int]:
+    expected = {
+        field: request_ceilings[field]
+        for field in ("provider_requests", "execute", "model_grade")
+    }
+    if supersedes is None:
+        return expected
+    imported = supersedes["imported_reserved"]
+    calibration = request_ceilings["calibration"]
+    expected["provider_requests"] += max(
+        0, imported["provider_requests"] - calibration,
+    )
+    expected["model_grade"] += max(
+        0, imported["model_grade"] - calibration,
+    )
+    return expected
+
+
 def _init(args: argparse.Namespace) -> None:
     repository_root, campaign_root = _roots(args)
     campaign_root.mkdir(parents=True, exist_ok=True)
@@ -334,11 +356,6 @@ def _init(args: argparse.Namespace) -> None:
         campaign_root=campaign_root,
         probe_count=len(probe_set["probes"]),
     )
-    for field in ("provider_requests", "execute", "model_grade"):
-        if ceilings[field] != request_ceilings[field]:
-            raise CliError(
-                f"{field} ceiling must equal the frozen worst-case request budget"
-            )
     predecessor_paths = (
         args.predecessor_cycle,
         args.predecessor_host,
@@ -392,6 +409,8 @@ def _init(args: argparse.Namespace) -> None:
             campaign_root=campaign_root,
         )
     supersedes = None
+    if args.supersession_failure_receipt is not None and args.supersedes is None:
+        raise CliError("failure receipt requires --supersedes")
     if args.supersedes is not None:
         supersedes = prepare_supersedes(
             campaign_binding=_binding_for_path(
@@ -401,9 +420,28 @@ def _init(args: argparse.Namespace) -> None:
                 tracked_repository=False,
             ),
             target_host_binding=bindings["target_host"],
+            failure_receipt_binding=(
+                _binding_for_path(
+                    args.supersession_failure_receipt,
+                    repository_root=repository_root,
+                    campaign_root=campaign_root,
+                    tracked_repository=False,
+                )
+                if args.supersession_failure_receipt is not None
+                else None
+            ),
             repository_root=repository_root,
             campaign_root=campaign_root,
         )
+    expected_request_ceilings = _cumulative_request_ceilings(
+        request_ceilings,
+        supersedes,
+    )
+    for field, expected in expected_request_ceilings.items():
+        if ceilings[field] != expected:
+            raise CliError(
+                f"{field} ceiling must equal the cumulative worst-case budget {expected}"
+            )
     campaign = build_initial_campaign(
         campaign_id=args.campaign_id,
         git_identity=identity,
@@ -756,6 +794,30 @@ def _prepare_calibration(args: argparse.Namespace) -> None:
         expires=args.expires,
         max_workers=args.max_workers,
     ))
+
+
+def _close_calibration_failure(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    campaign = _campaign_store(repository_root, campaign_root).read()
+    receipt = close_calibration_failure(
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        campaign=campaign,
+        skill_id=args.skill_id,
+        output=args.output.resolve(),
+    )
+    binding = _binding_for_path(
+        args.output.resolve(),
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        tracked_repository=False,
+    )
+    _emit({
+        "failure_receipt": binding,
+        "artifact_sha256": binding["sha256"],
+        "document_self_hash": receipt["failure_receipt_hash"],
+        "request_count": receipt["request_count"],
+    })
 
 
 def _record_candidate(args: argparse.Namespace) -> None:
@@ -1182,6 +1244,7 @@ def _parser() -> argparse.ArgumentParser:
     init.add_argument("--predecessor-comparison", type=Path)
     init.add_argument("--predecessor-qualification", type=Path)
     init.add_argument("--supersedes", type=Path)
+    init.add_argument("--supersession-failure-receipt", type=Path)
     init.add_argument("--provider-request-ceiling", type=int, required=True)
     init.add_argument("--execute-ceiling", type=int, required=True)
     init.add_argument("--model-grade-ceiling", type=int, required=True)
@@ -1211,6 +1274,10 @@ def _parser() -> argparse.ArgumentParser:
     calibration.add_argument(
         "--max-workers", type=int, choices=range(1, 5), default=1,
     )
+
+    failure = commands.add_parser("close-calibration-failure")
+    failure.add_argument("--skill-id", choices=SKILL_IDS, required=True)
+    failure.add_argument("--output", type=Path, required=True)
 
     register = commands.add_parser("register-plan")
     register.add_argument("--expected-revision", type=int, required=True)
@@ -1287,6 +1354,7 @@ def main(argv: list[str] | None = None) -> int:
             "preflight": _preflight,
             "probe": _probe,
             "prepare-calibration": _prepare_calibration,
+            "close-calibration-failure": _close_calibration_failure,
             "register-plan": _register_plan,
             "record": _record,
             "status": _status,

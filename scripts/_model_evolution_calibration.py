@@ -1,4 +1,4 @@
-"""Prepare the four frozen Skill calibration workspaces and commands."""
+"""Prepare Skill calibration workspaces and close pre-turn Host failures."""
 
 from __future__ import annotations
 
@@ -12,7 +12,11 @@ from _model_evolution_contract import (
     SKILL_IDS,
     canonical_bytes,
     load_json,
+    make_binding,
+    pre_turn_failure_identity,
     resolve_binding,
+    validate_document,
+    verify_self_hash,
     with_self_hash,
 )
 
@@ -224,3 +228,126 @@ def prepare_calibrations(
         canonical_bytes(preparation),
     )
     return preparation
+
+
+def close_calibration_failure(
+    *,
+    repository_root: Path,
+    campaign_root: Path,
+    campaign: dict[str, Any],
+    skill_id: str,
+    output: Path,
+) -> dict[str, Any]:
+    """Bind a complete pre-turn Host failure batch without replaying requests."""
+    if skill_id not in SKILL_IDS:
+        raise CalibrationPreparationError("failure receipt Skill is unknown")
+    expected_output = campaign_root / f"calibration/failure-{skill_id}.json"
+    if output != expected_output:
+        raise CalibrationPreparationError("failure receipt output path is not canonical")
+
+    qualification_path = campaign_root / "qualification/qualification.json"
+    qualification = load_json(qualification_path, label="qualification")
+    validate_document(qualification, "qualification")
+    if (
+        qualification["decision"] != "blocked"
+        or qualification["campaign_hash"] != campaign["campaign_hash"]
+    ):
+        raise CalibrationPreparationError("campaign is not closed as blocked")
+
+    preparation_path = campaign_root / "calibration/preparation.json"
+    preparation = load_json(preparation_path, label="calibration preparation")
+    if (
+        preparation.get("schema_version")
+        != "model-evolution-calibration-preparation/1"
+        or preparation.get("campaign_hash") != campaign["campaign_hash"]
+        or preparation.get("state_revision") != campaign["state_revision"]
+    ):
+        raise CalibrationPreparationError("calibration preparation identity differs")
+    verify_self_hash(preparation, "preparation_hash")
+    commands = [
+        row for row in preparation.get("commands", [])
+        if row.get("skill_id") == skill_id
+    ]
+    if len(commands) != 1:
+        raise CalibrationPreparationError("calibration preparation command is ambiguous")
+    request_count = commands[0].get("request_count")
+    if not isinstance(request_count, int) or not 1 <= request_count <= 64:
+        raise CalibrationPreparationError("calibration request count is invalid")
+
+    terminal_root = campaign_root / f"calibration/{skill_id}/run/terminals"
+    expected_names = {f"{index:03d}" for index in range(1, request_count + 1)}
+    if terminal_root.is_symlink() or not terminal_root.is_dir():
+        raise CalibrationPreparationError("calibration terminal root is invalid")
+    children = list(terminal_root.iterdir())
+    if (
+        {child.name for child in children} != expected_names
+        or any(child.is_symlink() or not child.is_dir() for child in children)
+    ):
+        raise CalibrationPreparationError("calibration terminal set is incomplete")
+
+    outcomes = {"timeout": 0, "failed": 0}
+    requests: list[dict[str, Any]] = []
+    request_hashes: set[str] = set()
+    for ordinal in range(request_count):
+        root = terminal_root / f"{ordinal + 1:03d}"
+        stdout_path = root / "host-stdout.jsonl"
+        stderr_path = root / "host-stderr.txt"
+        if any(
+            path.is_symlink() or not path.is_file()
+            for path in (stdout_path, stderr_path)
+        ):
+            raise CalibrationPreparationError("calibration Host evidence is missing")
+        try:
+            identity = pre_turn_failure_identity(stdout_path, ordinal)
+        except ValueError as exc:
+            raise CalibrationPreparationError(str(exc)) from exc
+        if identity["request_hash"] in request_hashes:
+            raise CalibrationPreparationError("Host request hash is duplicated")
+        request_hashes.add(identity["request_hash"])
+        outcomes[identity["terminal_status"]] += 1
+        requests.append({
+            **identity,
+            "host_result": make_binding(
+                stdout_path,
+                root="campaign",
+                repository_root=repository_root,
+                campaign_root=campaign_root,
+            ),
+            "host_stderr": make_binding(
+                stderr_path,
+                root="campaign",
+                repository_root=repository_root,
+                campaign_root=campaign_root,
+            ),
+        })
+
+    receipt = with_self_hash({
+        "schema_version": "model-evolution-failure-receipt/1",
+        "campaign_hash": campaign["campaign_hash"],
+        "qualification": make_binding(
+            qualification_path,
+            root="campaign",
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+        ),
+        "preparation": make_binding(
+            preparation_path,
+            root="campaign",
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+        ),
+        "skill_id": skill_id,
+        "request_kind": "model_grade",
+        "classification": "host_failed_before_completed_turn",
+        "request_count": request_count,
+        "outcomes": outcomes,
+        "requests": requests,
+    }, "failure_receipt_hash")
+    validate_document(receipt, "failure_receipt")
+    payload = canonical_bytes(receipt) + b"\n"
+    _write_exact(output, payload)
+    persisted = load_json(output, label="failed-request receipt")
+    validate_document(persisted, "failure_receipt")
+    if canonical_bytes(persisted) + b"\n" != payload:
+        raise CalibrationPreparationError("failure receipt serialization differs")
+    return persisted

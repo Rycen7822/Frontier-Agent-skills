@@ -482,10 +482,161 @@ class ModelEvolutionContractTest(unittest.TestCase):
             repository_root=self.fixture["repository_root"],
             campaign_root=self.fixture["campaign_root"],
         )
-        with self.assertRaisesRegex(ContractError, "depth is exhausted"):
+        with self.assertRaisesRegex(ContractError, "requires a failed-request receipt"):
             prepare_supersedes(
                 campaign_binding=corrected_binding,
                 target_host_binding=self.fixture["bindings"]["host"],
+                repository_root=self.fixture["repository_root"],
+                campaign_root=self.fixture["campaign_root"],
+            )
+
+        qualification_path = write_json(
+            corrected_root / "qualification/qualification.json",
+            project_qualification(
+                corrected,
+                repository_root=self.fixture["repository_root"],
+                campaign_root=corrected_root,
+                observed_as_of="2026-08-03T00:00:00Z",
+                valid_until="2026-08-04T00:00:00Z",
+            ),
+        )
+        preparation_path = write_json(
+            corrected_root / "calibration/preparation.json",
+            {"preparation": "bound"},
+        )
+        result_path = write_json(
+            corrected_root / "calibration/terminals/001/host-stdout.jsonl",
+            {
+                "actions": [],
+                "artifacts": [],
+                "assertions": [],
+                "cleanup": {"status": "clean"},
+                "context": {"bytes": 0},
+                "envelope": {
+                    "entry_id": "calibration-01",
+                    "entry_ordinal": 0,
+                    "request_kind": "model_grade",
+                },
+                "failure_class": "model_task_timeout",
+                "handoffs": [],
+                "principals": [],
+                "record_type": "skill-evaluator-host-result/1",
+                "request_hash": "sha256:" + "1" * 64,
+                "state": [],
+                "terminal": True,
+                "terminal_status": "timeout",
+                "usage": {"records": []},
+            },
+        )
+        stderr_path = corrected_root / "calibration/terminals/001/host-stderr.txt"
+        stderr_path.write_text("pre-turn failure\n", encoding="utf-8")
+        receipt = with_self_hash({
+            "schema_version": "model-evolution-failure-receipt/1",
+            "campaign_hash": corrected["campaign_hash"],
+            "qualification": make_binding(
+                qualification_path,
+                root="campaign",
+                repository_root=self.fixture["repository_root"],
+                campaign_root=corrected_root,
+            ),
+            "preparation": make_binding(
+                preparation_path,
+                root="campaign",
+                repository_root=self.fixture["repository_root"],
+                campaign_root=corrected_root,
+            ),
+            "skill_id": "long-document-segmented-writing",
+            "request_kind": "model_grade",
+            "classification": "host_failed_before_completed_turn",
+            "request_count": 1,
+            "outcomes": {"timeout": 1, "failed": 0},
+            "requests": [{
+                "entry_ordinal": 0,
+                "entry_id": "calibration-01",
+                "request_hash": "sha256:" + "1" * 64,
+                "terminal_status": "timeout",
+                "failure_class": "model_task_timeout",
+                "host_result": make_binding(
+                    result_path,
+                    root="campaign",
+                    repository_root=self.fixture["repository_root"],
+                    campaign_root=corrected_root,
+                ),
+                "host_stderr": make_binding(
+                    stderr_path,
+                    root="campaign",
+                    repository_root=self.fixture["repository_root"],
+                    campaign_root=corrected_root,
+                ),
+            }],
+        }, "failure_receipt_hash")
+        validate_document(receipt, "failure_receipt")
+        receipt_path = write_json(
+            corrected_root / "calibration/failure-receipt.json",
+            receipt,
+        )
+        receipt_binding = make_binding(
+            receipt_path,
+            root="repository",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        final_repair = prepare_supersedes(
+            campaign_binding=corrected_binding,
+            target_host_binding=self.fixture["bindings"]["host"],
+            failure_receipt_binding=receipt_binding,
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        self.assertEqual(
+            corrected["budgets"]["reserved"]["model_grade"] + 1,
+            final_repair["imported_reserved"]["model_grade"],
+        )
+        self.assertEqual(receipt_binding, final_repair["failure_receipt"])
+
+        tampered_receipt = copy.deepcopy(receipt)
+        tampered_receipt["requests"][0]["request_hash"] = "sha256:" + "3" * 64
+        tampered_receipt = with_self_hash(
+            tampered_receipt,
+            "failure_receipt_hash",
+        )
+        tampered_path = write_json(
+            corrected_root / "calibration/tampered-failure-receipt.json",
+            tampered_receipt,
+        )
+        tampered_binding = make_binding(
+            tampered_path,
+            root="repository",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        with self.assertRaisesRegex(ContractError, "differs from Host evidence"):
+            prepare_supersedes(
+                campaign_binding=corrected_binding,
+                target_host_binding=self.fixture["bindings"]["host"],
+                failure_receipt_binding=tampered_binding,
+                repository_root=self.fixture["repository_root"],
+                campaign_root=self.fixture["campaign_root"],
+            )
+
+        exhausted = copy.deepcopy(corrected)
+        exhausted["supersedes"] = final_repair
+        exhausted = with_self_hash(exhausted, "campaign_hash")
+        exhausted_path = write_json(
+            corrected_root / "exhausted-campaign.json",
+            exhausted,
+        )
+        exhausted_binding = make_binding(
+            exhausted_path,
+            root="repository",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        with self.assertRaisesRegex(ContractError, "depth is exhausted"):
+            prepare_supersedes(
+                campaign_binding=exhausted_binding,
+                target_host_binding=self.fixture["bindings"]["host"],
+                failure_receipt_binding=receipt_binding,
                 repository_root=self.fixture["repository_root"],
                 campaign_root=self.fixture["campaign_root"],
             )
