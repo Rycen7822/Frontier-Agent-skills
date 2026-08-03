@@ -240,6 +240,10 @@ def _config_override(name: str, value: str) -> str:
     return f"{name}={json.dumps(value, ensure_ascii=False)}"
 
 
+def _profile_argv(profile: str) -> list[str]:
+    return [] if profile == "none" else ["--profile", profile]
+
+
 def _fresh_argv(
     args: argparse.Namespace,
     workspace: Path,
@@ -257,8 +261,7 @@ def _fresh_argv(
         "never",
         "--model",
         args.model,
-        "--profile",
-        args.profile,
+        *_profile_argv(args.profile),
         "--sandbox",
         args.sandbox,
         "--cd",
@@ -289,6 +292,7 @@ def _resume_argv(
         "--strict-config",
         "--model",
         args.model,
+        *_profile_argv(args.profile),
         "--config",
         _config_override("model_reasoning_effort", args.effort),
         "--output-last-message",
