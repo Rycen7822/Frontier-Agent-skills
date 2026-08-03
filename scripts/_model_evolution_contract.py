@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 from datetime import datetime
 from functools import lru_cache
 from hashlib import sha256
@@ -715,6 +716,62 @@ def prepare_predecessor(
     }
 
 
+def _validate_lineage_campaign(value: dict[str, Any], label: str) -> None:
+    try:
+        validate_document(value, "campaign")
+        return
+    except ContractError as current_error:
+        evidence = value.get("skill_evidence")
+        legacy_keys = {*SKILL_IDS, "grader_calibration", "plugin_build"}
+        if (
+            not isinstance(evidence, dict)
+            or set(evidence) != legacy_keys
+            or evidence.get("grader_calibration") is not None
+            or any(
+                not isinstance(evidence.get(skill_id), dict)
+                or "grader_calibration" in evidence[skill_id]
+                for skill_id in SKILL_IDS
+            )
+        ):
+            raise current_error
+        verify_self_hash(value, "campaign_hash")
+        migrated = copy.deepcopy(value)
+        del migrated["skill_evidence"]["grader_calibration"]
+        for skill_id in SKILL_IDS:
+            migrated["skill_evidence"][skill_id]["grader_calibration"] = None
+        migrated = with_self_hash(migrated, "campaign_hash")
+        try:
+            validate_document(migrated, "campaign")
+        except ContractError as exc:
+            raise ContractError(
+                f"{label} legacy calibration shape is invalid"
+            ) from exc
+
+
+def _is_single_calibration_correction(value: dict[str, Any]) -> bool:
+    evidence = value["skill_evidence"]
+    per_skill = [evidence[skill_id] for skill_id in SKILL_IDS]
+    calibrations_empty = (
+        evidence.get("grader_calibration") is None
+        if "grader_calibration" in evidence
+        else all(item.get("grader_calibration") is None for item in per_skill)
+    )
+    return (
+        value["phase"] == "target_profile_ready"
+        and value["plans"] == []
+        and value["candidate"] is None
+        and evidence["plugin_build"] is None
+        and calibrations_empty
+        and all(
+            all(
+                field == "grader_calibration" or binding is None
+                for field, binding in item.items()
+            )
+            for item in per_skill
+        )
+    )
+
+
 def prepare_supersedes(
     *,
     campaign_binding: dict[str, Any],
@@ -722,17 +779,53 @@ def prepare_supersedes(
     repository_root: Path,
     campaign_root: Path,
 ) -> dict[str, Any]:
+
     old_path = resolve_binding(campaign_binding, repository_root, campaign_root)
     old = load_json(old_path, label="superseded campaign")
-    validate_document(old, "campaign")
+    _validate_lineage_campaign(old, "superseded campaign")
     if old["supersedes"] is not None:
         parent_path = resolve_binding(
             old["supersedes"]["campaign"], repository_root, old_path.parent
         )
         parent = load_json(parent_path, label="supersession parent campaign")
-        validate_document(parent, "campaign")
+        _validate_lineage_campaign(parent, "supersession parent campaign")
         if parent["supersedes"] is not None:
-            raise ContractError("supersession repair depth is exhausted")
+            grandparent_path = resolve_binding(
+                parent["supersedes"]["campaign"],
+                repository_root,
+                parent_path.parent,
+            )
+            grandparent = load_json(
+                grandparent_path,
+                label="supersession grandparent campaign",
+            )
+            _validate_lineage_campaign(
+                grandparent, "supersession grandparent campaign"
+            )
+            if (
+                grandparent["supersedes"] is not None
+                or not _is_single_calibration_correction(old)
+            ):
+                raise ContractError("supersession repair depth is exhausted")
+            for field in ("reserved", "observed"):
+                if (
+                    parent["supersedes"][f"imported_{field}"]
+                    != grandparent["budgets"][field]
+                ):
+                    raise ContractError("supersession lineage budget differs")
+            grandparent_qualification = load_json(
+                grandparent_path.parent / "qualification/qualification.json",
+                label="supersession grandparent qualification",
+            )
+            validate_document(grandparent_qualification, "qualification")
+            if (
+                grandparent_qualification["campaign_hash"]
+                != grandparent["campaign_hash"]
+                or grandparent_qualification["decision"] != "blocked"
+            ):
+                raise ContractError(
+                    "supersession grandparent is not closed as blocked"
+                )
         for field in ("reserved", "observed"):
             if old["supersedes"][f"imported_{field}"] != parent["budgets"][field]:
                 raise ContractError("supersession lineage budget differs")

@@ -416,8 +416,11 @@ def materialize_budget_approval(
     )
 
 
-def materialize_apparatus_report(fixture: dict[str, Any]) -> dict[str, str]:
-    state = fixture["campaign"]
+def materialize_apparatus_report(
+    fixture: dict[str, Any],
+    state: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    state = fixture["campaign"] if state is None else state
     report = with_self_hash(
         {
             "schema_version": "model-evolution-apparatus-report/1",
