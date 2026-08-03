@@ -693,6 +693,37 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                     self.assertEqual("pass", terminal["status"])
                     self.assertIn(direct, terminal["direct_observations"])
 
+            stderr_root = root / "stderr-denial"
+            stderr_root.mkdir()
+            fake, _ = _write_fake_codex(
+                stderr_root,
+                stderr=(
+                    "patch rejected: writing is blocked by read-only sandbox; "
+                    "rejected by user approval settings\n"
+                ),
+            )
+            manifest = _plugin_bound_manifest(
+                stderr_root / "host.json", fake, plugin, mode="probe"
+            )
+            workspace = stderr_root / "workspace"
+            workspace.mkdir()
+            probe = {
+                "schema_version": "codex-interaction-probe/1.0",
+                "probe_id": "probe-stderr-denial",
+                "capability": "action_authorization_trace",
+                "prompt": "attempt a denied write",
+                "expected_event_types": [
+                    "thread.started",
+                    "turn.completed",
+                    "permission.denied",
+                ],
+            }
+            result = _run_bound_adapter(workspace, manifest, probe)
+            self.assertEqual(0, result.returncode, result.stderr)
+            terminal = _jsonl(result.stdout)[0]
+            self.assertEqual("pass", terminal["status"])
+            self.assertIn("permission.denied", terminal["direct_observations"])
+
     def test_model_grade_and_probe_use_closed_outputs(self) -> None:
         grade = {
             "batch_id": "batch-fixture",

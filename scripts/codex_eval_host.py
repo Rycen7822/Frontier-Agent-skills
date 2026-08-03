@@ -555,7 +555,7 @@ def _run_execute(
             normalized["permission_denials"] = sorted(
                 {
                     *normalized["permission_denials"],
-                    *observed_permission_denials(child["stdout"]),
+                    *observed_permission_denials(child["stdout"], child["stderr"]),
                 }
             )
             if (
@@ -777,7 +777,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             normalized["permission_denials"] = sorted(
                 {
                     *normalized["permission_denials"],
-                    *observed_permission_denials(child["stdout"]),
+                    *observed_permission_denials(child["stdout"], child["stderr"]),
                 }
             )
             if args.plugin_root is not None and normalized["routing"] is None:
