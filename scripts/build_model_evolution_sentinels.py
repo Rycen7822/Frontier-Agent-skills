@@ -849,8 +849,11 @@ def _calibration_gold(skill_id: str, claims: list[str]) -> bytes:
     return _jsonl_bytes(rows)
 
 
-def _probe_set(fixture_bytes: bytes) -> bytes:
+def _probe_set(fixture_bytes: bytes, natural_fixture_bytes: bytes) -> bytes:
     fixture = _binding("evaluation/model-evolution/probe-fixture.json", fixture_bytes)
+    natural_fixture = _binding(
+        "scripts/codex_eval_host.py", natural_fixture_bytes
+    )
     rows = [
         (
             "force-load",
@@ -861,7 +864,7 @@ def _probe_set(fixture_bytes: bytes) -> bytes:
         (
             "natural-routing",
             "natural_routing",
-            "Read only probe-fixture.json and produce a concise self-contained technical report with one compact recovery record; do not inspect other files or modify files.",
+            "Read only codex_eval_host.py and produce a substantial self-contained long-form architecture report with exactly seven ordered sections covering responsibilities, process boundaries, data flow, identity checks, failure handling, security boundaries, and recovery. Include one compact recovery record; do not inspect other files or modify files.",
             ["thread.started", "turn.completed", "direct.routing"],
         ),
         (
@@ -898,7 +901,9 @@ def _probe_set(fixture_bytes: bytes) -> bytes:
                 "probe_id": probe_id,
                 "capability": capability,
                 "prompt": prompt,
-                "fixture": fixture,
+                "fixture": (
+                    natural_fixture if capability == "natural_routing" else fixture
+                ),
                 "sandbox": "read-only",
                 "network": "denied",
                 "required_observations": required,
@@ -1126,7 +1131,13 @@ def _materialize(repository_root: Path) -> list[Path]:
     fixture_path = output_root / "probe-fixture.json"
     probes_path = output_root / "codex-interaction-probes-v1.json"
     _write(fixture_path, fixture_bytes)
-    _write(probes_path, _probe_set(fixture_bytes))
+    _write(
+        probes_path,
+        _probe_set(
+            fixture_bytes,
+            (REPOSITORY_ROOT / "scripts/codex_eval_host.py").read_bytes(),
+        ),
+    )
     sentinel = {
         "schema_version": "model-evolution-sentinel-index/1",
         "sentinel_id": "frontier-four-skill-sentinel-v1",

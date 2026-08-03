@@ -1,6 +1,6 @@
 {
   "adapter_protocol_version": "codex-interaction-probe/1.0",
-  "probe_set_hash": "sha256:c0dc34448ee1dc5524311a5b57d2cdf7b2c98822d721934d634d707c996e612d",
+  "probe_set_hash": "sha256:9c316d024e98ec3b10a7f68e36068d6b87fa0aeaaeb374faf95ba04b22815911",
   "probe_set_id": "frontier-codex-interaction-probes-v1",
   "probes": [
     {
@@ -24,13 +24,13 @@
     {
       "capability": "natural_routing",
       "fixture": {
-        "path": "evaluation/model-evolution/probe-fixture.json",
+        "path": "scripts/codex_eval_host.py",
         "root": "repository",
-        "sha256": "sha256:641e3c2ec08f4bdc239f99aa14c672208429511113eed311c59c231e00cf0ad9"
+        "sha256": "sha256:b42c557346e8cbd1619b48e3743572830cf8ce835421a2320d9237949f541b36"
       },
       "network": "denied",
       "probe_id": "natural-routing",
-      "prompt": "Read only probe-fixture.json and produce a concise self-contained technical report with one compact recovery record; do not inspect other files or modify files.",
+      "prompt": "Read only codex_eval_host.py and produce a substantial self-contained long-form architecture report with exactly seven ordered sections covering responsibilities, process boundaries, data flow, identity checks, failure handling, security boundaries, and recovery. Include one compact recovery record; do not inspect other files or modify files.",
       "request_ceiling": 1,
       "required_observations": [
         "thread.started",

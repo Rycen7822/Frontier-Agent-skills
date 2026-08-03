@@ -164,6 +164,15 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             "direct.routing",
             by_capability["natural_routing"]["required_observations"],
         )
+        natural = by_capability["natural_routing"]
+        self.assertEqual(natural["fixture"]["path"], "scripts/codex_eval_host.py")
+        self.assertGreater(
+            (REPOSITORY_ROOT / natural["fixture"]["path"]).stat().st_size,
+            32 * 1024,
+        )
+        self.assertIn("exactly seven ordered sections", natural["prompt"])
+        self.assertIn("do not inspect other files", natural["prompt"])
+        self.assertNotIn("$long-document-segmented-writing", natural["prompt"])
         self.assertIn(
             "permission.denied",
             by_capability["action_authorization_trace"]["required_observations"],
