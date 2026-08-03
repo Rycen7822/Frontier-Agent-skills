@@ -340,7 +340,12 @@ def _init(args: argparse.Namespace) -> None:
             "provider request ceiling cannot reserve the interaction probe set"
         )
     store = _campaign_store(repository_root, campaign_root)
-    store.create(campaign)
+    store.create(
+        campaign,
+        bootstrap_paths=tuple(
+            path for path in fixed.values() if path.is_relative_to(campaign_root)
+        ),
+    )
     _emit(
         {
             "campaign_id": campaign["campaign_id"],
