@@ -21,10 +21,10 @@ from _model_evolution_contract import (
     prepare_predecessor,
     prepare_supersedes,
     project_qualification,
+    qualification_request_ceilings,
     render_qualification_markdown,
     resolve_binding,
     validate_all_bindings,
-    validate_bundle_build,
     validate_document,
     verify_self_hash,
     with_self_hash,
@@ -41,6 +41,7 @@ from _model_evolution_ops import (
     run_interaction_probes,
     runner_status,
     systemd_probe_argv,
+    validate_plugin_staging,
 )
 from _model_evolution_state import (
     CampaignStore,
@@ -54,6 +55,7 @@ from _model_evolution_state import (
     record_observed_budget,
     register_plan,
     reserve_probes,
+    reserve_budget,
     status_projection,
 )
 
@@ -230,15 +232,17 @@ def _init(args: argparse.Namespace) -> None:
         ceilings["reviewer"] != 0
         or ceilings["optimizer"] != 0
         or ceilings["download_bytes"] != 0
-        or ceilings["candidates"] > 1
+        or ceilings["candidates"] != 1
+        or ceilings["artifact_bytes"] != 1_073_741_824
     ):
         raise CliError(
-            "campaign requires zero reviewer/optimizer/download budget and at most one candidate"
+            "campaign requires fixed artifact/candidate ceilings and zero reviewer/optimizer/download budget"
         )
     fixed = {
         "bundle_manifest": repository_root / "bundle-manifest.json",
         "bundle_build": repository_root / "frontier-engineering.bundle.json",
         "static_report": repository_root / "evaluation/static-contract-diagnostic.json",
+        "plugin_build": args.plugin_build_evidence.resolve(strict=True),
         "target_host": args.target_host.resolve(strict=True),
         "probe_set": args.probe_set.resolve(strict=True),
         "sentinel": args.sentinel_index.resolve(strict=True),
@@ -251,6 +255,41 @@ def _init(args: argparse.Namespace) -> None:
         )
         for name, path in fixed.items()
     }
+    plugin_root = args.plugin_root.resolve(strict=True)
+    if (
+        args.plugin_root.is_symlink()
+        or not plugin_root.is_dir()
+        or not plugin_root.is_relative_to(campaign_root)
+    ):
+        raise CliError("plugin staging root must be a campaign-local directory")
+    bundle_manifest = load_json(fixed["bundle_manifest"], label="Bundle manifest")
+    bundle_build = load_json(fixed["bundle_build"], label="Bundle build")
+    static_report = load_json(fixed["static_report"], label="static report")
+    plugin_build = validate_plugin_staging(
+        repository_root=repository_root,
+        plugin_root=plugin_root,
+        evidence_path=fixed["plugin_build"],
+        expected_commit=identity["commit"],
+        expected_bundle_id=static_report["bundle_id"],
+        expected_bundle_version=bundle_manifest["bundle_version"],
+        expected_skill_versions={
+            skill_id: bundle_build["skills"][skill_id]["version"]
+            for skill_id in SKILL_IDS
+        },
+    )
+    probe_set = load_json(fixed["probe_set"], label="interaction probe set")
+    sentinel = load_json(fixed["sentinel"], label="sentinel index")
+    request_ceilings = qualification_request_ceilings(
+        sentinel,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        probe_count=len(probe_set["probes"]),
+    )
+    for field in ("provider_requests", "execute", "model_grade"):
+        if ceilings[field] != request_ceilings[field]:
+            raise CliError(
+                f"{field} ceiling must equal the frozen worst-case request budget"
+            )
     predecessor_paths = (
         args.predecessor_cycle,
         args.predecessor_host,
@@ -319,11 +358,15 @@ def _init(args: argparse.Namespace) -> None:
     campaign = build_initial_campaign(
         campaign_id=args.campaign_id,
         git_identity=identity,
-        bundle_manifest=load_json(fixed["bundle_manifest"], label="Bundle manifest"),
+        bundle_manifest=bundle_manifest,
         bundle_manifest_binding=bindings["bundle_manifest"],
-        bundle_build=load_json(fixed["bundle_build"], label="Bundle build"),
+        bundle_build=bundle_build,
         bundle_build_binding=bindings["bundle_build"],
-        static_report=load_json(fixed["static_report"], label="static report"),
+        plugin_build_binding=bindings["plugin_build"],
+        plugin_root=plugin_root.relative_to(campaign_root).as_posix(),
+        plugin_tree_hash=plugin_build["plugin_tree_hash"],
+        calibration_requests=request_ceilings["calibration"],
+        static_report=static_report,
         static_report_binding=bindings["static_report"],
         target_host_binding=bindings["target_host"],
         probe_set_binding=bindings["probe_set"],
@@ -334,17 +377,33 @@ def _init(args: argparse.Namespace) -> None:
         predecessor=predecessor,
         supersedes=supersedes,
     )
-    probe_set = load_json(fixed["probe_set"], label="interaction probe set")
     if ceilings["provider_requests"] < len(probe_set["probes"]):
         raise CliError(
             "provider request ceiling cannot reserve the interaction probe set"
         )
+    calibration_delta = max(
+        0,
+        request_ceilings["calibration"]
+        - campaign["budgets"]["reserved"]["model_grade"],
+    )
+    if calibration_delta:
+        reserve_budget(
+            campaign,
+            {
+                "provider_requests": calibration_delta,
+                "model_grade": calibration_delta,
+            },
+        )
+        campaign = with_self_hash(campaign, "campaign_hash")
+        validate_document(campaign, "campaign")
     store = _campaign_store(repository_root, campaign_root)
+    bootstrap_paths = {
+        path for path in fixed.values() if path.is_relative_to(campaign_root)
+    }
+    bootstrap_paths.update(path for path in plugin_root.rglob("*") if path.is_file())
     store.create(
         campaign,
-        bootstrap_paths=tuple(
-            path for path in fixed.values() if path.is_relative_to(campaign_root)
-        ),
+        bootstrap_paths=tuple(sorted(bootstrap_paths)),
     )
     _emit(
         {
@@ -419,6 +478,13 @@ def _probe(args: argparse.Namespace) -> None:
         repository_root=repository_root,
         campaign_root=campaign_root,
     )
+    approval_document = _load_bound_document(
+        approval,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        label="budget approval",
+    )
+    validate_document(approval_document, "budget_approval")
     probe_set = _load_bound_document(
         campaign["interaction_probes"]["probe_set"],
         repository_root=repository_root,
@@ -427,6 +493,23 @@ def _probe(args: argparse.Namespace) -> None:
     )
     validate_document(probe_set, "interaction_probes")
     probe_ids = [row["probe_id"] for row in probe_set["probes"]]
+    expected_approval = {
+        "campaign_id": campaign["campaign_id"],
+        "campaign_hash": campaign["campaign_hash"],
+        "state_revision": campaign["state_revision"],
+        "ceilings": campaign["budgets"]["ceiling"],
+    }
+    for field, value in expected_approval.items():
+        if approval_document[field] != value:
+            raise CliError(f"budget approval {field} differs from campaign")
+    expected_planned = {
+        "interaction_probe_requests": len(probe_ids),
+        "public_plan_count": len(SKILL_IDS),
+        "artifact_file_ceiling": 5_000,
+        "wall_clock_seconds": 21_600,
+    }
+    if approval_document["planned"] != expected_planned:
+        raise CliError("budget approval execution plan differs from campaign policy")
     existing = campaign["interaction_probes"]["requests"]
     resume_existing = bool(existing)
     if resume_existing:
@@ -534,15 +617,12 @@ def _register_plan(args: argparse.Namespace) -> None:
         plugin_binding = campaign["skill_evidence"]["plugin_build"]
         if plugin_binding is None:
             raise CliError("target_holdout plan has no selected plugin build")
-        plugin_build = validate_bundle_build(
-            _load_bound_document(
-                plugin_binding,
-                repository_root=repository_root,
-                campaign_root=campaign_root,
-                label="selected plugin build",
-            )
+        selected_skills = (
+            campaign["candidate"]["skills"]
+            if campaign["candidate"] is not None
+            else campaign["product"]["skills"]
         )
-        expected_package_hash = plugin_build["skills"][args.skill_id]["root_hash"]
+        expected_package_hash = selected_skills[args.skill_id]["root_hash"]
     if plan["package_hashes"][args.skill_id] != expected_package_hash:
         raise CliError("execution plan Skill package differs from its selected product")
     index_path = _plan_index_path(plan_path, plan)
@@ -665,9 +745,8 @@ def _record(args: argparse.Namespace) -> None:
                 campaign_root=campaign_root,
             )
     elif args.role == "plugin_build":
-        build = validate_bundle_build(load_json(path, label="plugin build"))
-        if build["bundle_id"] != campaign["product"]["bundle_id"]:
-            raise CliError("plugin build Bundle ID differs from campaign product")
+        if args.plugin_root is None:
+            raise CliError("record plugin_build requires --plugin-root")
         expected_commit = (
             campaign["candidate"]["candidate_commit"]
             if campaign["candidate"] is not None
@@ -675,16 +754,51 @@ def _record(args: argparse.Namespace) -> None:
         )
         if git_identity(repository_root)["commit"] != expected_commit:
             raise CliError("plugin build is not from the selected signed clean commit")
-        if campaign["candidate"] is None:
-            if binding != campaign["product"]["bundle_build"]:
-                raise CliError("current selection must reuse the frozen Bundle build")
-        elif (
-            binding["root"] != "repository"
-            or binding["path"] != "frontier-engineering.bundle.json"
+        expected_skills = (
+            campaign["candidate"]["skills"]
+            if campaign["candidate"] is not None
+            else campaign["product"]["skills"]
+        )
+        expected_bundle = load_json(
+            repository_root / "bundle-manifest.json",
+            label="selected Bundle manifest",
+        )
+        plugin_root = args.plugin_root.resolve(strict=True)
+        if (
+            args.plugin_root.is_symlink()
+            or not plugin_root.is_dir()
+            or not plugin_root.is_relative_to(campaign_root)
         ):
-            raise CliError("candidate selection must bind the canonical Bundle build")
+            raise CliError("selected plugin staging must be campaign-local")
+        validate_plugin_staging(
+            repository_root=repository_root,
+            plugin_root=plugin_root,
+            evidence_path=path,
+            expected_commit=expected_commit,
+            expected_bundle_id=campaign["product"]["bundle_id"],
+            expected_bundle_version=expected_bundle["bundle_version"],
+            expected_skill_versions={
+                skill_id: expected_skills[skill_id]["version"] for skill_id in SKILL_IDS
+            },
+        )
+        if campaign["candidate"] is None:
+            expected_root = campaign_root / campaign["product"]["plugin_root"]
+            if (
+                binding != campaign["product"]["plugin_build"]
+                or plugin_root != expected_root
+            ):
+                raise CliError("current selection must reuse the frozen plugin staging")
+        elif binding["root"] != "campaign":
+            raise CliError("candidate plugin build evidence must be campaign-local")
     observed: dict[str, int | None] | None = None
-    if args.role in {"current_summary", "candidate_summary", "holdout_summary"}:
+    if args.role == "grader_calibration":
+        current = campaign["budgets"]["observed"]
+        calibration = campaign["product"]["calibration_requests"]
+        observed = {
+            "provider_requests": (current["provider_requests"] or 0) + calibration,
+            "model_grade": (current["model_grade"] or 0) + calibration,
+        }
+    elif args.role in {"current_summary", "candidate_summary", "holdout_summary"}:
         summary = load_json(path, label=args.role)
         attempts = summary["counts"]["attempts"]
         current = campaign["budgets"]["observed"]
@@ -957,6 +1071,8 @@ def _parser() -> argparse.ArgumentParser:
 
     init = commands.add_parser("init")
     init.add_argument("--campaign-id", required=True)
+    init.add_argument("--plugin-root", type=Path, required=True)
+    init.add_argument("--plugin-build-evidence", type=Path, required=True)
     init.add_argument("--target-host", type=Path, required=True)
     init.add_argument("--probe-set", type=Path, required=True)
     init.add_argument("--sentinel-index", type=Path, required=True)
@@ -1001,6 +1117,7 @@ def _parser() -> argparse.ArgumentParser:
     record.add_argument("--role", choices=RECORD_ROLES, required=True)
     record.add_argument("--skill-id", choices=SKILL_IDS)
     record.add_argument("--artifact", type=Path)
+    record.add_argument("--plugin-root", type=Path)
     record.add_argument("--base-commit")
     record.add_argument("--candidate-commit")
     record.add_argument("--owner-surface", choices=SKILL_IDS)
@@ -1040,6 +1157,8 @@ def _validate_record_args(args: argparse.Namespace) -> None:
             )
     elif any(candidate_fields[:3]) or args.root_cause_id or args.semantic_change:
         raise CliError("candidate-only arguments require role candidate_source")
+    if args.role != "plugin_build" and args.plugin_root is not None:
+        raise CliError("--plugin-root is only valid for role plugin_build")
     if (
         args.role in {"grader_calibration", "plugin_build"}
         and args.skill_id is not None

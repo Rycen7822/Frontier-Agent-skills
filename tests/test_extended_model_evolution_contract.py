@@ -29,6 +29,7 @@ from _model_evolution_contract import (  # noqa: E402
 )
 from model_evolution_test_support import (  # noqa: E402
     materialize_bootstrap_evidence,
+    materialize_budget_approval,
     materialize_campaign,
     write_json,
 )
@@ -71,6 +72,12 @@ class ModelEvolutionContractTest(unittest.TestCase):
 
     def test_closed_schemas_and_self_hashes(self) -> None:
         documents = {
+            "budget_approval": json.loads(
+                materialize_budget_approval(
+                    self.fixture,
+                    self.fixture["campaign"],
+                ).read_text()
+            ),
             "campaign": self.fixture["campaign"],
             "interaction_probes": json.loads(
                 self.fixture["paths"]["probe_set"].read_text()
@@ -79,6 +86,7 @@ class ModelEvolutionContractTest(unittest.TestCase):
             "qualification": self._blocked_qualification(),
         }
         hash_fields = {
+            "budget_approval": "approval_hash",
             "campaign": "campaign_hash",
             "interaction_probes": "probe_set_hash",
             "sentinel_index": "sentinel_hash",
@@ -273,6 +281,12 @@ class ModelEvolutionContractTest(unittest.TestCase):
             bundle_manifest_binding=self.fixture["bindings"]["bundle_manifest"],
             bundle_build=product["bundle_build"],
             bundle_build_binding=self.fixture["bindings"]["bundle_build"],
+            plugin_build_binding=self.fixture["bindings"]["plugin_build"],
+            plugin_root=self.fixture["campaign"]["product"]["plugin_root"],
+            plugin_tree_hash=self.fixture["campaign"]["product"]["plugin_tree"],
+            calibration_requests=self.fixture["campaign"]["product"][
+                "calibration_requests"
+            ],
             static_report=product["static_report"],
             static_report_binding=self.fixture["bindings"]["static_report"],
             target_host_binding=self.fixture["bindings"]["host"],

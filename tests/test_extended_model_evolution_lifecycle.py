@@ -6,6 +6,7 @@ import fcntl
 import io
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -41,6 +42,7 @@ from model_evolution_test_support import (  # noqa: E402
     FIXED_TREE,
     materialize_apparatus_report,
     materialize_bootstrap_evidence,
+    materialize_budget_approval,
     materialize_campaign,
     mark_probe_passed,
     write_json,
@@ -134,29 +136,108 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
     def test_create_accepts_only_declared_campaign_bootstrap_files(self) -> None:
         source_host = self.fixture["paths"]["host"]
         relative_host = Path(self.fixture["bindings"]["host"]["path"])
+        source_build = self.fixture["paths"]["plugin_build"]
+        relative_build = Path(self.fixture["bindings"]["plugin_build"]["path"])
+        relative_plugin = Path(self.fixture["campaign"]["product"]["plugin_root"])
+        relative_plugin /= ".codex-plugin/plugin.json"
+
+        def seed(root: Path) -> tuple[Path, Path, Path]:
+            targets = (
+                (source_host, root / relative_host),
+                (source_build, root / relative_build),
+                (
+                    self.fixture["paths"]["plugin_root"] / ".codex-plugin/plugin.json",
+                    root / relative_plugin,
+                ),
+            )
+            for source, target in targets:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(source.read_bytes())
+            return tuple(target for _, target in targets)
 
         accepted_root = Path(self.temporary.name) / "accepted-campaign"
-        accepted_host = accepted_root / relative_host
-        accepted_host.parent.mkdir(parents=True)
-        accepted_host.write_bytes(source_host.read_bytes())
+        accepted_inputs = seed(accepted_root)
         accepted = CampaignStore(accepted_root, self.fixture["repository_root"])
         accepted.create(
             self.fixture["campaign"],
-            bootstrap_paths=(accepted_host,),
+            bootstrap_paths=accepted_inputs,
         )
         self.assertTrue(accepted.path.is_file())
 
         rejected_root = Path(self.temporary.name) / "rejected-campaign"
-        rejected_host = rejected_root / relative_host
-        rejected_host.parent.mkdir(parents=True)
-        rejected_host.write_bytes(source_host.read_bytes())
+        rejected_inputs = seed(rejected_root)
         (rejected_root / "unbound.txt").write_text("unbound\n", encoding="utf-8")
         rejected = CampaignStore(rejected_root, self.fixture["repository_root"])
         with self.assertRaisesRegex(StateError, "undeclared bootstrap content"):
             rejected.create(
                 self.fixture["campaign"],
-                bootstrap_paths=(rejected_host,),
+                bootstrap_paths=rejected_inputs,
             )
+
+    def test_init_binds_exact_campaign_host_and_plugin_staging(self) -> None:
+        campaign_root = Path(self.temporary.name) / "controller-init"
+        inputs = campaign_root / "inputs"
+        inputs.mkdir(parents=True)
+        host = inputs / "target-provisional-host.json"
+        plugin_build = inputs / "plugin-build-evidence.json"
+        shutil.copyfile(self.fixture["paths"]["host"], host)
+        shutil.copyfile(self.fixture["paths"]["plugin_build"], plugin_build)
+        plugin_root = campaign_root / "staging/frontier-engineering-plugin"
+        shutil.copytree(self.fixture["paths"]["plugin_root"], plugin_root)
+        args = argparse.Namespace(
+            repository_root=self.fixture["repository_root"],
+            campaign_root=campaign_root,
+            campaign_id="controller-init-fixture",
+            plugin_root=plugin_root,
+            plugin_build_evidence=plugin_build,
+            target_host=host,
+            probe_set=self.fixture["paths"]["probe_set"],
+            sentinel_index=self.fixture["paths"]["sentinel"],
+            predecessor_cycle=None,
+            predecessor_host=None,
+            predecessor_comparison=None,
+            predecessor_qualification=None,
+            supersedes=None,
+            provider_request_ceiling=45,
+            execute_ceiling=20,
+            model_grade_ceiling=24,
+            artifact_byte_ceiling=1_073_741_824,
+            download_byte_ceiling=0,
+            candidate_ceiling=1,
+            reviewer_ceiling=0,
+            optimizer_ceiling=0,
+        )
+        evidence = json.loads(plugin_build.read_text())
+        with (
+            mock.patch.object(
+                controller,
+                "git_identity",
+                return_value={"commit": FIXED_COMMIT, "tree": FIXED_TREE},
+            ),
+            mock.patch.object(controller, "require_tracked_binding"),
+            mock.patch.object(
+                controller,
+                "validate_plugin_staging",
+                return_value=evidence,
+            ),
+            mock.patch.object(controller, "_emit"),
+        ):
+            invalid_args = copy.copy(args)
+            invalid_args.provider_request_ceiling -= 1
+            with self.assertRaisesRegex(controller.CliError, "worst-case"):
+                controller._init(invalid_args)
+            self.assertFalse((campaign_root / "campaign.json").exists())
+            controller._init(args)
+        state = CampaignStore(
+            campaign_root,
+            self.fixture["repository_root"],
+        ).read()
+        self.assertEqual("campaign", state["product"]["plugin_build"]["root"])
+        self.assertEqual(
+            "staging/frontier-engineering-plugin",
+            state["product"]["plugin_root"],
+        )
+        self.assertEqual(evidence["plugin_tree_hash"], state["product"]["plugin_tree"])
 
     def test_unsigned_and_dirty_git_identity_are_rejected(self) -> None:
         repository = Path(self.temporary.name) / "unsigned-repository"
@@ -373,9 +454,27 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         store = self.fixture["store"]
         apparatus = materialize_apparatus_report(self.fixture)
         store.mutate(0, lambda state: advance_preflight(state, apparatus))
-        approval = write_json(
-            self.fixture["campaign_root"] / "budget-approval.json", {"approved": True}
+        approval = materialize_budget_approval(
+            self.fixture,
+            store.read(),
         )
+        invalid_approval = json.loads(approval.read_text())
+        invalid_approval["campaign_hash"] = "sha256:" + "0" * 64
+        invalid_approval = with_self_hash(invalid_approval, "approval_hash")
+        invalid_path = write_json(
+            self.fixture["campaign_root"] / "invalid-budget-approval.json",
+            invalid_approval,
+        )
+        with self.assertRaisesRegex(controller.CliError, "campaign_hash differs"):
+            controller._probe(
+                argparse.Namespace(
+                    repository_root=self.fixture["repository_root"],
+                    campaign_root=self.fixture["campaign_root"],
+                    expected_revision=1,
+                    budget_approval=invalid_path,
+                )
+            )
+        self.assertEqual(1, store.read()["state_revision"])
         with mock.patch.object(controller, "_emit"):
             controller._probe(
                 argparse.Namespace(
@@ -402,8 +501,10 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             1,
             lambda state: reserve_probes(state, ["force-load"]),
         )
-        partial_approval = write_json(
-            partial["campaign_root"] / "approval.json", {"approved": True}
+        partial_approval = materialize_budget_approval(
+            partial,
+            partial["store"].read(),
+            "approval.json",
         )
         with self.assertRaisesRegex(
             operations.OperationError, "automatic resend is forbidden"
@@ -499,8 +600,10 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         blocked["store"].mutate(
             0, lambda state: advance_preflight(state, blocked_apparatus)
         )
-        approval = write_json(
-            blocked["campaign_root"] / "approval.json", {"approved": True}
+        approval = materialize_budget_approval(
+            blocked,
+            blocked["store"].read(),
+            "approval.json",
         )
         with mock.patch.object(
             controller,
@@ -598,7 +701,8 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             expected_revision=0,
             role="plugin_build",
             skill_id=None,
-            artifact=self.fixture["paths"]["bundle_build"],
+            artifact=self.fixture["paths"]["plugin_build"],
+            plugin_root=self.fixture["paths"]["plugin_root"],
         )
         with (
             mock.patch.object(
@@ -607,6 +711,13 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                 return_value={"commit": FIXED_COMMIT, "tree": FIXED_TREE},
             ),
             mock.patch.object(controller, "require_tracked_binding"),
+            mock.patch.object(
+                controller,
+                "validate_plugin_staging",
+                return_value=json.loads(
+                    self.fixture["paths"]["plugin_build"].read_text()
+                ),
+            ),
             mock.patch.object(controller, "_emit"),
         ):
             controller._record(args)
@@ -614,7 +725,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         self.assertEqual(updated["phase"], "final_plugin_ready")
         self.assertEqual(
             updated["skill_evidence"]["plugin_build"],
-            self.fixture["bindings"]["bundle_build"],
+            self.fixture["bindings"]["plugin_build"],
         )
 
     def test_summary_and_comparison_evidence_join_selected_inputs(self) -> None:
@@ -728,7 +839,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         record_evidence(
             no_candidate,
             role="plugin_build",
-            binding=self.fixture["bindings"]["bundle_build"],
+            binding=self.fixture["bindings"]["plugin_build"],
             skill_id=None,
         )
         for skill_id in SKILL_IDS:
@@ -746,6 +857,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             "changed_paths": [f"{SKILL_IDS[0]}/SKILL.md"],
             "root_cause_ids": ["rc-1"],
             "owner_surface": SKILL_IDS[0],
+            "skills": copy.deepcopy(current["product"]["skills"]),
             "semantic_changes": ["Restore one bounded behavior."],
             "operations": [operation_fact()],
         }
@@ -764,7 +876,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         record_evidence(
             candidate,
             role="plugin_build",
-            binding=self.fixture["bindings"]["bundle_build"],
+            binding=self.fixture["bindings"]["plugin_build"],
             skill_id=None,
         )
         for skill_id in SKILL_IDS:
@@ -911,6 +1023,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                 "campaign.json",
                 "inputs",
                 "qualification",
+                "staging",
                 "summary.json",
             },
         )

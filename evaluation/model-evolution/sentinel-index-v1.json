@@ -1,9 +1,15 @@
 {
   "schema_version": "model-evolution-sentinel-index/1",
-  "sentinel_hash": "sha256:5891b09ece3ab92c06d89d03e262b3d6cd3298b3c69fa47ab639362673b279e7",
+  "sentinel_hash": "sha256:dfe12c5de48fafae9ce3fa09f59c299133a98104b5f753c370ff2cf6d957c138",
   "sentinel_id": "frontier-four-skill-sentinel-v1",
   "skills": {
     "long-document-segmented-writing": {
+      "calibration_gold": {
+        "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/calibration-gold.jsonl",
+        "root": "repository",
+        "sha256": "sha256:9411226f1e79d20346264de253053b788a3acf14e231e495877e2d146c6ced19"
+      },
+      "calibration_request_ceiling": 16,
       "critical_bucket_id": "long-document-segmented-writing-critical",
       "external_holdout_contract_id": "long-document-segmented-writing-external-holdout-v1",
       "fixture_roots": [
@@ -18,6 +24,7 @@
           "sha256": "sha256:4b1b8d1fc191a06182374b2acee7da7a73bf78d64b37f7ba6cd66d3b92b7d001"
         }
       ],
+      "holdout_case_ceiling": 1,
       "protected_case_ids": [
         "long-document-segmented-writing-protected-no-scratch"
       ],
@@ -48,6 +55,12 @@
       ]
     },
     "skill-evaluator": {
+      "calibration_gold": {
+        "path": "evaluation/model-evolution/sentinels/skill-evaluator/calibration-gold.jsonl",
+        "root": "repository",
+        "sha256": "sha256:b75ac94e774b2b1184c6fdcca1f07615c225fd6f607a6e44fb24676e06b3bc42"
+      },
+      "calibration_request_ceiling": 16,
       "critical_bucket_id": "skill-evaluator-critical",
       "external_holdout_contract_id": "skill-evaluator-external-holdout-v1",
       "fixture_roots": [
@@ -62,6 +75,7 @@
           "sha256": "sha256:76eb44c2e40caa27c8dc93d00fa10e1311ac7e670bf687be4d5cd102c0e3cd1a"
         }
       ],
+      "holdout_case_ceiling": 1,
       "protected_case_ids": [
         "skill-evaluator-protected-no-reviewer"
       ],
@@ -92,6 +106,12 @@
       ]
     },
     "software-quality-workflows": {
+      "calibration_gold": {
+        "path": "evaluation/model-evolution/sentinels/software-quality-workflows/calibration-gold.jsonl",
+        "root": "repository",
+        "sha256": "sha256:3572eff1252cffad7f75f344fb13b5c058464d438ff1e5e43acd45a23a847e0d"
+      },
+      "calibration_request_ceiling": 16,
       "critical_bucket_id": "software-quality-workflows-critical",
       "external_holdout_contract_id": "software-quality-workflows-external-holdout-v1",
       "fixture_roots": [
@@ -106,6 +126,7 @@
           "sha256": "sha256:074bea64640ab57fa6701c7bdb6c9d3abcb240276113c8bc9e2129b888f6cafd"
         }
       ],
+      "holdout_case_ceiling": 1,
       "protected_case_ids": [
         "software-quality-workflows-protected-no-state"
       ],
@@ -136,6 +157,12 @@
       ]
     },
     "writing-plans": {
+      "calibration_gold": {
+        "path": "evaluation/model-evolution/sentinels/writing-plans/calibration-gold.jsonl",
+        "root": "repository",
+        "sha256": "sha256:5168d6d7f4dbf39a5fa97f8129ecd73a4d4b32eeda63fd894b8a7c7219710f88"
+      },
+      "calibration_request_ceiling": 16,
       "critical_bucket_id": "writing-plans-critical",
       "external_holdout_contract_id": "writing-plans-external-holdout-v1",
       "fixture_roots": [
@@ -150,6 +177,7 @@
           "sha256": "sha256:3c9788232fabb0f233aaf310ca78a0ff5852036fc4ae6139eb9a501958be2c06"
         }
       ],
+      "holdout_case_ceiling": 1,
       "protected_case_ids": [
         "writing-plans-protected-description"
       ],

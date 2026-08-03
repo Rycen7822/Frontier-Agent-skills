@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontier.local/model-evolution/budget-approval-v1.schema.json",
+  "title": "Frontier model evolution budget approval v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "campaign_id",
+    "campaign_hash",
+    "state_revision",
+    "ceilings",
+    "planned",
+    "approved",
+    "approved_by",
+    "approved_at",
+    "approval_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "model-evolution-budget-approval/1"},
+    "campaign_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "campaign_hash": {"$ref": "#/$defs/hash"},
+    "state_revision": {"type": "integer", "minimum": 0},
+    "ceilings": {"$ref": "#/$defs/counts"},
+    "planned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "interaction_probe_requests",
+        "public_plan_count",
+        "artifact_file_ceiling",
+        "wall_clock_seconds"
+      ],
+      "properties": {
+        "interaction_probe_requests": {"type": "integer", "minimum": 1, "maximum": 6},
+        "public_plan_count": {"const": 4},
+        "artifact_file_ceiling": {"type": "integer", "minimum": 1},
+        "wall_clock_seconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "approved": {"const": true},
+    "approved_by": {"type": "string", "minLength": 1, "maxLength": 128},
+    "approved_at": {"type": "string", "format": "date-time"},
+    "approval_hash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "count": {
+      "anyOf": [
+        {"type": "integer", "minimum": 0},
+        {"type": "null"}
+      ]
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_requests",
+        "execute",
+        "model_grade",
+        "reviewer",
+        "optimizer",
+        "download_bytes",
+        "artifact_bytes",
+        "candidates"
+      ],
+      "properties": {
+        "provider_requests": {"$ref": "#/$defs/count"},
+        "execute": {"$ref": "#/$defs/count"},
+        "model_grade": {"$ref": "#/$defs/count"},
+        "reviewer": {"$ref": "#/$defs/count"},
+        "optimizer": {"$ref": "#/$defs/count"},
+        "download_bytes": {"$ref": "#/$defs/count"},
+        "artifact_bytes": {"$ref": "#/$defs/count"},
+        "candidates": {"$ref": "#/$defs/count"}
+      }
+    }
+  }
+}
