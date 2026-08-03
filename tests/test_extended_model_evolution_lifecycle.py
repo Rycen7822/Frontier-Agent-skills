@@ -595,6 +595,49 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(call_count, len(calls.read_text().splitlines()))
 
+    def test_probe_outer_timeout_has_grace_and_kills_owned_process_group(self) -> None:
+        self.assertEqual(
+            35.0,
+            operations._probe_process_timeout(["host", "--timeout", "5"]),
+        )
+        for argv in (
+            ["host"],
+            ["host", "--timeout", "nan"],
+            ["host", "--timeout", "0"],
+        ):
+            with self.assertRaisesRegex(
+                operations.OperationError, "target Host timeout is invalid"
+            ):
+                operations._probe_process_timeout(argv)
+
+        process = mock.Mock(pid=4321)
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired(cmd="host", timeout=0.1),
+            ("", "bounded diagnostic"),
+        ]
+        with (
+            mock.patch.object(operations.subprocess, "Popen", return_value=process) as popen,
+            mock.patch.object(operations.os, "killpg") as killpg,
+            self.assertRaisesRegex(
+                operations.OperationError,
+                "outer timeout after 0.1s: bounded diagnostic",
+            ),
+        ):
+            operations._run_probe_process(
+                ["host", "--timeout", "5"],
+                {
+                    "probe_id": "force-load",
+                    "capability": "force_load",
+                    "prompt": "fixture prompt",
+                    "required_observations": [],
+                },
+                workspace=self.fixture["repository_root"],
+                timeout=0.1,
+            )
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+        killpg.assert_called_once_with(4321, operations.signal.SIGKILL)
+        self.assertEqual(2, process.communicate.call_count)
+
     def test_unknown_critical_probe_closes_terminals_without_advancing(self) -> None:
         store = self.fixture["store"]
         apparatus = materialize_apparatus_report(self.fixture)

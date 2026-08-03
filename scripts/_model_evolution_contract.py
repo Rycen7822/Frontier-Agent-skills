@@ -7,6 +7,7 @@ from datetime import datetime
 from functools import lru_cache
 from hashlib import sha256
 import json
+import math
 from pathlib import Path, PurePosixPath
 import re
 from typing import Any, Callable
@@ -725,7 +726,26 @@ def prepare_supersedes(
     old = load_json(old_path, label="superseded campaign")
     validate_document(old, "campaign")
     if old["supersedes"] is not None:
-        raise ContractError("a superseding campaign cannot be superseded again")
+        parent_path = resolve_binding(
+            old["supersedes"]["campaign"], repository_root, old_path.parent
+        )
+        parent = load_json(parent_path, label="supersession parent campaign")
+        validate_document(parent, "campaign")
+        if parent["supersedes"] is not None:
+            raise ContractError("supersession repair depth is exhausted")
+        for field in ("reserved", "observed"):
+            if old["supersedes"][f"imported_{field}"] != parent["budgets"][field]:
+                raise ContractError("supersession lineage budget differs")
+        parent_qualification = load_json(
+            parent_path.parent / "qualification/qualification.json",
+            label="supersession parent qualification",
+        )
+        validate_document(parent_qualification, "qualification")
+        if (
+            parent_qualification["campaign_hash"] != parent["campaign_hash"]
+            or parent_qualification["decision"] != "blocked"
+        ):
+            raise ContractError("supersession parent is not closed as blocked")
     old_host = load_json(
         resolve_binding(
             old["profiles"]["target_provisional"],
@@ -757,10 +777,9 @@ def prepare_supersedes(
         "--effort",
         "--profile",
         "--sandbox",
-        "--timeout",
     )
 
-    def stable_host_identity(host: dict[str, Any]) -> dict[str, Any]:
+    def stable_host_identity(host: dict[str, Any]) -> tuple[dict[str, Any], float]:
         identity = host.get("identity")
         execution = identity.get("execution") if isinstance(identity, dict) else None
         adapter = identity.get("adapter") if isinstance(identity, dict) else None
@@ -791,14 +810,29 @@ def prepare_supersedes(
         ]
         if len(capability_contract) != len(capabilities):
             raise ContractError("supersession Host capabilities are invalid")
-        return {
-            "execution": {field: execution.get(field) for field in stable_execution},
-            "adapter": {field: adapter.get(field) for field in ("id", "version")},
-            "command": {name: option(name) for name in stable_options},
-            "capabilities": capability_contract,
-        }
+        try:
+            timeout = float(option("--timeout"))
+        except ValueError as exc:
+            raise ContractError("supersession Host timeout is invalid") from exc
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ContractError("supersession Host timeout is invalid")
+        return (
+            {
+                "execution": {
+                    field: execution.get(field) for field in stable_execution
+                },
+                "adapter": {
+                    field: adapter.get(field) for field in ("id", "version")
+                },
+                "command": {name: option(name) for name in stable_options},
+                "capabilities": capability_contract,
+            },
+            timeout,
+        )
 
-    if stable_host_identity(old_host) != stable_host_identity(target_host):
+    old_identity, old_timeout = stable_host_identity(old_host)
+    target_identity, target_timeout = stable_host_identity(target_host)
+    if old_identity != target_identity or target_timeout < old_timeout:
         raise ContractError("superseded campaign targets a different Host")
     qualification_path = old_path.parent / "qualification/qualification.json"
     qualification = load_json(qualification_path, label="superseded qualification")
