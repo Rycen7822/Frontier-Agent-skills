@@ -457,49 +457,48 @@ def base_host_result(
 
 
 def model_grade_schema(batch: dict[str, Any]) -> dict[str, Any]:
-    """Build an exact structured-output schema for one blinded batch."""
-    item_schemas = []
-    for item in batch["items"]:
-        checks = [
-            {
-                "type": "object",
-                "required": ["id", "pass", "notes", "uncertainty"],
-                "properties": {
-                    "id": {"const": check["id"]},
-                    "pass": {"type": "boolean"},
-                    "notes": {"type": "string"},
-                    "uncertainty": {"enum": ["none", "low", "medium", "high"]},
-                },
-                "additionalProperties": False,
-            }
-            for check in item["checks"]
-        ]
-        item_schemas.append(
-            {
-                "type": "object",
-                "required": ["item_id", "checks"],
-                "properties": {
-                    "item_id": {"const": item["item_id"]},
-                    "checks": {
-                        "type": "array",
-                        "prefixItems": checks,
-                        "minItems": len(checks),
-                        "maxItems": len(checks),
-                    },
-                },
-                "additionalProperties": False,
-            }
-        )
+    """Build a provider-supported shape; runtime validation binds identities."""
+    check_counts = [len(item["checks"]) for item in batch["items"]]
+    if len(set(check_counts)) != 1:
+        raise ValueError("model-grade batch check cardinality differs")
+    check_schema = {
+        "type": "object",
+        "required": ["id", "pass", "notes", "uncertainty"],
+        "properties": {
+            "id": {"type": "string"},
+            "pass": {"type": "boolean"},
+            "notes": {"type": "string"},
+            "uncertainty": {
+                "type": "string",
+                "enum": ["none", "low", "medium", "high"],
+            },
+        },
+        "additionalProperties": False,
+    }
+    item_schema = {
+        "type": "object",
+        "required": ["item_id", "checks"],
+        "properties": {
+            "item_id": {"type": "string"},
+            "checks": {
+                "type": "array",
+                "items": check_schema,
+                "minItems": check_counts[0],
+                "maxItems": check_counts[0],
+            },
+        },
+        "additionalProperties": False,
+    }
     return {
         "type": "object",
         "required": ["batch_id", "items"],
         "properties": {
-            "batch_id": {"const": batch["batch_id"]},
+            "batch_id": {"type": "string", "enum": [batch["batch_id"]]},
             "items": {
                 "type": "array",
-                "prefixItems": item_schemas,
-                "minItems": len(item_schemas),
-                "maxItems": len(item_schemas),
+                "items": item_schema,
+                "minItems": len(batch["items"]),
+                "maxItems": len(batch["items"]),
             },
         },
         "additionalProperties": False,

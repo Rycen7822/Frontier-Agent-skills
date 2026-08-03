@@ -43,6 +43,7 @@ from _codex_eval_events import (
 
 
 MAX_STDERR_BYTES = 64 * 1024
+MAX_FAILURE_DETAIL_CHARS = 2048
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -449,6 +450,7 @@ def _child_failure_result(
     request: dict[str, Any],
     manifest: dict[str, Any],
     child: dict[str, Any],
+    workspace: Path,
 ) -> dict[str, Any]:
     result = base_host_result(request, manifest)
     if child["timed_out"]:
@@ -463,10 +465,28 @@ def _child_failure_result(
         )
     else:
         code = child["returncode"]
+        normalized = normalize_jsonl(child["stdout"])
+        failures = normalized.get("failures")
+        detail = None
+        if isinstance(failures, list) and failures:
+            failure = failures[0]
+            if isinstance(failure, dict):
+                values = [
+                    f"{field}={failure[field]}"
+                    for field in ("kind", "code", "message")
+                    if isinstance(failure.get(field), str) and failure[field]
+                ]
+                if values:
+                    detail = _redact_text("; ".join(values), workspace)[
+                        :MAX_FAILURE_DETAIL_CHARS
+                    ]
         result.update(
             {
                 "terminal_status": "failed",
-                "treatment_error": "Codex child exited without a completed turn",
+                "treatment_error": (
+                    "Codex child exited without a completed turn"
+                    + (f": {detail}" if detail else "")
+                ),
                 "provider_error_code": f"codex_signal_{-code}"
                 if code < 0
                 else f"codex_exit_{code}",
@@ -548,7 +568,7 @@ def _run_model_grade(
         )
         _write_child_stderr(child["stderr"], workspace)
         if child["timed_out"] or child["returncode"] != 0:
-            return _child_failure_result(request, manifest, child)
+            return _child_failure_result(request, manifest, child, workspace)
         normalized = normalize_jsonl(child["stdout"])
         if normalized["status"] == "protocol_error":
             result = base_host_result(request, manifest)
@@ -684,7 +704,7 @@ def _run_execute(
                 break
 
     if child_failure is not None:
-        return [], _child_failure_result(request, manifest, child_failure)
+        return [], _child_failure_result(request, manifest, child_failure, workspace)
     if not normalized_turns or session_id is None:
         result = base_host_result(request, manifest)
         result["terminal_status"] = "protocol_error"
