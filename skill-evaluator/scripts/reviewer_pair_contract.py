@@ -21,7 +21,7 @@ from reviewer_prompt_contract import (
 
 PAIR_FIELDS = {
     "schema_version", "pair_id", "campaign_id", "packet", "output_schema",
-    "sealed_mapping", "reviewer_receipts",
+    "sealed_mapping", "requested_configuration", "reviewer_receipts",
     "both_spawns_acknowledged_before_first_result_consumed", "pair_hash",
 }
 RECEIPT_FIELDS = {
@@ -33,11 +33,8 @@ RECEIPT_FIELDS = {
     "parsed_ratings_hash", "terminal_status", "receipt_hash",
 }
 ARTIFACT_BINDING_FIELDS = {"path", "sha256"}
-REQUESTED_CONFIGURATION = {
-    "model": "gpt-5.6-sol",
-    "reasoning_effort": "max",
-    "service_tier": "priority",
-    "fork_turns": "none",
+REQUESTED_CONFIGURATION_FIELDS = {
+    "model", "reasoning_effort", "service_tier", "fork_turns",
 }
 FORBIDDEN_PACKET_KEYS = {
     "gold_label", "gold_severity", "expected_overall", "expected_checks",
@@ -79,6 +76,27 @@ def _sha256(value: Any) -> bool:
         and value.startswith(SHA256_PREFIX)
         and all(character in "0123456789abcdef" for character in value[7:])
     )
+
+
+def _validate_requested_configuration(value: Any) -> dict[str, str]:
+    _closed_object(
+        value,
+        REQUESTED_CONFIGURATION_FIELDS,
+        code="calibration.reviewer_pair",
+        label="requested configuration",
+    )
+    text_fields = ("model", "reasoning_effort", "service_tier")
+    if any(
+        not isinstance(value[field], str)
+        or not 1 <= len(value[field]) <= 128
+        or not value[field].isprintable()
+        for field in text_fields
+    ) or value["fork_turns"] != "none":
+        _fail(
+            "calibration.reviewer_pair",
+            "requested configuration is invalid or not context-clean",
+        )
+    return {field: value[field] for field in sorted(REQUESTED_CONFIGURATION_FIELDS)}
 
 
 def _contains_forbidden_packet_key(value: Any) -> bool:
@@ -443,6 +461,7 @@ def _validate_receipt(
     packet_binding: dict[str, str],
     output_schema: dict[str, Any],
     schema_binding: dict[str, str],
+    requested_configuration: dict[str, str],
     reviewer_rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
     _closed_object(
@@ -459,7 +478,7 @@ def _validate_receipt(
         != "context-clean-subagent-reviewer-receipt/1.0"
         or receipt["campaign_id"] != campaign_id
         or not all(_safe_id(receipt[field]) for field in id_fields)
-        or receipt["requested_configuration"] != REQUESTED_CONFIGURATION
+        or receipt["requested_configuration"] != requested_configuration
         or receipt["terminal_status"] != "complete"
         or not verify_self_hash(receipt, "receipt_hash")
     ):
@@ -532,7 +551,7 @@ def _validate_receipt(
         "request_id": receipt["request_id"],
         "reviewer_id": receipt["reviewer_id"],
         "task_name": receipt["task_name"],
-        **REQUESTED_CONFIGURATION,
+        **requested_configuration,
         "message_hash": receipt["prompt_hash"],
     }
     if (
@@ -669,9 +688,9 @@ def _validate_receipt(
             or envelope.get("message_hash") != receipt["prompt_hash"]
             or {
                 field: envelope.get(field)
-                for field in REQUESTED_CONFIGURATION
+                for field in requested_configuration
             }
-            != REQUESTED_CONFIGURATION
+            != requested_configuration
         ):
             _fail(
                 "calibration.reviewer_terminal",
@@ -725,7 +744,7 @@ def validate_reviewer_pair(
         pair, PAIR_FIELDS, code="calibration.reviewer_pair", label="reviewer pair",
     )
     if (
-        pair["schema_version"] != "context-clean-subagent-reviewer-pair/1.0"
+        pair["schema_version"] != "context-clean-subagent-reviewer-pair/2.0"
         or not _safe_id(pair["pair_id"])
         or not _safe_id(pair["campaign_id"])
         or pair["both_spawns_acknowledged_before_first_result_consumed"] is not True
@@ -734,6 +753,9 @@ def validate_reviewer_pair(
         or len(pair["reviewer_receipts"]) != 2
     ):
         _fail("calibration.reviewer_pair", "reviewer pair identity or self-hash is invalid")
+    requested_configuration = _validate_requested_configuration(
+        pair["requested_configuration"]
+    )
 
     packet, _, _ = _read_binding(
         pair["packet"],
@@ -822,6 +844,7 @@ def validate_reviewer_pair(
                 packet_binding=pair["packet"],
                 output_schema=output_schema,
                 schema_binding=pair["output_schema"],
+                requested_configuration=requested_configuration,
                 reviewer_rows=rows,
             )
         )

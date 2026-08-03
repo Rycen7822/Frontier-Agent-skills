@@ -3001,6 +3001,7 @@ def positional_reviewer_ratings_schema() -> dict:
 
 def materialize_v5_reviewer_pair(
     paths: dict[str, Path],
+    requested_configuration: dict[str, str] | None = None,
 ) -> dict[str, Path]:
     root = paths['calibration'].parent
     pair_root = root / 'reviewer-pair'
@@ -3010,6 +3011,16 @@ def materialize_v5_reviewer_pair(
     mapping_path = pair_root / 'sealed-mapping.json'
     pair_path = pair_root / 'pair.json'
     campaign_id = 'calibration-campaign'
+    requested = (
+        copy.deepcopy(requested_configuration)
+        if requested_configuration is not None
+        else {
+            'model': 'gpt-5.6-sol',
+            'reasoning_effort': 'max',
+            'service_tier': 'priority',
+            'fork_turns': 'none',
+        }
+    )
     def with_self_hash(value: dict, field: str) -> dict:
         closed = copy.deepcopy(value)
         closed[field] = canonical_hash({
@@ -3183,12 +3194,6 @@ def materialize_v5_reviewer_pair(
         write_json(prompt_path, prompt)
         write_json(raw_response_path, raw_response)
 
-        requested = {
-            'model': 'gpt-5.6-sol',
-            'reasoning_effort': 'max',
-            'service_tier': 'priority',
-            'fork_turns': 'none',
-        }
         spawn_request = {
             'schema_version': 'context-clean-subagent-spawn-request/1.0',
             'request_id': request_id,
@@ -3289,12 +3294,13 @@ def materialize_v5_reviewer_pair(
     )
 
     pair = with_self_hash({
-        'schema_version': 'context-clean-subagent-reviewer-pair/1.0',
+        'schema_version': 'context-clean-subagent-reviewer-pair/2.0',
         'pair_id': 'calibration-reviewer-pair',
         'campaign_id': campaign_id,
         'packet': packet_binding,
         'output_schema': schema_binding,
         'sealed_mapping': binding(mapping_path),
+        'requested_configuration': requested,
         'reviewer_receipts': [
             binding(path) for path in sorted(receipt_paths)
         ],

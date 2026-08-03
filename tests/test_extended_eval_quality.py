@@ -50,6 +50,8 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
     def _materialize_high_risk_reviewer_pair(
         self,
         root: Path,
+        *,
+        requested_configuration: dict[str, str] | None = None,
     ) -> dict[str, Path]:
         paths = materialize_v5_calibration_inputs(root)
         spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
@@ -70,7 +72,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             ),
             encoding='utf-8',
         )
-        return materialize_v5_reviewer_pair(paths)
+        return materialize_v5_reviewer_pair(paths, requested_configuration)
 
     def _run_pair_calibration(
         self,
@@ -688,6 +690,20 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             artifact['reviewer_pair']['path'],
         )
 
+    def test_reviewer_pair_accepts_frozen_alternate_configuration(self) -> None:
+        requested = {
+            'model': 'alternate-model',
+            'reasoning_effort': 'high',
+            'service_tier': 'standard',
+            'fork_turns': 'none',
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(
+                Path(tmp), requested_configuration=requested,
+            )
+            result = self._run_pair_calibration(paths)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_reviewer_packet_binds_blinded_semantic_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
@@ -1101,6 +1117,41 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn(expected, result.stderr)
 
+    def test_reviewer_pair_rejects_invalid_requested_configuration_and_v1(self) -> None:
+        mutations = (
+            ('unknown_key', 'unknown', 'value', False),
+            ('missing_key', 'model', None, True),
+            ('non_string', 'model', 7, False),
+            ('empty', 'reasoning_effort', '', False),
+            ('control', 'service_tier', 'priority\n', False),
+            ('fork_context', 'fork_turns', 'all', False),
+        )
+        for name, field, value, remove in mutations:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+                pair_path = paths['reviewer_pair']
+                pair = json.loads(pair_path.read_text(encoding='utf-8'))
+                if remove:
+                    del pair['requested_configuration'][field]
+                else:
+                    pair['requested_configuration'][field] = value
+                self._close_self_hash(pair, 'pair_hash')
+                self._write_json(pair_path, pair)
+                result = self._run_pair_calibration(paths)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn('calibration.reviewer_pair', result.stderr)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            pair_path = paths['reviewer_pair']
+            pair = json.loads(pair_path.read_text(encoding='utf-8'))
+            pair['schema_version'] = 'context-clean-subagent-reviewer-pair/1.0'
+            self._close_self_hash(pair, 'pair_hash')
+            self._write_json(pair_path, pair)
+            result = self._run_pair_calibration(paths)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('calibration.reviewer_pair', result.stderr)
+
     def test_reviewer_pair_rejects_requested_configuration_tamper(self) -> None:
         for field, value in (
             ('model', 'gpt-5.6-terra'),
@@ -1131,6 +1182,30 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
             result = self._run_pair_calibration(paths)
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('calibration.reviewer_spawn_request', result.stderr)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._materialize_high_risk_reviewer_pair(Path(tmp))
+            reviewer = paths['reviewer_1']
+            envelope_path = reviewer / 'spawn-envelope.json'
+            envelope = json.loads(envelope_path.read_text(encoding='utf-8'))
+            envelope['model'] = 'alternate-model'
+            self._close_self_hash(envelope, 'envelope_hash')
+            self._write_json(envelope_path, envelope)
+            terminal_path = reviewer / 'terminal-result.json'
+            terminal = json.loads(terminal_path.read_text(encoding='utf-8'))
+            terminal['observable_tool_events'] = [{
+                'tool': 'exec_command',
+                'purpose': 'load_exact_bound_spawn_message',
+                'spawn_envelope_hash': (
+                    'sha256:'
+                    + hashlib.sha256(envelope_path.read_bytes()).hexdigest()
+                ),
+            }]
+            self._write_json(terminal_path, terminal)
+            self._rebind_reviewer_graph(paths)
+            result = self._run_pair_calibration(paths)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('calibration.reviewer_terminal', result.stderr)
 
     def test_reviewer_pair_rejects_barrier_and_observable_extra_events(self) -> None:
         mutations = (
