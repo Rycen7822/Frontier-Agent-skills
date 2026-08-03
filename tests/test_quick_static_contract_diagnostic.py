@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 
 
@@ -24,6 +25,38 @@ def load_checker():
 
 
 class QuickStaticContractDiagnosticTests(unittest.TestCase):
+    def test_model_facing_graph_recurses_and_fails_closed(self) -> None:
+        checker = load_checker()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "docs" / "nested").mkdir(parents=True)
+            (root / "declared").mkdir()
+            (root / "entry.md").write_text(
+                "[child](docs/child.md)\n[data](asset.json)\n[missing](missing.md)\n"
+                "[escape](../outside.md)\n[symlink](asset-link.json)\n",
+                encoding="utf-8",
+            )
+            (root / "docs" / "child.md").write_text(
+                "[grandchild](nested/grandchild.md)\n", encoding="utf-8"
+            )
+            (root / "docs" / "nested" / "grandchild.md").write_text(
+                "[cycle](../child.md)\n", encoding="utf-8"
+            )
+            (root / "asset.json").write_text("{}\n", encoding="utf-8")
+            (root / "declared" / "seed.txt").write_text("seed\n", encoding="utf-8")
+            (root / "asset-link.json").symlink_to(root / "asset.json")
+
+            paths, errors = checker.model_facing_graph(root, ("entry.md",), ("declared",))
+            relative_paths = {path.relative_to(root).as_posix() for path in paths}
+            self.assertEqual(
+                {"asset.json", "declared/seed.txt", "docs/child.md", "docs/nested/grandchild.md", "entry.md"},
+                relative_paths,
+            )
+            self.assertEqual(
+                {"../outside.md", "asset-link.json", "missing.md"},
+                {item["target"] for item in errors},
+            )
+
     def test_checked_report_matches_deterministic_builder_and_exact_paths(self) -> None:
         checker = load_checker()
         first = checker.build_report(ROOT)
@@ -53,8 +86,7 @@ class QuickStaticContractDiagnosticTests(unittest.TestCase):
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
         )
         self.assertEqual(0, help_result.returncode, help_result.stdout + help_result.stderr)
-        self.assertIn("Frontier 6.1", help_result.stdout)
-        self.assertNotIn("Frontier 5.0", help_result.stdout)
+        self.assertIn("deterministic Frontier static contract report", help_result.stdout)
         result = subprocess.run(
             [sys.executable, str(SCRIPT), "--check"],
             cwd=ROOT,

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Build or verify the deterministic Frontier 6.1 static contract report."""
+"""Build or verify the deterministic Frontier static contract report."""
 
 from __future__ import annotations
 
 import argparse
+from collections import deque
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -137,19 +139,90 @@ def _read_model_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def model_facing_paths(root: Path = ROOT) -> list[Path]:
+def _repository_path(root: Path, relative: str) -> Path:
+    candidate = Path(os.path.abspath(root / relative))
+    if not candidate.is_relative_to(root):
+        raise ValueError(f"model-facing root escapes repository: {relative}")
+    return candidate
+
+
+def _has_symlink_component(root: Path, path: Path) -> bool:
+    current = root
+    for part in path.relative_to(root).parts:
+        current /= part
+        if current.is_symlink():
+            return True
+    return False
+
+
+def model_facing_graph(
+    root: Path = ROOT,
+    exact_roots: Iterable[str] = MODEL_FACING_EXACT,
+    directory_roots: Iterable[str] = MODEL_FACING_DIRS,
+) -> tuple[list[Path], list[dict[str, Any]]]:
+    root = root.resolve(strict=True)
     paths: set[Path] = set()
-    for relative in MODEL_FACING_EXACT:
-        path = root / relative
-        if path.is_symlink() or not path.is_file():
+    for relative in exact_roots:
+        path = _repository_path(root, relative)
+        if _has_symlink_component(root, path) or not path.is_file():
             raise ValueError(f"required model-facing file is missing or symlinked: {relative}")
         paths.add(path)
-    for relative in MODEL_FACING_DIRS:
-        directory = root / relative
-        if directory.is_symlink() or not directory.is_dir():
+    for relative in directory_roots:
+        directory = _repository_path(root, relative)
+        if _has_symlink_component(root, directory) or not directory.is_dir():
             raise ValueError(f"required model-facing directory is missing or symlinked: {relative}")
-        paths.update(path for path in directory.rglob("*") if path.is_file() or path.is_symlink())
-    return sorted(paths, key=lambda path: path.relative_to(root).as_posix())
+        paths.update(
+            path
+            for path in directory.rglob("*")
+            if path.is_file() and not _has_symlink_component(root, path)
+        )
+
+    pending = deque(
+        sorted(
+            (path for path in paths if path.suffix.lower() == ".md"),
+            key=lambda path: path.relative_to(root).as_posix(),
+        )
+    )
+    visited: set[Path] = set()
+    errors: list[dict[str, Any]] = []
+    while pending:
+        path = pending.popleft()
+        if path in visited:
+            continue
+        visited.add(path)
+        text = _read_model_text(path)
+        relative = path.relative_to(root).as_posix()
+        for match in MARKDOWN_LINK.finditer(text):
+            target = match.group(1).strip().strip("<>")
+            if target.startswith(("#", "//")) or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target):
+                continue
+            resource = target.split("#", 1)[0].split("?", 1)[0]
+            if not resource:
+                continue
+            try:
+                candidate = Path(os.path.abspath(path.parent / resource))
+                valid = (
+                    candidate.is_relative_to(root)
+                    and not _has_symlink_component(root, candidate)
+                    and candidate.is_file()
+                )
+            except (OSError, ValueError):
+                valid = False
+            if not valid:
+                errors.append({"path": relative, "line": _line_number(text, match.start(1)), "target": target})
+                continue
+            if candidate not in paths:
+                paths.add(candidate)
+                if candidate.suffix.lower() == ".md":
+                    pending.append(candidate)
+
+    ordered_paths = sorted(paths, key=lambda path: path.relative_to(root).as_posix())
+    ordered_errors = sorted(errors, key=lambda item: (item["path"], item["line"], item["target"]))
+    return ordered_paths, ordered_errors
+
+
+def model_facing_paths(root: Path = ROOT) -> list[Path]:
+    return model_facing_graph(root)[0]
 
 
 def _current_release_section(text: str) -> tuple[str, int]:
@@ -161,9 +234,9 @@ def _current_release_section(text: str) -> tuple[str, int]:
     return text[start:end], start
 
 
-def _pattern_matches(root: Path, patterns: Iterable[str]) -> list[dict[str, Any]]:
+def _pattern_matches(root: Path, patterns: Iterable[str], paths: Iterable[Path]) -> list[dict[str, Any]]:
     matches: list[dict[str, Any]] = []
-    for path in model_facing_paths(root):
+    for path in paths:
         relative = path.relative_to(root).as_posix()
         full_text = _read_model_text(path)
         text, base = _current_release_section(full_text) if relative == "RELEASE_NOTES.md" else (full_text, 0)
@@ -175,35 +248,15 @@ def _pattern_matches(root: Path, patterns: Iterable[str]) -> list[dict[str, Any]
 
 
 def markdown_link_errors(root: Path = ROOT) -> list[dict[str, Any]]:
-    errors: list[dict[str, Any]] = []
-    resolved_root = root.resolve(strict=True)
-    for path in model_facing_paths(root):
-        if path.suffix.lower() != ".md":
-            continue
-        text = _read_model_text(path)
-        relative = path.relative_to(root).as_posix()
-        for match in MARKDOWN_LINK.finditer(text):
-            target = match.group(1).strip().strip("<>")
-            if target.startswith(("#", "//")) or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target):
-                continue
-            resource = target.split("#", 1)[0].split("?", 1)[0]
-            if not resource:
-                continue
-            candidate = path.parent / resource
-            try:
-                resolved = candidate.resolve(strict=True)
-            except OSError:
-                resolved = None
-            if resolved is None or not resolved.is_relative_to(resolved_root) or candidate.is_symlink() or not resolved.is_file():
-                errors.append({"path": relative, "line": _line_number(text, match.start(1)), "target": target})
-    return errors
+    return model_facing_graph(root)[1]
 
 
-def collect_legacy_contract(root: Path = ROOT) -> dict[str, list[Any]]:
+def collect_legacy_contract(root: Path = ROOT, paths: Iterable[Path] | None = None) -> dict[str, list[Any]]:
+    model_paths = list(paths) if paths is not None else model_facing_paths(root)
     return {
         "legacy_runtime_paths_present": [relative for relative in LEGACY_RUNTIME_PATHS if (root / relative).exists() or (root / relative).is_symlink()],
-        "legacy_protocol_matches": _pattern_matches(root, LEGACY_PROTOCOL_PATTERNS),
-        "brainstorming_runtime_copies": _pattern_matches(root, BRAINSTORMING_OWNER_PATTERNS),
+        "legacy_protocol_matches": _pattern_matches(root, LEGACY_PROTOCOL_PATTERNS, model_paths),
+        "brainstorming_runtime_copies": _pattern_matches(root, BRAINSTORMING_OWNER_PATTERNS, model_paths),
     }
 
 
@@ -230,6 +283,7 @@ def _skill_activation(path: Path) -> bool:
 
 
 def build_report(root: Path = ROOT) -> dict[str, Any]:
+    root = root.resolve(strict=True)
     source_manifest = _strict_object(root / SOURCE_MANIFEST.relative_to(ROOT))
     generated_bundle = _strict_object(root / GENERATED_BUNDLE.relative_to(ROOT))
     skills = source_manifest.get("skills")
@@ -260,6 +314,7 @@ def build_report(root: Path = ROOT) -> dict[str, Any]:
             raise ValueError(f"invalid test profile: {name}")
         profile_hashes[name] = _canonical_hash(commands)
 
+    model_paths, link_errors = model_facing_graph(root)
     package = bundle_inventory(root, source_manifest)
     report: dict[str, Any] = {
         "schema_version": "static-contract-diagnostic/1.0",
@@ -270,9 +325,9 @@ def build_report(root: Path = ROOT) -> dict[str, Any]:
         "skill_versions": skill_versions,
         "skill_activation": skill_activation,
         "entry_bytes": entry_bytes,
-        "model_facing_files_checked": [path.relative_to(root).as_posix() for path in model_facing_paths(root)],
-        "markdown_link_errors": markdown_link_errors(root),
-        **collect_legacy_contract(root),
+        "model_facing_files_checked": [path.relative_to(root).as_posix() for path in model_paths],
+        "markdown_link_errors": link_errors,
+        **collect_legacy_contract(root, model_paths),
         "profile_command_hashes": profile_hashes,
         "package_file_count": len(package),
         "package_bytes": sum(item["size"] for item in package),

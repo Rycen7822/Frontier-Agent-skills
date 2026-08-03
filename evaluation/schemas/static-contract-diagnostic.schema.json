@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://frontier-agent-skills.local/schemas/static-contract-diagnostic.schema.json",
-  "title": "Frontier 6.1 deterministic static contract diagnostic",
+  "title": "Frontier deterministic static contract diagnostic",
   "type": "object",
   "additionalProperties": false,
   "required": [
