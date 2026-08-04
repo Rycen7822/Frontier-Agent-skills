@@ -206,6 +206,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             predecessor_qualification=None,
             supersedes=None,
             supersession_failure_receipt=None,
+            supersession_calibration_rejection_receipt=None,
             provider_request_ceiling=45,
             execute_ceiling=20,
             model_grade_ceiling=24,

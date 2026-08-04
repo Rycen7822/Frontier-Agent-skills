@@ -23,6 +23,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_ROOT = REPOSITORY_ROOT / "evaluation/model-evolution/schemas"
 SCHEMA_FILES = {
     "budget_approval": "budget-approval-v1.schema.json",
+    "calibration_rejection_receipt": "calibration-rejection-receipt-v1.schema.json",
     "campaign": "campaign-v1.schema.json",
     "failure_receipt": "failure-receipt-v1.schema.json",
     "interaction_probes": "interaction-probes-v1.schema.json",
@@ -55,6 +56,9 @@ CRITICAL_PROBE_CAPABILITIES = {
 }
 HASH_FIELDS = {
     "model-evolution-budget-approval/1": "approval_hash",
+    "model-evolution-calibration-rejection-receipt/1": (
+        "calibration_rejection_receipt_hash"
+    ),
     "model-evolution-campaign/1": "campaign_hash",
     "model-evolution-failure-receipt/1": "failure_receipt_hash",
     "model-evolution-interaction-probes/1": "probe_set_hash",
@@ -119,6 +123,19 @@ def load_json(path: Path, *, label: str | None = None) -> Any:
     if path.is_symlink() or not path.is_file():
         raise ContractError(f"{label or path.name} must be a regular non-symlink file")
     return strict_json_bytes(path.read_bytes(), label=label or path.name)
+
+
+def load_jsonl(path: Path, *, label: str) -> list[Any]:
+    if path.is_symlink() or not path.is_file():
+        raise ContractError(f"{label} must be a regular non-symlink file")
+    rows = [
+        strict_json_bytes(line, label=f"{label} row {index}")
+        for index, line in enumerate(path.read_bytes().splitlines(), start=1)
+        if line.strip()
+    ]
+    if not rows:
+        raise ContractError(f"{label} must not be empty")
+    return rows
 
 
 def pre_turn_failure_identity(path: Path, ordinal: int) -> dict[str, Any]:
@@ -899,16 +916,35 @@ def _failure_receipt_request_count(
     return request_count
 
 
+def _calibration_rejection_request_count(
+    binding: dict[str, Any],
+    *,
+    repository_root: Path,
+    campaign_root: Path,
+    campaign_hash: str,
+) -> int:
+    from _model_evolution_calibration_receipt import (
+        validate_calibration_rejection_receipt,
+    )
+
+    return validate_calibration_rejection_receipt(
+        binding,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        campaign_hash=campaign_hash,
+    )
+
+
 def _blocked_supersession_lineage(
     old: dict[str, Any],
     old_path: Path,
     repository_root: Path,
 ) -> list[tuple[dict[str, Any], Path]]:
-    """Load at most six closed campaigns and verify every budget carry."""
+    """Load at most seven closed campaigns and verify every budget carry."""
     lineage = [(old, old_path)]
     current, current_path = old, old_path
     while current["supersedes"] is not None:
-        if len(lineage) == 6:
+        if len(lineage) == 7:
             raise ContractError("supersession repair depth is exhausted")
         parent_path = resolve_binding(
             current["supersedes"]["campaign"],
@@ -921,6 +957,7 @@ def _blocked_supersession_lineage(
         current, current_path = parent, parent_path
     for (child, _), (parent, parent_path) in zip(lineage, lineage[1:]):
         expected_reserved = dict(parent["budgets"]["reserved"])
+        expected_observed = dict(parent["budgets"]["observed"])
         receipt_binding = child["supersedes"].get("failure_receipt")
         if receipt_binding is not None:
             request_count = _failure_receipt_request_count(
@@ -931,10 +968,24 @@ def _blocked_supersession_lineage(
             )
             expected_reserved["provider_requests"] += request_count
             expected_reserved["model_grade"] += request_count
+        rejection_binding = child["supersedes"].get(
+            "calibration_rejection_receipt"
+        )
+        if rejection_binding is not None:
+            request_count = _calibration_rejection_request_count(
+                rejection_binding,
+                repository_root=repository_root,
+                campaign_root=parent_path.parent,
+                campaign_hash=parent["campaign_hash"],
+            )
+            expected_reserved["provider_requests"] += request_count
+            expected_reserved["model_grade"] += request_count
+            if expected_observed["model_grade"] is not None:
+                expected_observed["model_grade"] += request_count
         if (
             child["supersedes"]["imported_reserved"] != expected_reserved
             or child["supersedes"]["imported_observed"]
-            != parent["budgets"]["observed"]
+            != expected_observed
         ):
             raise ContractError("supersession lineage budget differs")
         qualification = load_json(
@@ -955,6 +1006,7 @@ def prepare_supersedes(
     campaign_binding: dict[str, Any],
     target_host_binding: dict[str, Any],
     failure_receipt_binding: dict[str, Any] | None = None,
+    calibration_rejection_receipt_binding: dict[str, Any] | None = None,
     repository_root: Path,
     campaign_root: Path,
 ) -> dict[str, Any]:
@@ -966,10 +1018,17 @@ def prepare_supersedes(
     probe_contract_correction = (
         len(lineage) == 6 and _is_single_probe_contract_correction(old)
     )
+    calibration_contract_correction = (
+        len(lineage) == 7 and _is_single_calibration_correction(old)
+    )
+    if len(lineage) == 7 and not calibration_contract_correction:
+        raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 6 and not probe_contract_correction:
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) >= 3 and not (
-        _is_single_calibration_correction(old) or probe_contract_correction
+        _is_single_calibration_correction(old)
+        or probe_contract_correction
+        or calibration_contract_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = len(lineage) in {4, 5}
@@ -977,6 +1036,17 @@ def prepare_supersedes(
         raise ContractError("late supersession requires a failed-request receipt")
     if failure_receipt_binding is not None and not receipt_hop:
         raise ContractError("failed-request receipt is only legal for a late repair")
+    if calibration_contract_correction and calibration_rejection_receipt_binding is None:
+        raise ContractError(
+            "final calibration correction requires a rejection receipt"
+        )
+    if (
+        calibration_rejection_receipt_binding is not None
+        and not calibration_contract_correction
+    ):
+        raise ContractError(
+            "calibration rejection receipt is only legal for the final correction"
+        )
     old_host = load_json(
         resolve_binding(
             old["profiles"]["target_provisional"],
@@ -1073,10 +1143,11 @@ def prepare_supersedes(
     if qualification["decision"] != "blocked":
         raise ContractError("only a blocked pre-public campaign may be superseded")
     imported_reserved = dict(old["budgets"]["reserved"])
+    imported_observed = dict(old["budgets"]["observed"])
     result = {
         "campaign": campaign_binding,
         "imported_reserved": imported_reserved,
-        "imported_observed": dict(old["budgets"]["observed"]),
+        "imported_observed": imported_observed,
     }
     if failure_receipt_binding is not None:
         request_count = _failure_receipt_request_count(
@@ -1088,6 +1159,20 @@ def prepare_supersedes(
         imported_reserved["provider_requests"] += request_count
         imported_reserved["model_grade"] += request_count
         result["failure_receipt"] = failure_receipt_binding
+    if calibration_rejection_receipt_binding is not None:
+        request_count = _calibration_rejection_request_count(
+            calibration_rejection_receipt_binding,
+            repository_root=repository_root,
+            campaign_root=old_path.parent,
+            campaign_hash=old["campaign_hash"],
+        )
+        imported_reserved["provider_requests"] += request_count
+        imported_reserved["model_grade"] += request_count
+        if imported_observed["model_grade"] is not None:
+            imported_observed["model_grade"] += request_count
+        result["calibration_rejection_receipt"] = (
+            calibration_rejection_receipt_binding
+        )
     return result
 
 

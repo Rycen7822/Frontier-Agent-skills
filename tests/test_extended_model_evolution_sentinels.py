@@ -13,6 +13,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 sys.path.insert(0, str(REPOSITORY_ROOT / "skill-evaluator/scripts"))
 
 import grader_semantics  # noqa: E402
+import build_model_evolution_sentinels as sentinels  # noqa: E402
 from _model_evolution_contract import (  # noqa: E402
     CRITICAL_PROBE_CAPABILITIES,
     SKILL_IDS,
@@ -218,6 +219,21 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 ).lower()
                 for label in ("known_good", "known_bad", "boundary", "abstain"):
                     self.assertNotIn(label, exposed)
+            positive = [row for row in rows if row["class"] == "known_good"]
+            self.assertEqual(len(positive), 4)
+            for row in positive:
+                candidate_evidence = row["payload"]["view"]["candidate_evidence"]
+                if row["check_id"] == "quality-check":
+                    self.assertIn("verification", candidate_evidence)
+                    self.assertTrue(
+                        "artifact" in candidate_evidence
+                        or "final result" in candidate_evidence
+                    )
+                else:
+                    self.assertIn("step 1", candidate_evidence)
+                    self.assertIn("completed", candidate_evidence)
+                    for claim in sentinels.SKILLS[skill_id]["claims"]:
+                        self.assertIn(claim, candidate_evidence)
             prompt = (root / grader["prompt"]["path"]).read_text()
             self.assertIn("`uncertainty` to `high`", prompt)
 

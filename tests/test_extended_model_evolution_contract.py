@@ -752,8 +752,22 @@ class ModelEvolutionContractTest(unittest.TestCase):
         final_probe = copy.deepcopy(probe_only)
         final_probe["supersedes"] = probe_repair
         final_probe = with_self_hash(final_probe, "campaign_hash")
+        final_probe_root = (
+            self.fixture["repository_root"] / ".work/final-probe-contract"
+        )
+        shutil.copytree(self.fixture["campaign_root"], final_probe_root)
         final_probe_path = write_json(
-            probe_root / "final-campaign.json", final_probe
+            final_probe_root / "campaign.json", final_probe
+        )
+        write_json(
+            final_probe_root / "qualification/qualification.json",
+            project_qualification(
+                final_probe,
+                repository_root=self.fixture["repository_root"],
+                campaign_root=final_probe_root,
+                observed_as_of="2026-08-03T00:00:00Z",
+                valid_until="2026-08-04T00:00:00Z",
+            ),
         )
         final_probe_binding = make_binding(
             final_probe_path,
@@ -768,6 +782,74 @@ class ModelEvolutionContractTest(unittest.TestCase):
                 repository_root=self.fixture["repository_root"],
                 campaign_root=self.fixture["campaign_root"],
             )
+
+        calibration_blocked = copy.deepcopy(final_probe)
+        calibration_blocked["phase"] = "target_profile_ready"
+        calibration_blocked["interaction_probes"]["blocker"] = None
+        calibration_blocked = with_self_hash(
+            calibration_blocked, "campaign_hash"
+        )
+        calibration_root = (
+            self.fixture["repository_root"] / ".work/calibration-contract"
+        )
+        shutil.copytree(self.fixture["campaign_root"], calibration_root)
+        calibration_path = write_json(
+            calibration_root / "campaign.json", calibration_blocked
+        )
+        write_json(
+            calibration_root / "qualification/qualification.json",
+            project_qualification(
+                calibration_blocked,
+                repository_root=self.fixture["repository_root"],
+                campaign_root=calibration_root,
+                observed_as_of="2026-08-03T00:00:00Z",
+                valid_until="2026-08-04T00:00:00Z",
+            ),
+        )
+        calibration_binding = make_binding(
+            calibration_path,
+            root="repository",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        with self.assertRaisesRegex(ContractError, "requires a rejection receipt"):
+            prepare_supersedes(
+                campaign_binding=calibration_binding,
+                target_host_binding=self.fixture["bindings"]["host"],
+                repository_root=self.fixture["repository_root"],
+                campaign_root=self.fixture["campaign_root"],
+            )
+        rejection_path = write_json(
+            calibration_root / "calibration/rejection.json", {"bound": True}
+        )
+        rejection_binding = make_binding(
+            rejection_path,
+            root="repository",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        with mock.patch(
+            "_model_evolution_contract._calibration_rejection_request_count",
+            return_value=16,
+        ):
+            correction = prepare_supersedes(
+                campaign_binding=calibration_binding,
+                target_host_binding=self.fixture["bindings"]["host"],
+                calibration_rejection_receipt_binding=rejection_binding,
+                repository_root=self.fixture["repository_root"],
+                campaign_root=self.fixture["campaign_root"],
+            )
+        self.assertEqual(
+            calibration_blocked["budgets"]["reserved"]["model_grade"] + 16,
+            correction["imported_reserved"]["model_grade"],
+        )
+        self.assertEqual(
+            calibration_blocked["budgets"]["observed"]["model_grade"] + 16,
+            correction["imported_observed"]["model_grade"],
+        )
+        self.assertEqual(
+            rejection_binding, correction["calibration_rejection_receipt"]
+        )
 
     def test_observed_host_projection_requires_exact_capability_and_result_set(
         self,
