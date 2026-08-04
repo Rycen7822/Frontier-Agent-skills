@@ -16,6 +16,7 @@ from _model_evolution_contract import (
     ContractError,
     SKILL_IDS,
     _is_child_environment_isolation_correction,
+    _is_exec_item_lifecycle_diagnostic_correction,
     _is_exec_item_update_correction,
     _is_multiturn_timeout_correction,
     _is_single_principal_exec_correction,
@@ -487,6 +488,7 @@ def _init(args: argparse.Namespace) -> None:
             or _is_source_exposure_locator_correction(superseded_campaign)
             or _is_source_root_binding_correction(superseded_campaign)
             or _is_exec_item_update_correction(superseded_campaign)
+            or _is_exec_item_lifecycle_diagnostic_correction(superseded_campaign)
             or _is_systemd_environment_correction(superseded_campaign)
         )
     expected_request_ceilings = _cumulative_request_ceilings(
@@ -1301,7 +1303,16 @@ def _status(args: argparse.Namespace) -> None:
         blockers=blockers,
         runner_commands=commands,
     )
-    if qualification_complete and not blockers:
+    if not projection["blockers"] and campaign["plans"]:
+        if projection["active_attempts"]:
+            projection["next_event"] = "monitor registered plans"
+        elif projection["recoverable_attempts"]:
+            projection["next_event"] = "resume registered plans"
+        elif commands:
+            projection["next_event"] = "run registered plans"
+        else:
+            projection["next_event"] = "record registered plan evidence"
+    if qualification_complete and not projection["blockers"]:
         projection["next_event"] = "qualification_complete"
         projection["runner_commands"] = []
     if args.json:
@@ -1313,7 +1324,7 @@ def _status(args: argparse.Namespace) -> None:
             f"recoverable={projection['recoverable_attempts']}"
         )
         print(f"next={projection['next_event'] or 'blocked'}")
-        for blocker in blockers:
+        for blocker in projection["blockers"]:
             print(f"blocker {blocker['code']}: {blocker['message']}")
         for command in projection["runner_commands"]:
             print(command)
