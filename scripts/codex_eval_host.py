@@ -44,6 +44,8 @@ from _codex_eval_events import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
+ADAPTER_VERSION = "1.1"
+PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.1"
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -950,7 +952,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
     )
     _emit(
         {
-            "schema_version": "codex-interaction-probe-result/1.1",
+            "schema_version": PROBE_RESULT_SCHEMA_VERSION,
             "probe_id": row["probe_id"],
             "capability": row["capability"],
             "status": status,

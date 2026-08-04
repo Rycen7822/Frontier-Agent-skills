@@ -138,7 +138,12 @@ def build_host(
     execution["skill_hash"] = _tree_hash(plugin_root)
     if execution.get("model") != argv[argv.index("--model") + 1]:
         raise HostBuildError("template model identity differs from its command")
-    identity["adapter"]["sha256"] = _hash_bytes(adapter.read_bytes())
+    identity["adapter"].update(
+        {
+            "sha256": _hash_bytes(adapter.read_bytes()),
+            "version": codex_eval_host.ADAPTER_VERSION,
+        }
+    )
     identity["host_build"] = codex_hash
     repository_identity = _repository_identity(repository_root)
     if repository_identity["dirty"]:
