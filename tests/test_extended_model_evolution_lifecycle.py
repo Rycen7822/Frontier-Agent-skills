@@ -332,6 +332,18 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                 supersedes,
             ),
         )
+        self.assertEqual(
+            {
+                "provider_requests": 372,
+                "execute": 136,
+                "model_grade": 248,
+            },
+            controller._cumulative_request_ceilings(
+                request_ceilings,
+                supersedes,
+                reuse_calibration_reservation=False,
+            ),
+        )
 
     def test_frozen_sentinel_budget_counts_both_holdout_treatments(self) -> None:
         sentinel = json.loads(
