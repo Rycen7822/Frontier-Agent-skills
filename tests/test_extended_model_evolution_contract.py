@@ -26,6 +26,8 @@ from _model_evolution_contract import (  # noqa: E402
     project_qualification,
     render_qualification_markdown,
     resolve_binding,
+    validate_formal_plan_timeouts,
+    validate_formal_timeout_inputs,
     validate_document,
     validate_bundle_build,
     with_self_hash,
@@ -64,6 +66,26 @@ def closed_transition_report() -> dict:
 
 
 class ModelEvolutionContractTest(unittest.TestCase):
+    def test_formal_timeouts_preserve_host_cleanup_window(self) -> None:
+        host = {"command": {"argv": ["host", "--timeout", "600"]}}
+        spec = {"execution": {"timeout_seconds": 630}}
+        scenarios = [{"timeout_seconds": 630}]
+        plan = {
+            "entries": [
+                {"disposition": "execute", "timeout_seconds": 630},
+                {"disposition": "not_evaluable", "timeout_seconds": 1},
+            ]
+        }
+
+        self.assertEqual(validate_formal_timeout_inputs(host, spec, scenarios), 630)
+        self.assertEqual(validate_formal_plan_timeouts(host, plan), 630)
+        spec["execution"]["timeout_seconds"] = 629
+        with self.assertRaisesRegex(ContractError, "at least 630"):
+            validate_formal_timeout_inputs(host, spec, scenarios)
+        plan["entries"][0]["timeout_seconds"] = 629
+        with self.assertRaisesRegex(ContractError, "at least 630"):
+            validate_formal_plan_timeouts(host, plan)
+
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

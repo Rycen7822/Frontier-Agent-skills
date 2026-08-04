@@ -16,6 +16,7 @@ import yaml
 
 from _bundle_hash import inventory, tree_hash
 from _model_evolution_contract import (
+    ContractError,
     SKILL_IDS,
     canonical_bytes,
     content_hash,
@@ -23,6 +24,8 @@ from _model_evolution_contract import (
     load_jsonl,
     resolve_binding,
     self_hash,
+    validate_formal_plan_timeouts,
+    validate_formal_timeout_inputs,
     verify_self_hash,
 )
 
@@ -725,6 +728,10 @@ def _build_public_plan(
         calibration_file_hash=_file_hash(calibration_path),
         scenarios=scenarios,
     )
+    try:
+        validate_formal_timeout_inputs(host, spec, scenarios)
+    except ContractError as exc:
+        raise MaterializationError(str(exc)) from exc
     if role == "target_candidate":
         scenario_binding = {
             "path": scenario_path.name,
@@ -767,6 +774,10 @@ def _build_public_plan(
     _compile_and_validate(root, repository_root=repository_root, plan_path=plan_path)
     plan = load_json(plan_path, label="compiled formal plan")
     verify_self_hash(plan, "plan_hash")
+    try:
+        validate_formal_plan_timeouts(host, plan)
+    except ContractError as exc:
+        raise MaterializationError(str(exc)) from exc
     return {
         "root": root,
         "spec": spec_path,

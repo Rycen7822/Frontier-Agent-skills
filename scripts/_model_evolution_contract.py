@@ -54,6 +54,7 @@ CRITICAL_PROBE_CAPABILITIES = {
     "natural_routing",
     "action_authorization_trace",
 }
+HOST_CLEANUP_GRACE_SECONDS = 30
 HASH_FIELDS = {
     "model-evolution-budget-approval/1": "approval_hash",
     "model-evolution-calibration-rejection-receipt/1": (
@@ -69,6 +70,75 @@ HASH_FIELDS = {
 
 class ContractError(ValueError):
     """A deterministic contract or binding failure."""
+
+
+def formal_entry_timeout_floor(host: dict[str, Any]) -> int:
+    """Return the minimum outer timeout for one frozen Host execution."""
+    command = host.get("command")
+    argv = command.get("argv") if isinstance(command, dict) else None
+    positions = [
+        index for index, value in enumerate(argv or []) if value == "--timeout"
+    ]
+    if len(positions) != 1 or positions[0] + 1 >= len(argv or []):
+        raise ContractError("formal Host command lacks one timeout binding")
+    try:
+        host_timeout = float(argv[positions[0] + 1])
+    except (TypeError, ValueError) as exc:
+        raise ContractError("formal Host timeout is invalid") from exc
+    if not math.isfinite(host_timeout) or host_timeout <= 0:
+        raise ContractError("formal Host timeout is invalid")
+    return math.ceil(host_timeout) + HOST_CLEANUP_GRACE_SECONDS
+
+
+def validate_formal_timeout_inputs(
+    host: dict[str, Any], spec: dict[str, Any], scenarios: list[dict[str, Any]]
+) -> int:
+    """Reject sentinel inputs that cannot outlive their frozen Host."""
+    floor = formal_entry_timeout_floor(host)
+    execution = spec.get("execution")
+    execution_timeout = (
+        execution.get("timeout_seconds") if isinstance(execution, dict) else None
+    )
+    scenario_timeouts = [
+        row.get("timeout_seconds") if isinstance(row, dict) else None
+        for row in scenarios
+    ]
+    if (
+        not isinstance(execution_timeout, int)
+        or isinstance(execution_timeout, bool)
+        or execution_timeout < floor
+        or not scenarios
+        or any(
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < floor
+            for value in scenario_timeouts
+        )
+    ):
+        raise ContractError(
+            f"formal execution and scenario timeouts must be at least {floor} seconds"
+        )
+    return floor
+
+
+def validate_formal_plan_timeouts(
+    host: dict[str, Any], plan: dict[str, Any]
+) -> int:
+    """Reject compiled entries that cannot outlive their frozen Host."""
+    floor = formal_entry_timeout_floor(host)
+    entries = plan.get("entries")
+    if not isinstance(entries, list) or any(
+        not isinstance(entry, dict)
+        or not isinstance(entry.get("timeout_seconds"), int)
+        or isinstance(entry.get("timeout_seconds"), bool)
+        or entry["timeout_seconds"] < floor
+        for entry in entries or []
+        if not isinstance(entry, dict) or entry.get("disposition") == "execute"
+    ):
+        raise ContractError(
+            f"formal execute entry timeouts must be at least {floor} seconds"
+        )
+    return floor
 
 
 def canonical_bytes(value: Any) -> bytes:

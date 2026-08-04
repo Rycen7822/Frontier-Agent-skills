@@ -27,12 +27,14 @@ from _codex_eval_delivery import (
 
 from _model_evolution_contract import (
     ContractError,
+    HOST_CLEANUP_GRACE_SECONDS,
     SAFE_ID,
     SKILL_IDS,
     canonical_bytes,
     content_hash,
     evaluator_evidence_status,
     load_json,
+    load_jsonl,
     make_binding,
     project_observed_host,
     project_qualification,
@@ -40,13 +42,13 @@ from _model_evolution_contract import (
     strict_json_bytes,
     validate_document,
     validate_bundle_build,
+    validate_formal_timeout_inputs,
     verify_self_hash,
     with_self_hash,
 )
 
 
 MAX_DIAGNOSTIC_BYTES = 64 * 1024
-PROBE_TIMEOUT_GRACE_SECONDS = 30.0
 PLUGIN_BUILD_GATE_SCRIPT = "scripts/build_codex_plugin.py"
 ALLOWED_GATE_SCRIPTS = {
     "bundle/build_bundle_manifest.py",
@@ -393,7 +395,7 @@ def _probe_process_timeout(argv: list[str]) -> float:
         raise OperationError("target Host timeout is invalid") from exc
     if not math.isfinite(host_timeout) or host_timeout <= 0:
         raise OperationError("target Host timeout is invalid")
-    return host_timeout + PROBE_TIMEOUT_GRACE_SECONDS
+    return host_timeout + HOST_CLEANUP_GRACE_SECONDS
 
 
 def _run_probe_process(
@@ -850,7 +852,7 @@ def preflight_operations(
         campaign_root,
     )
     started = time.monotonic()
-    host = validate_target_host_staging(
+    validated_host = validate_target_host_staging(
         host_path,
         plugin_root,
         repository_root=repository_root,
@@ -861,7 +863,7 @@ def preflight_operations(
         _operation_fact(
             "host-plugin-binding",
             ["validate-host-plugin-binding"],
-            host["manifest_hash"],
+            validated_host["manifest_hash"],
             round((time.monotonic() - started) * 1000),
         )
     )
@@ -875,7 +877,12 @@ def preflight_operations(
         scenarios = resolve_binding(
             record["public_scenarios"], repository_root, campaign_root
         )
-        host = spec.parent / "host-manifest.template.json"
+        validate_formal_timeout_inputs(
+            validated_host,
+            load_json(spec, label=f"{skill_id} sentinel spec"),
+            load_jsonl(scenarios, label=f"{skill_id} sentinel scenarios"),
+        )
+        host_template = spec.parent / "host-manifest.template.json"
         fact, _ = run_model_free_command(
             f"sentinel-contract-{skill_id}",
             [
@@ -884,7 +891,7 @@ def preflight_operations(
                 "contract",
                 str(spec),
                 str(scenarios),
-                str(host),
+                str(host_template),
                 "--json",
                 "-",
             ],

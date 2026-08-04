@@ -10,12 +10,15 @@ import tempfile
 from typing import Any
 
 from _model_evolution_contract import (
+    ContractError,
     SKILL_IDS,
     canonical_bytes,
     content_hash,
     load_json,
     load_jsonl,
     resolve_binding,
+    validate_formal_plan_timeouts,
+    validate_formal_timeout_inputs,
     verify_self_hash,
 )
 from _model_evolution_materialization import (
@@ -341,6 +344,10 @@ def _build_holdout_plan(
     }
     _manual_authority(spec)
     _bind_scenarios(spec, scenarios)
+    try:
+        validate_formal_timeout_inputs(host, spec, scenarios)
+    except ContractError as exc:
+        raise MaterializationError(str(exc)) from exc
     spec_path = root / "eval-spec.json"
     _write_exact(spec_path, canonical_bytes(spec))
     quality_path = root / "suite-quality.json"
@@ -371,6 +378,10 @@ def _build_holdout_plan(
     )
     plan = load_json(plan_path, label="compiled holdout plan")
     verify_self_hash(plan, "plan_hash")
+    try:
+        validate_formal_plan_timeouts(host, plan)
+    except ContractError as exc:
+        raise MaterializationError(str(exc)) from exc
     execute = sum(item.get("disposition") == "execute" for item in plan["entries"])
     expected_execute = record["holdout_case_ceiling"] * 2
     if execute != expected_execute:
