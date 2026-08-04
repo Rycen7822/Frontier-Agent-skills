@@ -14,12 +14,14 @@ import subprocess
 import sys
 from typing import Any
 
-from _bundle_hash import inventory, tree_hash
-from _codex_eval_delivery import (
+sys.dont_write_bytecode = True
+
+from _bundle_hash import inventory, tree_hash  # noqa: E402
+from _codex_eval_delivery import (  # noqa: E402
     MODEL_EVOLUTION_ENV_ALLOWLIST,
     validate_plugin_catalog,
 )
-import codex_eval_host
+import codex_eval_host  # noqa: E402
 
 
 class HostBuildError(ValueError):

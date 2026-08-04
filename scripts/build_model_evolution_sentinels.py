@@ -13,6 +13,8 @@ import sys
 import tempfile
 from typing import Any
 
+sys.dont_write_bytecode = True
+
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 EVALUATOR_SCRIPTS = REPOSITORY_ROOT / "skill-evaluator/scripts"
@@ -1104,6 +1106,7 @@ def _materialize(repository_root: Path) -> list[Path]:
         quality_path.unlink(missing_ok=True)
         command = [
             sys.executable,
+            "-B",
             str(EVALUATOR_SCRIPTS / "validate_eval_suite.py"),
             "suite-quality",
             "--spec",
