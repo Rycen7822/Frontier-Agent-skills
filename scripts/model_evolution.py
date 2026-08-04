@@ -8,6 +8,9 @@ from pathlib import Path
 import sys
 from typing import Any, Callable
 
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+
 from _model_evolution_contract import (
     CRITICAL_PROBE_CAPABILITIES,
     ContractError,

@@ -5,6 +5,7 @@ import copy
 import fcntl
 import io
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -102,6 +103,26 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         state["profiles"]["target_observed"] = self.fixture["bindings"]["host"]
         mark_probe_passed(state, self.fixture)
         return with_self_hash(state, "campaign_hash")
+
+    def test_cli_import_does_not_create_source_bytecode(self) -> None:
+        root = Path(self.temporary.name) / "cli-source"
+        for relative in ("scripts", "skill-evaluator/scripts"):
+            shutil.copytree(
+                REPOSITORY_ROOT / relative,
+                root / relative,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+            )
+        environment = os.environ.copy()
+        environment.pop("PYTHONDONTWRITEBYTECODE", None)
+        result = subprocess.run(
+            [sys.executable, str(root / "scripts/model_evolution.py"), "--help"],
+            text=True,
+            capture_output=True,
+            check=False,
+            env=environment,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(any(root.rglob("__pycache__")))
 
     def test_cas_lock_and_failed_replace_preserve_state_bytes(self) -> None:
         store = self.fixture["store"]
