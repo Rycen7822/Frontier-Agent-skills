@@ -765,9 +765,10 @@ def _register_plan(args: argparse.Namespace) -> None:
         raise CliError("execution plan entries differ from the selected Skill")
     index_path = _plan_index_path(plan_path, plan)
     status = runner_status(plan_path, index_path, repository_root=repository_root)
-    if any(
-        status[field] != 0
-        for field in ("indexed_attempts", "active_attempts", "recoverable_attempts")
+    if (
+        status["indexed_attempts"] != 0
+        or status["active_attempts"]
+        or status["recoverable_attempts"]
     ):
         raise CliError(
             "plan registration requires zero indexed, active, and recoverable attempts"

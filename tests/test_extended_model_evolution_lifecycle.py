@@ -968,8 +968,8 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         )
         status = {
             "indexed_attempts": 0,
-            "active_attempts": 0,
-            "recoverable_attempts": 0,
+            "active_attempts": [],
+            "recoverable_attempts": [],
             "execute_case_request_ceiling": 1,
             "model_grade_request_ceiling": 0,
             "worst_case_remaining_attempts": 1,
@@ -990,7 +990,8 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         self.assertEqual(before, self.fixture["store"].path.read_bytes())
 
         for field in ("indexed_attempts", "active_attempts", "recoverable_attempts"):
-            blocked = dict(status, **{field: 1})
+            blocked_value = 1 if field == "indexed_attempts" else [{"attempt": 1}]
+            blocked = dict(status, **{field: blocked_value})
             with (
                 mock.patch.object(
                     controller, "validate_current_plan", return_value=host
