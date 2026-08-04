@@ -899,7 +899,7 @@ def _probe_set(fixture_bytes: bytes, natural_fixture_bytes: bytes) -> bytes:
         (
             "natural-routing",
             "natural_routing",
-            "Read only codex_eval_host.py and produce a substantial self-contained long-form architecture report with exactly seven ordered sections covering responsibilities, process boundaries, data flow, identity checks, failure handling, security boundaries, and recovery. Include one compact recovery record; do not inspect other files or modify files.",
+            "Read codex_eval_host.py and produce a substantial self-contained long-form architecture report with exactly seven ordered sections covering responsibilities, process boundaries, data flow, identity checks, failure handling, security boundaries, and recovery. Include one compact recovery record. You may inspect the SKILL.md of any installed Skill that you determine applies to this task; do not inspect other files or modify files.",
             ["thread.started", "turn.completed", "direct.routing"],
         ),
         (

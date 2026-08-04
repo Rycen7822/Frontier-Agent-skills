@@ -465,16 +465,27 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
         "session_id",
         "event_types",
         "direct_observations",
+        "routing",
         "usage",
         "diagnostics",
     }
     if (
         not isinstance(value, dict)
         or set(value) != required
-        or value["schema_version"] != "codex-interaction-probe-result/1.0"
+        or value["schema_version"] != "codex-interaction-probe-result/1.1"
         or value["probe_id"] != row["probe_id"]
         or value["capability"] != row["capability"]
         or value["status"] not in {"pass", "unknown"}
+        or not isinstance(value["routing"], list)
+        or not all(
+            isinstance(skill_id, str) and skill_id
+            for skill_id in value["routing"]
+        )
+        or value["routing"] != sorted(set(value["routing"]))
+        or (
+            ("direct.routing" in value["direct_observations"])
+            != bool(value["routing"])
+        )
     ):
         raise OperationError("interaction probe result shape or identity is invalid")
     return value
