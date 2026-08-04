@@ -1161,6 +1161,137 @@ def _is_source_workspace_isolation_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _is_child_environment_isolation_correction(value: dict[str, Any]) -> bool:
+    request_fields = ("provider_requests", "model_grade", "execute")
+    return (
+        _is_formal_projection_correction(value)
+        and value["campaign_id"]
+        == "model-evolution-6-3-source-workspace-isolation-5cff930"
+        and value["product"]["source_commit"]
+        == "5cff930e90f73774b88289e8104e7f78d07e3d55"
+        and value["state_revision"] == 11
+        and tuple(
+            value["budgets"]["ceiling"][field] for field in request_fields
+        ) == (928, 600, 376)
+        and tuple(
+            value["budgets"]["reserved"][field] for field in request_fields
+        ) == (784, 400, 336)
+        and tuple(
+            value["budgets"]["observed"][field] for field in request_fields
+        ) == (560, 512, 0)
+    )
+
+
+def _validate_child_environment_isolation_evidence(
+    campaign: dict[str, Any], campaign_root: Path, repository_root: Path,
+) -> None:
+    plans = {record["skill_id"]: record for record in campaign["plans"]}
+    for skill_id in SKILL_IDS:
+        plan_path = resolve_binding(
+            plans[skill_id]["plan"], repository_root, campaign_root,
+        )
+        plan = load_json(plan_path, label=f"{skill_id} child-env parent plan")
+        artifacts = plan_path.parent / plan["artifacts"]["root"]
+        index_path = artifacts / plan["artifacts"]["index_relpath"]
+        attempts = list((artifacts / "entries").glob("*/attempt-*"))
+        if skill_id != "skill-evaluator":
+            if index_path.exists() or attempts:
+                raise ContractError("child-env parent started an unexpected plan")
+            continue
+
+        rows = load_jsonl(index_path, label="child-env parent index")
+        expected = {
+            "pe-9bbf96d9f91228d492776a6e": (True, "normal", "completed"),
+            "pe-234a7ca6e66b3f19631998a7": (
+                False, "resume_seal", "interrupted",
+            ),
+        }
+        if {row.get("entry_id") for row in rows} != set(expected):
+            raise ContractError("child-env parent index differs")
+        indexed_attempts: set[Path] = set()
+        candidate_attempt: Path | None = None
+        candidate_receipt: dict[str, Any] | None = None
+        for row in rows:
+            entry_id = row["entry_id"]
+            attempt = artifacts.joinpath(*_relative_path(row["artifact_dir"]).parts)
+            receipt_binding = row["receipt"]
+            receipt_path = artifacts.joinpath(
+                *_relative_path(receipt_binding["path"]).parts,
+            )
+            if (
+                row.get("attempt") != 1
+                or attempt.is_symlink()
+                or not attempt.is_dir()
+                or receipt_path != attempt / "receipt.json"
+                or receipt_path.is_symlink()
+                or not receipt_path.is_file()
+                or content_hash(receipt_path.read_bytes())
+                != receipt_binding.get("sha256")
+            ):
+                raise ContractError("child-env parent receipt binding differs")
+            receipt = load_json(receipt_path, label="child-env parent receipt")
+            verify_self_hash(receipt, "receipt_hash")
+            valid, origin, terminal = expected[entry_id]
+            run = receipt.get("run", {})
+            if (
+                run.get("entry_id") != entry_id
+                or run.get("attempt") != 1
+                or run.get("valid") is not valid
+                or run.get("completion_origin") != origin
+                or run.get("terminal") != terminal
+                or (not valid and run.get("error") != "interrupted")
+            ):
+                raise ContractError("child-env parent run differs")
+            indexed_attempts.add(attempt.resolve())
+            if not valid:
+                candidate_attempt = attempt
+                candidate_receipt = receipt
+        if (
+            len(rows) != 2
+            or len(attempts) != 2
+            or {path.resolve() for path in attempts} != indexed_attempts
+            or candidate_attempt is None
+            or candidate_receipt is None
+        ):
+            raise ContractError("child-env parent attempt set differs")
+
+        protocol = candidate_receipt.get("host_protocol", {})
+        requests = protocol.get("requests")
+        stdout_path = candidate_attempt / "host-stdout.jsonl"
+        stderr_path = candidate_attempt / "host-stderr.txt"
+        if (
+            protocol.get("results") != []
+            or not isinstance(requests, list)
+            or len(requests) != 1
+            or requests[0].get("envelope", {}).get("entry_id")
+            != "pe-234a7ca6e66b3f19631998a7"
+            or protocol.get("raw_stdout", {}).get("sha256")
+            != content_hash(stdout_path.read_bytes())
+            or protocol.get("raw_stderr", {}).get("sha256")
+            != content_hash(stderr_path.read_bytes())
+            or stderr_path.read_bytes() != b""
+        ):
+            raise ContractError("child-env parent Host receipt differs")
+        results = load_jsonl(stdout_path, label="child-env parent Host result")
+        result = results[0] if len(results) == 1 else None
+        if (
+            not isinstance(result, dict)
+            or result.get("request_hash") != requests[0].get("request_hash")
+            or result.get("terminal_status") != "protocol_error"
+            or result.get("provider_error_code") is not None
+            or result.get("principals") != []
+            or result.get("actions") != []
+            or result.get("usage", {}).get("records") != []
+            or result.get("protocol_error") != {
+                "artifact": None,
+                "kind": "malformed_record",
+                "message": "Codex output exposed the bound source repository",
+                "seq": None,
+            }
+        ):
+            raise ContractError("child-env parent Host evidence differs")
+
+
 def _validate_single_principal_exec_evidence(
     campaign: dict[str, Any], campaign_root: Path, repository_root: Path,
 ) -> None:
@@ -1559,6 +1690,9 @@ def prepare_supersedes(
     source_workspace_isolation_correction = (
         len(lineage) == 7 and _is_source_workspace_isolation_correction(old)
     )
+    child_environment_isolation_correction = (
+        len(lineage) == 8 and _is_child_environment_isolation_correction(old)
+    )
     transport_lineage = any(
         campaign["campaign_id"] == "model-evolution-6-3-projection-ec0d79d"
         for campaign, _ in lineage
@@ -1569,11 +1703,14 @@ def prepare_supersedes(
         or systemd_environment_correction
         or single_principal_exec_correction
         or source_workspace_isolation_correction
+        or child_environment_isolation_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 9 and not formal_projection_correction:
         raise ContractError("supersession repair depth is exhausted")
-    if len(lineage) == 8 and not calibration_fixture_correction:
+    if len(lineage) == 8 and not (
+        calibration_fixture_correction or child_environment_isolation_correction
+    ):
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 7 and not (
         calibration_contract_correction or source_workspace_isolation_correction
@@ -1594,6 +1731,7 @@ def prepare_supersedes(
         or systemd_environment_correction
         or single_principal_exec_correction
         or source_workspace_isolation_correction
+        or child_environment_isolation_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = (
@@ -1715,7 +1853,10 @@ def prepare_supersedes(
     ):
         raise ContractError("exec correction did not change the tool schema identity")
     if (
-        source_workspace_isolation_correction
+        (
+            source_workspace_isolation_correction
+            or child_environment_isolation_correction
+        )
         and old_host["identity"]["adapter"]["sha256"]
         == target_host["identity"]["adapter"]["sha256"]
     ):
@@ -1760,6 +1901,19 @@ def prepare_supersedes(
         }
         if blockers != expected_blockers:
             raise ContractError("workspace parent qualification blockers differ")
+    if child_environment_isolation_correction:
+        expected_blockers = {("final-plugin-unobserved", "release")} | {
+            (f"{skill_id}-current", skill_id) for skill_id in SKILL_IDS
+        }
+        blockers = {
+            (row.get("code"), row.get("scope"))
+            for row in qualification["blockers"]
+        }
+        if blockers != expected_blockers:
+            raise ContractError("child-env parent qualification blockers differ")
+        _validate_child_environment_isolation_evidence(
+            old, old_path.parent, repository_root,
+        )
     imported_reserved = dict(old["budgets"]["reserved"])
     imported_observed = dict(old["budgets"]["observed"])
     result = {

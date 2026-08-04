@@ -57,6 +57,7 @@ FAKE_CODEX_SOURCE = textwrap.dedent(
     with state.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({
             "argv": sys.argv[1:], "cwd": str(Path.cwd()), "prompt": prompt,
+            "pwd": os.environ.get("PWD"), "oldpwd": os.environ.get("OLDPWD"),
         }) + "\\n")
 
     stderr = config.get("stderr")
@@ -730,6 +731,8 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             child_workspace = Path(call["cwd"])
             self.assertNotEqual(candidate_workspace.resolve(), child_workspace)
             self.assertNotIn(root.resolve(), child_workspace.parents)
+            self.assertEqual(call["cwd"], call["pwd"])
+            self.assertIsNone(call["oldpwd"])
             cd_index = call["argv"].index("--cd")
             self.assertEqual(str(child_workspace), call["argv"][cd_index + 1])
             disabled = [

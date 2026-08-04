@@ -290,10 +290,13 @@ def _run_child(
     timeout_seconds: float,
 ) -> dict[str, Any]:
     started = time.monotonic()
+    child_env = dict(os.environ)
+    child_env["PWD"] = str(workspace)
+    child_env.pop("OLDPWD", None)
     process = subprocess.Popen(
         argv,
         cwd=workspace,
-        env=dict(os.environ),
+        env=child_env,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
