@@ -24,6 +24,7 @@ from _codex_eval_delivery import (
     force_loaded_prompt,
     forced_probe_delivery,
     is_workspace_infrastructure,
+    isolated_tool_schema_hash,
     observed_permission_denials,
     observed_skill_routing,
     prepare_workspace,
@@ -129,13 +130,17 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     identity = manifest.get("identity")
     execution = identity.get("execution") if isinstance(identity, dict) else None
     adapter = identity.get("adapter") if isinstance(identity, dict) else None
+    if not isinstance(execution, dict) or execution.get("model") != args.model:
+        raise AdapterError("model identity differs from the host manifest")
+    if execution.get("tool_schema_hash") != isolated_tool_schema_hash(
+        args.codex_sha256
+    ):
+        raise AdapterError("tool schema identity differs from the host manifest")
     if (
-        not isinstance(execution, dict)
-        or execution.get("model") != args.model
-        or not isinstance(adapter, dict)
+        not isinstance(adapter, dict)
         or adapter.get("sha256") != _file_sha256(Path(__file__).resolve())
     ):
-        raise AdapterError("adapter or model identity differs from the host manifest")
+        raise AdapterError("adapter identity differs from the host manifest")
     if _file_sha256(args.codex) != args.codex_sha256:
         raise AdapterError("Codex executable bytes differ from the bound hash")
     command = manifest.get("command")

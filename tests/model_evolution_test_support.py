@@ -11,7 +11,10 @@ import textwrap
 from typing import Any
 
 from _bundle_hash import inventory, tree_hash
-from _codex_eval_delivery import MODEL_EVOLUTION_ENV_ALLOWLIST
+from _codex_eval_delivery import (
+    MODEL_EVOLUTION_ENV_ALLOWLIST,
+    isolated_tool_schema_hash,
+)
 from _model_evolution_contract import (
     SKILL_IDS,
     build_initial_campaign,
@@ -168,6 +171,9 @@ def _materialize_fake_host(
         "catalog_hash"
     ]
     host["identity"]["execution"]["skill_hash"] = _root_hash(plugin_root)
+    host["identity"]["execution"]["tool_schema_hash"] = isolated_tool_schema_hash(
+        file_hash(fake)
+    )
     host["capabilities"][0]["probe"]["status"] = "unknown"
     host["manifest_hash"] = canonical_hash(
         {key: value for key, value in host.items() if key != "manifest_hash"}
