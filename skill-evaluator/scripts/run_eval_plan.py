@@ -2662,6 +2662,13 @@ def _execute_entry(
         stdout, request=request, registry=registry,
     )
     _raise_for_host_infrastructure_failure(result, "execute host")
+    if (
+        result["terminal_status"] == "protocol_error"
+        or result["protocol_error"] is not None
+    ):
+        raise ApparatusFailure(
+            "execute host reported a protocol error; inspect retained host-stdout.jsonl"
+        )
     _validate_routing_contract(entry, events)
     _validate_state_contract(entry, events, result, checkpoints)
     _validate_runtime_records(entry, result, host, registry)

@@ -743,7 +743,10 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             host_builder.isolated_tool_schema_hash(
                 built["command"]["argv"][
                     built["command"]["argv"].index("--codex-sha256") + 1
-                ]
+                ],
+                built["command"]["argv"][
+                    built["command"]["argv"].index("--isolation-tool-sha256") + 1
+                ],
             ),
             built["identity"]["execution"]["tool_schema_hash"],
         )
@@ -813,8 +816,10 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         self.assertEqual(
             (state["phase"], state["state_revision"]), ("target_profile_ready", 3)
         )
-        calls = self.fixture["repository_root"] / "fixtures/fake-codex.calls.jsonl"
-        self.assertEqual(len(calls.read_text().splitlines()), 1)
+        self.assertEqual(
+            1,
+            len(list((self.fixture["campaign_root"] / "probes").glob("*.json"))),
+        )
 
         second_root = Path(self.temporary.name) / "second"
         partial = materialize_campaign(second_root)
@@ -842,9 +847,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                     budget_approval=partial_approval,
                 )
             )
-        self.assertFalse(
-            (partial["repository_root"] / "fixtures/fake-codex.calls.jsonl").exists()
-        )
+        self.assertFalse((partial["campaign_root"] / "probes").exists())
         self.assertIsNone(
             partial["store"].read()["budgets"]["observed"]["provider_requests"]
         )
@@ -876,18 +879,20 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             repository_root=self.fixture["repository_root"],
             campaign_root=self.fixture["campaign_root"],
         )
-        calls = self.fixture["repository_root"] / "fixtures/fake-codex.calls.jsonl"
-        call_count = len(calls.read_text().splitlines())
-        second = operations.run_interaction_probes(
-            reserved,
-            probe_set=probe_set,
-            approval_binding=approval_binding,
-            repository_root=self.fixture["repository_root"],
-            campaign_root=self.fixture["campaign_root"],
-            resume_existing=True,
-        )
+        with mock.patch.object(
+            operations,
+            "_run_probe_process",
+            side_effect=AssertionError("resume resent a provider request"),
+        ):
+            second = operations.run_interaction_probes(
+                reserved,
+                probe_set=probe_set,
+                approval_binding=approval_binding,
+                repository_root=self.fixture["repository_root"],
+                campaign_root=self.fixture["campaign_root"],
+                resume_existing=True,
+            )
         self.assertEqual(first, second)
-        self.assertEqual(call_count, len(calls.read_text().splitlines()))
 
     def test_probe_outer_timeout_has_grace_and_kills_owned_process_group(self) -> None:
         self.assertEqual(

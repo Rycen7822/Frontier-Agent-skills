@@ -42,15 +42,22 @@ from _codex_eval_events import (
     normalize_jsonl,
     project_execute_result,
 )
+from _codex_eval_isolation import (
+    ISOLATED_WORKSPACE,
+    IsolationError,
+    isolated_child_argv,
+    request_codex_home,
+)
 
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
-ADAPTER_VERSION = "1.1"
+ADAPTER_VERSION = "1.2"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_delivery.py",
     "_codex_eval_events.py",
+    "_codex_eval_isolation.py",
     "codex_eval_host.py",
 )
 PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.1"
@@ -137,6 +144,15 @@ def _bound_command_option(argv: list[str], name: str) -> str:
     return argv[positions[0] + 1]
 
 
+def _optional_bound_command_option(argv: list[str], name: str) -> str | None:
+    positions = [index for index, value in enumerate(argv) if value == name]
+    if not positions:
+        return None
+    if len(positions) != 1 or positions[0] + 1 >= len(argv):
+        raise AdapterError(f"host manifest command must bind {name} at most once")
+    return argv[positions[0] + 1]
+
+
 def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     manifest = _load_json_object(path)
     expected_hash = _sha256_bytes(
@@ -152,7 +168,8 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     if not isinstance(execution, dict) or execution.get("model") != args.model:
         raise AdapterError("model identity differs from the host manifest")
     if execution.get("tool_schema_hash") != isolated_tool_schema_hash(
-        args.codex_sha256
+        args.codex_sha256,
+        args.isolation_tool_sha256,
     ):
         raise AdapterError("tool schema identity differs from the host manifest")
     if (
@@ -162,6 +179,15 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         raise AdapterError("adapter identity differs from the host manifest")
     if _file_sha256(args.codex) != args.codex_sha256:
         raise AdapterError("Codex executable bytes differ from the bound hash")
+    if args.isolation_tool is None:
+        if args.isolation_tool_sha256 is not None:
+            raise AdapterError("filesystem isolation hash lacks an executable")
+    elif (
+        not isinstance(args.isolation_tool_sha256, str)
+        or not HASH.fullmatch(args.isolation_tool_sha256)
+        or _file_sha256(args.isolation_tool) != args.isolation_tool_sha256
+    ):
+        raise AdapterError("filesystem isolation executable differs from its bound hash")
     command = manifest.get("command")
     argv = command.get("argv") if isinstance(command, dict) else None
     if not isinstance(argv, list) or any(not isinstance(item, str) for item in argv):
@@ -181,6 +207,12 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         "--profile": args.profile,
         "--sandbox": args.sandbox,
     }
+    isolation_options = {
+        "--isolation-tool": (
+            str(args.isolation_tool) if args.isolation_tool is not None else None
+        ),
+        "--isolation-tool-sha256": args.isolation_tool_sha256,
+    }
     if (
         bound_codex != args.codex
         or bound_manifest != path
@@ -188,6 +220,10 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         or any(
             _bound_command_option(argv, option) != value
             for option, value in expected.items()
+        )
+        or any(
+            _optional_bound_command_option(argv, option) != value
+            for option, value in isolation_options.items()
         )
     ):
         raise AdapterError(
@@ -228,6 +264,16 @@ def validate_bound_manifest(path: Path, plugin_root: Path) -> dict[str, Any]:
             else (executable.parent / declared).resolve(strict=True)
         )
         codex = Path(_bound_command_option(argv, "--codex")).resolve(strict=True)
+        isolation_value = _optional_bound_command_option(argv, "--isolation-tool")
+        isolation_tool = (
+            Path(isolation_value).resolve(strict=True)
+            if isolation_value is not None
+            else None
+        )
+        isolation_tool_sha256 = _optional_bound_command_option(
+            argv,
+            "--isolation-tool-sha256",
+        )
         timeout = float(_bound_command_option(argv, "--timeout"))
     except (KeyError, OSError, TypeError, ValueError) as exc:
         raise AdapterError("host manifest command binding is invalid") from exc
@@ -245,6 +291,8 @@ def validate_bound_manifest(path: Path, plugin_root: Path) -> dict[str, Any]:
         sandbox=_bound_command_option(argv, "--sandbox"),
         timeout=timeout,
         plugin_root=plugin_root.resolve(strict=True),
+        isolation_tool=isolation_tool,
+        isolation_tool_sha256=isolation_tool_sha256,
     )
     validated = _validate_manifest(path, args)
     project_command_environment(
@@ -305,6 +353,11 @@ def _write_child_stderr(
             str(source_root).encode("utf-8"),
             b"<source-repository>",
         )
+        if source_root.parent.name == ".worktrees":
+            redacted_raw = redacted_raw.replace(
+                str(source_root.parent.parent).encode("utf-8"),
+                b"<repository-root>",
+            )
     text = redacted_raw[:MAX_STDERR_BYTES].decode("utf-8", errors="replace")
     if len(redacted_raw) > MAX_STDERR_BYTES:
         text += "\n[stderr truncated by codex_eval_host]\n"
@@ -314,18 +367,36 @@ def _write_child_stderr(
 
 
 def _run_child(
+    args: argparse.Namespace,
     argv: list[str],
     *,
     prompt: str,
     workspace: Path,
+    codex_home: Path | None,
     timeout_seconds: float,
 ) -> dict[str, Any]:
     started = time.monotonic()
     child_env = dict(os.environ)
-    child_env["PWD"] = str(workspace)
+    child_env["PWD"] = (
+        ISOLATED_WORKSPACE if args.isolation_tool is not None else str(workspace)
+    )
     child_env.pop("OLDPWD", None)
+    if (args.isolation_tool is None) != (codex_home is None):
+        raise AdapterError("Codex isolation home and executable must be bound together")
+    effective_argv = argv
+    if args.isolation_tool is not None:
+        assert codex_home is not None
+        effective_argv = isolated_child_argv(
+            isolation_tool=args.isolation_tool,
+            sandbox=args.sandbox,
+            source_root=args.source_root,
+            codex=args.codex,
+            argv=argv,
+            workspace=workspace,
+            codex_home=codex_home,
+        )
     process = subprocess.Popen(
-        argv,
+        effective_argv,
         cwd=workspace,
         env=child_env,
         stdin=subprocess.PIPE,
@@ -464,7 +535,13 @@ def _fresh_argv(
         "--model",
         args.model,
         *_profile_argv(args.profile),
-        *(skill_isolation_argv() if args.plugin_root else []),
+        *(
+            skill_isolation_argv(
+                include_installed_skills=args.isolation_tool is None,
+            )
+            if args.plugin_root
+            else []
+        ),
         "--sandbox",
         args.sandbox,
         "--cd",
@@ -496,7 +573,13 @@ def _resume_argv(
         "--model",
         args.model,
         *_profile_argv(args.profile),
-        *(skill_isolation_argv() if args.plugin_root else []),
+        *(
+            skill_isolation_argv(
+                include_installed_skills=args.isolation_tool is None,
+            )
+            if args.plugin_root
+            else []
+        ),
         "--config",
         _config_override("model_reasoning_effort", args.effort),
         "--output-last-message",
@@ -751,7 +834,10 @@ def _run_model_grade(
         or not batch["items"]
     ):
         raise AdapterError("model-grade blinded batch is invalid")
-    with tempfile.TemporaryDirectory(prefix="frontier-codex-grade-") as temp_dir:
+    with (
+        tempfile.TemporaryDirectory(prefix="frontier-codex-grade-") as temp_dir,
+        request_codex_home(args.isolation_tool) as codex_home,
+    ):
         temporary = Path(temp_dir)
         ensure_trusted_workspace(temporary)
         schema_path = temporary / "output.schema.json"
@@ -765,6 +851,7 @@ def _run_model_grade(
             + json.dumps(batch, ensure_ascii=False, sort_keys=True)
         )
         child = _run_child(
+            args,
             _fresh_argv(
                 args,
                 temporary,
@@ -774,6 +861,7 @@ def _run_model_grade(
             ),
             prompt=prompt,
             workspace=temporary,
+            codex_home=codex_home,
             timeout_seconds=args.timeout,
         )
         _write_child_stderr(child["stderr"], workspace, args.source_root)
@@ -840,7 +928,10 @@ def _run_execute_in_workspace(
     normalized_turns: list[dict[str, Any]] = []
     session_id: str | None = None
     child_failure: dict[str, Any] | None = None
-    with tempfile.TemporaryDirectory(prefix="frontier-codex-exec-") as temp_dir:
+    with (
+        tempfile.TemporaryDirectory(prefix="frontier-codex-exec-") as temp_dir,
+        request_codex_home(args.isolation_tool) as codex_home,
+    ):
         temporary = Path(temp_dir)
         for index, turn in enumerate(payload["turns"]):
             last_message = temporary / f"last-message-{index}.txt"
@@ -855,6 +946,7 @@ def _run_execute_in_workspace(
                 else _resume_argv(args, session_id, last_message)
             )
             child = _run_child(
+                args,
                 argv,
                 prompt=(
                     force_loaded_prompt(
@@ -866,6 +958,7 @@ def _run_execute_in_workspace(
                     else turn["input"]["content"]
                 ),
                 workspace=workspace,
+                codex_home=codex_home,
                 timeout_seconds=args.timeout,
             )
             _write_child_stderr(child["stderr"], workspace, args.source_root)
@@ -1128,9 +1221,13 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             args.plugin_root,
             exclude_skill_id=forced[0] if forced is not None else None,
         )
-    with tempfile.TemporaryDirectory(prefix="frontier-codex-probe-") as temp_dir:
+    with (
+        tempfile.TemporaryDirectory(prefix="frontier-codex-probe-") as temp_dir,
+        request_codex_home(args.isolation_tool) as codex_home,
+    ):
         last_message = Path(temp_dir) / "last-message.txt"
         child = _run_child(
+            args,
             _fresh_argv(
                 args,
                 workspace,
@@ -1143,6 +1240,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
                 else row["prompt"]
             ),
             workspace=workspace,
+            codex_home=codex_home,
             timeout_seconds=args.timeout,
         )
         _write_child_stderr(child["stderr"], workspace, args.source_root)
@@ -1260,6 +1358,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--mode", choices=("host", "probe"), default="host")
     parser.add_argument("--codex", type=Path, required=True)
     parser.add_argument("--codex-sha256", required=True)
+    parser.add_argument("--isolation-tool", type=Path)
+    parser.add_argument("--isolation-tool-sha256")
     parser.add_argument("--host-manifest", type=Path, required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--effort", required=True)
@@ -1277,6 +1377,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         args.codex = args.codex.resolve(strict=True)
+        if args.isolation_tool is not None:
+            args.isolation_tool = args.isolation_tool.resolve(strict=True)
         if args.plugin_root is not None:
             args.plugin_root = args.plugin_root.resolve(strict=True)
         if (
@@ -1296,6 +1398,7 @@ def main(argv: list[str] | None = None) -> int:
     except (
         AdapterError,
         DeliveryError,
+        IsolationError,
         OSError,
         UnicodeDecodeError,
         json.JSONDecodeError,

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -18,6 +20,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "skill-evaluator/scripts"))
 
 from _bundle_hash import inventory, tree_hash  # noqa: E402
 from _codex_eval_delivery import isolated_tool_schema_hash  # noqa: E402
+import _codex_eval_isolation as isolation  # noqa: E402
 from codex_eval_host import ADAPTER_SOURCE_FILES, adapter_source_hash  # noqa: E402
 from validate_eval_suite import (  # noqa: E402
     load_v5_schema_registry,
@@ -632,6 +635,95 @@ class TestCodexEventNormalization(unittest.TestCase):
 
 
 class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
+    def test_bubblewrap_exposes_only_workspace_and_request_state(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            tempfile.TemporaryDirectory(
+                prefix="frontier-isolation-test-", dir="/dev/shm"
+            ) as codex_home_name,
+        ):
+            canonical = Path(tmp) / "Frontier-Agent-skills"
+            source = canonical / ".worktrees/source"
+            workspace = canonical / ".work/campaign/workspace"
+            output = Path(tmp) / "output"
+            executable_dir = source / "bin"
+            for path in (workspace, output, executable_dir):
+                path.mkdir(parents=True)
+            (source / "secret.txt").write_text("source-only\n", encoding="utf-8")
+            (workspace / "fixture.txt").write_text("workspace-only\n", encoding="utf-8")
+            fake = executable_dir / "fake-codex"
+            global_codex_auth = Path.home() / ".codex/auth.json"
+            fake.write_text(
+                textwrap.dedent(
+                    f"""\
+                    #!/usr/bin/env python3
+                    import json
+                    import os
+                    from pathlib import Path
+                    import subprocess
+
+                    assert Path({str(source / 'secret.txt')!r}).exists() is False
+                    assert Path({str(global_codex_auth)!r}).exists() is False
+                    assert Path('/run/frontier-codex-home/auth.json').is_file()
+                    assert Path('/tmp/frontier-workspace/fixture.txt').read_text() == 'workspace-only\\n'
+                    processes = subprocess.check_output(['ps', '-eo', 'args='], text=True)
+                    assert {str(source)!r} not in processes
+                    Path('/tmp/frontier-output/proof.json').write_text(json.dumps({{
+                        'codex_home': os.environ.get('CODEX_HOME'),
+                        'cwd': str(Path.cwd()),
+                        'oldpwd': os.environ.get('OLDPWD'),
+                        'pwd': os.environ.get('PWD'),
+                    }}), encoding='utf-8')
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake.chmod(0o700)
+            isolation_name = shutil.which("bwrap")
+            self.assertIsNotNone(isolation_name)
+            assert isolation_name is not None
+            isolation_tool = Path(isolation_name).resolve(strict=True)
+            args = argparse.Namespace(
+                codex=fake.resolve(strict=True),
+                isolation_tool=isolation_tool,
+                sandbox="read-only",
+                source_root=source.resolve(strict=True),
+            )
+            last_message = output / "last-message.txt"
+            argv = isolation.isolated_child_argv(
+                isolation_tool=args.isolation_tool,
+                sandbox=args.sandbox,
+                source_root=args.source_root,
+                codex=args.codex,
+                argv=[
+                    str(fake),
+                    "--cd",
+                    str(workspace),
+                    "--output-last-message",
+                    str(last_message),
+                ],
+                workspace=workspace.resolve(strict=True),
+                codex_home=Path(codex_home_name),
+            )
+            environment = os.environ.copy()
+            environment["PWD"] = "/tmp/frontier-workspace"
+            environment.pop("OLDPWD", None)
+            result = subprocess.run(
+                argv,
+                cwd=workspace,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            proof = json.loads((output / "proof.json").read_text(encoding="utf-8"))
+            self.assertEqual("/run/frontier-codex-home", proof["codex_home"])
+            self.assertEqual("/tmp/frontier-workspace", proof["cwd"])
+            self.assertIsNone(proof["oldpwd"])
+            self.assertEqual("/tmp/frontier-workspace", proof["pwd"])
+            self.assertEqual("source-only\n", (source / "secret.txt").read_text())
+
     def test_adapter_identity_covers_runtime_components(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             scripts = Path(tmp)
@@ -1575,7 +1667,7 @@ class TestCodexEvalHostIntegration(SkillEvaluatorTestCase):
             paths = _materialize_adapter_fixture(root, fake)
             plan, index_path, run_result = self._compile_and_run(root, paths)
             self.assertEqual(
-                2, run_result.returncode, run_result.stdout + run_result.stderr
+                3, run_result.returncode, run_result.stdout + run_result.stderr
             )
             self.assertFalse(index_path.exists())
             for entry in plan["entries"]:
