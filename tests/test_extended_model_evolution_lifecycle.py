@@ -631,7 +631,12 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             Path(self.temporary.name) / "builder-evidence.json",
             builder_evidence,
         )
-        output = Path(self.temporary.name) / "built-host.json"
+        output = Path(
+            os.path.relpath(
+                Path(self.temporary.name) / "built-host.json",
+                Path.cwd(),
+            )
+        )
         adapter_target = self.fixture["repository_root"] / "scripts/codex_eval_host.py"
         adapter_target.parent.mkdir()
         shutil.copyfile(REPOSITORY_ROOT / "scripts/codex_eval_host.py", adapter_target)
