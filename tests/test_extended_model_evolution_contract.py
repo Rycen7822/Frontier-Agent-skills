@@ -19,6 +19,7 @@ from _model_evolution_contract import (  # noqa: E402
     _is_formal_projection_correction,
     _is_model_grade_path_correction,
     _is_multiturn_timeout_correction,
+    _is_systemd_environment_correction,
     _is_partial_calibration_correction,
     build_initial_campaign,
     evaluator_evidence_status,
@@ -973,10 +974,31 @@ class ModelEvolutionContractTest(unittest.TestCase):
         self.assertFalse(_is_multiturn_timeout_correction(state))
         state["budgets"]["observed"]["provider_requests"] = 280
 
+        state["campaign_id"] = (
+            "model-evolution-6-3-multiturn-timeout-8e867db"
+        )
+        state["product"]["source_commit"] = (
+            "8e867dbf550c0c216b404a03b23d155d8af32b53"
+        )
+        state["budgets"]["ceiling"].update({
+            "provider_requests": 718, "model_grade": 408, "execute": 280,
+        })
+        state["budgets"]["reserved"].update({
+            "provider_requests": 574, "model_grade": 304, "execute": 240,
+        })
+        state["budgets"]["observed"].update({
+            "provider_requests": 350, "model_grade": 320, "execute": 0,
+        })
+        self.assertTrue(_is_systemd_environment_correction(state))
+        state["budgets"]["reserved"]["execute"] = 239
+        self.assertFalse(_is_systemd_environment_correction(state))
+        state["budgets"]["reserved"]["execute"] = 240
+
         state["plans"].pop()
         self.assertFalse(_is_formal_projection_correction(state))
         self.assertFalse(_is_model_grade_path_correction(state))
         self.assertFalse(_is_multiturn_timeout_correction(state))
+        self.assertFalse(_is_systemd_environment_correction(state))
         state["plans"].append({
             "role": "target_current",
             "skill_id": SKILL_IDS[-1],
