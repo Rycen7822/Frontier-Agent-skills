@@ -251,7 +251,7 @@ def _materialize_sentinel(repository_root: Path, campaign_root: Path) -> Path:
             "required_coverage_tags": ["critical"],
             "protected_case_ids": [f"{skill_id}-protected"],
             "external_holdout_contract_id": f"{skill_id}-holdout",
-            "holdout_case_ceiling": 1,
+            "holdout_case_ceiling": 2,
         }
         for skill_id in SKILL_IDS
     }

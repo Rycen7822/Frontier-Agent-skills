@@ -207,9 +207,9 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             supersedes=None,
             supersession_failure_receipt=None,
             supersession_calibration_rejection_receipt=None,
-            provider_request_ceiling=45,
-            execute_ceiling=20,
-            model_grade_ceiling=24,
+            provider_request_ceiling=81,
+            execute_ceiling=38,
+            model_grade_ceiling=42,
             artifact_byte_ceiling=1_073_741_824,
             download_byte_ceiling=0,
             candidate_ceiling=1,
@@ -288,9 +288,9 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
 
     def test_cumulative_request_ceilings_charge_prior_failures_once(self) -> None:
         request_ceilings = {
-            "provider_requests": 210,
-            "execute": 70,
-            "model_grade": 134,
+            "provider_requests": 246,
+            "execute": 88,
+            "model_grade": 152,
             "calibration": 64,
         }
         supersedes = {
@@ -301,13 +301,35 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         }
         self.assertEqual(
             {
-                "provider_requests": 272,
-                "execute": 70,
-                "model_grade": 166,
+                "provider_requests": 308,
+                "execute": 88,
+                "model_grade": 184,
             },
             controller._cumulative_request_ceilings(
                 request_ceilings,
                 supersedes,
+            ),
+        )
+
+    def test_frozen_sentinel_budget_counts_both_holdout_treatments(self) -> None:
+        sentinel = json.loads(
+            (
+                REPOSITORY_ROOT
+                / "evaluation/model-evolution/sentinel-index-v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            {
+                "provider_requests": 246,
+                "execute": 88,
+                "model_grade": 152,
+                "calibration": 64,
+            },
+            controller.qualification_request_ceilings(
+                sentinel,
+                repository_root=REPOSITORY_ROOT,
+                campaign_root=REPOSITORY_ROOT,
+                probe_count=6,
             ),
         )
 
@@ -959,13 +981,20 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         wrong_path = write_json(self.fixture["campaign_root"] / "wrong-plan.json", wrong)
         wrong_args = copy.copy(args)
         wrong_args.plan = wrong_path
-        with self.assertRaisesRegex(controller.CliError, "selected Skill"):
+        host = json.loads(self.fixture["paths"]["host"].read_text())
+        with (
+            mock.patch.object(controller, "validate_current_plan", return_value=host),
+            self.assertRaisesRegex(controller.CliError, "selected Skill"),
+        ):
             controller._register_plan(wrong_args)
         self.assertEqual(before, self.fixture["store"].path.read_bytes())
 
         for field in ("indexed_attempts", "active_attempts", "recoverable_attempts"):
             blocked = dict(status, **{field: 1})
             with (
+                mock.patch.object(
+                    controller, "validate_current_plan", return_value=host
+                ),
                 self.subTest(field=field),
                 mock.patch.object(controller, "runner_status", return_value=blocked),
             ):
@@ -973,6 +1002,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                     controller._register_plan(args)
             self.assertEqual(self.fixture["store"].path.read_bytes(), before)
         with (
+            mock.patch.object(controller, "validate_current_plan", return_value=host),
             mock.patch.object(controller, "runner_status", return_value=status),
             mock.patch.object(controller, "_emit"),
         ):

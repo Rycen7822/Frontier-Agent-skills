@@ -1,6 +1,6 @@
 {
   "schema_version": "model-evolution-sentinel-index/1",
-  "sentinel_hash": "sha256:3f0545daf9a4073984d7da0bf3eee2e6d00b9807d8f5174d138277ef5dbec939",
+  "sentinel_hash": "sha256:5d949bcaa1f7da09d0f1d7cf518269e54c273f3de4ee933bd86e8cd74cea5281",
   "sentinel_id": "frontier-four-skill-sentinel-v1",
   "skills": {
     "long-document-segmented-writing": {
@@ -24,7 +24,7 @@
           "sha256": "sha256:4b1b8d1fc191a06182374b2acee7da7a73bf78d64b37f7ba6cd66d3b92b7d001"
         }
       ],
-      "holdout_case_ceiling": 1,
+      "holdout_case_ceiling": 2,
       "protected_case_ids": [
         "long-document-segmented-writing-protected-no-scratch"
       ],
@@ -75,7 +75,7 @@
           "sha256": "sha256:76eb44c2e40caa27c8dc93d00fa10e1311ac7e670bf687be4d5cd102c0e3cd1a"
         }
       ],
-      "holdout_case_ceiling": 1,
+      "holdout_case_ceiling": 2,
       "protected_case_ids": [
         "skill-evaluator-protected-no-reviewer"
       ],
@@ -126,7 +126,7 @@
           "sha256": "sha256:074bea64640ab57fa6701c7bdb6c9d3abcb240276113c8bc9e2129b888f6cafd"
         }
       ],
-      "holdout_case_ceiling": 1,
+      "holdout_case_ceiling": 2,
       "protected_case_ids": [
         "software-quality-workflows-protected-no-state"
       ],
@@ -177,7 +177,7 @@
           "sha256": "sha256:3c9788232fabb0f233aaf310ca78a0ff5852036fc4ae6139eb9a501958be2c06"
         }
       ],
-      "holdout_case_ceiling": 1,
+      "holdout_case_ceiling": 2,
       "protected_case_ids": [
         "writing-plans-protected-description"
       ],

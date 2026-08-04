@@ -36,6 +36,14 @@ from _model_evolution_calibration import (
     prepare_calibrations,
 )
 from _model_evolution_calibration_receipt import close_calibration_rejection
+from _model_evolution_materialization import (
+    MaterializationError,
+    prepare_candidate_plan,
+    prepare_current_plan,
+    validate_candidate_plan,
+    validate_current_plan,
+)
+from _model_evolution_holdout import prepare_holdout_plan, validate_holdout_plan
 from _model_evolution_ops import (
     OperationError,
     bundle_skill_at_revision,
@@ -707,17 +715,20 @@ def _register_plan(args: argparse.Namespace) -> None:
     if not isinstance(plan, dict):
         raise CliError("execution plan must be an object")
     verify_self_hash(plan, "plan_hash")
-    observed_host = campaign["profiles"]["target_observed"]
-    if observed_host is None:
-        raise CliError("target observed Host is not available")
-    host = _load_bound_document(
-        observed_host,
+    validator = {
+        "target_current": validate_current_plan,
+        "target_candidate": validate_candidate_plan,
+        "target_holdout": validate_holdout_plan,
+    }[args.role]
+    host = validator(
         repository_root=repository_root,
         campaign_root=campaign_root,
-        label="target observed Host",
+        campaign=campaign,
+        skill_id=args.skill_id,
+        plan_path=plan_path,
     )
     if plan.get("host_manifest_hash") != host.get("manifest_hash"):
-        raise CliError("execution plan Host differs from target observed Host")
+        raise CliError("execution plan Host differs from its exact Host evidence")
     if args.skill_id not in plan.get("package_hashes", {}):
         raise CliError("execution plan does not bind the selected Skill")
     if args.role == "target_current":
@@ -808,6 +819,97 @@ def _prepare_calibration(args: argparse.Namespace) -> None:
         expires=args.expires,
         max_workers=args.max_workers,
     ))
+
+
+def _prepare_current(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    campaign = _campaign_store(repository_root, campaign_root).read()
+    if campaign["state_revision"] != args.expected_revision:
+        raise CliError("prepare-current expected revision is stale")
+    result = prepare_current_plan(
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        campaign=campaign,
+        skill_id=args.skill_id,
+    )
+    _emit({
+        "skill_id": args.skill_id,
+        "plan_id": result["plan_id"],
+        "plan_hash": result["plan_hash"],
+        "plan": str(result["plan"]),
+        "execute_ceiling": result["execute_ceiling"],
+        "provider_requests": 0,
+    })
+
+
+def _prepare_candidate(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    campaign = _campaign_store(repository_root, campaign_root).read()
+    if campaign["state_revision"] != args.expected_revision:
+        raise CliError("prepare-candidate expected revision is stale")
+    result = prepare_candidate_plan(
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        campaign=campaign,
+        skill_id=args.skill_id,
+        plugin_root=args.plugin_root,
+        plugin_evidence=args.plugin_build_evidence,
+    )
+    _emit({
+        "skill_id": args.skill_id,
+        "plan_id": result["plan_id"],
+        "plan_hash": result["plan_hash"],
+        "plan": str(result["plan"]),
+        "execute_ceiling": result["execute_ceiling"],
+        "provider_requests": 0,
+    })
+
+
+def _prepare_holdout(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    campaign = _campaign_store(repository_root, campaign_root).read()
+    if campaign["state_revision"] != args.expected_revision:
+        raise CliError("prepare-holdout expected revision is stale")
+    result = prepare_holdout_plan(
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        campaign=campaign,
+        skill_id=args.skill_id,
+        plugin_root=args.plugin_root,
+        holdout_root=args.holdout_root,
+    )
+    _emit({
+        "skill_id": args.skill_id,
+        "plan_id": result["plan_id"],
+        "plan_hash": result["plan_hash"],
+        "plan": str(result["plan"]),
+        "execute_ceiling": result["execute_ceiling"],
+        "provider_requests": 0,
+    })
+
+
+def _verify_plan(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    campaign = _campaign_store(repository_root, campaign_root).read()
+    validator = {
+        "target_current": validate_current_plan,
+        "target_candidate": validate_candidate_plan,
+        "target_holdout": validate_holdout_plan,
+    }[args.role]
+    host = validator(
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        campaign=campaign,
+        skill_id=args.skill_id,
+        plan_path=args.plan.resolve(strict=True),
+    )
+    _emit({
+        "status": "valid",
+        "role": args.role,
+        "skill_id": args.skill_id,
+        "host_manifest_hash": host["manifest_hash"],
+        "provider_requests": 0,
+    })
 
 
 def _close_calibration_failure(args: argparse.Namespace) -> None:
@@ -1314,6 +1416,31 @@ def _parser() -> argparse.ArgumentParser:
         "--max-workers", type=int, choices=range(1, 5), default=1,
     )
 
+    current = commands.add_parser("prepare-current")
+    current.add_argument("--expected-revision", type=int, required=True)
+    current.add_argument("--skill-id", choices=SKILL_IDS, required=True)
+
+    candidate = commands.add_parser("prepare-candidate")
+    candidate.add_argument("--expected-revision", type=int, required=True)
+    candidate.add_argument("--skill-id", choices=SKILL_IDS, required=True)
+    candidate.add_argument("--plugin-root", type=Path, required=True)
+    candidate.add_argument("--plugin-build-evidence", type=Path, required=True)
+
+    holdout = commands.add_parser("prepare-holdout")
+    holdout.add_argument("--expected-revision", type=int, required=True)
+    holdout.add_argument("--skill-id", choices=SKILL_IDS, required=True)
+    holdout.add_argument("--plugin-root", type=Path, required=True)
+    holdout.add_argument("--holdout-root", type=Path, required=True)
+
+    verify_plan = commands.add_parser("verify-plan")
+    verify_plan.add_argument(
+        "--role",
+        choices=("target_current", "target_candidate", "target_holdout"),
+        required=True,
+    )
+    verify_plan.add_argument("--skill-id", choices=SKILL_IDS, required=True)
+    verify_plan.add_argument("--plan", type=Path, required=True)
+
     failure = commands.add_parser("close-calibration-failure")
     failure.add_argument("--skill-id", choices=SKILL_IDS, required=True)
     failure.add_argument("--output", type=Path, required=True)
@@ -1397,6 +1524,10 @@ def main(argv: list[str] | None = None) -> int:
             "preflight": _preflight,
             "probe": _probe,
             "prepare-calibration": _prepare_calibration,
+            "prepare-current": _prepare_current,
+            "prepare-candidate": _prepare_candidate,
+            "prepare-holdout": _prepare_holdout,
+            "verify-plan": _verify_plan,
             "close-calibration-failure": _close_calibration_failure,
             "close-calibration-rejection": _close_calibration_rejection,
             "register-plan": _register_plan,
@@ -1411,6 +1542,7 @@ def main(argv: list[str] | None = None) -> int:
         CliError,
         CalibrationPreparationError,
         ContractError,
+        MaterializationError,
         OperationError,
         StateError,
         OSError,
