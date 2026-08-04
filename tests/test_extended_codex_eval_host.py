@@ -17,6 +17,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 sys.path.insert(0, str(REPOSITORY_ROOT / "skill-evaluator/scripts"))
 
 from _bundle_hash import inventory, tree_hash  # noqa: E402
+from _codex_eval_delivery import isolated_tool_schema_hash  # noqa: E402
 from validate_eval_suite import (  # noqa: E402
     load_v5_schema_registry,
     validate_host_protocol_record,
@@ -247,6 +248,9 @@ def _host_manifest(
         }
     )
     manifest["identity"]["execution"]["model"] = MODEL
+    manifest["identity"]["execution"]["tool_schema_hash"] = (
+        isolated_tool_schema_hash(_sha256_file(fake))
+    )
     manifest["command"].update(
         {
             "argv": _bound_adapter_argv(
@@ -278,6 +282,9 @@ def _materialize_adapter_fixture(root: Path, fake: Path) -> dict[str, Path]:
         }
     )
     host["identity"]["execution"]["model"] = MODEL
+    host["identity"]["execution"]["tool_schema_hash"] = (
+        isolated_tool_schema_hash(_sha256_file(fake))
+    )
     host["command"].update(
         {
             "argv": _bound_adapter_argv(fake, paths["host"]),
@@ -1120,6 +1127,32 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             bad_path = root / "bad-host.json"
             bad_path.write_text(json.dumps(bad_manifest) + "\n", encoding="utf-8")
             cases.append(("adapter", _adapter_argv(fake, bad_path), request))
+            stale_tool_manifest = json.loads(json.dumps(manifest))
+            stale_tool_manifest["identity"]["execution"]["tool_schema_hash"] = (
+                "sha256:" + "3" * 64
+            )
+            stale_tool_manifest["manifest_hash"] = canonical_hash(
+                {
+                    key: value
+                    for key, value in stale_tool_manifest.items()
+                    if key != "manifest_hash"
+                }
+            )
+            stale_tool_path = root / "stale-tool-host.json"
+            stale_tool_path.write_text(
+                json.dumps(stale_tool_manifest) + "\n", encoding="utf-8"
+            )
+            stale_result = subprocess.run(
+                _adapter_argv(fake, stale_tool_path),
+                cwd=workspace,
+                input=json.dumps(request) + "\n",
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=4,
+            )
+            self.assertEqual(2, stale_result.returncode)
+            self.assertIn("tool schema identity differs", stale_result.stderr)
             bad_request = json.loads(json.dumps(request))
             bad_request["request_hash"] = "sha256:" + "1" * 64
             cases.append(("request", _adapter_argv(fake, manifest_path), bad_request))

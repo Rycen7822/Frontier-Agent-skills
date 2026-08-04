@@ -27,10 +27,23 @@ MODEL_EVOLUTION_ENV_ALLOWLIST = tuple(sorted({
     "https_proxy",
     "no_proxy",
 }))
+SKILL_ISOLATION_DISABLED_FEATURES = ("plugins", "multi_agent", "multi_agent_v2")
 
 
 class DeliveryError(ValueError):
     """An exact catalog, treatment, or workspace delivery contract failed."""
+
+
+def isolated_tool_schema_hash(codex_sha256: str) -> str:
+    """Bind the model-visible tool surface to Codex and its feature isolation."""
+    descriptor = {
+        "codex_sha256": codex_sha256,
+        "disabled_features": list(SKILL_ISOLATION_DISABLED_FEATURES),
+        "schema_version": 1,
+        "transport": "codex-exec-json-single-principal",
+    }
+    payload = json.dumps(descriptor, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + sha256(payload.encode("utf-8")).hexdigest()
 
 
 def project_command_environment(
@@ -123,12 +136,9 @@ def skill_isolation_argv() -> list[str]:
         else []
     )
     argv = [
-        "--disable",
-        "plugins",
-        "--disable",
-        "multi_agent",
-        "--disable",
-        "multi_agent_v2",
+        value
+        for feature in SKILL_ISOLATION_DISABLED_FEATURES
+        for value in ("--disable", feature)
     ]
     if disabled:
         entries = ",".join(

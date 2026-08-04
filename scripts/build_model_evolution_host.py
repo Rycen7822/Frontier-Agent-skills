@@ -19,6 +19,7 @@ sys.dont_write_bytecode = True
 from _bundle_hash import inventory, tree_hash  # noqa: E402
 from _codex_eval_delivery import (  # noqa: E402
     MODEL_EVOLUTION_ENV_ALLOWLIST,
+    isolated_tool_schema_hash,
     validate_plugin_catalog,
 )
 import codex_eval_host  # noqa: E402
@@ -138,6 +139,7 @@ def build_host(
     execution = identity["execution"]
     execution["catalog_hash"] = catalog_hash
     execution["skill_hash"] = _tree_hash(plugin_root)
+    execution["tool_schema_hash"] = isolated_tool_schema_hash(codex_hash)
     if execution.get("model") != argv[argv.index("--model") + 1]:
         raise HostBuildError("template model identity differs from its command")
     identity["adapter"].update(

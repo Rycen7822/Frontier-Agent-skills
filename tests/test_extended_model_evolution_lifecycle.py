@@ -261,7 +261,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             mutations = (
                 ("skill-root", "plugin Skill bytes differ"),
                 ("catalog", "catalog hash differs"),
-                ("adapter", "adapter or model identity differs"),
+                ("adapter", "adapter identity differs"),
                 ("source-commit", "repository identity differs"),
                 ("source-tree", "repository identity differs"),
                 ("source-path", "repository identity differs"),
@@ -720,6 +720,14 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         self.assertEqual(
             host_builder.codex_eval_host.ADAPTER_VERSION,
             built["identity"]["adapter"]["version"],
+        )
+        self.assertEqual(
+            host_builder.isolated_tool_schema_hash(
+                built["command"]["argv"][
+                    built["command"]["argv"].index("--codex-sha256") + 1
+                ]
+            ),
+            built["identity"]["execution"]["tool_schema_hash"],
         )
         self.assertEqual(identity, built["identity"]["repository"])
         operations.validate_target_host_staging(
