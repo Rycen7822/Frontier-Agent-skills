@@ -707,6 +707,10 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                     terminal = _jsonl(result.stdout)[0]
                     self.assertEqual("pass", terminal["status"])
                     self.assertIn(direct, terminal["direct_observations"])
+                    self.assertEqual(
+                        ["writing-plans"] if capability == "natural_routing" else [],
+                        terminal["routing"],
+                    )
 
             stderr_root = root / "stderr-denial"
             stderr_root.mkdir()
@@ -820,6 +824,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual("pass", normalized["status"])
             self.assertEqual(THREAD_ID, normalized["session_id"])
             self.assertEqual(["direct.usage"], normalized["direct_observations"])
+            self.assertEqual([], normalized["routing"])
 
             probe["probe_id"] = "probe-multi-turn"
             probe["capability"] = "multi_turn"

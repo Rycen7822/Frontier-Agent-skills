@@ -950,7 +950,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
     )
     _emit(
         {
-            "schema_version": "codex-interaction-probe-result/1.0",
+            "schema_version": "codex-interaction-probe-result/1.1",
             "probe_id": row["probe_id"],
             "capability": row["capability"],
             "status": status,
@@ -962,6 +962,11 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             "session_id": normalized["thread_id"] if normalized is not None else None,
             "event_types": observed_types,
             "direct_observations": direct_observations,
+            "routing": (
+                normalized["routing"]["selected"]
+                if normalized is not None and normalized["routing"] is not None
+                else []
+            ),
             "usage": normalized["usage"] if normalized is not None else None,
             "diagnostics": (
                 normalized["diagnostics"]
