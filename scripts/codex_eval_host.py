@@ -11,6 +11,7 @@ import math
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -494,6 +495,19 @@ def _snapshot_workspace(workspace: Path) -> dict[str, str]:
     return result
 
 
+def _bound_source_root(plugin_root: Path) -> Path:
+    for candidate in (plugin_root, *plugin_root.parents):
+        marker = candidate / ".git"
+        if marker.exists() or marker.is_symlink():
+            return candidate
+    return plugin_root
+
+
+def _mentions_bound_source(child: dict[str, Any], plugin_root: Path) -> bool:
+    source = str(_bound_source_root(plugin_root)).encode("utf-8")
+    return source in child["stdout"] or source in child["stderr"]
+
+
 def _emit(value: dict[str, Any]) -> None:
     sys.stdout.buffer.write(_canonical_bytes(value) + b"\n")
     sys.stdout.buffer.flush()
@@ -695,7 +709,7 @@ def _run_model_grade(
     return result
 
 
-def _run_execute(
+def _run_execute_in_workspace(
     request: dict[str, Any],
     manifest: dict[str, Any],
     args: argparse.Namespace,
@@ -756,6 +770,15 @@ def _run_execute(
                 child_failure = child
                 break
             normalized = normalize_jsonl(child["stdout"])
+            if args.plugin_root is not None and _mentions_bound_source(
+                child, args.plugin_root
+            ):
+                normalized["diagnostics"].append({
+                    "kind": "source_contamination",
+                    "index": None,
+                    "message": "Codex output exposed the bound source repository",
+                })
+                normalized["status"] = "protocol_error"
             normalized["runtime_ms"] = child["runtime_ms"]
             normalized["permission_denials"] = sorted(
                 {
@@ -910,6 +933,30 @@ def _run_execute(
     )
     result["context"] = context
     return events, result
+
+
+def _run_execute(
+    request: dict[str, Any],
+    manifest: dict[str, Any],
+    args: argparse.Namespace,
+    workspace: Path,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if args.plugin_root is None or args.sandbox != "read-only":
+        return _run_execute_in_workspace(request, manifest, args, workspace)
+
+    catalog = workspace / ".agents" / "skills"
+    if catalog.exists() or catalog.is_symlink():
+        raise DeliveryError("workspace already contains an Agent Skill catalog")
+    _snapshot_workspace(workspace)
+    with tempfile.TemporaryDirectory(prefix="frontier-codex-workspace-") as temp_dir:
+        isolated = Path(temp_dir) / "workspace"
+        shutil.copytree(
+            workspace,
+            isolated,
+            copy_function=shutil.copy2,
+            ignore=shutil.ignore_patterns(".agents", ".git"),
+        )
+        return _run_execute_in_workspace(request, manifest, args, isolated)
 
 
 def _run_host_mode(

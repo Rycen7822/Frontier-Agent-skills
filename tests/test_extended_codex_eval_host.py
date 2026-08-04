@@ -55,7 +55,9 @@ FAKE_CODEX_SOURCE = textwrap.dedent(
     call_index = len(previous)
     prompt = sys.stdin.read()
     with state.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"argv": sys.argv[1:], "prompt": prompt}) + "\\n")
+        handle.write(json.dumps({
+            "argv": sys.argv[1:], "cwd": str(Path.cwd()), "prompt": prompt,
+        }) + "\\n")
 
     stderr = config.get("stderr")
     if stderr:
@@ -139,7 +141,7 @@ def _materialize_plugin(root: Path) -> tuple[Path, str]:
 
 
 def _plugin_bound_manifest(path: Path, fake: Path, plugin: Path, *, mode: str = "host") -> dict:
-    manifest = _host_manifest(path, fake, mode=mode)
+    manifest = _host_manifest(path, fake, mode=mode, sandbox="read-only")
     entry = manifest["catalog"]["entries"][0]
     entry.update({"id": "writing-plans", "name": "Writing Plans", "root_hash": _tree_hash(plugin / "skills/writing-plans")})
     manifest["catalog"]["catalog_hash"] = canonical_hash([entry])
@@ -202,6 +204,7 @@ def _bound_adapter_argv(
     mode: str = "host",
     timeout: float = 2,
     profile: str = "fixture-profile",
+    sandbox: str = "workspace-write",
 ) -> list[str]:
     return [
         sys.executable,
@@ -221,7 +224,7 @@ def _bound_adapter_argv(
         "--profile",
         profile,
         "--sandbox",
-        "workspace-write",
+        sandbox,
         "--timeout",
         str(timeout),
     ]
@@ -234,6 +237,7 @@ def _host_manifest(
     mode: str = "host",
     timeout: float = 2,
     profile: str = "fixture-profile",
+    sandbox: str = "workspace-write",
 ) -> dict:
     manifest = json.loads(
         (
@@ -259,6 +263,7 @@ def _host_manifest(
                 mode=mode,
                 timeout=timeout,
                 profile=profile,
+                sandbox=sandbox,
             ),
             "resolved_executable": str(Path(sys.executable).resolve()),
             "executable_sha256": _sha256_file(Path(sys.executable).resolve()),
@@ -722,6 +727,11 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             call = _jsonl(state.read_text(encoding="utf-8"))[0]
             self.assertIn(body, call["prompt"])
             self.assertIn("fixture turn 1", call["prompt"])
+            child_workspace = Path(call["cwd"])
+            self.assertNotEqual(candidate_workspace.resolve(), child_workspace)
+            self.assertNotIn(root.resolve(), child_workspace.parents)
+            cd_index = call["argv"].index("--cd")
+            self.assertEqual(str(child_workspace), call["argv"][cd_index + 1])
             disabled = [
                 call["argv"][index + 1]
                 for index, value in enumerate(call["argv"][:-1])
@@ -730,12 +740,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(
                 ["plugins", "multi_agent", "multi_agent_v2"], disabled
             )
-            self.assertTrue((candidate_workspace / ".git").is_dir())
-            repository = subprocess.check_output(
-                ["git", "-C", str(candidate_workspace), "rev-parse", "--show-toplevel"],
-                text=True,
-            ).strip()
-            self.assertEqual(candidate_workspace.resolve(), Path(repository).resolve())
+            self.assertFalse((candidate_workspace / ".git").exists())
             self.assertFalse(
                 (candidate_workspace / ".agents/skills/writing-plans").exists()
             )
@@ -805,6 +810,35 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(2, rejected.returncode)
             self.assertIn("plugin Skill bytes differ", rejected.stderr)
             self.assertEqual(1, len(_jsonl(state.read_text(encoding="utf-8"))))
+
+    def test_bound_plugin_rejects_source_repository_exposure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            plugin, _ = _materialize_plugin(root)
+            fake, _ = _write_fake_codex(root, turns=[{"message": str(root)}])
+            manifest_path = root / "host.json"
+            manifest = _plugin_bound_manifest(manifest_path, fake, plugin)
+            candidate = _execute_payload()
+            candidate.update({
+                "subject_skill_id": "writing-plans",
+                "catalog": manifest["catalog"]["entries"],
+                "treatment": {"profile": "candidate/force_loaded"},
+            })
+            workspace = root / "workspace"
+            workspace.mkdir()
+
+            result = _run_bound_adapter(
+                workspace, manifest, _request("execute_case", candidate)
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            terminal = _jsonl(result.stdout)[-1]
+            self.assertEqual("protocol_error", terminal["terminal_status"])
+            self.assertIn(
+                "Codex output exposed the bound source repository",
+                json.dumps(terminal["protocol_error"]),
+            )
 
     def test_bound_plugin_projects_observed_skill_read_and_sandbox_denial(self) -> None:
         cases = (

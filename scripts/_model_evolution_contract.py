@@ -1111,6 +1111,56 @@ def _is_single_principal_exec_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _is_source_workspace_isolation_correction(value: dict[str, Any]) -> bool:
+    evidence = value["skill_evidence"]
+    per_skill = [evidence[skill_id] for skill_id in SKILL_IDS]
+    requests = value["interaction_probes"]["requests"]
+    request_fields = ("provider_requests", "model_grade", "execute")
+    return (
+        value["campaign_id"]
+        == "model-evolution-6-3-single-principal-4ad0902"
+        and value["product"]["source_commit"]
+        == "4ad0902cba9e531fda0e5f910cfc431930e4805a"
+        and value["phase"] == "calibration_ready"
+        and value["state_revision"] == 7
+        and value["plans"] == []
+        and value["candidate"] is None
+        and evidence["plugin_build"] is None
+        and all(item["grader_calibration"] is not None for item in per_skill)
+        and all(
+            all(
+                field == "grader_calibration" or binding is None
+                for field, binding in item.items()
+            )
+            for item in per_skill
+        )
+        and value["interaction_probes"]["blocker"] is None
+        and value["interaction_probes"]["results"] is not None
+        and value["profiles"]["target_observed"] is not None
+        and value["apparatus_report"] is not None
+        and len(requests) == 6
+        and {request["probe_id"] for request in requests}
+        == {
+            "force-load",
+            "natural-routing",
+            "multi-turn",
+            "principal-tracing",
+            "usage-capture",
+            "authorization-trace",
+        }
+        and all(request["status"] == "closed" for request in requests)
+        and tuple(
+            value["budgets"]["ceiling"][field] for field in request_fields
+        ) == (922, 536, 376)
+        and tuple(
+            value["budgets"]["reserved"][field] for field in request_fields
+        ) == (682, 352, 288)
+        and tuple(
+            value["budgets"]["observed"][field] for field in request_fields
+        ) == (490, 448, 0)
+    )
+
+
 def _validate_single_principal_exec_evidence(
     campaign: dict[str, Any], campaign_root: Path, repository_root: Path,
 ) -> None:
@@ -1506,6 +1556,9 @@ def prepare_supersedes(
     single_principal_exec_correction = (
         len(lineage) == 6 and _is_single_principal_exec_correction(old)
     )
+    source_workspace_isolation_correction = (
+        len(lineage) == 7 and _is_source_workspace_isolation_correction(old)
+    )
     transport_lineage = any(
         campaign["campaign_id"] == "model-evolution-6-3-projection-ec0d79d"
         for campaign, _ in lineage
@@ -1515,13 +1568,16 @@ def prepare_supersedes(
         or multiturn_timeout_correction
         or systemd_environment_correction
         or single_principal_exec_correction
+        or source_workspace_isolation_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 9 and not formal_projection_correction:
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 8 and not calibration_fixture_correction:
         raise ContractError("supersession repair depth is exhausted")
-    if len(lineage) == 7 and not calibration_contract_correction:
+    if len(lineage) == 7 and not (
+        calibration_contract_correction or source_workspace_isolation_correction
+    ):
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 6 and not (
         probe_contract_correction or single_principal_exec_correction
@@ -1537,6 +1593,7 @@ def prepare_supersedes(
         or multiturn_timeout_correction
         or systemd_environment_correction
         or single_principal_exec_correction
+        or source_workspace_isolation_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = (
@@ -1657,6 +1714,12 @@ def prepare_supersedes(
         == target_host["identity"]["execution"]["tool_schema_hash"]
     ):
         raise ContractError("exec correction did not change the tool schema identity")
+    if (
+        source_workspace_isolation_correction
+        and old_host["identity"]["adapter"]["sha256"]
+        == target_host["identity"]["adapter"]["sha256"]
+    ):
+        raise ContractError("workspace correction did not change the Host adapter")
     qualification_path = old_path.parent / "qualification/qualification.json"
     qualification = load_json(qualification_path, label="superseded qualification")
     validate_document(qualification, "qualification")
@@ -1687,6 +1750,16 @@ def prepare_supersedes(
         _validate_single_principal_exec_evidence(
             old, old_path.parent, repository_root,
         )
+    if source_workspace_isolation_correction:
+        expected_blockers = {("final-plugin-unobserved", "release")} | {
+            (f"{skill_id}-current", skill_id) for skill_id in SKILL_IDS
+        }
+        blockers = {
+            (row.get("code"), row.get("scope"))
+            for row in qualification["blockers"]
+        }
+        if blockers != expected_blockers:
+            raise ContractError("workspace parent qualification blockers differ")
     imported_reserved = dict(old["budgets"]["reserved"])
     imported_observed = dict(old["budgets"]["observed"])
     result = {
