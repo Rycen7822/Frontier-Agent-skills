@@ -87,7 +87,7 @@
         "required_coverage_tags": {"$ref": "#/$defs/safe_id_list"},
         "protected_case_ids": {"$ref": "#/$defs/safe_id_list"},
         "external_holdout_contract_id": {"$ref": "#/$defs/safe_id"},
-        "holdout_case_ceiling": {"const": 1}
+        "holdout_case_ceiling": {"const": 2}
       }
     }
   }

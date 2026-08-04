@@ -988,7 +988,7 @@ def _minimal_schema_fixture(name: str, campaign: dict[str, Any]) -> dict[str, An
             "required_coverage_tags": ["preflight"],
             "protected_case_ids": ["preflight-case"],
             "external_holdout_contract_id": "preflight-holdout",
-            "holdout_case_ceiling": 1,
+            "holdout_case_ceiling": 2,
         }
         return {
             "schema_version": "model-evolution-sentinel-index/1",

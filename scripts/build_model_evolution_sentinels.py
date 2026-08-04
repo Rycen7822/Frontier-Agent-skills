@@ -1154,7 +1154,7 @@ def _materialize(repository_root: Path) -> list[Path]:
                 f"{skill_id}-{case[0]}" for case in config["cases"] if case[3]
             ],
             "external_holdout_contract_id": f"{skill_id}-external-holdout-v1",
-            "holdout_case_ceiling": 1,
+            "holdout_case_ceiling": 2,
         }
     fixture_bytes = _json_bytes(
         {

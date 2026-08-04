@@ -433,16 +433,20 @@ def qualification_request_ceilings(
         calibration_requests += len(calibration)
         holdout_cases += record["holdout_case_ceiling"]
     current_execute = sum(public_cases.values()) * 2
+    # Each unaffected Skill keeps one positive control so its protected
+    # regression slice remains valid under the existing L2 quality contract.
     candidate_cases = max(
         public_cases[owner]
         + sum(
-            len(sentinel["skills"][skill_id]["protected_case_ids"])
+            len(sentinel["skills"][skill_id]["protected_case_ids"]) + 1
             for skill_id in SKILL_IDS
             if skill_id != owner
         )
         for owner in SKILL_IDS
     )
-    execute = current_execute + candidate_cases * 2 + holdout_cases
+    # Every exposed holdout scenario keeps the no-Skill comparator and the
+    # selected Skill treatment, just like the public and candidate plans.
+    execute = current_execute + candidate_cases * 2 + holdout_cases * 2
     model_grade = calibration_requests + execute
     return {
         "provider_requests": probe_count + execute + model_grade,

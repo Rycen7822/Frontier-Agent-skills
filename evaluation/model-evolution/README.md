@@ -23,11 +23,15 @@ The legal commands are:
 1. `init` freezes a signed, tracked-clean source identity, the provisional Host, probe set, sentinel index, and project-wide ceilings.
 2. `preflight` runs only local deterministic checks and the existing evaluator's fake compile/run/analyze chain.
 3. `probe` spends the separately approved Host-probe budget and publishes the observed Host manifest.
-4. `register-plan` verifies an existing evaluator plan has zero attempts, reserves its worst-case requests, and renders the exact `systemd-run --user` command. It never starts the worker.
-5. `record` binds existing calibration, analysis, comparison, revision, build, or holdout evidence. The one optional candidate is accepted only from a signed allowlisted Git diff after canonical focused gates pass.
-6. `status` is read-only and renders the next legal event, runner status, blockers, and reserved/observed budget.
-7. `qualify` atomically publishes deterministic JSON and Markdown without changing campaign revision.
-8. `verify` reprojects the qualification in a fresh process without provider access.
+4. `prepare-calibration` creates bounded per-Skill calibration inputs; `record grader_calibration` binds the four validated results.
+5. `prepare-current` uses only frozen sentinel, Host, calibration, and staged-package evidence to atomically generate each current ready spec and plan.
+6. `prepare-candidate` uses the one accepted candidate staging, all six owner cases, and one positive plus one protected case for every unaffected Skill. `prepare-holdout` accepts an exposed external three-file bundle containing exactly two independent scenarios per Skill. Both rebuild every derived field and invoke no provider.
+7. `verify-plan` is read-only and rebuilds the selected current, candidate, or holdout directory from its raw authorities before comparing every file byte.
+8. `register-plan` repeats the role-specific rebuild, requires zero attempts, reserves its worst-case requests, and renders the exact `systemd-run --user` command. It never starts the worker.
+9. `record` binds existing analysis, comparison, revision, build, or holdout evidence. The one optional candidate is accepted only from a signed allowlisted Git diff after canonical focused gates pass.
+10. `status` is read-only and renders the next legal event, runner status, blockers, and reserved/observed budget.
+11. `qualify` atomically publishes deterministic JSON and Markdown without changing campaign revision.
+12. `verify` reprojects the qualification in a fresh process without provider access.
 
 Every mutation requires `--expected-revision`. A stale revision, held lock, failed operation, invalid binding, exceeded ceiling, or published qualification leaves `campaign.json` unchanged. A qualification directory makes the campaign immutable.
 

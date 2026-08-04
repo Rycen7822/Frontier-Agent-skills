@@ -40,6 +40,7 @@ class QuickBundleContractTests(unittest.TestCase):
         required_modules = {
             2: {
                 "tests/test_extended_codex_eval_host.py",
+                "tests/test_extended_model_evolution_materialization.py",
                 "tests/test_extended_runner_lifecycle.py",
                 "tests/test_extended_lifecycle_conformance.py",
             },
