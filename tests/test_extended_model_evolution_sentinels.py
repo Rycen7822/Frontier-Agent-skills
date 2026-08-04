@@ -80,7 +80,20 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             rows = [json.loads(line) for line in path.read_text().splitlines()]
             self.assertEqual(len(rows), 6)
             self.assertEqual(len({row["case_id"] for row in rows}), 6)
+            forbidden_placeholders = (
+                "for the stated claim",
+                "the routine local change",
+                "the requested technical report",
+                "the ordinary task",
+            )
             for row in rows:
+                task = row["execution_context"]["task"]
+                self.assertEqual(task, row["turns"][0]["input"]["content"])
+                self.assertGreaterEqual(len(task.split()), 20)
+                self.assertFalse(
+                    any(phrase in task.lower() for phrase in forbidden_placeholders),
+                    f"{row['case_id']} retains an unspecified placeholder task",
+                )
                 self.assertEqual(
                     600 * len(row["turns"]) + 30,
                     row["timeout_seconds"],
@@ -257,6 +270,8 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 self.assertIn("record_closed=true", candidate_evidence)
                 self.assertIn("not_run", candidate_evidence)
             prompt = (root / grader["prompt"]["path"]).read_text()
+            self.assertIn("only against the declared mechanism relevant", prompt)
+            self.assertIn("do not require unrelated mechanisms", prompt)
             self.assertIn("`uncertainty` to `high`", prompt)
 
     def test_deterministic_verifier_has_positive_and_negative_behavior(self) -> None:

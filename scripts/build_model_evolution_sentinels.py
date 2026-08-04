@@ -66,42 +66,68 @@ SKILLS = {
             (
                 "direct-small-task",
                 "direct",
-                "Answer the short source-bound question without creating workflow state.",
+                (
+                    "Source A states that the service listens only on 127.0.0.1. "
+                    "Answer whether it is directly reachable from another host in two "
+                    "sentences, and do not create workflow state."
+                ),
                 False,
                 1,
             ),
             (
                 "compact-recovery",
                 "compact-recovery",
-                "Create a compact recovery packet that preserves only active anchors and unresolved decisions.",
+                (
+                    "A report is paused in section 'Failure ownership'; Source A lines "
+                    "12-18 define Host failures, Source B lines 4-9 define product "
+                    "failures, and the unresolved decision is whether a timeout is Host- "
+                    "or product-owned. Produce only a compact recovery packet."
+                ),
                 False,
                 1,
             ),
             (
                 "segmented-draft",
                 "segmented-draft",
-                "Draft the requested technical report in bounded sections and preserve source attribution.",
+                (
+                    "Draft a short technical report in bounded sections from these facts: "
+                    "Source A says retries are zero; Source B says two attempts were "
+                    "created. Preserve the distinction and attribute each claim."
+                ),
                 False,
                 1,
             ),
             (
                 "compaction-resume",
                 "compaction-resume",
-                "Begin a sectioned report, preserve a recovery anchor, then continue from that anchor.",
+                (
+                    "Begin a two-section report from Source A: the worker survived TUI "
+                    "exit, and Source B: the final receipt closed with exit 0. Complete "
+                    "section one and include a compact recovery anchor for section two."
+                ),
                 False,
                 2,
             ),
             (
                 "whole-draft-review",
                 "whole-draft-review",
-                "Review the assembled report for missing claims, contradictions, and broken source bindings.",
+                (
+                    "Review this assembled draft: 'The run had zero retries [Source A]. "
+                    "The run retried twice [Source A]. It is release-ready [Source B].' "
+                    "Source A records zero retries and Source B records no release "
+                    "decision. Identify contradictions, missing support, and broken claims."
+                ),
                 False,
                 1,
             ),
             (
                 "protected-no-scratch",
                 "protected",
-                "Complete the small task directly; do not create scratch files or expose internal workflow text.",
+                (
+                    "Source A records 12 completed entries out of 12 planned entries. "
+                    "State the completion rate directly; do not create scratch files or "
+                    "expose internal workflow text."
+                ),
                 True,
                 1,
             ),
@@ -126,42 +152,66 @@ SKILLS = {
             (
                 "direct-routine-change",
                 "direct",
-                "Implement the routine local change with the smallest relevant verification surface.",
+                (
+                    "A Python function `def is_even(n): return n % 2 == 1` has the "
+                    "comparison reversed. Provide the minimal corrected function and the "
+                    "smallest relevant verification."
+                ),
                 False,
                 1,
             ),
             (
                 "single-specialist-risk",
                 "single-risk",
-                "Identify the one specialist risk, load only its owner, and close that risk.",
+                (
+                    "A request logger writes the full Authorization header to debug.log. "
+                    "Identify the single specialist risk, name its evidence owner, and "
+                    "give the focused correction and verification boundary."
+                ),
                 False,
                 1,
             ),
             (
                 "two-independent-risks",
                 "dual-risk",
-                "Handle two independent risks with separate evidence owners and no duplicate review.",
+                (
+                    "A patch joins an untrusted filename to an upload directory and also "
+                    "retries a non-idempotent payment call. Separate the two independent "
+                    "risks, their evidence owners, and their non-duplicated checks."
+                ),
                 False,
                 2,
             ),
             (
                 "proportionate-validation",
                 "proportionate-validation",
-                "Select verification proportional to the changed behavior and explain the evidence boundary.",
+                (
+                    "A line parser now ignores blank lines; no API, storage, or network "
+                    "surface changed. Select proportional verification and state exactly "
+                    "what the evidence does and does not prove."
+                ),
                 False,
                 1,
             ),
             (
                 "retire-dead-code",
                 "dead-code-removal",
-                "Remove the obsolete implementation and prove no live owner still references it.",
+                (
+                    "`legacy_parse()` is replaced by `parse_v2()`, and a repository search "
+                    "shows its only remaining references are its definition and one obsolete "
+                    "test. Give the exact deletion and the reference proof required afterward."
+                ),
                 False,
                 1,
             ),
             (
                 "protected-no-state",
                 "protected",
-                "Complete the ordinary task without cards, reviewer calls, or persistent workflow state.",
+                (
+                    "Provide the local rename from `tmp` to `normalized_path` as patch text "
+                    "and state the one focused check. Do not claim it was applied, create "
+                    "cards, call reviewers, or persist workflow state."
+                ),
                 True,
                 1,
             ),
@@ -186,42 +236,66 @@ SKILLS = {
             (
                 "source-bound-plan",
                 "source-bound",
-                "Write a plan whose steps bind the exact source owners and verification commands.",
+                (
+                    "Plan a rename of `timeout_ms` to `request_timeout_ms` owned by "
+                    "`src/config.py`, with consumers in `src/client.py` and tests in "
+                    "`tests/test_client.py`. Bind every step to exact files and checks."
+                ),
                 False,
                 1,
             ),
             (
                 "resume-preflight",
                 "resume-preflight",
-                "Record completed and pending state, then resume without repeating closed work.",
+                (
+                    "Commit `abc123` already added the parser and its unit tests; only "
+                    "`docs/config.md` and the integration check remain. Record completed "
+                    "and pending state, then give the next executable step without repeats."
+                ),
                 False,
                 2,
             ),
             (
                 "proof-owner",
                 "proof-owner",
-                "Assign one evidence owner and one exit condition to every implementation stage.",
+                (
+                    "For stages schema update, parser update, and release packaging, assign "
+                    "one evidence owner and one measurable exit condition to each. The owners "
+                    "are `schema.json`, `src/parser.py`, and `scripts/build_package.py`."
+                ),
                 False,
                 1,
             ),
             (
                 "explicit-handoff",
                 "handoff",
-                "Define the exact handoff artifacts, authority boundary, and next executable command.",
+                (
+                    "The implementation commit is signed and unit tests pass, but publishing "
+                    "is owned by release engineering. Define the exact handoff artifacts, "
+                    "authority boundary, and next executable verification command."
+                ),
                 False,
                 1,
             ),
             (
                 "continuous-execution",
                 "continuous-execution",
-                "Produce steps that can be executed consecutively without unstated choices.",
+                (
+                    "Produce consecutive steps to add `--dry-run` in `cli.py`, cover it in "
+                    "`tests/test_cli.py`, update `README.md`, and run the existing CLI smoke "
+                    "command. Include prerequisites and exits without unstated choices."
+                ),
                 False,
                 1,
             ),
             (
                 "protected-description",
                 "protected",
-                "Preserve the full semantic skill description and do not reduce it to keywords.",
+                (
+                    "Plan a metadata-only version bump while preserving this description "
+                    "verbatim: 'Use when a plan must bind exact source owners, verification "
+                    "commands, handoff authority, and consecutive execution steps.'"
+                ),
                 True,
                 1,
             ),
@@ -246,42 +320,70 @@ SKILLS = {
             (
                 "level-owner-selection",
                 "owner-selection",
-                "Select the least expensive valid L0-L4 evidence owner for the stated claim.",
+                (
+                    "Claim: a local command succeeded. Evidence: its signed result record "
+                    "contains `exit_code=0`, `terminal=true`, and no error. Select the least "
+                    "expensive valid L0-L4 owner and state why a higher level is unnecessary."
+                ),
                 False,
                 1,
             ),
             (
                 "deterministic-first",
                 "deterministic-first",
-                "Close schema, path, and lifecycle facts before considering any model grader.",
+                (
+                    "A receipt parses against schema v1, its artifact path resolves inside "
+                    "the declared root, and its worker PID is no longer active after "
+                    "`terminal=completed`. Close these deterministic facts and state whether "
+                    "a model grader is needed for them."
+                ),
                 False,
                 1,
             ),
             (
                 "five-axis-interpretation",
                 "five-axis",
-                "Interpret usefulness, safety, process, context cost, and evidence completeness separately.",
+                (
+                    "Evaluate this record without combining axes: candidate task pass 4/4, "
+                    "baseline 4/4; safety incidents 0; required process checks 3/4; candidate "
+                    "context 10 KB versus baseline 0; one required holdout is missing. Report "
+                    "usefulness, safety, process, context cost, and evidence completeness."
+                ),
                 False,
                 1,
             ),
             (
                 "cli-schema-diagnosis",
                 "cli-diagnosis",
-                "Diagnose the concrete CLI or schema owner before changing evidence or rerunning evaluation.",
+                (
+                    "`validate_eval_suite.py contract run.json` reports that `schema_version` "
+                    "is missing; `run_eval_plan.py` has not started and the evidence directory "
+                    "is unchanged. Identify the CLI/schema owner and the deterministic next "
+                    "step before any rerun."
+                ),
                 False,
                 1,
             ),
             (
                 "transition-vs-revision",
                 "transition-revision",
-                "Distinguish a model-transition comparison from a Skill revision comparison across two turns.",
+                (
+                    "Classify two comparisons and name the frozen controls: A changes model "
+                    "M1 to M2 while Skill v3 is fixed; B changes Skill v3 to v4 while model M2 "
+                    "is fixed. Keep Host, tasks, grader, and policy unchanged."
+                ),
                 False,
                 2,
             ),
             (
                 "protected-no-reviewer",
                 "protected",
-                "Resolve the deterministic defect locally; do not invoke an optional reviewer or provider.",
+                (
+                    "A local record fails because schema v1 requires `schema_version`, while "
+                    "the record contains only `status=completed`. Diagnose the exact local "
+                    "correction as patch text; do not claim it was applied and do not invoke "
+                    "a reviewer or provider."
+                ),
                 True,
                 1,
             ),
@@ -479,7 +581,7 @@ def _host_manifest() -> bytes:
 def _grader_prompt(skill_id: str, claims: list[str]) -> bytes:
     text = f"""# Blinded sentinel grader for {skill_id}
 
-Judge only the supplied candidate evidence. Score `quality-check` for a complete, usable result and `process-check` for faithful application of the declared contract: {", ".join(claims)}. When evidence is insufficient, set `uncertainty` to `high`; the required boolean is ignored for that abstention. Do not infer tool use, routing, file changes, or safety from prose.
+Judge only the supplied candidate evidence. Score `quality-check` for a complete, usable result. Score `process-check` only against the declared mechanism relevant to the stated task; do not require unrelated mechanisms from this contract list: {", ".join(claims)}. When evidence is insufficient, set `uncertainty` to `high`; the required boolean is ignored for that abstention. Do not infer tool use, routing, file changes, or safety from prose.
 """
     return text.encode("utf-8")
 

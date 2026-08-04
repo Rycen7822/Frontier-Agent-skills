@@ -1287,6 +1287,27 @@ def _is_process_namespace_isolation_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _is_analysis_sentinel_contract_correction(value: dict[str, Any]) -> bool:
+    request_fields = ("provider_requests", "model_grade", "execute")
+    return (
+        _is_formal_projection_correction(value)
+        and value["campaign_id"]
+        == "model-evolution-6-3-process-namespace-isolation-49e35c2"
+        and value["product"]["source_commit"]
+        == "49e35c2041161c93e21f1f1378290d25a500118e"
+        and value["state_revision"] == 11
+        and tuple(
+            value["budgets"]["ceiling"][field] for field in request_fields
+        ) == (1540, 984, 664)
+        and tuple(
+            value["budgets"]["reserved"][field] for field in request_fields
+        ) == (1396, 688, 624)
+        and tuple(
+            value["budgets"]["observed"][field] for field in request_fields
+        ) == (980, 896, 0)
+    )
+
+
 def _validate_formal_protocol_error_evidence(
     campaign: dict[str, Any],
     campaign_root: Path,
@@ -1705,7 +1726,9 @@ def _blocked_supersession_lineage(
     lineage = [(old, old_path)]
     current, current_path = old, old_path
     campaign_limit = (
-        13
+        14
+        if _is_analysis_sentinel_contract_correction(old)
+        else 13
         if _is_process_namespace_isolation_correction(old)
         else 12
         if _is_exec_item_lifecycle_diagnostic_correction(old)
@@ -1834,6 +1857,10 @@ def prepare_supersedes(
         len(lineage) == 13
         and _is_process_namespace_isolation_correction(old)
     )
+    analysis_sentinel_contract_correction = (
+        len(lineage) == 14
+        and _is_analysis_sentinel_contract_correction(old)
+    )
     transport_lineage = any(
         campaign["campaign_id"] == "model-evolution-6-3-projection-ec0d79d"
         for campaign, _ in lineage
@@ -1852,7 +1879,10 @@ def prepare_supersedes(
         or exec_item_update_correction
         or exec_item_lifecycle_diagnostic_correction
         or process_namespace_isolation_correction
+        or analysis_sentinel_contract_correction
     ):
+        raise ContractError("supersession repair depth is exhausted")
+    if len(lineage) == 14 and not analysis_sentinel_contract_correction:
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 13 and not process_namespace_isolation_correction:
         raise ContractError("supersession repair depth is exhausted")
@@ -1895,6 +1925,7 @@ def prepare_supersedes(
         or exec_item_update_correction
         or exec_item_lifecycle_diagnostic_correction
         or process_namespace_isolation_correction
+        or analysis_sentinel_contract_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = (
@@ -2241,6 +2272,20 @@ def prepare_supersedes(
                 "seq": 59,
             },
         )
+    if analysis_sentinel_contract_correction:
+        expected_blockers = {("final-plugin-unobserved", "release")} | {
+            (f"{skill_id}-current", skill_id) for skill_id in SKILL_IDS
+        }
+        blockers = {
+            (row.get("code"), row.get("scope"))
+            for row in qualification["blockers"]
+        }
+        if blockers != expected_blockers:
+            raise ContractError(
+                "analysis/sentinel parent qualification blockers differ"
+            )
+        if qualification["qualification_id"] != "mq-552d4fb396d6f5ac8ff2eb0f":
+            raise ContractError("analysis/sentinel parent qualification differs")
     imported_reserved = dict(old["budgets"]["reserved"])
     imported_observed = dict(old["budgets"]["observed"])
     result = {
