@@ -1633,11 +1633,12 @@ def _blocked_supersession_lineage(
     old_path: Path,
     repository_root: Path,
 ) -> list[tuple[dict[str, Any], Path]]:
-    """Load at most nine closed campaigns and verify every budget carry."""
+    """Load the bounded closed-campaign lineage and verify every budget carry."""
     lineage = [(old, old_path)]
     current, current_path = old, old_path
+    campaign_limit = 10 if _is_source_root_binding_correction(old) else 9
     while current["supersedes"] is not None:
-        if len(lineage) == 9:
+        if len(lineage) == campaign_limit:
             raise ContractError("supersession repair depth is exhausted")
         parent_path = resolve_binding(
             current["supersedes"]["campaign"],
