@@ -29,6 +29,14 @@ PATH_FIELDS = (
     "expected_change_paths",
     "protected_paths",
 )
+LOCAL_PATH_PLACEHOLDER = "local-path-redacted"
+UNBOUND_LOCAL_PATH = re.compile(
+    r"(?<![:/\\A-Za-z0-9])"
+    r"(?:[A-Za-z]:[\\/](?:Users|workspace|workspaces)|/"
+    r"(?:home|private|tmp|opt|Users|workspace|workspaces))"
+    r"(?:[\\/][^\s`'\"<>()\[\]{},;!?，。；！？]*)?"
+    r"(?=$|[\s`'\"<>()\[\]{},;.!?，。；！？])"
+)
 MAX_BATCH_ITEMS = 6
 MAX_WORKSPACE_EVIDENCE_BYTES = 32_768
 WORKSPACE_EVIDENCE_FIELDS = {
@@ -211,11 +219,16 @@ def _relative_evidence_paths(assessment: dict[str, Any]) -> list[str]:
     return sorted(paths, key=len, reverse=True)
 
 
+def _blind_unbound_local_path(match: re.Match[str]) -> str:
+    trailing_periods = len(match.group(0)) - len(match.group(0).rstrip("."))
+    return LOCAL_PATH_PLACEHOLDER + "." * trailing_periods
+
+
 def _redact_workspace_paths(
     final_answer: str,
     assessment: dict[str, Any],
 ) -> str:
-    """Replace bound absolute paths with their relative evidence paths."""
+    """Blind local paths while retaining bound relative evidence paths."""
     if not isinstance(final_answer, str):
         raise ValueError("model grader final answer is invalid")
     redacted = final_answer
@@ -235,13 +248,7 @@ def _redact_workspace_paths(
             lambda match: f"{path}{match.group('line') or ''}",
             redacted,
         )
-    if re.search(
-        r"(?<![:A-Za-z0-9])(?:[A-Za-z]:[\\/]|/)"
-        r"(?:home|private|tmp|opt|Users|workspace|workspaces)[\\/]",
-        redacted,
-    ):
-        raise ValueError("model grader final answer exposes an absolute path")
-    return redacted
+    return UNBOUND_LOCAL_PATH.sub(_blind_unbound_local_path, redacted)
 
 
 def _workspace_evidence(

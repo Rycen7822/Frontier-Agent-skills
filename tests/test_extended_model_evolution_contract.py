@@ -17,6 +17,7 @@ from _model_evolution_contract import (  # noqa: E402
     ContractError,
     SKILL_IDS,
     _is_formal_projection_correction,
+    _is_model_grade_path_correction,
     _is_partial_calibration_correction,
     build_initial_campaign,
     evaluator_evidence_status,
@@ -916,9 +917,30 @@ class ModelEvolutionContractTest(unittest.TestCase):
                 "skill_id": skill_id,
             })
         self.assertTrue(_is_formal_projection_correction(state))
+        state["campaign_id"] = "model-evolution-6-3-projection-ec0d79d"
+        state["product"]["source_commit"] = (
+            "ec0d79d59f4325389d3b15b1d0c5a4d176495bfc"
+        )
+        state["budgets"]["ceiling"].update({
+            "provider_requests": 450, "model_grade": 248, "execute": 184,
+        })
+        state["budgets"]["reserved"].update({
+            "provider_requests": 370, "model_grade": 208, "execute": 144,
+        })
+        state["budgets"]["observed"].update({
+            "provider_requests": 210, "model_grade": 192, "execute": 0,
+        })
+        self.assertTrue(_is_model_grade_path_correction(state))
+        state["campaign_id"] = "other-campaign"
+        self.assertFalse(_is_model_grade_path_correction(state))
+        state["campaign_id"] = "model-evolution-6-3-projection-ec0d79d"
+        state["budgets"]["reserved"]["execute"] = 143
+        self.assertFalse(_is_model_grade_path_correction(state))
+        state["budgets"]["reserved"]["execute"] = 144
 
         state["plans"].pop()
         self.assertFalse(_is_formal_projection_correction(state))
+        self.assertFalse(_is_model_grade_path_correction(state))
         state["plans"].append({
             "role": "target_current",
             "skill_id": SKILL_IDS[-1],
