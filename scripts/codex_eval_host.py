@@ -187,6 +187,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
 def validate_bound_manifest(path: Path, plugin_root: Path) -> dict[str, Any]:
     """Validate one model-evolution Host before campaign state is created."""
     manifest = _load_json_object(path)
+    path = path.resolve(strict=True)
     command = manifest.get("command")
     argv = command.get("argv") if isinstance(command, dict) else None
     if not isinstance(argv, list) or any(not isinstance(item, str) for item in argv):
