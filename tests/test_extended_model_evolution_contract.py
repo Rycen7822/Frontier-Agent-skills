@@ -18,6 +18,7 @@ from _model_evolution_contract import (  # noqa: E402
     SKILL_IDS,
     _is_formal_projection_correction,
     _is_model_grade_path_correction,
+    _is_multiturn_timeout_correction,
     _is_partial_calibration_correction,
     build_initial_campaign,
     evaluator_evidence_status,
@@ -70,22 +71,38 @@ def closed_transition_report() -> dict:
 class ModelEvolutionContractTest(unittest.TestCase):
     def test_formal_timeouts_preserve_host_cleanup_window(self) -> None:
         host = {"command": {"argv": ["host", "--timeout", "600"]}}
-        spec = {"execution": {"timeout_seconds": 630}}
-        scenarios = [{"timeout_seconds": 630}]
+        spec = {"execution": {"timeout_seconds": 1230}}
+        scenarios = [
+            {"timeout_seconds": 630, "turns": [{}]},
+            {"timeout_seconds": 1230, "turns": [{}, {}]},
+        ]
         plan = {
             "entries": [
-                {"disposition": "execute", "timeout_seconds": 630},
+                {
+                    "disposition": "execute",
+                    "timeout_seconds": 630,
+                    "execute_case_payload": {"turns": [{}]},
+                },
+                {
+                    "disposition": "execute",
+                    "timeout_seconds": 1230,
+                    "execute_case_payload": {"turns": [{}, {}]},
+                },
                 {"disposition": "not_evaluable", "timeout_seconds": 1},
             ]
         }
 
-        self.assertEqual(validate_formal_timeout_inputs(host, spec, scenarios), 630)
-        self.assertEqual(validate_formal_plan_timeouts(host, plan), 630)
-        spec["execution"]["timeout_seconds"] = 629
-        with self.assertRaisesRegex(ContractError, "at least 630"):
+        self.assertEqual(validate_formal_timeout_inputs(host, spec, scenarios), 1230)
+        self.assertEqual(validate_formal_plan_timeouts(host, plan), 1230)
+        spec["execution"]["timeout_seconds"] = 1229
+        with self.assertRaisesRegex(ContractError, "at least 1230"):
             validate_formal_timeout_inputs(host, spec, scenarios)
-        plan["entries"][0]["timeout_seconds"] = 629
-        with self.assertRaisesRegex(ContractError, "at least 630"):
+        spec["execution"]["timeout_seconds"] = 1230
+        scenarios[1]["timeout_seconds"] = 1229
+        with self.assertRaisesRegex(ContractError, "at least 1230"):
+            validate_formal_timeout_inputs(host, spec, scenarios)
+        plan["entries"][1]["timeout_seconds"] = 1229
+        with self.assertRaisesRegex(ContractError, "at least 1230"):
             validate_formal_plan_timeouts(host, plan)
 
     def setUp(self) -> None:
@@ -938,9 +955,28 @@ class ModelEvolutionContractTest(unittest.TestCase):
         self.assertFalse(_is_model_grade_path_correction(state))
         state["budgets"]["reserved"]["execute"] = 144
 
+        state["campaign_id"] = "model-evolution-6-3-path-blinding-7ac1ecb"
+        state["product"]["source_commit"] = (
+            "7ac1ecba016345cf2133d387ca3123a5d8f29d22"
+        )
+        state["budgets"]["ceiling"].update({
+            "provider_requests": 552, "model_grade": 296, "execute": 232,
+        })
+        state["budgets"]["reserved"].update({
+            "provider_requests": 472, "model_grade": 256, "execute": 192,
+        })
+        state["budgets"]["observed"].update({
+            "provider_requests": 280, "model_grade": 256, "execute": 0,
+        })
+        self.assertTrue(_is_multiturn_timeout_correction(state))
+        state["budgets"]["observed"]["provider_requests"] = 279
+        self.assertFalse(_is_multiturn_timeout_correction(state))
+        state["budgets"]["observed"]["provider_requests"] = 280
+
         state["plans"].pop()
         self.assertFalse(_is_formal_projection_correction(state))
         self.assertFalse(_is_model_grade_path_correction(state))
+        self.assertFalse(_is_multiturn_timeout_correction(state))
         state["plans"].append({
             "role": "target_current",
             "skill_id": SKILL_IDS[-1],

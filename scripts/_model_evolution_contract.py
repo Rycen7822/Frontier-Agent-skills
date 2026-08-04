@@ -72,8 +72,16 @@ class ContractError(ValueError):
     """A deterministic contract or binding failure."""
 
 
-def formal_entry_timeout_floor(host: dict[str, Any]) -> int:
-    """Return the minimum outer timeout for one frozen Host execution."""
+def formal_entry_timeout_floor(
+    host: dict[str, Any], *, turn_count: int = 1,
+) -> int:
+    """Return the outer timeout for bounded per-turn Host executions."""
+    if (
+        not isinstance(turn_count, int)
+        or isinstance(turn_count, bool)
+        or turn_count < 1
+    ):
+        raise ContractError("formal turn count is invalid")
     command = host.get("command")
     argv = command.get("argv") if isinstance(command, dict) else None
     positions = [
@@ -87,22 +95,28 @@ def formal_entry_timeout_floor(host: dict[str, Any]) -> int:
         raise ContractError("formal Host timeout is invalid") from exc
     if not math.isfinite(host_timeout) or host_timeout <= 0:
         raise ContractError("formal Host timeout is invalid")
-    return math.ceil(host_timeout) + HOST_CLEANUP_GRACE_SECONDS
+    return math.ceil(host_timeout) * turn_count + HOST_CLEANUP_GRACE_SECONDS
 
 
 def validate_formal_timeout_inputs(
     host: dict[str, Any], spec: dict[str, Any], scenarios: list[dict[str, Any]]
 ) -> int:
     """Reject sentinel inputs that cannot outlive their frozen Host."""
-    floor = formal_entry_timeout_floor(host)
     execution = spec.get("execution")
     execution_timeout = (
         execution.get("timeout_seconds") if isinstance(execution, dict) else None
     )
-    scenario_timeouts = [
-        row.get("timeout_seconds") if isinstance(row, dict) else None
-        for row in scenarios
-    ]
+    scenario_timeouts = []
+    scenario_floors = []
+    for row in scenarios:
+        timeout = row.get("timeout_seconds") if isinstance(row, dict) else None
+        turns = row.get("turns") if isinstance(row, dict) else None
+        turn_count = len(turns) if isinstance(turns, list) and turns else 1
+        scenario_timeouts.append(timeout)
+        scenario_floors.append(
+            formal_entry_timeout_floor(host, turn_count=turn_count)
+        )
+    floor = max(scenario_floors, default=formal_entry_timeout_floor(host))
     if (
         not isinstance(execution_timeout, int)
         or isinstance(execution_timeout, bool)
@@ -111,9 +125,12 @@ def validate_formal_timeout_inputs(
         or any(
             not isinstance(value, int)
             or isinstance(value, bool)
-            or value < floor
-            for value in scenario_timeouts
+            or value < required
+            for value, required in zip(
+                scenario_timeouts, scenario_floors, strict=True,
+            )
         )
+        or any(value > execution_timeout for value in scenario_timeouts)
     ):
         raise ContractError(
             f"formal execution and scenario timeouts must be at least {floor} seconds"
@@ -125,15 +142,28 @@ def validate_formal_plan_timeouts(
     host: dict[str, Any], plan: dict[str, Any]
 ) -> int:
     """Reject compiled entries that cannot outlive their frozen Host."""
-    floor = formal_entry_timeout_floor(host)
     entries = plan.get("entries")
+    execute_entries = [
+        entry for entry in entries or []
+        if not isinstance(entry, dict) or entry.get("disposition") == "execute"
+    ] if isinstance(entries, list) else []
+    floors = []
+    for entry in execute_entries:
+        payload = (
+            entry.get("execute_case_payload")
+            if isinstance(entry, dict)
+            else None
+        )
+        turns = payload.get("turns") if isinstance(payload, dict) else None
+        turn_count = len(turns) if isinstance(turns, list) and turns else 1
+        floors.append(formal_entry_timeout_floor(host, turn_count=turn_count))
+    floor = max(floors, default=formal_entry_timeout_floor(host))
     if not isinstance(entries, list) or any(
         not isinstance(entry, dict)
         or not isinstance(entry.get("timeout_seconds"), int)
         or isinstance(entry.get("timeout_seconds"), bool)
-        or entry["timeout_seconds"] < floor
-        for entry in entries or []
-        if not isinstance(entry, dict) or entry.get("disposition") == "execute"
+        or entry["timeout_seconds"] < required
+        for entry, required in zip(execute_entries, floors, strict=True)
     ):
         raise ContractError(
             f"formal execute entry timeouts must be at least {floor} seconds"
@@ -1024,6 +1054,96 @@ def _is_model_grade_path_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _is_multiturn_timeout_correction(value: dict[str, Any]) -> bool:
+    product = value["product"]
+    budgets = value["budgets"]
+    request_fields = ("provider_requests", "model_grade", "execute")
+    return (
+        _is_formal_projection_correction(value)
+        and value["campaign_id"]
+        == "model-evolution-6-3-path-blinding-7ac1ecb"
+        and product["source_commit"]
+        == "7ac1ecba016345cf2133d387ca3123a5d8f29d22"
+        and tuple(budgets["ceiling"][field] for field in request_fields)
+        == (552, 296, 232)
+        and tuple(budgets["reserved"][field] for field in request_fields)
+        == (472, 256, 192)
+        and tuple(budgets["observed"][field] for field in request_fields)
+        == (280, 256, 0)
+    )
+
+
+def _validate_multiturn_timeout_evidence(
+    campaign: dict[str, Any], campaign_root: Path, repository_root: Path,
+) -> None:
+    expected = {
+        "long-document-segmented-writing": (8, "pe-810132ec4b90d371d73a527a"),
+        "skill-evaluator": (5, "pe-38534738d5cc38b2e83e86a3"),
+        "software-quality-workflows": (6, "pe-cf8a6db76631e6fadd1b87a7"),
+        "writing-plans": (4, "pe-a3f01f7e39ea4a87fb38d049"),
+    }
+    plans = {record["skill_id"]: record for record in campaign["plans"]}
+    for skill_id, (completed, recoverable_id) in expected.items():
+        plan_path = resolve_binding(
+            plans[skill_id]["plan"], repository_root, campaign_root,
+        )
+        plan = load_json(plan_path, label=f"{skill_id} timeout parent plan")
+        artifacts = plan_path.parent / plan["artifacts"]["root"]
+        index = artifacts / plan["artifacts"]["index_relpath"]
+        rows = load_jsonl(index, label=f"{skill_id} timeout parent index")
+        if len(rows) != completed:
+            raise ContractError("timeout parent completion count differs")
+        indexed_attempts = set()
+        for row in rows:
+            attempt = artifacts.joinpath(*_relative_path(row["artifact_dir"]).parts)
+            receipt_binding = row["receipt"]
+            receipt = artifacts.joinpath(
+                *_relative_path(receipt_binding["path"]).parts,
+            )
+            if (
+                attempt.is_symlink()
+                or not attempt.is_dir()
+                or receipt.is_symlink()
+                or not receipt.is_file()
+                or content_hash(receipt.read_bytes()) != receipt_binding["sha256"]
+            ):
+                raise ContractError("timeout parent indexed receipt differs")
+            indexed_attempts.add(attempt.resolve())
+        recoverable = artifacts / "entries" / recoverable_id / "attempt-0001"
+        attempt_paths = list((artifacts / "entries").glob("*/attempt-*"))
+        if any(path.is_symlink() or not path.is_dir() for path in attempt_paths):
+            raise ContractError("timeout parent attempt set is unsafe")
+        attempts = {path.resolve() for path in attempt_paths}
+        if (
+            recoverable.resolve() in indexed_attempts
+            or not recoverable.is_dir()
+            or (recoverable / "receipt.json").exists()
+            or attempts != indexed_attempts | {recoverable.resolve()}
+        ):
+            raise ContractError("timeout parent recoverable set differs")
+
+    timeout_path = (
+        campaign_root
+        / "current-plans/writing-plans/artifacts/entries"
+        / "pe-a3f01f7e39ea4a87fb38d049/attempt-0001/host-stdout.jsonl"
+    )
+    results = load_jsonl(timeout_path, label="timeout parent Host result")
+    result = results[0] if len(results) == 1 else None
+    if (
+        not isinstance(result, dict)
+        or result.get("terminal_status") != "timeout"
+        or result.get("timeout") is not True
+        or result.get("failure_class") != "model_task_timeout"
+        or result.get("provider_error_code") is not None
+        or result.get("protocol_error") is not None
+        or result.get("treatment_error")
+        != "Codex child exceeded the adapter timeout"
+        or result.get("request_hash")
+        != "sha256:9b13280c435e3edd14d199ca28d08cc3370c35a75a66567915bea302960b0904"
+    ):
+        raise ContractError("timeout parent Host result differs")
+
+
 def _failure_receipt_request_count(
     binding: dict[str, Any],
     *,
@@ -1178,11 +1298,16 @@ def prepare_supersedes(
     model_grade_path_correction = (
         len(lineage) == 3 and _is_model_grade_path_correction(old)
     )
+    multiturn_timeout_correction = (
+        len(lineage) == 4 and _is_multiturn_timeout_correction(old)
+    )
     transport_lineage = any(
         campaign["campaign_id"] == "model-evolution-6-3-projection-ec0d79d"
         for campaign, _ in lineage
     )
-    if transport_lineage and not model_grade_path_correction:
+    if transport_lineage and not (
+        model_grade_path_correction or multiturn_timeout_correction
+    ):
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 9 and not formal_projection_correction:
         raise ContractError("supersession repair depth is exhausted")
@@ -1199,9 +1324,12 @@ def prepare_supersedes(
         or calibration_fixture_correction
         or formal_projection_correction
         or model_grade_path_correction
+        or multiturn_timeout_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
-    receipt_hop = len(lineage) in {4, 5}
+    receipt_hop = (
+        len(lineage) in {4, 5} and not multiturn_timeout_correction
+    )
     if receipt_hop and failure_receipt_binding is None:
         raise ContractError("late supersession requires a failed-request receipt")
     if failure_receipt_binding is not None and not receipt_hop:
@@ -1316,6 +1444,10 @@ def prepare_supersedes(
         raise ContractError("superseded qualification differs from its campaign")
     if qualification["decision"] != "blocked":
         raise ContractError("only a blocked pre-public campaign may be superseded")
+    if multiturn_timeout_correction:
+        if qualification["qualification_id"] != "mq-6be58b785027ed665f6b5620":
+            raise ContractError("timeout parent qualification differs")
+        _validate_multiturn_timeout_evidence(old, old_path.parent, repository_root)
     imported_reserved = dict(old["budgets"]["reserved"])
     imported_observed = dict(old["budgets"]["observed"])
     result = {

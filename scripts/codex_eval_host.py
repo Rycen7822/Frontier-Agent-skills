@@ -714,7 +714,6 @@ def _run_execute(
         )
     initial_files = _snapshot_workspace(workspace)
     started_at = _utc_now()
-    deadline = time.monotonic() + args.timeout
     normalized_turns: list[dict[str, Any]] = []
     session_id: str | None = None
     child_failure: dict[str, Any] | None = None
@@ -744,7 +743,7 @@ def _run_execute(
                     else turn["input"]["content"]
                 ),
                 workspace=workspace,
-                timeout_seconds=deadline - time.monotonic(),
+                timeout_seconds=args.timeout,
             )
             _write_child_stderr(child["stderr"], workspace)
             if child["timed_out"] or child["returncode"] != 0:
