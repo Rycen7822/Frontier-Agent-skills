@@ -273,9 +273,19 @@ def _redact_text(text: str, workspace: Path) -> str:
     return redacted
 
 
-def _write_child_stderr(raw: bytes, workspace: Path) -> None:
-    text = raw[:MAX_STDERR_BYTES].decode("utf-8", errors="replace")
-    if len(raw) > MAX_STDERR_BYTES:
+def _write_child_stderr(
+    raw: bytes,
+    workspace: Path,
+    plugin_root: Path | None = None,
+) -> None:
+    redacted_raw = raw
+    if plugin_root is not None:
+        redacted_raw = redacted_raw.replace(
+            str(_bound_source_root(plugin_root)).encode("utf-8"),
+            b"<source-repository>",
+        )
+    text = redacted_raw[:MAX_STDERR_BYTES].decode("utf-8", errors="replace")
+    if len(redacted_raw) > MAX_STDERR_BYTES:
         text += "\n[stderr truncated by codex_eval_host]\n"
     if text:
         sys.stderr.write(_redact_text(text, workspace))
@@ -506,9 +516,71 @@ def _bound_source_root(plugin_root: Path) -> Path:
     return plugin_root
 
 
-def _mentions_bound_source(child: dict[str, Any], plugin_root: Path) -> bool:
-    source = str(_bound_source_root(plugin_root)).encode("utf-8")
-    return source in child["stdout"] or source in child["stderr"]
+def _json_pointer_source_match(
+    value: Any,
+    source: str,
+    pointer: str = "",
+) -> str | None:
+    if isinstance(value, str):
+        if source in value:
+            return pointer or "/"
+        return None
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            match = _json_pointer_source_match(item, source, f"{pointer}/{index}")
+            if match is not None:
+                return match
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                continue
+            escaped = key.replace("~", "~0").replace("/", "~1")
+            if source in key:
+                return f"{pointer}/<redacted-key>"
+            match = _json_pointer_source_match(
+                item,
+                source,
+                f"{pointer}/{escaped}",
+            )
+            if match is not None:
+                return match
+    return None
+
+
+def _source_exposure_diagnostic(
+    child: dict[str, Any],
+    plugin_root: Path,
+) -> dict[str, Any] | None:
+    source = str(_bound_source_root(plugin_root))
+    source_bytes = source.encode("utf-8")
+    for channel in ("stdout", "stderr"):
+        for index, line in enumerate(child[channel].splitlines(), start=1):
+            if source_bytes not in line:
+                continue
+            try:
+                record = json.loads(line)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                record = None
+            pointer = _json_pointer_source_match(record, source)
+            record_type = record.get("type") if isinstance(record, dict) else None
+            item = record.get("item") if isinstance(record, dict) else None
+            item_type = item.get("type") if isinstance(item, dict) else None
+            labels = [
+                value
+                for value in (record_type, item_type)
+                if isinstance(value, str) and SAFE_ID.fullmatch(value)
+            ]
+            shape = "/".join(labels) if labels else "unstructured"
+            location = pointer if pointer is not None else "/<unparsed>"
+            return {
+                "kind": "source_contamination",
+                "index": index,
+                "message": (
+                    f"Codex {channel} record {index} ({shape}) exposed the bound "
+                    f"source repository at {location}"
+                ),
+            }
+    return None
 
 
 def _emit(value: dict[str, Any]) -> None:
@@ -676,7 +748,7 @@ def _run_model_grade(
             workspace=temporary,
             timeout_seconds=args.timeout,
         )
-        _write_child_stderr(child["stderr"], workspace)
+        _write_child_stderr(child["stderr"], workspace, args.plugin_root)
         if child["timed_out"] or child["returncode"] != 0:
             return _child_failure_result(request, manifest, child, workspace)
         normalized = normalize_jsonl(child["stdout"])
@@ -768,19 +840,18 @@ def _run_execute_in_workspace(
                 workspace=workspace,
                 timeout_seconds=args.timeout,
             )
-            _write_child_stderr(child["stderr"], workspace)
+            _write_child_stderr(child["stderr"], workspace, args.plugin_root)
             if child["timed_out"] or child["returncode"] != 0:
                 child_failure = child
                 break
             normalized = normalize_jsonl(child["stdout"])
-            if args.plugin_root is not None and _mentions_bound_source(
-                child, args.plugin_root
-            ):
-                normalized["diagnostics"].append({
-                    "kind": "source_contamination",
-                    "index": None,
-                    "message": "Codex output exposed the bound source repository",
-                })
+            exposure = (
+                _source_exposure_diagnostic(child, args.plugin_root)
+                if args.plugin_root is not None
+                else None
+            )
+            if exposure is not None:
+                normalized["diagnostics"].append(exposure)
                 normalized["status"] = "protocol_error"
             normalized["runtime_ms"] = child["runtime_ms"]
             normalized["permission_denials"] = sorted(
@@ -1046,7 +1117,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             workspace=workspace,
             timeout_seconds=args.timeout,
         )
-        _write_child_stderr(child["stderr"], workspace)
+        _write_child_stderr(child["stderr"], workspace, args.plugin_root)
         normalized = (
             normalize_jsonl(child["stdout"])
             if not child["timed_out"] and child["returncode"] == 0
