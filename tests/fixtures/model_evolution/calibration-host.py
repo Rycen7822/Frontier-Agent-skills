@@ -30,6 +30,7 @@ def _judgment(item: dict[str, object]) -> tuple[bool, str]:
     if any(marker in evidence for marker in (
         "placeholder", "contradicts", "performed ad hoc", "unrelated workflow",
         "are absent", "is missing", "only part", "completion and cleanup",
+        "=not_run",
     )):
         return False, "none"
     return True, "none"

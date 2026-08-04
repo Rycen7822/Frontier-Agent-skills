@@ -1,13 +1,13 @@
 {
   "schema_version": "model-evolution-sentinel-index/1",
-  "sentinel_hash": "sha256:9bcf26f3da4fa4215790c73cc1e20184f592e9f9624c3fed8211296561479636",
+  "sentinel_hash": "sha256:3f0545daf9a4073984d7da0bf3eee2e6d00b9807d8f5174d138277ef5dbec939",
   "sentinel_id": "frontier-four-skill-sentinel-v1",
   "skills": {
     "long-document-segmented-writing": {
       "calibration_gold": {
         "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/calibration-gold.jsonl",
         "root": "repository",
-        "sha256": "sha256:6faa9ffa39d652e4f4672008643dc7fb598ea665b7fc642888013df7c3fa9ea2"
+        "sha256": "sha256:0b97363284bc17d49427f05d3a77a95c712ed5b03c213783c34a5af9d5d642ce"
       },
       "calibration_request_ceiling": 16,
       "critical_bucket_id": "long-document-segmented-writing-critical",
@@ -58,7 +58,7 @@
       "calibration_gold": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/calibration-gold.jsonl",
         "root": "repository",
-        "sha256": "sha256:1ba3bb75cd8ecf0742d1be22260c7a003ff30d951aa5e80dd099c2ab08d59c70"
+        "sha256": "sha256:171b28bf4a6f20a0d250dc1c44d7ddc3720c3e52c1e354722cf150239edcbba7"
       },
       "calibration_request_ceiling": 16,
       "critical_bucket_id": "skill-evaluator-critical",
@@ -109,7 +109,7 @@
       "calibration_gold": {
         "path": "evaluation/model-evolution/sentinels/software-quality-workflows/calibration-gold.jsonl",
         "root": "repository",
-        "sha256": "sha256:fbe495fe9039edf1326efa253b858fce395fdde1b3732069af3ba9d293463adc"
+        "sha256": "sha256:0d02b91f998d6ac5c8f65d88c96975475ed09636247f9d07f78b9e11b1244c6f"
       },
       "calibration_request_ceiling": 16,
       "critical_bucket_id": "software-quality-workflows-critical",
@@ -160,7 +160,7 @@
       "calibration_gold": {
         "path": "evaluation/model-evolution/sentinels/writing-plans/calibration-gold.jsonl",
         "root": "repository",
-        "sha256": "sha256:500df64e97e2b92bca3dc0e997080e97d75b9b4beae2311b0e9de530db2eb641"
+        "sha256": "sha256:1da9cc59d6bc70d83cf2a418b65a40b45341848050e048d7702f5852c8a12906"
       },
       "calibration_request_ceiling": 16,
       "critical_bucket_id": "writing-plans-critical",

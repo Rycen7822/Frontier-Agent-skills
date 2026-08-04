@@ -234,6 +234,18 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     self.assertIn("completed", candidate_evidence)
                     for claim in sentinels.SKILLS[skill_id]["claims"]:
                         self.assertIn(claim, candidate_evidence)
+            process_boundaries = [
+                row
+                for row in rows
+                if row["check_id"] == "process-check"
+                and row["class"] == "boundary"
+            ]
+            self.assertEqual(len(process_boundaries), 2)
+            for row in process_boundaries:
+                candidate_evidence = row["payload"]["view"]["candidate_evidence"]
+                self.assertIn("run_status=completed", candidate_evidence)
+                self.assertIn("record_closed=true", candidate_evidence)
+                self.assertIn("not_run", candidate_evidence)
             prompt = (root / grader["prompt"]["path"]).read_text()
             self.assertIn("`uncertainty` to `high`", prompt)
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,52 @@ def _write_exact(path: Path, payload: bytes) -> None:
         return
     with path.open("xb") as handle:
         handle.write(payload)
+
+
+def _verify_preparation_lineage(
+    campaign: dict[str, Any],
+    preparation: dict[str, Any],
+) -> None:
+    """Prove that only successful calibration records followed preparation."""
+    verify_self_hash(preparation, "preparation_hash")
+    commands = {
+        row.get("skill_id"): row.get("request_count")
+        for row in preparation.get("commands", [])
+        if isinstance(row, dict)
+    }
+    recorded = [
+        skill_id
+        for skill_id in SKILL_IDS
+        if campaign["skill_evidence"][skill_id]["grader_calibration"] is not None
+    ]
+    prepared_revision = preparation.get("state_revision")
+    if (
+        preparation.get("campaign_id") != campaign.get("campaign_id")
+        or not isinstance(prepared_revision, int)
+        or (recorded and campaign.get("phase") != "target_profile_ready")
+        or campaign.get("state_revision") != prepared_revision + len(recorded)
+        or any(not isinstance(commands.get(skill_id), int) for skill_id in recorded)
+    ):
+        raise CalibrationReceiptError("campaign calibration lineage differs")
+
+    prepared = copy.deepcopy(campaign)
+    observed = prepared["budgets"]["observed"]
+    for skill_id in recorded:
+        request_count = commands[skill_id]
+        prepared["skill_evidence"][skill_id]["grader_calibration"] = None
+        for field in ("provider_requests", "model_grade"):
+            if observed[field] is not None:
+                observed[field] -= request_count
+                if observed[field] < 0:
+                    raise CalibrationReceiptError(
+                        "campaign calibration observed budget underflows",
+                    )
+    prepared["state_revision"] = prepared_revision
+    if recorded:
+        prepared["phase"] = "target_profile_ready"
+    prepared = with_self_hash(prepared, "campaign_hash")
+    if prepared["campaign_hash"] != preparation.get("campaign_hash"):
+        raise CalibrationReceiptError("campaign calibration ancestry differs")
 
 
 def _completed_identity(
@@ -169,7 +216,7 @@ def validate_calibration_rejection_receipt(
     *,
     repository_root: Path,
     campaign_root: Path,
-    campaign_hash: str,
+    campaign: dict[str, Any],
 ) -> int:
     receipt = load_json(
         resolve_binding(binding, repository_root, campaign_root),
@@ -186,12 +233,11 @@ def validate_calibration_rejection_receipt(
         label="calibration rejection preparation",
     )
     validate_document(qualification, "qualification")
-    verify_self_hash(preparation, "preparation_hash")
+    _verify_preparation_lineage(campaign, preparation)
     if (
-        receipt["campaign_hash"] != campaign_hash
-        or qualification.get("campaign_hash") != campaign_hash
+        receipt["campaign_hash"] != campaign["campaign_hash"]
+        or qualification.get("campaign_hash") != campaign["campaign_hash"]
         or qualification.get("decision") != "blocked"
-        or preparation.get("campaign_hash") != campaign_hash
     ):
         raise ContractError("calibration rejection receipt differs from its campaign")
     commands = [
@@ -253,14 +299,14 @@ def close_calibration_rejection(
     preparation_path = campaign_root / "calibration/preparation.json"
     qualification = load_json(qualification_path, label="qualification")
     preparation = load_json(preparation_path, label="calibration preparation")
+    _verify_preparation_lineage(campaign, preparation)
     if (
         qualification.get("decision") != "blocked"
         or qualification.get("campaign_hash") != campaign["campaign_hash"]
-        or preparation.get("campaign_hash") != campaign["campaign_hash"]
-        or preparation.get("state_revision") != campaign["state_revision"]
     ):
         raise CalibrationReceiptError("campaign calibration identity differs")
-    verify_self_hash(preparation, "preparation_hash")
+    if campaign["skill_evidence"][skill_id]["grader_calibration"] is not None:
+        raise CalibrationReceiptError("rejected calibration is already recorded")
     commands = [
         row for row in preparation.get("commands", [])
         if row.get("skill_id") == skill_id

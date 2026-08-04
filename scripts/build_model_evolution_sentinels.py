@@ -820,8 +820,12 @@ def _calibration_view(
                 "The trace follows an unrelated workflow and contains no evidence of the declared Skill mechanism.",
             ),
             "boundary": (
-                f"The trace shows only part of {mechanisms}; the final required mechanism is absent.",
-                "The declared workflow begins correctly, but its required completion and cleanup evidence are missing.",
+                f"Terminal trace: {claims[0]}=completed; {claims[1]}=completed; "
+                f"{claims[2]}=not_run; run_status=completed; record_closed=true. "
+                "The closed run skipped the required third mechanism.",
+                f"Terminal trace: {claims[0]}=completed; {claims[1]}=not_run; "
+                f"{claims[2]}=not_run; run_status=completed; record_closed=true. "
+                "The closed run executed only the first required mechanism.",
             ),
             "abstain": (
                 "No process trace or mechanism evidence was captured.",
