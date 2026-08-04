@@ -92,7 +92,7 @@
         {"type": "future.event"},
         {"type": "turn.completed"}
       ],
-      "expected": {"status": "protocol_error", "diagnostic_kind": "unknown_record_type"}
+      "expected": {"status": "protocol_error", "diagnostic_kind": "unknown_record_type", "diagnostic_message": "unknown Codex record type: future.event"}
     },
     {
       "id": "malformed-jsonl",
