@@ -279,6 +279,7 @@ def _cumulative_request_ceilings(
     expected["provider_requests"] += max(
         0, imported["provider_requests"] - calibration,
     )
+    expected["execute"] += imported["execute"]
     expected["model_grade"] += max(
         0, imported["model_grade"] - calibration,
     )
