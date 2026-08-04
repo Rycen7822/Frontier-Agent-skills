@@ -18,8 +18,10 @@ import sys
 import tempfile
 from typing import Any
 
-from jsonschema import Draft202012Validator
-import yaml
+sys.dont_write_bytecode = True
+
+from jsonschema import Draft202012Validator  # noqa: E402
+import yaml  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
