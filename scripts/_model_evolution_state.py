@@ -612,9 +612,9 @@ def status_projection(
         }
         for skill_id in SKILL_IDS
     }
-    active = sum(int(item.get("active_attempts", 0)) for item in plan_statuses)
+    active = sum(len(item.get("active_attempts", [])) for item in plan_statuses)
     recoverable = sum(
-        int(item.get("recoverable_attempts", 0)) for item in plan_statuses
+        len(item.get("recoverable_attempts", [])) for item in plan_statuses
     )
     return {
         "schema_version": "model-evolution-status/1",

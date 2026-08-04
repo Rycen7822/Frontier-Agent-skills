@@ -16,6 +16,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 from _model_evolution_contract import (  # noqa: E402
     ContractError,
     SKILL_IDS,
+    _is_formal_projection_correction,
     _is_partial_calibration_correction,
     build_initial_campaign,
     evaluator_evidence_status,
@@ -884,6 +885,48 @@ class ModelEvolutionContractTest(unittest.TestCase):
 
         state["plans"].append({"role": "target_current"})
         self.assertFalse(_is_partial_calibration_correction(state))
+
+    def test_formal_projection_correction_shape_is_narrow(self) -> None:
+        state = copy.deepcopy(self.fixture["campaign"])
+        state["phase"] = "calibration_ready"
+        probe_ids = [
+            "force-load",
+            "natural-routing",
+            "multi-turn",
+            "principal-tracing",
+            "usage-capture",
+            "authorization-trace",
+        ]
+        state["interaction_probes"]["requests"] = [
+            {
+                "request_id": f"probe-fixture-{ordinal:02d}",
+                "probe_id": probe_id,
+                "status": "closed",
+                "artifact": self.fixture["bindings"]["host"],
+                "result_status": "pass",
+            }
+            for ordinal, probe_id in enumerate(probe_ids, start=1)
+        ]
+        for skill_id in SKILL_IDS:
+            state["skill_evidence"][skill_id]["grader_calibration"] = (
+                self.fixture["bindings"]["host"]
+            )
+            state["plans"].append({
+                "role": "target_current",
+                "skill_id": skill_id,
+            })
+        self.assertTrue(_is_formal_projection_correction(state))
+
+        state["plans"].pop()
+        self.assertFalse(_is_formal_projection_correction(state))
+        state["plans"].append({
+            "role": "target_current",
+            "skill_id": SKILL_IDS[-1],
+        })
+        state["skill_evidence"][SKILL_IDS[0]]["current_summary"] = (
+            self.fixture["bindings"]["host"]
+        )
+        self.assertFalse(_is_formal_projection_correction(state))
         state["plans"].clear()
         state["skill_evidence"][SKILL_IDS[1]]["current_summary"] = (
             self.fixture["bindings"]["host"]

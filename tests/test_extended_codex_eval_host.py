@@ -14,8 +14,13 @@ import unittest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
+sys.path.insert(0, str(REPOSITORY_ROOT / "skill-evaluator/scripts"))
 
 from _bundle_hash import inventory, tree_hash  # noqa: E402
+from validate_eval_suite import (  # noqa: E402
+    load_v5_schema_registry,
+    validate_host_protocol_record,
+)
 from skill_evaluator_test_support import (  # noqa: E402
     SkillEvaluatorTestCase,
     canonical_hash,
@@ -288,8 +293,13 @@ def _request(kind: str, payload: dict) -> dict:
         "record_type": "skill-evaluator-host-request/1",
         "request_hash": "",
         "envelope": {
+            "attempt": 1,
+            "entry_id": "entry-fixture",
+            "entry_ordinal": 0,
+            "plan_hash": "sha256:" + "1" * 64,
+            "plan_id": "plan-fixture",
             "request_kind": kind,
-            "request_id": f"request-{kind}",
+            "run_id": "run-fixture",
         },
         "payload": payload,
     }
@@ -444,6 +454,37 @@ class TestCodexEventNormalization(unittest.TestCase):
 
 
 class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
+    def test_completed_turn_without_usage_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            fake, _ = _write_fake_codex(
+                root,
+                turns=[{
+                    "records": [
+                        {"type": "thread.started", "thread_id": THREAD_ID},
+                        {"type": "turn.started"},
+                        {"type": "item.completed", "item": {
+                            "id": "message-0",
+                            "type": "agent_message",
+                            "text": "fixture complete",
+                        }},
+                        {"type": "turn.completed"},
+                    ],
+                }],
+            )
+            manifest_path = root / "host.json"
+            _host_manifest(manifest_path, fake)
+            result = _run_adapter(
+                workspace,
+                fake,
+                manifest_path,
+                _request("execute_case", _execute_payload()),
+            )
+            self.assertEqual(2, result.returncode)
+            self.assertIn("lacks captured token usage", result.stderr)
+
     def test_execute_uses_exact_session_resume_and_safe_argv(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -466,11 +507,22 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                 [record["record_type"] for record in records],
             )
             self.assertEqual("completed", records[-1]["terminal_status"])
+            self.assertEqual(
+                [],
+                validate_host_protocol_record(
+                    "host_result", records[-1], load_v5_schema_registry()
+                ),
+            )
             self.assertEqual(THREAD_ID, records[-1]["principals"][0]["session_id"])
             self.assertEqual(
                 10, records[0]["payload"]["codex"]["usage"]["input_tokens"]
             )
-            self.assertEqual("missing", records[-1]["context"]["status"])
+            self.assertEqual("captured", records[-1]["context"]["status"])
+            self.assertEqual(0, records[-1]["context"]["controlled_bytes"])
+            self.assertEqual(
+                [10, 11],
+                [row["input_tokens"] for row in records[-1]["usage"]["records"]],
+            )
             calls = _jsonl(state.read_text(encoding="utf-8"))
             self.assertEqual(2, len(calls))
             self.assertNotIn("resume", calls[0]["argv"])
@@ -548,6 +600,26 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                 _request("execute_case", candidate),
             )
             self.assertEqual(0, result.returncode, result.stderr)
+            terminal = _jsonl(result.stdout)[-1]
+            self.assertEqual(
+                [],
+                validate_host_protocol_record(
+                    "host_result", terminal, load_v5_schema_registry()
+                ),
+            )
+            self.assertEqual(len(body.encode()), terminal["context"]["bytes"])
+            self.assertEqual(
+                "skills/writing-plans/SKILL.md",
+                terminal["context"]["components"][0]["source_path"],
+            )
+            component = terminal["context"]["components"][0]
+            artifact = candidate_workspace / Path(
+                component["artifact"]["path"]
+            ).name
+            self.assertEqual(body, artifact.read_text(encoding="utf-8"))
+            self.assertEqual(
+                component["content_sha256"], _sha256_file(artifact)
+            )
             call = _jsonl(state.read_text(encoding="utf-8"))[0]
             self.assertIn(body, call["prompt"])
             self.assertIn("fixture turn 1", call["prompt"])
@@ -584,6 +656,9 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                 _request("execute_case", baseline),
             )
             self.assertEqual(0, result.returncode, result.stderr)
+            terminal = _jsonl(result.stdout)[-1]
+            self.assertEqual(0, terminal["context"]["controlled_bytes"])
+            self.assertEqual([], terminal["context"]["components"])
             call = _jsonl(state.read_text(encoding="utf-8"))[1]
             self.assertNotIn(body, call["prompt"])
             self.assertEqual("fixture turn 1", call["prompt"])
@@ -785,7 +860,14 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(0, grade_result.returncode, grade_result.stderr)
             grade_record = _jsonl(grade_result.stdout)[-1]
             self.assertEqual("completed", grade_record["terminal_status"])
+            self.assertEqual(
+                [],
+                validate_host_protocol_record(
+                    "host_result", grade_record, load_v5_schema_registry()
+                ),
+            )
             self.assertEqual(1, len(grade_record["artifacts"]))
+            self.assertEqual(10, grade_record["usage"]["records"][0]["input_tokens"])
             artifact = workspace / Path(grade_record["artifacts"][0]["path"]).name
             self.assertEqual(grade, json.loads(artifact.read_text(encoding="utf-8")))
             grade_call = _jsonl(state.read_text(encoding="utf-8"))[0]
