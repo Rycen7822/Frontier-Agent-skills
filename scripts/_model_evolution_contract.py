@@ -970,6 +970,42 @@ def _is_single_probe_contract_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _is_formal_projection_correction(value: dict[str, Any]) -> bool:
+    evidence = value["skill_evidence"]
+    per_skill = [evidence[skill_id] for skill_id in SKILL_IDS]
+    plans = value["plans"]
+    requests = value["interaction_probes"]["requests"]
+    return (
+        value["phase"] == "calibration_ready"
+        and value["candidate"] is None
+        and evidence["plugin_build"] is None
+        and len(plans) == len(SKILL_IDS)
+        and {
+            (plan.get("role"), plan.get("skill_id")) for plan in plans
+        } == {("target_current", skill_id) for skill_id in SKILL_IDS}
+        and all(item["grader_calibration"] is not None for item in per_skill)
+        and all(
+            all(
+                field == "grader_calibration" or binding is None
+                for field, binding in item.items()
+            )
+            for item in per_skill
+        )
+        and value["interaction_probes"]["blocker"] is None
+        and len(requests) == 6
+        and {request["probe_id"] for request in requests}
+        == {
+            "force-load",
+            "natural-routing",
+            "multi-turn",
+            "principal-tracing",
+            "usage-capture",
+            "authorization-trace",
+        }
+        and all(request["status"] == "closed" for request in requests)
+    )
+
+
 def _failure_receipt_request_count(
     binding: dict[str, Any],
     *,
@@ -1034,11 +1070,11 @@ def _blocked_supersession_lineage(
     old_path: Path,
     repository_root: Path,
 ) -> list[tuple[dict[str, Any], Path]]:
-    """Load at most eight closed campaigns and verify every budget carry."""
+    """Load at most nine closed campaigns and verify every budget carry."""
     lineage = [(old, old_path)]
     current, current_path = old, old_path
     while current["supersedes"] is not None:
-        if len(lineage) == 8:
+        if len(lineage) == 9:
             raise ContractError("supersession repair depth is exhausted")
         parent_path = resolve_binding(
             current["supersedes"]["campaign"],
@@ -1118,6 +1154,11 @@ def prepare_supersedes(
     calibration_fixture_correction = (
         len(lineage) == 8 and _is_partial_calibration_correction(old)
     )
+    formal_projection_correction = (
+        len(lineage) == 9 and _is_formal_projection_correction(old)
+    )
+    if len(lineage) == 9 and not formal_projection_correction:
+        raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 8 and not calibration_fixture_correction:
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 7 and not calibration_contract_correction:
@@ -1129,6 +1170,7 @@ def prepare_supersedes(
         or probe_contract_correction
         or calibration_contract_correction
         or calibration_fixture_correction
+        or formal_projection_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = len(lineage) in {4, 5}

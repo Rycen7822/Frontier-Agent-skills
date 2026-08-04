@@ -957,6 +957,28 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         )
         self.assertIsNone(projection["next_event"])
 
+    def test_status_projection_counts_runner_attempt_arrays(self) -> None:
+        projection = state_module.status_projection(
+            self.fixture["store"].read(),
+            plan_statuses=[
+                {
+                    "active_attempts": [{"attempt": 1}, {"attempt": 2}],
+                    "recoverable_attempts": [{"attempt": 3}],
+                },
+                {
+                    "active_attempts": [],
+                    "recoverable_attempts": [
+                        {"attempt": 4},
+                        {"attempt": 5},
+                    ],
+                },
+            ],
+            blockers=[],
+            runner_commands=[],
+        )
+        self.assertEqual(2, projection["active_attempts"])
+        self.assertEqual(3, projection["recoverable_attempts"])
+
     def test_plan_registration_rejects_existing_attempt_without_mutation(self) -> None:
         state = self._prepared_state()
         self._write_state(state)

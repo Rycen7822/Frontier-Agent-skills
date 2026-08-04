@@ -312,6 +312,91 @@ def _run_child(
     }
 
 
+def _captured_usage(
+    manifest: dict[str, Any],
+    calls: list[dict[str, Any]],
+) -> dict[str, Any]:
+    records = []
+    for call in calls:
+        normalized = call["normalized"]
+        usage = normalized.get("usage")
+        if (
+            not isinstance(usage, dict)
+            or not isinstance(usage.get("input_tokens"), int)
+            or not isinstance(usage.get("output_tokens"), int)
+        ):
+            raise AdapterError("completed Codex turn lacks captured token usage")
+        records.append({
+            "principal_id": call["principal_id"],
+            "turn_id": call["turn_id"],
+            "phase": call["phase"],
+            "call_id": call["call_id"],
+            "input_tokens": usage["input_tokens"],
+            "output_tokens": usage["output_tokens"],
+            "cache_read_tokens": usage.get("cached_input_tokens", 0),
+            "cache_write_tokens": 0,
+            "queue_ms": 0,
+            "runtime_ms": call["runtime_ms"],
+            "tool_calls": len(normalized["tool_call_ids"]),
+            "retries": 0,
+            "rework": 0,
+            "network_calls": 1,
+            "residue_count": 0,
+            "requested_effort": 1,
+            "effective_effort": 1,
+        })
+    return {
+        "pricing_identity": manifest["identity"]["execution"]["pricing_id"],
+        "host_safety_review": {
+            "capture_status": "missing",
+            "host_safety_review_count": 0,
+            "host_safety_review_latency_ms": 0,
+        },
+        "records": records,
+    }
+
+
+def _captured_context(
+    delivery: tuple[str, str, str | None] | None,
+    request_hash: str,
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    body = delivery[2] if delivery is not None else None
+    if body is None:
+        return {
+            "status": "captured",
+            "bytes": 0,
+            "tokens": None,
+            "controlled_bytes": 0,
+            "unique_reference_bytes": 0,
+            "controlled_core_bytes": 0,
+            "components": [],
+        }, []
+    payload = body.encode("utf-8")
+    artifact = _artifact_bytes(
+        f"skill-body-{request_hash[7:19]}.md",
+        payload,
+    )
+    component = {
+        "component_id": "target-skill-body",
+        "kind": "body",
+        "source_path": f"skills/{delivery[0]}/SKILL.md",
+        "content_sha256": artifact["sha256"],
+        "artifact": artifact,
+        "bytes": len(payload),
+        "tokens": None,
+        "occurrence": 1,
+    }
+    return {
+        "status": "captured",
+        "bytes": len(payload),
+        "tokens": None,
+        "controlled_bytes": len(payload),
+        "unique_reference_bytes": 0,
+        "controlled_core_bytes": len(payload),
+        "components": [component],
+    }, [artifact]
+
+
 def _config_override(name: str, value: str) -> str:
     return f"{name}={json.dumps(value, ensure_ascii=False)}"
 
@@ -590,6 +675,17 @@ def _run_model_grade(
     )
     result = base_host_result(request, manifest)
     result["artifacts"] = [artifact]
+    result["usage"] = _captured_usage(
+        manifest,
+        [{
+            "principal_id": f"grader-{payload['grader_id']}",
+            "turn_id": None,
+            "phase": "model-grade",
+            "call_id": f"grade-{request['request_hash'][7:19]}",
+            "normalized": normalized,
+            "runtime_ms": child["runtime_ms"],
+        }],
+    )
     return result
 
 
@@ -655,6 +751,7 @@ def _run_execute(
                 child_failure = child
                 break
             normalized = normalize_jsonl(child["stdout"])
+            normalized["runtime_ms"] = child["runtime_ms"]
             normalized["permission_denials"] = sorted(
                 {
                     *normalized["permission_denials"],
@@ -774,7 +871,12 @@ def _run_execute(
         )
         artifacts.extend([host_observation, workspace_evidence])
 
-    return project_execute_result(
+    context, context_artifacts = _captured_context(
+        delivery,
+        request["request_hash"],
+    )
+    artifacts.extend(context_artifacts)
+    events, result = project_execute_result(
         request=request,
         manifest=manifest,
         normalized_turns=normalized_turns,
@@ -784,6 +886,25 @@ def _run_execute(
         artifacts=artifacts,
         assertions=assertions,
     )
+    principal_id = f"principal-{payload['execution_context']['expected_principal_slots'][0]}"
+    result["usage"] = _captured_usage(
+        manifest,
+        [
+            {
+                "principal_id": principal_id,
+                "turn_id": turn["turn_id"],
+                "phase": "execute",
+                "call_id": f"codex-{index + 1}",
+                "normalized": normalized,
+                "runtime_ms": normalized["runtime_ms"],
+            }
+            for index, (turn, normalized) in enumerate(
+                zip(payload["turns"], normalized_turns, strict=True)
+            )
+        ],
+    )
+    result["context"] = context
+    return events, result
 
 
 def _run_host_mode(
