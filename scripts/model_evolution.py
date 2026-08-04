@@ -19,6 +19,7 @@ from _model_evolution_contract import (
     _is_multiturn_timeout_correction,
     _is_single_principal_exec_correction,
     _is_source_exposure_locator_correction,
+    _is_source_root_binding_correction,
     _is_source_workspace_isolation_correction,
     _is_systemd_environment_correction,
     assess_interaction_probes,
@@ -483,6 +484,7 @@ def _init(args: argparse.Namespace) -> None:
             or _is_single_principal_exec_correction(superseded_campaign)
             or _is_source_workspace_isolation_correction(superseded_campaign)
             or _is_source_exposure_locator_correction(superseded_campaign)
+            or _is_source_root_binding_correction(superseded_campaign)
             or _is_systemd_environment_correction(superseded_campaign)
         )
     expected_request_ceilings = _cumulative_request_ceilings(
