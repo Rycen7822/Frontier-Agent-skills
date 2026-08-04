@@ -53,6 +53,11 @@ SKILLS = {
         "context_ceiling": 32768,
         "regression_origin": "session-scratch-artifact-overuse",
         "claims": ["segmented-writing", "compaction-recovery", "whole-draft-review"],
+        "process_evidence": [
+            "the source inventory is mapped to bounded draft sections",
+            "the recovery record preserves the active section, source anchors, and unresolved decisions",
+            "the assembled draft is checked for missing claims, contradictions, and broken source bindings",
+        ],
         "cases": [
             (
                 "direct-small-task",
@@ -107,6 +112,11 @@ SKILLS = {
             "risk-owned-development",
             "proportionate-validation",
             "lifecycle-cleanup",
+        ],
+        "process_evidence": [
+            "the change map names the behavior risk and its evidence owner before editing",
+            "the selected checks cover the changed seam and record the validation scope",
+            "the obsolete path is removed and the reference scan reports no live owner",
         ],
         "cases": [
             (
@@ -163,6 +173,11 @@ SKILLS = {
             "unambiguous-handoff",
             "continuous-execution",
         ],
+        "process_evidence": [
+            "each implementation step names its exact source owner and verification command",
+            "the handoff records its artifacts, authority limit, and next executable command",
+            "ordered steps have explicit prerequisites and exits with no unstated choice",
+        ],
         "cases": [
             (
                 "source-bound-plan",
@@ -217,6 +232,11 @@ SKILLS = {
             "level-selection",
             "deterministic-first",
             "evidence-qualified-comparison",
+        ],
+        "process_evidence": [
+            "the claim is assigned to the least expensive valid L0-L4 evidence owner",
+            "schema, path, and lifecycle facts are closed before model grading",
+            "the comparison uses bound evidence and marks unsupported claims as unsupported",
         ],
         "cases": [
             (
@@ -758,13 +778,22 @@ def _calibration_view(
     repetition: int,
 ) -> dict[str, str]:
     mechanisms = ", ".join(claims)
+    process_steps = "; ".join(
+        f"step {index} ({claim}): {detail}"
+        for index, (claim, detail) in enumerate(
+            zip(claims, SKILLS[skill_id]["process_evidence"], strict=True),
+            start=1,
+        )
+    )
     evidence = {
         "quality-check": {
             "known_good": (
-                "The submitted deliverable resolves every stated requirement, "
-                "contains the requested artifact, and includes successful verification.",
-                "The final result is present, internally consistent, and directly usable; "
-                "all mandatory inputs and checks are accounted for.",
+                "Observed result record: the required artifact is present and readable; "
+                "every requirement row is complete; the verification command exited 0 "
+                "with no failing checks; the handoff names the usable output.",
+                "The evidence bundle contains the final result, every mandatory "
+                "input-to-output mapping, and a successful verification record; its "
+                "consistency check reports every field resolved and mutually consistent.",
             ),
             "known_bad": (
                 "The submission is only a placeholder and omits the requested result.",
@@ -781,8 +810,10 @@ def _calibration_view(
         },
         "process-check": {
             "known_good": (
-                f"The trace applies {mechanisms} in order and contains only task-relevant steps.",
-                f"Bound evidence shows the declared mechanisms ({mechanisms}) and only task-relevant steps.",
+                f"Complete trace with exactly three completed entries: {process_steps}. "
+                "No other trace entry is present.",
+                f"Bound process record: {process_steps}. Every entry has input and output "
+                "bindings with status=completed, and unrelated_actions=[].",
             ),
             "known_bad": (
                 f"The work was performed ad hoc; none of the declared mechanisms ({mechanisms}) appears, and unrelated steps dominate the trace.",

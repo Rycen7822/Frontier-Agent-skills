@@ -35,6 +35,7 @@ from _model_evolution_calibration import (
     close_calibration_failure,
     prepare_calibrations,
 )
+from _model_evolution_calibration_receipt import close_calibration_rejection
 from _model_evolution_ops import (
     OperationError,
     bundle_skill_at_revision,
@@ -409,8 +410,11 @@ def _init(args: argparse.Namespace) -> None:
             campaign_root=campaign_root,
         )
     supersedes = None
-    if args.supersession_failure_receipt is not None and args.supersedes is None:
-        raise CliError("failure receipt requires --supersedes")
+    if (
+        args.supersession_failure_receipt is not None
+        or args.supersession_calibration_rejection_receipt is not None
+    ) and args.supersedes is None:
+        raise CliError("supersession receipt requires --supersedes")
     if args.supersedes is not None:
         supersedes = prepare_supersedes(
             campaign_binding=_binding_for_path(
@@ -428,6 +432,16 @@ def _init(args: argparse.Namespace) -> None:
                     tracked_repository=False,
                 )
                 if args.supersession_failure_receipt is not None
+                else None
+            ),
+            calibration_rejection_receipt_binding=(
+                _binding_for_path(
+                    args.supersession_calibration_rejection_receipt,
+                    repository_root=repository_root,
+                    campaign_root=campaign_root,
+                    tracked_repository=False,
+                )
+                if args.supersession_calibration_rejection_receipt is not None
                 else None
             ),
             repository_root=repository_root,
@@ -816,6 +830,30 @@ def _close_calibration_failure(args: argparse.Namespace) -> None:
         "failure_receipt": binding,
         "artifact_sha256": binding["sha256"],
         "document_self_hash": receipt["failure_receipt_hash"],
+        "request_count": receipt["request_count"],
+    })
+
+
+def _close_calibration_rejection(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    campaign = _campaign_store(repository_root, campaign_root).read()
+    receipt = close_calibration_rejection(
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        campaign=campaign,
+        skill_id=args.skill_id,
+        output=args.output.resolve(),
+    )
+    binding = _binding_for_path(
+        args.output.resolve(),
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        tracked_repository=False,
+    )
+    _emit({
+        "calibration_rejection_receipt": binding,
+        "artifact_sha256": binding["sha256"],
+        "document_self_hash": receipt["calibration_rejection_receipt_hash"],
         "request_count": receipt["request_count"],
     })
 
@@ -1245,6 +1283,7 @@ def _parser() -> argparse.ArgumentParser:
     init.add_argument("--predecessor-qualification", type=Path)
     init.add_argument("--supersedes", type=Path)
     init.add_argument("--supersession-failure-receipt", type=Path)
+    init.add_argument("--supersession-calibration-rejection-receipt", type=Path)
     init.add_argument("--provider-request-ceiling", type=int, required=True)
     init.add_argument("--execute-ceiling", type=int, required=True)
     init.add_argument("--model-grade-ceiling", type=int, required=True)
@@ -1278,6 +1317,10 @@ def _parser() -> argparse.ArgumentParser:
     failure = commands.add_parser("close-calibration-failure")
     failure.add_argument("--skill-id", choices=SKILL_IDS, required=True)
     failure.add_argument("--output", type=Path, required=True)
+
+    rejection = commands.add_parser("close-calibration-rejection")
+    rejection.add_argument("--skill-id", choices=SKILL_IDS, required=True)
+    rejection.add_argument("--output", type=Path, required=True)
 
     register = commands.add_parser("register-plan")
     register.add_argument("--expected-revision", type=int, required=True)
@@ -1355,6 +1398,7 @@ def main(argv: list[str] | None = None) -> int:
             "probe": _probe,
             "prepare-calibration": _prepare_calibration,
             "close-calibration-failure": _close_calibration_failure,
+            "close-calibration-rejection": _close_calibration_rejection,
             "register-plan": _register_plan,
             "record": _record,
             "status": _status,

@@ -22,6 +22,10 @@ from _model_evolution_calibration import (  # noqa: E402
     close_calibration_failure,
     prepare_calibrations,
 )
+from _model_evolution_calibration_receipt import (  # noqa: E402
+    close_calibration_rejection,
+    validate_calibration_rejection_receipt,
+)
 from _model_evolution_contract import (  # noqa: E402
     make_binding,
     project_qualification,
@@ -291,6 +295,142 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                     output=output,
                 )
             self.assertEqual(original, output.read_bytes())
+
+    def test_completed_threshold_rejection_receipt_is_exact(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            fixture = materialize_campaign(Path(raw))
+            campaign = fixture["campaign"]
+            campaign_root = fixture["campaign_root"]
+            write_json(
+                campaign_root / "qualification/qualification.json",
+                project_qualification(
+                    campaign,
+                    repository_root=fixture["repository_root"],
+                    campaign_root=campaign_root,
+                    observed_as_of="2026-08-03T00:00:00Z",
+                    valid_until="2026-08-04T00:00:00Z",
+                ),
+            )
+            preparation = with_self_hash({
+                "schema_version": "model-evolution-calibration-preparation/1",
+                "campaign_id": campaign["campaign_id"],
+                "campaign_hash": campaign["campaign_hash"],
+                "state_revision": campaign["state_revision"],
+                "as_of": "2026-08-03T00:00:00Z",
+                "created": "2026-08-03T00:00:00Z",
+                "expires": "2026-08-04T00:00:00Z",
+                "commands": [{
+                    "skill_id": "writing-plans",
+                    "request_count": 1,
+                    "run": [],
+                    "validate": [],
+                    "record": [],
+                }],
+            }, "preparation_hash")
+            write_json(campaign_root / "calibration/preparation.json", preparation)
+            skill_root = campaign_root / "calibration/writing-plans"
+            terminal_root = skill_root / "run/terminals/001"
+            terminal_root.mkdir(parents=True)
+            payload_hash = "sha256:" + "4" * 64
+            request_hash = "sha256:" + "5" * 64
+            example_id = "writing-plans-quality-check-cal-01"
+            host_result = {
+                "cleanup": {"state": "not_applicable", "status": "clean"},
+                "envelope": {
+                    "entry_id": example_id,
+                    "entry_ordinal": 0,
+                    "request_kind": "model_grade",
+                },
+                "protocol_error": None,
+                "record_type": "skill-evaluator-host-result/1",
+                "refusal": False,
+                "request_hash": request_hash,
+                "terminal": True,
+                "terminal_status": "completed",
+                "timeout": False,
+                "treatment_error": None,
+            }
+            (terminal_root / "host-stdout.jsonl").write_text(
+                json.dumps(host_result, sort_keys=True, separators=(",", ":"))
+                + "\n",
+                encoding="utf-8",
+            )
+            terminal = with_self_hash({
+                "schema_version": "model-calibration-terminal/1",
+                "example_id": example_id,
+                "check_id": "quality-check",
+                "host_result_hash": "sha256:" + "6" * 64,
+                "label": "abstain",
+                "notes": "Evidence is insufficient.",
+                "payload_hash": payload_hash,
+                "position": 1,
+                "request_hash": request_hash,
+                "severity": 0,
+                "uncertainty": "high",
+            }, "terminal_hash")
+            write_json(terminal_root / "terminal.json", terminal)
+            label = {
+                "example_id": example_id,
+                "check_id": "quality-check",
+                "payload_hash": payload_hash,
+                "gold_label": "pass",
+            }
+            rating = {
+                "example_id": example_id,
+                "check_id": "quality-check",
+                "payload_hash": payload_hash,
+                "label": "abstain",
+                "position": 1,
+                "thresholds": {
+                    "minimum_agreement": 1.0,
+                    "minimum_examples": 1,
+                },
+            }
+            for path, row in (
+                (skill_root / "calibration-gold.jsonl", label),
+                (skill_root / "run/calibration-ratings.jsonl", rating),
+            ):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n",
+                    encoding="utf-8",
+                )
+            output = campaign_root / "calibration/rejection-writing-plans.json"
+            receipt = close_calibration_rejection(
+                repository_root=fixture["repository_root"],
+                campaign_root=campaign_root,
+                campaign=campaign,
+                skill_id="writing-plans",
+                output=output,
+            )
+            validate_document(receipt, "calibration_rejection_receipt")
+            self.assertEqual(1, receipt["request_count"])
+            self.assertEqual(["quality-check"], receipt["failed_checks"])
+            self.assertEqual(0.0, receipt["check_metrics"][0]["agreement"])
+            self.assertEqual(
+                1,
+                validate_calibration_rejection_receipt(
+                    make_binding(
+                        output,
+                        root="campaign",
+                        repository_root=fixture["repository_root"],
+                        campaign_root=campaign_root,
+                    ),
+                    repository_root=fixture["repository_root"],
+                    campaign_root=campaign_root,
+                    campaign_hash=campaign["campaign_hash"],
+                ),
+            )
+            self.assertEqual(
+                receipt,
+                close_calibration_rejection(
+                    repository_root=fixture["repository_root"],
+                    campaign_root=campaign_root,
+                    campaign=campaign,
+                    skill_id="writing-plans",
+                    output=output,
+                ),
+            )
 
     maxDiff = None
 
