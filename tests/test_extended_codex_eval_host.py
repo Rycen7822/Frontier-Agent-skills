@@ -838,10 +838,41 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(0, result.returncode, result.stderr)
             terminal = _jsonl(result.stdout)[-1]
             self.assertEqual("protocol_error", terminal["terminal_status"])
-            self.assertIn(
-                "Codex output exposed the bound source repository",
-                json.dumps(terminal["protocol_error"]),
+            protocol = json.dumps(terminal["protocol_error"])
+            self.assertIn("stdout record 3", protocol)
+            self.assertIn("item.completed/agent_message", protocol)
+            self.assertIn("/item/text", protocol)
+            self.assertNotIn(str(root), protocol)
+
+    def test_bound_plugin_redacts_source_repository_stderr(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            plugin, _ = _materialize_plugin(root)
+            fake, _ = _write_fake_codex(root, stderr=str(root))
+            manifest_path = root / "host.json"
+            manifest = _plugin_bound_manifest(manifest_path, fake, plugin)
+            candidate = _execute_payload()
+            candidate.update({
+                "subject_skill_id": "writing-plans",
+                "catalog": manifest["catalog"]["entries"],
+                "treatment": {"profile": "candidate/force_loaded"},
+            })
+            workspace = root / "workspace"
+            workspace.mkdir()
+
+            result = _run_bound_adapter(
+                workspace, manifest, _request("execute_case", candidate)
             )
+
+            self.assertEqual(0, result.returncode)
+            terminal = _jsonl(result.stdout)[-1]
+            protocol = json.dumps(terminal["protocol_error"])
+            self.assertEqual("protocol_error", terminal["terminal_status"])
+            self.assertIn("stderr record 1 (unstructured)", protocol)
+            self.assertNotIn(str(root), protocol)
+            self.assertIn("<source-repository>", result.stderr)
+            self.assertNotIn(str(root), result.stderr)
 
     def test_bound_plugin_projects_observed_skill_read_and_sandbox_denial(self) -> None:
         cases = (
