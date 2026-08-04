@@ -15,6 +15,7 @@ from _codex_eval_delivery import (
     MODEL_EVOLUTION_ENV_ALLOWLIST,
     isolated_tool_schema_hash,
 )
+from codex_eval_host import adapter_source_hash
 from _model_evolution_contract import (
     SKILL_IDS,
     build_initial_campaign,
@@ -112,7 +113,7 @@ def _materialize_fake_host(
         {
             "id": "codex-eval-host",
             "version": "1",
-            "sha256": file_hash(ADAPTER),
+            "sha256": adapter_source_hash(),
         }
     )
     host["identity"]["execution"]["model"] = "fixture-model"

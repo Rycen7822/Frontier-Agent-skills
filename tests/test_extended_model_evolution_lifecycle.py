@@ -703,9 +703,10 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                 Path.cwd(),
             )
         )
-        adapter_target = self.fixture["repository_root"] / "scripts/codex_eval_host.py"
-        adapter_target.parent.mkdir()
-        shutil.copyfile(REPOSITORY_ROOT / "scripts/codex_eval_host.py", adapter_target)
+        scripts_target = self.fixture["repository_root"] / "scripts"
+        scripts_target.mkdir()
+        for name in host_builder.codex_eval_host.ADAPTER_SOURCE_FILES:
+            shutil.copyfile(REPOSITORY_ROOT / "scripts" / name, scripts_target / name)
         identity = {
             "dirty": False,
             "revision": FIXED_COMMIT,
@@ -733,6 +734,10 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         self.assertEqual(
             host_builder.codex_eval_host.ADAPTER_VERSION,
             built["identity"]["adapter"]["version"],
+        )
+        self.assertEqual(
+            host_builder.codex_eval_host.adapter_source_hash(scripts_target),
+            built["identity"]["adapter"]["sha256"],
         )
         self.assertEqual(
             host_builder.isolated_tool_schema_hash(

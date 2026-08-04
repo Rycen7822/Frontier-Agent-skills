@@ -144,7 +144,7 @@ def build_host(
         raise HostBuildError("template model identity differs from its command")
     identity["adapter"].update(
         {
-            "sha256": _hash_bytes(adapter.read_bytes()),
+            "sha256": codex_eval_host.adapter_source_hash(adapter.parent),
             "version": codex_eval_host.ADAPTER_VERSION,
         }
     )

@@ -18,6 +18,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "skill-evaluator/scripts"))
 
 from _bundle_hash import inventory, tree_hash  # noqa: E402
 from _codex_eval_delivery import isolated_tool_schema_hash  # noqa: E402
+from codex_eval_host import ADAPTER_SOURCE_FILES, adapter_source_hash  # noqa: E402
 from validate_eval_suite import (  # noqa: E402
     load_v5_schema_registry,
     validate_host_protocol_record,
@@ -249,7 +250,7 @@ def _host_manifest(
         {
             "id": "codex-eval-host",
             "version": "1",
-            "sha256": _sha256_file(ADAPTER),
+            "sha256": adapter_source_hash(),
         }
     )
     manifest["identity"]["repository"]["worktree"] = str(path.parent.resolve())
@@ -285,7 +286,7 @@ def _materialize_adapter_fixture(root: Path, fake: Path) -> dict[str, Path]:
         {
             "id": "codex-eval-host",
             "version": "1",
-            "sha256": _sha256_file(ADAPTER),
+            "sha256": adapter_source_hash(),
         }
     )
     host["identity"]["repository"]["worktree"] = str(root.resolve())
@@ -621,6 +622,17 @@ class TestCodexEventNormalization(unittest.TestCase):
 
 
 class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
+    def test_adapter_identity_covers_runtime_components(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scripts = Path(tmp)
+            for name in ADAPTER_SOURCE_FILES:
+                source = REPOSITORY_ROOT / "scripts" / name
+                (scripts / name).write_bytes(source.read_bytes())
+            self.assertEqual(adapter_source_hash(), adapter_source_hash(scripts))
+            events = scripts / "_codex_eval_events.py"
+            events.write_bytes(events.read_bytes() + b"\n# identity drift\n")
+            self.assertNotEqual(adapter_source_hash(), adapter_source_hash(scripts))
+
     def test_completed_turn_without_usage_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

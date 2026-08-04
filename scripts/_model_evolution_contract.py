@@ -1959,11 +1959,12 @@ def prepare_supersedes(
             or child_environment_isolation_correction
             or source_exposure_locator_correction
             or source_root_binding_correction
+            or exec_item_update_correction
         )
         and old_host["identity"]["adapter"]["sha256"]
         == target_host["identity"]["adapter"]["sha256"]
     ):
-        raise ContractError("workspace correction did not change the Host adapter")
+        raise ContractError("Host correction did not change the adapter identity")
     qualification_path = old_path.parent / "qualification/qualification.json"
     qualification = load_json(qualification_path, label="superseded qualification")
     validate_document(qualification, "qualification")
