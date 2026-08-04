@@ -16,6 +16,7 @@ from _model_evolution_contract import (
     ContractError,
     SKILL_IDS,
     _is_child_environment_isolation_correction,
+    _is_exec_item_update_correction,
     _is_multiturn_timeout_correction,
     _is_single_principal_exec_correction,
     _is_source_exposure_locator_correction,
@@ -485,6 +486,7 @@ def _init(args: argparse.Namespace) -> None:
             or _is_source_workspace_isolation_correction(superseded_campaign)
             or _is_source_exposure_locator_correction(superseded_campaign)
             or _is_source_root_binding_correction(superseded_campaign)
+            or _is_exec_item_update_correction(superseded_campaign)
             or _is_systemd_environment_correction(superseded_campaign)
         )
     expected_request_ceilings = _cumulative_request_ceilings(

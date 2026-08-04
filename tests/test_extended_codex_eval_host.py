@@ -438,6 +438,11 @@ class TestCodexEventNormalization(unittest.TestCase):
                         expected["diagnostic_kind"],
                         actual["diagnostics"][0]["kind"],
                     )
+                    if "diagnostic_message" in expected:
+                        self.assertEqual(
+                            expected["diagnostic_message"],
+                            actual["diagnostics"][0]["message"],
+                        )
                     continue
                 for field in (
                     "thread_id",
@@ -449,6 +454,87 @@ class TestCodexEventNormalization(unittest.TestCase):
                     self.assertEqual(expected[field], actual[field], field)
                 if "failures" in expected:
                     self.assertEqual(expected["failures"], actual["failures"])
+
+    def test_current_item_update_preserves_a_live_item(self) -> None:
+        records = [
+            {"type": "thread.started", "thread_id": THREAD_ID},
+            {"type": "turn.started"},
+            {
+                "type": "item.started",
+                "item": {"id": "todo-1", "type": "todo_list", "items": []},
+            },
+            {
+                "type": "item.updated",
+                "item": {
+                    "id": "todo-1",
+                    "type": "todo_list",
+                    "items": [{"text": "inspect", "completed": True}],
+                },
+            },
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "todo-1",
+                    "type": "todo_list",
+                    "items": [{"text": "inspect", "completed": True}],
+                },
+            },
+            {"type": "turn.completed", "usage": {"input_tokens": 10}},
+        ]
+        normalized = self.events.normalize_records(records)
+        self.assertEqual("completed", normalized["status"])
+        self.assertEqual(
+            ["started", "updated", "completed"],
+            [item["phase"] for item in normalized["items"]],
+        )
+
+        invalid = self.events.normalize_records(
+            [records[0], records[1], records[3], records[-1]],
+        )
+        self.assertEqual("protocol_error", invalid["status"])
+        self.assertEqual(
+            "Codex item updated before start",
+            invalid["diagnostics"][0]["message"],
+        )
+
+        invalid_cases = (
+            (
+                [
+                    records[0],
+                    records[1],
+                    records[2],
+                    records[4],
+                    records[3],
+                    records[-1],
+                ],
+                "Codex item updated after completion",
+            ),
+            (
+                [
+                    records[0],
+                    records[1],
+                    records[2],
+                    {
+                        "type": "item.updated",
+                        "item": {
+                            "id": "todo-1",
+                            "type": "agent_message",
+                            "text": "changed",
+                        },
+                    },
+                    records[-1],
+                ],
+                "Codex item type changed across its lifecycle",
+            ),
+        )
+        for invalid_records, expected_message in invalid_cases:
+            with self.subTest(expected_message=expected_message):
+                invalid = self.events.normalize_records(invalid_records)
+                self.assertEqual("protocol_error", invalid["status"])
+                self.assertEqual(
+                    expected_message,
+                    invalid["diagnostics"][0]["message"],
+                )
 
     def test_current_exec_items_and_single_principal_boundary(self) -> None:
         records = [

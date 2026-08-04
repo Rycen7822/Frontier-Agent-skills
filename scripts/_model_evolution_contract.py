@@ -1224,9 +1224,34 @@ def _is_source_root_binding_correction(value: dict[str, Any]) -> bool:
     )
 
 
-def _validate_source_exposure_evidence(
-    campaign: dict[str, Any], campaign_root: Path, repository_root: Path,
-    *, baseline_entry_id: str, candidate_entry_id: str,
+def _is_exec_item_update_correction(value: dict[str, Any]) -> bool:
+    request_fields = ("provider_requests", "model_grade", "execute")
+    return (
+        _is_formal_projection_correction(value)
+        and value["campaign_id"]
+        == "model-evolution-6-3-source-root-binding-60586cb"
+        and value["product"]["source_commit"]
+        == "60586cb34933eafe8173598708b81c682d107168"
+        and value["state_revision"] == 11
+        and tuple(
+            value["budgets"]["ceiling"][field] for field in request_fields
+        ) == (1234, 792, 520)
+        and tuple(
+            value["budgets"]["reserved"][field] for field in request_fields
+        ) == (1090, 544, 480)
+        and tuple(
+            value["budgets"]["observed"][field] for field in request_fields
+        ) == (770, 704, 0)
+    )
+
+
+def _validate_formal_protocol_error_evidence(
+    campaign: dict[str, Any],
+    campaign_root: Path,
+    repository_root: Path,
+    *,
+    valid_entry_ids: tuple[str, ...],
+    failed_entry_id: str,
     expected_protocol_error: dict[str, Any] | None = None,
 ) -> None:
     expected_protocol_error = expected_protocol_error or {
@@ -1240,27 +1265,28 @@ def _validate_source_exposure_evidence(
         plan_path = resolve_binding(
             plans[skill_id]["plan"], repository_root, campaign_root,
         )
-        plan = load_json(plan_path, label=f"{skill_id} source-exposure parent plan")
+        plan = load_json(plan_path, label=f"{skill_id} protocol-error parent plan")
         artifacts = plan_path.parent / plan["artifacts"]["root"]
         index_path = artifacts / plan["artifacts"]["index_relpath"]
         attempts = list((artifacts / "entries").glob("*/attempt-*"))
         if skill_id != "skill-evaluator":
             if index_path.exists() or attempts:
-                raise ContractError("source-exposure parent started an unexpected plan")
+                raise ContractError(
+                    "protocol-error parent started an unexpected plan"
+                )
             continue
 
-        rows = load_jsonl(index_path, label="source-exposure parent index")
+        rows = load_jsonl(index_path, label="formal protocol-error parent index")
         expected = {
-            baseline_entry_id: (True, "normal", "completed"),
-            candidate_entry_id: (
-                False, "resume_seal", "interrupted",
-            ),
+            entry_id: (True, "normal", "completed")
+            for entry_id in valid_entry_ids
         }
+        expected[failed_entry_id] = (False, "resume_seal", "interrupted")
         if {row.get("entry_id") for row in rows} != set(expected):
-            raise ContractError("source-exposure parent index differs")
+            raise ContractError("protocol-error parent index differs")
         indexed_attempts: set[Path] = set()
-        candidate_attempt: Path | None = None
-        candidate_receipt: dict[str, Any] | None = None
+        failed_attempt: Path | None = None
+        failed_receipt: dict[str, Any] | None = None
         for row in rows:
             entry_id = row["entry_id"]
             attempt = artifacts.joinpath(*_relative_path(row["artifact_dir"]).parts)
@@ -1278,8 +1304,8 @@ def _validate_source_exposure_evidence(
                 or content_hash(receipt_path.read_bytes())
                 != receipt_binding.get("sha256")
             ):
-                raise ContractError("source-exposure parent receipt binding differs")
-            receipt = load_json(receipt_path, label="source-exposure parent receipt")
+                raise ContractError("protocol-error parent receipt binding differs")
+            receipt = load_json(receipt_path, label="protocol-error parent receipt")
             verify_self_hash(receipt, "receipt_hash")
             valid, origin, terminal = expected[entry_id]
             run = receipt.get("run", {})
@@ -1291,38 +1317,38 @@ def _validate_source_exposure_evidence(
                 or run.get("terminal") != terminal
                 or (not valid and run.get("error") != "interrupted")
             ):
-                raise ContractError("source-exposure parent run differs")
+                raise ContractError("protocol-error parent run differs")
             indexed_attempts.add(attempt.resolve())
             if not valid:
-                candidate_attempt = attempt
-                candidate_receipt = receipt
+                failed_attempt = attempt
+                failed_receipt = receipt
         if (
-            len(rows) != 2
-            or len(attempts) != 2
+            len(rows) != len(expected)
+            or len(attempts) != len(expected)
             or {path.resolve() for path in attempts} != indexed_attempts
-            or candidate_attempt is None
-            or candidate_receipt is None
+            or failed_attempt is None
+            or failed_receipt is None
         ):
-            raise ContractError("source-exposure parent attempt set differs")
+            raise ContractError("protocol-error parent attempt set differs")
 
-        protocol = candidate_receipt.get("host_protocol", {})
+        protocol = failed_receipt.get("host_protocol", {})
         requests = protocol.get("requests")
-        stdout_path = candidate_attempt / "host-stdout.jsonl"
-        stderr_path = candidate_attempt / "host-stderr.txt"
+        stdout_path = failed_attempt / "host-stdout.jsonl"
+        stderr_path = failed_attempt / "host-stderr.txt"
         if (
             protocol.get("results") != []
             or not isinstance(requests, list)
             or len(requests) != 1
             or requests[0].get("envelope", {}).get("entry_id")
-            != candidate_entry_id
+            != failed_entry_id
             or protocol.get("raw_stdout", {}).get("sha256")
             != content_hash(stdout_path.read_bytes())
             or protocol.get("raw_stderr", {}).get("sha256")
             != content_hash(stderr_path.read_bytes())
             or stderr_path.read_bytes() != b""
         ):
-            raise ContractError("source-exposure parent Host receipt differs")
-        results = load_jsonl(stdout_path, label="source-exposure parent Host result")
+            raise ContractError("protocol-error parent Host receipt differs")
+        results = load_jsonl(stdout_path, label="protocol-error parent Host result")
         result = results[0] if len(results) == 1 else None
         if (
             not isinstance(result, dict)
@@ -1334,7 +1360,7 @@ def _validate_source_exposure_evidence(
             or result.get("usage", {}).get("records") != []
             or result.get("protocol_error") != expected_protocol_error
         ):
-            raise ContractError("source-exposure parent Host evidence differs")
+            raise ContractError("protocol-error parent Host evidence differs")
 
 
 def _validate_single_principal_exec_evidence(
@@ -1636,7 +1662,13 @@ def _blocked_supersession_lineage(
     """Load the bounded closed-campaign lineage and verify every budget carry."""
     lineage = [(old, old_path)]
     current, current_path = old, old_path
-    campaign_limit = 10 if _is_source_root_binding_correction(old) else 9
+    campaign_limit = (
+        11
+        if _is_exec_item_update_correction(old)
+        else 10
+        if _is_source_root_binding_correction(old)
+        else 9
+    )
     while current["supersedes"] is not None:
         if len(lineage) == campaign_limit:
             raise ContractError("supersession repair depth is exhausted")
@@ -1745,6 +1777,9 @@ def prepare_supersedes(
     source_root_binding_correction = (
         len(lineage) == 10 and _is_source_root_binding_correction(old)
     )
+    exec_item_update_correction = (
+        len(lineage) == 11 and _is_exec_item_update_correction(old)
+    )
     transport_lineage = any(
         campaign["campaign_id"] == "model-evolution-6-3-projection-ec0d79d"
         for campaign, _ in lineage
@@ -1760,7 +1795,10 @@ def prepare_supersedes(
         or child_environment_isolation_correction
         or source_exposure_locator_correction
         or source_root_binding_correction
+        or exec_item_update_correction
     ):
+        raise ContractError("supersession repair depth is exhausted")
+    if len(lineage) == 11 and not exec_item_update_correction:
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 10 and not source_root_binding_correction:
         raise ContractError("supersession repair depth is exhausted")
@@ -1794,6 +1832,7 @@ def prepare_supersedes(
         or child_environment_isolation_correction
         or source_exposure_locator_correction
         or source_root_binding_correction
+        or exec_item_update_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = (
@@ -1975,12 +2014,12 @@ def prepare_supersedes(
         }
         if blockers != expected_blockers:
             raise ContractError("child-env parent qualification blockers differ")
-        _validate_source_exposure_evidence(
+        _validate_formal_protocol_error_evidence(
             old,
             old_path.parent,
             repository_root,
-            baseline_entry_id="pe-9bbf96d9f91228d492776a6e",
-            candidate_entry_id="pe-234a7ca6e66b3f19631998a7",
+            valid_entry_ids=("pe-9bbf96d9f91228d492776a6e",),
+            failed_entry_id="pe-234a7ca6e66b3f19631998a7",
         )
     if source_exposure_locator_correction:
         expected_blockers = {("final-plugin-unobserved", "release")} | {
@@ -1992,12 +2031,12 @@ def prepare_supersedes(
         }
         if blockers != expected_blockers:
             raise ContractError("source-locator parent qualification blockers differ")
-        _validate_source_exposure_evidence(
+        _validate_formal_protocol_error_evidence(
             old,
             old_path.parent,
             repository_root,
-            baseline_entry_id="pe-2633aeb4f766c8abcb5ccf7b",
-            candidate_entry_id="pe-8fbc5c60a1fd8d824e15e689",
+            valid_entry_ids=("pe-2633aeb4f766c8abcb5ccf7b",),
+            failed_entry_id="pe-8fbc5c60a1fd8d824e15e689",
         )
     if source_root_binding_correction:
         expected_blockers = {("final-plugin-unobserved", "release")} | {
@@ -2009,12 +2048,12 @@ def prepare_supersedes(
         }
         if blockers != expected_blockers:
             raise ContractError("source-root parent qualification blockers differ")
-        _validate_source_exposure_evidence(
+        _validate_formal_protocol_error_evidence(
             old,
             old_path.parent,
             repository_root,
-            baseline_entry_id="pe-afe348c8ee626c0f96f490b4",
-            candidate_entry_id="pe-5fc0e124626ace71a7456134",
+            valid_entry_ids=("pe-afe348c8ee626c0f96f490b4",),
+            failed_entry_id="pe-5fc0e124626ace71a7456134",
             expected_protocol_error={
                 "artifact": None,
                 "kind": "malformed_record",
@@ -2023,6 +2062,35 @@ def prepare_supersedes(
                     "exposed the bound source repository at /item/aggregated_output"
                 ),
                 "seq": 5,
+            },
+        )
+    if exec_item_update_correction:
+        expected_blockers = {("final-plugin-unobserved", "release")} | {
+            (f"{skill_id}-current", skill_id) for skill_id in SKILL_IDS
+        }
+        blockers = {
+            (row.get("code"), row.get("scope"))
+            for row in qualification["blockers"]
+        }
+        if blockers != expected_blockers:
+            raise ContractError("item-update parent qualification blockers differ")
+        if qualification["qualification_id"] != "mq-61f95723d42de964253df384":
+            raise ContractError("item-update parent qualification differs")
+        _validate_formal_protocol_error_evidence(
+            old,
+            old_path.parent,
+            repository_root,
+            valid_entry_ids=(
+                "pe-41891ee918780d1ee652fdb5",
+                "pe-44a1a21ce3eac9cd5736fab9",
+                "pe-61602a493e7c9d4baefd66a9",
+            ),
+            failed_entry_id="pe-b2235b2ccfa0c2e482b7ac9d",
+            expected_protocol_error={
+                "artifact": None,
+                "kind": "malformed_record",
+                "message": "unknown Codex record type",
+                "seq": 223,
             },
         )
     imported_reserved = dict(old["budgets"]["reserved"])

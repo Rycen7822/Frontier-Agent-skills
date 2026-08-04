@@ -14,6 +14,7 @@ RECORD_REQUIREMENTS = {
     "turn.completed": set(),
     "turn.failed": set(),
     "item.started": {"item"},
+    "item.updated": {"item"},
     "item.completed": {"item"},
     "error": set(),
 }
@@ -146,8 +147,17 @@ def normalize_records(records: list[dict[str, Any]]) -> dict[str, Any]:
     for index, record in enumerate(records, 1):
         record_type = record.get("type")
         if not isinstance(record_type, str) or record_type not in RECORD_REQUIREMENTS:
+            observed = (
+                record_type
+                if isinstance(record_type, str)
+                else type(record_type).__name__
+            )
             diagnostics.append(
-                _diagnostic("unknown_record_type", "unknown Codex record type", index)
+                _diagnostic(
+                    "unknown_record_type",
+                    f"unknown Codex record type: {observed}",
+                    index,
+                )
             )
             continue
         missing = RECORD_REQUIREMENTS[record_type] - set(record)
@@ -196,7 +206,7 @@ def normalize_records(records: list[dict[str, Any]]) -> dict[str, Any]:
                 failure = _failure_fact("turn", f"turn-{index}", record)
                 if failure is not None:
                     failures.append(failure)
-        elif record_type in {"item.started", "item.completed"}:
+        elif record_type in {"item.started", "item.updated", "item.completed"}:
             item = record["item"]
             if (
                 not isinstance(item, dict)
@@ -218,6 +228,34 @@ def normalize_records(records: list[dict[str, Any]]) -> dict[str, Any]:
                     diagnostics.append(
                         _diagnostic(
                             "item_lifecycle", "Codex item started more than once", index
+                        )
+                    )
+                else:
+                    started_items[item_id] = item
+            elif phase == "updated":
+                started = started_items.get(item_id)
+                if item_id in completed_items:
+                    diagnostics.append(
+                        _diagnostic(
+                            "item_lifecycle",
+                            "Codex item updated after completion",
+                            index,
+                        )
+                    )
+                elif started is None:
+                    diagnostics.append(
+                        _diagnostic(
+                            "item_lifecycle",
+                            "Codex item updated before start",
+                            index,
+                        )
+                    )
+                elif started.get("type") != item["type"]:
+                    diagnostics.append(
+                        _diagnostic(
+                            "item_lifecycle",
+                            "Codex item type changed across its lifecycle",
+                            index,
                         )
                     )
                 else:
