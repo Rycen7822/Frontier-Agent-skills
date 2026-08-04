@@ -16,6 +16,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 from _model_evolution_contract import (  # noqa: E402
     ContractError,
     SKILL_IDS,
+    _is_partial_calibration_correction,
     build_initial_campaign,
     evaluator_evidence_status,
     make_binding,
@@ -850,6 +851,22 @@ class ModelEvolutionContractTest(unittest.TestCase):
         self.assertEqual(
             rejection_binding, correction["calibration_rejection_receipt"]
         )
+
+    def test_partial_calibration_correction_shape_is_narrow(self) -> None:
+        state = copy.deepcopy(self.fixture["campaign"])
+        state["phase"] = "target_profile_ready"
+        state["skill_evidence"][SKILL_IDS[0]]["grader_calibration"] = (
+            self.fixture["bindings"]["host"]
+        )
+        self.assertTrue(_is_partial_calibration_correction(state))
+
+        state["plans"].append({"role": "target_current"})
+        self.assertFalse(_is_partial_calibration_correction(state))
+        state["plans"].clear()
+        state["skill_evidence"][SKILL_IDS[1]]["current_summary"] = (
+            self.fixture["bindings"]["host"]
+        )
+        self.assertFalse(_is_partial_calibration_correction(state))
 
     def test_observed_host_projection_requires_exact_capability_and_result_set(
         self,

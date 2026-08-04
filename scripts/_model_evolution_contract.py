@@ -855,6 +855,26 @@ def _is_single_calibration_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _is_partial_calibration_correction(value: dict[str, Any]) -> bool:
+    evidence = value["skill_evidence"]
+    per_skill = [evidence[skill_id] for skill_id in SKILL_IDS]
+    recorded = sum(item["grader_calibration"] is not None for item in per_skill)
+    return (
+        value["phase"] == "target_profile_ready"
+        and 0 < recorded < len(SKILL_IDS)
+        and value["plans"] == []
+        and value["candidate"] is None
+        and evidence["plugin_build"] is None
+        and all(
+            all(
+                field == "grader_calibration" or binding is None
+                for field, binding in item.items()
+            )
+            for item in per_skill
+        )
+    )
+
+
 def _is_single_probe_contract_correction(value: dict[str, Any]) -> bool:
     evidence = value["skill_evidence"]
     per_skill = [evidence[skill_id] for skill_id in SKILL_IDS]
@@ -921,7 +941,7 @@ def _calibration_rejection_request_count(
     *,
     repository_root: Path,
     campaign_root: Path,
-    campaign_hash: str,
+    campaign: dict[str, Any],
 ) -> int:
     from _model_evolution_calibration_receipt import (
         validate_calibration_rejection_receipt,
@@ -931,7 +951,7 @@ def _calibration_rejection_request_count(
         binding,
         repository_root=repository_root,
         campaign_root=campaign_root,
-        campaign_hash=campaign_hash,
+        campaign=campaign,
     )
 
 
@@ -940,11 +960,11 @@ def _blocked_supersession_lineage(
     old_path: Path,
     repository_root: Path,
 ) -> list[tuple[dict[str, Any], Path]]:
-    """Load at most seven closed campaigns and verify every budget carry."""
+    """Load at most eight closed campaigns and verify every budget carry."""
     lineage = [(old, old_path)]
     current, current_path = old, old_path
     while current["supersedes"] is not None:
-        if len(lineage) == 7:
+        if len(lineage) == 8:
             raise ContractError("supersession repair depth is exhausted")
         parent_path = resolve_binding(
             current["supersedes"]["campaign"],
@@ -976,7 +996,7 @@ def _blocked_supersession_lineage(
                 rejection_binding,
                 repository_root=repository_root,
                 campaign_root=parent_path.parent,
-                campaign_hash=parent["campaign_hash"],
+                campaign=parent,
             )
             expected_reserved["provider_requests"] += request_count
             expected_reserved["model_grade"] += request_count
@@ -1021,6 +1041,11 @@ def prepare_supersedes(
     calibration_contract_correction = (
         len(lineage) == 7 and _is_single_calibration_correction(old)
     )
+    calibration_fixture_correction = (
+        len(lineage) == 8 and _is_partial_calibration_correction(old)
+    )
+    if len(lineage) == 8 and not calibration_fixture_correction:
+        raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 7 and not calibration_contract_correction:
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 6 and not probe_contract_correction:
@@ -1029,6 +1054,7 @@ def prepare_supersedes(
         _is_single_calibration_correction(old)
         or probe_contract_correction
         or calibration_contract_correction
+        or calibration_fixture_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = len(lineage) in {4, 5}
@@ -1036,16 +1062,20 @@ def prepare_supersedes(
         raise ContractError("late supersession requires a failed-request receipt")
     if failure_receipt_binding is not None and not receipt_hop:
         raise ContractError("failed-request receipt is only legal for a late repair")
-    if calibration_contract_correction and calibration_rejection_receipt_binding is None:
+    if (
+        calibration_contract_correction or calibration_fixture_correction
+    ) and calibration_rejection_receipt_binding is None:
         raise ContractError(
-            "final calibration correction requires a rejection receipt"
+            "calibration correction requires a rejection receipt"
         )
     if (
         calibration_rejection_receipt_binding is not None
-        and not calibration_contract_correction
+        and not (
+            calibration_contract_correction or calibration_fixture_correction
+        )
     ):
         raise ContractError(
-            "calibration rejection receipt is only legal for the final correction"
+            "calibration rejection receipt is only legal for a calibration correction"
         )
     old_host = load_json(
         resolve_binding(
@@ -1164,7 +1194,7 @@ def prepare_supersedes(
             calibration_rejection_receipt_binding,
             repository_root=repository_root,
             campaign_root=old_path.parent,
-            campaign_hash=old["campaign_hash"],
+            campaign=old,
         )
         imported_reserved["provider_requests"] += request_count
         imported_reserved["model_grade"] += request_count

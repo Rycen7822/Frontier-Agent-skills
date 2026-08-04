@@ -23,6 +23,8 @@ from _model_evolution_calibration import (  # noqa: E402
     prepare_calibrations,
 )
 from _model_evolution_calibration_receipt import (  # noqa: E402
+    CalibrationReceiptError,
+    _verify_preparation_lineage,
     close_calibration_rejection,
     validate_calibration_rejection_receipt,
 )
@@ -418,7 +420,7 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                     ),
                     repository_root=fixture["repository_root"],
                     campaign_root=campaign_root,
-                    campaign_hash=campaign["campaign_hash"],
+                    campaign=campaign,
                 ),
             )
             self.assertEqual(
@@ -431,6 +433,39 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                     output=output,
                 ),
             )
+
+    def test_rejection_lineage_allows_only_prior_calibration_records(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            campaign = materialize_campaign(Path(raw))["campaign"]
+            campaign["phase"] = "target_profile_ready"
+            campaign = with_self_hash(campaign, "campaign_hash")
+            preparation = with_self_hash({
+                "campaign_id": campaign["campaign_id"],
+                "campaign_hash": campaign["campaign_hash"],
+                "state_revision": campaign["state_revision"],
+                "commands": [
+                    {"skill_id": skill_id, "request_count": 16}
+                    for skill_id in SKILL_IDS
+                ],
+            }, "preparation_hash")
+            campaign["skill_evidence"][SKILL_IDS[0]]["grader_calibration"] = {
+                "path": "calibration/first.json",
+                "root": "campaign",
+                "sha256": "sha256:" + "7" * 64,
+            }
+            campaign["budgets"]["observed"]["model_grade"] = 16
+            campaign["budgets"]["observed"]["provider_requests"] = 16
+            campaign["state_revision"] += 1
+            campaign = with_self_hash(campaign, "campaign_hash")
+            _verify_preparation_lineage(campaign, preparation)
+
+            campaign["budgets"]["observed"]["model_grade"] += 1
+            campaign = with_self_hash(campaign, "campaign_hash")
+            with self.assertRaisesRegex(
+                CalibrationReceiptError,
+                "calibration ancestry differs",
+            ):
+                _verify_preparation_lineage(campaign, preparation)
 
     maxDiff = None
 
