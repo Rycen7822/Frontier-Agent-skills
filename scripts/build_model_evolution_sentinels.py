@@ -27,6 +27,7 @@ import validate_eval_suite as evaluator  # noqa: E402
 
 
 MODEL_ROOT = Path("evaluation/model-evolution")
+FORMAL_ENTRY_TIMEOUT_SECONDS = 630
 MODEL_CHECKS = [
     {
         "check_id": "quality-check",
@@ -361,6 +362,7 @@ def _scenario(
     slug, coverage, task, protected, turn_count = case
     value = copy.deepcopy(base)
     value["case_id"] = f"{skill_id}-{slug}"
+    value["timeout_seconds"] = FORMAL_ENTRY_TIMEOUT_SECONDS
     value["split"] = "regression" if protected else "dev"
     value["tags"] = ["core", coverage, *(["boundary"] if protected else [])]
     value["fixture"] = {
@@ -502,6 +504,7 @@ def _spec(
     )
     value["subject"]["package"]["path"] = f"replace-with-{skill_id}-package"
     value["execution"]["ready"] = False
+    value["execution"]["timeout_seconds"] = FORMAL_ENTRY_TIMEOUT_SECONDS
     for module in value["applicability"]:
         module["evidence"] = [
             {
