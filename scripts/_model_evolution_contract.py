@@ -1910,6 +1910,7 @@ def prepare_supersedes(
         or exec_item_lifecycle_diagnostic_correction
         or process_namespace_isolation_correction
         or analysis_sentinel_contract_correction
+        or calibration_task_fixture_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 14 and not analysis_sentinel_contract_correction:
