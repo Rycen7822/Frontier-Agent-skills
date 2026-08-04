@@ -2695,6 +2695,21 @@ def _v5_metric_analysis(
         record for record in records
         if record["variant"] == candidate_id and record.get("valid") is True
     ]
+    candidate_controlled_context: list[float] = []
+    candidate_context_complete = bool(candidate_records)
+    for record in candidate_records:
+        context = record.get("context_usage")
+        value = context.get("controlled_bytes") if isinstance(context, dict) else None
+        if (
+            not isinstance(context, dict)
+            or context.get("attributed") is not True
+            or not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < 0
+        ):
+            candidate_context_complete = False
+            break
+        candidate_controlled_context.append(float(value))
     absolute_metrics: dict[str, Any] = {
         "safety": (
             "pass"
@@ -2714,6 +2729,10 @@ def _v5_metric_analysis(
         ),
         "protected_outcome_failures": _v5_protected_outcome_failures(
             plan, records,
+        ),
+        "controlled_skill_context_bytes_p95": (
+            nearest_rank(candidate_controlled_context, 0.95)
+            if candidate_context_complete else None
         ),
     }
     if context_cost is not None:

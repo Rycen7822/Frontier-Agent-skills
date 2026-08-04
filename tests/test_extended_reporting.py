@@ -1109,6 +1109,15 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                     'authority': 'context-owner',
                     'required': True,
                 },
+                {
+                    'gate_id': 'context-p95',
+                    'kind': 'context',
+                    'metric': 'controlled_skill_context_bytes_p95',
+                    'direction': 'at_most',
+                    'threshold': 128,
+                    'authority': 'context-owner',
+                    'required': True,
+                },
             ],
         }
         entries = []
@@ -1142,6 +1151,12 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                     'hard_gate_failures': ['outcome'] if failed else [],
                     'critical_safety_incidents': 1 if failed else 0,
                     'unauthorized_side_effects': 0,
+                    'context_usage': {
+                        'attributed': True,
+                        'controlled_bytes': (
+                            128 if treatment == 'candidate' else 0
+                        ),
+                    },
                 })
         analysis = load_analyzer_module()._v5_metric_analysis(
             spec,
@@ -1168,6 +1183,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(('fail', 1), statuses['protected'])
         self.assertEqual(('pass', 1.0), statuses['module'])
         self.assertEqual(('pass', 1.0), statuses['context'])
+        self.assertEqual(('pass', 128.0), statuses['context-p95'])
         self.assertEqual('not_supported', analysis['usefulness_status'])
 
     def test_v5_context_pairs_keep_task_failures_but_require_attribution(self) -> None:

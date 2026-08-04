@@ -16,6 +16,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 from _model_evolution_contract import (  # noqa: E402
     ContractError,
     SKILL_IDS,
+    _is_analysis_sentinel_contract_correction,
     _is_child_environment_isolation_correction,
     _is_formal_projection_correction,
     _is_model_grade_path_correction,
@@ -1017,6 +1018,27 @@ class ModelEvolutionContractTest(unittest.TestCase):
         state["budgets"]["observed"]["provider_requests"] = 419
         self.assertFalse(_is_single_principal_exec_correction(state))
         state["budgets"]["observed"]["provider_requests"] = 420
+
+        state["campaign_id"] = (
+            "model-evolution-6-3-process-namespace-isolation-49e35c2"
+        )
+        state["product"]["source_commit"] = (
+            "49e35c2041161c93e21f1f1378290d25a500118e"
+        )
+        state["state_revision"] = 11
+        state["budgets"]["ceiling"].update({
+            "provider_requests": 1540, "model_grade": 984, "execute": 664,
+        })
+        state["budgets"]["reserved"].update({
+            "provider_requests": 1396, "model_grade": 688, "execute": 624,
+        })
+        state["budgets"]["observed"].update({
+            "provider_requests": 980, "model_grade": 896, "execute": 0,
+        })
+        self.assertTrue(_is_analysis_sentinel_contract_correction(state))
+        state["budgets"]["reserved"]["provider_requests"] -= 1
+        self.assertFalse(_is_analysis_sentinel_contract_correction(state))
+        state["budgets"]["reserved"]["provider_requests"] += 1
 
         state["plans"].pop()
         self.assertFalse(_is_formal_projection_correction(state))
