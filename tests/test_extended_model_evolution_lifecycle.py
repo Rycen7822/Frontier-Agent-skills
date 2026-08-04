@@ -1063,6 +1063,24 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         self.assertEqual(2, projection["active_attempts"])
         self.assertEqual(3, projection["recoverable_attempts"])
 
+        blocked = state_module.status_projection(
+            self.fixture["store"].read(),
+            plan_statuses=[
+                {
+                    "role": "target_current",
+                    "skill_id": "skill-evaluator",
+                    "active_attempts": [],
+                    "recoverable_attempts": [],
+                    "invalid_attempts": 1,
+                }
+            ],
+            blockers=[],
+            runner_commands=["must-not-run"],
+        )
+        self.assertIsNone(blocked["next_event"])
+        self.assertEqual([], blocked["runner_commands"])
+        self.assertEqual("plan-invalid", blocked["blockers"][0]["code"])
+
     def test_plan_registration_rejects_existing_attempt_without_mutation(self) -> None:
         state = self._prepared_state()
         self._write_state(state)

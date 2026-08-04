@@ -1245,6 +1245,27 @@ def _is_exec_item_update_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _is_exec_item_lifecycle_diagnostic_correction(value: dict[str, Any]) -> bool:
+    request_fields = ("provider_requests", "model_grade", "execute")
+    return (
+        _is_formal_projection_correction(value)
+        and value["campaign_id"]
+        == "model-evolution-6-3-exec-item-update-d55e93b"
+        and value["product"]["source_commit"]
+        == "d55e93b8e22fd2fda4b9feca83f9f6ff0a209bd5"
+        and value["state_revision"] == 11
+        and tuple(
+            value["budgets"]["ceiling"][field] for field in request_fields
+        ) == (1336, 856, 568)
+        and tuple(
+            value["budgets"]["reserved"][field] for field in request_fields
+        ) == (1192, 592, 528)
+        and tuple(
+            value["budgets"]["observed"][field] for field in request_fields
+        ) == (840, 768, 0)
+    )
+
+
 def _validate_formal_protocol_error_evidence(
     campaign: dict[str, Any],
     campaign_root: Path,
@@ -1663,7 +1684,9 @@ def _blocked_supersession_lineage(
     lineage = [(old, old_path)]
     current, current_path = old, old_path
     campaign_limit = (
-        11
+        12
+        if _is_exec_item_lifecycle_diagnostic_correction(old)
+        else 11
         if _is_exec_item_update_correction(old)
         else 10
         if _is_source_root_binding_correction(old)
@@ -1780,6 +1803,10 @@ def prepare_supersedes(
     exec_item_update_correction = (
         len(lineage) == 11 and _is_exec_item_update_correction(old)
     )
+    exec_item_lifecycle_diagnostic_correction = (
+        len(lineage) == 12
+        and _is_exec_item_lifecycle_diagnostic_correction(old)
+    )
     transport_lineage = any(
         campaign["campaign_id"] == "model-evolution-6-3-projection-ec0d79d"
         for campaign, _ in lineage
@@ -1796,7 +1823,10 @@ def prepare_supersedes(
         or source_exposure_locator_correction
         or source_root_binding_correction
         or exec_item_update_correction
+        or exec_item_lifecycle_diagnostic_correction
     ):
+        raise ContractError("supersession repair depth is exhausted")
+    if len(lineage) == 12 and not exec_item_lifecycle_diagnostic_correction:
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 11 and not exec_item_update_correction:
         raise ContractError("supersession repair depth is exhausted")
@@ -1833,6 +1863,7 @@ def prepare_supersedes(
         or source_exposure_locator_correction
         or source_root_binding_correction
         or exec_item_update_correction
+        or exec_item_lifecycle_diagnostic_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = (
@@ -1960,6 +1991,7 @@ def prepare_supersedes(
             or source_exposure_locator_correction
             or source_root_binding_correction
             or exec_item_update_correction
+            or exec_item_lifecycle_diagnostic_correction
         )
         and old_host["identity"]["adapter"]["sha256"]
         == target_host["identity"]["adapter"]["sha256"]
@@ -2092,6 +2124,39 @@ def prepare_supersedes(
                 "kind": "malformed_record",
                 "message": "unknown Codex record type",
                 "seq": 223,
+            },
+        )
+    if exec_item_lifecycle_diagnostic_correction:
+        expected_blockers = {("final-plugin-unobserved", "release")} | {
+            (f"{skill_id}-current", skill_id) for skill_id in SKILL_IDS
+        }
+        blockers = {
+            (row.get("code"), row.get("scope"))
+            for row in qualification["blockers"]
+        }
+        if blockers != expected_blockers:
+            raise ContractError("item-lifecycle parent qualification blockers differ")
+        if qualification["qualification_id"] != "mq-0fb09539b5a7285e821d6827":
+            raise ContractError("item-lifecycle parent qualification differs")
+        _validate_formal_protocol_error_evidence(
+            old,
+            old_path.parent,
+            repository_root,
+            valid_entry_ids=(
+                "pe-ec233af957ff41653341a0c8",
+                "pe-429983cc88d667b35c4c890d",
+                "pe-88fd5c9656991e9752dcd780",
+                "pe-e9f80d826208fe8b0a995f1c",
+                "pe-c9fe2871a26edf5d147aeffd",
+                "pe-bcb0eefd3950b16ba06f1596",
+                "pe-7fe3824fbfacd893646d7289",
+            ),
+            failed_entry_id="pe-1c22d0403defef66b462ec94",
+            expected_protocol_error={
+                "artifact": None,
+                "kind": "malformed_record",
+                "message": "Codex stream has incomplete items",
+                "seq": None,
             },
         )
     imported_reserved = dict(old["budgets"]["reserved"])

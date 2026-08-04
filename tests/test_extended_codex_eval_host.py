@@ -498,6 +498,16 @@ class TestCodexEventNormalization(unittest.TestCase):
             invalid["diagnostics"][0]["message"],
         )
 
+        incomplete = self.events.normalize_records(
+            [records[0], records[1], records[2], records[-1]],
+        )
+        self.assertEqual("protocol_error", incomplete["status"])
+        self.assertEqual(
+            "Codex stream has incomplete items: stdout record 3 "
+            "(item.started/todo_list)",
+            incomplete["diagnostics"][0]["message"],
+        )
+
         invalid_cases = (
             (
                 [

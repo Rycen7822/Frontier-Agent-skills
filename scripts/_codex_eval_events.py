@@ -134,6 +134,7 @@ def normalize_records(records: list[dict[str, Any]]) -> dict[str, Any]:
     event_types: list[str] = []
     item_facts: list[dict[str, Any]] = []
     started_items: dict[str, dict[str, Any]] = {}
+    started_item_records: dict[str, int] = {}
     completed_items: set[str] = set()
     final_messages: list[str] = []
     permission_denials: list[str] = []
@@ -232,6 +233,7 @@ def normalize_records(records: list[dict[str, Any]]) -> dict[str, Any]:
                     )
                 else:
                     started_items[item_id] = item
+                    started_item_records[item_id] = index
             elif phase == "updated":
                 started = started_items.get(item_id)
                 if item_id in completed_items:
@@ -336,9 +338,23 @@ def normalize_records(records: list[dict[str, Any]]) -> dict[str, Any]:
         diagnostics.append(
             _diagnostic("missing_terminal", "Codex stream lacks a turn terminal")
         )
-    if started_items.keys() - completed_items:
+    incomplete_items = sorted(
+        started_items.keys() - completed_items,
+        key=started_item_records.__getitem__,
+    )
+    if incomplete_items:
+        details = ", ".join(
+            f"stdout record {started_item_records[item_id]} "
+            f"(item.started/{started_items[item_id]['type']})"
+            for item_id in incomplete_items[:8]
+        )
+        if len(incomplete_items) > 8:
+            details += f", and {len(incomplete_items) - 8} more"
         diagnostics.append(
-            _diagnostic("item_lifecycle", "Codex stream has incomplete items")
+            _diagnostic(
+                "item_lifecycle",
+                f"Codex stream has incomplete items: {details}",
+            )
         )
     status = (
         "protocol_error"

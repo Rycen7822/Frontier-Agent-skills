@@ -605,6 +605,19 @@ def status_projection(
     blockers: list[dict[str, str]],
     runner_commands: list[str],
 ) -> dict[str, Any]:
+    plan_blockers = [
+        {
+            "code": "plan-invalid",
+            "message": (
+                f"{item.get('role', 'unknown')}/{item.get('skill_id', 'unknown')} "
+                f"has {item['invalid_attempts']} invalid attempt(s)"
+            ),
+        }
+        for item in plan_statuses
+        if item.get("invalid_attempts", 0)
+        and not item.get("recoverable_attempts", [])
+    ]
+    effective_blockers = [*blockers, *plan_blockers]
     skills = {
         skill_id: {
             field: binding is not None
@@ -626,7 +639,7 @@ def status_projection(
         "active_attempts": active,
         "recoverable_attempts": recoverable,
         "budget": state["budgets"],
-        "next_event": None if blockers else NEXT_EVENT[state["phase"]],
-        "runner_commands": [] if blockers else runner_commands,
-        "blockers": blockers,
+        "next_event": None if effective_blockers else NEXT_EVENT[state["phase"]],
+        "runner_commands": [] if effective_blockers else runner_commands,
+        "blockers": effective_blockers,
     }
