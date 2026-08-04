@@ -252,6 +252,7 @@ def _host_manifest(
             "sha256": _sha256_file(ADAPTER),
         }
     )
+    manifest["identity"]["repository"]["worktree"] = str(path.parent.resolve())
     manifest["identity"]["execution"]["model"] = MODEL
     manifest["identity"]["execution"]["tool_schema_hash"] = (
         isolated_tool_schema_hash(_sha256_file(fake))
@@ -287,6 +288,7 @@ def _materialize_adapter_fixture(root: Path, fake: Path) -> dict[str, Path]:
             "sha256": _sha256_file(ADAPTER),
         }
     )
+    host["identity"]["repository"]["worktree"] = str(root.resolve())
     host["identity"]["execution"]["model"] = MODEL
     host["identity"]["execution"]["tool_schema_hash"] = (
         isolated_tool_schema_hash(_sha256_file(fake))
@@ -813,6 +815,69 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(2, rejected.returncode)
             self.assertIn("plugin Skill bytes differ", rejected.stderr)
             self.assertEqual(1, len(_jsonl(state.read_text(encoding="utf-8"))))
+
+    def test_bound_plugin_allows_staging_path_outside_source_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source"
+            source.mkdir()
+            campaign = root / "campaign"
+            campaign.mkdir()
+            plugin, _ = _materialize_plugin(campaign / "staging")
+            records = [
+                {"type": "thread.started", "thread_id": THREAD_ID},
+                {"type": "turn.started"},
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "id": "command-read-staged-skill",
+                        "type": "command_execution",
+                        "command": "rtk read staged/SKILL.md",
+                        "aggregated_output": str(plugin / "skills/writing-plans/SKILL.md"),
+                        "exit_code": 0,
+                        "status": "completed",
+                    },
+                },
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "id": "message-1",
+                        "type": "agent_message",
+                        "text": "fixture complete",
+                    },
+                },
+                {
+                    "type": "turn.completed",
+                    "usage": {"input_tokens": 10, "output_tokens": 3},
+                },
+            ]
+            fake, _ = _write_fake_codex(root, turns=[{"records": records}])
+            manifest_path = campaign / "host.json"
+            manifest = _plugin_bound_manifest(manifest_path, fake, plugin)
+            manifest["identity"]["repository"]["worktree"] = str(source)
+            manifest["manifest_hash"] = canonical_hash(
+                {key: value for key, value in manifest.items() if key != "manifest_hash"}
+            )
+            manifest_path.write_text(
+                json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+            )
+            candidate = _execute_payload()
+            candidate.update({
+                "subject_skill_id": "writing-plans",
+                "catalog": manifest["catalog"]["entries"],
+                "treatment": {"profile": "candidate/force_loaded"},
+            })
+            workspace = root / "workspace"
+            workspace.mkdir()
+
+            result = _run_bound_adapter(
+                workspace, manifest, _request("execute_case", candidate)
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            terminal = _jsonl(result.stdout)[-1]
+            self.assertEqual("completed", terminal["terminal_status"])
+            self.assertIsNone(terminal["protocol_error"])
 
     def test_bound_plugin_rejects_source_repository_exposure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

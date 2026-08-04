@@ -276,12 +276,15 @@ def _redact_text(text: str, workspace: Path) -> str:
 def _write_child_stderr(
     raw: bytes,
     workspace: Path,
-    plugin_root: Path | None = None,
+    source_root: Path | None = None,
 ) -> None:
-    redacted_raw = raw
-    if plugin_root is not None:
+    redacted_raw = raw.replace(
+        str(workspace).encode("utf-8"),
+        b"<workspace>",
+    )
+    if source_root is not None:
         redacted_raw = redacted_raw.replace(
-            str(_bound_source_root(plugin_root)).encode("utf-8"),
+            str(source_root).encode("utf-8"),
             b"<source-repository>",
         )
     text = redacted_raw[:MAX_STDERR_BYTES].decode("utf-8", errors="replace")
@@ -508,12 +511,19 @@ def _snapshot_workspace(workspace: Path) -> dict[str, str]:
     return result
 
 
-def _bound_source_root(plugin_root: Path) -> Path:
-    for candidate in (plugin_root, *plugin_root.parents):
-        marker = candidate / ".git"
-        if marker.exists() or marker.is_symlink():
-            return candidate
-    return plugin_root
+def _manifest_source_root(manifest: dict[str, Any]) -> Path:
+    identity = manifest.get("identity")
+    repository = identity.get("repository") if isinstance(identity, dict) else None
+    worktree = repository.get("worktree") if isinstance(repository, dict) else None
+    if not isinstance(worktree, str) or not Path(worktree).is_absolute():
+        raise AdapterError("host manifest source worktree is invalid")
+    try:
+        source_root = Path(worktree).resolve(strict=True)
+    except OSError as exc:
+        raise AdapterError("host manifest source worktree is unavailable") from exc
+    if not source_root.is_dir():
+        raise AdapterError("host manifest source worktree is not a directory")
+    return source_root
 
 
 def _json_pointer_source_match(
@@ -549,9 +559,9 @@ def _json_pointer_source_match(
 
 def _source_exposure_diagnostic(
     child: dict[str, Any],
-    plugin_root: Path,
+    source_root: Path,
 ) -> dict[str, Any] | None:
-    source = str(_bound_source_root(plugin_root))
+    source = str(source_root)
     source_bytes = source.encode("utf-8")
     for channel in ("stdout", "stderr"):
         for index, line in enumerate(child[channel].splitlines(), start=1):
@@ -748,7 +758,7 @@ def _run_model_grade(
             workspace=temporary,
             timeout_seconds=args.timeout,
         )
-        _write_child_stderr(child["stderr"], workspace, args.plugin_root)
+        _write_child_stderr(child["stderr"], workspace, args.source_root)
         if child["timed_out"] or child["returncode"] != 0:
             return _child_failure_result(request, manifest, child, workspace)
         normalized = normalize_jsonl(child["stdout"])
@@ -840,13 +850,13 @@ def _run_execute_in_workspace(
                 workspace=workspace,
                 timeout_seconds=args.timeout,
             )
-            _write_child_stderr(child["stderr"], workspace, args.plugin_root)
+            _write_child_stderr(child["stderr"], workspace, args.source_root)
             if child["timed_out"] or child["returncode"] != 0:
                 child_failure = child
                 break
             normalized = normalize_jsonl(child["stdout"])
             exposure = (
-                _source_exposure_diagnostic(child, args.plugin_root)
+                _source_exposure_diagnostic(child, args.source_root)
                 if args.plugin_root is not None
                 else None
             )
@@ -1117,7 +1127,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             workspace=workspace,
             timeout_seconds=args.timeout,
         )
-        _write_child_stderr(child["stderr"], workspace, args.plugin_root)
+        _write_child_stderr(child["stderr"], workspace, args.source_root)
         normalized = (
             normalize_jsonl(child["stdout"])
             if not child["timed_out"] and child["returncode"] == 0
@@ -1259,6 +1269,7 @@ def main(argv: list[str] | None = None) -> int:
             raise AdapterError("adapter timeout or Codex hash is invalid")
         workspace = Path.cwd().resolve(strict=True)
         manifest = _validate_manifest(args.host_manifest.resolve(strict=True), args)
+        args.source_root = _manifest_source_root(manifest)
         return (
             _run_probe_mode(args, workspace)
             if args.mode == "probe"
