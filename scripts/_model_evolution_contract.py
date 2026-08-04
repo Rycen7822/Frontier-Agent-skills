@@ -1956,6 +1956,11 @@ def prepare_supersedes(
         "--profile",
         "--sandbox",
     )
+    stable_adapter_fields = (
+        ("id",)
+        if process_namespace_isolation_correction
+        else ("id", "version")
+    )
 
     def stable_host_identity(host: dict[str, Any]) -> tuple[dict[str, Any], float]:
         identity = host.get("identity")
@@ -2000,7 +2005,7 @@ def prepare_supersedes(
                     field: execution.get(field) for field in stable_execution
                 },
                 "adapter": {
-                    field: adapter.get(field) for field in ("id", "version")
+                    field: adapter.get(field) for field in stable_adapter_fields
                 },
                 "command": {name: option(name) for name in stable_options},
                 "capabilities": capability_contract,
@@ -2012,6 +2017,11 @@ def prepare_supersedes(
     target_identity, target_timeout = stable_host_identity(target_host)
     if old_identity != target_identity or target_timeout < old_timeout:
         raise ContractError("superseded campaign targets a different Host")
+    if process_namespace_isolation_correction and (
+        old_host["identity"]["adapter"].get("version") != "1.1"
+        or target_host["identity"]["adapter"].get("version") != "1.2"
+    ):
+        raise ContractError("process isolation adapter version transition differs")
     if (
         (
             single_principal_exec_correction
