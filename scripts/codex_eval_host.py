@@ -47,6 +47,12 @@ from _codex_eval_events import (
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
 ADAPTER_VERSION = "1.1"
+ADAPTER_SOURCE_FILES = (
+    "_bundle_hash.py",
+    "_codex_eval_delivery.py",
+    "_codex_eval_events.py",
+    "codex_eval_host.py",
+)
 PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.1"
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -85,6 +91,18 @@ def _file_sha256(path: Path) -> str:
             f"required regular file is missing or symlinked: {path.name}"
         )
     return _sha256_bytes(path.read_bytes())
+
+
+def adapter_source_hash(scripts_root: Path | None = None) -> str:
+    """Hash the complete runtime implementation of the Host adapter."""
+    root = scripts_root or Path(__file__).resolve().parent
+    components = [
+        {"path": name, "sha256": _file_sha256(root / name)}
+        for name in ADAPTER_SOURCE_FILES
+    ]
+    return _sha256_bytes(
+        _canonical_bytes({"schema_version": 1, "components": components})
+    )
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
@@ -139,7 +157,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         raise AdapterError("tool schema identity differs from the host manifest")
     if (
         not isinstance(adapter, dict)
-        or adapter.get("sha256") != _file_sha256(Path(__file__).resolve())
+        or adapter.get("sha256") != adapter_source_hash()
     ):
         raise AdapterError("adapter identity differs from the host manifest")
     if _file_sha256(args.codex) != args.codex_sha256:
