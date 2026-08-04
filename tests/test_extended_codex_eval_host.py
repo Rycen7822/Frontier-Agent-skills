@@ -435,6 +435,70 @@ class TestCodexEventNormalization(unittest.TestCase):
                 if "failures" in expected:
                     self.assertEqual(expected["failures"], actual["failures"])
 
+    def test_current_exec_items_and_single_principal_boundary(self) -> None:
+        records = [
+            {"type": "thread.started", "thread_id": THREAD_ID},
+            {"type": "turn.started"},
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "warning-1",
+                    "type": "error",
+                    "message": "write denied by the read-only sandbox",
+                },
+            },
+            {
+                "type": "item.completed",
+                "item": {"id": "todo-1", "type": "todo_list", "items": []},
+            },
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "collab-1",
+                    "type": "collab_tool_call",
+                    "tool": "spawn_agent",
+                    "status": "completed",
+                },
+            },
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "message-1",
+                    "type": "agent_message",
+                    "text": "done",
+                },
+            },
+            {"type": "turn.completed", "usage": {"input_tokens": 10}},
+        ]
+        raw = b"".join(
+            json.dumps(record, separators=(",", ":")).encode() + b"\n"
+            for record in records
+        )
+        normalized = self.events.normalize_jsonl(raw)
+        self.assertEqual("completed", normalized["status"])
+        self.assertEqual(
+            ["error", "todo_list", "collab_tool_call", "agent_message"],
+            [item["type"] for item in normalized["items"]],
+        )
+        self.assertEqual(
+            "write denied by the read-only sandbox",
+            normalized["failures"][0]["message"],
+        )
+        payload = {
+            "coordination": None,
+            "fault_script": [],
+            "execution_context": {
+                "expected_principal_slots": ["main"],
+                "expected_tools": [],
+            },
+            "case": {"state_model": {"scope": "none"}},
+        }
+        diagnostics = self.events.execute_evidence_diagnostics(
+            payload, [normalized]
+        )
+        self.assertEqual(1, len(diagnostics))
+        self.assertIn("outside the single-principal contract", diagnostics[0]["message"])
+
     def test_model_grade_schema_uses_provider_supported_array_shape(self) -> None:
         batch = {
             "batch_id": "batch-1",
@@ -651,8 +715,14 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             call = _jsonl(state.read_text(encoding="utf-8"))[0]
             self.assertIn(body, call["prompt"])
             self.assertIn("fixture turn 1", call["prompt"])
-            self.assertIn("--disable", call["argv"])
-            self.assertIn("plugins", call["argv"])
+            disabled = [
+                call["argv"][index + 1]
+                for index, value in enumerate(call["argv"][:-1])
+                if value == "--disable"
+            ]
+            self.assertEqual(
+                ["plugins", "multi_agent", "multi_agent_v2"], disabled
+            )
             self.assertTrue((candidate_workspace / ".git").is_dir())
             repository = subprocess.check_output(
                 ["git", "-C", str(candidate_workspace), "rev-parse", "--show-toplevel"],

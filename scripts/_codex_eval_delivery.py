@@ -122,7 +122,14 @@ def skill_isolation_argv() -> list[str]:
         if skills_root.is_dir()
         else []
     )
-    argv = ["--disable", "plugins"]
+    argv = [
+        "--disable",
+        "plugins",
+        "--disable",
+        "multi_agent",
+        "--disable",
+        "multi_agent_v2",
+    ]
     if disabled:
         entries = ",".join(
             "{path=" + json.dumps(str(path)) + ",enabled=false}"

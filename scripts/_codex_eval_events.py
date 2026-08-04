@@ -23,8 +23,10 @@ ITEM_TYPES = {
     "command_execution",
     "file_change",
     "mcp_tool_call",
+    "collab_tool_call",
     "web_search",
-    "plan_update",
+    "todo_list",
+    "error",
 }
 TOKEN_FIELDS = (
     "input_tokens",
@@ -522,21 +524,31 @@ def execute_evidence_diagnostics(
             }
         )
     slots = payload.get("execution_context", {}).get("expected_principal_slots")
-    unsupported = (
-        "Codex JSONL lacks direct principal and handoff evidence"
-        if payload.get("coordination") is not None
-        else "single-principal Codex adapter requires one plan slot"
-        if not isinstance(slots, list) or len(slots) != 1
-        else "Codex adapter does not inject scenario faults"
-        if payload.get("fault_script")
-        else "execute case payload is missing"
-        if not isinstance(payload.get("case"), dict)
-        else "Codex JSONL lacks bound state snapshot evidence"
-        if payload["case"].get("state_model", {}).get("scope") != "none"
-        else "Codex JSONL lacks complete authorization and effect traces"
-        if payload.get("execution_context", {}).get("expected_tools")
-        else None
+    collaboration_observed = any(
+        item["type"] == "collab_tool_call"
+        for turn in normalized_turns
+        for item in turn["items"]
     )
+    if collaboration_observed:
+        unsupported = (
+            "Codex stream contains collab tool calls outside the single-principal contract"
+        )
+    else:
+        unsupported = (
+            "Codex JSONL lacks direct principal and handoff evidence"
+            if payload.get("coordination") is not None
+            else "single-principal Codex adapter requires one plan slot"
+            if not isinstance(slots, list) or len(slots) != 1
+            else "Codex adapter does not inject scenario faults"
+            if payload.get("fault_script")
+            else "execute case payload is missing"
+            if not isinstance(payload.get("case"), dict)
+            else "Codex JSONL lacks bound state snapshot evidence"
+            if payload["case"].get("state_model", {}).get("scope") != "none"
+            else "Codex JSONL lacks complete authorization and effect traces"
+            if payload.get("execution_context", {}).get("expected_tools")
+            else None
+        )
     if unsupported is not None:
         diagnostics.append(
             {"kind": "malformed_record", "index": None, "message": unsupported}
