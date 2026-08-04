@@ -1073,6 +1073,112 @@ def _is_multiturn_timeout_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _is_systemd_environment_correction(value: dict[str, Any]) -> bool:
+    product = value["product"]
+    budgets = value["budgets"]
+    request_fields = ("provider_requests", "model_grade", "execute")
+    return (
+        _is_formal_projection_correction(value)
+        and value["campaign_id"]
+        == "model-evolution-6-3-multiturn-timeout-8e867db"
+        and product["source_commit"]
+        == "8e867dbf550c0c216b404a03b23d155d8af32b53"
+        and tuple(budgets["ceiling"][field] for field in request_fields)
+        == (718, 408, 280)
+        and tuple(budgets["reserved"][field] for field in request_fields)
+        == (574, 304, 240)
+        and tuple(budgets["observed"][field] for field in request_fields)
+        == (350, 320, 0)
+    )
+
+
+def _validate_systemd_environment_evidence(
+    campaign: dict[str, Any], campaign_root: Path, repository_root: Path,
+) -> None:
+    expected_entries = {
+        "long-document-segmented-writing": "pe-0e13d369786c6271a5a7681b",
+        "skill-evaluator": "pe-f50df320b2ef368e3ad619eb",
+        "software-quality-workflows": "pe-163b8dbdc3e59a8dd289eccb",
+        "writing-plans": "pe-c55a7c135152e77b3fbd8801",
+    }
+    plans = {record["skill_id"]: record for record in campaign["plans"]}
+    for skill_id, entry_id in expected_entries.items():
+        plan_path = resolve_binding(
+            plans[skill_id]["plan"], repository_root, campaign_root,
+        )
+        plan = load_json(plan_path, label=f"{skill_id} environment parent plan")
+        artifacts = plan_path.parent / plan["artifacts"]["root"]
+        rows = load_jsonl(
+            artifacts / plan["artifacts"]["index_relpath"],
+            label=f"{skill_id} environment parent index",
+        )
+        if len(rows) != 1:
+            raise ContractError("environment parent index differs")
+        row = rows[0]
+        attempt = artifacts / "entries" / entry_id / "attempt-0001"
+        receipt_path = attempt / "receipt.json"
+        attempt_paths = list((artifacts / "entries").glob("*/attempt-*"))
+        if (
+            row.get("entry_id") != entry_id
+            or row.get("attempt") != 1
+            or row.get("artifact_dir")
+            != attempt.relative_to(artifacts).as_posix()
+            or row.get("receipt", {}).get("path")
+            != receipt_path.relative_to(artifacts).as_posix()
+            or attempt_paths != [attempt]
+            or attempt.is_symlink()
+            or not attempt.is_dir()
+            or receipt_path.is_symlink()
+            or not receipt_path.is_file()
+            or content_hash(receipt_path.read_bytes())
+            != row.get("receipt", {}).get("sha256")
+        ):
+            raise ContractError("environment parent attempt set differs")
+        receipt = load_json(receipt_path, label=f"{skill_id} environment receipt")
+        verify_self_hash(receipt, "receipt_hash")
+        run = receipt.get("run", {})
+        protocol = receipt.get("host_protocol", {})
+        requests = protocol.get("requests")
+        if (
+            run.get("completion_origin") != "resume_seal"
+            or run.get("terminal") != "interrupted"
+            or run.get("error") != "interrupted"
+            or run.get("valid") is not False
+            or protocol.get("results") != []
+            or not isinstance(requests, list)
+            or len(requests) != 1
+            or requests[0].get("envelope", {}).get("entry_id") != entry_id
+        ):
+            raise ContractError("environment parent receipt differs")
+        stdout_path = attempt / "host-stdout.jsonl"
+        stderr_path = attempt / "host-stderr.txt"
+        if (
+            protocol.get("raw_stdout", {}).get("sha256")
+            != content_hash(stdout_path.read_bytes())
+            or protocol.get("raw_stderr", {}).get("sha256")
+            != content_hash(stderr_path.read_bytes())
+        ):
+            raise ContractError("environment parent raw evidence differs")
+        results = load_jsonl(stdout_path, label=f"{skill_id} environment Host result")
+        result = results[0] if len(results) == 1 else None
+        stderr = stderr_path.read_text(encoding="utf-8")
+        if (
+            not isinstance(result, dict)
+            or result.get("terminal_status") != "timeout"
+            or result.get("failure_class") != "model_task_timeout"
+            or result.get("timeout") is not True
+            or result.get("provider_error_code") is not None
+            or result.get("protocol_error") is not None
+            or result.get("request_hash") != requests[0].get("request_hash")
+            or result.get("usage", {}).get("records") != []
+            or result.get("context", {}).get("status") != "missing"
+            or "HTTP 403" not in stderr
+            or "chatgpt.com/backend-api/ps/mcp" not in stderr
+            or "failed to refresh available models" not in stderr
+        ):
+            raise ContractError("environment parent Host evidence differs")
+
+
 def _validate_multiturn_timeout_evidence(
     campaign: dict[str, Any], campaign_root: Path, repository_root: Path,
 ) -> None:
@@ -1301,12 +1407,17 @@ def prepare_supersedes(
     multiturn_timeout_correction = (
         len(lineage) == 4 and _is_multiturn_timeout_correction(old)
     )
+    systemd_environment_correction = (
+        len(lineage) == 5 and _is_systemd_environment_correction(old)
+    )
     transport_lineage = any(
         campaign["campaign_id"] == "model-evolution-6-3-projection-ec0d79d"
         for campaign, _ in lineage
     )
     if transport_lineage and not (
-        model_grade_path_correction or multiturn_timeout_correction
+        model_grade_path_correction
+        or multiturn_timeout_correction
+        or systemd_environment_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 9 and not formal_projection_correction:
@@ -1325,10 +1436,12 @@ def prepare_supersedes(
         or formal_projection_correction
         or model_grade_path_correction
         or multiturn_timeout_correction
+        or systemd_environment_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = (
-        len(lineage) in {4, 5} and not multiturn_timeout_correction
+        len(lineage) in {4, 5}
+        and not (multiturn_timeout_correction or systemd_environment_correction)
     )
     if receipt_hop and failure_receipt_binding is None:
         raise ContractError("late supersession requires a failed-request receipt")
@@ -1448,6 +1561,12 @@ def prepare_supersedes(
         if qualification["qualification_id"] != "mq-6be58b785027ed665f6b5620":
             raise ContractError("timeout parent qualification differs")
         _validate_multiturn_timeout_evidence(old, old_path.parent, repository_root)
+    if systemd_environment_correction:
+        if qualification["qualification_id"] != "mq-be17f8c2be4c15e4c157788c":
+            raise ContractError("environment parent qualification differs")
+        _validate_systemd_environment_evidence(
+            old, old_path.parent, repository_root,
+        )
     imported_reserved = dict(old["budgets"]["reserved"])
     imported_observed = dict(old["budgets"]["observed"])
     result = {

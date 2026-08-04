@@ -581,6 +581,47 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                 "--collect",
             ],
         )
+        resumed = operations.render_runner_command(
+            self.fixture["campaign_root"] / "plan.json",
+            self.fixture["campaign_root"] / "index.jsonl",
+            attempt_budget=3,
+            service_id="frontier-resume",
+            repository_root=REPOSITORY_ROOT,
+            resume=True,
+        )
+        self.assertIn(" --resume --new-attempt-budget 3", resumed)
+
+    def test_systemd_preflight_requires_matching_allowlisted_environment(self) -> None:
+        def fake_run(argv, **_kwargs):
+            if argv[-1] == "is-system-running":
+                stdout = "running\n"
+            elif argv[-1] == "show-environment":
+                stdout = "HTTP_PROXY=http://127.0.0.1:7897\n"
+            else:
+                Path(argv[-1]).write_text("closed", encoding="utf-8")
+                stdout = ""
+            return subprocess.CompletedProcess(argv, 0, stdout, "")
+
+        with mock.patch.dict(
+            os.environ, {"HTTP_PROXY": "http://127.0.0.1:7897"}
+        ), mock.patch.object(operations, "_run", side_effect=fake_run):
+            fact = operations.verify_systemd_user("campaign", ["HTTP_PROXY"])
+        self.assertEqual("systemd-user-lifecycle", fact["operation_id"])
+
+        with mock.patch.dict(
+            os.environ, {"HTTP_PROXY": "http://127.0.0.1:7897"}
+        ), mock.patch.object(
+            operations,
+            "_run",
+            side_effect=[
+                subprocess.CompletedProcess([], 0, "running\n", ""),
+                subprocess.CompletedProcess([], 0, "", ""),
+            ],
+        ):
+            with self.assertRaisesRegex(
+                operations.OperationError, "differs for HTTP_PROXY"
+            ):
+                operations.verify_systemd_user("campaign", ["HTTP_PROXY"])
 
     def test_preflight_schema_fixtures_match_their_live_contracts(self) -> None:
         campaign = self.fixture["store"].read()

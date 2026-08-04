@@ -16,6 +16,7 @@ from _model_evolution_contract import (
     ContractError,
     SKILL_IDS,
     _is_multiturn_timeout_correction,
+    _is_systemd_environment_correction,
     assess_interaction_probes,
     build_initial_campaign,
     canonical_bytes,
@@ -471,8 +472,9 @@ def _init(args: argparse.Namespace) -> None:
             args.supersedes.resolve(strict=True),
             label="superseded campaign",
         )
-        reuse_calibration_reservation = not _is_multiturn_timeout_correction(
-            superseded_campaign
+        reuse_calibration_reservation = not (
+            _is_multiturn_timeout_correction(superseded_campaign)
+            or _is_systemd_environment_correction(superseded_campaign)
         )
     expected_request_ceilings = _cumulative_request_ceilings(
         request_ceilings,
@@ -1249,7 +1251,14 @@ def _status(args: argparse.Namespace) -> None:
                 **status,
             }
             statuses.append(status_record)
-            if status["remaining_entries"] and not status["active_attempts"]:
+            if (
+                status["remaining_entries"]
+                and not status["active_attempts"]
+                and (
+                    not status["invalid_attempts"]
+                    or status["recoverable_attempts"]
+                )
+            ):
                 commands.append(
                     render_runner_command(
                         plan_path,
@@ -1260,6 +1269,10 @@ def _status(args: argparse.Namespace) -> None:
                             f"{plan_record['skill_id']}"
                         )[:120],
                         repository_root=repository_root,
+                        resume=bool(
+                            status["indexed_attempts"]
+                            or status["recoverable_attempts"]
+                        ),
                     )
                 )
         except (ContractError, OperationError, OSError, KeyError, TypeError) as exc:

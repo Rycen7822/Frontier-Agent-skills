@@ -705,7 +705,30 @@ def systemd_probe_argv(unit: str, completion_file: Path) -> list[str]:
     ]
 
 
-def verify_systemd_user(campaign_id: str) -> dict[str, Any]:
+def verify_systemd_user(
+    campaign_id: str, env_allowlist: list[str],
+) -> dict[str, Any]:
+    state = _run(
+        ["systemctl", "--user", "is-system-running"],
+        cwd=Path.cwd(),
+        timeout=30,
+    ).stdout.strip()
+    if state != "running":
+        raise OperationError("systemd user manager is not running")
+    manager_lines = _run(
+        ["systemctl", "--user", "show-environment"],
+        cwd=Path.cwd(),
+        timeout=30,
+    ).stdout.splitlines()
+    manager_environment = dict(
+        line.split("=", 1) for line in manager_lines if "=" in line
+    )
+    for name in env_allowlist:
+        expected = os.environ.get(name)
+        if expected and manager_environment.get(name) != expected:
+            raise OperationError(
+                f"systemd user environment differs for {name}"
+            )
     with tempfile.TemporaryDirectory(prefix="frontier-systemd-probe-") as tmp:
         completion = Path(tmp) / "closed"
         argv = systemd_probe_argv(f"frontier-{campaign_id}-preflight", completion)
@@ -942,7 +965,10 @@ def preflight_operations(
         )
     )
     if check_systemd:
-        operations.append(verify_systemd_user(campaign["campaign_id"]))
+        operations.append(verify_systemd_user(
+            campaign["campaign_id"],
+            validated_host["command"]["env_allowlist"],
+        ))
     report = {
         "schema_version": "model-evolution-apparatus-report/1",
         "campaign_id": campaign["campaign_id"],
@@ -1058,6 +1084,7 @@ def render_runner_command(
     attempt_budget: int,
     service_id: str,
     repository_root: Path,
+    resume: bool = False,
 ) -> str:
     argv = [
         "systemd-run",
@@ -1071,9 +1098,10 @@ def render_runner_command(
         str(plan),
         "--index",
         str(index),
-        "--new-attempt-budget",
-        str(attempt_budget),
     ]
+    if resume:
+        argv.append("--resume")
+    argv.extend(["--new-attempt-budget", str(attempt_budget)])
     return shlex.join(argv)
 
 
