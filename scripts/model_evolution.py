@@ -16,6 +16,7 @@ from _model_evolution_contract import (
     ContractError,
     SKILL_IDS,
     _is_analysis_sentinel_contract_correction,
+    _is_calibration_task_fixture_correction,
     _is_child_environment_isolation_correction,
     _is_exec_item_lifecycle_diagnostic_correction,
     _is_exec_item_update_correction,
@@ -484,6 +485,7 @@ def _init(args: argparse.Namespace) -> None:
         )
         reuse_calibration_reservation = not (
             _is_analysis_sentinel_contract_correction(superseded_campaign)
+            or _is_calibration_task_fixture_correction(superseded_campaign)
             or _is_multiturn_timeout_correction(superseded_campaign)
             or _is_child_environment_isolation_correction(superseded_campaign)
             or _is_single_principal_exec_correction(superseded_campaign)

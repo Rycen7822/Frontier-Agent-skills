@@ -17,6 +17,7 @@ from _model_evolution_contract import (  # noqa: E402
     ContractError,
     SKILL_IDS,
     _is_analysis_sentinel_contract_correction,
+    _is_calibration_task_fixture_correction,
     _is_child_environment_isolation_correction,
     _is_formal_projection_correction,
     _is_model_grade_path_correction,
@@ -1039,6 +1040,27 @@ class ModelEvolutionContractTest(unittest.TestCase):
         state["budgets"]["reserved"]["provider_requests"] -= 1
         self.assertFalse(_is_analysis_sentinel_contract_correction(state))
         state["budgets"]["reserved"]["provider_requests"] += 1
+
+        state["campaign_id"] = (
+            "model-evolution-6-3-analysis-sentinel-contract-e272053"
+        )
+        state["product"]["source_commit"] = (
+            "e272053bca888d56864bab0aa04efc73835649e0"
+        )
+        state["state_revision"] = 3
+        state["budgets"]["ceiling"].update({
+            "provider_requests": 1642, "model_grade": 1048, "execute": 712,
+        })
+        state["budgets"]["reserved"].update({
+            "provider_requests": 1402, "model_grade": 688, "execute": 624,
+        })
+        state["budgets"]["observed"].update({
+            "provider_requests": 986, "model_grade": 896, "execute": 0,
+        })
+        self.assertTrue(_is_calibration_task_fixture_correction(state))
+        state["budgets"]["observed"]["provider_requests"] -= 1
+        self.assertFalse(_is_calibration_task_fixture_correction(state))
+        state["budgets"]["observed"]["provider_requests"] += 1
 
         state["plans"].pop()
         self.assertFalse(_is_formal_projection_correction(state))

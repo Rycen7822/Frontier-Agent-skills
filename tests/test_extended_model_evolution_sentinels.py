@@ -269,6 +269,24 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 self.assertIn("run_status=completed", candidate_evidence)
                 self.assertIn("record_closed=true", candidate_evidence)
                 self.assertIn("not_run", candidate_evidence)
+            process_rows = [
+                row for row in rows if row["check_id"] == "process-check"
+            ]
+            for row in process_rows:
+                task = row["payload"]["view"]["task"]
+                self.assertIn("all three mechanisms required", task)
+                for claim in sentinels.SKILLS[skill_id]["claims"]:
+                    self.assertIn(claim, task)
+            quality_positive_two = next(
+                row
+                for row in rows
+                if row["example_id"].endswith("quality-check-cal-05")
+            )
+            quality_evidence = quality_positive_two["payload"]["view"][
+                "candidate_evidence"
+            ]
+            self.assertIn("report.md", quality_evidence)
+            self.assertIn("zero missing or contradictory fields", quality_evidence)
             prompt = (root / grader["prompt"]["path"]).read_text()
             self.assertIn("only against the declared mechanism relevant", prompt)
             self.assertIn("do not require unrelated mechanisms", prompt)
