@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import sys
 from typing import Any
@@ -51,6 +52,14 @@ def _replace(argv: list[str], option: str, value: str) -> None:
     if len(positions) != 1 or positions[0] + 1 >= len(argv):
         raise HostBuildError(f"template must bind {option} exactly once")
     argv[positions[0] + 1] = value
+
+
+def _bind(argv: list[str], option: str, value: str) -> None:
+    if option in argv:
+        _replace(argv, option, value)
+        return
+    position = argv.index("--host-manifest")
+    argv[position:position] = [option, value]
 
 
 def _git(repository_root: Path, *args: str) -> str:
@@ -104,9 +113,16 @@ def build_host(
     argv[0:2] = [str(executable), str(adapter)]
     codex_path = Path(argv[argv.index("--codex") + 1]).resolve(strict=True)
     codex_hash = _hash_bytes(codex_path.read_bytes())
+    isolation_name = shutil.which("bwrap")
+    if isolation_name is None:
+        raise HostBuildError("bubblewrap isolation executable is unavailable")
+    isolation_tool = Path(isolation_name).resolve(strict=True)
+    isolation_hash = _hash_bytes(isolation_tool.read_bytes())
     _replace(argv, "--mode", "host")
     _replace(argv, "--codex", str(codex_path))
     _replace(argv, "--codex-sha256", codex_hash)
+    _bind(argv, "--isolation-tool", str(isolation_tool))
+    _bind(argv, "--isolation-tool-sha256", isolation_hash)
     _replace(argv, "--host-manifest", str(output_path.resolve()))
     _replace(argv, "--plugin-root", str(plugin_root))
     command.update({
@@ -139,7 +155,10 @@ def build_host(
     execution = identity["execution"]
     execution["catalog_hash"] = catalog_hash
     execution["skill_hash"] = _tree_hash(plugin_root)
-    execution["tool_schema_hash"] = isolated_tool_schema_hash(codex_hash)
+    execution["tool_schema_hash"] = isolated_tool_schema_hash(
+        codex_hash,
+        isolation_hash,
+    )
     if execution.get("model") != argv[argv.index("--model") + 1]:
         raise HostBuildError("template model identity differs from its command")
     identity["adapter"].update(

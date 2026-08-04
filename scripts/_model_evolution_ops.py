@@ -823,6 +823,13 @@ def validate_target_host_staging(
     }
     if host.get("identity", {}).get("repository") != expected:
         raise OperationError("target Host repository identity differs")
+    argv = host.get("command", {}).get("argv", [])
+    if (
+        repository_root.parent.name != ".worktrees"
+        or argv.count("--isolation-tool") != 1
+        or argv.count("--isolation-tool-sha256") != 1
+    ):
+        raise OperationError("target Host lacks the required worktree isolation")
     return host
 
 

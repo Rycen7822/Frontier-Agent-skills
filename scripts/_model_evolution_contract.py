@@ -1266,6 +1266,27 @@ def _is_exec_item_lifecycle_diagnostic_correction(value: dict[str, Any]) -> bool
     )
 
 
+def _is_process_namespace_isolation_correction(value: dict[str, Any]) -> bool:
+    request_fields = ("provider_requests", "model_grade", "execute")
+    return (
+        _is_formal_projection_correction(value)
+        and value["campaign_id"]
+        == "model-evolution-6-3-incomplete-item-diagnostic-e782abf"
+        and value["product"]["source_commit"]
+        == "e782abfdb15636f1fa1a20efcf3e76c3b924dc7b"
+        and value["state_revision"] == 11
+        and tuple(
+            value["budgets"]["ceiling"][field] for field in request_fields
+        ) == (1438, 920, 616)
+        and tuple(
+            value["budgets"]["reserved"][field] for field in request_fields
+        ) == (1294, 640, 576)
+        and tuple(
+            value["budgets"]["observed"][field] for field in request_fields
+        ) == (910, 832, 0)
+    )
+
+
 def _validate_formal_protocol_error_evidence(
     campaign: dict[str, Any],
     campaign_root: Path,
@@ -1684,7 +1705,9 @@ def _blocked_supersession_lineage(
     lineage = [(old, old_path)]
     current, current_path = old, old_path
     campaign_limit = (
-        12
+        13
+        if _is_process_namespace_isolation_correction(old)
+        else 12
         if _is_exec_item_lifecycle_diagnostic_correction(old)
         else 11
         if _is_exec_item_update_correction(old)
@@ -1807,6 +1830,10 @@ def prepare_supersedes(
         len(lineage) == 12
         and _is_exec_item_lifecycle_diagnostic_correction(old)
     )
+    process_namespace_isolation_correction = (
+        len(lineage) == 13
+        and _is_process_namespace_isolation_correction(old)
+    )
     transport_lineage = any(
         campaign["campaign_id"] == "model-evolution-6-3-projection-ec0d79d"
         for campaign, _ in lineage
@@ -1824,7 +1851,10 @@ def prepare_supersedes(
         or source_root_binding_correction
         or exec_item_update_correction
         or exec_item_lifecycle_diagnostic_correction
+        or process_namespace_isolation_correction
     ):
+        raise ContractError("supersession repair depth is exhausted")
+    if len(lineage) == 13 and not process_namespace_isolation_correction:
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 12 and not exec_item_lifecycle_diagnostic_correction:
         raise ContractError("supersession repair depth is exhausted")
@@ -1864,6 +1894,7 @@ def prepare_supersedes(
         or source_root_binding_correction
         or exec_item_update_correction
         or exec_item_lifecycle_diagnostic_correction
+        or process_namespace_isolation_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = (
@@ -1913,7 +1944,10 @@ def prepare_supersedes(
         "utc_clock_id",
         "monotonic_clock_id",
     )
-    if not single_principal_exec_correction:
+    if not (
+        single_principal_exec_correction
+        or process_namespace_isolation_correction
+    ):
         stable_execution += ("tool_schema_hash",)
     stable_options = (
         "--codex-sha256",
@@ -1979,11 +2013,14 @@ def prepare_supersedes(
     if old_identity != target_identity or target_timeout < old_timeout:
         raise ContractError("superseded campaign targets a different Host")
     if (
-        single_principal_exec_correction
+        (
+            single_principal_exec_correction
+            or process_namespace_isolation_correction
+        )
         and old_host["identity"]["execution"]["tool_schema_hash"]
         == target_host["identity"]["execution"]["tool_schema_hash"]
     ):
-        raise ContractError("exec correction did not change the tool schema identity")
+        raise ContractError("Host correction did not change the tool schema identity")
     if (
         (
             source_workspace_isolation_correction
@@ -1992,6 +2029,7 @@ def prepare_supersedes(
             or source_root_binding_correction
             or exec_item_update_correction
             or exec_item_lifecycle_diagnostic_correction
+            or process_namespace_isolation_correction
         )
         and old_host["identity"]["adapter"]["sha256"]
         == target_host["identity"]["adapter"]["sha256"]
@@ -2157,6 +2195,40 @@ def prepare_supersedes(
                 "kind": "malformed_record",
                 "message": "Codex stream has incomplete items",
                 "seq": None,
+            },
+        )
+    if process_namespace_isolation_correction:
+        expected_blockers = {("final-plugin-unobserved", "release")} | {
+            (f"{skill_id}-current", skill_id) for skill_id in SKILL_IDS
+        }
+        blockers = {
+            (row.get("code"), row.get("scope"))
+            for row in qualification["blockers"]
+        }
+        if blockers != expected_blockers:
+            raise ContractError(
+                "process-isolation parent qualification blockers differ"
+            )
+        if qualification["qualification_id"] != "mq-ece59d4fb0f74fc501b36a82":
+            raise ContractError("process-isolation parent qualification differs")
+        _validate_formal_protocol_error_evidence(
+            old,
+            old_path.parent,
+            repository_root,
+            valid_entry_ids=(
+                "pe-b1ae33f2adf888fb1550ff9d",
+                "pe-03d0b9a8bb83c070760f040c",
+                "pe-da7ff3084346803682248532",
+            ),
+            failed_entry_id="pe-d20719e5ab7e3ee9e1d4697c",
+            expected_protocol_error={
+                "artifact": None,
+                "kind": "malformed_record",
+                "message": (
+                    "Codex stdout record 59 (item.completed/command_execution) "
+                    "exposed the bound source repository at /item/aggregated_output"
+                ),
+                "seq": 59,
             },
         )
     imported_reserved = dict(old["budgets"]["reserved"])

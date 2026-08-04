@@ -35,14 +35,9 @@ FAKE_CODEX = textwrap.dedent(
     """\
     #!/usr/bin/env python3
     import json
-    from pathlib import Path
     import sys
 
-    executable = Path(__file__).resolve()
-    calls = Path(str(executable) + ".calls.jsonl")
     prompt = sys.stdin.read()
-    with calls.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"argv": sys.argv[1:], "prompt": prompt}) + "\\n")
     records = [
         {"type": "thread.started", "thread_id": "019aa111-1111-7111-8111-111111111111"},
         {"type": "turn.started"},
@@ -107,6 +102,11 @@ def _materialize_fake_host(
     fake.parent.mkdir(parents=True, exist_ok=True)
     fake.write_text(FAKE_CODEX, encoding="utf-8")
     fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+    isolation_name = shutil.which("bwrap")
+    if isolation_name is None:
+        raise RuntimeError("bubblewrap fixture dependency is unavailable")
+    isolation_tool = Path(isolation_name).resolve(strict=True)
+    isolation_hash = file_hash(isolation_tool)
     host_path = campaign_root / "inputs/target-provisional-host.json"
     host = copy.deepcopy(make_v5_schema_examples()["host-manifest-v1.schema.json"])
     host["identity"]["adapter"].update(
@@ -134,6 +134,10 @@ def _materialize_fake_host(
                 str(fake),
                 "--codex-sha256",
                 file_hash(fake),
+                "--isolation-tool",
+                str(isolation_tool),
+                "--isolation-tool-sha256",
+                isolation_hash,
                 "--host-manifest",
                 str(host_path),
                 "--model",
@@ -143,7 +147,7 @@ def _materialize_fake_host(
                 "--profile",
                 "fixture-profile",
                 "--sandbox",
-                "workspace-write",
+                "read-only",
                 "--timeout",
                 "5",
                 "--plugin-root",
@@ -172,9 +176,12 @@ def _materialize_fake_host(
         "catalog_hash"
     ]
     host["identity"]["execution"]["skill_hash"] = _root_hash(plugin_root)
-    host["identity"]["execution"]["tool_schema_hash"] = isolated_tool_schema_hash(
-        file_hash(fake)
-    )
+    host["identity"]["execution"].update({
+        "tool_schema_hash": isolated_tool_schema_hash(
+            file_hash(fake),
+            isolation_hash,
+        ),
+    })
     host["capabilities"][0]["probe"]["status"] = "unknown"
     host["manifest_hash"] = canonical_hash(
         {key: value for key, value in host.items() if key != "manifest_hash"}
@@ -213,6 +220,7 @@ def _materialize_plugin_staging(campaign_root: Path) -> tuple[Path, Path]:
 
 def _materialize_probe_set(repository_root: Path, campaign_root: Path) -> Path:
     fixture = repository_root / "fixtures/probe.txt"
+    fixture.parent.mkdir(parents=True, exist_ok=True)
     fixture.write_text("inert probe fixture\n", encoding="utf-8")
     probe_set = with_self_hash(
         {
@@ -274,8 +282,9 @@ def _materialize_sentinel(repository_root: Path, campaign_root: Path) -> Path:
 
 
 def materialize_campaign(root: Path) -> dict[str, Any]:
-    repository_root = root / "repository"
-    campaign_root = root / "campaign"
+    canonical_root = root / "Frontier-Agent-skills"
+    repository_root = canonical_root / ".worktrees/fixture"
+    campaign_root = canonical_root / ".work/campaign"
     repository_root.mkdir(parents=True)
     campaign_root.mkdir(parents=True)
     product = _copy_product_files(repository_root)

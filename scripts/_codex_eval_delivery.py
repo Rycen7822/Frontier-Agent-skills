@@ -34,11 +34,22 @@ class DeliveryError(ValueError):
     """An exact catalog, treatment, or workspace delivery contract failed."""
 
 
-def isolated_tool_schema_hash(codex_sha256: str) -> str:
+def isolated_tool_schema_hash(
+    codex_sha256: str,
+    isolation_tool_sha256: str | None = None,
+) -> str:
     """Bind the model-visible tool surface to Codex and its feature isolation."""
     descriptor = {
         "codex_sha256": codex_sha256,
         "disabled_features": list(SKILL_ISOLATION_DISABLED_FEATURES),
+        "filesystem_isolation": (
+            None
+            if isolation_tool_sha256 is None
+            else {
+                "mode": "bubblewrap-workspace-only-v1",
+                "tool_sha256": isolation_tool_sha256,
+            }
+        ),
         "schema_version": 1,
         "transport": "codex-exec-json-single-principal",
     }
@@ -127,12 +138,12 @@ def validate_plugin_catalog(plugin_root: Path, manifest: dict[str, Any]) -> None
         raise DeliveryError("Host catalog identity differs from its entries")
 
 
-def skill_isolation_argv() -> list[str]:
+def skill_isolation_argv(*, include_installed_skills: bool = True) -> list[str]:
     codex_home = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
     skills_root = codex_home / "skills"
     disabled = (
         [path.resolve() for path in skills_root.rglob("SKILL.md") if path.is_file()]
-        if skills_root.is_dir()
+        if include_installed_skills and skills_root.is_dir()
         else []
     )
     argv = [
