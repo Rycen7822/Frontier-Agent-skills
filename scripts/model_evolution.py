@@ -16,6 +16,7 @@ from _model_evolution_contract import (
     ContractError,
     SKILL_IDS,
     _is_multiturn_timeout_correction,
+    _is_single_principal_exec_correction,
     _is_systemd_environment_correction,
     assess_interaction_probes,
     build_initial_campaign,
@@ -474,6 +475,7 @@ def _init(args: argparse.Namespace) -> None:
         )
         reuse_calibration_reservation = not (
             _is_multiturn_timeout_correction(superseded_campaign)
+            or _is_single_principal_exec_correction(superseded_campaign)
             or _is_systemd_environment_correction(superseded_campaign)
         )
     expected_request_ceilings = _cumulative_request_ceilings(

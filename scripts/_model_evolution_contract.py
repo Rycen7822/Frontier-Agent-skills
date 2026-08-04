@@ -1092,6 +1092,99 @@ def _is_systemd_environment_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _is_single_principal_exec_correction(value: dict[str, Any]) -> bool:
+    product = value["product"]
+    budgets = value["budgets"]
+    request_fields = ("provider_requests", "model_grade", "execute")
+    return (
+        _is_formal_projection_correction(value)
+        and value["campaign_id"]
+        == "model-evolution-6-3-systemd-environment-abf4929"
+        and product["source_commit"]
+        == "abf4929be4f5b4298695b108f6734c0c2242bdd0"
+        and tuple(budgets["ceiling"][field] for field in request_fields)
+        == (820, 456, 328)
+        and tuple(budgets["reserved"][field] for field in request_fields)
+        == (676, 352, 288)
+        and tuple(budgets["observed"][field] for field in request_fields)
+        == (420, 384, 0)
+    )
+
+
+def _validate_single_principal_exec_evidence(
+    campaign: dict[str, Any], campaign_root: Path, repository_root: Path,
+) -> None:
+    expected = {
+        "long-document-segmented-writing": (12, 12, 0),
+        "skill-evaluator": (11, 10, 1),
+        "software-quality-workflows": (7, 6, 1),
+        "writing-plans": (6, 5, 1),
+    }
+    plans = {record["skill_id"]: record for record in campaign["plans"]}
+    for skill_id, (indexed, valid, invalid) in expected.items():
+        plan_path = resolve_binding(
+            plans[skill_id]["plan"], repository_root, campaign_root,
+        )
+        plan = load_json(plan_path, label=f"{skill_id} exec parent plan")
+        execute_entries = [
+            entry for entry in plan["entries"]
+            if entry["disposition"] == "execute"
+        ]
+        artifacts = plan_path.parent / plan["artifacts"]["root"]
+        rows = load_jsonl(
+            artifacts / plan["artifacts"]["index_relpath"],
+            label=f"{skill_id} exec parent index",
+        )
+        attempt_paths = list((artifacts / "entries").glob("*/attempt-*"))
+        indexed_paths: set[Path] = set()
+        validity: list[bool] = []
+        for row in rows:
+            attempt = artifacts.joinpath(*_relative_path(row["artifact_dir"]).parts)
+            receipt_binding = row["receipt"]
+            receipt_path = artifacts.joinpath(
+                *_relative_path(receipt_binding["path"]).parts,
+            )
+            if (
+                attempt.is_symlink()
+                or not attempt.is_dir()
+                or receipt_path != attempt / "receipt.json"
+                or receipt_path.is_symlink()
+                or not receipt_path.is_file()
+                or content_hash(receipt_path.read_bytes())
+                != receipt_binding["sha256"]
+            ):
+                raise ContractError("exec parent receipt binding differs")
+            receipt = load_json(receipt_path, label=f"{skill_id} exec receipt")
+            verify_self_hash(receipt, "receipt_hash")
+            run = receipt.get("run", {})
+            if (
+                run.get("entry_id") != row.get("entry_id")
+                or run.get("attempt") != row.get("attempt")
+            ):
+                raise ContractError("exec parent receipt identity differs")
+            is_valid = run.get("valid") is True
+            validity.append(is_valid)
+            indexed_paths.add(attempt.resolve())
+            if not is_valid and (
+                run.get("completion_origin") != "resume_seal"
+                or run.get("terminal") != "interrupted"
+                or run.get("error") != "interrupted"
+            ):
+                raise ContractError("exec parent invalid receipt differs")
+        attempts = {path.resolve() for path in attempt_paths}
+        if (
+            len(execute_entries) != 12
+            or len(rows) != indexed
+            or sum(validity) != valid
+            or len(validity) - sum(validity) != invalid
+            or len(indexed_paths) != len(rows)
+            or len(attempt_paths) != len(rows)
+            or any(path.is_symlink() or not path.is_dir() for path in attempt_paths)
+            or attempts != indexed_paths
+        ):
+            raise ContractError("exec parent attempt state differs")
+
+
 def _validate_systemd_environment_evidence(
     campaign: dict[str, Any], campaign_root: Path, repository_root: Path,
 ) -> None:
@@ -1410,6 +1503,9 @@ def prepare_supersedes(
     systemd_environment_correction = (
         len(lineage) == 5 and _is_systemd_environment_correction(old)
     )
+    single_principal_exec_correction = (
+        len(lineage) == 6 and _is_single_principal_exec_correction(old)
+    )
     transport_lineage = any(
         campaign["campaign_id"] == "model-evolution-6-3-projection-ec0d79d"
         for campaign, _ in lineage
@@ -1418,6 +1514,7 @@ def prepare_supersedes(
         model_grade_path_correction
         or multiturn_timeout_correction
         or systemd_environment_correction
+        or single_principal_exec_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 9 and not formal_projection_correction:
@@ -1426,7 +1523,9 @@ def prepare_supersedes(
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 7 and not calibration_contract_correction:
         raise ContractError("supersession repair depth is exhausted")
-    if len(lineage) == 6 and not probe_contract_correction:
+    if len(lineage) == 6 and not (
+        probe_contract_correction or single_principal_exec_correction
+    ):
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) >= 3 and not (
         _is_single_calibration_correction(old)
@@ -1437,6 +1536,7 @@ def prepare_supersedes(
         or model_grade_path_correction
         or multiturn_timeout_correction
         or systemd_environment_correction
+        or single_principal_exec_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = (
@@ -1480,13 +1580,14 @@ def prepare_supersedes(
         "model_revision",
         "harness",
         "prompt_hash",
-        "tool_schema_hash",
         "policy_hash",
         "tokenizer_id",
         "pricing_id",
         "utc_clock_id",
         "monotonic_clock_id",
     )
+    if not single_principal_exec_correction:
+        stable_execution += ("tool_schema_hash",)
     stable_options = (
         "--codex-sha256",
         "--model",
@@ -1550,6 +1651,12 @@ def prepare_supersedes(
     target_identity, target_timeout = stable_host_identity(target_host)
     if old_identity != target_identity or target_timeout < old_timeout:
         raise ContractError("superseded campaign targets a different Host")
+    if (
+        single_principal_exec_correction
+        and old_host["identity"]["execution"]["tool_schema_hash"]
+        == target_host["identity"]["execution"]["tool_schema_hash"]
+    ):
+        raise ContractError("exec correction did not change the tool schema identity")
     qualification_path = old_path.parent / "qualification/qualification.json"
     qualification = load_json(qualification_path, label="superseded qualification")
     validate_document(qualification, "qualification")
@@ -1565,6 +1672,19 @@ def prepare_supersedes(
         if qualification["qualification_id"] != "mq-be17f8c2be4c15e4c157788c":
             raise ContractError("environment parent qualification differs")
         _validate_systemd_environment_evidence(
+            old, old_path.parent, repository_root,
+        )
+    if single_principal_exec_correction:
+        expected_blockers = {("final-plugin-unobserved", "release")} | {
+            (f"{skill_id}-current", skill_id) for skill_id in SKILL_IDS
+        }
+        blockers = {
+            (row.get("code"), row.get("scope"))
+            for row in qualification["blockers"]
+        }
+        if blockers != expected_blockers:
+            raise ContractError("exec parent qualification blockers differ")
+        _validate_single_principal_exec_evidence(
             old, old_path.parent, repository_root,
         )
     imported_reserved = dict(old["budgets"]["reserved"])
