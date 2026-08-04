@@ -673,6 +673,9 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         transport = load_analyzer_module().model_transport
         assessment = {'changed_paths': ['fixtures/app.py']}
         developer_path = '/' + 'home' + '/example/workspace/fixtures/app.py'
+        unbound_home_path = '/' + 'home' + '/example/repository/report.md'
+        windows_path = 'C:' + '\\' + 'Users\\example\\repository\\report.md'
+        home_url = 'https://example.invalid/' + 'home/example/report.md'
         self.assertEqual(
             '[app](<fixtures/app.py>)',
             transport._redact_workspace_paths(  # noqa: SLF001
@@ -687,11 +690,38 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 assessment,
             ),
         )
-        with self.assertRaises(ValueError):
-            transport._redact_workspace_paths(  # noqa: SLF001
-                '[other](</private/workspace/fixtures/other.py>)',
-                assessment,
-            )
+        redaction_cases = {
+            '[other](</private/workspace/fixtures/other.py>)': (
+                '[other](<local-path-redacted>)'
+            ),
+            f'Use `/tmp` or {unbound_home_path}.': (
+                'Use `local-path-redacted` or local-path-redacted.'
+            ),
+            f'Open {windows_path}': 'Open local-path-redacted',
+        }
+        for original, expected in redaction_cases.items():
+            with self.subTest(original=original):
+                self.assertEqual(
+                    expected,
+                    transport._redact_workspace_paths(  # noqa: SLF001
+                        original,
+                        assessment,
+                    ),
+                )
+        unchanged_cases = (
+            home_url,
+            'Use relative fixtures/app.py and home/example prose.',
+            'The /homely and /tmp-file tokens are not local roots.',
+        )
+        for original in unchanged_cases:
+            with self.subTest(original=original):
+                self.assertEqual(
+                    original,
+                    transport._redact_workspace_paths(  # noqa: SLF001
+                        original,
+                        assessment,
+                    ),
+                )
         with self.assertRaises(ValueError):
             transport._task_evidence({})  # noqa: SLF001
         with self.assertRaises(ValueError):

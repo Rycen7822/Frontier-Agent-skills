@@ -1006,6 +1006,24 @@ def _is_formal_projection_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _is_model_grade_path_correction(value: dict[str, Any]) -> bool:
+    product = value["product"]
+    budgets = value["budgets"]
+    request_fields = ("provider_requests", "model_grade", "execute")
+    return (
+        _is_formal_projection_correction(value)
+        and value["campaign_id"] == "model-evolution-6-3-projection-ec0d79d"
+        and product["source_commit"]
+        == "ec0d79d59f4325389d3b15b1d0c5a4d176495bfc"
+        and tuple(budgets["ceiling"][field] for field in request_fields)
+        == (450, 248, 184)
+        and tuple(budgets["reserved"][field] for field in request_fields)
+        == (370, 208, 144)
+        and tuple(budgets["observed"][field] for field in request_fields)
+        == (210, 192, 0)
+    )
+
+
 def _failure_receipt_request_count(
     binding: dict[str, Any],
     *,
@@ -1157,6 +1175,15 @@ def prepare_supersedes(
     formal_projection_correction = (
         len(lineage) == 9 and _is_formal_projection_correction(old)
     )
+    model_grade_path_correction = (
+        len(lineage) == 3 and _is_model_grade_path_correction(old)
+    )
+    transport_lineage = any(
+        campaign["campaign_id"] == "model-evolution-6-3-projection-ec0d79d"
+        for campaign, _ in lineage
+    )
+    if transport_lineage and not model_grade_path_correction:
+        raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 9 and not formal_projection_correction:
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 8 and not calibration_fixture_correction:
@@ -1171,6 +1198,7 @@ def prepare_supersedes(
         or calibration_contract_correction
         or calibration_fixture_correction
         or formal_projection_correction
+        or model_grade_path_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = len(lineage) in {4, 5}
