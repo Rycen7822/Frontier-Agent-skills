@@ -320,6 +320,11 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                 "execute": 48,
                 "model_grade": 96,
             },
+            "imported_observed": {
+                "provider_requests": 100,
+                "execute": 40,
+                "model_grade": 80,
+            },
         }
         self.assertEqual(
             {
@@ -343,6 +348,14 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                 supersedes,
                 reuse_calibration_reservation=False,
             ),
+        )
+        supersedes["imported_observed"]["model_grade"] = 120
+        self.assertEqual(
+            208,
+            controller._cumulative_request_ceilings(
+                request_ceilings,
+                supersedes,
+            )["model_grade"],
         )
 
     def test_frozen_sentinel_budget_counts_both_holdout_treatments(self) -> None:
