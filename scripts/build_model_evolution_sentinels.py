@@ -903,9 +903,11 @@ def _calibration_view(
                 "Observed result record: the required artifact is present and readable; "
                 "every requirement row is complete; the verification command exited 0 "
                 "with no failing checks; the handoff names the usable output.",
-                "The evidence bundle contains the final result, every mandatory "
-                "input-to-output mapping, and a successful verification record; its "
-                "consistency check reports every field resolved and mutually consistent.",
+                "Observed bundle: report.md contains the final result and every mandatory "
+                "section; its requirement map binds each stated input to a named output "
+                "section; the verification command verify_report.py exited 0 with zero "
+                "missing or contradictory fields; the handoff names report.md as the "
+                "usable output.",
             ),
             "known_bad": (
                 "The submission is only a placeholder and omits the requested result.",
@@ -945,8 +947,17 @@ def _calibration_view(
             ),
         },
     }
+    task = (
+        f"Judge whether the supplied evidence establishes a complete, correct, and "
+        f"usable deliverable for the {skill_id} sentinel task."
+        if check_id == "quality-check"
+        else (
+            "Judge whether the trace demonstrates all three mechanisms required by "
+            f"this calibration task ({mechanisms}) without unrelated workflow."
+        )
+    )
     return {
-        "task": f"Evaluate the {skill_id} sentinel deliverable.",
+        "task": task,
         "candidate_evidence": evidence[check_id][class_name][repetition - 1],
     }
 
