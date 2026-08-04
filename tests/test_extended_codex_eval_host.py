@@ -75,6 +75,8 @@ FAKE_CODEX_SOURCE = textwrap.dedent(
 
     turns = config.get("turns") or [{}]
     turn = turns[min(call_index, len(turns) - 1)]
+    if turn.get("sleep_seconds"):
+        time.sleep(turn["sleep_seconds"])
     message = turn.get("message", "fixture complete")
     if "--output-schema" in sys.argv:
         message = json.dumps(config["grade"], separators=(",", ":"))
@@ -551,6 +553,32 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                 [Path(artifacts[0]["path"]).name],
                 sorted(path.name for path in workspace.iterdir()),
             )
+
+    def test_each_turn_receives_the_full_bound_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            fake, state = _write_fake_codex(
+                root,
+                turns=[{"sleep_seconds": 0.65}, {"sleep_seconds": 0.65}],
+            )
+            manifest_path = root / "host.json"
+            _host_manifest(manifest_path, fake, timeout=1)
+
+            result = _run_adapter(
+                workspace,
+                fake,
+                manifest_path,
+                _request("execute_case", _execute_payload(2)),
+                timeout=1,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(2, len(_jsonl(state.read_text(encoding="utf-8"))))
+            records = _jsonl(result.stdout)
+            self.assertEqual(3, len(records))
+            self.assertEqual("completed", records[-1]["terminal_status"])
 
     def test_default_profile_sentinel_is_omitted_on_fresh_and_resume(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

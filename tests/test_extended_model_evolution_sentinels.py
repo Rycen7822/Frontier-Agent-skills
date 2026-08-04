@@ -80,6 +80,16 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             rows = [json.loads(line) for line in path.read_text().splitlines()]
             self.assertEqual(len(rows), 6)
             self.assertEqual(len({row["case_id"] for row in rows}), 6)
+            for row in rows:
+                self.assertEqual(
+                    600 * len(row["turns"]) + 30,
+                    row["timeout_seconds"],
+                )
+            spec = load_json(
+                SENTINEL_ROOT / skill_id / "eval-spec.template.json",
+                label="sentinel spec",
+            )
+            self.assertEqual(1230, spec["execution"]["timeout_seconds"])
             tags = {tag for row in rows for tag in row["tags"]}
             self.assertLessEqual(set(record["required_coverage_tags"]), tags)
             by_id = {row["case_id"]: row for row in rows}

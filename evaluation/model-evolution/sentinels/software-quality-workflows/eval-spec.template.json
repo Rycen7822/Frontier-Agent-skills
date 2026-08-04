@@ -230,7 +230,7 @@
       "max_attempts": 1,
       "retryable_apparatus_classes": []
     },
-    "timeout_seconds": 630
+    "timeout_seconds": 1230
   },
   "graders": [
     {
@@ -402,19 +402,19 @@
     "order_seed": 630,
     "public_scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:b0aafc668ebdbc27dfd5b8482e509a097755974cc01f33fd61e40c7473fc314a"
+      "sha256": "sha256:5ca646cb9e9776a9aed48d000f2074b756d780b05cb29073678f80dc9b225e78"
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:3d320fe424f066d725625ff3fd92eee4671c9599b10612fb1d9c8e0abff814e4"
+      "sha256": "sha256:d8bf84c824f47761fb351d8aa73a65ac4690dfcdf8da6b3f6f92cc57833c9321"
     },
-    "quality_contract_hash": "sha256:8d47d76b5a4f270fba80aaeb912c3a067e80bdd903878887ee14e5f2f7396f26",
+    "quality_contract_hash": "sha256:bd12d48982bd1c373dd79cbb6c1e1eceb0ff144ac7defdd966afad06f4347fe4",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:b0aafc668ebdbc27dfd5b8482e509a097755974cc01f33fd61e40c7473fc314a"
+      "sha256": "sha256:5ca646cb9e9776a9aed48d000f2074b756d780b05cb29073678f80dc9b225e78"
     },
     "treatment_contract_hash": "sha256:850d8fa64991c0c171acb6b606908ae4a949d8237e2e47a221c098359c2c2fd4"
   },

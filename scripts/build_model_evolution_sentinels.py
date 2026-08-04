@@ -29,7 +29,8 @@ import validate_eval_suite as evaluator  # noqa: E402
 
 
 MODEL_ROOT = Path("evaluation/model-evolution")
-FORMAL_ENTRY_TIMEOUT_SECONDS = 630
+CODEX_TURN_TIMEOUT_SECONDS = 600
+HOST_CLEANUP_GRACE_SECONDS = 30
 MODEL_CHECKS = [
     {
         "check_id": "quality-check",
@@ -364,7 +365,9 @@ def _scenario(
     slug, coverage, task, protected, turn_count = case
     value = copy.deepcopy(base)
     value["case_id"] = f"{skill_id}-{slug}"
-    value["timeout_seconds"] = FORMAL_ENTRY_TIMEOUT_SECONDS
+    value["timeout_seconds"] = (
+        CODEX_TURN_TIMEOUT_SECONDS * turn_count + HOST_CLEANUP_GRACE_SECONDS
+    )
     value["split"] = "regression" if protected else "dev"
     value["tags"] = ["core", coverage, *(["boundary"] if protected else [])]
     value["fixture"] = {
@@ -506,7 +509,9 @@ def _spec(
     )
     value["subject"]["package"]["path"] = f"replace-with-{skill_id}-package"
     value["execution"]["ready"] = False
-    value["execution"]["timeout_seconds"] = FORMAL_ENTRY_TIMEOUT_SECONDS
+    value["execution"]["timeout_seconds"] = max(
+        row["timeout_seconds"] for row in scenarios
+    )
     for module in value["applicability"]:
         module["evidence"] = [
             {
