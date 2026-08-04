@@ -282,19 +282,20 @@ def _cumulative_request_ceilings(
     }
     if supersedes is None:
         return expected
-    imported = supersedes["imported_reserved"]
-    calibration = (
+    imported_reserved = supersedes["imported_reserved"]
+    imported_observed = supersedes["imported_observed"]
+    reusable_calibration = (
         request_ceilings["calibration"]
         if reuse_calibration_reservation
         else 0
     )
-    expected["provider_requests"] += max(
-        0, imported["provider_requests"] - calibration,
-    )
-    expected["execute"] += imported["execute"]
-    expected["model_grade"] += max(
-        0, imported["model_grade"] - calibration,
-    )
+    for field in expected:
+        future = request_ceilings[field]
+        if field in {"provider_requests", "model_grade"}:
+            future -= reusable_calibration
+        expected[field] = max(
+            imported_reserved[field], imported_observed[field],
+        ) + future
     return expected
 
 
