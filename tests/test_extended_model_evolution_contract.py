@@ -19,6 +19,7 @@ from _model_evolution_contract import (  # noqa: E402
     _is_formal_projection_correction,
     _is_model_grade_path_correction,
     _is_multiturn_timeout_correction,
+    _is_single_principal_exec_correction,
     _is_systemd_environment_correction,
     _is_partial_calibration_correction,
     build_initial_campaign,
@@ -994,11 +995,32 @@ class ModelEvolutionContractTest(unittest.TestCase):
         self.assertFalse(_is_systemd_environment_correction(state))
         state["budgets"]["reserved"]["execute"] = 240
 
+        state["campaign_id"] = (
+            "model-evolution-6-3-systemd-environment-abf4929"
+        )
+        state["product"]["source_commit"] = (
+            "abf4929be4f5b4298695b108f6734c0c2242bdd0"
+        )
+        state["budgets"]["ceiling"].update({
+            "provider_requests": 820, "model_grade": 456, "execute": 328,
+        })
+        state["budgets"]["reserved"].update({
+            "provider_requests": 676, "model_grade": 352, "execute": 288,
+        })
+        state["budgets"]["observed"].update({
+            "provider_requests": 420, "model_grade": 384, "execute": 0,
+        })
+        self.assertTrue(_is_single_principal_exec_correction(state))
+        state["budgets"]["observed"]["provider_requests"] = 419
+        self.assertFalse(_is_single_principal_exec_correction(state))
+        state["budgets"]["observed"]["provider_requests"] = 420
+
         state["plans"].pop()
         self.assertFalse(_is_formal_projection_correction(state))
         self.assertFalse(_is_model_grade_path_correction(state))
         self.assertFalse(_is_multiturn_timeout_correction(state))
         self.assertFalse(_is_systemd_environment_correction(state))
+        self.assertFalse(_is_single_principal_exec_correction(state))
         state["plans"].append({
             "role": "target_current",
             "skill_id": SKILL_IDS[-1],
