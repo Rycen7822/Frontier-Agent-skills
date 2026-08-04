@@ -20,6 +20,7 @@ from _model_evolution_contract import (  # noqa: E402
     _is_model_grade_path_correction,
     _is_multiturn_timeout_correction,
     _is_single_principal_exec_correction,
+    _is_source_workspace_isolation_correction,
     _is_systemd_environment_correction,
     _is_partial_calibration_correction,
     build_initial_campaign,
@@ -1034,6 +1035,58 @@ class ModelEvolutionContractTest(unittest.TestCase):
             self.fixture["bindings"]["host"]
         )
         self.assertFalse(_is_partial_calibration_correction(state))
+
+    def test_source_workspace_isolation_correction_shape_is_exact(self) -> None:
+        state = copy.deepcopy(self.fixture["campaign"])
+        state.update({
+            "campaign_id": "model-evolution-6-3-single-principal-4ad0902",
+            "phase": "calibration_ready",
+            "state_revision": 7,
+        })
+        state["product"]["source_commit"] = (
+            "4ad0902cba9e531fda0e5f910cfc431930e4805a"
+        )
+        state["profiles"]["target_observed"] = self.fixture["bindings"]["host"]
+        state["apparatus_report"] = self.fixture["bindings"]["host"]
+        probe_ids = [
+            "force-load",
+            "natural-routing",
+            "multi-turn",
+            "principal-tracing",
+            "usage-capture",
+            "authorization-trace",
+        ]
+        state["interaction_probes"].update({
+            "blocker": None,
+            "results": self.fixture["bindings"]["host"],
+            "requests": [
+                {
+                    "request_id": f"probe-fixture-{ordinal:02d}",
+                    "probe_id": probe_id,
+                    "status": "closed",
+                    "artifact": self.fixture["bindings"]["host"],
+                    "result_status": "pass",
+                }
+                for ordinal, probe_id in enumerate(probe_ids, start=1)
+            ],
+        })
+        for skill_id in SKILL_IDS:
+            state["skill_evidence"][skill_id]["grader_calibration"] = (
+                self.fixture["bindings"]["host"]
+            )
+        state["budgets"]["ceiling"].update({
+            "provider_requests": 922, "model_grade": 536, "execute": 376,
+        })
+        state["budgets"]["reserved"].update({
+            "provider_requests": 682, "model_grade": 352, "execute": 288,
+        })
+        state["budgets"]["observed"].update({
+            "provider_requests": 490, "model_grade": 448, "execute": 0,
+        })
+
+        self.assertTrue(_is_source_workspace_isolation_correction(state))
+        state["budgets"]["observed"]["model_grade"] = 447
+        self.assertFalse(_is_source_workspace_isolation_correction(state))
 
     def test_observed_host_projection_requires_exact_capability_and_result_set(
         self,
