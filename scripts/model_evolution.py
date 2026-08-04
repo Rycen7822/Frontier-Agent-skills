@@ -15,6 +15,7 @@ from _model_evolution_contract import (
     CRITICAL_PROBE_CAPABILITIES,
     ContractError,
     SKILL_IDS,
+    _is_child_environment_isolation_correction,
     _is_multiturn_timeout_correction,
     _is_single_principal_exec_correction,
     _is_source_workspace_isolation_correction,
@@ -477,6 +478,7 @@ def _init(args: argparse.Namespace) -> None:
         )
         reuse_calibration_reservation = not (
             _is_multiturn_timeout_correction(superseded_campaign)
+            or _is_child_environment_isolation_correction(superseded_campaign)
             or _is_single_principal_exec_correction(superseded_campaign)
             or _is_source_workspace_isolation_correction(superseded_campaign)
             or _is_systemd_environment_correction(superseded_campaign)
