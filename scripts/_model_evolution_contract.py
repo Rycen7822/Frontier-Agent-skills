@@ -1203,10 +1203,38 @@ def _is_source_exposure_locator_correction(value: dict[str, Any]) -> bool:
     )
 
 
+def _is_source_root_binding_correction(value: dict[str, Any]) -> bool:
+    request_fields = ("provider_requests", "model_grade", "execute")
+    return (
+        _is_formal_projection_correction(value)
+        and value["campaign_id"]
+        == "model-evolution-6-3-source-exposure-locator-d315137"
+        and value["product"]["source_commit"]
+        == "d3151371dc003afc3cf7fbb2cb4c22d69dded791"
+        and value["state_revision"] == 11
+        and tuple(
+            value["budgets"]["ceiling"][field] for field in request_fields
+        ) == (1132, 728, 472)
+        and tuple(
+            value["budgets"]["reserved"][field] for field in request_fields
+        ) == (988, 496, 432)
+        and tuple(
+            value["budgets"]["observed"][field] for field in request_fields
+        ) == (700, 640, 0)
+    )
+
+
 def _validate_source_exposure_evidence(
     campaign: dict[str, Any], campaign_root: Path, repository_root: Path,
     *, baseline_entry_id: str, candidate_entry_id: str,
+    expected_protocol_error: dict[str, Any] | None = None,
 ) -> None:
+    expected_protocol_error = expected_protocol_error or {
+        "artifact": None,
+        "kind": "malformed_record",
+        "message": "Codex output exposed the bound source repository",
+        "seq": None,
+    }
     plans = {record["skill_id"]: record for record in campaign["plans"]}
     for skill_id in SKILL_IDS:
         plan_path = resolve_binding(
@@ -1304,12 +1332,7 @@ def _validate_source_exposure_evidence(
             or result.get("principals") != []
             or result.get("actions") != []
             or result.get("usage", {}).get("records") != []
-            or result.get("protocol_error") != {
-                "artifact": None,
-                "kind": "malformed_record",
-                "message": "Codex output exposed the bound source repository",
-                "seq": None,
-            }
+            or result.get("protocol_error") != expected_protocol_error
         ):
             raise ContractError("source-exposure parent Host evidence differs")
 
@@ -1718,6 +1741,9 @@ def prepare_supersedes(
     source_exposure_locator_correction = (
         len(lineage) == 9 and _is_source_exposure_locator_correction(old)
     )
+    source_root_binding_correction = (
+        len(lineage) == 10 and _is_source_root_binding_correction(old)
+    )
     transport_lineage = any(
         campaign["campaign_id"] == "model-evolution-6-3-projection-ec0d79d"
         for campaign, _ in lineage
@@ -1732,7 +1758,10 @@ def prepare_supersedes(
         or source_workspace_isolation_correction
         or child_environment_isolation_correction
         or source_exposure_locator_correction
+        or source_root_binding_correction
     ):
+        raise ContractError("supersession repair depth is exhausted")
+    if len(lineage) == 10 and not source_root_binding_correction:
         raise ContractError("supersession repair depth is exhausted")
     if len(lineage) == 9 and not (
         formal_projection_correction or source_exposure_locator_correction
@@ -1763,6 +1792,7 @@ def prepare_supersedes(
         or source_workspace_isolation_correction
         or child_environment_isolation_correction
         or source_exposure_locator_correction
+        or source_root_binding_correction
     ):
         raise ContractError("supersession repair depth is exhausted")
     receipt_hop = (
@@ -1888,6 +1918,7 @@ def prepare_supersedes(
             source_workspace_isolation_correction
             or child_environment_isolation_correction
             or source_exposure_locator_correction
+            or source_root_binding_correction
         )
         and old_host["identity"]["adapter"]["sha256"]
         == target_host["identity"]["adapter"]["sha256"]
@@ -1966,6 +1997,32 @@ def prepare_supersedes(
             repository_root,
             baseline_entry_id="pe-2633aeb4f766c8abcb5ccf7b",
             candidate_entry_id="pe-8fbc5c60a1fd8d824e15e689",
+        )
+    if source_root_binding_correction:
+        expected_blockers = {("final-plugin-unobserved", "release")} | {
+            (f"{skill_id}-current", skill_id) for skill_id in SKILL_IDS
+        }
+        blockers = {
+            (row.get("code"), row.get("scope"))
+            for row in qualification["blockers"]
+        }
+        if blockers != expected_blockers:
+            raise ContractError("source-root parent qualification blockers differ")
+        _validate_source_exposure_evidence(
+            old,
+            old_path.parent,
+            repository_root,
+            baseline_entry_id="pe-afe348c8ee626c0f96f490b4",
+            candidate_entry_id="pe-5fc0e124626ace71a7456134",
+            expected_protocol_error={
+                "artifact": None,
+                "kind": "malformed_record",
+                "message": (
+                    "Codex stdout record 5 (item.completed/command_execution) "
+                    "exposed the bound source repository at /item/aggregated_output"
+                ),
+                "seq": 5,
+            },
         )
     imported_reserved = dict(old["budgets"]["reserved"])
     imported_observed = dict(old["budgets"]["observed"])
