@@ -1041,26 +1041,34 @@ class ModelEvolutionContractTest(unittest.TestCase):
         self.assertFalse(_is_analysis_sentinel_contract_correction(state))
         state["budgets"]["reserved"]["provider_requests"] += 1
 
-        state["campaign_id"] = (
+        calibration_state = copy.deepcopy(state)
+        calibration_state["phase"] = "target_profile_ready"
+        calibration_state["plans"] = []
+        for skill_id in SKILL_IDS:
+            calibration_state["skill_evidence"][skill_id][
+                "grader_calibration"
+            ] = None
+        calibration_state["campaign_id"] = (
             "model-evolution-6-3-analysis-sentinel-contract-e272053"
         )
-        state["product"]["source_commit"] = (
+        calibration_state["product"]["source_commit"] = (
             "e272053bca888d56864bab0aa04efc73835649e0"
         )
-        state["state_revision"] = 3
-        state["budgets"]["ceiling"].update({
+        calibration_state["state_revision"] = 3
+        calibration_state["budgets"]["ceiling"].update({
             "provider_requests": 1642, "model_grade": 1048, "execute": 712,
         })
-        state["budgets"]["reserved"].update({
+        calibration_state["budgets"]["reserved"].update({
             "provider_requests": 1402, "model_grade": 688, "execute": 624,
         })
-        state["budgets"]["observed"].update({
+        calibration_state["budgets"]["observed"].update({
             "provider_requests": 986, "model_grade": 896, "execute": 0,
         })
-        self.assertTrue(_is_calibration_task_fixture_correction(state))
-        state["budgets"]["observed"]["provider_requests"] -= 1
-        self.assertFalse(_is_calibration_task_fixture_correction(state))
-        state["budgets"]["observed"]["provider_requests"] += 1
+        self.assertTrue(_is_calibration_task_fixture_correction(calibration_state))
+        calibration_state["budgets"]["observed"]["provider_requests"] -= 1
+        self.assertFalse(
+            _is_calibration_task_fixture_correction(calibration_state)
+        )
 
         state["plans"].pop()
         self.assertFalse(_is_formal_projection_correction(state))

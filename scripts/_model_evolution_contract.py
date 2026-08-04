@@ -1311,7 +1311,7 @@ def _is_analysis_sentinel_contract_correction(value: dict[str, Any]) -> bool:
 def _is_calibration_task_fixture_correction(value: dict[str, Any]) -> bool:
     request_fields = ("provider_requests", "model_grade", "execute")
     return (
-        _is_formal_projection_correction(value)
+        _is_single_calibration_correction(value)
         and value["campaign_id"]
         == "model-evolution-6-3-analysis-sentinel-contract-e272053"
         and value["product"]["source_commit"]
