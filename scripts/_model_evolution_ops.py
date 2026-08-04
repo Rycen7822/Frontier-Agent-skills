@@ -472,7 +472,7 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
     if (
         not isinstance(value, dict)
         or set(value) != required
-        or value["schema_version"] != "codex-interaction-probe-result/1.1"
+        or value["schema_version"] != host_adapter.PROBE_RESULT_SCHEMA_VERSION
         or value["probe_id"] != row["probe_id"]
         or value["capability"] != row["capability"]
         or value["status"] not in {"pass", "unknown"}

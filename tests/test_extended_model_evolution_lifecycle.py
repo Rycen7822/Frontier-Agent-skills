@@ -637,6 +637,10 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             list(MODEL_EVOLUTION_ENV_ALLOWLIST),
             built["command"]["env_allowlist"],
         )
+        self.assertEqual(
+            host_builder.codex_eval_host.ADAPTER_VERSION,
+            built["identity"]["adapter"]["version"],
+        )
         self.assertEqual(identity, built["identity"]["repository"])
         operations.validate_target_host_staging(
             output,
