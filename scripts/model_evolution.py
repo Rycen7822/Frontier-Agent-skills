@@ -15,6 +15,7 @@ from _model_evolution_contract import (
     CRITICAL_PROBE_CAPABILITIES,
     ContractError,
     SKILL_IDS,
+    _is_multiturn_timeout_correction,
     assess_interaction_probes,
     build_initial_campaign,
     canonical_bytes,
@@ -270,6 +271,8 @@ def _validate_evidence_join(
 def _cumulative_request_ceilings(
     request_ceilings: dict[str, int],
     supersedes: dict[str, Any] | None,
+    *,
+    reuse_calibration_reservation: bool = True,
 ) -> dict[str, int]:
     expected = {
         field: request_ceilings[field]
@@ -278,7 +281,11 @@ def _cumulative_request_ceilings(
     if supersedes is None:
         return expected
     imported = supersedes["imported_reserved"]
-    calibration = request_ceilings["calibration"]
+    calibration = (
+        request_ceilings["calibration"]
+        if reuse_calibration_reservation
+        else 0
+    )
     expected["provider_requests"] += max(
         0, imported["provider_requests"] - calibration,
     )
@@ -422,6 +429,7 @@ def _init(args: argparse.Namespace) -> None:
             campaign_root=campaign_root,
         )
     supersedes = None
+    reuse_calibration_reservation = True
     if (
         args.supersession_failure_receipt is not None
         or args.supersession_calibration_rejection_receipt is not None
@@ -459,9 +467,17 @@ def _init(args: argparse.Namespace) -> None:
             repository_root=repository_root,
             campaign_root=campaign_root,
         )
+        superseded_campaign = load_json(
+            args.supersedes.resolve(strict=True),
+            label="superseded campaign",
+        )
+        reuse_calibration_reservation = not _is_multiturn_timeout_correction(
+            superseded_campaign
+        )
     expected_request_ceilings = _cumulative_request_ceilings(
         request_ceilings,
         supersedes,
+        reuse_calibration_reservation=reuse_calibration_reservation,
     )
     for field, expected in expected_request_ceilings.items():
         if ceilings[field] != expected:
