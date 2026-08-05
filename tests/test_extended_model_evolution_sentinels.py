@@ -386,6 +386,14 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 )
                 self.assertIn("valid contract owner surface", prompt)
                 self.assertIn("usable patch preserves JSON syntax", prompt)
+                self.assertIn(
+                    "task-consistent level labels and frozen controls",
+                    prompt,
+                )
+                self.assertIn(
+                    "only false or contradictory additions can fail",
+                    prompt,
+                )
                 self.assertIn("belong only to the context-cost axis", prompt)
                 self.assertIn("use them to change quality/process scores", prompt)
                 process_positive_one = next(
