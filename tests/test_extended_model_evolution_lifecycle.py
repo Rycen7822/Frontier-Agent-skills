@@ -980,6 +980,30 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         self.assertEqual(1, state["budgets"]["observed"]["provider_requests"])
 
     def test_probe_diagnostic_stops_remaining_rows(self) -> None:
+        child_failure = {
+            "status": "unknown",
+            "diagnostics": [{"kind": "child_process", "message": "exited 1"}],
+        }
+        self.assertFalse(
+            operations._probe_diagnostics_block(
+                {"capability": "multi_turn"}, child_failure
+            )
+        )
+        self.assertTrue(
+            operations._probe_diagnostics_block(
+                {"capability": "force_load"}, child_failure
+            )
+        )
+        self.assertTrue(
+            operations._probe_diagnostics_block(
+                {"capability": "multi_turn"},
+                {
+                    "status": "unknown",
+                    "diagnostics": [{"kind": "protocol", "message": "invalid"}],
+                },
+            )
+        )
+
         campaign = copy.deepcopy(self.fixture["campaign"])
         campaign["phase"] = "apparatus_ready"
         campaign["interaction_probes"]["requests"] = [
