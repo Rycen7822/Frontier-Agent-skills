@@ -1,6 +1,6 @@
 {
   "schema_version": "model-evolution-sentinel-index/1",
-  "sentinel_hash": "sha256:bc9234930531099dcb5e38bd54809d1a3e0b768cc676b0b4b0424bd0110ca8a3",
+  "sentinel_hash": "sha256:9491cd306d2495c69b3f0f63a57e3121ed9aeb6a0cb0057b00df37e8210627e4",
   "sentinel_id": "frontier-four-skill-sentinel-v1",
   "skills": {
     "long-document-segmented-writing": {
@@ -58,7 +58,7 @@
       "calibration_gold": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/calibration-gold.jsonl",
         "root": "repository",
-        "sha256": "sha256:3ce161bcbaf0ab0f08e9fcc2d2790d3167ce2e99b868077730dd6473f6d402b7"
+        "sha256": "sha256:2e17941d56774bbd5b9d59f4f9c5094027a868ddbaf0704834f65ad1fdd63fd2"
       },
       "calibration_request_ceiling": 16,
       "critical_bucket_id": "skill-evaluator-critical",
@@ -82,7 +82,7 @@
       "public_scenarios": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/scenarios.public.jsonl",
         "root": "repository",
-        "sha256": "sha256:0e9bc495220104abd6b6a9734bd6e31473c7b5b6397b3748209232508c892610"
+        "sha256": "sha256:31be245f10e14016ce7fe710443f9fd1ff828509d8953ad6898979a3f865dfc1"
       },
       "required_coverage_tags": [
         "owner-selection",
@@ -95,7 +95,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:9ca37dd73917295acf614be0581c6b626b5f00033b2340bb917093dfdd51f3a9"
+        "sha256": "sha256:e85ee2e1cdfdd7f0f3bdfba42a43cb44c8fa9cd0da372918ef180c23f1a41a7a"
       },
       "verifier_roots": [
         {

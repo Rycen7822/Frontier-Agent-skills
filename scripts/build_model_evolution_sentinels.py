@@ -361,8 +361,11 @@ SKILLS = {
                     "`validate_eval_suite.py contract run.json` reports that `schema_version` "
                     "is missing. `run.json` is the intended one-argument L0 eval spec, whose "
                     "v5 schema requires integer `5`; `run_eval_plan.py` has not started and "
-                    "the evidence directory is unchanged. Identify the owner and exact "
-                    "minimal next step without introducing another file or argument."
+                    "the evidence directory is unchanged. The documented `python3 "
+                    "\"$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py\" contract "
+                    "run.json` form is the same validator command. Identify the owner and "
+                    "exact minimal next step without adding an input artifact or validator "
+                    "argument."
                 ),
                 False,
                 1,
@@ -586,7 +589,10 @@ def _grader_prompt(skill_id: str, claims: list[str]) -> bytes:
         " Treat facts explicitly stated by the task as supplied evidence; do not demand "
         "a second artifact for those facts. For Skill Evaluator, L0 is static "
         "whole-package audit and a verified runtime receipt belongs to L1 execution "
-        "diagnosis. A schema value is correct only when its type and value match the task."
+        "diagnosis. Resolving the supplied validator through the documented Python/path "
+        "form is equivalent when its subcommand and input list are unchanged; a different "
+        "input or added validator argument is not. A schema value is correct only when its "
+        "type and value match the task."
         if skill_id == "skill-evaluator"
         else ""
     )
@@ -958,6 +964,20 @@ def _calibration_view(
             ),
         },
     }
+    if skill_id == "skill-evaluator" and check_id == "quality-check":
+        evidence[check_id]["known_good"] = (
+            evidence[check_id]["known_good"][0],
+            "The task names `validate_eval_suite.py contract run.json`. The answer adds "
+            "integer `schema_version: 5` to that same input and uses the documented "
+            "`python3 $SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py contract "
+            "run.json` verification form; it adds no input artifact or validator argument.",
+        )
+        evidence[check_id]["known_bad"] = (
+            evidence[check_id]["known_bad"][0],
+            "The task names `validate_eval_suite.py contract run.json`, but the answer "
+            "creates `spec-v5.json` and validates `run.json scenarios.jsonl`; it changes "
+            "the input artifact and adds a validator argument.",
+        )
     task = (
         f"Judge whether the supplied evidence establishes a complete, correct, and "
         f"usable deliverable for the {skill_id} sentinel task."

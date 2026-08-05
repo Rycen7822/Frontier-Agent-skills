@@ -45,7 +45,7 @@
     ],
     "exposure_status": "not_applicable",
     "split_hashes": {
-      "dev": "sha256:0ff123f08a320b02dd5d3add6e2abd7fed69d2b6cbb4f5d953c8d1c1834e46e6",
+      "dev": "sha256:4b0653f91a6bac0e7c08d2d25bfa3d1c2d3f25e36e9df13c451bad75b8bfe094",
       "heldout": null,
       "regression": "sha256:b8f0ee97273a23cc86895b4b88323457cc9e6d3f4de6a1f0fc19e6ec0c4806f7"
     }
@@ -97,7 +97,7 @@
     {
       "artifact": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:acfa6201bd5443913124fe11e28c8f094c3dc0a49cd0683f7007645f8efcb44a"
+        "sha256": "sha256:443c0cc210025d4f0e272ac01fe8f370f77fc34c59fbdc79cfe9c89da055b84b"
       },
       "locator": {
         "artifact": "grader-prompt.md",
@@ -136,7 +136,7 @@
         "start_line": 1
       },
       "source_hashes": [
-        "sha256:acfa6201bd5443913124fe11e28c8f094c3dc0a49cd0683f7007645f8efcb44a"
+        "sha256:443c0cc210025d4f0e272ac01fe8f370f77fc34c59fbdc79cfe9c89da055b84b"
       ],
       "status": "closed"
     }
