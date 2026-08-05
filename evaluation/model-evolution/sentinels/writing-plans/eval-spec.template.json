@@ -392,7 +392,7 @@
     "principal_mode": "single",
     "shape": "single_skill",
     "skill_id": "writing-plans",
-    "version": "8.1.0"
+    "version": "8.2.0"
   },
   "suite": {
     "fixture_set_hash": "sha256:6df4052d8314bc910c8ef32cfaf7d1fb31db22019d31ab1ace1f52c993d078dd",

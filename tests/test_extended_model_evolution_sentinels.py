@@ -124,16 +124,24 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     tasks["skill-evaluator-deterministic-first"],
                 )
                 self.assertIn(
-                    "v5 schema requires integer `5`",
+                    "exact documented one-argument L0 validation command",
                     tasks["skill-evaluator-cli-schema-diagnosis"],
                 )
                 self.assertIn(
-                    "same validator command",
+                    "existing `fixtures/task.json`",
+                    tasks["skill-evaluator-cli-schema-diagnosis"],
+                )
+                self.assertNotIn(
+                    "validate_eval_suite.py",
                     tasks["skill-evaluator-cli-schema-diagnosis"],
                 )
                 self.assertIn(
-                    "owning contract surface",
-                    tasks["skill-evaluator-cli-schema-diagnosis"],
+                    "`--report-only`",
+                    tasks["skill-evaluator-analyzer-exit-contract"],
+                )
+                self.assertNotIn(
+                    "exit `3`",
+                    tasks["skill-evaluator-analyzer-exit-contract"],
                 )
                 self.assertIn(
                     "integer `schema_version: 1`",
@@ -234,6 +242,16 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             ]["task"]
             for required_text in required_texts:
                 self.assertIn(required_text, task)
+
+    def test_subject_versions_match_bundle_manifest(self) -> None:
+        manifest = load_json(REPOSITORY_ROOT / "bundle-manifest.json", label="Bundle")
+        versions = {row["id"]: row["version"] for row in manifest["skills"]}
+        for skill_id, expected in versions.items():
+            spec = load_json(
+                SENTINEL_ROOT / skill_id / "eval-spec.template.json",
+                label=f"{skill_id} sentinel spec",
+            )
+            self.assertEqual(expected, spec["subject"]["version"])
 
     def test_probe_set_is_inert_bounded_and_does_not_overclaim_direct_evidence(
         self,
