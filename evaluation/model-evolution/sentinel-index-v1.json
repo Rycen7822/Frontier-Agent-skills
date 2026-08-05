@@ -1,6 +1,6 @@
 {
   "schema_version": "model-evolution-sentinel-index/1",
-  "sentinel_hash": "sha256:fe1be859d0315e7a99053f339464142e2d23b06a4eef27c7548396aae1d79157",
+  "sentinel_hash": "sha256:3d499e0d48563fede40267756db225f8a63e1d9a02bd2c086b47a886d3f45324",
   "sentinel_id": "frontier-four-skill-sentinel-v1",
   "skills": {
     "long-document-segmented-writing": {
@@ -133,7 +133,7 @@
       "public_scenarios": {
         "path": "evaluation/model-evolution/sentinels/software-quality-workflows/scenarios.public.jsonl",
         "root": "repository",
-        "sha256": "sha256:cf722f197817221092dbab4ec722c5fe31f9b80eac50162141b771892cef0f1c"
+        "sha256": "sha256:f6d9e3c1dc9bfaeabea52925ce29cf859ca4849b2bdb3ad8733a42fbeb9d1e54"
       },
       "required_coverage_tags": [
         "direct",
@@ -146,7 +146,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/software-quality-workflows/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:c577407591cf9ca25d8cb141c12fbe62a95752623626af25ca33597bb932faac"
+        "sha256": "sha256:2ece0d7b31d150b3e981fb37808a3dac1f7175c2b8a7910ffa7f82a8beca9d84"
       },
       "verifier_roots": [
         {
@@ -184,7 +184,7 @@
       "public_scenarios": {
         "path": "evaluation/model-evolution/sentinels/writing-plans/scenarios.public.jsonl",
         "root": "repository",
-        "sha256": "sha256:6e3a353c65ed12a4746f6b7d46b3faa7ac5255d064ea467ea2f7d3b52ba7512a"
+        "sha256": "sha256:4f88f9ff28811bc58e475de8bf1fb4844e8cd827d0d15672a34a05f17677f707"
       },
       "required_coverage_tags": [
         "source-bound",
@@ -197,7 +197,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/writing-plans/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:71d987e127870a9a67f246c3a12e6156e842ae6a8b5853d4f8a34277fe0d667f"
+        "sha256": "sha256:ecd23ec72afa183f885d9dcb53661fe04cec43f8ddedcdc5d2a59c98c3239534"
       },
       "verifier_roots": [
         {

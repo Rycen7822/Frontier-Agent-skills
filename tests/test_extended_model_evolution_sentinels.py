@@ -215,6 +215,26 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
         names = {path.name for path in SENTINEL_ROOT.rglob("*") if path.is_file()}
         self.assertFalse(any("holdout" in name for name in names))
 
+    def test_protected_planning_tasks_bind_the_patch_target(self) -> None:
+        expected = {
+            "software-quality-workflows": (
+                "software-quality-workflows-protected-no-state",
+                ("`src/path.py`", "`tmp = input_path.resolve()`", "`return tmp`"),
+            ),
+            "writing-plans": (
+                "writing-plans-protected-description",
+                ("`agents/openai.yaml`", "from `8.1.0` to `8.1.1`"),
+            ),
+        }
+        for skill_id, (case_id, required_texts) in expected.items():
+            path = SENTINEL_ROOT / skill_id / "scenarios.public.jsonl"
+            rows = [json.loads(line) for line in path.read_text().splitlines()]
+            task = next(row for row in rows if row["case_id"] == case_id)[
+                "execution_context"
+            ]["task"]
+            for required_text in required_texts:
+                self.assertIn(required_text, task)
+
     def test_probe_set_is_inert_bounded_and_does_not_overclaim_direct_evidence(
         self,
     ) -> None:

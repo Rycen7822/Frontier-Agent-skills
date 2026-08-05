@@ -35,10 +35,10 @@
       "additionalProperties": false,
       "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
-        "long-document-segmented-writing": {"const": "1.0.0"},
+        "long-document-segmented-writing": {"const": "1.1.0"},
         "skill-evaluator": {"const": "3.3.0"},
         "software-quality-workflows": {"const": "9.0.0"},
-        "writing-plans": {"const": "8.1.0"}
+        "writing-plans": {"const": "8.2.0"}
       }
     },
     "skill_activation": {
@@ -60,7 +60,7 @@
         "long-document-segmented-writing": {"type": "integer", "minimum": 1},
         "skill-evaluator": {"type": "integer", "minimum": 1},
         "software-quality-workflows": {"type": "integer", "minimum": 1, "maximum": 4096},
-        "writing-plans": {"type": "integer", "minimum": 1, "maximum": 4096}
+        "writing-plans": {"type": "integer", "minimum": 1, "maximum": 5120}
       }
     },
     "model_facing_files_checked": {
