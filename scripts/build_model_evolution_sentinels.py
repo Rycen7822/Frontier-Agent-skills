@@ -334,6 +334,7 @@ SKILLS = {
                 "deterministic-first",
                 "deterministic-first",
                 (
+                    "The relevant Skill mechanism for this task is deterministic-first. "
                     "Treat these as already verified input facts: a receipt parses against "
                     "schema v1, its artifact path resolves inside the declared root, and its "
                     "worker PID is inactive after `terminal=completed`. Close those facts "
@@ -595,7 +596,9 @@ def _grader_prompt(skill_id: str, claims: list[str]) -> bytes:
         "input or added validator argument is not. A validator, its named input artifact, "
         "and the active level/schema are a valid contract owner surface; do not require a "
         "human actor. When the task supplies JSON, a usable patch preserves JSON syntax. A "
-        "schema value is correct only when its type and value match the task."
+        "schema value is correct only when its type and value match the task. Treatment "
+        "delivery, body-load counts, and context bytes belong only to the context-cost axis; "
+        "do not treat them as workflow actions or use them to change quality/process scores."
         if skill_id == "skill-evaluator"
         else ""
     )
@@ -990,6 +993,13 @@ def _calibration_view(
             "YAML-like `schema_version: \"1\"`; it changes the integer to a string and does "
             "not preserve JSON syntax or provide passing verification.",
             evidence[check_id]["boundary"][1],
+        )
+    if skill_id == "skill-evaluator" and check_id == "process-check":
+        evidence[check_id]["known_good"] = (
+            evidence[check_id]["known_good"][0]
+            + " The treatment envelope reports body_load_count=1 and "
+            "controlled_bytes=10309; these are context-cost facts, not workflow actions.",
+            evidence[check_id]["known_good"][1],
         )
     task = (
         f"Judge whether the supplied evidence establishes a complete, correct, and "

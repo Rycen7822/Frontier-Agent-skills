@@ -120,6 +120,10 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     tasks["skill-evaluator-deterministic-first"],
                 )
                 self.assertIn(
+                    "relevant Skill mechanism for this task is deterministic-first",
+                    tasks["skill-evaluator-deterministic-first"],
+                )
+                self.assertIn(
                     "v5 schema requires integer `5`",
                     tasks["skill-evaluator-cli-schema-diagnosis"],
                 )
@@ -377,6 +381,18 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 )
                 self.assertIn("valid contract owner surface", prompt)
                 self.assertIn("usable patch preserves JSON syntax", prompt)
+                self.assertIn("belong only to the context-cost axis", prompt)
+                self.assertIn("use them to change quality/process scores", prompt)
+                process_positive_one = next(
+                    row
+                    for row in rows
+                    if row["example_id"].endswith("process-check-cal-01")
+                )
+                process_evidence = process_positive_one["payload"]["view"][
+                    "candidate_evidence"
+                ]
+                self.assertIn("body_load_count=1", process_evidence)
+                self.assertIn("context-cost facts, not workflow actions", process_evidence)
             process_check = next(
                 check for check in checks.values()
                 if check["dimension"] == "process"
