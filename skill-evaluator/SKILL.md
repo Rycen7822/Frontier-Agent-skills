@@ -38,6 +38,8 @@ Load only the owner of the active question. Do not preload every reference.
 
 Keep evidence immutable. Read the analyzer summary first, then its failure index and spec-bounded representative receipts. Open raw artifacts only for named failures, disagreements, or integrity audits by exact locator/hash. Never tree-walk or create per-step notes/receipt copies. Failure is an outcome, not an efficiency gain.
 
+When a validator names a concrete input file and missing field, keep that validator, file, and current level as the owner. Correct only the reported contract defect and rerun the same validation command; do not substitute another artifact or add arguments unless the validated level explicitly requires them.
+
 ## Claim ceilings
 
 | Level | Required evidence | Maximum claim |

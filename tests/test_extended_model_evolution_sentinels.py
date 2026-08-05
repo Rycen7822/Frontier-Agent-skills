@@ -106,6 +106,27 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             tags = {tag for row in rows for tag in row["tags"]}
             self.assertLessEqual(set(record["required_coverage_tags"]), tags)
             by_id = {row["case_id"]: row for row in rows}
+            if skill_id == "skill-evaluator":
+                tasks = {
+                    case_id: row["execution_context"]["task"]
+                    for case_id, row in by_id.items()
+                }
+                self.assertIn(
+                    "L0 as static whole-package audit and L1 as execution diagnosis",
+                    tasks["skill-evaluator-level-owner-selection"],
+                )
+                self.assertIn(
+                    "already verified input facts",
+                    tasks["skill-evaluator-deterministic-first"],
+                )
+                self.assertIn(
+                    "v5 schema requires integer `5`",
+                    tasks["skill-evaluator-cli-schema-diagnosis"],
+                )
+                self.assertIn(
+                    "integer `schema_version: 1`",
+                    tasks["skill-evaluator-protected-no-reviewer"],
+                )
             for protected_id in record["protected_case_ids"]:
                 protected = by_id[protected_id]
                 self.assertFalse(protected["attribution_evaluable"])
@@ -291,6 +312,15 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             self.assertIn("against every declared mechanism", prompt)
             self.assertIn("does not mark as relevant", prompt)
             self.assertIn("`uncertainty` to `high`", prompt)
+            if skill_id == "skill-evaluator":
+                self.assertIn(
+                    "facts explicitly stated by the task as supplied evidence",
+                    prompt,
+                )
+                self.assertIn(
+                    "verified runtime receipt belongs to L1 execution diagnosis",
+                    prompt,
+                )
             process_check = next(
                 check for check in checks.values()
                 if check["dimension"] == "process"

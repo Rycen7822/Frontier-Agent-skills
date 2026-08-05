@@ -4,7 +4,7 @@
   "classification": "static_contract_diagnostic",
   "entry_bytes": {
     "long-document-segmented-writing": 10365,
-    "skill-evaluator": 9999,
+    "skill-evaluator": 10309,
     "software-quality-workflows": 3065,
     "writing-plans": 4091
   },
@@ -124,14 +124,14 @@
     "writing-plans/SKILL.md",
     "writing-plans/agents/openai.yaml"
   ],
-  "package_bytes": 1474196,
+  "package_bytes": 1474506,
   "package_file_count": 118,
   "profile_command_hashes": {
     "extended": "sha256:bfab5c34c9ac44a778a72bdce95ed12534b2d4e07a09a4d58b199f0adec96531",
     "quick": "sha256:c895e68a59c34c1e2c98cfbedb132c79340a6856f08b76a1c7fc6f32dcb96236",
     "release": "sha256:796f0f9d60160f8c23a7c6e15a0fe95cf7e2676845a509f7803691363a746f77"
   },
-  "report_hash": "sha256:60bab2bb92959859b0a26a131892e8f1b81541e880ada86a9942496aeda83e3f",
+  "report_hash": "sha256:438a1872cecfbbbfa5912e501d4d7a02e9808db25de179b8fe52a1080d9ac93b",
   "schema_epoch": 5,
   "schema_version": "static-contract-diagnostic/1.0",
   "skill_activation": {

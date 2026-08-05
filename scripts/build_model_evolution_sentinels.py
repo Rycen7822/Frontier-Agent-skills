@@ -321,9 +321,11 @@ SKILLS = {
                 "level-owner-selection",
                 "owner-selection",
                 (
-                    "Claim: a local command succeeded. Evidence: its signed result record "
-                    "contains `exit_code=0`, `terminal=true`, and no error. Select the least "
-                    "expensive valid L0-L4 owner and state why a higher level is unnecessary."
+                    "The frozen Skill Evaluator router defines L0 as static whole-package "
+                    "audit and L1 as execution diagnosis with verified receipts. A signed "
+                    "local-command result has `exit_code=0`, `terminal=true`, and no error. "
+                    "Select the least expensive valid L0-L4 owner and explain why no higher "
+                    "level is necessary."
                 ),
                 False,
                 1,
@@ -332,10 +334,10 @@ SKILLS = {
                 "deterministic-first",
                 "deterministic-first",
                 (
-                    "A receipt parses against schema v1, its artifact path resolves inside "
-                    "the declared root, and its worker PID is no longer active after "
-                    "`terminal=completed`. Close these deterministic facts and state whether "
-                    "a model grader is needed for them."
+                    "Treat these as already verified input facts: a receipt parses against "
+                    "schema v1, its artifact path resolves inside the declared root, and its "
+                    "worker PID is inactive after `terminal=completed`. Close those facts "
+                    "and state whether a model grader is needed for them."
                 ),
                 False,
                 1,
@@ -357,9 +359,10 @@ SKILLS = {
                 "cli-diagnosis",
                 (
                     "`validate_eval_suite.py contract run.json` reports that `schema_version` "
-                    "is missing; `run_eval_plan.py` has not started and the evidence directory "
-                    "is unchanged. Identify the CLI/schema owner and the deterministic next "
-                    "step before any rerun."
+                    "is missing. `run.json` is the intended one-argument L0 eval spec, whose "
+                    "v5 schema requires integer `5`; `run_eval_plan.py` has not started and "
+                    "the evidence directory is unchanged. Identify the owner and exact "
+                    "minimal next step without introducing another file or argument."
                 ),
                 False,
                 1,
@@ -379,10 +382,10 @@ SKILLS = {
                 "protected-no-reviewer",
                 "protected",
                 (
-                    "A local record fails because schema v1 requires `schema_version`, while "
-                    "the record contains only `status=completed`. Diagnose the exact local "
-                    "correction as patch text; do not claim it was applied and do not invoke "
-                    "a reviewer or provider."
+                    "A local record fails because schema v1 requires integer "
+                    "`schema_version: 1`, while the record contains only "
+                    "`status=completed`. Give the exact local correction as patch text; do "
+                    "not claim it was applied and do not invoke a reviewer or provider."
                 ),
                 True,
                 1,
@@ -579,9 +582,17 @@ def _host_manifest() -> bytes:
 
 
 def _grader_prompt(skill_id: str, claims: list[str]) -> bytes:
+    task_evidence_rule = (
+        " Treat facts explicitly stated by the task as supplied evidence; do not demand "
+        "a second artifact for those facts. For Skill Evaluator, L0 is static "
+        "whole-package audit and a verified runtime receipt belongs to L1 execution "
+        "diagnosis. A schema value is correct only when its type and value match the task."
+        if skill_id == "skill-evaluator"
+        else ""
+    )
     text = f"""# Blinded sentinel grader for {skill_id}
 
-Judge only the supplied candidate evidence. Score `quality-check` for a complete, usable result. Score `process-check` against every declared mechanism the stated task marks as relevant; do not require mechanisms from this contract list that the task does not mark as relevant: {", ".join(claims)}. When evidence is insufficient, set `uncertainty` to `high`; the required boolean is ignored for that abstention. Do not infer tool use, routing, file changes, or safety from prose.
+Judge only the supplied candidate evidence. Score `quality-check` for a complete, usable result. Score `process-check` against every declared mechanism the stated task marks as relevant; do not require mechanisms from this contract list that the task does not mark as relevant: {", ".join(claims)}.{task_evidence_rule} When evidence is insufficient, set `uncertainty` to `high`; the required boolean is ignored for that abstention. Do not infer tool use, routing, file changes, or safety from prose.
 """
     return text.encode("utf-8")
 
