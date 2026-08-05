@@ -982,7 +982,18 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             plugin, _ = _materialize_plugin(root)
-            fake, state = _write_fake_codex(root, mode="nonzero")
+            fake, state = _write_fake_codex(
+                root,
+                mode="nonzero",
+                stdout_lines=[
+                    json.dumps(
+                        {
+                            "type": "error",
+                            "message": "You've hit your usage limit. Try again later.",
+                        }
+                    )
+                ],
+            )
             manifest_path = root / "probe-host.json"
             manifest = _plugin_bound_manifest(
                 manifest_path,
@@ -1003,7 +1014,13 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(0, result.returncode, result.stderr)
             terminal = _jsonl(result.stdout)[0]
             self.assertEqual("unknown", terminal["status"])
-            self.assertEqual("child_process", terminal["diagnostics"][0]["kind"])
+            self.assertEqual(
+                "provider_usage_limit", terminal["diagnostics"][0]["kind"]
+            )
+            self.assertEqual(
+                "Codex provider usage limit reached",
+                terminal["diagnostics"][0]["message"],
+            )
 
             (plugin / "skills/writing-plans/SKILL.md").write_text(
                 "tampered\n",
