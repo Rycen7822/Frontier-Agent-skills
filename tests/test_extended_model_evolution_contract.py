@@ -17,6 +17,7 @@ from _model_evolution_contract import (  # noqa: E402
     ContractError,
     SKILL_IDS,
     _is_analysis_sentinel_contract_correction,
+    _is_calibration_pass_condition_correction,
     _is_calibration_task_fixture_correction,
     _is_child_environment_isolation_correction,
     _is_formal_projection_correction,
@@ -1068,6 +1069,31 @@ class ModelEvolutionContractTest(unittest.TestCase):
         calibration_state["budgets"]["observed"]["provider_requests"] -= 1
         self.assertFalse(
             _is_calibration_task_fixture_correction(calibration_state)
+        )
+        calibration_state["budgets"]["observed"]["provider_requests"] += 1
+
+        pass_condition_state = copy.deepcopy(calibration_state)
+        pass_condition_state["campaign_id"] = (
+            "model-evolution-6-3-calibration-task-fixture-efac383"
+        )
+        pass_condition_state["product"]["source_commit"] = (
+            "efac38305b3d6c165c23f13026a6116e0a01c54b"
+        )
+        pass_condition_state["budgets"]["ceiling"].update({
+            "provider_requests": 1664, "model_grade": 1064, "execute": 712,
+        })
+        pass_condition_state["budgets"]["reserved"].update({
+            "provider_requests": 1424, "model_grade": 704, "execute": 624,
+        })
+        pass_condition_state["budgets"]["observed"].update({
+            "provider_requests": 992, "model_grade": 912, "execute": 0,
+        })
+        self.assertTrue(
+            _is_calibration_pass_condition_correction(pass_condition_state)
+        )
+        pass_condition_state["budgets"]["observed"]["model_grade"] -= 1
+        self.assertFalse(
+            _is_calibration_pass_condition_correction(pass_condition_state)
         )
 
         state["plans"].pop()

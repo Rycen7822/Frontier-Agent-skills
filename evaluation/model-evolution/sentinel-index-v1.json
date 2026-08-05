@@ -1,13 +1,13 @@
 {
   "schema_version": "model-evolution-sentinel-index/1",
-  "sentinel_hash": "sha256:36f18dcf0c6f7b5345b715937aff661772efcf4a4bd93242d107db7f89a0955d",
+  "sentinel_hash": "sha256:4c7e45d96bf3ce6a22d3252e55a8472c876063c5934242136337df70e17ccb4a",
   "sentinel_id": "frontier-four-skill-sentinel-v1",
   "skills": {
     "long-document-segmented-writing": {
       "calibration_gold": {
         "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/calibration-gold.jsonl",
         "root": "repository",
-        "sha256": "sha256:09f0f434d0de5726748784de6517c326f041c403ce89b0f974645a04bfe9ab9e"
+        "sha256": "sha256:177aeb8f4068b2c24a6498fe8909c5a08e868d3ad1de0b8b15e4fbf1093d19eb"
       },
       "calibration_request_ceiling": 16,
       "critical_bucket_id": "long-document-segmented-writing-critical",
@@ -44,7 +44,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:bd3d9614399676f5d753c599d145a4b7b3925a50582cb1a0ae8ee5a03aa41676"
+        "sha256": "sha256:e266d833dad926a1d91e1ca9a6703022e58b92b13fe0969a406c9c575ece8894"
       },
       "verifier_roots": [
         {
@@ -58,7 +58,7 @@
       "calibration_gold": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/calibration-gold.jsonl",
         "root": "repository",
-        "sha256": "sha256:51d0343b53bc8a2ada375046472992b5a882da809a5b1b5d296e1ea85bec1045"
+        "sha256": "sha256:3ce161bcbaf0ab0f08e9fcc2d2790d3167ce2e99b868077730dd6473f6d402b7"
       },
       "calibration_request_ceiling": 16,
       "critical_bucket_id": "skill-evaluator-critical",
@@ -95,7 +95,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:a60ec47fdb98c5f8aa889b77d302be177ade6d636f077a13aaf6902ec79cf6a2"
+        "sha256": "sha256:1d815cd8239572ed887200c436fdb9ba863f6eb1001d4964fb5419ffb5d52714"
       },
       "verifier_roots": [
         {
@@ -109,7 +109,7 @@
       "calibration_gold": {
         "path": "evaluation/model-evolution/sentinels/software-quality-workflows/calibration-gold.jsonl",
         "root": "repository",
-        "sha256": "sha256:60a951b410a910e25b8411165f60664d85b46de0f5cebe613df4802eb015c5bc"
+        "sha256": "sha256:a98133962e3eb93a53b55d314c6809ab89c899ca273f8395a153a6e65651adca"
       },
       "calibration_request_ceiling": 16,
       "critical_bucket_id": "software-quality-workflows-critical",
@@ -146,7 +146,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/software-quality-workflows/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:832fba3554def07a4f054f826a06b24e55f5fc04bde599a9c7cb2a17812cd556"
+        "sha256": "sha256:c577407591cf9ca25d8cb141c12fbe62a95752623626af25ca33597bb932faac"
       },
       "verifier_roots": [
         {
@@ -160,7 +160,7 @@
       "calibration_gold": {
         "path": "evaluation/model-evolution/sentinels/writing-plans/calibration-gold.jsonl",
         "root": "repository",
-        "sha256": "sha256:8560e3b6e2435ace245823f7bc3ba2d7aa205172047b73a50aad5c42df869ad4"
+        "sha256": "sha256:1e968c32d88a898a6bfab8a5ab0529237a00c1b1b9c741cf46c4b7789c8742fc"
       },
       "calibration_request_ceiling": 16,
       "critical_bucket_id": "writing-plans-critical",
@@ -197,7 +197,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/writing-plans/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:80c21c65f6fd95d7e4c85afc593bec90cd1c6435cd9f51fe4b4dc2b22ecd00f5"
+        "sha256": "sha256:71d987e127870a9a67f246c3a12e6156e842ae6a8b5853d4f8a34277fe0d667f"
       },
       "verifier_roots": [
         {

@@ -282,7 +282,7 @@
         {
           "check_id": "process-check",
           "dimension": "process",
-          "pass_condition": "The evidence demonstrates the declared Skill mechanism without unrelated workflow.",
+          "pass_condition": "The evidence demonstrates every Skill mechanism declared relevant by the stated task without unrelated workflow.",
           "required": true
         }
       ],
@@ -294,7 +294,7 @@
       },
       "prompt": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:1e6f927625a92e7bb84b9a2bcd94b6358a123048f0a6bb69a9be39ffa964d42b"
+        "sha256": "sha256:2e2751124acbc52991e7c49fee5b9f66262e9162ee129c0769656c40989bef49"
       },
       "type": "model"
     }
@@ -397,7 +397,7 @@
   "suite": {
     "fixture_set_hash": "sha256:ece7cc9e3ced0d8507da78ed25025233075075aa7700e1d097507dc2c527e959",
     "grader_schedule_hash": "sha256:13a2994421233508fbac1f34d288513881093ba674a227a558bc32fb948bf66f",
-    "grader_set_hash": "sha256:7b3029702d415ca189b785f938a8e56a77b9397c50641deae4b979daccdeeafd",
+    "grader_set_hash": "sha256:0aa957e23efd34079c3ea6c884ce964e554359cf61f8512d1c74b108c0e56776",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
@@ -406,9 +406,9 @@
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:25ebce9a575e3f7d0395419355abc7e8a278a95748ca50971cef8446a55ac43f"
+      "sha256": "sha256:f28cb903006e5802735b2aff7cc159cc112a706f1ad8ecb083b9851f63fd8623"
     },
-    "quality_contract_hash": "sha256:3ec26ce0c3ce436c4994653baf8d03318c4b47b27f4253a6c56c0b753bd7c2d5",
+    "quality_contract_hash": "sha256:f75aa4e5d6720e3cf54646ee15aa70542f35a2620ea623ce747a3a04d6f49bea",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
