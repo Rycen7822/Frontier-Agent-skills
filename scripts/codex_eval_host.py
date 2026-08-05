@@ -35,6 +35,8 @@ from _codex_eval_delivery import (
     validate_plugin_catalog,
 )
 from _codex_eval_events import (
+    MAX_JSONL_BYTES,
+    MAX_RECORDS,
     base_host_result,
     execute_evidence_diagnostics,
     host_protocol_error,
@@ -52,7 +54,7 @@ from _codex_eval_isolation import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
-ADAPTER_VERSION = "1.2"
+ADAPTER_VERSION = "1.3"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_delivery.py",
@@ -422,6 +424,49 @@ def _run_child(
         "timed_out": timed_out,
         "runtime_ms": round((time.monotonic() - started) * 1000, 3),
     }
+
+
+def _child_failure_diagnostics(child: dict[str, Any]) -> list[dict[str, Any]]:
+    if child["timed_out"]:
+        return [
+            {
+                "kind": "child_process",
+                "index": None,
+                "message": "Codex child timed out",
+            }
+        ]
+    for raw in child["stdout"][:MAX_JSONL_BYTES].splitlines()[:MAX_RECORDS]:
+        try:
+            event = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") not in {"error", "turn.failed"}:
+            continue
+        nested = event.get("error")
+        messages = [
+            event.get("message"),
+            nested.get("message") if isinstance(nested, dict) else None,
+        ]
+        if any(
+            isinstance(message, str) and "usage limit" in message.casefold()
+            for message in messages
+        ):
+            return [
+                {
+                    "kind": "provider_usage_limit",
+                    "index": None,
+                    "message": "Codex provider usage limit reached",
+                }
+            ]
+    return [
+        {
+            "kind": "child_process",
+            "index": None,
+            "message": f"Codex child exited {child['returncode']}",
+        }
+    ]
 
 
 def _captured_usage(
@@ -1266,17 +1311,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
                     }
     child_diagnostics = []
     if normalized is None:
-        child_diagnostics.append(
-            {
-                "kind": "child_process",
-                "index": None,
-                "message": (
-                    "Codex child timed out"
-                    if child["timed_out"]
-                    else f"Codex child exited {child['returncode']}"
-                ),
-            }
-        )
+        child_diagnostics = _child_failure_diagnostics(child)
     elif forced is not None and normalized["status"] == "completed":
         normalized["routing"] = {
             "selected": [forced[0]],

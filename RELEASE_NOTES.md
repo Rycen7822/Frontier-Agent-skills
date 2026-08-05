@@ -8,6 +8,8 @@ Long Document 1.1 preserves explicitly requested recovery or audit markers in th
 
 The controller reuses the existing evaluator compiler, runner, analyzer, comparison, plugin builder, static diagnostic, and release authorization. It owns no grader, reviewer, optimizer, durable worker, cache, retry loop, installation, or release authority. Unknown Host capabilities and absent calibration or holdout evidence remain explicit limits or blockers; generated source-complete evidence never becomes a model-support claim.
 
+Codex Host adapter 1.3 preserves a bounded `provider_usage_limit` diagnostic from failed probe JSONL instead of collapsing quota exhaustion into a generic child-process failure. Probe diagnostics remain fail-closed and never trigger an automatic retry or successor campaign.
+
 The release candidate rollback predecessor is the signed bundle 6.2.0 / Skill Evaluator 3.2.0 source at `9687f6d0590a229c5e082b09ab548c397f27cad3`. Rollback uses an ordinary revert or separately verified staged predecessor and preserves failed campaign evidence.
 
 ## Bundle 6.2.0 Skill Evaluator 3.2 hardening
