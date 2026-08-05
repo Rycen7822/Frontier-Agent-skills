@@ -29,7 +29,7 @@
       }
     ],
     "materiality": {
-      "minimum_baseline_failure_cases": 2
+      "minimum_baseline_failure_cases": 1
     },
     "reliability": [
       "observed_consistency"

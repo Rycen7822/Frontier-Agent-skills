@@ -305,6 +305,7 @@ SKILLS = {
         "name": "Skill Evaluator",
         "version": "3.3.0",
         "context_ceiling": 28672,
+        "minimum_baseline_failure_cases": 1,
         "regression_origin": "deterministic-evidence-loop-and-reviewer-overuse",
         "claims": [
             "level-selection",
@@ -804,7 +805,9 @@ def _spec(
         },
     ]
     value["analysis"]["slices"] = ["core", "protected"]
-    value["analysis"]["materiality"]["minimum_baseline_failure_cases"] = 2
+    value["analysis"]["materiality"]["minimum_baseline_failure_cases"] = (
+        config.get("minimum_baseline_failure_cases", 2)
+    )
     value["suite"]["quality_contract_hash"] = evaluator.quality_contract_hash(value)
     return value
 
