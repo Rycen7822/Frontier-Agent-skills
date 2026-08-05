@@ -45,8 +45,8 @@ MODEL_CHECKS = [
         "dimension": "process",
         "required": True,
         "pass_condition": (
-            "The evidence demonstrates the declared Skill mechanism without "
-            "unrelated workflow."
+            "The evidence demonstrates every Skill mechanism declared relevant "
+            "by the stated task without unrelated workflow."
         ),
     },
 ]
@@ -581,7 +581,7 @@ def _host_manifest() -> bytes:
 def _grader_prompt(skill_id: str, claims: list[str]) -> bytes:
     text = f"""# Blinded sentinel grader for {skill_id}
 
-Judge only the supplied candidate evidence. Score `quality-check` for a complete, usable result. Score `process-check` only against the declared mechanism relevant to the stated task; do not require unrelated mechanisms from this contract list: {", ".join(claims)}. When evidence is insufficient, set `uncertainty` to `high`; the required boolean is ignored for that abstention. Do not infer tool use, routing, file changes, or safety from prose.
+Judge only the supplied candidate evidence. Score `quality-check` for a complete, usable result. Score `process-check` against every declared mechanism the stated task marks as relevant; do not require mechanisms from this contract list that the task does not mark as relevant: {", ".join(claims)}. When evidence is insufficient, set `uncertainty` to `high`; the required boolean is ignored for that abstention. Do not infer tool use, routing, file changes, or safety from prose.
 """
     return text.encode("utf-8")
 

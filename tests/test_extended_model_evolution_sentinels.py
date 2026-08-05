@@ -288,9 +288,17 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             self.assertIn("report.md", quality_evidence)
             self.assertIn("zero missing or contradictory fields", quality_evidence)
             prompt = (root / grader["prompt"]["path"]).read_text()
-            self.assertIn("only against the declared mechanism relevant", prompt)
-            self.assertIn("do not require unrelated mechanisms", prompt)
+            self.assertIn("against every declared mechanism", prompt)
+            self.assertIn("does not mark as relevant", prompt)
             self.assertIn("`uncertainty` to `high`", prompt)
+            process_check = next(
+                check for check in checks.values()
+                if check["dimension"] == "process"
+            )
+            self.assertIn(
+                "every Skill mechanism declared relevant",
+                process_check["pass_condition"],
+            )
 
     def test_deterministic_verifier_has_positive_and_negative_behavior(self) -> None:
         verifier = SENTINEL_ROOT / SKILL_IDS[0] / "verify.py"
