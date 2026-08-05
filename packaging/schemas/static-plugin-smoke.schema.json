@@ -21,10 +21,10 @@
       "type": "object", "additionalProperties": false,
       "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
-        "long-document-segmented-writing": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}, "implicit_eligible": {"const": true}}}]},
+        "long-document-segmented-writing": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.1.0"}, "implicit_eligible": {"const": true}}}]},
         "skill-evaluator": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "3.3.0"}, "implicit_eligible": {"const": false}}}]},
         "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "9.0.0"}, "implicit_eligible": {"const": false}}}]},
-        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.1.0"}, "implicit_eligible": {"const": false}}}]}
+        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.2.0"}, "implicit_eligible": {"const": false}}}]}
       }
     },
     "isolated_install_discovery": {"const": true},

@@ -2,7 +2,9 @@
 
 ## Bundle 6.3.0 model evolution qualification
 
-Bundle 6.3.0 advances Skill Evaluator from 3.2.0 to 3.3.0 and retains the other three Skill versions, schema epoch 5, mixed activation matrix, and explicit-only evaluator boundary. It adds a bounded model-evolution controller, six inert Codex Host probes, exact four-Skill non-ready sentinel suites, deterministic suite-quality evidence, external holdout contracts, and fresh-process qualification verification.
+Bundle 6.3.0 advances Long Document from 1.0.0 to 1.1.0, Skill Evaluator from 3.2.0 to 3.3.0, and Writing Plans from 8.1.0 to 8.2.0; Software Quality Workflows remains 9.0.0. Schema epoch 5, the mixed activation matrix, and the explicit-only evaluator boundary remain unchanged. It adds a bounded model-evolution controller, six inert Codex Host probes, exact four-Skill non-ready sentinel suites, deterministic suite-quality evidence, external holdout contracts, and fresh-process qualification verification.
+
+Long Document 1.1 preserves explicitly requested recovery or audit markers in the reader-facing deliverable. Writing Plans 8.2 keeps bounded named-file plans native, treats prompt-bound source facts as resolved inputs, and limits Resume attestation to a source-changing slice that actually crosses contexts. The SQW and Writing Plans protected sentinels now bind the exact source or metadata inputs needed for a factual answer.
 
 The controller reuses the existing evaluator compiler, runner, analyzer, comparison, plugin builder, static diagnostic, and release authorization. It owns no grader, reviewer, optimizer, durable worker, cache, retry loop, installation, or release authority. Unknown Host capabilities and absent calibration or holdout evidence remain explicit limits or blockers; generated source-complete evidence never becomes a model-support claim.
 

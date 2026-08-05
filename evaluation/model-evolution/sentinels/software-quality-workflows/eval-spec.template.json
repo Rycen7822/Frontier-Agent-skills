@@ -402,19 +402,19 @@
     "order_seed": 630,
     "public_scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:cf722f197817221092dbab4ec722c5fe31f9b80eac50162141b771892cef0f1c"
+      "sha256": "sha256:f6d9e3c1dc9bfaeabea52925ce29cf859ca4849b2bdb3ad8733a42fbeb9d1e54"
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:738dbf4d1b2852bb1fcd96f3d8d919fe3fc04768433e2d52838a4dc7a70c5f18"
+      "sha256": "sha256:b0a98eabe31852b04482f35febe0863edb8777f03757a1ca868c16f11cdc6612"
     },
-    "quality_contract_hash": "sha256:d97af0ae3d720a8449475ef12fc24b943c0fef91b7dd9f818917970ff43221b2",
+    "quality_contract_hash": "sha256:1af4c895bb8bf7bdd5251358c8384306c4bd4d66aa966603ba45cd1d611ec3fb",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:cf722f197817221092dbab4ec722c5fe31f9b80eac50162141b771892cef0f1c"
+      "sha256": "sha256:f6d9e3c1dc9bfaeabea52925ce29cf859ca4849b2bdb3ad8733a42fbeb9d1e54"
     },
     "treatment_contract_hash": "sha256:850d8fa64991c0c171acb6b606908ae4a949d8237e2e47a221c098359c2c2fd4"
   },

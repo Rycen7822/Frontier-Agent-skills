@@ -2,7 +2,7 @@
 name: long-document-segmented-writing
 description: Use when Codex must read many files or a large source corpus and produce or substantially rewrite a long document, technical report, manual, roadmap, architecture guide, thesis-like draft, research synthesis, or other self-contained text. Preserves recovery state while keeping routine long-document work compact.
 metadata:
-  version: 1.0.0
+  version: 1.1.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -143,3 +143,5 @@ Stop when concrete gaps are closed. Do not create new review files for abstract 
 Report completion status, evidence-backed confidence, final document path, material source families reread, actual write/assembly and verification results, and any remaining out-of-scope or inaccessible uncertainty. Mention scratch retention only for compact or full work.
 
 Keep scratch paths, process history, source ledgers, local machine paths, credentials, private identifiers, raw private text, and patch details out of the reader-facing document unless the user explicitly requests an audit artifact.
+
+An explicit request for a recovery anchor, recovery packet, or audit marker is part of the reader-facing deliverable. Preserve that requested content even if the document could otherwise be finalized without internal recovery state.

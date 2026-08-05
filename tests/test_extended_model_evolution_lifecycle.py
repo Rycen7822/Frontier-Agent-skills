@@ -514,9 +514,14 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             capture_output=True,
         ).stdout.strip()
         owner = SKILL_IDS[0]
+        base_owner_version = next(
+            row["version"] for row in manifest["skills"] if row["id"] == owner
+        )
+        major, minor, _patch = map(int, base_owner_version.split("."))
+        candidate_owner_version = f"{major}.{minor + 1}.0"
         for row in manifest["skills"]:
             if row["id"] == owner:
-                row["version"] = "1.1.0"
+                row["version"] = candidate_owner_version
         write_json(repository / "bundle-manifest.json", manifest)
         write_json(
             repository / "frontier-engineering.bundle.json", {"build": "candidate"}
@@ -526,7 +531,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             {"static": "candidate"},
         )
         (repository / "RELEASE_NOTES.md").write_text(
-            "# Release notes\n\n- rc-1 long-document-segmented-writing 1.1.0\n",
+            f"# Release notes\n\n- rc-1 {owner} {candidate_owner_version}\n",
             encoding="utf-8",
         )
         subprocess.run(["git", "add", "."], cwd=repository, check=True)
@@ -557,7 +562,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                 root_cause_ids=["rc-1"],
                 changed_paths=changed,
             ),
-            "1.1.0",
+            candidate_owner_version,
         )
         with self.assertRaisesRegex(operations.OperationError, "mode or type"):
             operations._validate_candidate_file_modes(

@@ -208,9 +208,10 @@ SKILLS = {
                 "protected-no-state",
                 "protected",
                 (
-                    "Provide the local rename from `tmp` to `normalized_path` as patch text "
-                    "and state the one focused check. Do not claim it was applied, create "
-                    "cards, call reviewers, or persist workflow state."
+                    "In `src/path.py`, rename the exact lines `tmp = input_path.resolve()` "
+                    "and `return tmp` to use `normalized_path`. Provide the two-line local "
+                    "patch and one focused check. Do not claim it was applied, create cards, "
+                    "call reviewers, or persist workflow state."
                 ),
                 True,
                 1,
@@ -292,9 +293,10 @@ SKILLS = {
                 "protected-description",
                 "protected",
                 (
-                    "Plan a metadata-only version bump while preserving this description "
-                    "verbatim: 'Use when a plan must bind exact source owners, verification "
-                    "commands, handoff authority, and consecutive execution steps.'"
+                    "Plan a metadata-only version bump in `agents/openai.yaml` from `8.1.0` "
+                    "to `8.1.1` while preserving this description verbatim: 'Use when a plan "
+                    "must bind exact source owners, verification commands, handoff authority, "
+                    "and consecutive execution steps.'"
                 ),
                 True,
                 1,
