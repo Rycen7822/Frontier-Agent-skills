@@ -53,7 +53,7 @@ MODEL_CHECKS = [
 SKILLS = {
     "long-document-segmented-writing": {
         "name": "Long Document Segmented Writing",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "context_ceiling": 32768,
         "regression_origin": "session-scratch-artifact-overuse",
         "claims": ["segmented-writing", "compaction-recovery", "whole-draft-review"],
@@ -220,7 +220,7 @@ SKILLS = {
     },
     "writing-plans": {
         "name": "Writing Plans",
-        "version": "8.1.0",
+        "version": "8.2.0",
         "context_ceiling": 24576,
         "regression_origin": "writing-plans-description-semantic-collapse",
         "claims": [
@@ -347,13 +347,13 @@ SKILLS = {
                 1,
             ),
             (
-                "five-axis-interpretation",
-                "five-axis",
+                "analyzer-exit-contract",
+                "evidence-qualified-comparison",
                 (
-                    "Evaluate this record without combining axes: candidate task pass 4/4, "
-                    "baseline 4/4; safety incidents 0; required process checks 3/4; candidate "
-                    "context 10 KB versus baseline 0; one required holdout is missing. Report "
-                    "usefulness, safety, process, context cost, and evidence completeness."
+                    "A complete, valid L2 analysis is `inconclusive` only because one required "
+                    "holdout is missing; there is no contract or I/O error and no manual "
+                    "`hold` or `reject`. State the analyzer exit code, whether `--report-only` "
+                    "changes it, and the maximum usefulness claim permitted."
                 ),
                 False,
                 1,
@@ -362,15 +362,10 @@ SKILLS = {
                 "cli-schema-diagnosis",
                 "cli-diagnosis",
                 (
-                    "`validate_eval_suite.py contract run.json` reports that `schema_version` "
-                    "is missing. `run.json` is the intended one-argument L0 eval spec, whose "
-                    "v5 schema requires integer `5`; `run_eval_plan.py` has not started and "
-                    "the evidence directory is unchanged. The documented `python3 "
-                    "\"$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py\" contract "
-                    "run.json` form is the same validator command. Identify the owning "
-                    "contract surface—the reporting validator, existing `run.json`, and "
-                    "L0 v5 contract—and the exact minimal next step without adding an input "
-                    "artifact or validator argument."
+                    "State the exact documented one-argument L0 validation command for the "
+                    "existing `fixtures/task.json`, then identify the validator and that file "
+                    "as the owner. Do not run it, add another input or validator argument, or "
+                    "start the runner."
                 ),
                 False,
                 1,
@@ -598,7 +593,11 @@ def _grader_prompt(skill_id: str, claims: list[str]) -> bytes:
         "form is equivalent when its subcommand and input list are unchanged; a different "
         "input or added validator argument is not. A validator, its named input artifact, "
         "and the active level/schema are a valid contract owner surface; do not require a "
-        "human actor. When the task supplies JSON, a usable patch preserves JSON syntax. A "
+        "human actor. For the package-specific CLI task, the exact command is `python3 "
+        "\"$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py\" contract "
+        "fixtures/task.json`. For the analyzer-exit task, only exit `3`, no change from "
+        "`--report-only`, and no L2 usefulness claim are correct. When the task supplies "
+        "JSON, a usable patch preserves JSON syntax. A "
         "schema value is correct only when its type and value match the task. Correct "
         "task-consistent level labels and frozen controls are relevant evidence, not "
         "unrelated workflow; only false or contradictory additions can fail on that basis. "

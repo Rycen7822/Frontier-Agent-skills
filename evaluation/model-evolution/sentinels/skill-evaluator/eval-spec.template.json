@@ -294,7 +294,7 @@
       },
       "prompt": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:2b3268287fd9d996d4bd9e87c25e6bbcc01c5a820196bf8c7efc1098ec7db4d0"
+        "sha256": "sha256:7b9814bbe16e11c3e4f48c443d7ee58a3cbe96d85e002dd91ef72e2efdc7597e"
       },
       "type": "model"
     }
@@ -395,28 +395,28 @@
     "version": "3.3.0"
   },
   "suite": {
-    "fixture_set_hash": "sha256:ece7cc9e3ced0d8507da78ed25025233075075aa7700e1d097507dc2c527e959",
-    "grader_schedule_hash": "sha256:13a2994421233508fbac1f34d288513881093ba674a227a558bc32fb948bf66f",
-    "grader_set_hash": "sha256:9525900a915135a55453b393315fa9635e0f605834ced822b2ea29700d40c31d",
+    "fixture_set_hash": "sha256:0980e02ab0ba3d87f789aab6294b3989c515d8320d6f08582c4345b4b9680b99",
+    "grader_schedule_hash": "sha256:13926d09f5eb502bb0a6e367f131f044b2eb9318e41637ea66d1ad2823c2b918",
+    "grader_set_hash": "sha256:15550c3ff957d504e67aef70b6923458edbfbb71cb4aff2e02b187489f5aec7b",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:a79bf8c30ddda2ecda2c59b14d243d7654846a2a83f044fa0e66b068345c6106"
+      "sha256": "sha256:2657029e86bd59f818abd249002b9a6f5a241635ecb00c96d192718318dadf1e"
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:591c0d4abbf0c16d3fe08aa14469820cd7cec7ddaedae1f71086ef3b703fb0fb"
+      "sha256": "sha256:3a4e082ec001ecadcc610fb61aa9a608250af2262268033cdf43660faddfb04c"
     },
-    "quality_contract_hash": "sha256:e2d0d2826484a1bf6b317409f16f8b923def68b02d64f497d78d304f6c886eac",
+    "quality_contract_hash": "sha256:edf97edcaa44720a77f2137ad987d2e9de9879adc5ec0ceac2e42303838076e6",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:a79bf8c30ddda2ecda2c59b14d243d7654846a2a83f044fa0e66b068345c6106"
+      "sha256": "sha256:2657029e86bd59f818abd249002b9a6f5a241635ecb00c96d192718318dadf1e"
     },
-    "treatment_contract_hash": "sha256:a07ae4598d5b71456841b04733cc8799ab291a502af335c0e777e171ddb7875b"
+    "treatment_contract_hash": "sha256:6af1e852fad9dc98a02b55d8ccd19234fcf41bd07e18591da31d891548bd89dc"
   },
   "treatments": [
     {
@@ -444,7 +444,7 @@
       "scenario_ids": [
         "skill-evaluator-level-owner-selection",
         "skill-evaluator-deterministic-first",
-        "skill-evaluator-five-axis-interpretation",
+        "skill-evaluator-analyzer-exit-contract",
         "skill-evaluator-cli-schema-diagnosis",
         "skill-evaluator-transition-vs-revision",
         "skill-evaluator-protected-no-reviewer"
@@ -454,7 +454,7 @@
         "cli-diagnosis",
         "core",
         "deterministic-first",
-        "five-axis",
+        "evidence-qualified-comparison",
         "owner-selection",
         "protected",
         "transition-revision"
@@ -487,7 +487,7 @@
       "scenario_ids": [
         "skill-evaluator-level-owner-selection",
         "skill-evaluator-deterministic-first",
-        "skill-evaluator-five-axis-interpretation",
+        "skill-evaluator-analyzer-exit-contract",
         "skill-evaluator-cli-schema-diagnosis",
         "skill-evaluator-transition-vs-revision",
         "skill-evaluator-protected-no-reviewer"
@@ -497,7 +497,7 @@
         "cli-diagnosis",
         "core",
         "deterministic-first",
-        "five-axis",
+        "evidence-qualified-comparison",
         "owner-selection",
         "protected",
         "transition-revision"
