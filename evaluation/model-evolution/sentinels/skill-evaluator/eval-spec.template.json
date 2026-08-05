@@ -294,7 +294,7 @@
       },
       "prompt": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:8066cac29aa41860bdf20ded97a3e90ba8f0c59a84e9c61c179effea74cc0534"
+        "sha256": "sha256:e37a35350d4c03839d08d701e60a93aa334277012768c9fd0e7ba672d5ac4d81"
       },
       "type": "model"
     }
@@ -397,24 +397,24 @@
   "suite": {
     "fixture_set_hash": "sha256:ece7cc9e3ced0d8507da78ed25025233075075aa7700e1d097507dc2c527e959",
     "grader_schedule_hash": "sha256:13a2994421233508fbac1f34d288513881093ba674a227a558bc32fb948bf66f",
-    "grader_set_hash": "sha256:deca6a96f0928b27d4fef92c1af83a3dd5483eb494da2d7ae42b200c61590afb",
+    "grader_set_hash": "sha256:fcfb388aee5a75af1cb10db5b8cba28f5e0039029eeb5746a3a38d10ee42c14d",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:16f636c5eba83ab3803fbba4b48aac8dfcafbf813912c8ac693d56ceff0eb8e8"
+      "sha256": "sha256:a79bf8c30ddda2ecda2c59b14d243d7654846a2a83f044fa0e66b068345c6106"
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:c75450fdaa9e765d3afe40d43df23de519e1d573cd9519bf88f085de2b610149"
+      "sha256": "sha256:7a9cfb24ae4fc43937d39d0f3031e32bd16a3a1ba7774dbd3e7a0532c20fe820"
     },
-    "quality_contract_hash": "sha256:13b2c4aec1ebfae9b52d51374247a74240ce1f7538a306a6e5f672d8f61384c4",
+    "quality_contract_hash": "sha256:ac9e66550275c53e0aecda93cd85f6c10b6c78ba3f848efed52c003fd0d3ab05",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:16f636c5eba83ab3803fbba4b48aac8dfcafbf813912c8ac693d56ceff0eb8e8"
+      "sha256": "sha256:a79bf8c30ddda2ecda2c59b14d243d7654846a2a83f044fa0e66b068345c6106"
     },
     "treatment_contract_hash": "sha256:a07ae4598d5b71456841b04733cc8799ab291a502af335c0e777e171ddb7875b"
   },
