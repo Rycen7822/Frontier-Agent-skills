@@ -201,6 +201,11 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             spec = load_json(root / "eval-spec.template.json", label="sentinel spec")
             quality = load_json(root / "suite-quality.json", label="suite quality")
             self.assertFalse(spec["execution"]["ready"])
+            expected_headroom = 1 if skill_id == "skill-evaluator" else 2
+            self.assertEqual(
+                spec["analysis"]["materiality"]["minimum_baseline_failure_cases"],
+                expected_headroom,
+            )
             self.assertIsNone(spec["suite"]["holdout"])
             self.assertNotIn("calibration", spec["suite"])
             self.assertEqual(set(quality["gates"].values()), {"pass"})
