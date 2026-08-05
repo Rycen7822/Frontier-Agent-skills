@@ -124,6 +124,10 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     tasks["skill-evaluator-cli-schema-diagnosis"],
                 )
                 self.assertIn(
+                    "same validator command",
+                    tasks["skill-evaluator-cli-schema-diagnosis"],
+                )
+                self.assertIn(
                     "integer `schema_version: 1`",
                     tasks["skill-evaluator-protected-no-reviewer"],
                 )
@@ -306,8 +310,23 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             quality_evidence = quality_positive_two["payload"]["view"][
                 "candidate_evidence"
             ]
-            self.assertIn("report.md", quality_evidence)
-            self.assertIn("zero missing or contradictory fields", quality_evidence)
+            if skill_id == "skill-evaluator":
+                self.assertIn("schema_version: 5", quality_evidence)
+                self.assertIn("adds no input artifact", quality_evidence)
+                quality_negative_two = next(
+                    row
+                    for row in rows
+                    if row["example_id"].endswith("quality-check-cal-06")
+                )
+                self.assertIn(
+                    "adds a validator argument",
+                    quality_negative_two["payload"]["view"]["candidate_evidence"],
+                )
+            else:
+                self.assertIn("report.md", quality_evidence)
+                self.assertIn(
+                    "zero missing or contradictory fields", quality_evidence
+                )
             prompt = (root / grader["prompt"]["path"]).read_text()
             self.assertIn("against every declared mechanism", prompt)
             self.assertIn("does not mark as relevant", prompt)
@@ -319,6 +338,10 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 )
                 self.assertIn(
                     "verified runtime receipt belongs to L1 execution diagnosis",
+                    prompt,
+                )
+                self.assertIn(
+                    "documented Python/path form is equivalent",
                     prompt,
                 )
             process_check = next(
