@@ -27,6 +27,7 @@ from _codex_eval_delivery import (
 
 from _model_evolution_contract import (
     ContractError,
+    CRITICAL_PROBE_CAPABILITIES,
     HOST_CLEANUP_GRACE_SECONDS,
     SAFE_ID,
     SKILL_IDS,
@@ -64,6 +65,20 @@ ALLOWED_GATE_SCRIPTS = {
 
 class OperationError(ValueError):
     """A model-free operation, Git, or candidate policy failure."""
+
+
+def _probe_diagnostics_block(row: dict[str, Any], value: dict[str, Any]) -> bool:
+    diagnostics = value["diagnostics"]
+    if not diagnostics:
+        return False
+    return not (
+        row["capability"] not in CRITICAL_PROBE_CAPABILITIES
+        and value["status"] == "unknown"
+        and all(
+            isinstance(item, dict) and item.get("kind") == "child_process"
+            for item in diagnostics
+        )
+    )
 
 
 def _run(
@@ -629,7 +644,7 @@ def run_interaction_probes(
                 "terminal": binding,
             }
         )
-        if value["diagnostics"]:
+        if _probe_diagnostics_block(row, value):
             raise OperationError(
                 "interaction probe protocol diagnostic stopped the probe set"
             )
