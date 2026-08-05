@@ -128,7 +128,15 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     tasks["skill-evaluator-cli-schema-diagnosis"],
                 )
                 self.assertIn(
+                    "owning contract surface",
+                    tasks["skill-evaluator-cli-schema-diagnosis"],
+                )
+                self.assertIn(
                     "integer `schema_version: 1`",
+                    tasks["skill-evaluator-protected-no-reviewer"],
+                )
+                self.assertIn(
+                    'JSON record `{"status": "completed"}`',
                     tasks["skill-evaluator-protected-no-reviewer"],
                 )
             for protected_id in record["protected_case_ids"]:
@@ -311,7 +319,26 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 "candidate_evidence"
             ]
             if skill_id == "skill-evaluator":
+                quality_positive_one = next(
+                    row
+                    for row in rows
+                    if row["example_id"].endswith("quality-check-cal-01")
+                )
+                quality_boundary_one = next(
+                    row
+                    for row in rows
+                    if row["example_id"].endswith("quality-check-cal-03")
+                )
+                self.assertIn(
+                    '"schema_version": 1',
+                    quality_positive_one["payload"]["view"]["candidate_evidence"],
+                )
+                self.assertIn(
+                    "does not preserve JSON syntax",
+                    quality_boundary_one["payload"]["view"]["candidate_evidence"],
+                )
                 self.assertIn("schema_version: 5", quality_evidence)
+                self.assertIn("owner surface", quality_evidence)
                 self.assertIn("adds no input artifact", quality_evidence)
                 quality_negative_two = next(
                     row
@@ -320,6 +347,10 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 )
                 self.assertIn(
                     "adds a validator argument",
+                    quality_negative_two["payload"]["view"]["candidate_evidence"],
+                )
+                self.assertIn(
+                    "run_eval_plan.py",
                     quality_negative_two["payload"]["view"]["candidate_evidence"],
                 )
             else:
@@ -344,6 +375,8 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     "documented Python/path form is equivalent",
                     prompt,
                 )
+                self.assertIn("valid contract owner surface", prompt)
+                self.assertIn("usable patch preserves JSON syntax", prompt)
             process_check = next(
                 check for check in checks.values()
                 if check["dimension"] == "process"

@@ -363,9 +363,10 @@ SKILLS = {
                     "v5 schema requires integer `5`; `run_eval_plan.py` has not started and "
                     "the evidence directory is unchanged. The documented `python3 "
                     "\"$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py\" contract "
-                    "run.json` form is the same validator command. Identify the owner and "
-                    "exact minimal next step without adding an input artifact or validator "
-                    "argument."
+                    "run.json` form is the same validator command. Identify the owning "
+                    "contract surface—the reporting validator, existing `run.json`, and "
+                    "L0 v5 contract—and the exact minimal next step without adding an input "
+                    "artifact or validator argument."
                 ),
                 False,
                 1,
@@ -385,10 +386,10 @@ SKILLS = {
                 "protected-no-reviewer",
                 "protected",
                 (
-                    "A local record fails because schema v1 requires integer "
-                    "`schema_version: 1`, while the record contains only "
-                    "`status=completed`. Give the exact local correction as patch text; do "
-                    "not claim it was applied and do not invoke a reviewer or provider."
+                    "A local JSON record `{\"status\": \"completed\"}` fails because schema "
+                    "v1 requires integer `schema_version: 1`. Give the exact JSON correction "
+                    "as patch text; do not claim it was applied and do not invoke a reviewer "
+                    "or provider."
                 ),
                 True,
                 1,
@@ -591,8 +592,10 @@ def _grader_prompt(skill_id: str, claims: list[str]) -> bytes:
         "whole-package audit and a verified runtime receipt belongs to L1 execution "
         "diagnosis. Resolving the supplied validator through the documented Python/path "
         "form is equivalent when its subcommand and input list are unchanged; a different "
-        "input or added validator argument is not. A schema value is correct only when its "
-        "type and value match the task."
+        "input or added validator argument is not. A validator, its named input artifact, "
+        "and the active level/schema are a valid contract owner surface; do not require a "
+        "human actor. When the task supplies JSON, a usable patch preserves JSON syntax. A "
+        "schema value is correct only when its type and value match the task."
         if skill_id == "skill-evaluator"
         else ""
     )
@@ -966,17 +969,27 @@ def _calibration_view(
     }
     if skill_id == "skill-evaluator" and check_id == "quality-check":
         evidence[check_id]["known_good"] = (
-            evidence[check_id]["known_good"][0],
-            "The task names `validate_eval_suite.py contract run.json`. The answer adds "
-            "integer `schema_version: 5` to that same input and uses the documented "
+            "The task supplies JSON `{\"status\": \"completed\"}`. The final patch artifact "
+            "adds integer `\"schema_version\": 1`, preserves the existing field and JSON "
+            "syntax, and the schema verification passes.",
+            "The answer names the validator, `run.json`, and L0 v5 contract as the owner "
+            "surface, adds integer `schema_version: 5` to that same input, and uses the "
+            "documented "
             "`python3 $SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py contract "
             "run.json` verification form; it adds no input artifact or validator argument.",
         )
         evidence[check_id]["known_bad"] = (
             evidence[check_id]["known_bad"][0],
-            "The task names `validate_eval_suite.py contract run.json`, but the answer "
-            "creates `spec-v5.json` and validates `run.json scenarios.jsonl`; it changes "
-            "the input artifact and adds a validator argument.",
+            "The task names the validator, `run.json`, and L0 v5 contract, but the answer "
+            "assigns ownership to `run_eval_plan.py`, creates `spec-v5.json`, and validates "
+            "`run.json scenarios.jsonl`; it changes the owner and input and adds a validator "
+            "argument.",
+        )
+        evidence[check_id]["boundary"] = (
+            "The task supplies JSON `{\"status\": \"completed\"}`, but the patch uses "
+            "YAML-like `schema_version: \"1\"`; it changes the integer to a string and does "
+            "not preserve JSON syntax or provide passing verification.",
+            evidence[check_id]["boundary"][1],
         )
     task = (
         f"Judge whether the supplied evidence establishes a complete, correct, and "
