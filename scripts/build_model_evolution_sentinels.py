@@ -469,6 +469,7 @@ def _scenario(
     skill_id: str,
     case: tuple[str, str, str, bool, int],
     fixture_hash: str,
+    initial_file: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     slug, coverage, task, protected, turn_count = case
     value = copy.deepcopy(base)
@@ -481,7 +482,7 @@ def _scenario(
     value["fixture"] = {
         "manifest": "fixtures/manifest.json",
         "sha256": fixture_hash,
-        "initial_files": [],
+        "initial_files": [copy.deepcopy(initial_file)] if initial_file else [],
         "initial_state": [],
         "fake_services": [],
     }
@@ -1241,6 +1242,15 @@ def _materialize(repository_root: Path) -> list[Path]:
                 skill_id=skill_id,
                 case=case,
                 fixture_hash=_sha256(manifest_bytes),
+                initial_file=(
+                    {
+                        "path": "fixtures/task.json",
+                        "sha256": _sha256(task_bytes),
+                    }
+                    if skill_id == "skill-evaluator"
+                    and case[0] == "cli-schema-diagnosis"
+                    else None
+                ),
             )
             for case in config["cases"]
         ]

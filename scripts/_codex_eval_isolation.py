@@ -9,12 +9,26 @@ from typing import Iterator
 
 
 ISOLATED_CODEX_HOME = "/run/frontier-codex-home"
+ISOLATED_HOME = "/run/frontier-home"
+ISOLATED_NODE_ROOT = "/run/frontier-node"
 ISOLATED_OUTPUT = "/tmp/frontier-output"
 ISOLATED_WORKSPACE = "/tmp/frontier-workspace"
 
 
 class IsolationError(ValueError):
     """A required model-evolution isolation boundary is unavailable."""
+
+
+def _node_runtime_root(codex: Path, user_home: Path) -> Path | None:
+    if not codex.is_relative_to(user_home):
+        return None
+    for parent in codex.parents:
+        if parent == user_home:
+            break
+        node = parent / "bin" / "node"
+        if node.is_file() and not node.is_symlink():
+            return parent
+    raise IsolationError("Codex inside the user home lacks a bound Node runtime")
 
 
 @contextmanager
@@ -51,7 +65,8 @@ def isolated_child_argv(
             "source worktree is outside the in-repository worktree root"
         )
     repository_root = source_root.parent.parent
-    global_codex_home = Path.home() / ".codex"
+    user_home = Path.home().resolve(strict=True)
+    global_codex_home = user_home / ".codex"
     auth = global_codex_home / "auth.json"
     model_cache = global_codex_home / "models_cache.json"
     for path, label in ((auth, "Codex auth"), (model_cache, "Codex model cache")):
@@ -61,9 +76,28 @@ def isolated_child_argv(
     rewritten = list(argv)
     if Path(rewritten[0]).resolve(strict=True) != codex:
         raise IsolationError("Codex child executable differs from the Host binding")
+    node_root = _node_runtime_root(codex, user_home)
     executable_mount: list[str] = []
-    masked_roots = (repository_root, global_codex_home, Path("/tmp"))
-    if any(codex.is_relative_to(root) for root in masked_roots):
+    path_override: list[str] = []
+    if node_root is not None:
+        relative_codex = codex.relative_to(node_root)
+        executable_mount = [
+            "--dir",
+            ISOLATED_NODE_ROOT,
+            "--ro-bind",
+            str(node_root),
+            ISOLATED_NODE_ROOT,
+        ]
+        rewritten[0] = f"{ISOLATED_NODE_ROOT}/{relative_codex.as_posix()}"
+        path_override = [
+            "--setenv",
+            "PATH",
+            (
+                f"{ISOLATED_NODE_ROOT}/bin:/usr/local/sbin:/usr/local/bin:"
+                "/usr/sbin:/usr/bin:/sbin:/bin"
+            ),
+        ]
+    elif codex.is_relative_to(repository_root) or codex.is_relative_to(Path("/tmp")):
         isolated_bin = "/run/frontier-codex-bin"
         executable_mount = [
             "--dir",
@@ -102,18 +136,20 @@ def isolated_child_argv(
         "--bind", str(output_dir), ISOLATED_OUTPUT,
         "--tmpfs", "/run",
         *executable_mount,
+        "--dir", ISOLATED_HOME,
         "--dir", ISOLATED_CODEX_HOME,
         "--bind", str(codex_home), ISOLATED_CODEX_HOME,
         "--ro-bind", str(auth), f"{ISOLATED_CODEX_HOME}/auth.json",
         "--ro-bind", str(model_cache), f"{ISOLATED_CODEX_HOME}/models_cache.json",
-        "--tmpfs", str(repository_root),
-        "--tmpfs", str(global_codex_home),
+        "--tmpfs", str(user_home),
         "--dev", "/dev",
         "--proc", "/proc",
         "--unshare-pid",
         "--as-pid-1",
         "--die-with-parent",
         "--setenv", "CODEX_HOME", ISOLATED_CODEX_HOME,
+        "--setenv", "HOME", ISOLATED_HOME,
+        *path_override,
         "--chdir", ISOLATED_WORKSPACE,
         "--",
         *rewritten,

@@ -632,6 +632,20 @@ class TestCodexEventNormalization(unittest.TestCase):
         self.assertEqual((1, 1), (items["minItems"], items["maxItems"]))
         self.assertEqual((2, 2), (checks["minItems"], checks["maxItems"]))
         self.assertEqual("string", checks["items"]["properties"]["id"]["type"])
+        output = {
+            "batch_id": "batch-1",
+            "items": [{
+                "item_id": "item-1",
+                "checks": [
+                    {"id": check_id, "pass": True, "notes": "ok", "uncertainty": "none"}
+                    for check_id in ("check-a", "check-b")
+                ],
+            }],
+        }
+        self.assertEqual([], self.events.model_grade_output_diagnostics(output, batch))
+        output["items"][0]["checks"][1]["id"] = "outside-bound-check"
+        diagnostics = self.events.model_grade_output_diagnostics(output, batch)
+        self.assertEqual("identity_mismatch", diagnostics[0]["kind"])
 
 
 class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
@@ -641,6 +655,9 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             tempfile.TemporaryDirectory(
                 prefix="frontier-isolation-test-", dir="/dev/shm"
             ) as codex_home_name,
+            tempfile.TemporaryDirectory(
+                prefix="frontier-private-home-test-", dir=Path.home()
+            ) as private_home_name,
         ):
             canonical = Path(tmp) / "Frontier-Agent-skills"
             source = canonical / ".worktrees/source"
@@ -650,6 +667,8 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             for path in (workspace, output, executable_dir):
                 path.mkdir(parents=True)
             (source / "secret.txt").write_text("source-only\n", encoding="utf-8")
+            private_home_secret = Path(private_home_name) / "secret.txt"
+            private_home_secret.write_text("home-only\n", encoding="utf-8")
             (workspace / "fixture.txt").write_text("workspace-only\n", encoding="utf-8")
             fake = executable_dir / "fake-codex"
             global_codex_auth = Path.home() / ".codex/auth.json"
@@ -663,6 +682,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                     import subprocess
 
                     assert Path({str(source / 'secret.txt')!r}).exists() is False
+                    assert Path({str(private_home_secret)!r}).exists() is False
                     assert Path({str(global_codex_auth)!r}).exists() is False
                     assert Path('/run/frontier-codex-home/auth.json').is_file()
                     assert Path('/tmp/frontier-workspace/fixture.txt').read_text() == 'workspace-only\\n'
@@ -671,6 +691,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                     Path('/tmp/frontier-output/proof.json').write_text(json.dumps({{
                         'codex_home': os.environ.get('CODEX_HOME'),
                         'cwd': str(Path.cwd()),
+                        'home': os.environ.get('HOME'),
                         'oldpwd': os.environ.get('OLDPWD'),
                         'pwd': os.environ.get('PWD'),
                     }}), encoding='utf-8')
@@ -720,6 +741,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             proof = json.loads((output / "proof.json").read_text(encoding="utf-8"))
             self.assertEqual("/run/frontier-codex-home", proof["codex_home"])
             self.assertEqual("/tmp/frontier-workspace", proof["cwd"])
+            self.assertEqual("/run/frontier-home", proof["home"])
             self.assertIsNone(proof["oldpwd"])
             self.assertEqual("/tmp/frontier-workspace", proof["pwd"])
             self.assertEqual("source-only\n", (source / "secret.txt").read_text())
@@ -1329,6 +1351,34 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertIn("--output-schema", grade_call["argv"])
             self.assertIn("Judge the blinded fixture evidence.", grade_call["prompt"])
             self.assertNotIn("treatment", grade_call["prompt"].lower())
+
+            invalid_grade = json.loads(json.dumps(grade))
+            invalid_grade["items"][0]["item_id"] = "outside-bound-batch"
+            fake_config_path = Path(str(fake) + ".json")
+            fake_config = json.loads(fake_config_path.read_text(encoding="utf-8"))
+            fake_config["grade"] = invalid_grade
+            fake_config_path.write_text(
+                json.dumps(fake_config, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            invalid_workspace = root / "invalid-grade-workspace"
+            invalid_workspace.mkdir()
+            invalid_result = _run_adapter(
+                invalid_workspace,
+                fake,
+                manifest_path,
+                _request("model_grade", _grade_payload(batch)),
+            )
+            self.assertEqual(0, invalid_result.returncode, invalid_result.stderr)
+            invalid_record = _jsonl(invalid_result.stdout)[-1]
+            self.assertEqual("protocol_error", invalid_record["terminal_status"])
+            self.assertEqual("identity_mismatch", invalid_record["protocol_error"]["kind"])
+            self.assertEqual(
+                invalid_record["artifacts"][0],
+                invalid_record["protocol_error"]["artifact"],
+            )
+            self.assertEqual(1, len(invalid_record["usage"]["records"]))
+
             tampered = _grade_payload(batch)
             tampered["grader_prompt"] = "Different instruction.\n"
             rejected = _run_adapter(

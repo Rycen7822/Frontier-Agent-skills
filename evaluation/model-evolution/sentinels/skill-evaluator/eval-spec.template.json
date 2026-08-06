@@ -395,26 +395,26 @@
     "version": "3.3.0"
   },
   "suite": {
-    "fixture_set_hash": "sha256:0980e02ab0ba3d87f789aab6294b3989c515d8320d6f08582c4345b4b9680b99",
+    "fixture_set_hash": "sha256:9fba89e4d957c757f23aa8354ca7430736e8c045d6000723471558562a4f1083",
     "grader_schedule_hash": "sha256:13926d09f5eb502bb0a6e367f131f044b2eb9318e41637ea66d1ad2823c2b918",
     "grader_set_hash": "sha256:15550c3ff957d504e67aef70b6923458edbfbb71cb4aff2e02b187489f5aec7b",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:2657029e86bd59f818abd249002b9a6f5a241635ecb00c96d192718318dadf1e"
+      "sha256": "sha256:6851ba20e572a3c00f7bad2ad7ddafa202e34a723cdc81a2700ccd3dd19c9456"
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:3a4e082ec001ecadcc610fb61aa9a608250af2262268033cdf43660faddfb04c"
+      "sha256": "sha256:61a5828eea00997eb7b7f4ec8504f7c1da85b3085caa9ad3626a88bb8b0653a6"
     },
-    "quality_contract_hash": "sha256:edf97edcaa44720a77f2137ad987d2e9de9879adc5ec0ceac2e42303838076e6",
+    "quality_contract_hash": "sha256:444f59b45cb5b5bad8018a34e488f2bb9c78d68adc7640448a26c36456c4b6a4",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:2657029e86bd59f818abd249002b9a6f5a241635ecb00c96d192718318dadf1e"
+      "sha256": "sha256:6851ba20e572a3c00f7bad2ad7ddafa202e34a723cdc81a2700ccd3dd19c9456"
     },
     "treatment_contract_hash": "sha256:6af1e852fad9dc98a02b55d8ccd19234fcf41bd07e18591da31d891548bd89dc"
   },

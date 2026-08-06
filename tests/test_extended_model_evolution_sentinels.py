@@ -135,6 +135,16 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     "validate_eval_suite.py",
                     tasks["skill-evaluator-cli-schema-diagnosis"],
                 )
+                cli_fixture = by_id[
+                    "skill-evaluator-cli-schema-diagnosis"
+                ]["fixture"]
+                self.assertEqual(
+                    ["fixtures/task.json"],
+                    [item["path"] for item in cli_fixture["initial_files"]],
+                )
+                self.assertTrue(
+                    cli_fixture["initial_files"][0]["sha256"].startswith("sha256:")
+                )
                 self.assertIn(
                     "`--report-only`",
                     tasks["skill-evaluator-analyzer-exit-contract"],

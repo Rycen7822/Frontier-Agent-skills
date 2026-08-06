@@ -40,6 +40,7 @@ from _codex_eval_events import (
     base_host_result,
     execute_evidence_diagnostics,
     host_protocol_error,
+    model_grade_output_diagnostics,
     model_grade_schema,
     normalize_jsonl,
     project_execute_result,
@@ -54,7 +55,7 @@ from _codex_eval_isolation import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
-ADAPTER_VERSION = "1.3"
+ADAPTER_VERSION = "1.4"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_delivery.py",
@@ -929,9 +930,7 @@ def _run_model_grade(
         f"model-grade-{request['request_hash'][7:19]}.json",
         output,
     )
-    result = base_host_result(request, manifest)
-    result["artifacts"] = [artifact]
-    result["usage"] = _captured_usage(
+    usage = _captured_usage(
         manifest,
         [{
             "principal_id": f"grader-{payload['grader_id']}",
@@ -942,6 +941,18 @@ def _run_model_grade(
             "runtime_ms": child["runtime_ms"],
         }],
     )
+    identity_diagnostics = model_grade_output_diagnostics(output, batch)
+    if identity_diagnostics:
+        result = base_host_result(request, manifest)
+        result["terminal_status"] = "protocol_error"
+        result["artifacts"] = [artifact]
+        result["protocol_error"] = host_protocol_error(identity_diagnostics)
+        result["protocol_error"]["artifact"] = artifact
+        result["usage"] = usage
+        return result
+    result = base_host_result(request, manifest)
+    result["artifacts"] = [artifact]
+    result["usage"] = usage
     return result
 
 
