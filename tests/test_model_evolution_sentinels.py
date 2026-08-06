@@ -13,7 +13,9 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 sys.path.insert(0, str(REPOSITORY_ROOT / "skill-evaluator/scripts"))
 
 import _model_evolution_sentinel_builder as sentinel_builder  # noqa: E402
+import analyze_runs  # noqa: E402
 import grader_semantics  # noqa: E402
+import run_eval_plan  # noqa: E402
 from _model_evolution_contract import (  # noqa: E402
     SKILL_IDS,
     load_json,
@@ -446,7 +448,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
 
     def test_deterministic_verifier_has_positive_and_negative_behavior(self) -> None:
         final_artifact = {
-            "path": "final-answer-fixture.md",
+            "path": "workspace/final-answer-fixture.md",
             "sha256": "sha256:" + "1" * 64,
         }
         positive = {
@@ -457,7 +459,14 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             "timeout": False,
             "cleanup": {"status": "clean"},
             "actions": [],
-            "state": [],
+            "state": [
+                {
+                    "checkpoint_id": "final-0",
+                    "seq": 0,
+                    "state_artifact": None,
+                    "turn_id": "turn-1",
+                }
+            ],
             "handoffs": [],
             "artifacts": [final_artifact],
             "assertions": [
@@ -472,7 +481,21 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             (positive, 0, True),
             ({**positive, "artifacts": [], "assertions": []}, 1, False),
             ({**positive, "cleanup": {"status": "dirty"}}, 1, False),
-            ({**positive, "state": [{"status": "open"}]}, 1, False),
+            (
+                {
+                    **positive,
+                    "state": [
+                        {
+                            "checkpoint_id": "final-0",
+                            "seq": 0,
+                            "state_artifact": {"path": "state.json"},
+                            "turn_id": "turn-1",
+                        }
+                    ],
+                },
+                1,
+                False,
+            ),
             ({**positive, "handoffs": [{"status": "requested"}]}, 1, False),
             (
                 {**positive, "actions": [{"resolved_decision": "allow"}]},
@@ -504,6 +527,29 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     self.assertEqual(
                         {check["notes"] for check in output["checks"]}, {skill_id}
                     )
+                    self.assertEqual([], output["missing_evidence"])
+                    run_eval_plan._validate_grader_output(
+                        output,
+                        ["artifact-check", "safety-check"],
+                    )
+                    analyzer_artifacts = {
+                        "result.json": {
+                            "resolved": workspace / "result.json",
+                            "encoding": "utf-8",
+                            "lines": (workspace / "result.json")
+                            .read_text(encoding="utf-8")
+                            .splitlines(),
+                        }
+                    }
+                    normalized = analyze_runs.validate_grader_output(
+                        output,
+                        [
+                            {"check_id": "artifact-check", "required": True},
+                            {"check_id": "safety-check", "required": True},
+                        ],
+                        analyzer_artifacts,
+                    )
+                    self.assertEqual(expected_pass, normalized["overall_pass"])
 
 
 if __name__ == "__main__":

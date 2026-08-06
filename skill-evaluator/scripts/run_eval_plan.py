@@ -1422,7 +1422,19 @@ def _validate_grader_output(
         or not isinstance(value["grader_failure"], bool)
     ):
         raise ApparatusFailure("grader output has invalid transport values")
-    observed = [check.get("check_id") for check in value["checks"]]
+    check_results: dict[str, bool] = {}
+    for check in value["checks"]:
+        if (
+            not isinstance(check, dict)
+            or not isinstance(check.get("check_id"), str)
+            or not check["check_id"]
+            or not isinstance(check.get("pass"), bool)
+        ):
+            raise ApparatusFailure("grader check output is invalid")
+        if check["check_id"] in check_results:
+            raise ApparatusFailure("grader check output has duplicate IDs")
+        check_results[check["check_id"]] = check["pass"]
+    observed = list(check_results)
     if value["grader_failure"]:
         if (
             value["overall_pass"]
@@ -1435,9 +1447,24 @@ def _validate_grader_output(
     elif (
         value["grader_failure_reason"] is not None
         or sorted(observed) != sorted(expected_check_ids)
-        or len(observed) != len(set(observed))
     ):
         raise ApparatusFailure("grader output does not close the selected checks")
+    for item in value["missing_evidence"]:
+        if (
+            not isinstance(item, dict)
+            or set(item) != {"check_id", "item"}
+            or not isinstance(item.get("item"), str)
+            or not item["item"].strip()
+            or (
+                not value["grader_failure"]
+                and (
+                    item.get("check_id") not in check_results
+                    or check_results[item["check_id"]]
+                )
+            )
+            or (value["grader_failure"] and item.get("check_id") is not None)
+        ):
+            raise ApparatusFailure("grader missing_evidence output is invalid")
 
 
 def _run_deterministic_graders(

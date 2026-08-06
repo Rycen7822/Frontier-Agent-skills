@@ -152,6 +152,30 @@ class TestExtendedRunnerLifecycle(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(1, status['execute_case_request_ceiling'])
             self.assertEqual(1, status['model_grade_request_ceiling'])
 
+    def test_runner_rejects_noncanonical_missing_evidence(self) -> None:
+        runner = load_runner_module()
+        output = {
+            'overall_pass': False,
+            'score': 0,
+            'checks': [
+                {
+                    'check_id': 'quality-check',
+                    'pass': False,
+                    'evidence': [],
+                    'notes': '',
+                    'uncertainty': 'none',
+                },
+            ],
+            'missing_evidence': ['missing evidence'],
+            'grader_failure': False,
+            'grader_failure_reason': None,
+        }
+        with self.assertRaisesRegex(
+            runner.ApparatusFailure,
+            'missing_evidence output is invalid',
+        ):
+            runner._validate_grader_output(output, ['quality-check'])
+
     def test_spawn_failure_keeps_recoverable_lock_file_without_child(self) -> None:
         runner = load_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
