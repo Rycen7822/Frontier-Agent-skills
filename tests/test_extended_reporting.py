@@ -10,14 +10,17 @@ from skill_evaluator_test_support import *  # noqa: F403
 def material_failure_records(
     baseline_failures: set[str],
     candidate_failures: set[str],
+    *,
+    case_ids: tuple[str, ...] = ("a", "b", "c", "d"),
+    repeats: tuple[int, ...] = (1, 2),
 ) -> list[dict]:
     rows = []
     for variant, failures in (
         ("baseline", baseline_failures),
         ("candidate", candidate_failures),
     ):
-        for case_id in ("a", "b", "c", "d"):
-            for repeat in (1, 2):
+        for case_id in case_ids:
+            for repeat in repeats:
                 rows.append({
                     "variant": variant,
                     "case_id": case_id,
@@ -1001,7 +1004,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 'slices': [],
                 'reliability': ['observed_consistency'],
                 'materiality': {
-                    'minimum_baseline_failure_cases': 3,
+                    'minimum_baseline_failure_cases': 2,
                 },
             },
             'hard_gates': [],
@@ -1015,17 +1018,24 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         supported = analyzer._v5_metric_analysis(
             spec,
             plan,
-            material_failure_records({'a', 'b', 'c'}, set()),
+            material_failure_records(
+                {'a', 'b'}, set(),
+                case_ids=('a', 'b', 'c', 'd', 'e', 'f'), repeats=(1,),
+            ),
             evidence_status='complete',
             feasibility_status='feasible',
         )
         self.assertEqual('supported', supported['usefulness_status'])
-        self.assertEqual(4, supported['primary_benefit']['case_count'])
+        self.assertEqual(6, supported['primary_benefit']['case_count'])
+        self.assertEqual(0.0, supported['primary_benefit']['lower'])
 
         ceiling = analyzer._v5_metric_analysis(
             spec,
             plan,
-            material_failure_records({'a', 'b'}, set()),
+            material_failure_records(
+                {'a'}, set(),
+                case_ids=('a', 'b', 'c', 'd', 'e', 'f'), repeats=(1,),
+            ),
             evidence_status='complete',
             feasibility_status='feasible',
         )
@@ -1039,7 +1049,10 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         negative = analyzer._v5_metric_analysis(
             spec,
             plan,
-            material_failure_records({'a', 'b', 'c'}, {'d'}),
+            material_failure_records(
+                {'a', 'b'}, {'f'},
+                case_ids=('a', 'b', 'c', 'd', 'e', 'f'), repeats=(1,),
+            ),
             evidence_status='complete',
             feasibility_status='feasible',
         )

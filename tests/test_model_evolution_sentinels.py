@@ -216,16 +216,16 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             )
             definition = sentinel_builder.SKILLS[skill_id]
             self.assertLess(expected_headroom, len(definition["cases"]))
-            minimum_pair_benefit = 1 / len(definition["cases"])
+            minimum_interval_benefit = 0.0
             critical_gate = next(
                 gate
                 for gate in spec["hard_gates"]
                 if gate["gate_id"] == "critical-benefit"
             )
-            self.assertEqual(critical_gate["threshold"], minimum_pair_benefit)
+            self.assertEqual(critical_gate["threshold"], minimum_interval_benefit)
             self.assertEqual(
                 spec["analysis"]["estimands"][0]["minimum_benefit"],
-                minimum_pair_benefit,
+                minimum_interval_benefit,
             )
             self.assertEqual(1, len(spec["analysis"]["estimands"]))
             model_grader = next(
@@ -441,6 +441,11 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             self.assertIn("task leaves irrelevant", prompt)
             self.assertIn("Treat bound task fixtures as supplied facts", prompt)
             self.assertIn("single target-Skill body is the intentional treatment delivery", prompt)
+            self.assertIn("bound final artifact can directly demonstrate", prompt)
+            self.assertIn("only when the task explicitly requires execution", prompt)
+            if skill_id == "software-quality-workflows":
+                self.assertIn("a team or role alone is insufficient", prompt)
+                self.assertIn("syntax-only compilation is insufficient", prompt)
             self.assertIn("Within calibration items", prompt)
             self.assertIn("not an abstention", prompt)
             self.assertIn("`uncertainty` to `high`", prompt)

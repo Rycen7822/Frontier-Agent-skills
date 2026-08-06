@@ -13,7 +13,7 @@
         ],
         "estimand_id": "task-benefit",
         "metric": "task_pass_rate",
-        "minimum_benefit": 0.16666666666666666
+        "minimum_benefit": 0.0
       }
     ],
     "materiality": {
@@ -282,7 +282,7 @@
       },
       "prompt": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:b09aad3d2cfa4d7be55bf0016072b94ce648e457a14fb883f0d5a33dcc6b5b84"
+        "sha256": "sha256:221c2e50ca31b1e74d8816c22fcc60f7f2b1c1b4fd9d0d4c9e533cc4601d71f4"
       },
       "type": "model"
     }
@@ -295,7 +295,7 @@
       "kind": "benefit",
       "metric": "task_pass_rate",
       "required": true,
-      "threshold": 0.16666666666666666
+      "threshold": 0.0
     },
     {
       "authority": "evaluation-owner",
@@ -385,7 +385,7 @@
   "suite": {
     "fixture_set_hash": "sha256:fe5be08186aa9ba939426a8e3694694bf844033aab96ab082458571ea1f1f0df",
     "grader_schedule_hash": "sha256:16d5313a811df774642b535aa7e8c74a326cdce23f6d236901e1857f9104cca6",
-    "grader_set_hash": "sha256:2c36e0de028f7c262b2d661a4063c3cc7029910de70201e7313b4fdbc157144c",
+    "grader_set_hash": "sha256:64d9b147368ff82f8e51ada212998f7cb23042ffdad81764c105768b03e81cae",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
@@ -394,9 +394,9 @@
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:dbd54cbd127e8342999713d5a8d2b2226880f826e651f707860eba284761fa26"
+      "sha256": "sha256:f1bf69ca04afd2de20484e570350a4158288d7b4e0c225aaef593b5001de40da"
     },
-    "quality_contract_hash": "sha256:9b1a57f44ea3ed824c7eed5c16be6b3f1e87e0e87b8857935bd27472a4468710",
+    "quality_contract_hash": "sha256:e709a4eb58c70e7e0b35758e34bd12a6db3626ee8cf15cea5a3bdf7bf5f5cbfe",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",

@@ -11,6 +11,10 @@ DEFINITION = {
         "proportionate-validation",
         "lifecycle-cleanup",
     ],
+    "grader_rules": [
+        "For this Skill, an evidence owner is the smallest code, API, config, test, or component controlling the behavior; a team or role alone is insufficient.",
+        "When the task requests a behavior-focused check, syntax-only compilation is insufficient.",
+    ],
     "process_evidence": [
         "the change map names the behavior risk and its evidence owner before editing",
         "the selected checks cover the changed seam and record the validation scope",

@@ -38,7 +38,7 @@
         "long-document-segmented-writing": {"const": "1.1.0"},
         "skill-evaluator": {"const": "3.3.1"},
         "software-quality-workflows": {"const": "9.0.0"},
-        "writing-plans": {"const": "8.2.2"}
+        "writing-plans": {"const": "8.2.3"}
       }
     },
     "skill_activation": {
@@ -60,7 +60,7 @@
         "long-document-segmented-writing": {"type": "integer", "minimum": 1},
         "skill-evaluator": {"type": "integer", "minimum": 1},
         "software-quality-workflows": {"type": "integer", "minimum": 1, "maximum": 4096},
-        "writing-plans": {"type": "integer", "minimum": 1, "maximum": 5120}
+        "writing-plans": {"type": "integer", "minimum": 1, "maximum": 6144}
       }
     },
     "model_facing_files_checked": {

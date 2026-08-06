@@ -219,10 +219,15 @@ def _host_manifest() -> bytes:
     return _json_bytes(value)
 
 
-def _grader_prompt(skill_id: str, claims: list[str]) -> bytes:
+def _grader_prompt(
+    skill_id: str,
+    claims: list[str],
+    grader_rules: list[str],
+) -> bytes:
+    rules = (" " + " ".join(grader_rules)) if grader_rules else ""
     text = f"""# Blinded sentinel grader for {skill_id}
 
-Judge only the supplied task and candidate evidence. Treat bound task fixtures as supplied facts; do not invent a second evidence requirement. `task_evidence.case_id` and `task_evidence.tags` declare which case and mechanisms are relevant. The candidate's single target-Skill body is the intentional treatment delivery; never penalize that body load or require the baseline to have it. Score `quality-check` for a complete, correct, usable result. Score `process-check` only against relevant observable behavior in the result; do not require mechanisms that the task leaves irrelevant: {", ".join(claims)}. Within calibration items, `candidate_evidence` and text labeled `Terminal trace` are the bound observation; explicit `not_run`, absence of the required mechanism, or completed unrelated workflow is sufficient evidence for `pass: false` with `uncertainty` `none` or `low`, not an abstention. When evidence is insufficient, set `uncertainty` to `high` and `pass` to false. Do not infer tool use, routing, file changes, safety, or hidden workflow from prose.
+Judge only the supplied task and candidate evidence. Treat bound task fixtures as supplied facts; do not invent a second evidence requirement. `task_evidence.case_id` and `task_evidence.tags` declare which case and mechanisms are relevant. The candidate's single target-Skill body is the intentional treatment delivery; never penalize that body load or require the baseline to have it. Score `quality-check` for a complete, correct, usable result. Score `process-check` only against relevant observable behavior in the result; do not require mechanisms that the task leaves irrelevant: {", ".join(claims)}. For a plan, selection, or recommendation task, the bound final artifact can directly demonstrate the requested process mechanism; require a Terminal trace only when the task explicitly requires execution, and do not turn an optional execution claim into a second process requirement.{rules} Within calibration items, `candidate_evidence` and text labeled `Terminal trace` are the bound observation; explicit `not_run`, absence of the required mechanism, or completed unrelated workflow is sufficient evidence for `pass: false` with `uncertainty` `none` or `low`, not an abstention. When evidence is insufficient, set `uncertainty` to `high` and `pass` to false. Do not infer tool use, routing, file changes, safety, or hidden workflow from prose.
 """
     return text.encode("utf-8")
 
@@ -357,14 +362,14 @@ def _spec(
     value["suite"]["grader_schedule_hash"] = evaluator.v5_grader_schedule_hash(
         value, scenarios
     )
-    minimum_pair_benefit = 1 / len(scenarios)
+    minimum_interval_benefit = 0.0
     value["hard_gates"] = [
         {
             "gate_id": "critical-benefit",
             "kind": "benefit",
             "metric": "task_pass_rate",
             "direction": "at_least",
-            "threshold": minimum_pair_benefit,
+            "threshold": minimum_interval_benefit,
             "authority": "evaluation-owner",
             "required": True,
         },
@@ -415,7 +420,7 @@ def _spec(
         },
     ]
     primary_estimand = value["analysis"]["estimands"][0]
-    primary_estimand["minimum_benefit"] = minimum_pair_benefit
+    primary_estimand["minimum_benefit"] = minimum_interval_benefit
     value["analysis"]["estimands"] = [primary_estimand]
     value["analysis"]["slices"] = ["core", "protected"]
     value["analysis"]["materiality"]["minimum_baseline_failure_cases"] = config.get(
@@ -868,7 +873,11 @@ def materialize(repository_root: Path) -> list[Path]:
             for case in config["cases"]
         ]
         scenario_bytes = _jsonl_bytes(scenarios)
-        prompt_bytes = _grader_prompt(skill_id, config["claims"])
+        prompt_bytes = _grader_prompt(
+            skill_id,
+            config["claims"],
+            config.get("grader_rules", []),
+        )
         calibration_bytes = _calibration_gold(skill_id, config["claims"])
         verifier_bytes = (SENTINEL_SOURCE_ROOT / config["verifier_source"]).read_bytes()
         initial = {

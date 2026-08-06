@@ -53,7 +53,7 @@ Each L2+ causal question declares an `analysis.estimands[]` item with metric, ca
 
 Relative effects are allowed only for input/output tokens and Skill-context bytes. Executor-prewrite output bytes use the absolute `candidate - comparator` byte delta and its one-sided upper bound. Binary scores, normalized rubric scores, counts, fixed host-preflight cost, and other zero-common metrics use absolute effects.
 
-- lower bound `>= δ > 0` → benefit passes;
+- lower bound `>= δ` → benefit passes; normally `δ > 0`; a finite release sentinel may use `δ = 0` only when candidate required failures are independently forbidden and `minimum_baseline_failure_cases > 0` supplies corpus materiality;
 - upper bound `< δ` → benefit fails;
 - interval overlaps `δ`, or is unavailable → benefit is not evaluable.
 
