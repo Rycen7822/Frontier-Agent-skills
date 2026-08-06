@@ -35,6 +35,7 @@ from support.model_evolution.repository import (  # noqa: E402
     FIXED_TREE,
     mark_probe_passed,
     materialize_apparatus_report,
+    materialize_budget_approval,
     materialize_bootstrap_evidence,
     write_json,
 )
@@ -56,6 +57,23 @@ class ModelEvolutionCliTest(unittest.TestCase):
         state["profiles"]["target_observed"] = self.fixture["bindings"]["host"]
         mark_probe_passed(state, self.fixture)
         return with_self_hash(state, "campaign_hash")
+
+    def _read_status(self, args: argparse.Namespace) -> dict:
+        raw = io.BytesIO()
+        stream = io.TextIOWrapper(raw, encoding="utf-8")
+        with (
+            mock.patch.object(
+                controller,
+                "git_identity",
+                return_value={"commit": FIXED_COMMIT, "tree": FIXED_TREE},
+            ),
+            mock.patch("sys.stdout", stream),
+        ):
+            controller._status(args)
+            stream.flush()
+        value = json.loads(raw.getvalue().decode())
+        stream.detach()
+        return value
 
     def test_cli_import_does_not_create_source_bytecode(self) -> None:
         root = Path(self.temporary.name) / "cli-source"
@@ -244,6 +262,23 @@ class ModelEvolutionCliTest(unittest.TestCase):
             resume=True,
         )
         self.assertIn(" --resume --new-attempt-budget 3", resumed)
+        probe = jobs.render_probe_command(
+            repository_root=REPOSITORY_ROOT,
+            campaign_root=self.fixture["campaign_root"],
+            expected_revision=1,
+            budget_approval=self.fixture["campaign_root"] / "budget-approval.json",
+            service_id="frontier-probe",
+        )
+        self.assertIn(" --expected-revision 1 --budget-approval ", probe)
+        with self.assertRaisesRegex(operations.OperationError, "paths must be absolute"):
+            jobs.render_probe_command(
+                repository_root=Path("relative"),
+                campaign_root=self.fixture["campaign_root"],
+                expected_revision=1,
+                budget_approval=self.fixture["campaign_root"]
+                / "budget-approval.json",
+                service_id="frontier-probe",
+            )
 
     def test_systemd_preflight_requires_matching_allowlisted_environment(self) -> None:
         def fake_run(argv, **_kwargs):
@@ -315,6 +350,66 @@ class ModelEvolutionCliTest(unittest.TestCase):
         state = self.fixture["store"].read()
         self.assertEqual(("apparatus_ready", 1), (state["phase"], state["state_revision"]))
 
+    def test_status_projects_only_valid_canonical_probe_command(self) -> None:
+        store = self.fixture["store"]
+        apparatus = materialize_apparatus_report(self.fixture)
+        store.mutate(0, lambda state: state_module.advance_preflight(state, apparatus))
+        materialize_budget_approval(self.fixture, store.read())
+        before = {
+            path.relative_to(store.root): path.read_bytes()
+            for path in store.root.rglob("*")
+            if path.is_file()
+        }
+        args = argparse.Namespace(
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+            json=True,
+        )
+
+        status = self._read_status(args)
+        self.assertEqual("run interaction probes", status["next_event"])
+        self.assertFalse(status["probe_running"])
+        self.assertIn("systemd-run --user", status["probe_command"])
+        self.assertEqual([], status["blockers"])
+        with store.hold_probe_operation():
+            running = self._read_status(args)
+        self.assertEqual("monitor interaction probes", running["next_event"])
+        self.assertTrue(running["probe_running"])
+        self.assertIsNone(running["probe_command"])
+        self.assertEqual([], running["blockers"])
+        after = {
+            path.relative_to(store.root): path.read_bytes()
+            for path in store.root.rglob("*")
+            if path.is_file()
+        }
+        self.assertEqual(before, after)
+
+    def test_status_distinguishes_running_and_missing_probe_lock(self) -> None:
+        store = self.fixture["store"]
+        apparatus = materialize_apparatus_report(self.fixture)
+        store.mutate(0, lambda state: state_module.advance_preflight(state, apparatus))
+        store.mutate(1, lambda state: state_module.reserve_probes(state, ["force-load"]))
+        args = argparse.Namespace(
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+            json=True,
+        )
+
+        before = store.path.read_bytes()
+        with store.hold_probe_operation():
+            running = self._read_status(args)
+        self.assertTrue(running["probe_running"])
+        self.assertEqual("monitor interaction probes", running["next_event"])
+        self.assertEqual([], running["blockers"])
+        self.assertEqual(before, store.path.read_bytes())
+
+        store.probe_lock_path.unlink()
+        missing = self._read_status(args)
+        self.assertFalse(missing["probe_running"])
+        self.assertIsNone(missing["next_event"])
+        self.assertEqual("probe-operation-lock", missing["blockers"][0]["code"])
+        self.assertEqual(before, store.path.read_bytes())
+
     def test_preflight_schema_fixtures_match_their_live_contracts(self) -> None:
         campaign = self.fixture["store"].read()
         hash_fields = {
@@ -348,6 +443,8 @@ class ModelEvolutionCliTest(unittest.TestCase):
             ],
             blockers=[],
             runner_commands=[],
+            probe_running=False,
+            probe_command=None,
         )
         self.assertEqual(2, projection["active_attempts"])
         self.assertEqual(3, projection["recoverable_attempts"])
@@ -365,6 +462,8 @@ class ModelEvolutionCliTest(unittest.TestCase):
             ],
             blockers=[],
             runner_commands=["must-not-run"],
+            probe_running=False,
+            probe_command=None,
         )
         self.assertIsNone(blocked["next_event"])
         self.assertEqual([], blocked["runner_commands"])
@@ -499,6 +598,7 @@ class ModelEvolutionCliTest(unittest.TestCase):
             {path.name for path in self.fixture["campaign_root"].iterdir()},
             {
                 ".campaign.lock",
+                ".probe.operation.lock",
                 "apparatus-report.json",
                 "campaign.json",
                 "inputs",

@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 import copy
 import fcntl
 import json
@@ -443,6 +444,7 @@ class CampaignStore:
         self.repository_blob_matches = repository_blob_matches
         self.path = self.root / "campaign.json"
         self.lock_path = self.root / ".campaign.lock"
+        self.probe_lock_path = self.root / ".probe.operation.lock"
 
     def _repository_fallback(
         self, value: dict[str, Any]
@@ -511,9 +513,37 @@ class CampaignStore:
         create_no_overwrite(self.path, value)
         try:
             self.lock_path.touch(mode=0o600, exist_ok=False)
+            self.probe_lock_path.touch(mode=0o600, exist_ok=False)
         except BaseException:
+            self.probe_lock_path.unlink(missing_ok=True)
+            self.lock_path.unlink(missing_ok=True)
             self.path.unlink(missing_ok=True)
             raise
+
+    @contextmanager
+    def hold_probe_operation(self) -> Iterator[None]:
+        try:
+            lock_handle = self.probe_lock_path.open("r+b")
+        except OSError as exc:
+            raise StateError("probe operation lock is unavailable") from exc
+        with lock_handle:
+            try:
+                fcntl.flock(lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise StateError("probe operation is already running") from exc
+            yield
+
+    def probe_operation_running(self) -> bool:
+        try:
+            lock_handle = self.probe_lock_path.open("r+b")
+        except OSError as exc:
+            raise StateError("probe operation lock is unavailable") from exc
+        with lock_handle:
+            try:
+                fcntl.flock(lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            return False
 
     def mutate(
         self,
@@ -593,6 +623,8 @@ def status_projection(
     plan_statuses: list[dict[str, Any]],
     blockers: list[dict[str, str]],
     runner_commands: list[str],
+    probe_running: bool,
+    probe_command: str | None,
 ) -> dict[str, Any]:
     plan_blockers = [
         {
@@ -618,6 +650,14 @@ def status_projection(
     recoverable = sum(
         len(item.get("recoverable_attempts", [])) for item in plan_statuses
     )
+    if effective_blockers:
+        next_event = None
+    elif probe_running:
+        next_event = "monitor interaction probes"
+    elif probe_command is not None:
+        next_event = "run interaction probes"
+    else:
+        next_event = NEXT_EVENT[state["phase"]]
     return {
         "schema_version": "model-evolution-status/1",
         "campaign_id": state["campaign_id"],
@@ -628,7 +668,9 @@ def status_projection(
         "active_attempts": active,
         "recoverable_attempts": recoverable,
         "budget": state["budgets"],
-        "next_event": None if effective_blockers else NEXT_EVENT[state["phase"]],
+        "probe_running": probe_running,
+        "probe_command": None if effective_blockers else probe_command,
+        "next_event": next_event,
         "runner_commands": [] if effective_blockers else runner_commands,
         "blockers": effective_blockers,
     }

@@ -128,6 +128,27 @@ class ModelEvolutionStateTest(unittest.TestCase):
         self.assertEqual(store.path.read_bytes(), original)
         self.assertFalse(list(store.root.glob(".campaign.json.*.tmp")))
 
+    def test_probe_operation_lock_is_process_scoped_and_read_only(self) -> None:
+        store = self.fixture["store"]
+        original = store.path.read_bytes()
+        self.assertFalse(store.probe_operation_running())
+        with store.hold_probe_operation():
+            self.assertTrue(store.probe_operation_running())
+            with self.assertRaisesRegex(StateError, "already running"):
+                with store.hold_probe_operation():
+                    self.fail("concurrent probe operation unexpectedly acquired")
+        self.assertFalse(store.probe_operation_running())
+        self.assertEqual(original, store.path.read_bytes())
+
+        store.probe_lock_path.unlink()
+        store.read()
+        self.assertEqual(original, store.path.read_bytes())
+        with self.assertRaisesRegex(StateError, "lock is unavailable"):
+            store.probe_operation_running()
+        with self.assertRaisesRegex(StateError, "lock is unavailable"):
+            with store.hold_probe_operation():
+                self.fail("missing probe operation lock unexpectedly acquired")
+
     def test_create_accepts_only_declared_campaign_bootstrap_files(self) -> None:
         source_host = self.fixture["paths"]["host"]
         relative_host = Path(self.fixture["bindings"]["host"]["path"])
@@ -158,6 +179,8 @@ class ModelEvolutionStateTest(unittest.TestCase):
             bootstrap_paths=accepted_inputs,
         )
         self.assertTrue(accepted.path.is_file())
+        self.assertTrue(accepted.lock_path.is_file())
+        self.assertTrue(accepted.probe_lock_path.is_file())
 
         rejected_root = Path(self.temporary.name) / "rejected-campaign"
         rejected_inputs = seed(rejected_root)

@@ -433,6 +433,38 @@ class ModelEvolutionHostTest(unittest.TestCase):
             partial["store"].read()["budgets"]["observed"]["provider_requests"]
         )
 
+    def test_concurrent_probe_exits_without_state_or_provider_change(self) -> None:
+        store = self.fixture["store"]
+        apparatus = materialize_apparatus_report(self.fixture)
+        store.mutate(0, lambda state: advance_preflight(state, apparatus))
+        approval = materialize_budget_approval(self.fixture, store.read())
+        args = argparse.Namespace(
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+            expected_revision=1,
+            budget_approval=approval,
+        )
+        before = {
+            path.relative_to(store.root): path.read_bytes()
+            for path in store.root.rglob("*")
+            if path.is_file()
+        }
+        with (
+            store.hold_probe_operation(),
+            mock.patch.object(controller, "run_interaction_probes") as provider,
+        ):
+            with self.assertRaisesRegex(
+                state_module.StateError, "probe operation is already running"
+            ):
+                controller._probe(args)
+        after = {
+            path.relative_to(store.root): path.read_bytes()
+            for path in store.root.rglob("*")
+            if path.is_file()
+        }
+        provider.assert_not_called()
+        self.assertEqual(before, after)
+
     def test_complete_probe_terminals_resume_without_provider_resend(self) -> None:
         store = self.fixture["store"]
         apparatus = materialize_apparatus_report(self.fixture)
@@ -626,6 +658,8 @@ class ModelEvolutionHostTest(unittest.TestCase):
                 {"code": "interaction-probe", "message": "fixture protocol failure"}
             ],
             runner_commands=[],
+            probe_running=False,
+            probe_command=None,
         )
         self.assertIsNone(projection["next_event"])
 
