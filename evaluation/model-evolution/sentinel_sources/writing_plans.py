@@ -2,20 +2,10 @@
 
 DEFINITION = {
     "name": "Writing Plans",
-    "version": "8.2.0",
+    "version": "8.2.1",
     "context_ceiling": 24576,
     "regression_origin": "writing-plans-description-semantic-collapse",
     "verifier_source": "writing_plans_verifier.py",
-    "expected_pairing": {
-        "baseline_failures": [
-            "source-bound-plan",
-            "resume-preflight",
-            "proof-owner",
-            "explicit-handoff",
-            "continuous-execution",
-        ],
-        "protected_no_regression": "protected-description",
-    },
     "claims": [
         "source-bound-planning",
         "unambiguous-handoff",
@@ -60,7 +50,8 @@ DEFINITION = {
         {
             "id": "resume-preflight",
             "coverage": "resume-preflight",
-            "task": "Read `fixtures/resume-state.md` and `fixtures/docs/config.md`. Record completed and pending state, then give the next executable step without repeating completed work.",
+            "task": "This is a two-turn planning handoff. Read `fixtures/resume-state.md` and `fixtures/docs/config.md`; record completed and pending state and the next executable documentation step without repeating completed work or editing files. After the continuation request, return that state as a self-contained final handoff.",
+            "continuation": "Return the self-contained planning handoff now: restate completed and pending state and the next executable documentation step. Do not perform the source change.",
             "protected": False,
             "turns": 2,
             "initial_files": [
@@ -98,7 +89,7 @@ DEFINITION = {
         {
             "id": "continuous-execution",
             "coverage": "continuous-execution",
-            "task": "Produce consecutive implementation steps for adding `--dry-run` across `fixtures/cli.py`, `fixtures/tests/test_cli.py`, and `fixtures/README.md`. Include prerequisites, exact checks, and exits.",
+            "task": "Read `fixtures/cli.py`, `fixtures/tests/test_cli.py`, and `fixtures/README.md`, then produce consecutive implementation steps for adding `--dry-run`. Ground the plan in the observed source and include prerequisites, exact edits, checks, expected results, and failure exits.",
             "protected": False,
             "turns": 1,
             "initial_files": [

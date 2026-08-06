@@ -44,7 +44,7 @@
         },
         "writing-plans": {
           "$ref": "#/$defs/explicit_skill",
-          "properties": {"version": {"const": "8.2.0"}}
+          "properties": {"version": {"const": "8.2.1"}}
         }
       }
     }

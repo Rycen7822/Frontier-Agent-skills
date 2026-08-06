@@ -6,14 +6,6 @@ DEFINITION = {
     "context_ceiling": 24576,
     "regression_origin": "session-card-artifact-accumulation",
     "verifier_source": "software_quality_workflows_verifier.py",
-    "expected_pairing": {
-        "baseline_failures": [
-            "single-specialist-risk",
-            "two-independent-risks",
-            "retire-dead-code",
-        ],
-        "protected_no_regression": "protected-no-state",
-    },
     "claims": [
         "risk-owned-development",
         "proportionate-validation",

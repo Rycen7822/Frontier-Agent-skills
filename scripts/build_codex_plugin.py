@@ -51,7 +51,7 @@ EXPECTED_SKILLS = {
     "long-document-segmented-writing": "1.1.0",
     "skill-evaluator": "3.3.0",
     "software-quality-workflows": "9.0.0",
-    "writing-plans": "8.2.0",
+    "writing-plans": "8.2.1",
 }
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,

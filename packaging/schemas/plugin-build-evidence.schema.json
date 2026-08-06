@@ -19,7 +19,7 @@
         "long-document-segmented-writing": {"const": "1.1.0"},
         "skill-evaluator": {"const": "3.3.0"},
         "software-quality-workflows": {"const": "9.0.0"},
-        "writing-plans": {"const": "8.2.0"}
+        "writing-plans": {"const": "8.2.1"}
       }
     },
     "skill_activation": {

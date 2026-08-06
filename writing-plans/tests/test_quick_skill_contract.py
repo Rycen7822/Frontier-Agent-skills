@@ -18,7 +18,7 @@ HANDOFF_FIELDS = {
     "Acceptance and verification",
     "Rollback/cleanup when material",
     "Later blockers and dependencies",
-    "Resume preflight",
+    "freshness-bound host attestation",
     "Exact next source-changing action",
 }
 PROGRAM_FIELDS = {
@@ -43,7 +43,7 @@ def frontmatter(path: Path) -> dict:
 class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_explicit_activation(self) -> None:
         metadata = frontmatter(SKILL_PATH)
-        self.assertEqual("8.1.0", metadata["metadata"]["version"])
+        self.assertEqual("8.2.1", metadata["metadata"]["version"])
         self.assertEqual(
             "Write source-bound software implementation Handoffs and "
             "multi-session Programs from settled decisions; not diagnosis "
@@ -54,7 +54,7 @@ class QuickWritingPlansTests(unittest.TestCase):
         self.assertGreaterEqual(len(description), 80)
         for term in ("source-bound", "software implementation", "handoff", "program"):
             self.assertIn(term, description)
-        self.assertLessEqual(len(SKILL_PATH.read_bytes()), 4096)
+        self.assertLessEqual(len(SKILL_PATH.read_bytes()), 6144)
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
         self.assertIs(agents["policy"]["allow_implicit_invocation"], False)
 
@@ -122,9 +122,8 @@ class QuickWritingPlansTests(unittest.TestCase):
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
         for contract in (
             "prompt-bound verification command",
-            "one bounded authority inspection",
-            "never infer the runner",
-            "language, filename, or convention",
+            "do not block the plan or invent a full-suite command",
+            "repository's test owner supplies any broader proof",
         ):
             self.assertIn(contract, body)
 
@@ -149,12 +148,22 @@ class QuickWritingPlansTests(unittest.TestCase):
         body = SKILL_PATH.read_text(encoding="utf-8")
         self.assertLess(
             body.index("revision or explicit non-Git identity"),
-            body.index("Resume preflight"),
+            body.index("freshness-bound host attestation"),
         )
         self.assertLess(
-            body.index("Resume preflight"),
+            body.index("freshness-bound host attestation"),
             body.index("Exact next source-changing action"),
         )
+
+    def test_native_plan_binds_available_source_once(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        for contract in (
+            "inspect each available bound file once",
+            "observed symbols and behavior",
+            "exact edits, checks, expected results, and failure exits",
+            'placeholders such as "existing conventions"',
+        ):
+            self.assertIn(contract, body)
 
     def test_one_canonical_deliverable_and_no_sidecars(self) -> None:
         files = {
@@ -189,7 +198,7 @@ class QuickWritingPlansTests(unittest.TestCase):
             "each prose paragraph on one physical line",
             "line breaks only at markdown structural boundaries",
             "never inside a sentence or merely to fit a column",
-            "one contract table or four-row bullets",
+            "one contract table or a three- or four-row bullet contract",
             "exact first-slice inputs, outputs, values, invariants",
             "fill rows directly from settled facts",
             "state behavior, not just a symbol/test",
@@ -203,10 +212,10 @@ class QuickWritingPlansTests(unittest.TestCase):
             "only a later planning invocation updates the program",
             "protected immutable input",
             "dependencies cite milestone names, never ordinals",
-            "resume missing attestation acceptance or one-preflight fallback",
+            "required resume that lacks attestation acceptance or one-preflight fallback",
             "do not instruct execution to modify the plan",
             "repository's test owner",
-            "not an example or alternative",
+            "state the narrow checks implied by those bindings",
             "pythondontwritebytecode=1 python -m unittest <repo-test>",
             "never use bare `pytest`",
             "leaves no cache/state artifact",

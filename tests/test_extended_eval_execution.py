@@ -600,6 +600,14 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 item['grader_view']['task_evidence']['request_text']
                 for item in batch['items']
             ))
+            self.assertTrue(all(
+                item['grader_view']['task_evidence']['case_id']
+                for item in batch['items']
+            ))
+            self.assertTrue(all(
+                item['grader_view']['task_evidence']['tags']
+                for item in batch['items']
+            ))
             for item in batch['items']:
                 view = item['grader_view']
                 self.assertTrue(view['deterministic_claims'])

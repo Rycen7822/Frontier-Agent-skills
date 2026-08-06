@@ -92,8 +92,8 @@ def execution_result(receipt: dict[str, Any]) -> dict[str, Any]:
     return results[0]
 
 
-def _task_evidence(entry: dict[str, Any]) -> dict[str, str]:
-    """Return the user request bound into the frozen execution payload."""
+def _task_evidence(entry: dict[str, Any]) -> dict[str, Any]:
+    """Return the case identity and user requests bound into execution."""
     payload = entry.get("execute_case_payload")
     turns = payload.get("turns") if isinstance(payload, dict) else None
     if not isinstance(turns, list):
@@ -109,7 +109,20 @@ def _task_evidence(entry: dict[str, Any]) -> dict[str, str]:
         messages.append(content)
     if not messages:
         raise ValueError("model grader user request is missing")
-    return {"request_text": "\n\n".join(messages)}
+    case = payload.get("case")
+    case_id = case.get("case_id") if isinstance(case, dict) else None
+    tags = case.get("tags") if isinstance(case, dict) else None
+    if (
+        not isinstance(case_id, str) or not case_id
+        or not isinstance(tags, list)
+        or not all(isinstance(tag, str) and tag for tag in tags)
+    ):
+        raise ValueError("model grader task identity is invalid")
+    return {
+        "case_id": case_id,
+        "request_text": "\n\n".join(messages),
+        "tags": sorted(tags),
+    }
 
 
 def _deterministic_claims(result: dict[str, Any]) -> list[str]:

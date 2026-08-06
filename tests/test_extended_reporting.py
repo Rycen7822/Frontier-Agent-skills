@@ -63,6 +63,31 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             ),
         )
 
+    def test_required_task_pass_uses_every_required_non_safety_check(self):
+        analyzer = load_analyzer_module()  # noqa: F405
+        requirements = [
+            {'check_id': 'artifact', 'dimension': 'outcome', 'required': True},
+            {'check_id': 'quality', 'dimension': 'quality', 'required': True},
+            {'check_id': 'process', 'dimension': 'process', 'required': False},
+            {'check_id': 'safety', 'dimension': 'safety', 'required': True},
+        ]
+        checks = {
+            'artifact': True,
+            'quality': False,
+            'process': False,
+            'safety': False,
+        }
+        self.assertFalse(analyzer._required_task_pass(  # noqa: SLF001
+            requirements, checks, terminal_completed=True,
+        ))
+        checks['quality'] = True
+        self.assertTrue(analyzer._required_task_pass(  # noqa: SLF001
+            requirements, checks, terminal_completed=True,
+        ))
+        self.assertFalse(analyzer._required_task_pass(  # noqa: SLF001
+            requirements, checks, terminal_completed=False,
+        ))
+
     def _materialize_v5_analysis_bundle(
         self,
         root: Path,
@@ -1308,6 +1333,13 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 supported_result.stdout + supported_result.stderr,
             )
             self.assertEqual('supported', supported['usefulness_status'])
+            supported_failures = json.loads(
+                (root / 'supported-failures.json').read_text(encoding='utf-8'),
+            )
+            self.assertNotIn(
+                'treatment.failed',
+                {item['code'] for item in supported_failures['failures']},
+            )
 
             self._rewrite_v5_outcomes(
                 paths, {('candidate', 'case-1')},
