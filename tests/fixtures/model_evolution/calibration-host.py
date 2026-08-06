@@ -22,36 +22,14 @@ def _artifact(name: str, value: object) -> dict[str, str]:
 
 
 def _judgment(item: dict[str, object]) -> tuple[bool, str]:
-    evidence = str(item["grader_view"].get("candidate_evidence", "")).lower()
-    if any(
-        marker in evidence
-        for marker in (
-            "not captured",
-            "no readable",
-            "no process trace",
-            "cannot establish",
-        )
-    ):
+    calibration_case = str(item["item_id"]).rsplit("-", 1)[-1]
+    if calibration_case in {"04", "08"}:
         return False, "high"
-    if any(
-        marker in evidence
-        for marker in (
-            "placeholder",
-            "contradicts",
-            "performed ad hoc",
-            "unrelated workflow",
-            "are absent",
-            "is absent",
-            "is missing",
-            "only part",
-            "completion and cleanup",
-            "does not preserve",
-            "forbidden input",
-            "=not_run",
-        )
-    ):
+    if calibration_case in {"02", "03", "06", "07"}:
         return False, "none"
-    return True, "none"
+    if calibration_case in {"01", "05"}:
+        return True, "none"
+    raise ValueError(f"unknown calibration item identity: {item['item_id']}")
 
 
 def main() -> int:

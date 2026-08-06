@@ -16,7 +16,7 @@ DEFINITION = {
         "When the task requests a behavior-focused check, syntax-only compilation is insufficient.",
     ],
     "process_evidence": [
-        "the change map names the behavior risk and its evidence owner before editing",
+        "the change map names `log_request` as the smallest controlling code owner for plaintext Authorization disclosure before editing",
         "the selected checks cover the changed seam and record the validation scope",
         "the obsolete path is removed and the reference scan reports no live owner",
     ],

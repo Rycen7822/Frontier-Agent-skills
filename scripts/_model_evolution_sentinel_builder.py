@@ -564,8 +564,8 @@ def _calibration_view(
                 "Most explicit requirements are addressed, but one mandatory result is missing.",
             ),
             "abstain": (
-                "Only the task request is available; candidate output and verification were not captured.",
-                "The record contains no readable deliverable or reliable outcome observation.",
+                "A truncated capture shows part of a readable answer, but the task requirements and fixture bindings are unavailable; the record cannot determine whether the deliverable is complete or incorrect.",
+                "Conflicting capture metadata marks the artifact both complete and truncated; the readable fragment cannot establish whether the requested outcome is correct.",
             ),
         },
         "process-check": {
@@ -586,8 +586,8 @@ def _calibration_view(
                 "run_status=completed; record_closed=true.",
             ),
             "abstain": (
-                "No process trace or mechanism evidence was captured.",
-                "The available record cannot establish which workflow, if any, was applied.",
+                "A truncated process record shows one unnamed completed step, but its input, output, and mechanism label are unavailable; the record cannot determine whether the required mechanisms occurred.",
+                "Conflicting trace metadata marks the same unnamed step both retained and discarded; it cannot determine which workflow, if any, was applied.",
             ),
         },
     }

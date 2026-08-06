@@ -415,6 +415,25 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 self.assertIn("run_status=completed", candidate_evidence)
                 self.assertIn("record_closed=true", candidate_evidence)
                 self.assertIn("not_run", candidate_evidence)
+            abstentions = [row for row in rows if row["class"] == "abstain"]
+            self.assertEqual(len(abstentions), 4)
+            for row in abstentions:
+                candidate_evidence = row["payload"]["view"]["candidate_evidence"]
+                self.assertTrue(
+                    "truncated" in candidate_evidence
+                    or "Conflicting" in candidate_evidence
+                )
+                self.assertIn("cannot", candidate_evidence)
+            if skill_id == "software-quality-workflows":
+                process_positive_two = next(
+                    row
+                    for row in rows
+                    if row["example_id"].endswith("process-check-cal-05")
+                )
+                self.assertIn(
+                    "`log_request`",
+                    process_positive_two["payload"]["view"]["candidate_evidence"],
+                )
             process_rows = [row for row in rows if row["check_id"] == "process-check"]
             for row in process_rows:
                 task = row["payload"]["view"]["task"]
