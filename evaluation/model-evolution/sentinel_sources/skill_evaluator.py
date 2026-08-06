@@ -12,6 +12,9 @@ DEFINITION = {
         "deterministic-first",
         "evidence-qualified-comparison",
     ],
+    "grader_rules": [
+        "For skill-evaluator-cli-schema-diagnosis, quality passes only when the command uses the evaluator directory variable, its contract validator, the contract subcommand, and fixtures/l0-spec.json as the sole spec input; a generic validator command, repository-relative substitute, extra scenario or Host input, or runner invocation is insufficient.",
+    ],
     "process_evidence": [
         "the claim is assigned to the least expensive valid L0-L4 evidence owner",
         "schema, path, and lifecycle facts are closed before model grading",
@@ -22,7 +25,6 @@ DEFINITION = {
         "fixtures/receipt.json": '{"schema_version":4,"exit_code":0,"terminal":true,"error":null}\n',
         "fixtures/analysis-summary.json": '{"schema_version":4,"status":"inconclusive_ceiling","missing_evidence":["required holdout"],"contract_error":false,"io_error":false,"manual_decision":null}\n',
         "fixtures/l0-spec.json": '{"schema_version":5,"level":"L0","execution":{"ready":false}}\n',
-        "fixtures/cli-contract.md": "Validate an L0 spec with the contract subcommand and one spec path: python3 skill-evaluator/scripts/validate_eval_suite.py contract SPEC. Do not invoke the runner or add scenario and Host inputs.\n",
         "fixtures/control-matrix.md": "Comparison A: model M1 to M2, Skill v3 fixed. Comparison B: Skill v3 to v4, model M2 fixed. In both comparisons Host, tasks, grader, and policy are fixed.\n",
         "fixtures/invalid-record.json": '{"schema_version":"1","status":"completed"}\n',
     },
@@ -63,15 +65,12 @@ DEFINITION = {
         {
             "id": "cli-schema-diagnosis",
             "coverage": "cli-diagnosis",
-            "task": "Read `fixtures/cli-contract.md`. Give the exact single-spec L0 validation command for `fixtures/l0-spec.json`, name the validator and input owners, and do not start the runner.",
+            "task": "Read `fixtures/l0-spec.json`. Use the bound evaluator quick contract to give its exact single-spec L0 validation command for this file, name the validator and input owners, and do not start the runner or inspect implementation source.",
             "protected": False,
             "turns": 1,
-            "initial_files": [
-                "fixtures/cli-contract.md",
-                "fixtures/l0-spec.json",
-            ],
+            "initial_files": ["fixtures/l0-spec.json"],
             "semantic_oracle": [
-                "validate_eval_suite.py receives contract and fixtures/l0-spec.json"
+                "the installed quick command uses SKILL_EVALUATOR_DIR, contract, and fixtures/l0-spec.json only"
             ],
         },
         {

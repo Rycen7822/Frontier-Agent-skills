@@ -282,7 +282,7 @@
       },
       "prompt": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:221c2e50ca31b1e74d8816c22fcc60f7f2b1c1b4fd9d0d4c9e533cc4601d71f4"
+        "sha256": "sha256:8c6364373b10b5b3b72453ab05cd18721863c3fab4af2287e8e6df5fe82165a4"
       },
       "type": "model"
     }
@@ -383,28 +383,28 @@
     "version": "1.1.0"
   },
   "suite": {
-    "fixture_set_hash": "sha256:fe5be08186aa9ba939426a8e3694694bf844033aab96ab082458571ea1f1f0df",
-    "grader_schedule_hash": "sha256:16d5313a811df774642b535aa7e8c74a326cdce23f6d236901e1857f9104cca6",
-    "grader_set_hash": "sha256:64d9b147368ff82f8e51ada212998f7cb23042ffdad81764c105768b03e81cae",
+    "fixture_set_hash": "sha256:a548f827d8014324b783828cfba6a3e8e1f5ad90a5cb477c86d17dfe53c223ec",
+    "grader_schedule_hash": "sha256:3a953a76c4230afb6adde01730e9db725785dc0eafcfb7f19f5b2da816ff262c",
+    "grader_set_hash": "sha256:475e3d24d9af44d7bf264a424369b40ab8bdff0e4d00e6c12d1e5d5769259a2d",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:b493fe05122799c19be1f26e11ebfa4a729d22e56fe99a8c3e8090300906afd1"
+      "sha256": "sha256:926f54dbaf65940d0e6d326af282dfae02b5b15e50ef2e52c537a33e506f9655"
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:f1bf69ca04afd2de20484e570350a4158288d7b4e0c225aaef593b5001de40da"
+      "sha256": "sha256:6d7b6075a4806afc351b66e5d228fcf8bc065c4e0b1661559742cc3df0395f31"
     },
-    "quality_contract_hash": "sha256:e709a4eb58c70e7e0b35758e34bd12a6db3626ee8cf15cea5a3bdf7bf5f5cbfe",
+    "quality_contract_hash": "sha256:cacb66bc1b009030c83cac3068a05282dd061ed2cf9a43eb182c8e6cfa3c61fd",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:b493fe05122799c19be1f26e11ebfa4a729d22e56fe99a8c3e8090300906afd1"
+      "sha256": "sha256:926f54dbaf65940d0e6d326af282dfae02b5b15e50ef2e52c537a33e506f9655"
     },
-    "treatment_contract_hash": "sha256:e4bd4bebd6c87fbb043b4f822673435a02cdc74ae4e4e38e56646555a9ef5e9b"
+    "treatment_contract_hash": "sha256:e4b05ac1667d841184b7ea95e9bf5dd669dc1c007d42036ae21b17070002c812"
   },
   "treatments": [
     {
@@ -432,7 +432,7 @@
       "scenario_ids": [
         "long-document-segmented-writing-direct-small-task",
         "long-document-segmented-writing-compact-recovery",
-        "long-document-segmented-writing-segmented-draft",
+        "long-document-segmented-writing-full-mode-selection",
         "long-document-segmented-writing-compaction-resume",
         "long-document-segmented-writing-whole-draft-review",
         "long-document-segmented-writing-protected-no-scratch"
@@ -443,8 +443,8 @@
         "compaction-resume",
         "core",
         "direct",
+        "mode-selection",
         "protected",
-        "segmented-draft",
         "whole-draft-review"
       ],
       "tool_policy_hash": "sha256:6522f1b6f4bdf771f17878686721107dba84304ddfa0e2b8e1e8f5905d66f1db",
@@ -475,7 +475,7 @@
       "scenario_ids": [
         "long-document-segmented-writing-direct-small-task",
         "long-document-segmented-writing-compact-recovery",
-        "long-document-segmented-writing-segmented-draft",
+        "long-document-segmented-writing-full-mode-selection",
         "long-document-segmented-writing-compaction-resume",
         "long-document-segmented-writing-whole-draft-review",
         "long-document-segmented-writing-protected-no-scratch"
@@ -486,8 +486,8 @@
         "compaction-resume",
         "core",
         "direct",
+        "mode-selection",
         "protected",
-        "segmented-draft",
         "whole-draft-review"
       ],
       "tool_policy_hash": "sha256:6522f1b6f4bdf771f17878686721107dba84304ddfa0e2b8e1e8f5905d66f1db",

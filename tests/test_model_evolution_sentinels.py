@@ -249,6 +249,44 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
         names = {path.name for path in SENTINEL_ROOT.rglob("*") if path.is_file()}
         self.assertFalse(any("holdout" in name for name in names))
 
+    def test_headroom_cases_bind_hidden_target_contracts(self) -> None:
+        scenarios = {
+            skill_id: [
+                json.loads(line)
+                for line in (
+                    SENTINEL_ROOT / skill_id / "scenarios.public.jsonl"
+                ).read_text().splitlines()
+            ]
+            for skill_id in (
+                "long-document-segmented-writing",
+                "skill-evaluator",
+            )
+        }
+        long_tasks = {row["case_id"]: row for row in scenarios[
+            "long-document-segmented-writing"
+        ]}
+        self.assertIn("bound compact ledger contract", long_tasks[
+            "long-document-segmented-writing-compact-recovery"
+        ]["execution_context"]["task"])
+        self.assertEqual(
+            ["fixtures/mode-selection.md"],
+            [item["path"] for item in long_tasks[
+                "long-document-segmented-writing-full-mode-selection"
+            ]["fixture"]["initial_files"]],
+        )
+        evaluator_case = next(
+            row for row in scenarios["skill-evaluator"]
+            if row["case_id"] == "skill-evaluator-cli-schema-diagnosis"
+        )
+        self.assertEqual(
+            ["fixtures/l0-spec.json"],
+            [item["path"] for item in evaluator_case["fixture"]["initial_files"]],
+        )
+        for row in (*long_tasks.values(), evaluator_case):
+            task = row["execution_context"]["task"]
+            self.assertNotIn("Long Document Skill", task)
+            self.assertNotIn("Skill Evaluator", task)
+
     def test_protected_planning_tasks_bind_the_patch_target(self) -> None:
         expected = {
             "software-quality-workflows": (
@@ -446,6 +484,13 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             if skill_id == "software-quality-workflows":
                 self.assertIn("a team or role alone is insufficient", prompt)
                 self.assertIn("syntax-only compilation is insufficient", prompt)
+            elif skill_id == "long-document-segmented-writing":
+                self.assertIn("Current recovery anchor", prompt)
+                self.assertIn("full-mode-selection", prompt)
+                self.assertIn("ordered section drafts", prompt)
+            elif skill_id == "skill-evaluator":
+                self.assertIn("evaluator directory variable", prompt)
+                self.assertIn("repository-relative substitute", prompt)
             self.assertIn("Within calibration items", prompt)
             self.assertIn("not an abstention", prompt)
             self.assertIn("`uncertainty` to `high`", prompt)

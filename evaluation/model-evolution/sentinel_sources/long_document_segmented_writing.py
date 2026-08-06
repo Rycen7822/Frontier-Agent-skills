@@ -4,10 +4,15 @@ DEFINITION = {
     "name": "Long Document Segmented Writing",
     "version": "1.1.0",
     "context_ceiling": 32768,
+    "minimum_baseline_failure_cases": 2,
     "process_required": False,
     "regression_origin": "session-scratch-artifact-overuse",
     "verifier_source": "long_document_segmented_writing_verifier.py",
     "claims": ["segmented-writing", "compaction-recovery", "whole-draft-review"],
+    "grader_rules": [
+        "For long-document-segmented-writing-compact-recovery, quality passes only when the artifact has distinct Current recovery anchor, Next action, Final-assembly order, and Confidence gaps/proof fields bound to the supplied facts; a generic section/source/decision summary is insufficient.",
+        "For long-document-segmented-writing-full-mode-selection, quality passes only when it selects full because the source count exceeds 12 and names one scope, source inventory, reading ledger, section matrix, recovery packet, ordered section drafts, confidence review, and final document; a generic full-workflow label is insufficient.",
+    ],
     "process_evidence": [
         "the source inventory is mapped to bounded draft sections",
         "the recovery record preserves the active section, source anchors, and unresolved decisions",
@@ -22,6 +27,7 @@ DEFINITION = {
         "fixtures/draft.md": "The run had zero retries [run-a.md]. The run retried twice [run-a.md]. It is release-ready [release.md].\n",
         "fixtures/release.md": "No release decision has been recorded.\n",
         "fixtures/completion.md": "Completed entries: 12. Planned entries: 12.\n",
+        "fixtures/mode-selection.md": "Source count: 13. Final section count: 2. Cross-session recovery: no. Full audit requested: no.\n",
     },
     "cases": [
         {
@@ -38,7 +44,7 @@ DEFINITION = {
         {
             "id": "compact-recovery",
             "coverage": "compact-recovery",
-            "task": "Read `fixtures/failure-ownership.md` and `fixtures/recovery-state.md`. Produce only a compact recovery packet that preserves the active section, source anchors, and unresolved ownership decision.",
+            "task": "Read `fixtures/failure-ownership.md` and `fixtures/recovery-state.md`. Apply the bound compact ledger contract. Output only its recovery block, with every field required by that contract bound to the supplied facts.",
             "protected": False,
             "turns": 1,
             "initial_files": [
@@ -46,18 +52,18 @@ DEFINITION = {
                 "fixtures/recovery-state.md",
             ],
             "semantic_oracle": [
-                "packet retains the unresolved timeout ownership decision"
+                "recovery block contains the current anchor, next action, final assembly order, and confidence gap or proof"
             ],
         },
         {
-            "id": "segmented-draft",
-            "coverage": "segmented-draft",
-            "task": "Draft a short two-section technical report from `fixtures/run-a.md` and `fixtures/run-b.md`. Preserve the distinction between zero request retries and two fresh attempts, and attribute both claims.",
+            "id": "full-mode-selection",
+            "coverage": "mode-selection",
+            "task": "Read `fixtures/mode-selection.md`. Apply the bound long-document mode thresholds. State the selected mode, the triggering threshold fact, and every canonical artifact class owned by that mode. Do not draft the document.",
             "protected": False,
             "turns": 1,
-            "initial_files": ["fixtures/run-a.md", "fixtures/run-b.md"],
+            "initial_files": ["fixtures/mode-selection.md"],
             "semantic_oracle": [
-                "retries and fresh attempts remain distinct and source-bound"
+                "13 sources select full mode with eight nonduplicated artifact classes"
             ],
         },
         {
