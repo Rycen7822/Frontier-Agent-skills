@@ -55,7 +55,7 @@ from _codex_eval_isolation import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
-ADAPTER_VERSION = "1.4"
+ADAPTER_VERSION = "1.5"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_delivery.py",
@@ -178,8 +178,24 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     if (
         not isinstance(adapter, dict)
         or adapter.get("sha256") != adapter_source_hash()
+        or adapter.get("version") != ADAPTER_VERSION
     ):
         raise AdapterError("adapter identity differs from the host manifest")
+    expected_harness = (
+        f"codex-cli-{args.codex_version}-effort-{args.effort}"
+        f"-profile-{args.profile}-tier-default"
+    )
+    model_revision = execution.get("model_revision")
+    model_revision_prefix = f"codex-catalog-{args.codex_version}-"
+    if (
+        identity.get("host_build") != args.codex_sha256
+        or identity.get("host_version") != args.codex_version
+        or execution.get("harness") != expected_harness
+        or not isinstance(model_revision, str)
+        or not model_revision.startswith(model_revision_prefix)
+        or not HASH.fullmatch(model_revision.removeprefix(model_revision_prefix))
+    ):
+        raise AdapterError("Codex runtime identity differs from the host manifest")
     if _file_sha256(args.codex) != args.codex_sha256:
         raise AdapterError("Codex executable bytes differ from the bound hash")
     if args.isolation_tool is None:
@@ -205,6 +221,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         raise AdapterError("host manifest command binding is invalid") from exc
     expected = {
         "--codex-sha256": args.codex_sha256,
+        "--codex-version": args.codex_version,
         "--model": args.model,
         "--effort": args.effort,
         "--profile": args.profile,
@@ -288,6 +305,7 @@ def validate_bound_manifest(path: Path, plugin_root: Path) -> dict[str, Any]:
     args = argparse.Namespace(
         codex=codex,
         codex_sha256=_bound_command_option(argv, "--codex-sha256"),
+        codex_version=_bound_command_option(argv, "--codex-version"),
         model=_bound_command_option(argv, "--model"),
         effort=_bound_command_option(argv, "--effort"),
         profile=_bound_command_option(argv, "--profile"),
@@ -1404,6 +1422,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--mode", choices=("host", "probe"), default="host")
     parser.add_argument("--codex", type=Path, required=True)
     parser.add_argument("--codex-sha256", required=True)
+    parser.add_argument("--codex-version", required=True)
     parser.add_argument("--isolation-tool", type=Path)
     parser.add_argument("--isolation-tool-sha256")
     parser.add_argument("--host-manifest", type=Path, required=True)

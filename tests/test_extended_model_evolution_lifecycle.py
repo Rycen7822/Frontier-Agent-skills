@@ -676,14 +676,56 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         ):
             operations._validate_host_plugin_binding(host, plugin_root)
 
+    def test_host_builder_resolves_native_codex_and_catalog_identity(self) -> None:
+        root = Path(self.temporary.name) / "codex-package"
+        entrypoint = root / "bin/codex.js"
+        runtime = (
+            root
+            / "node_modules/@openai/codex-linux-x64"
+            / "vendor/x86_64-unknown-linux-musl/bin/codex"
+        )
+        entrypoint.parent.mkdir(parents=True)
+        entrypoint.write_text("// fixture entrypoint\n", encoding="utf-8")
+        write_json(root / "package.json", {"version": "0.146.1"})
+        runtime.parent.mkdir(parents=True)
+        runtime.write_text("#!/bin/sh\nprintf 'codex-cli 0.146.1\\n'\n", encoding="utf-8")
+        runtime.chmod(0o700)
+        selected = {"display_name": "Luna", "slug": "gpt-5.6-luna"}
+        home = Path(self.temporary.name) / "home"
+        write_json(
+            home / ".codex/models_cache.json",
+            {"client_version": "0.146.1", "models": [selected]},
+        )
+
+        with (
+            mock.patch.object(host_builder.sys, "platform", "linux"),
+            mock.patch.object(host_builder.platform, "machine", return_value="x86_64"),
+            mock.patch.object(host_builder.Path, "home", return_value=home),
+        ):
+            resolved, version = host_builder._codex_runtime(entrypoint)
+            revision = host_builder._model_revision("gpt-5.6-luna", version)
+
+        self.assertEqual(runtime.resolve(), resolved)
+        self.assertEqual("0.146.1", version)
+        self.assertEqual(
+            "codex-catalog-0.146.1-"
+            + host_builder._hash_bytes(host_builder._canonical_bytes(selected)),
+            revision,
+        )
+
     def test_host_builder_replaces_all_derived_identity_before_init(self) -> None:
         template = json.loads(self.fixture["paths"]["host"].read_text())
+        codex_argv = template["command"]["argv"]
+        codex_path = Path(codex_argv[codex_argv.index("--codex") + 1]).resolve()
         template["command"]["env_allowlist"] = []
         template["catalog"]["entries"][0]["root_hash"] = "sha256:" + "0" * 64
         template["catalog"]["catalog_hash"] = "sha256:" + "0" * 64
         template["identity"]["execution"]["catalog_hash"] = "sha256:" + "0" * 64
         template["identity"]["execution"]["skill_hash"] = "sha256:" + "0" * 64
         template["identity"]["adapter"]["sha256"] = "sha256:" + "0" * 64
+        template["identity"]["host_version"] = "0.0.0"
+        template["identity"]["execution"]["harness"] = "stale-harness"
+        template["identity"]["execution"]["model_revision"] = "stale-catalog"
         probe_path = "codex-interaction-probes-v1.json"
         template["reset"]["probe"]["artifact"]["path"] = probe_path
         for capability in template["capabilities"]:
@@ -718,10 +760,22 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             "tree": FIXED_TREE,
             "worktree": str(self.fixture["repository_root"]),
         }
-        with mock.patch.object(
-            host_builder,
-            "_repository_identity",
-            return_value=identity,
+        with (
+            mock.patch.object(
+                host_builder,
+                "_codex_runtime",
+                return_value=(codex_path, "0.146.1"),
+            ),
+            mock.patch.object(
+                host_builder,
+                "_model_revision",
+                return_value="codex-catalog-0.146.1-sha256:" + "3" * 64,
+            ),
+            mock.patch.object(
+                host_builder,
+                "_repository_identity",
+                return_value=identity,
+            ),
         ):
             built = host_builder.build_host(
                 repository_root=self.fixture["repository_root"],
@@ -739,6 +793,15 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         self.assertEqual(
             host_builder.codex_eval_host.ADAPTER_VERSION,
             built["identity"]["adapter"]["version"],
+        )
+        self.assertEqual("0.146.1", built["identity"]["host_version"])
+        self.assertEqual(
+            "codex-cli-0.146.1-effort-high-profile-fixture-profile-tier-default",
+            built["identity"]["execution"]["harness"],
+        )
+        self.assertEqual(
+            "codex-catalog-0.146.1-sha256:" + "3" * 64,
+            built["identity"]["execution"]["model_revision"],
         )
         self.assertEqual(
             host_builder.codex_eval_host.adapter_source_hash(scripts_target),
@@ -765,6 +828,16 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         )
         original = output.read_bytes()
         with (
+            mock.patch.object(
+                host_builder,
+                "_codex_runtime",
+                return_value=(codex_path, "0.146.1"),
+            ),
+            mock.patch.object(
+                host_builder,
+                "_model_revision",
+                return_value="codex-catalog-0.146.1-sha256:" + "3" * 64,
+            ),
             mock.patch.object(
                 host_builder,
                 "_repository_identity",

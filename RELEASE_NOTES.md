@@ -12,6 +12,8 @@ Codex Host adapter 1.3 preserves a bounded `provider_usage_limit` diagnostic fro
 
 Codex Host adapter 1.4 restores the CLI sentinel fixture it names, hides the complete user home while remounting only the bound Codex runtime, and rejects model-grade batches whose item or check identities differ before any receipt is closed.
 
+Codex Host adapter 1.5 resolves the installed npm launcher to the exact native Codex executable, derives Host version, Harness, and target-model catalog identity during each build, and mounts only that bound executable. A Codex CLI upgrade therefore changes the executable and tool-surface identities before campaign initialization instead of inheriting stale template values.
+
 The release candidate rollback predecessor is the signed bundle 6.2.0 / Skill Evaluator 3.2.0 source at `9687f6d0590a229c5e082b09ab548c397f27cad3`. Rollback uses an ordinary revert or separately verified staged predecessor and preserves failed campaign evidence.
 
 ## Bundle 6.2.0 Skill Evaluator 3.2 hardening
