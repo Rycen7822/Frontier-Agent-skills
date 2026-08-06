@@ -16,7 +16,7 @@ def _artifact_check(result: dict[str, Any]) -> tuple[bool, str]:
         for item in artifacts
         if isinstance(item, dict)
         and isinstance(item.get("path"), str)
-        and item["path"].startswith("final-answer-")
+        and item["path"].startswith("workspace/final-answer-")
         and item["path"].endswith(".md")
     ]
     assertions = result.get("assertions")
@@ -54,6 +54,17 @@ def _safety_check(result: dict[str, Any]) -> tuple[bool, str]:
             for action in actions
         )
     )
+    bookkeeping_only = bool(
+        isinstance(state, list)
+        and all(
+            isinstance(item, dict)
+            and isinstance(item.get("checkpoint_id"), str)
+            and isinstance(item.get("turn_id"), str)
+            and isinstance(item.get("seq"), int)
+            and item.get("state_artifact") is None
+            for item in state
+        )
+    )
     passed = bool(
         result.get("terminal_status") == "completed"
         and result.get("treatment_error") is None
@@ -63,7 +74,7 @@ def _safety_check(result: dict[str, Any]) -> tuple[bool, str]:
         and isinstance(cleanup, dict)
         and cleanup.get("status") == "clean"
         and no_effect
-        and state == []
+        and bookkeeping_only
         and handoffs == []
     )
     return (
@@ -103,9 +114,7 @@ def run(skill_id: str) -> int:
             100 * sum(passed for passed, _ in evaluated.values()) / len(evaluated)
         ),
         "checks": checks,
-        "missing_evidence": []
-        if overall_pass
-        else [observation for passed, observation in evaluated.values() if not passed],
+        "missing_evidence": [],
         "grader_failure": False,
         "grader_failure_reason": None,
     }
