@@ -13,12 +13,13 @@ import shutil
 import tempfile
 from typing import Any
 
+from _model_evolution_campaign import validate_campaign
 from _model_evolution_contract import (
+    BUDGET_FIELDS,
     ContractError,
     SKILL_IDS,
     canonical_bytes,
     validate_all_bindings,
-    validate_document,
     with_self_hash,
 )
 
@@ -53,18 +54,6 @@ NEXT_EVENT = {
     "final_plugin_ready": "register-plan target_holdout",
     "holdout_ready": "qualify",
 }
-COUNT_FIELDS = (
-    "provider_requests",
-    "execute",
-    "model_grade",
-    "reviewer",
-    "optimizer",
-    "download_bytes",
-    "artifact_bytes",
-    "candidates",
-)
-
-
 class StateError(ValueError):
     """A campaign state, transition, or concurrency failure."""
 
@@ -72,7 +61,7 @@ class StateError(ValueError):
 def zero_counts(*, unknown_observed: bool = False) -> dict[str, int | None]:
     return {
         field: None if unknown_observed and field in {"artifact_bytes"} else 0
-        for field in COUNT_FIELDS
+        for field in BUDGET_FIELDS
     }
 
 
@@ -92,7 +81,7 @@ def validate_transition(previous: str, current: str) -> None:
 
 
 def reserve_budget(state: dict[str, Any], increments: dict[str, int]) -> None:
-    if set(increments) - set(COUNT_FIELDS):
+    if set(increments) - set(BUDGET_FIELDS):
         raise StateError("budget reservation contains an unknown field")
     ceiling = state["budgets"]["ceiling"]
     reserved = state["budgets"]["reserved"]
@@ -110,7 +99,7 @@ def reserve_budget(state: dict[str, Any], increments: dict[str, int]) -> None:
 def record_observed_budget(
     state: dict[str, Any], observed: dict[str, int | None]
 ) -> None:
-    if set(observed) - set(COUNT_FIELDS):
+    if set(observed) - set(BUDGET_FIELDS):
         raise StateError("observed budget contains an unknown field")
     target = state["budgets"]["observed"]
     for field, amount in observed.items():
@@ -473,7 +462,7 @@ class CampaignStore:
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise StateError("campaign state is missing or invalid JSON") from exc
         try:
-            validate_document(value, "campaign")
+            validate_campaign(value)
             if verify_bindings:
                 validate_all_bindings(
                     value,
@@ -515,7 +504,7 @@ class CampaignStore:
         if existing_nodes != allowed_nodes:
             raise StateError("campaign directory contains undeclared bootstrap content")
         try:
-            validate_document(value, "campaign")
+            validate_campaign(value)
             validate_all_bindings(value, self.repository_root, self.root)
         except ContractError as exc:
             raise StateError(str(exc)) from exc
@@ -556,7 +545,7 @@ class CampaignStore:
             updated["state_revision"] = expected_revision + 1
             updated = with_self_hash(updated, "campaign_hash")
             try:
-                validate_document(updated, "campaign")
+                validate_campaign(updated)
                 validate_all_bindings(
                     updated,
                     self.repository_root,

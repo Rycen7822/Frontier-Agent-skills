@@ -30,10 +30,10 @@ from _model_evolution_calibration_receipt import (  # noqa: E402
 )
 from _model_evolution_contract import (  # noqa: E402
     make_binding,
-    project_qualification,
     validate_document,
     with_self_hash,
 )
+from _model_evolution_qualification import project_qualification  # noqa: E402
 import model_evolution as controller  # noqa: E402
 import run_model_calibration as calibration_runner  # noqa: E402
 from model_evolution_test_support import (  # noqa: E402

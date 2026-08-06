@@ -15,11 +15,13 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "skill-evaluator/scripts"))
 import grader_semantics  # noqa: E402
 import build_model_evolution_sentinels as sentinels  # noqa: E402
 from _model_evolution_contract import (  # noqa: E402
-    CRITICAL_PROBE_CAPABILITIES,
     SKILL_IDS,
     load_json,
     resolve_binding,
     validate_document,
+)
+from _model_evolution_qualification import (  # noqa: E402
+    CRITICAL_PROBE_CAPABILITIES,
 )
 
 

@@ -16,12 +16,8 @@ from _codex_eval_delivery import (
     isolated_tool_schema_hash,
 )
 from codex_eval_host import ADAPTER_VERSION, adapter_source_hash
-from _model_evolution_contract import (
-    SKILL_IDS,
-    build_initial_campaign,
-    make_binding,
-    with_self_hash,
-)
+from _model_evolution_campaign import build_initial_campaign
+from _model_evolution_contract import SKILL_IDS, make_binding, with_self_hash
 from _model_evolution_state import CampaignStore
 from skill_evaluator_test_support import canonical_hash, make_v5_schema_examples
 

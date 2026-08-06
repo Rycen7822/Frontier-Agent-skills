@@ -19,6 +19,7 @@ from _model_evolution_contract import (
     verify_self_hash,
     with_self_hash,
 )
+from _model_evolution_qualification import validate_qualification
 
 
 class CalibrationPreparationError(ValueError):
@@ -247,7 +248,7 @@ def close_calibration_failure(
 
     qualification_path = campaign_root / "qualification/qualification.json"
     qualification = load_json(qualification_path, label="qualification")
-    validate_document(qualification, "qualification")
+    validate_qualification(qualification)
     if (
         qualification["decision"] != "blocked"
         or qualification["campaign_hash"] != campaign["campaign_hash"]

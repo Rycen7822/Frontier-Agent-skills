@@ -11,40 +11,32 @@ from typing import Any, Callable
 if __name__ == "__main__":
     sys.dont_write_bytecode = True
 
+from _model_evolution_campaign import (
+    build_initial_campaign,
+    prepare_predecessor,
+    qualification_request_ceilings,
+    validate_campaign,
+)
 from _model_evolution_contract import (
-    CRITICAL_PROBE_CAPABILITIES,
     ContractError,
     SKILL_IDS,
-    _is_analysis_sentinel_contract_correction,
-    _is_calibration_pass_condition_correction,
-    _is_calibration_task_fixture_correction,
-    _is_child_environment_isolation_correction,
-    _is_exec_item_lifecycle_diagnostic_correction,
-    _is_exec_item_update_correction,
-    _is_multiturn_timeout_correction,
-    _is_process_namespace_isolation_correction,
-    _is_single_principal_exec_correction,
-    _is_source_exposure_locator_correction,
-    _is_source_root_binding_correction,
-    _is_source_workspace_isolation_correction,
-    _is_systemd_environment_correction,
-    assess_interaction_probes,
-    build_initial_campaign,
     canonical_bytes,
     content_hash,
     evaluator_evidence_status,
     load_json,
     make_binding,
-    prepare_predecessor,
-    prepare_supersedes,
-    project_qualification,
-    qualification_request_ceilings,
-    render_qualification_markdown,
     resolve_binding,
     validate_all_bindings,
     validate_document,
     verify_self_hash,
     with_self_hash,
+)
+from _model_evolution_qualification import (
+    CRITICAL_PROBE_CAPABILITIES,
+    assess_interaction_probes,
+    project_qualification,
+    render_qualification_markdown,
+    validate_qualification,
 )
 from _model_evolution_calibration import (
     CalibrationPreparationError,
@@ -280,35 +272,6 @@ def _validate_evidence_join(
         raise CliError(f"{role} inputs differ from the selected summaries")
 
 
-def _cumulative_request_ceilings(
-    request_ceilings: dict[str, int],
-    supersedes: dict[str, Any] | None,
-    *,
-    reuse_calibration_reservation: bool = True,
-) -> dict[str, int]:
-    expected = {
-        field: request_ceilings[field]
-        for field in ("provider_requests", "execute", "model_grade")
-    }
-    if supersedes is None:
-        return expected
-    imported_reserved = supersedes["imported_reserved"]
-    imported_observed = supersedes["imported_observed"]
-    reusable_calibration = (
-        request_ceilings["calibration"]
-        if reuse_calibration_reservation
-        else 0
-    )
-    for field in expected:
-        future = request_ceilings[field]
-        if field in {"provider_requests", "model_grade"}:
-            future -= reusable_calibration
-        expected[field] = max(
-            imported_reserved[field], imported_observed[field],
-        ) + future
-    return expected
-
-
 def _init(args: argparse.Namespace) -> None:
     repository_root, campaign_root = _roots(args)
     campaign_root.mkdir(parents=True, exist_ok=True)
@@ -441,73 +404,11 @@ def _init(args: argparse.Namespace) -> None:
             repository_root=repository_root,
             campaign_root=campaign_root,
         )
-    supersedes = None
-    reuse_calibration_reservation = True
-    if (
-        args.supersession_failure_receipt is not None
-        or args.supersession_calibration_rejection_receipt is not None
-    ) and args.supersedes is None:
-        raise CliError("supersession receipt requires --supersedes")
-    if args.supersedes is not None:
-        supersedes = prepare_supersedes(
-            campaign_binding=_binding_for_path(
-                args.supersedes,
-                repository_root=repository_root,
-                campaign_root=campaign_root,
-                tracked_repository=False,
-            ),
-            target_host_binding=bindings["target_host"],
-            failure_receipt_binding=(
-                _binding_for_path(
-                    args.supersession_failure_receipt,
-                    repository_root=repository_root,
-                    campaign_root=campaign_root,
-                    tracked_repository=False,
-                )
-                if args.supersession_failure_receipt is not None
-                else None
-            ),
-            calibration_rejection_receipt_binding=(
-                _binding_for_path(
-                    args.supersession_calibration_rejection_receipt,
-                    repository_root=repository_root,
-                    campaign_root=campaign_root,
-                    tracked_repository=False,
-                )
-                if args.supersession_calibration_rejection_receipt is not None
-                else None
-            ),
-            repository_root=repository_root,
-            campaign_root=campaign_root,
-        )
-        superseded_campaign = load_json(
-            args.supersedes.resolve(strict=True),
-            label="superseded campaign",
-        )
-        reuse_calibration_reservation = not (
-            _is_analysis_sentinel_contract_correction(superseded_campaign)
-            or _is_calibration_pass_condition_correction(superseded_campaign)
-            or _is_calibration_task_fixture_correction(superseded_campaign)
-            or _is_multiturn_timeout_correction(superseded_campaign)
-            or _is_child_environment_isolation_correction(superseded_campaign)
-            or _is_single_principal_exec_correction(superseded_campaign)
-            or _is_source_workspace_isolation_correction(superseded_campaign)
-            or _is_source_exposure_locator_correction(superseded_campaign)
-            or _is_source_root_binding_correction(superseded_campaign)
-            or _is_exec_item_update_correction(superseded_campaign)
-            or _is_exec_item_lifecycle_diagnostic_correction(superseded_campaign)
-            or _is_process_namespace_isolation_correction(superseded_campaign)
-            or _is_systemd_environment_correction(superseded_campaign)
-        )
-    expected_request_ceilings = _cumulative_request_ceilings(
-        request_ceilings,
-        supersedes,
-        reuse_calibration_reservation=reuse_calibration_reservation,
-    )
-    for field, expected in expected_request_ceilings.items():
+    for field in ("provider_requests", "execute", "model_grade"):
+        expected = request_ceilings[field]
         if ceilings[field] != expected:
             raise CliError(
-                f"{field} ceiling must equal the cumulative worst-case budget {expected}"
+                f"{field} ceiling must equal the fresh campaign budget {expected}"
             )
     campaign = build_initial_campaign(
         campaign_id=args.campaign_id,
@@ -529,7 +430,6 @@ def _init(args: argparse.Namespace) -> None:
         repository_root=repository_root,
         campaign_root=campaign_root,
         predecessor=predecessor,
-        supersedes=supersedes,
     )
     if ceilings["provider_requests"] < len(probe_set["probes"]):
         raise CliError(
@@ -549,7 +449,7 @@ def _init(args: argparse.Namespace) -> None:
             },
         )
         campaign = with_self_hash(campaign, "campaign_hash")
-        validate_document(campaign, "campaign")
+        validate_campaign(campaign)
     store = _campaign_store(repository_root, campaign_root)
     bootstrap_paths = {
         path for path in fixed.values() if path.is_relative_to(campaign_root)
@@ -1383,7 +1283,7 @@ def _load_verified_qualification(
     qualification = load_json(
         qualification_root / "qualification.json", label="qualification"
     )
-    validate_document(qualification, "qualification")
+    validate_qualification(qualification)
     fallback = _repository_fallback(
         repository_root, campaign["product"]["source_commit"]
     )
@@ -1449,9 +1349,6 @@ def _parser() -> argparse.ArgumentParser:
     init.add_argument("--predecessor-host", type=Path)
     init.add_argument("--predecessor-comparison", type=Path)
     init.add_argument("--predecessor-qualification", type=Path)
-    init.add_argument("--supersedes", type=Path)
-    init.add_argument("--supersession-failure-receipt", type=Path)
-    init.add_argument("--supersession-calibration-rejection-receipt", type=Path)
     init.add_argument("--provider-request-ceiling", type=int, required=True)
     init.add_argument("--execute-ceiling", type=int, required=True)
     init.add_argument("--model-grade-ceiling", type=int, required=True)
