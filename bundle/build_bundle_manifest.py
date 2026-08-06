@@ -29,9 +29,9 @@ SCHEMA = ROOT / "bundle" / "frontier-engineering-bundle.schema.json"
 SOURCE_MANIFEST = ROOT / "bundle-manifest.json"
 EXPECTED_SKILLS = {
     "long-document-segmented-writing": "1.1.0",
-    "skill-evaluator": "3.3.0",
+    "skill-evaluator": "3.3.1",
     "software-quality-workflows": "9.0.0",
-    "writing-plans": "8.2.1",
+    "writing-plans": "8.2.2",
 }
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,

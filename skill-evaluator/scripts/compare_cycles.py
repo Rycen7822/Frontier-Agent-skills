@@ -36,7 +36,7 @@ def _report(
         "claim_scope": plan["claim_scope"],
         "generator": {
             "name": "compare_cycles.py",
-            "version": "3.3.0",
+            "version": "3.3.1",
             "source_hash": file_sha256(Path(__file__)),
         },
         "registration_status": decision["registration_status"],

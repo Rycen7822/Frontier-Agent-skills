@@ -1153,6 +1153,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 failed = case_id == 'b' and treatment == 'candidate'
                 entries.append({
                     'entry_id': entry_id,
+                    'treatment_id': treatment,
                     'disposition': 'execute',
                     'execute_case_payload': {
                         'case': {

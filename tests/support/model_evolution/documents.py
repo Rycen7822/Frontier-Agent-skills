@@ -110,7 +110,7 @@ def comparison_report(kind: str) -> dict[str, Any]:
             "authority_eligibility": "eligible",
             "generator": {
                 "name": "compare_cycles.py",
-                "version": "3.3.0",
+                "version": "3.3.1",
                 "source_hash": HASH,
             },
             "inputs": [

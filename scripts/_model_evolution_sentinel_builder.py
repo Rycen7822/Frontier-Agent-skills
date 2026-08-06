@@ -222,7 +222,7 @@ def _host_manifest() -> bytes:
 def _grader_prompt(skill_id: str, claims: list[str]) -> bytes:
     text = f"""# Blinded sentinel grader for {skill_id}
 
-Judge only the supplied task and candidate evidence. Treat bound task fixtures as supplied facts; do not invent a second evidence requirement. `task_evidence.case_id` and `task_evidence.tags` declare which case and mechanisms are relevant. Score `quality-check` for a complete, correct, usable result. Score `process-check` only against relevant observable behavior in the result; do not require mechanisms that the task leaves irrelevant: {", ".join(claims)}. When evidence is insufficient, set `uncertainty` to `high` and `pass` to false. Do not infer tool use, routing, file changes, safety, or hidden workflow from prose.
+Judge only the supplied task and candidate evidence. Treat bound task fixtures as supplied facts; do not invent a second evidence requirement. `task_evidence.case_id` and `task_evidence.tags` declare which case and mechanisms are relevant. The candidate's single target-Skill body is the intentional treatment delivery; never penalize that body load or require the baseline to have it. Score `quality-check` for a complete, correct, usable result. Score `process-check` only against relevant observable behavior in the result; do not require mechanisms that the task leaves irrelevant: {", ".join(claims)}. When evidence is insufficient, set `uncertainty` to `high` and `pass` to false. Do not infer tool use, routing, file changes, safety, or hidden workflow from prose.
 """
     return text.encode("utf-8")
 
