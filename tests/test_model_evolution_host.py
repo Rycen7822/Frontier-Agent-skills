@@ -432,38 +432,88 @@ class ModelEvolutionHostTest(unittest.TestCase):
         self.assertIsNone(
             partial["store"].read()["budgets"]["observed"]["provider_requests"]
         )
+        blocked = partial["store"].read()
+        self.assertIsNotNone(blocked["interaction_probes"]["blocker"])
+        retry_approval = materialize_budget_approval(
+            partial,
+            blocked,
+            "retry-approval.json",
+        )
+        before_retry = partial["store"].path.read_bytes()
+        with (
+            mock.patch.object(controller, "run_interaction_probes") as provider,
+            self.assertRaisesRegex(controller.CliError, "not recoverable"),
+        ):
+            controller._probe(
+                argparse.Namespace(
+                    repository_root=partial["repository_root"],
+                    campaign_root=partial["campaign_root"],
+                    expected_revision=blocked["state_revision"],
+                    budget_approval=retry_approval,
+                )
+            )
+        provider.assert_not_called()
+        self.assertEqual(before_retry, partial["store"].path.read_bytes())
 
     def test_concurrent_probe_exits_without_state_or_provider_change(self) -> None:
-        store = self.fixture["store"]
-        apparatus = materialize_apparatus_report(self.fixture)
-        store.mutate(0, lambda state: advance_preflight(state, apparatus))
-        approval = materialize_budget_approval(self.fixture, store.read())
-        args = argparse.Namespace(
-            repository_root=self.fixture["repository_root"],
-            campaign_root=self.fixture["campaign_root"],
-            expected_revision=1,
-            budget_approval=approval,
+        probe_set = json.loads(
+            (
+                REPOSITORY_ROOT
+                / "evaluation/model-evolution/codex-interaction-probes-v1.json"
+            ).read_text()
         )
-        before = {
-            path.relative_to(store.root): path.read_bytes()
-            for path in store.root.rglob("*")
-            if path.is_file()
-        }
-        with (
-            store.hold_probe_operation(),
-            mock.patch.object(controller, "run_interaction_probes") as provider,
-        ):
-            with self.assertRaisesRegex(
-                state_module.StateError, "probe operation is already running"
-            ):
-                controller._probe(args)
-        after = {
-            path.relative_to(store.root): path.read_bytes()
-            for path in store.root.rglob("*")
-            if path.is_file()
-        }
-        provider.assert_not_called()
-        self.assertEqual(before, after)
+        probe_ids = [row["probe_id"] for row in probe_set["probes"]]
+        terminal_counts = sorted({0, 1, len(probe_ids) // 2, len(probe_ids)})
+        for terminal_count in terminal_counts:
+            with self.subTest(terminal_count=terminal_count):
+                fixture = materialize_campaign(
+                    Path(self.temporary.name) / f"concurrent-{terminal_count}"
+                )
+                store = fixture["store"]
+                apparatus = materialize_apparatus_report(fixture)
+                store.mutate(0, lambda state: advance_preflight(state, apparatus))
+                reserved = store.mutate(
+                    1, lambda state: reserve_probes(state, probe_ids)
+                )
+                approval = materialize_budget_approval(fixture, reserved)
+                probes = fixture["campaign_root"] / "probes"
+                probes.mkdir()
+                for request in reserved["interaction_probes"]["requests"][
+                    :terminal_count
+                ]:
+                    write_json(
+                        probes / f"{request['request_id']}.json",
+                        {"request_id": request["request_id"]},
+                    )
+                args = argparse.Namespace(
+                    repository_root=fixture["repository_root"],
+                    campaign_root=fixture["campaign_root"],
+                    expected_revision=2,
+                    budget_approval=approval,
+                )
+                before = {
+                    path.relative_to(store.root): path.read_bytes()
+                    for path in store.root.rglob("*")
+                    if path.is_file()
+                }
+                with (
+                    store.hold_probe_operation(),
+                    mock.patch.object(
+                        controller, "run_interaction_probes"
+                    ) as provider,
+                ):
+                    with self.assertRaisesRegex(
+                        state_module.StateError,
+                        "probe operation is already running",
+                    ):
+                        controller._probe(args)
+                after = {
+                    path.relative_to(store.root): path.read_bytes()
+                    for path in store.root.rglob("*")
+                    if path.is_file()
+                }
+                provider.assert_not_called()
+                self.assertEqual(before, after)
 
     def test_complete_probe_terminals_resume_without_provider_resend(self) -> None:
         store = self.fixture["store"]
@@ -476,9 +526,7 @@ class ModelEvolutionHostTest(unittest.TestCase):
                 state, [row["probe_id"] for row in probe_set["probes"]]
             ),
         )
-        approval = write_json(
-            self.fixture["campaign_root"] / "approval.json", {"approved": True}
-        )
+        approval = materialize_budget_approval(self.fixture, reserved)
         approval_binding = make_binding(
             approval,
             root="campaign",
@@ -492,20 +540,26 @@ class ModelEvolutionHostTest(unittest.TestCase):
             repository_root=self.fixture["repository_root"],
             campaign_root=self.fixture["campaign_root"],
         )
-        with mock.patch.object(
-            operations,
-            "_run_probe_process",
-            side_effect=AssertionError("resume resent a provider request"),
+        self.assertEqual(len(probe_set["probes"]), len(first["statuses"]))
+        with (
+            mock.patch.object(
+                operations,
+                "_run_probe_process",
+                side_effect=AssertionError("resume resent a provider request"),
+            ),
+            mock.patch.object(controller, "_emit"),
         ):
-            second = operations.run_interaction_probes(
-                reserved,
-                probe_set=probe_set,
-                approval_binding=approval_binding,
-                repository_root=self.fixture["repository_root"],
-                campaign_root=self.fixture["campaign_root"],
-                resume_existing=True,
+            controller._probe(
+                argparse.Namespace(
+                    repository_root=self.fixture["repository_root"],
+                    campaign_root=self.fixture["campaign_root"],
+                    expected_revision=2,
+                    budget_approval=approval,
+                )
             )
-        self.assertEqual(first, second)
+        closed = store.read()
+        self.assertEqual("target_profile_ready", closed["phase"])
+        self.assertEqual(3, closed["state_revision"])
 
     def test_probe_outer_timeout_has_grace_and_kills_owned_process_group(self) -> None:
         self.assertEqual(

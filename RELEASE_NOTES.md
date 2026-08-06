@@ -8,6 +8,10 @@ Long Document 1.1 preserves explicitly requested recovery or audit markers in th
 
 The controller reuses the existing evaluator compiler, runner, analyzer, comparison, plugin builder, static diagnostic, and release authorization. It owns no grader, reviewer, optimizer, durable worker, cache, retry loop, installation, or release authority. Unknown Host capabilities and absent calibration or holdout evidence remain explicit limits or blockers; generated source-complete evidence never becomes a model-support claim.
 
+The probe stage now holds one campaign-scoped operation lock across reservation, Host execution, terminal closure, and state transition. Concurrent starts exit without mutation, status distinguishes a live owner from an abandoned reservation, and the canonical systemd user command lets the exact job survive a TUI restart without adding a controller daemon or retry loop.
+
+Release packaging now emits one deterministic Codex marketplace ZIP alongside the canonical marketplace directory. The ZIP contains the marketplace manifest and runtime-free four-Skill plugin at its root, reuses the source archiver's ZIP encoder, preserves file modes, and is verified against release build evidence after extraction; staging builds cannot request it.
+
 Codex Host adapter 1.3 preserves a bounded `provider_usage_limit` diagnostic from failed probe JSONL instead of collapsing quota exhaustion into a generic child-process failure. Probe diagnostics remain fail-closed and never trigger an automatic retry or successor campaign.
 
 Codex Host adapter 1.4 restores the CLI sentinel fixture it names, hides the complete user home while remounting only the bound Codex runtime, and rejects model-grade batches whose item or check identities differ before any receipt is closed.

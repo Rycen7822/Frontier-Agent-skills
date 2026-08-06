@@ -30,6 +30,11 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from _bundle_hash import bundle_inventory, inventory, tree_hash  # noqa: E402
+from _deterministic_zip import (  # noqa: E402
+    ZipMember,
+    verify_deterministic_zip,
+    write_deterministic_zip,
+)
 
 
 FORBIDDEN_PLUGIN_KEYS = {"mcpServers", "apps", "hooks"}
@@ -620,12 +625,27 @@ def _marketplace_publication_matches(
         return False
 
 
+def _archive_members(
+    root: Path,
+    records: list[dict[str, Any]],
+) -> list[ZipMember]:
+    return [
+        (
+            str(record["path"]),
+            root / str(record["path"]),
+            int(str(record["mode"]), 8),
+        )
+        for record in records
+    ]
+
+
 def build(
     source_root: Path,
     output: Path,
     release_authorization: Path | None,
     evidence_output: Path,
     marketplace_root: Path | None = None,
+    marketplace_archive_output: Path | None = None,
 ) -> dict[str, Any]:
     source_root = source_root.resolve(strict=True)
     output = output.absolute()
@@ -648,28 +668,45 @@ def build(
         raise ValueError(f"plugin output folder must match manifest name: {template['name']}")
     is_release = release_authorization is not None
     if is_release:
-        if marketplace_root is None:
-            raise ValueError("release build requires a canonical marketplace root")
+        if marketplace_root is None or marketplace_archive_output is None:
+            raise ValueError(
+                "release build requires canonical marketplace and archive outputs"
+            )
         marketplace_root = marketplace_root.absolute()
+        marketplace_archive_output = marketplace_archive_output.absolute()
         _reject_symlink_components(marketplace_root)
+        _reject_symlink_components(marketplace_archive_output)
         if marketplace_root.exists() or marketplace_root.is_symlink():
             raise ValueError("marketplace root is no-overwrite")
+        if (
+            marketplace_archive_output.exists()
+            or marketplace_archive_output.is_symlink()
+        ):
+            raise ValueError("marketplace archive output is no-overwrite")
+        if marketplace_archive_output.suffix.lower() != ".zip":
+            raise ValueError("marketplace archive output must be a .zip file")
+        if marketplace_archive_output == evidence_output:
+            raise ValueError("marketplace archive and build evidence must be distinct")
         if output != marketplace_root / "plugins" / template["name"]:
             raise ValueError("release plugin output must be inside the canonical marketplace")
         if evidence_output.is_relative_to(marketplace_root):
             raise ValueError("build evidence must be outside the canonical marketplace")
+        if marketplace_archive_output.is_relative_to(marketplace_root):
+            raise ValueError("marketplace archive must be outside the canonical marketplace")
         validate_release_authorization(
             release_authorization,
             source_root=source_root,
             manifest=manifest,
             source_tree_hash=source_tree_hash,
         )
-    elif marketplace_root is not None:
-        raise ValueError("staging build forbids a marketplace root")
+    elif marketplace_root is not None or marketplace_archive_output is not None:
+        raise ValueError("staging build forbids marketplace outputs")
 
     if is_release:
         assert marketplace_root is not None
+        assert marketplace_archive_output is not None
         marketplace_root.parent.mkdir(parents=True, exist_ok=True)
+        marketplace_archive_output.parent.mkdir(parents=True, exist_ok=True)
     else:
         output.parent.mkdir(parents=True, exist_ok=True)
     evidence_output.parent.mkdir(parents=True, exist_ok=True)
@@ -679,6 +716,12 @@ def build(
     publish_parent = marketplace_root.parent if marketplace_root is not None else output.parent
     if publish_parent.stat().st_dev != evidence_output.parent.stat().st_dev:
         raise ValueError("plugin staging and destination must share one filesystem")
+    if is_release and (
+        marketplace_archive_output is None
+        or marketplace_archive_output.parent.stat().st_dev
+        != evidence_output.parent.stat().st_dev
+    ):
+        raise ValueError("marketplace archive and staging must share one filesystem")
     marketplace_staging = evidence_output.parent / "marketplace-build-staging"
     if is_release and (
         marketplace_staging.exists() or marketplace_staging.is_symlink()
@@ -689,6 +732,10 @@ def build(
     marketplace_staging_identity: tuple[int, int] | None = None
     marketplace_manifest_identity: tuple[int, int] | None = None
     marketplace_manifest_bytes: bytes | None = None
+    marketplace_records: list[dict[str, Any]] | None = None
+    archive_temporary: Path | None = None
+    archive_identity: tuple[int, int] | None = None
+    archive_published = False
     evidence_temporary: Path | None = None
     evidence_identity: tuple[int, int] | None = None
     evidence_bytes: bytes | None = None
@@ -814,12 +861,53 @@ def build(
             staging.rename(
                 marketplace_staging / "plugins" / template["name"],
             )
+            marketplace_records = inventory(
+                marketplace_staging,
+                [
+                    path
+                    for path in marketplace_staging.rglob("*")
+                    if path.is_file() or path.is_symlink()
+                ],
+            )
+            archive_descriptor, archive_name = tempfile.mkstemp(
+                prefix="marketplace-archive-",
+                suffix=".zip",
+                dir=evidence_output.parent,
+            )
+            os.close(archive_descriptor)
+            archive_temporary = Path(archive_name)
+            archive_identity = _file_identity(archive_temporary)
+            write_deterministic_zip(
+                archive_temporary,
+                _archive_members(marketplace_staging, marketplace_records),
+            )
+            os.chmod(archive_temporary, 0o644)
+            if _file_identity(archive_temporary) != archive_identity:
+                raise RuntimeError("marketplace archive staging inode changed")
+            verify_deterministic_zip(
+                archive_temporary,
+                _archive_members(marketplace_staging, marketplace_records),
+            )
             _rename_no_replace(marketplace_staging, marketplace_root)
         else:
             _rename_no_replace(staging, output)
         published = True
         if not publication_still_matches():
             raise ValueError("published plugin tree changed during publication")
+        if is_release:
+            assert marketplace_root is not None
+            assert marketplace_archive_output is not None
+            assert marketplace_records is not None
+            assert archive_temporary is not None
+            assert archive_identity is not None
+            os.link(archive_temporary, marketplace_archive_output)
+            archive_published = True
+            if _file_identity(marketplace_archive_output) != archive_identity:
+                raise RuntimeError("published marketplace archive inode changed")
+            verify_deterministic_zip(
+                marketplace_archive_output,
+                _archive_members(marketplace_root, marketplace_records),
+            )
         assert evidence_identity is not None
         assert evidence_bytes is not None
         os.link(evidence_temporary, evidence_output)
@@ -830,6 +918,9 @@ def build(
             raise ValueError("published build evidence changed")
         _remove_owned_file(evidence_temporary, evidence_identity)
         evidence_temporary = None
+        if archive_temporary is not None and archive_identity is not None:
+            _remove_owned_file(archive_temporary, archive_identity)
+            archive_temporary = None
         if (
             _file_identity(evidence_output) != evidence_identity
             or evidence_output.read_bytes() != evidence_bytes
@@ -838,6 +929,14 @@ def build(
         if not publication_still_matches():
             raise ValueError(
                 "published plugin tree changed after evidence publication"
+            )
+        if is_release:
+            assert marketplace_root is not None
+            assert marketplace_archive_output is not None
+            assert marketplace_records is not None
+            verify_deterministic_zip(
+                marketplace_archive_output,
+                _archive_members(marketplace_root, marketplace_records),
             )
         return evidence
     except BaseException:
@@ -849,6 +948,23 @@ def build(
                     _remove_owned_file(
                         evidence_output,
                         evidence_identity,
+                    )
+            except (OSError, ValueError):
+                pass
+        if (
+            archive_published
+            and archive_identity is not None
+            and marketplace_archive_output is not None
+            and (
+                marketplace_archive_output.exists()
+                or marketplace_archive_output.is_symlink()
+            )
+        ):
+            try:
+                if _file_identity(marketplace_archive_output) == archive_identity:
+                    _remove_owned_file(
+                        marketplace_archive_output,
+                        archive_identity,
                     )
             except (OSError, ValueError):
                 pass
@@ -877,6 +993,8 @@ def build(
             _remove_owned_tree(staging, staging_identity)
         if evidence_temporary is not None and evidence_identity is not None:
             _remove_owned_file(evidence_temporary, evidence_identity)
+        if archive_temporary is not None and archive_identity is not None:
+            _remove_owned_file(archive_temporary, archive_identity)
         raise
 
 
@@ -887,6 +1005,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--evidence-output", type=Path)
     parser.add_argument("--release-authorization", type=Path)
     parser.add_argument("--marketplace-root", type=Path)
+    parser.add_argument("--marketplace-archive-output", type=Path)
     parser.add_argument("--validate-plugin-root", type=Path)
     parser.add_argument("--build-evidence", type=Path)
     args = parser.parse_args(argv)
@@ -902,6 +1021,7 @@ def main(argv: list[str] | None = None) -> int:
             or args.output is not None
             or args.evidence_output is not None
             or args.marketplace_root is not None
+            or args.marketplace_archive_output is not None
         ):
             return 2
         try:
@@ -933,6 +1053,7 @@ def main(argv: list[str] | None = None) -> int:
             args.release_authorization,
             args.evidence_output,
             args.marketplace_root,
+            args.marketplace_archive_output,
         )
     except (OSError, ValueError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
@@ -943,6 +1064,11 @@ def main(argv: list[str] | None = None) -> int:
         "output_class": evidence["output_class"],
         "plugin_tree_hash": evidence["plugin_tree_hash"],
         "evidence_hash": evidence["evidence_hash"],
+        "marketplace_archive_hash": (
+            _content_hash(args.marketplace_archive_output)
+            if args.marketplace_archive_output is not None
+            else None
+        ),
     }, ensure_ascii=False))
     return 0
 

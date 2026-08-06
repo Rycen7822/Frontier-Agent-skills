@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
+import zipfile
 
 from jsonschema import Draft202012Validator
 
@@ -284,6 +285,7 @@ class ExtendedReleaseAuthorizationTests(unittest.TestCase):
             marketplace = root / "release" / "marketplace"
             plugin = marketplace / "plugins" / "frontier-engineering-plugin"
             build_evidence = root / "release-build.json"
+            marketplace_archive = root / "release" / "frontier-engineering-marketplace.zip"
             with (
                 mock.patch.object(
                     generator.builder,
@@ -302,12 +304,94 @@ class ExtendedReleaseAuthorizationTests(unittest.TestCase):
                     output,
                     build_evidence,
                     marketplace,
+                    marketplace_archive,
                 )
             self.assertEqual("release", build["output_class"])
             self.assertEqual(
                 "sha256:" + sha256(output.read_bytes()).hexdigest(),
                 build["release_authorization_hash"],
             )
+            with zipfile.ZipFile(marketplace_archive) as archive:
+                self.assertEqual(
+                    {".agents", "plugins"},
+                    {Path(name).parts[0] for name in archive.namelist()},
+                )
+                extracted = root / "extracted-marketplace"
+                for info in archive.infolist():
+                    target = Path(archive.extract(info, extracted))
+                    target.chmod((info.external_attr >> 16) & 0o777)
+            with (
+                mock.patch.object(
+                    generator.builder,
+                    "_source_revision",
+                    return_value=REVISION,
+                ),
+                mock.patch.object(
+                    generator.builder,
+                    "_git_release_source_ok",
+                    return_value=True,
+                ),
+            ):
+                generator.builder.validate_plugin_build(
+                    extracted / "plugins" / "frontier-engineering-plugin",
+                    build_evidence,
+                    source_root=ROOT,
+                    release_authorization=output,
+                )
+
+            second_marketplace = root / "release-two" / "marketplace"
+            second_archive = root / "release-two" / "frontier-engineering-marketplace.zip"
+            with (
+                mock.patch.object(
+                    generator.builder,
+                    "_source_revision",
+                    return_value=REVISION,
+                ),
+                mock.patch.object(
+                    generator.builder,
+                    "_git_release_source_ok",
+                    return_value=True,
+                ),
+            ):
+                generator.builder.build(
+                    ROOT,
+                    second_marketplace / "plugins" / "frontier-engineering-plugin",
+                    output,
+                    root / "release-two-build.json",
+                    second_marketplace,
+                    second_archive,
+                )
+            self.assertEqual(marketplace_archive.read_bytes(), second_archive.read_bytes())
+
+            collision_archive = root / "collision.zip"
+            collision_archive.write_bytes(b"owned")
+            collision_marketplace = root / "collision-marketplace"
+            collision_evidence = root / "collision-evidence.json"
+            with (
+                mock.patch.object(
+                    generator.builder,
+                    "_source_revision",
+                    return_value=REVISION,
+                ),
+                mock.patch.object(
+                    generator.builder,
+                    "_git_release_source_ok",
+                    return_value=True,
+                ),
+                self.assertRaisesRegex(ValueError, "archive output is no-overwrite"),
+            ):
+                generator.builder.build(
+                    ROOT,
+                    collision_marketplace
+                    / "plugins/frontier-engineering-plugin",
+                    output,
+                    collision_evidence,
+                    collision_marketplace,
+                    collision_archive,
+                )
+            self.assertEqual(b"owned", collision_archive.read_bytes())
+            self.assertFalse(collision_marketplace.exists())
+            self.assertFalse(collision_evidence.exists())
             with (
                 mock.patch.object(
                     generator.builder,

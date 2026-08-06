@@ -38,7 +38,7 @@ Bundle 6.3.0 uses model-free repository tests, validators, canonical generated i
 
 The tracked `evaluation/model-evolution/` corpus defines six inert Host probes and one non-ready sentinel suite for each Skill. The suites contain public scenarios, deterministic verifiers, suite-quality proof, and calibration gold contracts; they contain no live Host identity, provider output, ratings, or holdout payload. `scripts/build_model_evolution_sentinels.py --check` verifies all generated bindings without contacting a provider.
 
-`scripts/model_evolution.py` owns one bounded external campaign. It freezes a signed source identity, project-wide budget, observed Host, existing Skill Evaluator plans and reports, at most one allowlisted candidate, and a deterministic qualification. The controller never implements grading, optimization, worker supervision, reviewer selection, release authorization, installation, or publication. A model qualification and a separate `release-authorization/1` are both required for a model-support release claim; neither can substitute for the other.
+`scripts/model_evolution.py` owns one bounded external campaign. It freezes a signed source identity, project-wide budget, observed Host, existing Skill Evaluator plans and reports, at most one allowlisted candidate, and a deterministic qualification. A campaign-scoped non-blocking operation lock gives the probe stage one process owner; read-only status reports that owner and emits the sole canonical `systemd-run --user` command for an exact current budget approval. The controller never implements grading, optimization, worker supervision, reviewer selection, release authorization, installation, or publication. A model qualification and a separate `release-authorization/1` are both required for a model-support release claim; neither can substitute for the other.
 
 ## Source archives
 
@@ -61,6 +61,8 @@ frontier-engineering-plugin/
 Use `scripts/build_codex_plugin.py` to create a new staging tree and build evidence, then validate the staged tree and run `scripts/smoke_codex_plugin.py`. These commands copy the four complete skill directories and perform no global install, provider call, publication, or deployment.
 
 A release build additionally requires a canonical `release-authorization/1` file created by `scripts/create_release_authorization.py` from the signed-clean source revision, the verified staged plugin, the deterministic static report, and a non-empty release-owner attestation. Staging builds reject this authorization; release builds require and identity-check it. Scored evaluation reports are not packaging authorization.
+
+Release mode also requires `--marketplace-root` and `--marketplace-archive-output`. The deterministic ZIP has `.agents/plugins/marketplace.json` and `plugins/frontier-engineering-plugin/` at its root, preserves canonical file modes, and is verified against the same release plugin tree before publication. Staging mode rejects both marketplace outputs.
 
 ## Same-thread Codex skill reload supervisor
 
