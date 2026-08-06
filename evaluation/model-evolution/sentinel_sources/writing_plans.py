@@ -12,6 +12,8 @@ DEFINITION = {
         "continuous-execution",
     ],
     "grader_rules": [
+        "A case-specific rule applies only when task_evidence.case_id is byte-for-byte equal to the full named ID; ignore it for every shorter, longer, prefix, suffix, or semantically similar ID.",
+        "For writing-plans-explicit-handoff, quality and process require the exact handoff artifacts, publication authority boundary, and next executable verification command requested by the task; do not require State, Next action, or Proof labels, or any Resume statement or omission.",
         "For writing-plans-explicit-handoff-heldout, quality and process require a minimal State, Next action, and Proof contract, the exact bound unittest command, the release-engineering publication boundary, and explicit omission of Resume because only immutable artifact verification remains.",
     ],
     "process_evidence": [

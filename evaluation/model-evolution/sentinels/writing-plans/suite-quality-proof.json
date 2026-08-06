@@ -82,7 +82,7 @@
     {
       "artifact": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:cbec0bf66d08cce0b1870cf20dc5720b03f36fe94f9fcce5eab04d98a17d0ecc"
+        "sha256": "sha256:ef30bd02eb794a5cd4bfecc2cbe5ead285522a6f4b93ab2c8d14f8812042449f"
       },
       "locator": {
         "artifact": "grader-prompt.md",
@@ -121,7 +121,7 @@
         "start_line": 1
       },
       "source_hashes": [
-        "sha256:cbec0bf66d08cce0b1870cf20dc5720b03f36fe94f9fcce5eab04d98a17d0ecc"
+        "sha256:ef30bd02eb794a5cd4bfecc2cbe5ead285522a6f4b93ab2c8d14f8812042449f"
       ],
       "status": "closed"
     }
