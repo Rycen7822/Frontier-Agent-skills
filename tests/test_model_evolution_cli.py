@@ -17,6 +17,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 
 import _model_evolution_ops as operations  # noqa: E402
+import _model_evolution_jobs as jobs  # noqa: E402
 import _model_evolution_state as state_module  # noqa: E402
 import model_evolution as controller  # noqa: E402
 from _model_evolution_contract import (  # noqa: E402
@@ -220,7 +221,7 @@ class ModelEvolutionCliTest(unittest.TestCase):
                 "fake-bootstrap-comparison",
             ],
         )
-        argv = operations.systemd_probe_argv(
+        argv = jobs.systemd_probe_argv(
             "frontier-campaign-fixture-preflight",
             self.fixture["campaign_root"] / "closed",
         )
@@ -234,7 +235,7 @@ class ModelEvolutionCliTest(unittest.TestCase):
                 "--collect",
             ],
         )
-        resumed = operations.render_runner_command(
+        resumed = jobs.render_runner_command(
             self.fixture["campaign_root"] / "plan.json",
             self.fixture["campaign_root"] / "index.jsonl",
             attempt_budget=3,
@@ -257,15 +258,15 @@ class ModelEvolutionCliTest(unittest.TestCase):
 
         with (
             mock.patch.dict(os.environ, {"HTTP_PROXY": "http://127.0.0.1:7897"}),
-            mock.patch.object(operations, "_run", side_effect=fake_run),
+            mock.patch.object(jobs, "_run", side_effect=fake_run),
         ):
-            fact = operations.verify_systemd_user("campaign", ["HTTP_PROXY"])
+            fact = jobs.verify_systemd_user("campaign", ["HTTP_PROXY"])
         self.assertEqual("systemd-user-lifecycle", fact["operation_id"])
 
         with (
             mock.patch.dict(os.environ, {"HTTP_PROXY": "http://127.0.0.1:7897"}),
             mock.patch.object(
-                operations,
+                jobs,
                 "_run",
                 side_effect=[
                     subprocess.CompletedProcess([], 0, "running\n", ""),
@@ -276,7 +277,43 @@ class ModelEvolutionCliTest(unittest.TestCase):
             with self.assertRaisesRegex(
                 operations.OperationError, "differs for HTTP_PROXY"
             ):
-                operations.verify_systemd_user("campaign", ["HTTP_PROXY"])
+                jobs.verify_systemd_user("campaign", ["HTTP_PROXY"])
+
+    def test_controller_preflight_appends_validated_systemd_fact(self) -> None:
+        materialize_apparatus_report(self.fixture)
+        report_path = self.fixture["campaign_root"] / "apparatus-report.json"
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        systemd_fact = report["operations"][0]
+        report["operations"] = []
+        report = with_self_hash(report, "apparatus_report_hash")
+        report_path.unlink()
+        args = argparse.Namespace(
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+            expected_revision=0,
+            systemd_argv_only=False,
+        )
+        with (
+            mock.patch.object(
+                controller,
+                "preflight_operations",
+                return_value=(report, ["HTTP_PROXY"]),
+            ),
+            mock.patch.object(
+                controller,
+                "verify_systemd_user",
+                return_value=systemd_fact,
+            ) as verify_systemd,
+            mock.patch.object(controller, "_emit"),
+        ):
+            controller._preflight(args)
+        verify_systemd.assert_called_once_with(
+            self.fixture["campaign"]["campaign_id"], ["HTTP_PROXY"]
+        )
+        written = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual([systemd_fact], written["operations"])
+        state = self.fixture["store"].read()
+        self.assertEqual(("apparatus_ready", 1), (state["phase"], state["state_revision"]))
 
     def test_preflight_schema_fixtures_match_their_live_contracts(self) -> None:
         campaign = self.fixture["store"].read()
