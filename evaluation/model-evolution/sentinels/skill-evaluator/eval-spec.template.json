@@ -395,26 +395,26 @@
     "version": "3.3.0"
   },
   "suite": {
-    "fixture_set_hash": "sha256:fa8ed50e716bc8df78571f3a813750706dae8daa9c26267066cf76cff161fe43",
+    "fixture_set_hash": "sha256:c21c90e69122b8613f4e53f69213431a4fbc04dd1597ddbfbbb0d0330a441ea6",
     "grader_schedule_hash": "sha256:13926d09f5eb502bb0a6e367f131f044b2eb9318e41637ea66d1ad2823c2b918",
     "grader_set_hash": "sha256:57fb54f36b44aeea8533b9f97124450bedfbec0672a8a9eff703487f34cf5347",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:f6d89706b2c65c91455da099d1a1d07ef2d7d512f4130910041347cabfc63cbc"
+      "sha256": "sha256:33ba0ad07752ae42f70a9c6c673a6c7f5e3ab62ef320622c542b8ca095aaaf83"
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:15cf03234e1b159bd8520337b37894609521fbf77ecfafc62fc20e5f8bc9ae02"
+      "sha256": "sha256:c11079e8d40027aa9d03ec34c4752614ca3874574987d72638c2b6d1ec091db3"
     },
-    "quality_contract_hash": "sha256:75038c8e564f518beb759089011a3246b15b2d8102a05c09e5363d57c4f00c7c",
+    "quality_contract_hash": "sha256:682c2709219be0485767576d210d52bd9f4edf3c6ceade7e51a0a3565324dc18",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:f6d89706b2c65c91455da099d1a1d07ef2d7d512f4130910041347cabfc63cbc"
+      "sha256": "sha256:33ba0ad07752ae42f70a9c6c673a6c7f5e3ab62ef320622c542b8ca095aaaf83"
     },
     "treatment_contract_hash": "sha256:6af1e852fad9dc98a02b55d8ccd19234fcf41bd07e18591da31d891548bd89dc"
   },

@@ -1,6 +1,6 @@
 {
   "schema_version": "model-evolution-sentinel-index/1",
-  "sentinel_hash": "sha256:e21d975ac48c3ade6ddf3469b2bc069b459bb024236f1714159d718af99d2ef7",
+  "sentinel_hash": "sha256:187502445c992b212738987d14cfce53b48fad5432e6805e979ee31691611615",
   "sentinel_id": "frontier-four-skill-sentinel-v1",
   "skills": {
     "long-document-segmented-writing": {
@@ -98,7 +98,7 @@
       "calibration_gold": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/calibration-gold.jsonl",
         "root": "repository",
-        "sha256": "sha256:2b253391352daf070687e1d6e8e6daadc0cfb28167937c78da50ef91290004c2"
+        "sha256": "sha256:c92eca460d4d2a2a5c2d3dd8124df54278576313f59160659a6e075649136d3e"
       },
       "calibration_request_ceiling": 16,
       "critical_bucket_id": "skill-evaluator-critical",
@@ -107,7 +107,7 @@
         {
           "path": "evaluation/model-evolution/sentinels/skill-evaluator/fixtures/manifest.json",
           "root": "repository",
-          "sha256": "sha256:757f1d23f47749338cefcfea2b69d2bfc71aef14bfb9dabf4ce7a3e714ab0ecb"
+          "sha256": "sha256:cafc1f45533ce77d7a8e517deb1803d44200ff321af1828f39d619b0b9e7a450"
         },
         {
           "path": "evaluation/model-evolution/sentinels/skill-evaluator/fixtures/analysis-summary.json",
@@ -117,7 +117,7 @@
         {
           "path": "evaluation/model-evolution/sentinels/skill-evaluator/fixtures/cli-contract.md",
           "root": "repository",
-          "sha256": "sha256:02638b931ff15734e338d9434c1719a930bf1e92de27bec207101bd40b9353cc"
+          "sha256": "sha256:62615b29c3134a9c0e16149c7ae68bc1fbd83808176485514c88d826279dfff0"
         },
         {
           "path": "evaluation/model-evolution/sentinels/skill-evaluator/fixtures/control-matrix.md",
@@ -152,7 +152,7 @@
       "public_scenarios": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/scenarios.public.jsonl",
         "root": "repository",
-        "sha256": "sha256:f6d89706b2c65c91455da099d1a1d07ef2d7d512f4130910041347cabfc63cbc"
+        "sha256": "sha256:33ba0ad07752ae42f70a9c6c673a6c7f5e3ab62ef320622c542b8ca095aaaf83"
       },
       "required_coverage_tags": [
         "owner-selection",
@@ -165,7 +165,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:d37aadfd5e7ec606c93f30f06c26faef9f70a7dc8ef85f02d4ad4f4a1a903343"
+        "sha256": "sha256:eb5427fb250656afe3f75fa748850e6159766b95864259ea493ca81c14b8c7e5"
       },
       "verifier_roots": [
         {
