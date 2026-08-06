@@ -14,6 +14,8 @@ Codex Host adapter 1.4 restores the CLI sentinel fixture it names, hides the com
 
 Codex Host adapter 1.5 resolves the installed npm launcher to the exact native Codex executable, derives Host version, Harness, and target-model catalog identity during each build, and mounts only that bound executable. A Codex CLI upgrade therefore changes the executable and tool-surface identities before campaign initialization instead of inheriting stale template values.
 
+Codex Host adapter 1.6 removes provider-authored model-grade identities. The model returns ordered judgment values; the Host validates their exact shape and injects batch, item, and check identities from the frozen request before emitting the canonical artifact, eliminating transcription-only evidence failures without weakening identity binding.
+
 The release candidate rollback predecessor is the signed bundle 6.2.0 / Skill Evaluator 3.2.0 source at `9687f6d0590a229c5e082b09ab548c397f27cad3`. Rollback uses an ordinary revert or separately verified staged predecessor and preserves failed campaign evidence.
 
 ## Bundle 6.2.0 Skill Evaluator 3.2 hardening

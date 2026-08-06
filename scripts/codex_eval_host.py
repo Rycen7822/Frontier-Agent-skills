@@ -38,9 +38,9 @@ from _codex_eval_events import (
     MAX_JSONL_BYTES,
     MAX_RECORDS,
     base_host_result,
+    bind_model_grade_output,
     execute_evidence_diagnostics,
     host_protocol_error,
-    model_grade_output_diagnostics,
     model_grade_schema,
     normalize_jsonl,
     project_execute_result,
@@ -55,7 +55,7 @@ from _codex_eval_isolation import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
-ADAPTER_VERSION = "1.5"
+ADAPTER_VERSION = "1.6"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_delivery.py",
@@ -911,7 +911,8 @@ def _run_model_grade(
             grader_prompt
             + ("" if grader_prompt.endswith("\n") else "\n")
             + "\nEvaluate only the blinded batch below. Return exactly the JSON shape "
-            "required by the supplied output schema. Do not add Markdown or prose.\n"
+            "required by the supplied output schema. Keep items and checks in input "
+            "order; the Host binds their identities. Do not add Markdown or prose.\n"
             + json.dumps(batch, ensure_ascii=False, sort_keys=True)
         )
         child = _run_child(
@@ -944,9 +945,12 @@ def _run_model_grade(
         raise AdapterError("model-grade final message is not JSON") from exc
     if not isinstance(output, dict):
         raise AdapterError("model-grade final message is not an object")
+    bound_output, identity_diagnostics = bind_model_grade_output(output, batch)
+    if not identity_diagnostics and bound_output is None:
+        raise AdapterError("model-grade identity binding produced no output")
     artifact = _artifact_json(
         f"model-grade-{request['request_hash'][7:19]}.json",
-        output,
+        output if identity_diagnostics else bound_output,
     )
     usage = _captured_usage(
         manifest,
@@ -959,7 +963,6 @@ def _run_model_grade(
             "runtime_ms": child["runtime_ms"],
         }],
     )
-    identity_diagnostics = model_grade_output_diagnostics(output, batch)
     if identity_diagnostics:
         result = base_host_result(request, manifest)
         result["terminal_status"] = "protocol_error"

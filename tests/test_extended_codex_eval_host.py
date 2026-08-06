@@ -643,30 +643,49 @@ class TestCodexEventNormalization(unittest.TestCase):
                 {
                     "item_id": "item-1",
                     "checks": [{"id": "check-a"}, {"id": "check-b"}],
-                }
+                },
+                {
+                    "item_id": "item-2",
+                    "checks": [{"id": "check-a"}, {"id": "check-b"}],
+                },
             ],
         }
         schema = self.events.model_grade_schema(batch)
-        self.assertEqual(["batch-1"], schema["properties"]["batch_id"]["enum"])
+        self.assertEqual({"items"}, set(schema["properties"]))
         items = schema["properties"]["items"]
         checks = items["items"]["properties"]["checks"]
         self.assertNotIn("prefixItems", json.dumps(schema))
-        self.assertEqual((1, 1), (items["minItems"], items["maxItems"]))
+        self.assertEqual((2, 2), (items["minItems"], items["maxItems"]))
         self.assertEqual((2, 2), (checks["minItems"], checks["maxItems"]))
-        self.assertEqual("string", checks["items"]["properties"]["id"]["type"])
         output = {
-            "batch_id": "batch-1",
-            "items": [{
-                "item_id": "item-1",
-                "checks": [
-                    {"id": check_id, "pass": True, "notes": "ok", "uncertainty": "none"}
-                    for check_id in ("check-a", "check-b")
-                ],
-            }],
+            "items": [
+                {
+                    "checks": [
+                        {
+                            "pass": True,
+                            "notes": f"item-{item_number}",
+                            "uncertainty": "none",
+                        }
+                        for _ in ("check-a", "check-b")
+                    ],
+                }
+                for item_number in (1, 2)
+            ],
         }
-        self.assertEqual([], self.events.model_grade_output_diagnostics(output, batch))
-        output["items"][0]["checks"][1]["id"] = "outside-bound-check"
-        diagnostics = self.events.model_grade_output_diagnostics(output, batch)
+        bound, diagnostics = self.events.bind_model_grade_output(output, batch)
+        self.assertEqual([], diagnostics)
+        self.assertEqual("batch-1", bound["batch_id"])
+        self.assertEqual(
+            ["item-1", "item-2"],
+            [item["item_id"] for item in bound["items"]],
+        )
+        self.assertEqual(
+            ["check-a", "check-b"],
+            [item["id"] for item in bound["items"][0]["checks"]],
+        )
+        output["items"][1]["item_id"] = "outside-bound-batch"
+        bound, diagnostics = self.events.bind_model_grade_output(output, batch)
+        self.assertIsNone(bound)
         self.assertEqual("identity_mismatch", diagnostics[0]["kind"])
 
 
@@ -1318,7 +1337,16 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertIn("permission.denied", terminal["direct_observations"])
 
     def test_model_grade_and_probe_use_closed_outputs(self) -> None:
-        grade = {
+        provider_grade = {
+            "items": [{
+                "checks": [{
+                    "pass": True,
+                    "notes": "fixture",
+                    "uncertainty": "none",
+                }],
+            }],
+        }
+        bound_grade = {
             "batch_id": "batch-fixture",
             "items": [
                 {
@@ -1338,7 +1366,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             root = Path(tmp)
             workspace = root / "workspace"
             workspace.mkdir()
-            fake, state = _write_fake_codex(root, grade=grade)
+            fake, state = _write_fake_codex(root, grade=provider_grade)
             manifest_path = root / "host.json"
             _host_manifest(manifest_path, fake)
             batch = {
@@ -1368,13 +1396,13 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(1, len(grade_record["artifacts"]))
             self.assertEqual(10, grade_record["usage"]["records"][0]["input_tokens"])
             artifact = workspace / Path(grade_record["artifacts"][0]["path"]).name
-            self.assertEqual(grade, json.loads(artifact.read_text(encoding="utf-8")))
+            self.assertEqual(bound_grade, json.loads(artifact.read_text(encoding="utf-8")))
             grade_call = _jsonl(state.read_text(encoding="utf-8"))[0]
             self.assertIn("--output-schema", grade_call["argv"])
             self.assertIn("Judge the blinded fixture evidence.", grade_call["prompt"])
             self.assertNotIn("treatment", grade_call["prompt"].lower())
 
-            invalid_grade = json.loads(json.dumps(grade))
+            invalid_grade = json.loads(json.dumps(provider_grade))
             invalid_grade["items"][0]["item_id"] = "outside-bound-batch"
             fake_config_path = Path(str(fake) + ".json")
             fake_config = json.loads(fake_config_path.read_text(encoding="utf-8"))
