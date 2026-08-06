@@ -61,7 +61,7 @@ SKILLS = {
     skill_id: runpy.run_path(str(SENTINEL_SOURCE_ROOT / filename))["DEFINITION"]
     for skill_id, filename in DEFINITION_FILES
 }
-VERIFIER = (SENTINEL_SOURCE_ROOT / "common_verifier.py").read_text(encoding="utf-8")
+COMMON_VERIFIER_BYTES = (SENTINEL_SOURCE_ROOT / "verify_common.py").read_bytes()
 
 
 def _json_bytes(value: Any) -> bytes:
@@ -91,11 +91,15 @@ def _scenario(
     base: dict[str, Any],
     *,
     skill_id: str,
-    case: tuple[str, str, str, bool, int],
+    case: dict[str, Any],
     fixture_hash: str,
-    initial_file: dict[str, str] | None = None,
+    fixture_bindings: dict[str, dict[str, str]],
 ) -> dict[str, Any]:
-    slug, coverage, task, protected, turn_count = case
+    slug = case["id"]
+    coverage = case["coverage"]
+    task = case["task"]
+    protected = case["protected"]
+    turn_count = case["turns"]
     value = copy.deepcopy(base)
     value["case_id"] = f"{skill_id}-{slug}"
     value["timeout_seconds"] = (
@@ -106,7 +110,9 @@ def _scenario(
     value["fixture"] = {
         "manifest": "fixtures/manifest.json",
         "sha256": fixture_hash,
-        "initial_files": [copy.deepcopy(initial_file)] if initial_file else [],
+        "initial_files": [
+            copy.deepcopy(fixture_bindings[path]) for path in case["initial_files"]
+        ],
         "initial_state": [],
         "fake_services": [],
     }
@@ -210,31 +216,9 @@ def _host_manifest() -> bytes:
 
 
 def _grader_prompt(skill_id: str, claims: list[str]) -> bytes:
-    task_evidence_rule = (
-        " Treat facts explicitly stated by the task as supplied evidence; do not demand "
-        "a second artifact for those facts. For Skill Evaluator, L0 is static "
-        "whole-package audit and a verified runtime receipt belongs to L1 execution "
-        "diagnosis. Resolving the supplied validator through the documented Python/path "
-        "form is equivalent when its subcommand and input list are unchanged; a different "
-        "input or added validator argument is not. A validator, its named input artifact, "
-        "and the active level/schema are a valid contract owner surface; do not require a "
-        "human actor. For the package-specific CLI task, the exact command is `python3 "
-        '"$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" contract '
-        "fixtures/task.json`. For the analyzer-exit task, only exit `3`, no change from "
-        "`--report-only`, and no L2 usefulness claim are correct. When the task supplies "
-        "JSON, a usable patch preserves JSON syntax. A "
-        "schema value is correct only when its type and value match the task. Correct "
-        "task-consistent level labels and frozen controls are relevant evidence, not "
-        "unrelated workflow; only false or contradictory additions can fail on that basis. "
-        "Treatment delivery, body-load counts, and context bytes belong only to the "
-        "context-cost axis; "
-        "do not treat them as workflow actions or use them to change quality/process scores."
-        if skill_id == "skill-evaluator"
-        else ""
-    )
     text = f"""# Blinded sentinel grader for {skill_id}
 
-Judge only the supplied candidate evidence. Score `quality-check` for a complete, usable result. Score `process-check` against every declared mechanism the stated task marks as relevant; do not require mechanisms from this contract list that the task does not mark as relevant: {", ".join(claims)}.{task_evidence_rule} When evidence is insufficient, set `uncertainty` to `high`; the required boolean is ignored for that abstention. Do not infer tool use, routing, file changes, or safety from prose.
+Judge only the supplied task and candidate evidence. Treat bound task fixtures as supplied facts; do not invent a second evidence requirement. Score `quality-check` for a complete, correct, usable result. Score `process-check` against every declared mechanism the task marks as relevant, and do not require mechanisms the task leaves irrelevant: {", ".join(claims)}. When evidence is insufficient, set `uncertainty` to `high`; the required boolean is ignored for that abstention. Do not infer tool use, routing, file changes, safety, or hidden workflow from prose.
 """
     return text.encode("utf-8")
 
@@ -364,13 +348,14 @@ def _spec(
     value["suite"]["grader_schedule_hash"] = evaluator.v5_grader_schedule_hash(
         value, scenarios
     )
+    minimum_pair_benefit = round(1 / len(scenarios), 6)
     value["hard_gates"] = [
         {
             "gate_id": "critical-benefit",
             "kind": "benefit",
             "metric": "task_pass_rate",
             "direction": "at_least",
-            "threshold": 0.0,
+            "threshold": minimum_pair_benefit,
             "authority": "evaluation-owner",
             "required": True,
         },
@@ -420,8 +405,10 @@ def _spec(
             "required": True,
         },
     ]
+    primary_estimand = value["analysis"]["estimands"][0]
+    primary_estimand["minimum_benefit"] = minimum_pair_benefit
     value["analysis"]["estimands"] = [
-        value["analysis"]["estimands"][0],
+        primary_estimand,
         {
             "estimand_id": "controlled-context-cost",
             "metric": "controlled_skill_context_bytes",
@@ -544,33 +531,35 @@ def _calibration_view(
     class_name: str,
     repetition: int,
 ) -> dict[str, str]:
-    mechanisms = ", ".join(claims)
+    required_claims = claims if repetition == 1 else claims[:1]
+    mechanisms = ", ".join(required_claims)
     process_steps = "; ".join(
         f"step {index} ({claim}): {detail}"
         for index, (claim, detail) in enumerate(
-            zip(claims, SKILLS[skill_id]["process_evidence"], strict=True),
+            zip(
+                required_claims,
+                SKILLS[skill_id]["process_evidence"][: len(required_claims)],
+                strict=True,
+            ),
             start=1,
         )
     )
     evidence = {
         "quality-check": {
             "known_good": (
-                "Observed result record: the required artifact is present and readable; "
-                "every requirement row is complete; the verification command exited 0 "
-                "with no failing checks; the handoff names the usable output.",
-                "Observed bundle: report.md contains the final result and every mandatory "
-                "section; its requirement map binds each stated input to a named output "
-                "section; the verification command verify_report.py exited 0 with zero "
-                "missing or contradictory fields; the handoff names report.md as the "
-                "usable output.",
+                "The final answer artifact addresses every explicit task requirement, "
+                "matches all bound fixture facts, and introduces no contradictory claim.",
+                "The readable final artifact contains every requested result; its evidence "
+                "map binds each factual claim to a supplied fixture, and the completeness "
+                "check reports zero missing or contradictory requirements.",
             ),
             "known_bad": (
                 "The submission is only a placeholder and omits the requested result.",
                 "The output contradicts a mandatory input and cannot be used for the task.",
             ),
             "boundary": (
-                "The main result is present, but the required verification and handoff are absent.",
-                "Most requirements are addressed, but one mandatory deliverable is missing.",
+                "The main result is present, but one explicit required outcome is absent.",
+                "Most explicit requirements are addressed, but one mandatory result is missing.",
             ),
             "abstain": (
                 "Only the task request is available; candidate output and verification were not captured.",
@@ -579,7 +568,7 @@ def _calibration_view(
         },
         "process-check": {
             "known_good": (
-                f"Complete trace with exactly three completed entries: {process_steps}. "
+                f"Complete trace with exactly {len(required_claims)} completed entries: {process_steps}. "
                 "No other trace entry is present.",
                 f"Bound process record: {process_steps}. Every entry has input and output "
                 "bindings with status=completed, and unrelated_actions=[].",
@@ -589,12 +578,10 @@ def _calibration_view(
                 "The trace follows an unrelated workflow and contains no evidence of the declared Skill mechanism.",
             ),
             "boundary": (
-                f"Terminal trace: {claims[0]}=completed; {claims[1]}=completed; "
-                f"{claims[2]}=not_run; run_status=completed; record_closed=true. "
-                "The closed run skipped the required third mechanism.",
-                f"Terminal trace: {claims[0]}=completed; {claims[1]}=not_run; "
-                f"{claims[2]}=not_run; run_status=completed; record_closed=true. "
-                "The closed run executed only the first required mechanism.",
+                f"Terminal trace: {required_claims[-1]}=not_run; "
+                "run_status=completed; record_closed=true. The closed run skipped a required mechanism.",
+                f"Terminal trace: {required_claims[0]}=not_run; unrelated_workflow=completed; "
+                "run_status=completed; record_closed=true.",
             ),
             "abstain": (
                 "No process trace or mechanism evidence was captured.",
@@ -607,38 +594,29 @@ def _calibration_view(
             'The task supplies JSON `{"status": "completed"}`. The final patch artifact '
             'adds integer `"schema_version": 1`, preserves the existing field and JSON '
             "syntax, and the schema verification passes.",
-            "The answer names the validator, `run.json`, and L0 v5 contract as the owner "
-            "surface, adds integer `schema_version: 5` to that same input, and uses the "
-            "documented "
-            "`python3 $SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py contract "
-            "run.json` verification form; it adds no input artifact or validator argument.",
+            "The final answer artifact names `skill-evaluator/scripts/validate_eval_suite.py` and "
+            "`fixtures/l0-spec.json` as the owners and gives the documented one-argument "
+            "command `python3 skill-evaluator/scripts/validate_eval_suite.py "
+            "fixtures/l0-spec.json`; the focused verification exits 0, and it does not "
+            "start the runner or add scenario/Host inputs.",
         )
         evidence[check_id]["known_bad"] = (
             evidence[check_id]["known_bad"][0],
-            "The task names the validator, `run.json`, and L0 v5 contract, but the answer "
-            "assigns ownership to `run_eval_plan.py`, creates `spec-v5.json`, and validates "
-            "`run.json scenarios.jsonl`; it changes the owner and input and adds a validator "
-            "argument.",
+            "The answer starts `run_eval_plan.py` and supplies a scenario and Host manifest "
+            "to the L0 validator; it changes the owner and adds two forbidden inputs.",
         )
         evidence[check_id]["boundary"] = (
             'The task supplies JSON `{"status": "completed"}`, but the patch uses '
-            'YAML-like `schema_version: "1"`; it changes the integer to a string and does '
+            'YAML-like `schema_version: "1"`; it adds a string instead of the required integer and does '
             "not preserve JSON syntax or provide passing verification.",
             evidence[check_id]["boundary"][1],
-        )
-    if skill_id == "skill-evaluator" and check_id == "process-check":
-        evidence[check_id]["known_good"] = (
-            evidence[check_id]["known_good"][0]
-            + " The treatment envelope reports body_load_count=1 and "
-            "controlled_bytes=10309; these are context-cost facts, not workflow actions.",
-            evidence[check_id]["known_good"][1],
         )
     task = (
         f"Judge whether the supplied evidence establishes a complete, correct, and "
         f"usable deliverable for the {skill_id} sentinel task."
         if check_id == "quality-check"
         else (
-            "Judge whether the trace demonstrates all three mechanisms required by "
+            "Judge whether the trace demonstrates exactly the mechanisms required by "
             f"this calibration task ({mechanisms}) without unrelated workflow."
         )
     )
@@ -779,9 +757,29 @@ def _validate_semantics(
             f"{skill_id} tracked sentinel must remain public and non-ready"
         )
     tags = {tag for row in scenarios for tag in row["tags"]}
-    required_tags = {case[1] for case in config["cases"]}
+    required_tags = {case["coverage"] for case in config["cases"]}
     if not required_tags <= tags:
         raise ValueError(f"{skill_id} sentinel coverage is incomplete")
+    fixture_paths = set(config["fixtures"])
+    case_ids = {case["id"] for case in config["cases"]}
+    protected_case_ids = {case["id"] for case in config["cases"] if case["protected"]}
+    pairing = config["expected_pairing"]
+    baseline_failures = set(pairing["baseline_failures"])
+    minimum_failures = config.get("minimum_baseline_failure_cases", 2)
+    if (
+        not baseline_failures <= case_ids
+        or len(baseline_failures) < minimum_failures
+        or pairing["protected_no_regression"] not in protected_case_ids
+        or pairing["protected_no_regression"] in baseline_failures
+    ):
+        raise ValueError(f"{skill_id} paired headroom contract is incomplete")
+    for case in config["cases"]:
+        if (
+            not case["initial_files"]
+            or not set(case["initial_files"]) <= fixture_paths
+            or not case["semantic_oracle"]
+        ):
+            raise ValueError(f"{skill_id}-{case['id']} fixture contract is incomplete")
     protected = [row for row in scenarios if "protected" in row["tags"]]
     if len(protected) != 1 or protected[0]["attribution_evaluable"] is not False:
         raise ValueError(f"{skill_id} protected sentinel cardinality is invalid")
@@ -834,31 +832,38 @@ def materialize(repository_root: Path) -> list[Path]:
         REPOSITORY_ROOT / "skill-evaluator/templates/grader-output.schema.json"
     ).read_bytes()
     host_bytes = _host_manifest()
-    verifier_bytes = VERIFIER.encode("utf-8")
     generated: list[Path] = []
     skill_bindings: dict[str, dict[str, Any]] = {}
     seen_tasks: set[str] = set()
     for skill_id, config in SKILLS.items():
         relative_root = MODEL_ROOT / "sentinels" / skill_id
         target = repository_root / relative_root
-        task_bytes = _json_bytes(
-            {
-                "schema_version": 1,
-                "skill_id": skill_id,
-                "marker": f"frontier-{skill_id}-sentinel-v1",
-                "allowed_effects": ["workspace-local-output"],
-                "regression_origin": config["regression_origin"],
-            }
-        )
+        if not config["fixtures"] or any(
+            Path(path).is_absolute()
+            or Path(path).parts[:1] != ("fixtures",)
+            or ".." in Path(path).parts
+            or not isinstance(content, str)
+            for path, content in config["fixtures"].items()
+        ):
+            raise ValueError(f"{skill_id} fixture inventory is invalid")
+        fixture_payloads = {
+            path: content.encode("utf-8")
+            for path, content in config["fixtures"].items()
+        }
+        fixture_bindings = {
+            path: {"path": path, "sha256": _sha256(payload)}
+            for path, payload in fixture_payloads.items()
+        }
         manifest_bytes = _json_bytes(
             {
                 "schema_version": 1,
                 "artifacts": [
                     {
-                        "path": "task.json",
-                        "sha256": _sha256(task_bytes),
+                        "path": Path(path).relative_to("fixtures").as_posix(),
+                        "sha256": _sha256(payload),
                         "encoding": "utf-8",
                     }
+                    for path, payload in sorted(fixture_payloads.items())
                 ],
             }
         )
@@ -868,25 +873,19 @@ def materialize(repository_root: Path) -> list[Path]:
                 skill_id=skill_id,
                 case=case,
                 fixture_hash=_sha256(manifest_bytes),
-                initial_file=(
-                    {
-                        "path": "fixtures/task.json",
-                        "sha256": _sha256(task_bytes),
-                    }
-                    if skill_id == "skill-evaluator"
-                    and case[0] == "cli-schema-diagnosis"
-                    else None
-                ),
+                fixture_bindings=fixture_bindings,
             )
             for case in config["cases"]
         ]
         scenario_bytes = _jsonl_bytes(scenarios)
         prompt_bytes = _grader_prompt(skill_id, config["claims"])
         calibration_bytes = _calibration_gold(skill_id, config["claims"])
+        verifier_bytes = (SENTINEL_SOURCE_ROOT / config["verifier_source"]).read_bytes()
         initial = {
-            target / "fixtures/task.json": task_bytes,
+            **{target / path: payload for path, payload in fixture_payloads.items()},
             target / "fixtures/manifest.json": manifest_bytes,
             target / "verify.py": verifier_bytes,
+            target / "verify_common.py": COMMON_VERIFIER_BYTES,
             target / "grader-prompt.md": prompt_bytes,
             target / "grader-output.schema.json": output_schema_bytes,
             target / "host-manifest.template.json": host_bytes,
@@ -965,14 +964,23 @@ def materialize(repository_root: Path) -> list[Path]:
                     (relative_root / "fixtures/manifest.json").as_posix(),
                     manifest_bytes,
                 ),
-                _binding((relative_root / "fixtures/task.json").as_posix(), task_bytes),
+                *[
+                    _binding((relative_root / path).as_posix(), payload)
+                    for path, payload in sorted(fixture_payloads.items())
+                ],
             ],
             "verifier_roots": [
-                _binding((relative_root / "verify.py").as_posix(), verifier_bytes)
+                _binding((relative_root / "verify.py").as_posix(), verifier_bytes),
+                _binding(
+                    (relative_root / "verify_common.py").as_posix(),
+                    COMMON_VERIFIER_BYTES,
+                ),
             ],
-            "required_coverage_tags": [case[1] for case in config["cases"]],
+            "required_coverage_tags": [case["coverage"] for case in config["cases"]],
             "protected_case_ids": [
-                f"{skill_id}-{case[0]}" for case in config["cases"] if case[3]
+                f"{skill_id}-{case['id']}"
+                for case in config["cases"]
+                if case["protected"]
             ],
             "external_holdout_contract_id": f"{skill_id}-external-holdout-v1",
             "holdout_case_ceiling": 2,

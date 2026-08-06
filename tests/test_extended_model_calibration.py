@@ -63,7 +63,7 @@ def _file_hash(path: Path) -> str:
 
 def _materialize(root: Path, skill_id: str) -> dict[str, Path]:
     target = root / "calibration"
-    target.mkdir()
+    target.mkdir(parents=True)
     source = SENTINEL_ROOT / skill_id
     for name in (
         "grader-output.schema.json",
@@ -75,12 +75,14 @@ def _materialize(root: Path, skill_id: str) -> dict[str, Path]:
     shutil.copy2(FAKE_HOST, target / "calibration-host.py")
     host = host_manifest()
     executable = Path(sys.executable).resolve()
-    host["command"].update({
-        "argv": [str(executable), str(target / "calibration-host.py")],
-        "resolved_executable": str(executable),
-        "executable_sha256": _file_hash(executable),
-        "env_allowlist": [],
-    })
+    host["command"].update(
+        {
+            "argv": [str(executable), str(target / "calibration-host.py")],
+            "resolved_executable": str(executable),
+            "executable_sha256": _file_hash(executable),
+            "env_allowlist": [],
+        }
+    )
     host["identity"]["host_build"] = _file_hash(target / "calibration-host.py")
     host["manifest_hash"] = self_hash(host, "manifest_hash")
     (target / "host.json").write_text(
@@ -145,14 +147,22 @@ def _runner_command(
     command = [
         sys.executable,
         str(RUNNER),
-        "--spec", str(paths["spec"]),
-        "--labels", str(paths["labels"]),
-        "--host", str(paths["host"]),
-        "--output-dir", str(paths["root"] / "run"),
-        "--created", "2026-08-04T00:00:00Z",
-        "--expires", "2026-09-04T00:00:00Z",
-        "--expected-requests", "16",
-        "--host-timeout", "10",
+        "--spec",
+        str(paths["spec"]),
+        "--labels",
+        str(paths["labels"]),
+        "--host",
+        str(paths["host"]),
+        "--output-dir",
+        str(paths["root"] / "run"),
+        "--created",
+        "2026-08-04T00:00:00Z",
+        "--expires",
+        "2026-09-04T00:00:00Z",
+        "--expected-requests",
+        "16",
+        "--host-timeout",
+        "10",
     ]
     if max_workers is not None:
         command.extend(("--max-workers", str(max_workers)))
@@ -160,7 +170,9 @@ def _runner_command(
 
 
 class ModelCalibrationLifecycleTests(unittest.TestCase):
-    def test_calibration_host_uses_only_the_declared_transport_environment(self) -> None:
+    def test_calibration_host_uses_only_the_declared_transport_environment(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as raw:
             paths = _materialize(Path(raw), "writing-plans")
             host = json.loads(paths["host"].read_text())
@@ -203,29 +215,33 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                     valid_until="2026-08-04T00:00:00Z",
                 ),
             )
-            preparation = with_self_hash({
-                "schema_version": "model-evolution-calibration-preparation/1",
-                "campaign_id": campaign["campaign_id"],
-                "campaign_hash": campaign["campaign_hash"],
-                "state_revision": campaign["state_revision"],
-                "as_of": "2026-08-03T00:00:00Z",
-                "created": "2026-08-03T00:00:00Z",
-                "expires": "2026-08-04T00:00:00Z",
-                "commands": [{
-                    "skill_id": "writing-plans",
-                    "request_count": 1,
-                    "run": [],
-                    "validate": [],
-                    "record": [],
-                }],
-            }, "preparation_hash")
+            preparation = with_self_hash(
+                {
+                    "schema_version": "model-evolution-calibration-preparation/1",
+                    "campaign_id": campaign["campaign_id"],
+                    "campaign_hash": campaign["campaign_hash"],
+                    "state_revision": campaign["state_revision"],
+                    "as_of": "2026-08-03T00:00:00Z",
+                    "created": "2026-08-03T00:00:00Z",
+                    "expires": "2026-08-04T00:00:00Z",
+                    "commands": [
+                        {
+                            "skill_id": "writing-plans",
+                            "request_count": 1,
+                            "run": [],
+                            "validate": [],
+                            "record": [],
+                        }
+                    ],
+                },
+                "preparation_hash",
+            )
             write_json(
                 campaign_root / "calibration/preparation.json",
                 preparation,
             )
             terminal_root = (
-                campaign_root
-                / "calibration/writing-plans/run/terminals/001"
+                campaign_root / "calibration/writing-plans/run/terminals/001"
             )
             terminal_root.mkdir(parents=True)
             result = {
@@ -306,22 +322,27 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                     valid_until="2026-08-04T00:00:00Z",
                 ),
             )
-            preparation = with_self_hash({
-                "schema_version": "model-evolution-calibration-preparation/1",
-                "campaign_id": campaign["campaign_id"],
-                "campaign_hash": campaign["campaign_hash"],
-                "state_revision": campaign["state_revision"],
-                "as_of": "2026-08-03T00:00:00Z",
-                "created": "2026-08-03T00:00:00Z",
-                "expires": "2026-08-04T00:00:00Z",
-                "commands": [{
-                    "skill_id": "writing-plans",
-                    "request_count": 1,
-                    "run": [],
-                    "validate": [],
-                    "record": [],
-                }],
-            }, "preparation_hash")
+            preparation = with_self_hash(
+                {
+                    "schema_version": "model-evolution-calibration-preparation/1",
+                    "campaign_id": campaign["campaign_id"],
+                    "campaign_hash": campaign["campaign_hash"],
+                    "state_revision": campaign["state_revision"],
+                    "as_of": "2026-08-03T00:00:00Z",
+                    "created": "2026-08-03T00:00:00Z",
+                    "expires": "2026-08-04T00:00:00Z",
+                    "commands": [
+                        {
+                            "skill_id": "writing-plans",
+                            "request_count": 1,
+                            "run": [],
+                            "validate": [],
+                            "record": [],
+                        }
+                    ],
+                },
+                "preparation_hash",
+            )
             write_json(campaign_root / "calibration/preparation.json", preparation)
             skill_root = campaign_root / "calibration/writing-plans"
             terminal_root = skill_root / "run/terminals/001"
@@ -346,23 +367,25 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                 "treatment_error": None,
             }
             (terminal_root / "host-stdout.jsonl").write_text(
-                json.dumps(host_result, sort_keys=True, separators=(",", ":"))
-                + "\n",
+                json.dumps(host_result, sort_keys=True, separators=(",", ":")) + "\n",
                 encoding="utf-8",
             )
-            terminal = with_self_hash({
-                "schema_version": "model-calibration-terminal/1",
-                "example_id": example_id,
-                "check_id": "quality-check",
-                "host_result_hash": "sha256:" + "6" * 64,
-                "label": "abstain",
-                "notes": "Evidence is insufficient.",
-                "payload_hash": payload_hash,
-                "position": 1,
-                "request_hash": request_hash,
-                "severity": 0,
-                "uncertainty": "high",
-            }, "terminal_hash")
+            terminal = with_self_hash(
+                {
+                    "schema_version": "model-calibration-terminal/1",
+                    "example_id": example_id,
+                    "check_id": "quality-check",
+                    "host_result_hash": "sha256:" + "6" * 64,
+                    "label": "abstain",
+                    "notes": "Evidence is insufficient.",
+                    "payload_hash": payload_hash,
+                    "position": 1,
+                    "request_hash": request_hash,
+                    "severity": 0,
+                    "uncertainty": "high",
+                },
+                "terminal_hash",
+            )
             write_json(terminal_root / "terminal.json", terminal)
             label = {
                 "example_id": example_id,
@@ -432,15 +455,18 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
             campaign = materialize_campaign(Path(raw))["campaign"]
             campaign["phase"] = "target_profile_ready"
             campaign = with_self_hash(campaign, "campaign_hash")
-            preparation = with_self_hash({
-                "campaign_id": campaign["campaign_id"],
-                "campaign_hash": campaign["campaign_hash"],
-                "state_revision": campaign["state_revision"],
-                "commands": [
-                    {"skill_id": skill_id, "request_count": 16}
-                    for skill_id in SKILL_IDS
-                ],
-            }, "preparation_hash")
+            preparation = with_self_hash(
+                {
+                    "campaign_id": campaign["campaign_id"],
+                    "campaign_hash": campaign["campaign_hash"],
+                    "state_revision": campaign["state_revision"],
+                    "commands": [
+                        {"skill_id": skill_id, "request_count": 16}
+                        for skill_id in SKILL_IDS
+                    ],
+                },
+                "preparation_hash",
+            )
             campaign["skill_evidence"][SKILL_IDS[0]]["grader_calibration"] = {
                 "path": "calibration/first.json",
                 "root": "campaign",
@@ -462,7 +488,9 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
 
     maxDiff = None
 
-    def test_four_skill_calibration_closes_64_fake_requests_without_replay(self) -> None:
+    def test_four_skill_calibration_closes_64_fake_requests_without_replay(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
             total = 0
@@ -477,11 +505,16 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                     check=False,
                 )
                 self.assertEqual(0, first.returncode, first.stdout + first.stderr)
-                terminals = sorted((paths["root"] / "run/terminals").glob(
-                    "*/terminal.json",
-                ))
+                terminals = sorted(
+                    (paths["root"] / "run/terminals").glob(
+                        "*/terminal.json",
+                    )
+                )
                 self.assertEqual(16, len(terminals))
-                before = {path.relative_to(paths["root"]): path.read_bytes() for path in terminals}
+                before = {
+                    path.relative_to(paths["root"]): path.read_bytes()
+                    for path in terminals
+                }
                 second = subprocess.run(
                     command,
                     cwd=EVALUATOR,
@@ -492,17 +525,24 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                 self.assertEqual(0, second.returncode, second.stdout + second.stderr)
                 self.assertEqual(
                     before,
-                    {path.relative_to(paths["root"]): path.read_bytes() for path in terminals},
+                    {
+                        path.relative_to(paths["root"]): path.read_bytes()
+                        for path in terminals
+                    },
                 )
                 validation = subprocess.run(
                     [
                         sys.executable,
                         str(VALIDATOR),
                         "calibration",
-                        "--spec", str(paths["spec"]),
-                        "--ratings", str(paths["ratings"]),
-                        "--labels", str(paths["labels"]),
-                        "--output", str(paths["calibration"]),
+                        "--spec",
+                        str(paths["spec"]),
+                        "--ratings",
+                        str(paths["ratings"]),
+                        "--labels",
+                        str(paths["labels"]),
+                        "--output",
+                        str(paths["calibration"]),
                     ],
                     cwd=EVALUATOR,
                     text=True,
@@ -510,7 +550,9 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                     check=False,
                 )
                 self.assertEqual(
-                    0, validation.returncode, validation.stdout + validation.stderr,
+                    0,
+                    validation.returncode,
+                    f"{skill_id}: {validation.stdout}{validation.stderr}",
                 )
                 calibration = json.loads(paths["calibration"].read_text())
                 self.assertEqual(
@@ -566,7 +608,9 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
             self.assertEqual([partial], list(partial.parent.iterdir()))
             self.assertFalse(paths["ratings"].exists())
 
-    def test_completed_terminal_with_changed_identity_blocks_before_replay(self) -> None:
+    def test_completed_terminal_with_changed_identity_blocks_before_replay(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             paths = _materialize(Path(temporary), SKILL_IDS[0])
             command = _runner_command(paths, max_workers=4)
@@ -578,9 +622,11 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(0, first.returncode, first.stdout + first.stderr)
-            terminals = sorted((paths["root"] / "run/terminals").glob(
-                "*/terminal.json",
-            ))
+            terminals = sorted(
+                (paths["root"] / "run/terminals").glob(
+                    "*/terminal.json",
+                )
+            )
             before = {path: path.read_bytes() for path in terminals}
             labels = paths["labels"].read_text().splitlines()
             labels[0], labels[1] = labels[1], labels[0]
@@ -624,7 +670,9 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
             host_path = campaign_root / "target-host.json"
             host = host_manifest()
             host["command"]["argv"].extend(["--timeout", "10"])
-            write_json(host_path, {**host, "manifest_hash": self_hash(host, "manifest_hash")})
+            write_json(
+                host_path, {**host, "manifest_hash": self_hash(host, "manifest_hash")}
+            )
             sentinel_path = (
                 REPOSITORY_ROOT / "evaluation/model-evolution/sentinel-index-v1.json"
             )
@@ -657,13 +705,16 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                 expires="2026-09-04T00:00:00Z",
                 max_workers=4,
             )
-            self.assertEqual(list(SKILL_IDS), [
-                item["skill_id"] for item in prepared["commands"]
-            ])
-            self.assertEqual([4, 5, 6, 7], [
-                int(item["record"][item["record"].index("--expected-revision") + 1])
-                for item in prepared["commands"]
-            ])
+            self.assertEqual(
+                list(SKILL_IDS), [item["skill_id"] for item in prepared["commands"]]
+            )
+            self.assertEqual(
+                [4, 5, 6, 7],
+                [
+                    int(item["record"][item["record"].index("--expected-revision") + 1])
+                    for item in prepared["commands"]
+                ],
+            )
             before = (campaign_root / "calibration/preparation.json").read_bytes()
             repeated = prepare_calibrations(
                 repository_root=REPOSITORY_ROOT,

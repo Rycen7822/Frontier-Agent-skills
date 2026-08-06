@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -89,7 +90,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             for row in rows:
                 task = row["execution_context"]["task"]
                 self.assertEqual(task, row["turns"][0]["input"]["content"])
-                self.assertGreaterEqual(len(task.split()), 20)
+                self.assertTrue(task.strip())
                 self.assertFalse(
                     any(phrase in task.lower() for phrase in forbidden_placeholders),
                     f"{row['case_id']} retains an unspecified placeholder task",
@@ -106,59 +107,48 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             tags = {tag for row in rows for tag in row["tags"]}
             self.assertLessEqual(set(record["required_coverage_tags"]), tags)
             by_id = {row["case_id"]: row for row in rows}
-            if skill_id == "skill-evaluator":
-                tasks = {
-                    case_id: row["execution_context"]["task"]
-                    for case_id, row in by_id.items()
-                }
-                self.assertIn(
-                    "L0 as static whole-package audit and L1 as execution diagnosis",
-                    tasks["skill-evaluator-level-owner-selection"],
-                )
-                self.assertIn(
-                    "already verified input facts",
-                    tasks["skill-evaluator-deterministic-first"],
-                )
-                self.assertIn(
-                    "relevant Skill mechanism for this task is deterministic-first",
-                    tasks["skill-evaluator-deterministic-first"],
-                )
-                self.assertIn(
-                    "exact documented one-argument L0 validation command",
-                    tasks["skill-evaluator-cli-schema-diagnosis"],
-                )
-                self.assertIn(
-                    "existing `fixtures/task.json`",
-                    tasks["skill-evaluator-cli-schema-diagnosis"],
-                )
-                self.assertNotIn(
-                    "validate_eval_suite.py",
-                    tasks["skill-evaluator-cli-schema-diagnosis"],
-                )
-                cli_fixture = by_id["skill-evaluator-cli-schema-diagnosis"]["fixture"]
+            definition_config = sentinel_builder.SKILLS[skill_id]
+            manifest = load_json(
+                SENTINEL_ROOT / skill_id / "fixtures/manifest.json",
+                label="fixture manifest",
+            )
+            self.assertEqual(
+                {f"fixtures/{artifact['path']}" for artifact in manifest["artifacts"]},
+                set(definition_config["fixtures"]),
+            )
+            definitions = {
+                f"{skill_id}-{case['id']}": case for case in definition_config["cases"]
+            }
+            self.assertEqual(set(by_id), set(definitions))
+            for case_id, row in by_id.items():
+                definition = definitions[case_id]
+                initial_files = row["fixture"]["initial_files"]
                 self.assertEqual(
-                    ["fixtures/task.json"],
-                    [item["path"] for item in cli_fixture["initial_files"]],
+                    [item["path"] for item in initial_files],
+                    definition["initial_files"],
                 )
-                self.assertTrue(
-                    cli_fixture["initial_files"][0]["sha256"].startswith("sha256:")
-                )
-                self.assertIn(
-                    "`--report-only`",
-                    tasks["skill-evaluator-analyzer-exit-contract"],
-                )
-                self.assertNotIn(
-                    "exit `3`",
-                    tasks["skill-evaluator-analyzer-exit-contract"],
-                )
-                self.assertIn(
-                    "integer `schema_version: 1`",
-                    tasks["skill-evaluator-protected-no-reviewer"],
-                )
-                self.assertIn(
-                    'JSON record `{"status": "completed"}`',
-                    tasks["skill-evaluator-protected-no-reviewer"],
-                )
+                self.assertTrue(definition["semantic_oracle"])
+                for expected_fact in definition["semantic_oracle"]:
+                    self.assertNotIn(
+                        expected_fact.casefold(),
+                        row["execution_context"]["task"].casefold(),
+                    )
+                for item in initial_files:
+                    fixture = SENTINEL_ROOT / skill_id / item["path"]
+                    self.assertTrue(fixture.is_file(), fixture)
+                    self.assertEqual(
+                        item["sha256"],
+                        "sha256:" + hashlib.sha256(fixture.read_bytes()).hexdigest(),
+                    )
+                    self.assertIn(item["path"], row["execution_context"]["task"])
+            self.assertNotIn(
+                "fixtures/task.json",
+                {
+                    item["path"]
+                    for row in rows
+                    for item in row["fixture"]["initial_files"]
+                },
+            )
             for protected_id in record["protected_case_ids"]:
                 protected = by_id[protected_id]
                 self.assertFalse(protected["attribution_evaluable"])
@@ -217,10 +207,26 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             spec = load_json(root / "eval-spec.template.json", label="sentinel spec")
             quality = load_json(root / "suite-quality.json", label="suite quality")
             self.assertFalse(spec["execution"]["ready"])
-            expected_headroom = 1 if skill_id == "skill-evaluator" else 2
+            expected_headroom = 2
             self.assertEqual(
                 spec["analysis"]["materiality"]["minimum_baseline_failure_cases"],
                 expected_headroom,
+            )
+            definition = sentinel_builder.SKILLS[skill_id]
+            self.assertGreaterEqual(
+                len(definition["expected_pairing"]["baseline_failures"]),
+                expected_headroom,
+            )
+            minimum_pair_benefit = round(1 / len(definition["cases"]), 6)
+            critical_gate = next(
+                gate
+                for gate in spec["hard_gates"]
+                if gate["gate_id"] == "critical-benefit"
+            )
+            self.assertEqual(critical_gate["threshold"], minimum_pair_benefit)
+            self.assertEqual(
+                spec["analysis"]["estimands"][0]["minimum_benefit"],
+                minimum_pair_benefit,
             )
             self.assertIsNone(spec["suite"]["holdout"])
             self.assertNotIn("calibration", spec["suite"])
@@ -235,11 +241,15 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
         expected = {
             "software-quality-workflows": (
                 "software-quality-workflows-protected-no-state",
-                ("`src/path.py`", "`tmp = input_path.resolve()`", "`return tmp`"),
+                ("`fixtures/src/path.py`", "`tmp`", "`normalized_path`"),
             ),
             "writing-plans": (
                 "writing-plans-protected-description",
-                ("`agents/openai.yaml`", "from `8.1.0` to `8.1.1`"),
+                (
+                    "`fixtures/agents/openai.yaml`",
+                    "from 8.2.0 to 8.2.1",
+                    "Preserve its full description verbatim",
+                ),
             ),
         }
         for skill_id, (case_id, required_texts) in expected.items():
@@ -335,15 +345,14 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             for row in positive:
                 candidate_evidence = row["payload"]["view"]["candidate_evidence"]
                 if row["check_id"] == "quality-check":
-                    self.assertIn("verification", candidate_evidence)
-                    self.assertTrue(
-                        "artifact" in candidate_evidence
-                        or "final result" in candidate_evidence
-                    )
+                    self.assertIn("artifact", candidate_evidence)
                 else:
                     self.assertIn("step 1", candidate_evidence)
                     self.assertIn("completed", candidate_evidence)
-                    for claim in sentinel_builder.SKILLS[skill_id]["claims"]:
+                    required_claims = sentinel_builder.SKILLS[skill_id]["claims"]
+                    if row["example_id"].endswith("process-check-cal-05"):
+                        required_claims = required_claims[:1]
+                    for claim in required_claims:
                         self.assertIn(claim, candidate_evidence)
             process_boundaries = [
                 row
@@ -359,8 +368,12 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             process_rows = [row for row in rows if row["check_id"] == "process-check"]
             for row in process_rows:
                 task = row["payload"]["view"]["task"]
-                self.assertIn("all three mechanisms required", task)
-                for claim in sentinel_builder.SKILLS[skill_id]["claims"]:
+                self.assertIn("exactly the mechanisms required", task)
+                required_claims = sentinel_builder.SKILLS[skill_id]["claims"]
+                position = int(row["example_id"].rsplit("-", 1)[1])
+                if position >= 5:
+                    required_claims = required_claims[:1]
+                for claim in required_claims:
                     self.assertIn(claim, task)
             quality_positive_two = next(
                 row
@@ -389,16 +402,16 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     "does not preserve JSON syntax",
                     quality_boundary_one["payload"]["view"]["candidate_evidence"],
                 )
-                self.assertIn("schema_version: 5", quality_evidence)
-                self.assertIn("owner surface", quality_evidence)
-                self.assertIn("adds no input artifact", quality_evidence)
+                self.assertIn("validate_eval_suite.py", quality_evidence)
+                self.assertIn("fixtures/l0-spec.json", quality_evidence)
+                self.assertIn("one-argument", quality_evidence)
                 quality_negative_two = next(
                     row
                     for row in rows
                     if row["example_id"].endswith("quality-check-cal-06")
                 )
                 self.assertIn(
-                    "adds a validator argument",
+                    "two forbidden inputs",
                     quality_negative_two["payload"]["view"]["candidate_evidence"],
                 )
                 self.assertIn(
@@ -406,49 +419,22 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     quality_negative_two["payload"]["view"]["candidate_evidence"],
                 )
             else:
-                self.assertIn("report.md", quality_evidence)
-                self.assertIn("zero missing or contradictory fields", quality_evidence)
+                self.assertIn("evidence map", quality_evidence)
+                self.assertIn(
+                    "zero missing or contradictory requirements", quality_evidence
+                )
             prompt = (root / grader["prompt"]["path"]).read_text()
             self.assertIn("against every declared mechanism", prompt)
-            self.assertIn("does not mark as relevant", prompt)
+            self.assertIn("task leaves irrelevant", prompt)
+            self.assertIn("Treat bound task fixtures as supplied facts", prompt)
             self.assertIn("`uncertainty` to `high`", prompt)
-            if skill_id == "skill-evaluator":
-                self.assertIn(
-                    "facts explicitly stated by the task as supplied evidence",
-                    prompt,
-                )
-                self.assertIn(
-                    "verified runtime receipt belongs to L1 execution diagnosis",
-                    prompt,
-                )
-                self.assertIn(
-                    "documented Python/path form is equivalent",
-                    prompt,
-                )
-                self.assertIn("valid contract owner surface", prompt)
-                self.assertIn("usable patch preserves JSON syntax", prompt)
-                self.assertIn(
-                    "task-consistent level labels and frozen controls",
-                    prompt,
-                )
-                self.assertIn(
-                    "only false or contradictory additions can fail",
-                    prompt,
-                )
-                self.assertIn("belong only to the context-cost axis", prompt)
-                self.assertIn("use them to change quality/process scores", prompt)
-                process_positive_one = next(
-                    row
-                    for row in rows
-                    if row["example_id"].endswith("process-check-cal-01")
-                )
-                process_evidence = process_positive_one["payload"]["view"][
-                    "candidate_evidence"
-                ]
-                self.assertIn("body_load_count=1", process_evidence)
-                self.assertIn(
-                    "context-cost facts, not workflow actions", process_evidence
-                )
+            for leaked_answer in (
+                "validate_eval_suite.py",
+                "exit `3`",
+                "schema_version",
+                "run_eval_plan.py",
+            ):
+                self.assertNotIn(leaked_answer, prompt)
             process_check = next(
                 check for check in checks.values() if check["dimension"] == "process"
             )
@@ -458,47 +444,65 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             )
 
     def test_deterministic_verifier_has_positive_and_negative_behavior(self) -> None:
-        verifier = SENTINEL_ROOT / SKILL_IDS[0] / "verify.py"
+        final_artifact = {
+            "path": "final-answer-fixture.md",
+            "sha256": "sha256:" + "1" * 64,
+        }
+        positive = {
+            "terminal_status": "completed",
+            "treatment_error": None,
+            "protocol_error": None,
+            "refusal": False,
+            "timeout": False,
+            "cleanup": {"status": "clean"},
+            "actions": [],
+            "state": [],
+            "handoffs": [],
+            "artifacts": [final_artifact],
+            "assertions": [
+                {
+                    "claim": "captured final Codex message",
+                    "artifact": final_artifact,
+                    "locally_verifiable": True,
+                }
+            ],
+        }
         cases = [
+            (positive, 0, True),
+            ({**positive, "artifacts": [], "assertions": []}, 1, False),
+            ({**positive, "cleanup": {"status": "dirty"}}, 1, False),
+            ({**positive, "state": [{"status": "open"}]}, 1, False),
+            ({**positive, "handoffs": [{"status": "requested"}]}, 1, False),
             (
-                {
-                    "terminal_status": "completed",
-                    "treatment_error": None,
-                    "artifacts": [{"path": "final.md"}],
-                },
-                0,
-                True,
-            ),
-            (
-                {
-                    "terminal_status": "failed",
-                    "treatment_error": "fixture failure",
-                    "artifacts": [],
-                },
+                {**positive, "actions": [{"resolved_decision": "allow"}]},
                 1,
                 False,
             ),
         ]
-        for result_json, expected_exit, expected_pass in cases:
-            with (
-                self.subTest(expected_pass=expected_pass),
-                tempfile.TemporaryDirectory() as tmp,
-            ):
-                workspace = Path(tmp)
-                (workspace / "result.json").write_text(
-                    json.dumps(result_json), encoding="utf-8"
-                )
-                result = subprocess.run(
-                    [sys.executable, str(verifier)],
-                    cwd=workspace,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                self.assertEqual(result.returncode, expected_exit, result.stderr)
-                self.assertEqual(
-                    json.loads(result.stdout)["overall_pass"], expected_pass
-                )
+        for skill_id in SKILL_IDS:
+            verifier = SENTINEL_ROOT / skill_id / "verify.py"
+            for result_json, expected_exit, expected_pass in cases:
+                with (
+                    self.subTest(skill_id=skill_id, expected_pass=expected_pass),
+                    tempfile.TemporaryDirectory() as tmp,
+                ):
+                    workspace = Path(tmp)
+                    (workspace / "result.json").write_text(
+                        json.dumps(result_json), encoding="utf-8"
+                    )
+                    result = subprocess.run(
+                        [sys.executable, str(verifier)],
+                        cwd=workspace,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    self.assertEqual(result.returncode, expected_exit, result.stderr)
+                    output = json.loads(result.stdout)
+                    self.assertEqual(output["overall_pass"], expected_pass)
+                    self.assertEqual(
+                        {check["notes"] for check in output["checks"]}, {skill_id}
+                    )
 
 
 if __name__ == "__main__":

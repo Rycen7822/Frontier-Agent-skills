@@ -62,20 +62,16 @@
     ],
     "exposure_status": "not_applicable",
     "split_hashes": {
-      "dev": "sha256:acaf2d9de25afbaa8e9421e0d25314e8f6289abfcae4cd672ba34f5226f30358",
+      "dev": "sha256:67023de97b3e86ac809e2076baa580417cb92925e8212e39e0ce910a47f8d6ae",
       "heldout": null,
-      "regression": "sha256:2c814e42e343b6c6f3a57388429287aefde775796c03b4c921a013677e83ee30"
+      "regression": "sha256:93e3bb4f069ee3fb66a82de60a0e227c2b968f35fdae945bcc05e3454e6337af"
     }
   },
   "duplicate_groups": [
     {
       "case_ids": [
-        "long-document-segmented-writing-compact-recovery",
         "long-document-segmented-writing-compaction-resume",
-        "long-document-segmented-writing-direct-small-task",
-        "long-document-segmented-writing-protected-no-scratch",
-        "long-document-segmented-writing-segmented-draft",
-        "long-document-segmented-writing-whole-draft-review"
+        "long-document-segmented-writing-segmented-draft"
       ],
       "group_id": "fixture_overlap-1",
       "kind": "fixture_overlap",
@@ -114,7 +110,7 @@
     {
       "artifact": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:18691fd9bcad70514239433d930d27df35cc77c0fa06faad2ff93042841dfc82"
+        "sha256": "sha256:d69b59351d368ad6d08b9aeba00eaad9fd6b61fcade6a8ec175e16e5f34e8df6"
       },
       "locator": {
         "artifact": "grader-prompt.md",
@@ -153,7 +149,7 @@
         "start_line": 1
       },
       "source_hashes": [
-        "sha256:18691fd9bcad70514239433d930d27df35cc77c0fa06faad2ff93042841dfc82"
+        "sha256:d69b59351d368ad6d08b9aeba00eaad9fd6b61fcade6a8ec175e16e5f34e8df6"
       ],
       "status": "closed"
     }

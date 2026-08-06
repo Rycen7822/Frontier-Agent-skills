@@ -45,26 +45,12 @@
     ],
     "exposure_status": "not_applicable",
     "split_hashes": {
-      "dev": "sha256:4972d9453ff8c9b4b1ba88de17b6b812bccc7791362284edd568881fae3fd7e4",
+      "dev": "sha256:138891efb907c375020568c3e50f09bd6ec462bac28a88a9764cb6fffe54f62b",
       "heldout": null,
-      "regression": "sha256:f81450e770b1f72af16882d435d448f325c05349bc89564029d465efcde4ad24"
+      "regression": "sha256:6072b44c90f4cf92f3c138e5dcb61fc2a958956f647f0225954c40d69e60b36b"
     }
   },
-  "duplicate_groups": [
-    {
-      "case_ids": [
-        "skill-evaluator-analyzer-exit-contract",
-        "skill-evaluator-deterministic-first",
-        "skill-evaluator-level-owner-selection",
-        "skill-evaluator-protected-no-reviewer",
-        "skill-evaluator-transition-vs-revision"
-      ],
-      "group_id": "fixture_overlap-1",
-      "kind": "fixture_overlap",
-      "review_locator": null,
-      "status": "allowed"
-    }
-  ],
+  "duplicate_groups": [],
   "evaluation_id": "frontier-skill-evaluator-sentinel-v1",
   "golden": {
     "case_ids": [
@@ -96,7 +82,7 @@
     {
       "artifact": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:7b9814bbe16e11c3e4f48c443d7ee58a3cbe96d85e002dd91ef72e2efdc7597e"
+        "sha256": "sha256:44adf21f626114224333b9d0541b7b940891e7f2a96396c86548263496ff6b04"
       },
       "locator": {
         "artifact": "grader-prompt.md",
@@ -135,7 +121,7 @@
         "start_line": 1
       },
       "source_hashes": [
-        "sha256:7b9814bbe16e11c3e4f48c443d7ee58a3cbe96d85e002dd91ef72e2efdc7597e"
+        "sha256:44adf21f626114224333b9d0541b7b940891e7f2a96396c86548263496ff6b04"
       ],
       "status": "closed"
     }

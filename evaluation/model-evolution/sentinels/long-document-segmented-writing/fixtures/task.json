@@ -1,9 +1,0 @@
-{
-  "allowed_effects": [
-    "workspace-local-output"
-  ],
-  "marker": "frontier-long-document-segmented-writing-sentinel-v1",
-  "regression_origin": "session-scratch-artifact-overuse",
-  "schema_version": 1,
-  "skill_id": "long-document-segmented-writing"
-}

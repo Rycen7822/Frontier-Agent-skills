@@ -4,8 +4,19 @@ DEFINITION = {
     "name": "Skill Evaluator",
     "version": "3.3.0",
     "context_ceiling": 28672,
-    "minimum_baseline_failure_cases": 1,
+    "minimum_baseline_failure_cases": 2,
     "regression_origin": "deterministic-evidence-loop-and-reviewer-overuse",
+    "verifier_source": "skill_evaluator_verifier.py",
+    "expected_pairing": {
+        "baseline_failures": [
+            "level-owner-selection",
+            "deterministic-first",
+            "analyzer-exit-contract",
+            "cli-schema-diagnosis",
+            "transition-vs-revision",
+        ],
+        "protected_no_regression": "protected-no-reviewer",
+    },
     "claims": [
         "level-selection",
         "deterministic-first",
@@ -16,48 +27,82 @@ DEFINITION = {
         "schema, path, and lifecycle facts are closed before model grading",
         "the comparison uses bound evidence and marks unsupported claims as unsupported",
     ],
+    "fixtures": {
+        "fixtures/router.md": "L0 owns whole-package inventory and static review. L1 owns execution diagnosis with verified run receipts. Higher levels are unnecessary when the requested claim is already closed at a lower level.\n",
+        "fixtures/receipt.json": '{"schema_version":4,"exit_code":0,"terminal":true,"error":null}\n',
+        "fixtures/analysis-summary.json": '{"schema_version":4,"status":"inconclusive_ceiling","missing_evidence":["required holdout"],"contract_error":false,"io_error":false,"manual_decision":null}\n',
+        "fixtures/l0-spec.json": '{"schema_version":5,"level":"L0","execution":{"ready":false}}\n',
+        "fixtures/cli-contract.md": "Validate an L0 spec with exactly one positional argument: python3 skill-evaluator/scripts/validate_eval_suite.py SPEC. Do not invoke the runner.\n",
+        "fixtures/control-matrix.md": "Comparison A: model M1 to M2, Skill v3 fixed. Comparison B: Skill v3 to v4, model M2 fixed. In both comparisons Host, tasks, grader, and policy are fixed.\n",
+        "fixtures/invalid-record.json": '{"schema_version":"1","status":"completed"}\n',
+    },
     "cases": [
-        (
-            "level-owner-selection",
-            "owner-selection",
-            "The frozen Skill Evaluator router defines L0 as static whole-package audit and L1 as execution diagnosis with verified receipts. A signed local-command result has `exit_code=0`, `terminal=true`, and no error. Select the least expensive valid L0-L4 owner and explain why no higher level is necessary.",
-            False,
-            1,
-        ),
-        (
-            "deterministic-first",
-            "deterministic-first",
-            "The relevant Skill mechanism for this task is deterministic-first. Treat these as already verified input facts: a receipt parses against schema v1, its artifact path resolves inside the declared root, and its worker PID is inactive after `terminal=completed`. Close those facts and state whether a model grader is needed for them.",
-            False,
-            1,
-        ),
-        (
-            "analyzer-exit-contract",
-            "evidence-qualified-comparison",
-            "A complete, valid L2 analysis is `inconclusive` only because one required holdout is missing; there is no contract or I/O error and no manual `hold` or `reject`. State the analyzer exit code, whether `--report-only` changes it, and the maximum usefulness claim permitted.",
-            False,
-            1,
-        ),
-        (
-            "cli-schema-diagnosis",
-            "cli-diagnosis",
-            "State the exact documented one-argument L0 validation command for the existing `fixtures/task.json`, then identify the validator and that file as the owner. Do not run it, add another input or validator argument, or start the runner.",
-            False,
-            1,
-        ),
-        (
-            "transition-vs-revision",
-            "transition-revision",
-            "Classify two comparisons and name the frozen controls: A changes model M1 to M2 while Skill v3 is fixed; B changes Skill v3 to v4 while model M2 is fixed. Keep Host, tasks, grader, and policy unchanged.",
-            False,
-            2,
-        ),
-        (
-            "protected-no-reviewer",
-            "protected",
-            'A local JSON record `{"status": "completed"}` fails because schema v1 requires integer `schema_version: 1`. Give the exact JSON correction as patch text; do not claim it was applied and do not invoke a reviewer or provider.',
-            True,
-            1,
-        ),
+        {
+            "id": "level-owner-selection",
+            "coverage": "owner-selection",
+            "task": "Read `fixtures/router.md` and `fixtures/receipt.json`. Select the least expensive valid L0-L4 owner for diagnosing this completed execution receipt, and explain why no higher level is needed.",
+            "protected": False,
+            "turns": 1,
+            "initial_files": ["fixtures/router.md", "fixtures/receipt.json"],
+            "semantic_oracle": [
+                "L1 owns execution diagnosis and no higher level is necessary"
+            ],
+        },
+        {
+            "id": "deterministic-first",
+            "coverage": "deterministic-first",
+            "task": "Treat `fixtures/receipt.json` as already schema-, path-, and lifecycle-verified. Close those deterministic facts and state whether a model grader is needed for them.",
+            "protected": False,
+            "turns": 1,
+            "initial_files": ["fixtures/receipt.json"],
+            "semantic_oracle": [
+                "verified schema, path, and lifecycle facts need no model grader"
+            ],
+        },
+        {
+            "id": "analyzer-exit-contract",
+            "coverage": "evidence-qualified-comparison",
+            "task": "Read `fixtures/analysis-summary.json`. State the analyzer exit code, whether `--report-only` changes it, and the maximum usefulness claim permitted.",
+            "protected": False,
+            "turns": 1,
+            "initial_files": ["fixtures/analysis-summary.json"],
+            "semantic_oracle": [
+                "inconclusive evidence exits 3 and report-only does not change it"
+            ],
+        },
+        {
+            "id": "cli-schema-diagnosis",
+            "coverage": "cli-diagnosis",
+            "task": "Read `fixtures/cli-contract.md`. Give the exact one-argument L0 validation command for `fixtures/l0-spec.json`, name the validator and input owners, and do not start the runner.",
+            "protected": False,
+            "turns": 1,
+            "initial_files": [
+                "fixtures/cli-contract.md",
+                "fixtures/l0-spec.json",
+            ],
+            "semantic_oracle": [
+                "validate_eval_suite.py receives only fixtures/l0-spec.json"
+            ],
+        },
+        {
+            "id": "transition-vs-revision",
+            "coverage": "transition-revision",
+            "task": "Read `fixtures/control-matrix.md`. Classify both comparisons and name the controls that remain frozen.",
+            "protected": False,
+            "turns": 2,
+            "initial_files": ["fixtures/control-matrix.md"],
+            "semantic_oracle": ["A is a model transition and B is a Skill revision"],
+        },
+        {
+            "id": "protected-no-reviewer",
+            "coverage": "protected",
+            "task": "Read `fixtures/invalid-record.json`. Give only the JSON patch that changes `schema_version` to integer 1. Do not claim application and do not invoke a reviewer or provider.",
+            "protected": True,
+            "turns": 1,
+            "initial_files": ["fixtures/invalid-record.json"],
+            "semantic_oracle": [
+                "schema_version becomes integer 1 and status remains completed"
+            ],
+        },
     ],
 }

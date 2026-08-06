@@ -45,27 +45,12 @@
     ],
     "exposure_status": "not_applicable",
     "split_hashes": {
-      "dev": "sha256:029e247ae8d95008d4df0d86b82a5db03c84a588d649e109c10111c4c5446f43",
+      "dev": "sha256:3e28c1a637aac1751d39f545403c2aed339c61c6bde4ef309fc4c05cd07e959a",
       "heldout": null,
-      "regression": "sha256:f529642f7db5ba7519e084a07a5b5cf1fc0402fe229a3b8fa3f06df09efa98c1"
+      "regression": "sha256:3f967418f1ebc3b42fb869b7b86590cecdbd4cb0d7d8e46e79cff809da89dbbb"
     }
   },
-  "duplicate_groups": [
-    {
-      "case_ids": [
-        "software-quality-workflows-direct-routine-change",
-        "software-quality-workflows-proportionate-validation",
-        "software-quality-workflows-protected-no-state",
-        "software-quality-workflows-retire-dead-code",
-        "software-quality-workflows-single-specialist-risk",
-        "software-quality-workflows-two-independent-risks"
-      ],
-      "group_id": "fixture_overlap-1",
-      "kind": "fixture_overlap",
-      "review_locator": null,
-      "status": "allowed"
-    }
-  ],
+  "duplicate_groups": [],
   "evaluation_id": "frontier-software-quality-workflows-sentinel-v1",
   "golden": {
     "case_ids": [
@@ -97,7 +82,7 @@
     {
       "artifact": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:d2b3f65d137be1ba93f9443cf0fc1d30ccd8acf2b0387135ead001f7035e4483"
+        "sha256": "sha256:66f767bfa571e51b265fd1a506280881a618a2b3de1f1e7e53dbb8d5ec849b15"
       },
       "locator": {
         "artifact": "grader-prompt.md",
@@ -136,7 +121,7 @@
         "start_line": 1
       },
       "source_hashes": [
-        "sha256:d2b3f65d137be1ba93f9443cf0fc1d30ccd8acf2b0387135ead001f7035e4483"
+        "sha256:66f767bfa571e51b265fd1a506280881a618a2b3de1f1e7e53dbb8d5ec849b15"
       ],
       "status": "closed"
     }
