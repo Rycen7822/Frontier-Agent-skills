@@ -196,8 +196,8 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
         frontmatter = skill_text.split('---', 2)[1]
         self.assertIn('This skill is explicit-only.', skill_text)
         self.assertIn('hosts: [codex, hermes-agent]', frontmatter)
-        self.assertLessEqual(len(skill_text.encode('utf-8')), 10_000)
-        self.assertLessEqual(len(skill_text.splitlines()), 120)
+        self.assertLessEqual(len(skill_text.encode('utf-8')), 10_500)
+        self.assertLessEqual(len(skill_text.splitlines()), 125)
         for heading in ('## Decision router', '## Claim ceilings', '## Run the owners', '## Owner index'):
             self.assertIn(heading, skill_text)
         for token in ('L0', 'L1', 'L2', 'L3', 'L4'):

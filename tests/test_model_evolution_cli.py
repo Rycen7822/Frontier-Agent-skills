@@ -279,6 +279,24 @@ class ModelEvolutionCliTest(unittest.TestCase):
                 / "budget-approval.json",
                 service_id="frontier-probe",
             )
+        with self.assertRaisesRegex(operations.OperationError, "unit name is unsafe"):
+            jobs.render_probe_command(
+                repository_root=REPOSITORY_ROOT,
+                campaign_root=self.fixture["campaign_root"],
+                expected_revision=1,
+                budget_approval=self.fixture["campaign_root"]
+                / "budget-approval.json",
+                service_id="frontier/probe",
+            )
+        with self.assertRaisesRegex(operations.OperationError, "revision is invalid"):
+            jobs.render_probe_command(
+                repository_root=REPOSITORY_ROOT,
+                campaign_root=self.fixture["campaign_root"],
+                expected_revision=-1,
+                budget_approval=self.fixture["campaign_root"]
+                / "budget-approval.json",
+                service_id="frontier-probe",
+            )
 
     def test_systemd_preflight_requires_matching_allowlisted_environment(self) -> None:
         def fake_run(argv, **_kwargs):
@@ -354,7 +372,7 @@ class ModelEvolutionCliTest(unittest.TestCase):
         store = self.fixture["store"]
         apparatus = materialize_apparatus_report(self.fixture)
         store.mutate(0, lambda state: state_module.advance_preflight(state, apparatus))
-        materialize_budget_approval(self.fixture, store.read())
+        approval = materialize_budget_approval(self.fixture, store.read())
         before = {
             path.relative_to(store.root): path.read_bytes()
             for path in store.root.rglob("*")
@@ -373,16 +391,27 @@ class ModelEvolutionCliTest(unittest.TestCase):
         self.assertEqual([], status["blockers"])
         with store.hold_probe_operation():
             running = self._read_status(args)
+            repeated = self._read_status(args)
         self.assertEqual("monitor interaction probes", running["next_event"])
         self.assertTrue(running["probe_running"])
         self.assertIsNone(running["probe_command"])
         self.assertEqual([], running["blockers"])
+        self.assertEqual(running, repeated)
         after = {
             path.relative_to(store.root): path.read_bytes()
             for path in store.root.rglob("*")
             if path.is_file()
         }
         self.assertEqual(before, after)
+        invalid = json.loads(approval.read_text())
+        invalid["state_revision"] += 1
+        write_json(approval, with_self_hash(invalid, "approval_hash"))
+        rejected = self._read_status(args)
+        self.assertIsNone(rejected["probe_command"])
+        self.assertEqual(
+            "budget-approval-invalid",
+            rejected["blockers"][0]["code"],
+        )
 
     def test_status_distinguishes_running_and_missing_probe_lock(self) -> None:
         store = self.fixture["store"]

@@ -21,6 +21,11 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from _bundle_hash import FORBIDDEN_PARTS, FORBIDDEN_SUFFIXES, inventory, tree_hash  # noqa: E402
+from _deterministic_zip import (  # noqa: E402
+    ZipMember,
+    verify_deterministic_zip,
+    write_deterministic_zip,
+)
 from build_codex_plugin import (  # noqa: E402
     _contains_forbidden_reader_marker,
     _strict_json,
@@ -44,6 +49,7 @@ IGNORED_TOP_LEVEL = {
     ".agents",
     ".gitignore",
     ".pytest_cache",
+    ".ruff_cache",
     ".work",
     "CODEX_STATE.md",
     "share",
@@ -160,44 +166,27 @@ def _archive_name(relative: str, layout: Layout) -> str:
     return f"{BUNDLE_ROOT_PREFIX}/{relative}" if layout == "bundle" else relative
 
 
+def _archive_members(
+    staging_root: Path,
+    records: list[dict[str, Any]],
+    layout: Layout,
+) -> list[ZipMember]:
+    return [
+        (
+            _archive_name(str(record["path"]), layout),
+            staging_root / str(record["path"]),
+            int(str(record["mode"]), 8),
+        )
+        for record in records
+    ]
+
+
 def _write_zip(path: Path, staging_root: Path, records: list[dict[str, Any]], layout: Layout) -> None:
-    with zipfile.ZipFile(path, mode="w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-        for record in records:
-            relative = str(record["path"])
-            member = _archive_name(relative, layout)
-            info = zipfile.ZipInfo(member, date_time=(1980, 1, 1, 0, 0, 0))
-            info.compress_type = zipfile.ZIP_DEFLATED
-            info.create_system = 3
-            mode = int(str(record["mode"]), 8)
-            info.external_attr = (stat.S_IFREG | mode) << 16
-            info.flag_bits |= 0x800
-            with (staging_root / relative).open("rb") as handle:
-                archive.writestr(info, handle.read(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+    write_deterministic_zip(path, _archive_members(staging_root, records, layout))
 
 
 def _verify_zip(path: Path, staging_root: Path, records: list[dict[str, Any]], layout: Layout) -> None:
-    expected = [_archive_name(str(record["path"]), layout) for record in records]
-    with zipfile.ZipFile(path, mode="r") as archive:
-        names = archive.namelist()
-        if names != expected or len(names) != len(set(names)):
-            raise ValueError("archive member order or identity differs from the source inventory")
-        for record, info in zip(records, archive.infolist(), strict=True):
-            member = Path(info.filename)
-            if info.is_dir() or member.is_absolute() or ".." in member.parts or "\\" in info.filename:
-                raise ValueError(f"unsafe ZIP member: {info.filename}")
-            if info.date_time != (1980, 1, 1, 0, 0, 0):
-                raise ValueError(f"non-deterministic ZIP timestamp: {info.filename}")
-            archived_mode = (info.external_attr >> 16) & 0o777
-            if info.create_system != 3 or archived_mode != int(str(record["mode"]), 8):
-                raise ValueError(f"ZIP member mode mismatch: {info.filename}")
-            payload = archive.read(info)
-            if len(payload) != record["size"]:
-                raise ValueError(f"ZIP member size mismatch: {info.filename}")
-            observed = "sha256:" + sha256(payload).hexdigest()
-            if observed != record["content_hash"]:
-                raise ValueError(f"ZIP member content mismatch: {info.filename}")
-            if payload != (staging_root / record["path"]).read_bytes():
-                raise ValueError(f"ZIP member differs from clean staging: {info.filename}")
+    verify_deterministic_zip(path, _archive_members(staging_root, records, layout))
 
 
 def _temporary_path(parent: Path, prefix: str) -> Path:

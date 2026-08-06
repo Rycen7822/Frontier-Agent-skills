@@ -151,6 +151,19 @@ class ExtendedPluginBuildTests(unittest.TestCase):
                 output, [path for path in output.rglob("*") if path.is_file() or path.is_symlink()],
             )))
 
+    def test_staging_rejects_marketplace_archive_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(ValueError, "staging build forbids"):
+                self.builder.build(
+                    ROOT,
+                    root / "frontier-engineering-plugin",
+                    None,
+                    root / "plugin-build-evidence.json",
+                    marketplace_archive_output=root / "marketplace.zip",
+                )
+            self.assertEqual([], list(root.iterdir()))
+
     def test_symlinked_output_component_is_rejected_without_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
