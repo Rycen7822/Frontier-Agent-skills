@@ -13,7 +13,10 @@ DEFINITION = {
         "evidence-qualified-comparison",
     ],
     "grader_rules": [
+        "A case-specific rule applies only when task_evidence.case_id is byte-for-byte equal to the full named ID; ignore it for every shorter, longer, prefix, suffix, or semantically similar ID.",
         "For skill-evaluator-cli-schema-diagnosis, quality passes only when the command uses the evaluator directory variable, its contract validator, the contract subcommand, and fixtures/l0-spec.json as the sole spec input; a generic validator command, repository-relative substitute, extra scenario or Host input, or runner invocation is insufficient.",
+        "For skill-evaluator-analyzer-exit-contract, the supplied inconclusive_ceiling fixture maps to exit 3, --report-only does not change it, and the maximum supported usefulness claim is inconclusive_ceiling; judge this item independently and do not use another batch item's answer as evidence.",
+        "For skill-evaluator-protected-no-reviewer, the requested single-operation JSON Patch directly demonstrates quality and process when it performs exactly the field/value replacement stated in the task and makes no application claim; do not require the final answer to prove fixture reading or absence of reviewer, provider, or tool use.",
         "For skill-evaluator-analyzer-exit-contract-heldout, reading the named fixture is allowed; quality and process require exit 3 for inconclusive evidence, no change from --report-only, and no usefulness claim above inconclusive_ceiling, without executing the analyzer, runner, reviewer, or provider.",
     ],
     "process_evidence": [

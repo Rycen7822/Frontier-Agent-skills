@@ -287,6 +287,28 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             self.assertNotIn("Long Document Skill", task)
             self.assertNotIn("Skill Evaluator", task)
 
+    def test_case_specific_grader_rules_are_exactly_scoped(self) -> None:
+        expected = {
+            "skill-evaluator": (
+                "skill-evaluator-analyzer-exit-contract,",
+                "skill-evaluator-protected-no-reviewer,",
+                "skill-evaluator-analyzer-exit-contract-heldout,",
+            ),
+            "software-quality-workflows": (
+                "software-quality-workflows-single-specialist-risk,",
+                "software-quality-workflows-single-specialist-risk-heldout,",
+            ),
+            "writing-plans": (
+                "writing-plans-explicit-handoff,",
+                "writing-plans-explicit-handoff-heldout,",
+            ),
+        }
+        for skill_id, rules in expected.items():
+            prompt = (SENTINEL_ROOT / skill_id / "grader-prompt.md").read_text()
+            self.assertIn("byte-for-byte equal to the full named ID", prompt)
+            for rule in rules:
+                self.assertIn(rule, prompt)
+
     def test_protected_planning_tasks_bind_the_patch_target(self) -> None:
         expected = {
             "software-quality-workflows": (
