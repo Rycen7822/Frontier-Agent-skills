@@ -52,6 +52,11 @@ from _model_evolution_materialization import (
     validate_current_plan,
 )
 from _model_evolution_holdout import prepare_holdout_plan, validate_holdout_plan
+from _model_evolution_jobs import (
+    render_runner_command,
+    systemd_probe_argv,
+    verify_systemd_user,
+)
 from _model_evolution_ops import (
     OperationError,
     bundle_skill_at_revision,
@@ -59,11 +64,9 @@ from _model_evolution_ops import (
     git_blob_matches,
     git_identity,
     preflight_operations,
-    render_runner_command,
     require_tracked_binding,
     run_interaction_probes,
     runner_status,
-    systemd_probe_argv,
     validate_plugin_staging,
     validate_target_host_staging,
 )
@@ -475,11 +478,10 @@ def _preflight(args: argparse.Namespace) -> None:
     campaign = store.read()
     if campaign["state_revision"] != args.expected_revision:
         raise CliError("preflight expected revision is stale")
-    report = preflight_operations(
+    report, env_allowlist = preflight_operations(
         campaign,
         repository_root=repository_root,
         campaign_root=campaign_root,
-        check_systemd=not args.systemd_argv_only,
     )
     if args.systemd_argv_only:
         argv = systemd_probe_argv(
@@ -495,7 +497,14 @@ def _preflight(args: argparse.Namespace) -> None:
                 "duration_ms": 0,
             }
         )
-        report = with_self_hash(report, "apparatus_report_hash")
+    else:
+        report["operations"].append(
+            verify_systemd_user(
+                campaign["campaign_id"],
+                env_allowlist,
+            )
+        )
+    report = with_self_hash(report, "apparatus_report_hash")
     report_path = campaign_root / "apparatus-report.json"
     create_no_overwrite(report_path, report)
     report_binding = _binding_for_path(
