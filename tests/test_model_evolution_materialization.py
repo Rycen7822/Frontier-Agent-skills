@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import copy
 import json
-from pathlib import Path
 import sys
 import tempfile
 import unittest
-
+from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from model_evolution_test_support import materialize_campaign  # noqa: E402
-
-from _model_evolution_contract import verify_self_hash  # noqa: E402
-from _model_evolution_contract import canonical_bytes, content_hash  # noqa: E402
+from _model_evolution_contract import (  # noqa: E402
+    canonical_bytes,
+    content_hash,
+    verify_self_hash,  # noqa: E402
+)
 from _model_evolution_holdout import _load_holdout_bundle  # noqa: E402
 from _model_evolution_materialization import (  # noqa: E402
     MaterializationError,
@@ -23,6 +23,7 @@ from _model_evolution_materialization import (  # noqa: E402
     prepare_current_plan,
     promoted_model_grading_host,
 )
+from support.model_evolution.repository import materialize_campaign  # noqa: E402
 
 
 class ModelEvolutionMaterializationTests(unittest.TestCase):
@@ -89,12 +90,10 @@ class ModelEvolutionMaterializationTests(unittest.TestCase):
     def test_holdout_bundle_requires_positive_and_protected_scenarios(self) -> None:
         root = SCRIPTS.parent
         source = root / (
-            "evaluation/model-evolution/sentinels/writing-plans/"
-            "scenarios.public.jsonl"
+            "evaluation/model-evolution/sentinels/writing-plans/scenarios.public.jsonl"
         )
         public = [
-            json.loads(line)
-            for line in source.read_text(encoding="utf-8").splitlines()
+            json.loads(line) for line in source.read_text(encoding="utf-8").splitlines()
         ]
         positive = copy.deepcopy(public[0])
         protected = copy.deepcopy(
@@ -126,9 +125,7 @@ class ModelEvolutionMaterializationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             bundle = Path(raw)
             payload = bundle / "scenarios.heldout.jsonl"
-            payload.write_bytes(
-                b"".join(canonical_bytes(row) + b"\n" for row in rows)
-            )
+            payload.write_bytes(b"".join(canonical_bytes(row) + b"\n" for row in rows))
             proof = {
                 "case_classes": [
                     {"case_id": rows[0]["case_id"], "class": "positive"},
@@ -138,14 +135,10 @@ class ModelEvolutionMaterializationTests(unittest.TestCase):
                     },
                 ]
             }
-            (bundle / "suite-quality-proof.json").write_bytes(
-                canonical_bytes(proof)
-            )
+            (bundle / "suite-quality-proof.json").write_bytes(canonical_bytes(proof))
             manifest = {
                 "schema_version": 1,
-                "external_holdout_contract_id": (
-                    "writing-plans-external-holdout-v1"
-                ),
+                "external_holdout_contract_id": ("writing-plans-external-holdout-v1"),
                 "skill_id": "writing-plans",
                 "payload_file": payload.name,
                 "payload_sha256": content_hash(payload.read_bytes()),
@@ -164,9 +157,7 @@ class ModelEvolutionMaterializationTests(unittest.TestCase):
                 "exposure_status": "exposed",
                 "refresh_state": "fresh",
             }
-            (bundle / "holdout-manifest.json").write_bytes(
-                canonical_bytes(manifest)
-            )
+            (bundle / "holdout-manifest.json").write_bytes(canonical_bytes(manifest))
             _, observed, _ = _load_holdout_bundle(
                 bundle,
                 skill_id="writing-plans",
@@ -174,7 +165,9 @@ class ModelEvolutionMaterializationTests(unittest.TestCase):
                 case_ceiling=2,
                 public_rows=public,
             )
-            self.assertEqual([row["case_id"] for row in observed], manifest["scenario_ids"])
+            self.assertEqual(
+                [row["case_id"] for row in observed], manifest["scenario_ids"]
+            )
 
             proof["case_classes"][1]["class"] = "positive"
             (bundle / "suite-quality-proof.json").write_bytes(canonical_bytes(proof))

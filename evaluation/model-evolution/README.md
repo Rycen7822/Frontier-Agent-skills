@@ -55,8 +55,12 @@ Run the focused zero-provider modules:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tests python3 -m unittest \
-  tests/test_extended_model_evolution_contract.py \
-  tests/test_extended_model_evolution_lifecycle.py -v
+  tests/test_model_evolution_documents.py \
+  tests/test_model_evolution_state.py \
+  tests/test_model_evolution_materialization.py \
+  tests/test_model_evolution_host.py \
+  tests/test_model_evolution_cli.py \
+  tests/test_model_evolution_sentinels.py -v
 ```
 
 Then run the canonical Quick profile, the registered Extended command containing these modules, Bundle `--check`, static-contract `--check`, Ruff, and schema meta-validation. These checks must not contact a provider, reviewer, optimizer, or download endpoint.

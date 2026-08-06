@@ -1,0 +1,174 @@
+{
+  "actions": [],
+  "artifacts": [
+    {
+      "encoding": "utf-8",
+      "path": "stdout.jsonl",
+      "sha256": "sha256:23f52ba75dd0c5656f209d96a3b81da56d6a06f79d9d34628e0208f04fb941f4"
+    },
+    {
+      "encoding": "utf-8",
+      "path": "stderr.txt",
+      "sha256": "sha256:0951294579b211799927242ce44a718710cf8823ab16864f8f5708e62f3a9078"
+    }
+  ],
+  "attempt_start": {
+    "attempt": 1,
+    "entry_id": "pe-0bb1ec738a8be523af214e3a",
+    "entry_ordinal": 0,
+    "marker_hash": "sha256:8b6498e1827273569cef3129c19dc82fbe07a73da39f270a64903168b3f21b88",
+    "ownership_token": "sha256:0e236dfdcaca374f3d4416122983e0b153a95cf8320a8844227e35a754038abf",
+    "plan_hash": "sha256:d153b7a251f3e93efab8227efcf1e441affeda83040c9d948123cbe23ba0f54d",
+    "plan_id": "pl-364784855c35b246349ff4c5",
+    "run_id": "run-cccccccccccccccccccccccc",
+    "schema_version": 1
+  },
+  "cleanup": {
+    "errors": [],
+    "process": "clean",
+    "residue": [],
+    "service": "not_applicable",
+    "state": "not_applicable",
+    "workspace": "retained"
+  },
+  "context_usage": {
+    "bytes": 0,
+    "components": [],
+    "controlled_bytes": 0,
+    "controlled_core_bytes": 0,
+    "status": "captured",
+    "tokens": 0,
+    "unique_reference_bytes": 0
+  },
+  "faults": {
+    "injected": [],
+    "observed": [],
+    "recovered": []
+  },
+  "grader_outputs": [],
+  "handoffs": [],
+  "host_protocol": {
+    "checkpoints": [],
+    "errors": [],
+    "events": [],
+    "raw_stderr": {
+      "encoding": "utf-8",
+      "path": "stderr.txt",
+      "sha256": "sha256:0951294579b211799927242ce44a718710cf8823ab16864f8f5708e62f3a9078"
+    },
+    "raw_stdout": {
+      "encoding": "utf-8",
+      "path": "stdout.jsonl",
+      "sha256": "sha256:23f52ba75dd0c5656f209d96a3b81da56d6a06f79d9d34628e0208f04fb941f4"
+    },
+    "requests": [
+      {
+        "envelope": {
+          "attempt": 1,
+          "entry_id": "pe-bbbbbbbbbbbbbbbbbbbbbbbb",
+          "entry_ordinal": 0,
+          "plan_hash": "sha256:47a77636938fdfce5012db61f32300687e21edf2423198edead3048b7155989b",
+          "plan_id": "pl-aaaaaaaaaaaaaaaaaaaaaaaa",
+          "request_kind": "execute_case",
+          "run_id": "run-cccccccccccccccccccccccc"
+        },
+        "payload": {
+          "case_id": "case-basic"
+        },
+        "record_type": "skill-evaluator-host-request/1",
+        "request_hash": "sha256:e6ffdae74c75b47186c46c4e8cd14ff876a545cf9db5157a146171ea66470578"
+      }
+    ],
+    "results": [
+      {
+        "actions": [],
+        "artifacts": [],
+        "assertions": [],
+        "cleanup": {},
+        "context": {},
+        "envelope": {
+          "attempt": 1,
+          "entry_id": "pe-bbbbbbbbbbbbbbbbbbbbbbbb",
+          "entry_ordinal": 0,
+          "plan_hash": "sha256:47a77636938fdfce5012db61f32300687e21edf2423198edead3048b7155989b",
+          "plan_id": "pl-aaaaaaaaaaaaaaaaaaaaaaaa",
+          "request_kind": "execute_case",
+          "run_id": "run-cccccccccccccccccccccccc"
+        },
+        "handoffs": [],
+        "principals": [],
+        "protocol_error": null,
+        "record_type": "skill-evaluator-host-result/1",
+        "refusal": false,
+        "request_hash": "sha256:e6ffdae74c75b47186c46c4e8cd14ff876a545cf9db5157a146171ea66470578",
+        "state": [],
+        "terminal": true,
+        "terminal_status": "completed",
+        "timeout": false,
+        "treatment_error": null,
+        "usage": {}
+      }
+    ]
+  },
+  "observations": [],
+  "principals": [],
+  "provenance": {
+    "calibration_hash": null,
+    "catalog_hash": "sha256:aa55b4fc409e67dc808ef32a9d7d7f5ebe63b68c59ea3bd4d75d3d7d12a18135",
+    "fixture_hash": "sha256:f6fb3089eeab1d83ad4791b006a19c8d1bc935fc2f45d703a1f5f0720af45d5f",
+    "grader_set_hash": "sha256:d07cb7f5dd71b4d1654e9294614a4c33525647825f3425f9096c37da8bcb5108",
+    "host_manifest_hash": "sha256:e44fa36870bd0d50a372acb34085ea28b515a5dec97d4d5b288e3edd71b3bf3e",
+    "package_hash": "sha256:d8a26e69b3928afa0ced5f83deb8319af4cc828139264edc11e43268c661e0c6",
+    "plan_hash": "sha256:d153b7a251f3e93efab8227efcf1e441affeda83040c9d948123cbe23ba0f54d",
+    "scenario_corpus_hash": "sha256:5bf8cded6d1f290efcf39d20d052ca1148b87e597c0221cc4c8f0f1b76935ea6",
+    "scenario_hash": "sha256:b665a5b1d26c60905598c0e562f94ef5030614b4d866bf0d1bb50692363da3a2",
+    "spec_hash": "sha256:d0d53499bea8f76c47bb61b597b0180166b292d37171acf149b7fbcc33c25f5a",
+    "suite_quality_hash": "sha256:6faf5947924aa9b7a48328efd5ddddb10aee361439b4c7b1f913ebee4716fc71",
+    "treatment_hash": "sha256:07c1d9570c5d3b8df080da6cffbead6ae631b2e68a0cad4715399ae2706ffcdc"
+  },
+  "receipt_hash": "sha256:1c4cf08504ea609cee94e2b12636c0eb38acd52de71a17630f3a673b75cd3114",
+  "routing": {
+    "applied": [],
+    "catalog": [],
+    "composition": [],
+    "declared": [],
+    "discovered": [],
+    "invoked": [],
+    "loaded": [],
+    "model_visible": [],
+    "order": [],
+    "selected": []
+  },
+  "run": {
+    "attempt": 1,
+    "case_id": "case-basic",
+    "clock_source": "fixture-utc",
+    "completion_origin": "normal",
+    "ended_at": "2026-01-01T00:00:02Z",
+    "entry_id": "pe-0bb1ec738a8be523af214e3a",
+    "entry_ordinal": 0,
+    "error": null,
+    "plan_hash": "sha256:d153b7a251f3e93efab8227efcf1e441affeda83040c9d948123cbe23ba0f54d",
+    "plan_id": "pl-364784855c35b246349ff4c5",
+    "repeat": 1,
+    "run_id": "run-cccccccccccccccccccccccc",
+    "started_at": "2026-01-01T00:00:01Z",
+    "terminal": "completed",
+    "treatment_id": "candidate",
+    "valid": true
+  },
+  "schema_version": 4,
+  "state": {
+    "after": null,
+    "before": null,
+    "checkpoints": [],
+    "cleanup": "clean",
+    "obligations": [],
+    "terminal": "complete",
+    "transitions": []
+  },
+  "usage": {
+    "pricing_identity": "fixture-pricing",
+    "records": []
+  }
+}
