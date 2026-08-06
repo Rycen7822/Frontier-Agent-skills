@@ -23,6 +23,7 @@ import _model_evolution_state as state_module  # noqa: E402
 import build_model_evolution_host as host_builder  # noqa: E402
 import model_evolution as controller  # noqa: E402
 from _codex_eval_delivery import MODEL_EVOLUTION_ENV_ALLOWLIST  # noqa: E402
+from _model_evolution_campaign import validate_campaign  # noqa: E402
 from _model_evolution_contract import (  # noqa: E402
     ContractError,
     SKILL_IDS,
@@ -31,6 +32,7 @@ from _model_evolution_contract import (  # noqa: E402
     validate_document,
     with_self_hash,
 )
+from _model_evolution_qualification import validate_qualification  # noqa: E402
 from _model_evolution_state import (  # noqa: E402
     CampaignStore,
     StateError,
@@ -122,6 +124,22 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             env=environment,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+        init_help = subprocess.run(
+            [
+                sys.executable,
+                str(root / "scripts/model_evolution.py"),
+                "--campaign-root",
+                str(root / "campaign"),
+                "init",
+                "--help",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+            env=environment,
+        )
+        self.assertEqual(init_help.returncode, 0, init_help.stderr)
+        self.assertNotIn("supersed", init_help.stdout)
         self.assertFalse(any(root.rglob("__pycache__")))
 
     def test_cas_lock_and_failed_replace_preserve_state_bytes(self) -> None:
@@ -225,9 +243,6 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             predecessor_host=None,
             predecessor_comparison=None,
             predecessor_qualification=None,
-            supersedes=None,
-            supersession_failure_receipt=None,
-            supersession_calibration_rejection_receipt=None,
             provider_request_ceiling=81,
             execute_ceiling=38,
             model_grade_ceiling=42,
@@ -254,7 +269,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         ):
             invalid_args = copy.copy(args)
             invalid_args.provider_request_ceiling -= 1
-            with self.assertRaisesRegex(controller.CliError, "worst-case"):
+            with self.assertRaisesRegex(controller.CliError, "fresh campaign"):
                 controller._init(invalid_args)
             self.assertFalse((campaign_root / "campaign.json").exists())
             valid_host = json.loads(host.read_text())
@@ -306,57 +321,8 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
             state["product"]["plugin_root"],
         )
         self.assertEqual(evidence["plugin_tree_hash"], state["product"]["plugin_tree"])
-
-    def test_cumulative_request_ceilings_charge_prior_failures_once(self) -> None:
-        request_ceilings = {
-            "provider_requests": 246,
-            "execute": 88,
-            "model_grade": 152,
-            "calibration": 64,
-        }
-        supersedes = {
-            "imported_reserved": {
-                "provider_requests": 126,
-                "execute": 48,
-                "model_grade": 96,
-            },
-            "imported_observed": {
-                "provider_requests": 100,
-                "execute": 40,
-                "model_grade": 80,
-            },
-        }
-        self.assertEqual(
-            {
-                "provider_requests": 308,
-                "execute": 136,
-                "model_grade": 184,
-            },
-            controller._cumulative_request_ceilings(
-                request_ceilings,
-                supersedes,
-            ),
-        )
-        self.assertEqual(
-            {
-                "provider_requests": 372,
-                "execute": 136,
-                "model_grade": 248,
-            },
-            controller._cumulative_request_ceilings(
-                request_ceilings,
-                supersedes,
-                reuse_calibration_reservation=False,
-            ),
-        )
-        supersedes["imported_observed"]["model_grade"] = 120
-        self.assertEqual(
-            208,
-            controller._cumulative_request_ceilings(
-                request_ceilings,
-                supersedes,
-            )["model_grade"],
-        )
+        self.assertEqual(state["schema_version"], "model-evolution-campaign/2")
+        self.assertNotIn("supersedes", state)
 
     def test_frozen_sentinel_budget_counts_both_holdout_treatments(self) -> None:
         sentinel = json.loads(
@@ -1470,7 +1436,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
                 skill_id=skill_id,
             )
         self.assertEqual(candidate["phase"], "holdout_ready")
-        validate_document(with_self_hash(candidate, "campaign_hash"), "campaign")
+        validate_campaign(with_self_hash(candidate, "campaign_hash"))
 
     def test_candidate_path_policy_rejects_controller_and_accepts_bound_fixture(
         self,
@@ -1527,7 +1493,7 @@ class ModelEvolutionLifecycleTest(unittest.TestCase):
         qualification = (
             self.fixture["campaign_root"] / "qualification/qualification.json"
         )
-        validate_document(json.loads(qualification.read_text()), "qualification")
+        validate_qualification(json.loads(qualification.read_text()))
         with self.assertRaisesRegex(StateError, "already exists"):
             with mock.patch.object(controller, "_emit"):
                 controller._qualify(args)

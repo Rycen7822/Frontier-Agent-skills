@@ -36,8 +36,6 @@ from _model_evolution_contract import (
     load_json,
     load_jsonl,
     make_binding,
-    project_observed_host,
-    project_qualification,
     resolve_binding,
     strict_json_bytes,
     validate_document,
@@ -45,6 +43,10 @@ from _model_evolution_contract import (
     validate_formal_timeout_inputs,
     verify_self_hash,
     with_self_hash,
+)
+from _model_evolution_qualification import (
+    project_observed_host,
+    project_qualification,
 )
 
 

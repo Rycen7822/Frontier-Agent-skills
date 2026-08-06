@@ -4,7 +4,7 @@ This directory defines the bounded qualification campaign used when a new Codex 
 
 ## Owned artifacts
 
-- `schemas/campaign-v1.schema.json` owns campaign state and budget accounting.
+- `schemas/campaign-v2.schema.json` owns fresh-only campaign state and current-cycle budget accounting.
 - `schemas/interaction-probes-v1.schema.json` owns the model-independent Host probe set contract.
 - `schemas/sentinel-index-v1.schema.json` indexes the four Skill sentinel surfaces without copying evaluator specifications.
 - `schemas/qualification-v1.schema.json` owns the deterministic qualification projection.
@@ -13,8 +13,10 @@ This directory defines the bounded qualification campaign used when a new Codex 
 - Each Skill sentinel contains six public cases, minimal fixture/verifier inputs, deterministic suite-quality evidence, and calibration gold. Ratings and holdout payloads are external.
 - `scripts/build_model_evolution_sentinels.py` is the only generator for those tracked artifacts.
 - `scripts/model_evolution.py` is the only command-line entry point.
+- `scripts/_model_evolution_campaign.py` owns campaign construction and optional exact-product predecessor binding.
+- `scripts/_model_evolution_qualification.py` owns deterministic qualification and observed-Host projection.
 
-Repository bindings contain a relative path and SHA-256 hash. Campaign bindings use the same shape but resolve below one campaign directory. Absolute paths, URIs, symlinks, path traversal, and hash drift fail closed. Historical predecessor or superseded evidence must remain inside the repository so the campaign can store a relative binding; it need not be Git-tracked.
+Repository bindings contain a relative path and SHA-256 hash. Campaign bindings use the same shape but resolve below one campaign directory. Absolute paths, URIs, symlinks, path traversal, and hash drift fail closed. Optional predecessor evidence must remain inside the repository so the campaign can store a relative binding; it need not be Git-tracked.
 
 ## Lifecycle
 
@@ -35,11 +37,11 @@ The legal commands are:
 
 Every mutation requires `--expected-revision`. A stale revision, held lock, failed operation, invalid binding, exceeded ceiling, or published qualification leaves `campaign.json` unchanged. A qualification directory makes the campaign immutable.
 
-## Predecessor and repair bindings
+## Predecessor binding
 
 An optional predecessor is supplied at `init` with a closed campaign, its observed Host, and an eligible model-transition comparison. An optional qualification may strengthen the exact product identity. The controller derives all stored hashes from those files.
 
-`--supersedes` is reserved for one pre-public adapter repair. The old campaign must target the same provisional Host, have a blocked qualification, and must not itself supersede another campaign. Its reserved and observed counts are imported into the new ceilings; this prevents a repair from resetting project budget.
+Every campaign starts with zero reserved current-cycle counts; observed counts start at zero except `artifact_bytes`, which remains unknown until measured. A predecessor supplies comparison identity only; it never imports attempts, receipts, reservations, observed usage, or authorization from another campaign.
 
 ## Operational boundary
 

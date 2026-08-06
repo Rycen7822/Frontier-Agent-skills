@@ -1,13 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://frontier.local/model-evolution/campaign-v1.schema.json",
-  "title": "Frontier model evolution campaign v1",
+  "$id": "https://frontier.local/model-evolution/campaign-v2.schema.json",
+  "title": "Frontier model evolution campaign v2",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "campaign_id",
-    "supersedes",
     "state_revision",
     "phase",
     "apparatus_report",
@@ -22,11 +21,8 @@
     "campaign_hash"
   ],
   "properties": {
-    "schema_version": {"const": "model-evolution-campaign/1"},
+    "schema_version": {"const": "model-evolution-campaign/2"},
     "campaign_id": {"$ref": "#/$defs/safe_id"},
-    "supersedes": {
-      "anyOf": [{"$ref": "#/$defs/supersedes"}, {"type": "null"}]
-    },
     "state_revision": {"type": "integer", "minimum": 0},
     "phase": {
       "enum": [
@@ -360,22 +356,6 @@
           "minItems": 1,
           "items": {"$ref": "#/$defs/operation"}
         }
-      }
-    },
-    "supersedes": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["campaign", "imported_reserved", "imported_observed"],
-      "properties": {
-        "campaign": {"$ref": "#/$defs/binding"},
-        "failure_receipt": {
-          "anyOf": [{"$ref": "#/$defs/binding"}, {"type": "null"}]
-        },
-        "calibration_rejection_receipt": {
-          "anyOf": [{"$ref": "#/$defs/binding"}, {"type": "null"}]
-        },
-        "imported_reserved": {"$ref": "#/$defs/counts"},
-        "imported_observed": {"$ref": "#/$defs/counts"}
       }
     }
   }

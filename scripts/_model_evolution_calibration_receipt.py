@@ -20,6 +20,7 @@ from _model_evolution_contract import (
     verify_self_hash,
     with_self_hash,
 )
+from _model_evolution_qualification import validate_qualification
 
 
 class CalibrationReceiptError(ValueError):
@@ -232,7 +233,7 @@ def validate_calibration_rejection_receipt(
         resolve_binding(receipt["preparation"], repository_root, campaign_root),
         label="calibration rejection preparation",
     )
-    validate_document(qualification, "qualification")
+    validate_qualification(qualification)
     _verify_preparation_lineage(campaign, preparation)
     if (
         receipt["campaign_hash"] != campaign["campaign_hash"]
