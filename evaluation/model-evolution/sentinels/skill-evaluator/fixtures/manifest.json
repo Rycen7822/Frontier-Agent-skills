@@ -7,11 +7,6 @@
     },
     {
       "encoding": "utf-8",
-      "path": "cli-contract.md",
-      "sha256": "sha256:62615b29c3134a9c0e16149c7ae68bc1fbd83808176485514c88d826279dfff0"
-    },
-    {
-      "encoding": "utf-8",
       "path": "control-matrix.md",
       "sha256": "sha256:bad019707af60c02b576acbdc81f5bdea560303c6ce4e38d20d0368e6b433805"
     },

@@ -282,7 +282,7 @@
       },
       "prompt": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:1704c4ef513d84b8f8af01a8dbd935976c87251bc62c8dc4a346135487e59b2d"
+        "sha256": "sha256:840b20dae0cfedfb65eb7e4bbf43cc66b15eeaf214c93ccbf3e01e4c6df05d61"
       },
       "type": "model"
     }
@@ -383,26 +383,26 @@
     "version": "3.3.1"
   },
   "suite": {
-    "fixture_set_hash": "sha256:c21c90e69122b8613f4e53f69213431a4fbc04dd1597ddbfbbb0d0330a441ea6",
+    "fixture_set_hash": "sha256:7a05d547b3e6f97dab73386c13bf05bd08ab0f21d54730ddb58fadd4889b1854",
     "grader_schedule_hash": "sha256:13926d09f5eb502bb0a6e367f131f044b2eb9318e41637ea66d1ad2823c2b918",
-    "grader_set_hash": "sha256:45e97d4d6d0bd8b060ec55809ab373893a5a8760e89e2fc3560794a7119a1957",
+    "grader_set_hash": "sha256:e980eb67abdbb898bf5ccf4ba21c4a7a919e2d7b6a68240264bd11d3ae788963",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:fe7008531f78ee3f4170bfee284a7eafb21419b9d8d5711c527948595351eff5"
+      "sha256": "sha256:b39f303184bbbd86de4a62c6bf7675e524ac195eb1becb043ea974bdbe36651f"
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:f58e482ced285d981e4685c96d56fc3369bab7240110a9d1aae57a1af9dd8e4a"
+      "sha256": "sha256:7a5941373fefe40010a683d5096cd0f56984492ad341f7916b3da2e513b26367"
     },
-    "quality_contract_hash": "sha256:ce63fa83e104407b98d8d8a08b7498ba9d4ff0beffa86afc0d29347933308378",
+    "quality_contract_hash": "sha256:76d65b5e086793d5656620cb8a3a9590fad0a0262cd1d0efd1e65ee20902a363",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:fe7008531f78ee3f4170bfee284a7eafb21419b9d8d5711c527948595351eff5"
+      "sha256": "sha256:b39f303184bbbd86de4a62c6bf7675e524ac195eb1becb043ea974bdbe36651f"
     },
     "treatment_contract_hash": "sha256:6af1e852fad9dc98a02b55d8ccd19234fcf41bd07e18591da31d891548bd89dc"
   },

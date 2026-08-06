@@ -1,6 +1,6 @@
 {
   "schema_version": "model-evolution-sentinel-index/1",
-  "sentinel_hash": "sha256:b06d77ff9cd3873ec4f66dc421cb44e97330dd283e96050789d22d7f23197b15",
+  "sentinel_hash": "sha256:c74420de27659a8b5bed245b484034652fff720cdd3af28b62558fca8647ae2d",
   "sentinel_id": "frontier-four-skill-sentinel-v1",
   "skills": {
     "long-document-segmented-writing": {
@@ -16,7 +16,7 @@
         {
           "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/fixtures/manifest.json",
           "root": "repository",
-          "sha256": "sha256:516e745c271834ddf8bea786ef9ee190b12a0dff367c2a74d1ab013c206854d1"
+          "sha256": "sha256:3ceac0e3bb5476025f4875813924f82071d82c8a276badbb3f9ce4c078d00ffc"
         },
         {
           "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/fixtures/completion.md",
@@ -32,6 +32,11 @@
           "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/fixtures/failure-ownership.md",
           "root": "repository",
           "sha256": "sha256:1959dbb02a5f323a3a0d7c697cfc1c3728a45b007dc8e988af3a788072db9586"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/fixtures/mode-selection.md",
+          "root": "repository",
+          "sha256": "sha256:191266aa8d22ad08b97dc0206a2f0319fbb029a70a71364f24a58354b5dd20c8"
         },
         {
           "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/fixtures/recovery-state.md",
@@ -66,12 +71,12 @@
       "public_scenarios": {
         "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/scenarios.public.jsonl",
         "root": "repository",
-        "sha256": "sha256:b493fe05122799c19be1f26e11ebfa4a729d22e56fe99a8c3e8090300906afd1"
+        "sha256": "sha256:926f54dbaf65940d0e6d326af282dfae02b5b15e50ef2e52c537a33e506f9655"
       },
       "required_coverage_tags": [
         "direct",
         "compact-recovery",
-        "segmented-draft",
+        "mode-selection",
         "compaction-resume",
         "whole-draft-review",
         "protected"
@@ -79,7 +84,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:1b47acb516a2137b9bd0640fab52ab5315e9eb2d494f3016388687196b65a6f7"
+        "sha256": "sha256:fb6e378dea7377ba7b6c6372c9971338d7977ca9cb4eb0016322c42d9ca72101"
       },
       "verifier_roots": [
         {
@@ -107,17 +112,12 @@
         {
           "path": "evaluation/model-evolution/sentinels/skill-evaluator/fixtures/manifest.json",
           "root": "repository",
-          "sha256": "sha256:cafc1f45533ce77d7a8e517deb1803d44200ff321af1828f39d619b0b9e7a450"
+          "sha256": "sha256:7c2f7e5bad3fcf7c49da79e891ff7de7775f429aeec55d3213a75dc594edc8ff"
         },
         {
           "path": "evaluation/model-evolution/sentinels/skill-evaluator/fixtures/analysis-summary.json",
           "root": "repository",
           "sha256": "sha256:cbac34011de9c4e2373829774e3d549e01a18a52f6a8ffca52c320b0d48a0997"
-        },
-        {
-          "path": "evaluation/model-evolution/sentinels/skill-evaluator/fixtures/cli-contract.md",
-          "root": "repository",
-          "sha256": "sha256:62615b29c3134a9c0e16149c7ae68bc1fbd83808176485514c88d826279dfff0"
         },
         {
           "path": "evaluation/model-evolution/sentinels/skill-evaluator/fixtures/control-matrix.md",
@@ -152,7 +152,7 @@
       "public_scenarios": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/scenarios.public.jsonl",
         "root": "repository",
-        "sha256": "sha256:fe7008531f78ee3f4170bfee284a7eafb21419b9d8d5711c527948595351eff5"
+        "sha256": "sha256:b39f303184bbbd86de4a62c6bf7675e524ac195eb1becb043ea974bdbe36651f"
       },
       "required_coverage_tags": [
         "owner-selection",
@@ -165,7 +165,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:7d3ff4a122ee839bb61d33ce574a844b2c9954fb255878d91d08530774e95ef0"
+        "sha256": "sha256:e285422d83850d16315bd061c651cf61f88ff2824b3b6bd868786535a3334436"
       },
       "verifier_roots": [
         {

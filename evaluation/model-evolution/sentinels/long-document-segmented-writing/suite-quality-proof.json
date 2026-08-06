@@ -36,7 +36,7 @@
       "class": "positive"
     },
     {
-      "case_id": "long-document-segmented-writing-segmented-draft",
+      "case_id": "long-document-segmented-writing-full-mode-selection",
       "class": "positive"
     },
     {
@@ -62,29 +62,18 @@
     ],
     "exposure_status": "not_applicable",
     "split_hashes": {
-      "dev": "sha256:1c1dc6d1466fa8c78256f299f81562a44356916a5cbd55452513dcf0d0fd43cb",
+      "dev": "sha256:473ddd2d5064bd68b4b0b157f602935028492da23c3af76e9f860691073975cb",
       "heldout": null,
-      "regression": "sha256:ecb4769bc4275f9b99d0589f41593459af9d5017ebbad9d94cb901f2275d2536"
+      "regression": "sha256:6559f3e86e927eac419d00cfff986af51cee8251f345d0c473994b33210bc1a7"
     }
   },
-  "duplicate_groups": [
-    {
-      "case_ids": [
-        "long-document-segmented-writing-compaction-resume",
-        "long-document-segmented-writing-segmented-draft"
-      ],
-      "group_id": "fixture_overlap-1",
-      "kind": "fixture_overlap",
-      "review_locator": null,
-      "status": "allowed"
-    }
-  ],
+  "duplicate_groups": [],
   "evaluation_id": "frontier-long-document-segmented-writing-sentinel-v1",
   "golden": {
     "case_ids": [
       "long-document-segmented-writing-direct-small-task",
       "long-document-segmented-writing-compact-recovery",
-      "long-document-segmented-writing-segmented-draft",
+      "long-document-segmented-writing-full-mode-selection",
       "long-document-segmented-writing-compaction-resume",
       "long-document-segmented-writing-whole-draft-review",
       "long-document-segmented-writing-protected-no-scratch"
@@ -92,7 +81,7 @@
     "passed_ids": [
       "long-document-segmented-writing-direct-small-task",
       "long-document-segmented-writing-compact-recovery",
-      "long-document-segmented-writing-segmented-draft",
+      "long-document-segmented-writing-full-mode-selection",
       "long-document-segmented-writing-compaction-resume",
       "long-document-segmented-writing-whole-draft-review",
       "long-document-segmented-writing-protected-no-scratch"
@@ -110,7 +99,7 @@
     {
       "artifact": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:221c2e50ca31b1e74d8816c22fcc60f7f2b1c1b4fd9d0d4c9e533cc4601d71f4"
+        "sha256": "sha256:8c6364373b10b5b3b72453ab05cd18721863c3fab4af2287e8e6df5fe82165a4"
       },
       "locator": {
         "artifact": "grader-prompt.md",
@@ -136,7 +125,7 @@
       "case_ids": [
         "long-document-segmented-writing-direct-small-task",
         "long-document-segmented-writing-compact-recovery",
-        "long-document-segmented-writing-segmented-draft",
+        "long-document-segmented-writing-full-mode-selection",
         "long-document-segmented-writing-compaction-resume",
         "long-document-segmented-writing-whole-draft-review",
         "long-document-segmented-writing-protected-no-scratch"
@@ -149,7 +138,7 @@
         "start_line": 1
       },
       "source_hashes": [
-        "sha256:221c2e50ca31b1e74d8816c22fcc60f7f2b1c1b4fd9d0d4c9e533cc4601d71f4"
+        "sha256:8c6364373b10b5b3b72453ab05cd18721863c3fab4af2287e8e6df5fe82165a4"
       ],
       "status": "closed"
     }
