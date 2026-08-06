@@ -561,6 +561,66 @@ def model_grade_schema(batch: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def model_grade_output_diagnostics(
+    output: Any,
+    batch: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Bind a provider-shaped judgment to the exact frozen batch."""
+    expected_items = {
+        item["item_id"]: [check["id"] for check in item["checks"]]
+        for item in batch["items"]
+    }
+    items = output.get("items") if isinstance(output, dict) else None
+    observed_ids = [
+        item.get("item_id") if isinstance(item, dict) else None
+        for item in items or []
+    ]
+    if (
+        not isinstance(output, dict)
+        or set(output) != {"batch_id", "items"}
+        or output.get("batch_id") != batch["batch_id"]
+        or not isinstance(items, list)
+        or len(items) != len(expected_items)
+        or any(not isinstance(item_id, str) for item_id in observed_ids)
+        or len(observed_ids) != len(set(observed_ids))
+        or set(observed_ids) != set(expected_items)
+    ):
+        return [_diagnostic(
+            "identity_mismatch",
+            "model grader output differs from the bound batch identities",
+        )]
+    for item in items:
+        checks = item.get("checks")
+        expected_checks = expected_items[item["item_id"]]
+        if set(item) != {"item_id", "checks"} or not isinstance(checks, list):
+            return [_diagnostic(
+                "identity_mismatch",
+                "model grader output differs from the bound check identities",
+            )]
+        observed_checks = [
+            check.get("id") if isinstance(check, dict) else None
+            for check in checks
+        ]
+        if (
+            len(checks) != len(expected_checks)
+            or any(not isinstance(check_id, str) for check_id in observed_checks)
+            or len(observed_checks) != len(set(observed_checks))
+            or set(observed_checks) != set(expected_checks)
+            or any(
+                set(check) != {"id", "pass", "notes", "uncertainty"}
+                or not isinstance(check["pass"], bool)
+                or not isinstance(check["notes"], str)
+                or check["uncertainty"] not in {"none", "low", "medium", "high"}
+                for check in checks
+            )
+        ):
+            return [_diagnostic(
+                "identity_mismatch",
+                "model grader output differs from the bound check identities",
+            )]
+    return []
+
+
 def execute_evidence_diagnostics(
     payload: dict[str, Any],
     normalized_turns: list[dict[str, Any]],

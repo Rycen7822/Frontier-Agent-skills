@@ -45,7 +45,7 @@
     ],
     "exposure_status": "not_applicable",
     "split_hashes": {
-      "dev": "sha256:eb6c459cfac1cda7782cc9023b1e5d7613f1bb7e747c349723ed141912888ea4",
+      "dev": "sha256:4972d9453ff8c9b4b1ba88de17b6b812bccc7791362284edd568881fae3fd7e4",
       "heldout": null,
       "regression": "sha256:f81450e770b1f72af16882d435d448f325c05349bc89564029d465efcde4ad24"
     }
@@ -54,7 +54,6 @@
     {
       "case_ids": [
         "skill-evaluator-analyzer-exit-contract",
-        "skill-evaluator-cli-schema-diagnosis",
         "skill-evaluator-deterministic-first",
         "skill-evaluator-level-owner-selection",
         "skill-evaluator-protected-no-reviewer",
