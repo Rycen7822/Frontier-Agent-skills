@@ -513,15 +513,14 @@ def base_host_result(
 
 
 def model_grade_schema(batch: dict[str, Any]) -> dict[str, Any]:
-    """Build a provider-supported shape; runtime validation binds identities."""
+    """Build a provider-supported value shape; the Host owns identities."""
     check_counts = [len(item["checks"]) for item in batch["items"]]
     if len(set(check_counts)) != 1:
         raise ValueError("model-grade batch check cardinality differs")
     check_schema = {
         "type": "object",
-        "required": ["id", "pass", "notes", "uncertainty"],
+        "required": ["pass", "notes", "uncertainty"],
         "properties": {
-            "id": {"type": "string"},
             "pass": {"type": "boolean"},
             "notes": {"type": "string"},
             "uncertainty": {
@@ -533,9 +532,8 @@ def model_grade_schema(batch: dict[str, Any]) -> dict[str, Any]:
     }
     item_schema = {
         "type": "object",
-        "required": ["item_id", "checks"],
+        "required": ["checks"],
         "properties": {
-            "item_id": {"type": "string"},
             "checks": {
                 "type": "array",
                 "items": check_schema,
@@ -547,9 +545,8 @@ def model_grade_schema(batch: dict[str, Any]) -> dict[str, Any]:
     }
     return {
         "type": "object",
-        "required": ["batch_id", "items"],
+        "required": ["items"],
         "properties": {
-            "batch_id": {"type": "string", "enum": [batch["batch_id"]]},
             "items": {
                 "type": "array",
                 "items": item_schema,
@@ -561,64 +558,62 @@ def model_grade_schema(batch: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def model_grade_output_diagnostics(
+def bind_model_grade_output(
     output: Any,
     batch: dict[str, Any],
-) -> list[dict[str, Any]]:
-    """Bind a provider-shaped judgment to the exact frozen batch."""
-    expected_items = {
-        item["item_id"]: [check["id"] for check in item["checks"]]
-        for item in batch["items"]
-    }
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Bind ordered provider values to identities from the frozen batch."""
+    expected_items = batch["items"]
     items = output.get("items") if isinstance(output, dict) else None
-    observed_ids = [
-        item.get("item_id") if isinstance(item, dict) else None
-        for item in items or []
-    ]
     if (
         not isinstance(output, dict)
-        or set(output) != {"batch_id", "items"}
-        or output.get("batch_id") != batch["batch_id"]
+        or set(output) != {"items"}
         or not isinstance(items, list)
         or len(items) != len(expected_items)
-        or any(not isinstance(item_id, str) for item_id in observed_ids)
-        or len(observed_ids) != len(set(observed_ids))
-        or set(observed_ids) != set(expected_items)
     ):
-        return [_diagnostic(
+        return None, [_diagnostic(
             "identity_mismatch",
-            "model grader output differs from the bound batch identities",
+            "model grader output differs from the bound batch shape",
         )]
-    for item in items:
-        checks = item.get("checks")
-        expected_checks = expected_items[item["item_id"]]
-        if set(item) != {"item_id", "checks"} or not isinstance(checks, list):
-            return [_diagnostic(
+    bound_items = []
+    for expected_item, item in zip(expected_items, items, strict=True):
+        if not isinstance(item, dict):
+            return None, [_diagnostic(
                 "identity_mismatch",
-                "model grader output differs from the bound check identities",
+                "model grader output differs from the bound item shape",
             )]
-        observed_checks = [
-            check.get("id") if isinstance(check, dict) else None
-            for check in checks
-        ]
+        checks = item.get("checks")
+        expected_checks = expected_item["checks"]
+        if set(item) != {"checks"} or not isinstance(checks, list):
+            return None, [_diagnostic(
+                "identity_mismatch",
+                "model grader output differs from the bound item shape",
+            )]
         if (
             len(checks) != len(expected_checks)
-            or any(not isinstance(check_id, str) for check_id in observed_checks)
-            or len(observed_checks) != len(set(observed_checks))
-            or set(observed_checks) != set(expected_checks)
             or any(
-                set(check) != {"id", "pass", "notes", "uncertainty"}
+                not isinstance(check, dict)
+                or set(check) != {"pass", "notes", "uncertainty"}
                 or not isinstance(check["pass"], bool)
                 or not isinstance(check["notes"], str)
                 or check["uncertainty"] not in {"none", "low", "medium", "high"}
                 for check in checks
             )
         ):
-            return [_diagnostic(
+            return None, [_diagnostic(
                 "identity_mismatch",
-                "model grader output differs from the bound check identities",
+                "model grader output differs from the bound check shape",
             )]
-    return []
+        bound_items.append({
+            "item_id": expected_item["item_id"],
+            "checks": [
+                {"id": expected_check["id"], **observed_check}
+                for expected_check, observed_check in zip(
+                    expected_checks, checks, strict=True,
+                )
+            ],
+        })
+    return {"batch_id": batch["batch_id"], "items": bound_items}, []
 
 
 def execute_evidence_diagnostics(
