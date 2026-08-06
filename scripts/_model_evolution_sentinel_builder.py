@@ -595,15 +595,16 @@ def _calibration_view(
             'adds integer `"schema_version": 1`, preserves the existing field and JSON '
             "syntax, and the schema verification passes.",
             "The final answer artifact names `skill-evaluator/scripts/validate_eval_suite.py` and "
-            "`fixtures/l0-spec.json` as the owners and gives the documented one-argument "
-            "command `python3 skill-evaluator/scripts/validate_eval_suite.py "
+            "`fixtures/l0-spec.json` as the owners and gives the documented single-spec "
+            "command `python3 skill-evaluator/scripts/validate_eval_suite.py contract "
             "fixtures/l0-spec.json`; the focused verification exits 0, and it does not "
             "start the runner or add scenario/Host inputs.",
         )
         evidence[check_id]["known_bad"] = (
             evidence[check_id]["known_bad"][0],
             "The answer starts `run_eval_plan.py` and supplies a scenario and Host manifest "
-            "to the L0 validator; it changes the owner and adds two forbidden inputs.",
+            "to `validate_eval_suite.py contract`; it changes the owner and adds two "
+            "forbidden inputs for L0.",
         )
         evidence[check_id]["boundary"] = (
             'The task supplies JSON `{"status": "completed"}`, but the patch uses '

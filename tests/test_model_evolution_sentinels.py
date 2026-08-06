@@ -404,14 +404,15 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 )
                 self.assertIn("validate_eval_suite.py", quality_evidence)
                 self.assertIn("fixtures/l0-spec.json", quality_evidence)
-                self.assertIn("one-argument", quality_evidence)
+                self.assertIn("single-spec", quality_evidence)
+                self.assertIn("contract fixtures/l0-spec.json", quality_evidence)
                 quality_negative_two = next(
                     row
                     for row in rows
                     if row["example_id"].endswith("quality-check-cal-06")
                 )
                 self.assertIn(
-                    "two forbidden inputs",
+                    "two forbidden inputs for L0",
                     quality_negative_two["payload"]["view"]["candidate_evidence"],
                 )
                 self.assertIn(
