@@ -1,1 +1,1 @@
-Implementation commit: signed. Unit tests: pass. Publish authority: release engineering.
+Implementation commit: signed. Unit tests: pass. Verification command: PYTHONDONTWRITEBYTECODE=1 python -m unittest tests.test_release. Publish authority: release engineering. Only immutable artifact verification remains; no later source-changing slice is pending.

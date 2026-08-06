@@ -11,6 +11,9 @@ DEFINITION = {
         "unambiguous-handoff",
         "continuous-execution",
     ],
+    "grader_rules": [
+        "For writing-plans-explicit-handoff-heldout, quality and process require a minimal State, Next action, and Proof contract, the exact bound unittest command, the release-engineering publication boundary, and explicit omission of Resume because only immutable artifact verification remains.",
+    ],
     "process_evidence": [
         "each implementation step names its exact source owner and verification command",
         "the handoff records its artifacts, authority limit, and next executable command",
@@ -25,7 +28,7 @@ DEFINITION = {
         "fixtures/schema.json": '{"type": "object", "properties": {"mode": {"type": "string"}}}\n',
         "fixtures/src/parser.py": "def parse(value):\n    return value.strip()\n",
         "fixtures/scripts/build_package.py": "def build():\n    return 'package'\n",
-        "fixtures/release-status.md": "Implementation commit: signed. Unit tests: pass. Publish authority: release engineering.\n",
+        "fixtures/release-status.md": "Implementation commit: signed. Unit tests: pass. Verification command: PYTHONDONTWRITEBYTECODE=1 python -m unittest tests.test_release. Publish authority: release engineering. Only immutable artifact verification remains; no later source-changing slice is pending.\n",
         "fixtures/cli.py": "def main(argv):\n    return 0\n",
         "fixtures/tests/test_cli.py": "def test_cli_smoke():\n    assert True\n",
         "fixtures/README.md": "# CLI\n",

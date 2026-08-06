@@ -2307,7 +2307,24 @@ def _resume_seal(
         except RunnerFailure:
             pass
         else:
-            if host_result.get("failure_class") == "official_transient":
+            protocol_error = host_result.get("protocol_error")
+            lifecycle_gap = (
+                host_result.get("terminal_status") == "protocol_error"
+                and host_result.get("timeout") is False
+                and host_result.get("refusal") is False
+                and host_result.get("treatment_error") is None
+                and isinstance(protocol_error, dict)
+                and protocol_error.get("kind") == "malformed_record"
+                and str(protocol_error.get("message", "")).startswith(
+                    "Codex stream has incomplete items:"
+                )
+                and "(item.started/command_execution)"
+                in str(protocol_error.get("message", ""))
+            )
+            if (
+                host_result.get("failure_class") == "official_transient"
+                or lifecycle_gap
+            ):
                 interruption_class = "official_transient"
 
     artifact_paths: list[Path] = []
