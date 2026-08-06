@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,9 @@ import codex_eval_host  # noqa: E402
 
 class HostBuildError(ValueError):
     """The provisional Host cannot be derived from its exact inputs."""
+
+
+CODEX_VERSION = re.compile(r"codex-cli ([0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?)")
 
 
 def _hash_bytes(value: bytes) -> str:
@@ -83,6 +87,62 @@ def _repository_identity(repository_root: Path) -> dict[str, Any]:
     }
 
 
+def _codex_runtime(entrypoint: Path) -> tuple[Path, str]:
+    runtime = entrypoint.resolve(strict=True)
+    package_version: str | None = None
+    if runtime.suffix == ".js":
+        package_root = runtime.parent.parent
+        package = _load(package_root / "package.json")
+        package_version = package.get("version")
+        targets = {
+            ("linux", "aarch64"): ("codex-linux-arm64", "aarch64-unknown-linux-musl"),
+            ("linux", "x86_64"): ("codex-linux-x64", "x86_64-unknown-linux-musl"),
+        }
+        target = targets.get((sys.platform, platform.machine().lower()))
+        if not isinstance(package_version, str) or target is None:
+            raise HostBuildError("Codex package runtime identity is unsupported")
+        package_name, target_triple = target
+        runtime = (
+            package_root
+            / "node_modules"
+            / "@openai"
+            / package_name
+            / "vendor"
+            / target_triple
+            / "bin"
+            / "codex"
+        ).resolve(strict=True)
+    if runtime.is_symlink() or not runtime.is_file() or not os.access(runtime, os.X_OK):
+        raise HostBuildError("Codex runtime executable is invalid")
+    result = subprocess.run(
+        [str(runtime), "--version"],
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    match = CODEX_VERSION.fullmatch(result.stdout.strip())
+    if result.returncode or result.stderr or match is None:
+        raise HostBuildError("Codex runtime version probe failed")
+    version = match.group(1)
+    if package_version is not None and package_version != version:
+        raise HostBuildError("Codex package and runtime versions differ")
+    return runtime, version
+
+
+def _model_revision(model: str, codex_version: str) -> str:
+    cache = _load(Path.home() / ".codex/models_cache.json")
+    models = cache.get("models")
+    selected = (
+        [row for row in models if isinstance(row, dict) and row.get("slug") == model]
+        if isinstance(models, list)
+        else []
+    )
+    if cache.get("client_version") != codex_version or len(selected) != 1:
+        raise HostBuildError("Codex model catalog differs from the bound runtime")
+    return f"codex-catalog-{codex_version}-{_hash_bytes(_canonical_bytes(selected[0]))}"
+
+
 def _tree_hash(root: Path) -> str:
     paths = [path for path in root.rglob("*") if path.is_file() or path.is_symlink()]
     return tree_hash(inventory(root, paths))
@@ -111,7 +171,9 @@ def build_host(
     executable = Path(sys.executable).resolve(strict=True)
     adapter = (repository_root / "scripts/codex_eval_host.py").resolve(strict=True)
     argv[0:2] = [str(executable), str(adapter)]
-    codex_path = Path(argv[argv.index("--codex") + 1]).resolve(strict=True)
+    codex_path, codex_version = _codex_runtime(
+        Path(argv[argv.index("--codex") + 1])
+    )
     codex_hash = _hash_bytes(codex_path.read_bytes())
     isolation_name = shutil.which("bwrap")
     if isolation_name is None:
@@ -121,6 +183,7 @@ def build_host(
     _replace(argv, "--mode", "host")
     _replace(argv, "--codex", str(codex_path))
     _replace(argv, "--codex-sha256", codex_hash)
+    _bind(argv, "--codex-version", codex_version)
     _bind(argv, "--isolation-tool", str(isolation_tool))
     _bind(argv, "--isolation-tool-sha256", isolation_hash)
     _replace(argv, "--host-manifest", str(output_path.resolve()))
@@ -161,6 +224,12 @@ def build_host(
     )
     if execution.get("model") != argv[argv.index("--model") + 1]:
         raise HostBuildError("template model identity differs from its command")
+    execution["model_revision"] = _model_revision(execution["model"], codex_version)
+    execution["harness"] = (
+        f"codex-cli-{codex_version}"
+        f"-effort-{argv[argv.index('--effort') + 1]}"
+        f"-profile-{argv[argv.index('--profile') + 1]}-tier-default"
+    )
     identity["adapter"].update(
         {
             "sha256": codex_eval_host.adapter_source_hash(adapter.parent),
@@ -168,6 +237,7 @@ def build_host(
         }
     )
     identity["host_build"] = codex_hash
+    identity["host_version"] = codex_version
     repository_identity = _repository_identity(repository_root)
     if repository_identity["dirty"]:
         raise HostBuildError("repository has tracked changes")

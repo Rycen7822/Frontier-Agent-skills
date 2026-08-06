@@ -15,7 +15,7 @@ from _codex_eval_delivery import (
     MODEL_EVOLUTION_ENV_ALLOWLIST,
     isolated_tool_schema_hash,
 )
-from codex_eval_host import adapter_source_hash
+from codex_eval_host import ADAPTER_VERSION, adapter_source_hash
 from _model_evolution_contract import (
     SKILL_IDS,
     build_initial_campaign,
@@ -112,11 +112,19 @@ def _materialize_fake_host(
     host["identity"]["adapter"].update(
         {
             "id": "codex-eval-host",
-            "version": "1",
+            "version": ADAPTER_VERSION,
             "sha256": adapter_source_hash(),
         }
     )
+    host["identity"]["host_build"] = file_hash(fake)
+    host["identity"]["host_version"] = "0.0.0"
     host["identity"]["execution"]["model"] = "fixture-model"
+    host["identity"]["execution"]["harness"] = (
+        "codex-cli-0.0.0-effort-high-profile-fixture-profile-tier-default"
+    )
+    host["identity"]["execution"]["model_revision"] = (
+        "codex-catalog-0.0.0-sha256:" + "1" * 64
+    )
     host["identity"]["repository"] = {
         "dirty": False,
         "revision": FIXED_COMMIT,
@@ -134,6 +142,8 @@ def _materialize_fake_host(
                 str(fake),
                 "--codex-sha256",
                 file_hash(fake),
+                "--codex-version",
+                "0.0.0",
                 "--isolation-tool",
                 str(isolation_tool),
                 "--isolation-tool-sha256",

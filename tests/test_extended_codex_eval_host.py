@@ -21,7 +21,11 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "skill-evaluator/scripts"))
 from _bundle_hash import inventory, tree_hash  # noqa: E402
 from _codex_eval_delivery import isolated_tool_schema_hash  # noqa: E402
 import _codex_eval_isolation as isolation  # noqa: E402
-from codex_eval_host import ADAPTER_SOURCE_FILES, adapter_source_hash  # noqa: E402
+from codex_eval_host import (  # noqa: E402
+    ADAPTER_SOURCE_FILES,
+    ADAPTER_VERSION,
+    adapter_source_hash,
+)
 from validate_eval_suite import (  # noqa: E402
     load_v5_schema_registry,
     validate_host_protocol_record,
@@ -220,6 +224,8 @@ def _bound_adapter_argv(
         str(fake),
         "--codex-sha256",
         _sha256_file(fake),
+        "--codex-version",
+        "0.0.0",
         "--host-manifest",
         str(manifest),
         "--model",
@@ -252,12 +258,20 @@ def _host_manifest(
     manifest["identity"]["adapter"].update(
         {
             "id": "codex-eval-host",
-            "version": "1",
+            "version": ADAPTER_VERSION,
             "sha256": adapter_source_hash(),
         }
     )
     manifest["identity"]["repository"]["worktree"] = str(path.parent.resolve())
     manifest["identity"]["execution"]["model"] = MODEL
+    manifest["identity"]["host_build"] = _sha256_file(fake)
+    manifest["identity"]["host_version"] = "0.0.0"
+    manifest["identity"]["execution"]["harness"] = (
+        f"codex-cli-0.0.0-effort-high-profile-{profile}-tier-default"
+    )
+    manifest["identity"]["execution"]["model_revision"] = (
+        "codex-catalog-0.0.0-sha256:" + "1" * 64
+    )
     manifest["identity"]["execution"]["tool_schema_hash"] = (
         isolated_tool_schema_hash(_sha256_file(fake))
     )
@@ -288,12 +302,20 @@ def _materialize_adapter_fixture(root: Path, fake: Path) -> dict[str, Path]:
     host["identity"]["adapter"].update(
         {
             "id": "codex-eval-host",
-            "version": "1",
+            "version": ADAPTER_VERSION,
             "sha256": adapter_source_hash(),
         }
     )
     host["identity"]["repository"]["worktree"] = str(root.resolve())
     host["identity"]["execution"]["model"] = MODEL
+    host["identity"]["host_build"] = _sha256_file(fake)
+    host["identity"]["host_version"] = "0.0.0"
+    host["identity"]["execution"]["harness"] = (
+        "codex-cli-0.0.0-effort-high-profile-fixture-profile-tier-default"
+    )
+    host["identity"]["execution"]["model_revision"] = (
+        "codex-catalog-0.0.0-sha256:" + "1" * 64
+    )
     host["identity"]["execution"]["tool_schema_hash"] = (
         isolated_tool_schema_hash(_sha256_file(fake))
     )
