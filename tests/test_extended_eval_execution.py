@@ -1532,6 +1532,59 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 ).exists(),
             )
 
+    def test_retry_classifies_codex_item_lifecycle_gap_as_official_transient(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = materialize_v5_contract_fixture(root)
+            set_v5_synthetic_host_mode(paths, 'protocol-gap-first-attempt')
+            spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+            spec['execution']['retry_policy'] = {
+                'max_attempts': 2,
+                'retryable_apparatus_classes': ['official_transient'],
+                'backoff_seconds': 0,
+            }
+            paths['spec'].write_text(
+                json.dumps(spec, indent=2) + '\n', encoding='utf-8',
+            )
+            rebind_v5_contract_fixture(paths)
+            plan_path = root / 'execution-plan.json'
+            compiled = self._run_compiler(paths, plan_path)
+            self.assertEqual(
+                0, compiled.returncode, compiled.stdout + compiled.stderr,
+            )
+            plan = json.loads(plan_path.read_text(encoding='utf-8'))
+            entry = plan['entries'][0]
+            index_path = root / plan['artifacts']['root'] / plan['artifacts'][
+                'index_relpath'
+            ]
+
+            first = self._run_runner(
+                plan_path, index_path, '--entry-id', entry['entry_id'],
+            )
+            self.assertEqual(
+                3, first.returncode, first.stdout + first.stderr,
+            )
+            resumed = self._run_runner(
+                plan_path, index_path, '--entry-id', entry['entry_id'],
+                '--resume', '--new-attempt-budget', '1',
+            )
+            self.assertEqual(
+                0, resumed.returncode, resumed.stdout + resumed.stderr,
+            )
+            rows = [
+                json.loads(line)
+                for line in index_path.read_text(encoding='utf-8').splitlines()
+            ]
+            receipt = json.loads(
+                (root / plan['artifacts']['root'] / rows[0]['receipt']['path'])
+                .read_text(encoding='utf-8'),
+            )
+            self.assertEqual('official_transient', receipt['run']['error'])
+            self.assertFalse(receipt['run']['valid'])
+            self.assertEqual(2, rows[-1]['attempt'])
+
     def test_timeout_cancel_and_process_timeout_cleanup(self) -> None:
         for mode, terminal in (
             ('treatment-timeout', 'timeout'),

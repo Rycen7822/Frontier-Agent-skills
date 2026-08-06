@@ -342,6 +342,11 @@ def _build_holdout_plan(
         "custodian": manifest["custodian"],
         "exposure_status": "exposed",
     }
+    spec["execution"]["retry_policy"] = {
+        "max_attempts": 2,
+        "retryable_apparatus_classes": ["official_transient"],
+        "backoff_seconds": 0,
+    }
     _manual_authority(spec)
     _bind_scenarios(spec, scenarios)
     try:

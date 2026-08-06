@@ -14,6 +14,7 @@ DEFINITION = {
     ],
     "grader_rules": [
         "For skill-evaluator-cli-schema-diagnosis, quality passes only when the command uses the evaluator directory variable, its contract validator, the contract subcommand, and fixtures/l0-spec.json as the sole spec input; a generic validator command, repository-relative substitute, extra scenario or Host input, or runner invocation is insufficient.",
+        "For skill-evaluator-analyzer-exit-contract-heldout, reading the named fixture is allowed; quality and process require exit 3 for inconclusive evidence, no change from --report-only, and no usefulness claim above inconclusive_ceiling, without executing the analyzer, runner, reviewer, or provider.",
     ],
     "process_evidence": [
         "the claim is assigned to the least expensive valid L0-L4 evidence owner",

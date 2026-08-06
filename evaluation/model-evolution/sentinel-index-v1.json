@@ -1,6 +1,6 @@
 {
   "schema_version": "model-evolution-sentinel-index/1",
-  "sentinel_hash": "sha256:80427ade3fd9208511fd7cc6d85dfc542b9b1520335a0e933e000774489df45f",
+  "sentinel_hash": "sha256:7ff3f37aefc4e3a85de4846342f477376d1a0939d14214ca710b336377333f81",
   "sentinel_id": "frontier-four-skill-sentinel-v1",
   "skills": {
     "long-document-segmented-writing": {
@@ -165,7 +165,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:e36d15bdaa1ddbb038f02e2316ea10b2d904ef6cf7605e539ddd84dd23c4c9b4"
+        "sha256": "sha256:177a724b57a765019e1a3fa8b30577542dd1fa8ec39fbbf8f0f82fe36ac5fa47"
       },
       "verifier_roots": [
         {
@@ -256,7 +256,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/software-quality-workflows/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:a5f6b8507d14f0c48112842339309420cec3957b0b87ca97db6f52ede769448b"
+        "sha256": "sha256:d28aaea389cdad74d4d9943fb2a30657462236eb9be5f03cae36dc673368ff4f"
       },
       "verifier_roots": [
         {
@@ -284,7 +284,7 @@
         {
           "path": "evaluation/model-evolution/sentinels/writing-plans/fixtures/manifest.json",
           "root": "repository",
-          "sha256": "sha256:356e6be3becb18d93a1578057d42be943a01d92e60a408a2818a913423f7e79e"
+          "sha256": "sha256:83de3a197bef9716d5cb1ae0240451a651c703303277172b472f365915a5ca1f"
         },
         {
           "path": "evaluation/model-evolution/sentinels/writing-plans/fixtures/README.md",
@@ -309,7 +309,7 @@
         {
           "path": "evaluation/model-evolution/sentinels/writing-plans/fixtures/release-status.md",
           "root": "repository",
-          "sha256": "sha256:0e89afa02a9a27509a7bc8c17d1d3cae15ba7f0a04eba6bb7d55ffe920ae8a8b"
+          "sha256": "sha256:4cc88577e92f9da9829536d69e0a99f6d2841b6c50e1743d344a71716e95d09b"
         },
         {
           "path": "evaluation/model-evolution/sentinels/writing-plans/fixtures/resume-state.md",
@@ -359,7 +359,7 @@
       "public_scenarios": {
         "path": "evaluation/model-evolution/sentinels/writing-plans/scenarios.public.jsonl",
         "root": "repository",
-        "sha256": "sha256:dc27407b26893cf7b1e7d2ef3e8ca78ba413cba23a26a21d5248db82c375c50b"
+        "sha256": "sha256:bdbb16ff35ceff6245623eefa4c528277a220cc4c6d0db1009e0dde1934001e0"
       },
       "required_coverage_tags": [
         "source-bound",
@@ -372,7 +372,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/writing-plans/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:29a62859be12e77e5aaee126dde3860c372e932c1ddf02561ae1b7802685f40d"
+        "sha256": "sha256:cb9033dc79c324954384ec4b8590adbc6e264879afd9f0aa8cd275a2cc1bf7e0"
       },
       "verifier_roots": [
         {

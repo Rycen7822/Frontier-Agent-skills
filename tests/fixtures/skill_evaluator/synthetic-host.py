@@ -770,6 +770,17 @@ def _host(request: dict[str, object], mode: str) -> int:
         result["treatment_error"] = "synthetic response stream disconnected"
         result["provider_error_code"] = "responseStreamDisconnected"
         result["failure_class"] = "official_transient"
+    elif mode == "protocol-gap-first-attempt" and envelope["attempt"] == 1:
+        result["terminal_status"] = "protocol_error"
+        result["protocol_error"] = {
+            "kind": "malformed_record",
+            "message": (
+                "Codex stream has incomplete items: stdout record 8 "
+                "(item.started/command_execution)"
+            ),
+            "seq": None,
+            "artifact": None,
+        }
     elif mode == "treatment-cancel":
         result["terminal_status"] = "cancelled"
         result["treatment_error"] = "synthetic treatment cancellation"
