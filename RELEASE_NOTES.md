@@ -2,7 +2,7 @@
 
 ## Bundle 6.3.0 model evolution qualification
 
-Bundle 6.3.0 advances Long Document from 1.0.0 to 1.1.0, Skill Evaluator from 3.2.0 to 3.3.0, and Writing Plans from 8.1.0 to 8.2.0; Software Quality Workflows remains 9.0.0. Schema epoch 5, the mixed activation matrix, and the explicit-only evaluator boundary remain unchanged. It adds a bounded model-evolution controller, six inert Codex Host probes, exact four-Skill non-ready sentinel suites, deterministic suite-quality evidence, external holdout contracts, and fresh-process qualification verification.
+Bundle 6.3.0 advances Long Document from 1.0.0 to 1.1.0, Skill Evaluator from 3.2.0 to 3.3.1, and Writing Plans from 8.1.0 to 8.2.2; Software Quality Workflows remains 9.0.0. Schema epoch 5, the mixed activation matrix, and the explicit-only evaluator boundary remain unchanged. It adds a bounded model-evolution controller, six inert Codex Host probes, exact four-Skill non-ready sentinel suites, deterministic suite-quality evidence, external holdout contracts, and fresh-process qualification verification.
 
 Long Document 1.1 preserves explicitly requested recovery or audit markers in the reader-facing deliverable. Writing Plans 8.2 keeps bounded named-file plans native, treats prompt-bound source facts as resolved inputs, and limits Resume attestation to a source-changing slice that actually crosses contexts. The SQW and Writing Plans protected sentinels now bind the exact source or metadata inputs needed for a factual answer.
 

@@ -2617,6 +2617,8 @@ def _v5_gate_status(gate: dict[str, Any], observed: Any) -> str:
 def _v5_protected_outcome_failures(
     plan: dict[str, Any],
     records: list[dict[str, Any]],
+    *,
+    candidate_id: str,
 ) -> int:
     by_entry = {
         record["entry_id"]: record
@@ -2627,6 +2629,7 @@ def _v5_protected_outcome_failures(
     for entry in plan.get("entries", []):
         if (
             entry["disposition"] != "execute"
+            or entry["treatment_id"] != candidate_id
             or "protected" not in entry["execute_case_payload"]["case"]["tags"]
         ):
             continue
@@ -2753,7 +2756,7 @@ def _v5_metric_analysis(
             for record in candidate_records
         ),
         "protected_outcome_failures": _v5_protected_outcome_failures(
-            plan, records,
+            plan, records, candidate_id=candidate_id,
         ),
         "controlled_skill_context_bytes_p95": (
             nearest_rank(candidate_controlled_context, 0.95)
@@ -4754,7 +4757,7 @@ def _comparison_observations(
         "comparison_observations_hash": "sha256:" + "0" * 64,
         "generator": {
             "name": "analyze_runs.py",
-            "version": "3.3.0",
+            "version": "3.3.1",
             "source_hash": file_sha256(Path(__file__)),
         },
         "evaluation_id": summary["evaluation_id"],

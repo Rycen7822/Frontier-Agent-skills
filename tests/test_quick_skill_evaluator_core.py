@@ -33,7 +33,7 @@ class QuickSkillEvaluatorCoreTests(unittest.TestCase):
         match = re.match(r"\A---\n(.*?)\n---\n", text, flags=re.DOTALL)
         self.assertIsNotNone(match)
         frontmatter = yaml.safe_load(match.group(1))
-        self.assertEqual("3.3.0", frontmatter["metadata"]["version"])
+        self.assertEqual("3.3.1", frontmatter["metadata"]["version"])
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
         self.assertIs(agents["policy"]["allow_implicit_invocation"], False)
         result = subprocess.run(
@@ -90,6 +90,48 @@ class QuickSkillEvaluatorCoreTests(unittest.TestCase):
         self.assertEqual(0, analyzer.derive_protected_outcome_failures(
             records, cases, baseline="baseline", candidate="candidate", repeats=1,
         ))
+
+        v5_case = {
+            "tags": ["protected"],
+            "requirements": [
+                {
+                    "requirement_id": "outcome",
+                    "dimension": "outcome",
+                    "required": True,
+                }
+            ],
+        }
+        plan = {
+            "entries": [
+                {
+                    "entry_id": variant,
+                    "treatment_id": variant,
+                    "disposition": "execute",
+                    "execute_case_payload": {"case": v5_case},
+                }
+                for variant in ("baseline", "candidate")
+            ]
+        }
+        v5_records = [
+            {
+                "entry_id": "baseline",
+                "task_pass": False,
+                "hard_gate_failures": ["outcome"],
+            },
+            {
+                "entry_id": "candidate",
+                "task_pass": True,
+                "hard_gate_failures": [],
+            },
+        ]
+        self.assertEqual(
+            0,
+            analyzer._v5_protected_outcome_failures(
+                plan,
+                v5_records,
+                candidate_id="candidate",
+            ),
+        )
 
     def test_context_projection_and_waste_gates_are_exact(self) -> None:
         analyzer = load_module("skill_evaluator_analyzer_projection", SCRIPTS / "analyze_runs.py")

@@ -440,6 +440,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             self.assertIn("only against relevant observable behavior", prompt)
             self.assertIn("task leaves irrelevant", prompt)
             self.assertIn("Treat bound task fixtures as supplied facts", prompt)
+            self.assertIn("single target-Skill body is the intentional treatment delivery", prompt)
             self.assertIn("`uncertainty` to `high`", prompt)
             for leaked_answer in (
                 "validate_eval_suite.py",

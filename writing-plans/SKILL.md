@@ -2,12 +2,12 @@
 name: writing-plans
 description: "Write source-bound software implementation Handoffs and multi-session Programs from settled decisions; not diagnosis or execution."
 metadata:
-  version: 8.2.1
+  version: 8.2.2
 ---
 
 Handoff crosses contexts; Program tracks a changing frontier; otherwise stay native. Skill-source changes use skill authoring. Do not decide, diagnose, execute, verify or claim.
 
-A bounded single-session plan with named files and checks stays native: inspect each available bound file once, then write a concise ordered plan with observed symbols and behavior, exact edits, checks, expected results, and failure exits. Do not substitute placeholders such as "existing conventions" for available source facts. Do not add the four-row contract, host attestation, combined-proof-only rule, or an unrequested owner handoff. Prompt-bound files, commits, completed state, checks, and commands remain resolved inputs when an isolated planning workspace does not contain them; do not replace the requested plan with a missing-file diagnosis.
+A bounded single-session request naming files and checks must end as a native ordered plan; the Handoff/Program contract below does not apply. Inspect each available bound file once. State observed symbols and behavior, exact edits, checks, expected results, and failure exits. Exact means observed old→new symbols/expressions, argument-parser calls and documentation text; generic "add parsing" or "follow existing conventions" fails. Use only checks executable in the observed workspace; an explicit non-Git identity forbids Git status, diff, or rollback. Do not add contract rows, attestation, combined-only proof or unrequested owners.
 
 ## Bind
 

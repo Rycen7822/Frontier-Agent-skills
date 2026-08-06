@@ -49,9 +49,9 @@ LOCAL_PATH_PATTERNS = tuple(re.compile(pattern) for pattern in (
 PLACEHOLDER_PATTERN = re.compile(re.escape(chr(91)) + "TODO:")
 EXPECTED_SKILLS = {
     "long-document-segmented-writing": "1.1.0",
-    "skill-evaluator": "3.3.0",
+    "skill-evaluator": "3.3.1",
     "software-quality-workflows": "9.0.0",
-    "writing-plans": "8.2.1",
+    "writing-plans": "8.2.2",
 }
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,

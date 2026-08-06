@@ -10,7 +10,7 @@
     {
       "id": "skill-evaluator",
       "path": "skill-evaluator",
-      "version": "3.3.0"
+      "version": "3.3.1"
     },
     {
       "id": "software-quality-workflows",
@@ -20,7 +20,7 @@
     {
       "id": "writing-plans",
       "path": "writing-plans",
-      "version": "8.2.1"
+      "version": "8.2.2"
     }
   ],
   "activation_ceiling": "implicit_local_pilot",
