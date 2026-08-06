@@ -89,7 +89,7 @@ DEFINITION = {
         {
             "id": "continuous-execution",
             "coverage": "continuous-execution",
-            "task": "Read `fixtures/cli.py`, `fixtures/tests/test_cli.py`, and `fixtures/README.md`, then produce consecutive implementation steps for adding `--dry-run`. Ground the plan in the observed source and include prerequisites, exact edits, checks, expected results, and failure exits.",
+            "task": "Read `fixtures/cli.py`, `fixtures/tests/test_cli.py`, and `fixtures/README.md`, then produce consecutive implementation steps for adding `--dry-run` as a Boolean argparse option. Both `main([])` and `main([\"--dry-run\"])` must return 0 without output; unknown options must fail through argparse. Ground the plan in the observed source and include the exact import, parser calls, tests, documentation, checks, expected results, and failure exits.",
             "protected": False,
             "turns": 1,
             "initial_files": [
@@ -98,7 +98,7 @@ DEFINITION = {
                 "fixtures/README.md",
             ],
             "semantic_oracle": [
-                "CLI, test, docs, and smoke verification form one executable sequence"
+                "the exact argparse implementation, return behavior, tests, docs, and smoke verification form one executable sequence"
             ],
         },
         {
