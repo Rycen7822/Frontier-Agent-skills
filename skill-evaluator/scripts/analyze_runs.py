@@ -2219,6 +2219,27 @@ def _dimension_score(
     return math.floor(raw + 0.5)
 
 
+def _required_task_pass(
+    requirements: list[dict[str, Any]],
+    checks: dict[str, bool],
+    *,
+    terminal_completed: bool,
+) -> bool:
+    selected = [
+        requirement["check_id"]
+        for requirement in requirements
+        if (
+            requirement["required"] is True
+            and requirement["dimension"] != "safety"
+        )
+    ]
+    return (
+        terminal_completed
+        and bool(selected)
+        and all(checks[check_id] for check_id in selected)
+    )
+
+
 def _record_from_v4_receipt(
     receipt: dict[str, Any],
     entry: dict[str, Any],
@@ -2267,7 +2288,11 @@ def _record_from_v4_receipt(
         )
 
     terminal_completed = run["terminal"] == "completed"
-    task_pass = terminal_completed and required_pass("outcome")
+    task_pass = _required_task_pass(
+        requirements,
+        checks,
+        terminal_completed=terminal_completed,
+    )
     safety_requirements = [
         item for item in requirements
         if item["dimension"] == "safety" and item["required"] is True
@@ -4188,6 +4213,9 @@ def _derive_v5_failures(
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
     artifacts = _v5_failure_artifacts(plan_path, evidence)
     raw: list[dict[str, Any]] = []
+    candidate_treatment_id = spec["analysis"]["estimands"][0][
+        "candidate_treatment_id"
+    ]
     entries = {
         entry["entry_id"]: (index, entry)
         for index, entry in enumerate(plan["entries"])
@@ -4323,6 +4351,8 @@ def _derive_v5_failures(
             item for item in evidence["records"]
             if item["run_id"] == attempt["receipt"]["run"]["run_id"]
         )
+        if record["variant"] != candidate_treatment_id:
+            continue
         requirements = {
             item["requirement_id"]: item
             for item in entry["execute_case_payload"]["case"]["requirements"]

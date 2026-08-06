@@ -4,17 +4,9 @@ DEFINITION = {
     "name": "Long Document Segmented Writing",
     "version": "1.1.0",
     "context_ceiling": 32768,
+    "process_required": False,
     "regression_origin": "session-scratch-artifact-overuse",
     "verifier_source": "long_document_segmented_writing_verifier.py",
-    "expected_pairing": {
-        "baseline_failures": [
-            "compact-recovery",
-            "segmented-draft",
-            "compaction-resume",
-            "whole-draft-review",
-        ],
-        "protected_no_regression": "protected-no-scratch",
-    },
     "claims": ["segmented-writing", "compaction-recovery", "whole-draft-review"],
     "process_evidence": [
         "the source inventory is mapped to bounded draft sections",
@@ -71,7 +63,8 @@ DEFINITION = {
         {
             "id": "compaction-resume",
             "coverage": "compaction-resume",
-            "task": "Use `fixtures/run-a.md` and `fixtures/run-b.md` to begin a two-section report. Complete section one, then provide a compact recovery anchor for section two.",
+            "task": "This is a two-turn report task using `fixtures/run-a.md` and `fixtures/run-b.md`. First complete section one and provide a compact recovery anchor for section two. After the continuation request, return a self-contained completed two-section report.",
+            "continuation": "Resume from the recovery anchor and return the self-contained completed two-section report, preserving the distinction between request retries and fresh attempts.",
             "protected": False,
             "turns": 2,
             "initial_files": ["fixtures/run-a.md", "fixtures/run-b.md"],

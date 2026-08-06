@@ -13,19 +13,7 @@
         ],
         "estimand_id": "task-benefit",
         "metric": "task_pass_rate",
-        "minimum_benefit": 0.166667
-      },
-      {
-        "candidate_treatment_id": "candidate",
-        "comparator_treatment_id": "baseline",
-        "direction": "lower_is_better",
-        "effect": "relative",
-        "eligible_modules": [
-          "core_outcome"
-        ],
-        "estimand_id": "controlled-context-cost",
-        "metric": "controlled_skill_context_bytes",
-        "minimum_benefit": 0.0
+        "minimum_benefit": 0.16666666666666666
       }
     ],
     "materiality": {
@@ -294,7 +282,7 @@
       },
       "prompt": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:44adf21f626114224333b9d0541b7b940891e7f2a96396c86548263496ff6b04"
+        "sha256": "sha256:7d4920f90078b19cd083173a92e729c72245135aa284521ac75efd41ae7da9cc"
       },
       "type": "model"
     }
@@ -307,7 +295,7 @@
       "kind": "benefit",
       "metric": "task_pass_rate",
       "required": true,
-      "threshold": 0.166667
+      "threshold": 0.16666666666666666
     },
     {
       "authority": "evaluation-owner",
@@ -397,24 +385,24 @@
   "suite": {
     "fixture_set_hash": "sha256:c21c90e69122b8613f4e53f69213431a4fbc04dd1597ddbfbbb0d0330a441ea6",
     "grader_schedule_hash": "sha256:13926d09f5eb502bb0a6e367f131f044b2eb9318e41637ea66d1ad2823c2b918",
-    "grader_set_hash": "sha256:57fb54f36b44aeea8533b9f97124450bedfbec0672a8a9eff703487f34cf5347",
+    "grader_set_hash": "sha256:397608b7d8a6e3b1a072be9e6ec28463464cfdbd1c94e0df54edfb505c64d84c",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:33ba0ad07752ae42f70a9c6c673a6c7f5e3ab62ef320622c542b8ca095aaaf83"
+      "sha256": "sha256:fe7008531f78ee3f4170bfee284a7eafb21419b9d8d5711c527948595351eff5"
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:c11079e8d40027aa9d03ec34c4752614ca3874574987d72638c2b6d1ec091db3"
+      "sha256": "sha256:52040be8a4e64410381ca5046bed1369b0ca36b0a106340d68f2aa473a900249"
     },
-    "quality_contract_hash": "sha256:682c2709219be0485767576d210d52bd9f4edf3c6ceade7e51a0a3565324dc18",
+    "quality_contract_hash": "sha256:a1cf7f7e8c74e17a58b21285626b7c9fe6fc53820ce9882b18126426a7ca9ef9",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:33ba0ad07752ae42f70a9c6c673a6c7f5e3ab62ef320622c542b8ca095aaaf83"
+      "sha256": "sha256:fe7008531f78ee3f4170bfee284a7eafb21419b9d8d5711c527948595351eff5"
     },
     "treatment_contract_hash": "sha256:6af1e852fad9dc98a02b55d8ccd19234fcf41bd07e18591da31d891548bd89dc"
   },

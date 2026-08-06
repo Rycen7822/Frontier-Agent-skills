@@ -13,19 +13,7 @@
         ],
         "estimand_id": "task-benefit",
         "metric": "task_pass_rate",
-        "minimum_benefit": 0.166667
-      },
-      {
-        "candidate_treatment_id": "candidate",
-        "comparator_treatment_id": "baseline",
-        "direction": "lower_is_better",
-        "effect": "relative",
-        "eligible_modules": [
-          "core_outcome"
-        ],
-        "estimand_id": "controlled-context-cost",
-        "metric": "controlled_skill_context_bytes",
-        "minimum_benefit": 0.0
+        "minimum_benefit": 0.16666666666666666
       }
     ],
     "materiality": {
@@ -294,7 +282,7 @@
       },
       "prompt": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:66f767bfa571e51b265fd1a506280881a618a2b3de1f1e7e53dbb8d5ec849b15"
+        "sha256": "sha256:e48a3f437befcaebd751e22085a7139b37411a03357191517bbdee643db1be20"
       },
       "type": "model"
     }
@@ -307,7 +295,7 @@
       "kind": "benefit",
       "metric": "task_pass_rate",
       "required": true,
-      "threshold": 0.166667
+      "threshold": 0.16666666666666666
     },
     {
       "authority": "evaluation-owner",
@@ -397,24 +385,24 @@
   "suite": {
     "fixture_set_hash": "sha256:cbe87f178339bca6379070c8223d070c98343f785a6bfa25448c6a080e819cdf",
     "grader_schedule_hash": "sha256:bda34ddf5843fea0df8d1e12ea42d115f982dce242752eb9d949997930a2d977",
-    "grader_set_hash": "sha256:c178be2a119c906de7e6584881c065df44115b8011570a2849bc178fdedcd1b1",
+    "grader_set_hash": "sha256:ee7be01b02998bb0e725f2b59bcde248c419f6f957e9ae071eaece040651fc5a",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:91e1b59c88e95e3ee3a91060efda8d68268ebba62e9d50d40846fce1ff72b4b6"
+      "sha256": "sha256:434c482c07abb5ab41baaf08cd4bb535a326d1ec8f36fa731b8260614d599b49"
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:9ee9d6cdf24fd2608ce7bdde8c5e9e2450ac9915b393a870b700d4cec42f8fd2"
+      "sha256": "sha256:d7f7ce6399cd6c8116644d7c8429260f2c2e8802d34731d1fbf973df76152f90"
     },
-    "quality_contract_hash": "sha256:1dc9e7e4fb878bfbd8d8ab4e2141c301c49b4add834b99d8a9dc63a88f1f98ca",
+    "quality_contract_hash": "sha256:fb07553bc9935dab40639780fddea52ace30d99854de4d27961783bcf65542df",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:91e1b59c88e95e3ee3a91060efda8d68268ebba62e9d50d40846fce1ff72b4b6"
+      "sha256": "sha256:434c482c07abb5ab41baaf08cd4bb535a326d1ec8f36fa731b8260614d599b49"
     },
     "treatment_contract_hash": "sha256:850d8fa64991c0c171acb6b606908ae4a949d8237e2e47a221c098359c2c2fd4"
   },

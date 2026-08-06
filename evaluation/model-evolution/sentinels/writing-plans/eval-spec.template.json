@@ -13,19 +13,7 @@
         ],
         "estimand_id": "task-benefit",
         "metric": "task_pass_rate",
-        "minimum_benefit": 0.166667
-      },
-      {
-        "candidate_treatment_id": "candidate",
-        "comparator_treatment_id": "baseline",
-        "direction": "lower_is_better",
-        "effect": "relative",
-        "eligible_modules": [
-          "core_outcome"
-        ],
-        "estimand_id": "controlled-context-cost",
-        "metric": "controlled_skill_context_bytes",
-        "minimum_benefit": 0.0
+        "minimum_benefit": 0.16666666666666666
       }
     ],
     "materiality": {
@@ -294,7 +282,7 @@
       },
       "prompt": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:1b523230688ba330eda1eb906990ec1eae17c61b9df1382b04cbf8479f47ab57"
+        "sha256": "sha256:347feb259b5258af230cc058819976f988723770a6380083125068be2ca984f1"
       },
       "type": "model"
     }
@@ -307,7 +295,7 @@
       "kind": "benefit",
       "metric": "task_pass_rate",
       "required": true,
-      "threshold": 0.166667
+      "threshold": 0.16666666666666666
     },
     {
       "authority": "evaluation-owner",
@@ -392,29 +380,29 @@
     "principal_mode": "single",
     "shape": "single_skill",
     "skill_id": "writing-plans",
-    "version": "8.2.0"
+    "version": "8.2.1"
   },
   "suite": {
     "fixture_set_hash": "sha256:f26dcbf56113464fb92a387462dfcc9a998a008c1993530f1ebf0fb858287ec5",
     "grader_schedule_hash": "sha256:f7d77634e73a1db4de8b67262028b506e58629437313e09210269259bfaf787f",
-    "grader_set_hash": "sha256:9ccec326c3edb89f976765b99a53486eb7cd017d2d4f6642183805e8051bf1a5",
+    "grader_set_hash": "sha256:8e9e5f86a24b08701fa12189ab907d91a3cd613e51fa68d873d46cd836114093",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:0e7a36d8af6fa4d1c6c019a165a3a95ca0f8282f2883baca72b89181bb016e58"
+      "sha256": "sha256:5b0e22cac1644c6efef5bd8bed2d7fcde0795c1d319d230ea610cbb10fed51a7"
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:37d6f18ff67b92481cbcd9e073bf4211e0dc447f318bcb225ef57164a45d7943"
+      "sha256": "sha256:9536f0c6b9517cef346078bf5f69c5fd056731a8d6aef0cc24f6a29766f4a781"
     },
-    "quality_contract_hash": "sha256:2747ebe8b17e4eed4a4bfaf50f5858b7d6e226615c2b54dd71804d5a2295a74c",
+    "quality_contract_hash": "sha256:249630996a18f1b714212737c5c2f80b2cc22928ff42d6c6934fd40292a9de1b",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:0e7a36d8af6fa4d1c6c019a165a3a95ca0f8282f2883baca72b89181bb016e58"
+      "sha256": "sha256:5b0e22cac1644c6efef5bd8bed2d7fcde0795c1d319d230ea610cbb10fed51a7"
     },
     "treatment_contract_hash": "sha256:dd7a1e4fcd2008d204f98ec5465eb5399d6e4a5f89ae0eab47b1bb8a05d5e302"
   },

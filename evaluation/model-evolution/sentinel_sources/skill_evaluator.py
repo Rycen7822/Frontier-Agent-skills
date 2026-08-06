@@ -7,16 +7,6 @@ DEFINITION = {
     "minimum_baseline_failure_cases": 2,
     "regression_origin": "deterministic-evidence-loop-and-reviewer-overuse",
     "verifier_source": "skill_evaluator_verifier.py",
-    "expected_pairing": {
-        "baseline_failures": [
-            "level-owner-selection",
-            "deterministic-first",
-            "analyzer-exit-contract",
-            "cli-schema-diagnosis",
-            "transition-vs-revision",
-        ],
-        "protected_no_regression": "protected-no-reviewer",
-    },
     "claims": [
         "level-selection",
         "deterministic-first",

@@ -94,6 +94,7 @@ def _scenario(
     case: dict[str, Any],
     fixture_hash: str,
     fixture_bindings: dict[str, dict[str, str]],
+    process_required: bool,
 ) -> dict[str, Any]:
     slug = case["id"]
     coverage = case["coverage"]
@@ -133,7 +134,10 @@ def _scenario(
                 "kind": "user_message",
                 "content": task
                 if index == 1
-                else "Continue from the prior turn and close every remaining obligation.",
+                else case.get(
+                    "continuation",
+                    "Continue from the prior turn and return a self-contained final result.",
+                ),
             },
             "activate_faults": [],
             "checkpoint": "final" if index == turn_count else "after_response",
@@ -176,7 +180,7 @@ def _scenario(
         {
             "requirement_id": "workflow-process",
             "dimension": "process",
-            "required": True,
+            "required": process_required,
             "owner": "model",
             "grader_id": "sentinel-model-grader",
             "check_id": "process-check",
@@ -218,7 +222,7 @@ def _host_manifest() -> bytes:
 def _grader_prompt(skill_id: str, claims: list[str]) -> bytes:
     text = f"""# Blinded sentinel grader for {skill_id}
 
-Judge only the supplied task and candidate evidence. Treat bound task fixtures as supplied facts; do not invent a second evidence requirement. Score `quality-check` for a complete, correct, usable result. Score `process-check` against every declared mechanism the task marks as relevant, and do not require mechanisms the task leaves irrelevant: {", ".join(claims)}. When evidence is insufficient, set `uncertainty` to `high`; the required boolean is ignored for that abstention. Do not infer tool use, routing, file changes, safety, or hidden workflow from prose.
+Judge only the supplied task and candidate evidence. Treat bound task fixtures as supplied facts; do not invent a second evidence requirement. `task_evidence.case_id` and `task_evidence.tags` declare which case and mechanisms are relevant. Score `quality-check` for a complete, correct, usable result. Score `process-check` only against relevant observable behavior in the result; do not require mechanisms that the task leaves irrelevant: {", ".join(claims)}. When evidence is insufficient, set `uncertainty` to `high` and `pass` to false. Do not infer tool use, routing, file changes, safety, or hidden workflow from prose.
 """
     return text.encode("utf-8")
 
@@ -289,6 +293,11 @@ def _spec(
         },
     ]
     model_checks = copy.deepcopy(MODEL_CHECKS)
+    if not config.get("process_required", True):
+        next(
+            check for check in model_checks
+            if check["check_id"] == "process-check"
+        )["required"] = False
     value["graders"] = [
         {
             "grader_id": "sentinel-envelope-grader",
@@ -348,7 +357,7 @@ def _spec(
     value["suite"]["grader_schedule_hash"] = evaluator.v5_grader_schedule_hash(
         value, scenarios
     )
-    minimum_pair_benefit = round(1 / len(scenarios), 6)
+    minimum_pair_benefit = 1 / len(scenarios)
     value["hard_gates"] = [
         {
             "gate_id": "critical-benefit",
@@ -407,19 +416,7 @@ def _spec(
     ]
     primary_estimand = value["analysis"]["estimands"][0]
     primary_estimand["minimum_benefit"] = minimum_pair_benefit
-    value["analysis"]["estimands"] = [
-        primary_estimand,
-        {
-            "estimand_id": "controlled-context-cost",
-            "metric": "controlled_skill_context_bytes",
-            "candidate_treatment_id": "candidate",
-            "comparator_treatment_id": "baseline",
-            "direction": "lower_is_better",
-            "effect": "relative",
-            "minimum_benefit": 0.0,
-            "eligible_modules": ["core_outcome"],
-        },
-    ]
+    value["analysis"]["estimands"] = [primary_estimand]
     value["analysis"]["slices"] = ["core", "protected"]
     value["analysis"]["materiality"]["minimum_baseline_failure_cases"] = config.get(
         "minimum_baseline_failure_cases", 2
@@ -762,18 +759,9 @@ def _validate_semantics(
     if not required_tags <= tags:
         raise ValueError(f"{skill_id} sentinel coverage is incomplete")
     fixture_paths = set(config["fixtures"])
-    case_ids = {case["id"] for case in config["cases"]}
-    protected_case_ids = {case["id"] for case in config["cases"] if case["protected"]}
-    pairing = config["expected_pairing"]
-    baseline_failures = set(pairing["baseline_failures"])
     minimum_failures = config.get("minimum_baseline_failure_cases", 2)
-    if (
-        not baseline_failures <= case_ids
-        or len(baseline_failures) < minimum_failures
-        or pairing["protected_no_regression"] not in protected_case_ids
-        or pairing["protected_no_regression"] in baseline_failures
-    ):
-        raise ValueError(f"{skill_id} paired headroom contract is incomplete")
+    if minimum_failures < 1 or minimum_failures >= len(config["cases"]):
+        raise ValueError(f"{skill_id} paired headroom threshold is invalid")
     for case in config["cases"]:
         if (
             not case["initial_files"]
@@ -875,6 +863,7 @@ def materialize(repository_root: Path) -> list[Path]:
                 case=case,
                 fixture_hash=_sha256(manifest_bytes),
                 fixture_bindings=fixture_bindings,
+                process_required=config.get("process_required", True),
             )
             for case in config["cases"]
         ]

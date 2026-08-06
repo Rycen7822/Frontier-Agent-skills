@@ -215,11 +215,8 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 expected_headroom,
             )
             definition = sentinel_builder.SKILLS[skill_id]
-            self.assertGreaterEqual(
-                len(definition["expected_pairing"]["baseline_failures"]),
-                expected_headroom,
-            )
-            minimum_pair_benefit = round(1 / len(definition["cases"]), 6)
+            self.assertLess(expected_headroom, len(definition["cases"]))
+            minimum_pair_benefit = 1 / len(definition["cases"])
             critical_gate = next(
                 gate
                 for gate in spec["hard_gates"]
@@ -229,6 +226,19 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             self.assertEqual(
                 spec["analysis"]["estimands"][0]["minimum_benefit"],
                 minimum_pair_benefit,
+            )
+            self.assertEqual(1, len(spec["analysis"]["estimands"]))
+            model_grader = next(
+                grader for grader in spec["graders"]
+                if grader["type"] == "model"
+            )
+            process_check = next(
+                check for check in model_grader["checks"]
+                if check["check_id"] == "process-check"
+            )
+            self.assertEqual(
+                process_check["required"],
+                skill_id != "long-document-segmented-writing",
             )
             self.assertIsNone(spec["suite"]["holdout"])
             self.assertNotIn("calibration", spec["suite"])
@@ -427,7 +437,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     "zero missing or contradictory requirements", quality_evidence
                 )
             prompt = (root / grader["prompt"]["path"]).read_text()
-            self.assertIn("against every declared mechanism", prompt)
+            self.assertIn("only against relevant observable behavior", prompt)
             self.assertIn("task leaves irrelevant", prompt)
             self.assertIn("Treat bound task fixtures as supplied facts", prompt)
             self.assertIn("`uncertainty` to `high`", prompt)
