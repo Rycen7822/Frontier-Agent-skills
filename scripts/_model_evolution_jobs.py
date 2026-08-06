@@ -12,11 +12,15 @@ import time
 from _model_evolution_ops import OperationError, _operation_fact, _run
 
 
-def systemd_probe_argv(unit: str, completion_file: Path) -> list[str]:
+def _validate_unit(unit: str) -> None:
     if not unit or not all(
         character.isalnum() or character in "_.-" for character in unit
     ):
         raise OperationError("systemd unit name is unsafe")
+
+
+def systemd_probe_argv(unit: str, completion_file: Path) -> list[str]:
+    _validate_unit(unit)
     return [
         "systemd-run",
         "--user",
@@ -98,3 +102,43 @@ def render_runner_command(
         argv.append("--resume")
     argv.extend(["--new-attempt-budget", str(attempt_budget)])
     return shlex.join(argv)
+
+
+def render_probe_command(
+    *,
+    repository_root: Path,
+    campaign_root: Path,
+    expected_revision: int,
+    budget_approval: Path,
+    service_id: str,
+) -> str:
+    _validate_unit(service_id)
+    if (
+        not repository_root.is_absolute()
+        or not campaign_root.is_absolute()
+        or not budget_approval.is_absolute()
+    ):
+        raise OperationError("probe job paths must be absolute")
+    if isinstance(expected_revision, bool) or expected_revision < 0:
+        raise OperationError("probe job revision is invalid")
+    return shlex.join(
+        [
+            "systemd-run",
+            "--user",
+            "--unit",
+            service_id,
+            "--collect",
+            f"--working-directory={repository_root}",
+            sys.executable,
+            "scripts/model_evolution.py",
+            "--repository-root",
+            str(repository_root),
+            "--campaign-root",
+            str(campaign_root),
+            "probe",
+            "--expected-revision",
+            str(expected_revision),
+            "--budget-approval",
+            str(budget_approval),
+        ]
+    )

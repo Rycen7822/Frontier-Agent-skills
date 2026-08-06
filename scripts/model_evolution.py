@@ -53,6 +53,7 @@ from _model_evolution_materialization import (
 )
 from _model_evolution_holdout import prepare_holdout_plan, validate_holdout_plan
 from _model_evolution_jobs import (
+    render_probe_command,
     render_runner_command,
     systemd_probe_argv,
     verify_systemd_user,
@@ -530,14 +531,15 @@ def _preflight(args: argparse.Namespace) -> None:
     )
 
 
-def _probe(args: argparse.Namespace) -> None:
-    repository_root, campaign_root = _roots(args)
-    store = _campaign_store(repository_root, campaign_root)
-    campaign = store.read()
-    if campaign["state_revision"] != args.expected_revision:
-        raise CliError("probe expected revision is stale")
+def _validated_probe_inputs(
+    campaign: dict[str, Any],
+    approval_path: Path,
+    *,
+    repository_root: Path,
+    campaign_root: Path,
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
     approval = _binding_for_path(
-        args.budget_approval,
+        approval_path,
         repository_root=repository_root,
         campaign_root=campaign_root,
     )
@@ -573,6 +575,31 @@ def _probe(args: argparse.Namespace) -> None:
     }
     if approval_document["planned"] != expected_planned:
         raise CliError("budget approval execution plan differs from campaign policy")
+    return approval, probe_set, probe_ids
+
+
+def _probe(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    store = _campaign_store(repository_root, campaign_root)
+    with store.hold_probe_operation():
+        _probe_exclusive(args, repository_root, campaign_root, store)
+
+
+def _probe_exclusive(
+    args: argparse.Namespace,
+    repository_root: Path,
+    campaign_root: Path,
+    store: CampaignStore,
+) -> None:
+    campaign = store.read()
+    if campaign["state_revision"] != args.expected_revision:
+        raise CliError("probe expected revision is stale")
+    approval, probe_set, probe_ids = _validated_probe_inputs(
+        campaign,
+        args.budget_approval,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+    )
     existing = campaign["interaction_probes"]["requests"]
     resume_existing = bool(existing)
     if resume_existing:
@@ -1098,19 +1125,57 @@ def _status(args: argparse.Namespace) -> None:
     blockers: list[dict[str, str]] = []
     statuses: list[dict[str, Any]] = []
     commands: list[str] = []
+    probe_running = False
+    probe_command: str | None = None
+    approval_path: Path | None = None
     probe_blocker = campaign["interaction_probes"]["blocker"]
-    if probe_blocker is not None:
-        blockers.append({"code": "interaction-probe", "message": probe_blocker})
-    elif any(
+    probe_reserved = any(
         request["status"] == "reserved"
         for request in campaign["interaction_probes"]["requests"]
-    ):
-        blockers.append(
-            {
-                "code": "probe-reservation",
-                "message": "partial probe reservation requires manual diagnosis",
-            }
-        )
+    )
+    if probe_blocker is not None:
+        blockers.append({"code": "interaction-probe", "message": probe_blocker})
+    elif campaign["phase"] == "apparatus_ready":
+        try:
+            probe_running = store.probe_operation_running()
+        except StateError as exc:
+            blockers.append(
+                {"code": "probe-operation-lock", "message": str(exc)}
+            )
+        if not blockers and not probe_running:
+            if probe_reserved:
+                blockers.append(
+                    {
+                        "code": "probe-reservation",
+                        "message": "partial probe reservation requires manual diagnosis",
+                    }
+                )
+            else:
+                candidate = campaign_root / "budget-approval.json"
+                if candidate.exists() or candidate.is_symlink():
+                    approval_path = candidate
+        if approval_path is not None:
+            try:
+                _validated_probe_inputs(
+                    campaign,
+                    approval_path,
+                    repository_root=repository_root,
+                    campaign_root=campaign_root,
+                )
+                probe_command = render_probe_command(
+                    repository_root=repository_root,
+                    campaign_root=campaign_root,
+                    expected_revision=campaign["state_revision"],
+                    budget_approval=approval_path,
+                    service_id=(
+                        f"frontier-{campaign['campaign_id']}-probe-"
+                        f"r{campaign['state_revision']}"
+                    )[:120],
+                )
+            except (CliError, ContractError, OperationError, OSError, KeyError) as exc:
+                blockers.append(
+                    {"code": "budget-approval-invalid", "message": str(exc)}
+                )
     if campaign["profiles"]["target_observed"] is not None:
         probe_status, _, probe_gate_blockers = assess_interaction_probes(
             campaign,
@@ -1219,6 +1284,8 @@ def _status(args: argparse.Namespace) -> None:
         plan_statuses=statuses,
         blockers=blockers,
         runner_commands=commands,
+        probe_running=probe_running,
+        probe_command=probe_command,
     )
     if not projection["blockers"] and campaign["plans"]:
         if projection["active_attempts"]:
@@ -1238,7 +1305,8 @@ def _status(args: argparse.Namespace) -> None:
         print(
             f"{projection['campaign_id']} revision={projection['state_revision']} "
             f"phase={projection['phase']} active={projection['active_attempts']} "
-            f"recoverable={projection['recoverable_attempts']}"
+            f"recoverable={projection['recoverable_attempts']} "
+            f"probe_running={projection['probe_running']}"
         )
         print(f"next={projection['next_event'] or 'blocked'}")
         for blocker in projection["blockers"]:
