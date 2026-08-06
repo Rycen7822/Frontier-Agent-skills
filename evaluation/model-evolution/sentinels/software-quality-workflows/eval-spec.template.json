@@ -282,7 +282,7 @@
       },
       "prompt": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:703ad443cebec0c9388df297715387f893c123db853c4a4a66f70178290af418"
+        "sha256": "sha256:619fde36261b7ccaa580dc72bef60a15f6f096daaf9d82a47101227741ba9ff8"
       },
       "type": "model"
     }
@@ -385,7 +385,7 @@
   "suite": {
     "fixture_set_hash": "sha256:cbe87f178339bca6379070c8223d070c98343f785a6bfa25448c6a080e819cdf",
     "grader_schedule_hash": "sha256:bda34ddf5843fea0df8d1e12ea42d115f982dce242752eb9d949997930a2d977",
-    "grader_set_hash": "sha256:eeac115acd37f55e92f1bf25541e5c76ac67fcc4fb3576e435e9803ece285a55",
+    "grader_set_hash": "sha256:0db9f292ee9273b55bf06da67d9626d3b3e37e6e1315b40b2b3cd0d36c095776",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
@@ -394,9 +394,9 @@
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:cdff8da4e9c1a41926a69e00b184ee5f8fa8e37a346e3108a1be5b739b5d23fe"
+      "sha256": "sha256:bcbaa5d02e33ac23a47551dc8259b409add9d3fb72497333d0882983e819e4ad"
     },
-    "quality_contract_hash": "sha256:8d50d30c53c46b4944a6729bb8bbe642f10d6bd3b99bea5dfc0847661410a1c9",
+    "quality_contract_hash": "sha256:663021f9506c3aeb269866e62414dea9c70501fd4a181f3ae51d0516be1adb8e",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
