@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
-
+from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 sys.path.insert(0, str(REPOSITORY_ROOT / "skill-evaluator/scripts"))
 
+import _model_evolution_sentinel_builder as sentinel_builder  # noqa: E402
 import grader_semantics  # noqa: E402
-import build_model_evolution_sentinels as sentinels  # noqa: E402
 from _model_evolution_contract import (  # noqa: E402
     SKILL_IDS,
     load_json,
@@ -23,7 +22,6 @@ from _model_evolution_contract import (  # noqa: E402
 from _model_evolution_qualification import (  # noqa: E402
     CRITICAL_PROBE_CAPABILITIES,
 )
-
 
 MODEL_ROOT = REPOSITORY_ROOT / "evaluation/model-evolution"
 SENTINEL_ROOT = MODEL_ROOT / "sentinels"
@@ -137,9 +135,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     "validate_eval_suite.py",
                     tasks["skill-evaluator-cli-schema-diagnosis"],
                 )
-                cli_fixture = by_id[
-                    "skill-evaluator-cli-schema-diagnosis"
-                ]["fixture"]
+                cli_fixture = by_id["skill-evaluator-cli-schema-diagnosis"]["fixture"]
                 self.assertEqual(
                     ["fixtures/task.json"],
                     [item["path"] for item in cli_fixture["initial_files"]],
@@ -347,13 +343,12 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 else:
                     self.assertIn("step 1", candidate_evidence)
                     self.assertIn("completed", candidate_evidence)
-                    for claim in sentinels.SKILLS[skill_id]["claims"]:
+                    for claim in sentinel_builder.SKILLS[skill_id]["claims"]:
                         self.assertIn(claim, candidate_evidence)
             process_boundaries = [
                 row
                 for row in rows
-                if row["check_id"] == "process-check"
-                and row["class"] == "boundary"
+                if row["check_id"] == "process-check" and row["class"] == "boundary"
             ]
             self.assertEqual(len(process_boundaries), 2)
             for row in process_boundaries:
@@ -361,13 +356,11 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 self.assertIn("run_status=completed", candidate_evidence)
                 self.assertIn("record_closed=true", candidate_evidence)
                 self.assertIn("not_run", candidate_evidence)
-            process_rows = [
-                row for row in rows if row["check_id"] == "process-check"
-            ]
+            process_rows = [row for row in rows if row["check_id"] == "process-check"]
             for row in process_rows:
                 task = row["payload"]["view"]["task"]
                 self.assertIn("all three mechanisms required", task)
-                for claim in sentinels.SKILLS[skill_id]["claims"]:
+                for claim in sentinel_builder.SKILLS[skill_id]["claims"]:
                     self.assertIn(claim, task)
             quality_positive_two = next(
                 row
@@ -414,9 +407,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 )
             else:
                 self.assertIn("report.md", quality_evidence)
-                self.assertIn(
-                    "zero missing or contradictory fields", quality_evidence
-                )
+                self.assertIn("zero missing or contradictory fields", quality_evidence)
             prompt = (root / grader["prompt"]["path"]).read_text()
             self.assertIn("against every declared mechanism", prompt)
             self.assertIn("does not mark as relevant", prompt)
@@ -455,10 +446,11 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     "candidate_evidence"
                 ]
                 self.assertIn("body_load_count=1", process_evidence)
-                self.assertIn("context-cost facts, not workflow actions", process_evidence)
+                self.assertIn(
+                    "context-cost facts, not workflow actions", process_evidence
+                )
             process_check = next(
-                check for check in checks.values()
-                if check["dimension"] == "process"
+                check for check in checks.values() if check["dimension"] == "process"
             )
             self.assertIn(
                 "every Skill mechanism declared relevant",

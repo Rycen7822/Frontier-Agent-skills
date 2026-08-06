@@ -2,26 +2,28 @@ from __future__ import annotations
 
 import copy
 import json
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
-
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 
-from _model_evolution_campaign import prepare_predecessor, validate_campaign  # noqa: E402
+from _model_evolution_campaign import (  # noqa: E402
+    prepare_predecessor,
+    validate_campaign,
+)
 from _model_evolution_contract import (  # noqa: E402
     ContractError,
     evaluator_evidence_status,
     make_binding,
     resolve_binding,
+    validate_bundle_build,
+    validate_document,
     validate_formal_plan_timeouts,
     validate_formal_timeout_inputs,
-    validate_document,
-    validate_bundle_build,
     with_self_hash,
 )
 from _model_evolution_qualification import (  # noqa: E402
@@ -30,35 +32,23 @@ from _model_evolution_qualification import (  # noqa: E402
     render_qualification_markdown,
     validate_qualification,
 )
-from model_evolution_test_support import (  # noqa: E402
+from support.model_evolution.documents import (  # noqa: E402
+    analysis_summary,
+    comparison_report,
+)
+from support.model_evolution.repository import (  # noqa: E402
     materialize_bootstrap_evidence,
     materialize_budget_approval,
     materialize_campaign,
     write_json,
 )
-from skill_evaluator_test_support import make_v5_schema_examples  # noqa: E402
 
 
 def closed_transition_report() -> dict:
-    value = make_v5_schema_examples()["comparison-report-v1.schema.json"]
-    value.update(
-        {
-            "kind": "model_transition",
-            "comparison_id": "transition-example",
-            "registration_status": "declared_pre_registered",
-            "authority_eligibility": "eligible",
-            "result": {
-                "kind": "model_transition",
-                "mode": "direct",
-                "classification": "retained_specialized_value",
-                "classification_metric_ids": [],
-            },
-        }
-    )
-    return with_self_hash(value, "comparison_report_hash")
+    return comparison_report("model_transition")
 
 
-class ModelEvolutionContractTest(unittest.TestCase):
+class ModelEvolutionDocumentsTest(unittest.TestCase):
     def test_formal_timeouts_preserve_host_cleanup_window(self) -> None:
         host = {"command": {"argv": ["host", "--timeout", "600"]}}
         spec = {"execution": {"timeout_seconds": 1230}}
@@ -138,9 +128,10 @@ class ModelEvolutionContractTest(unittest.TestCase):
         for name, value in documents.items():
             with self.subTest(name=name):
                 validator = validators.get(
-                    name, lambda document, document_name=name: validate_document(
+                    name,
+                    lambda document, document_name=name: validate_document(
                         document, document_name
-                    )
+                    ),
                 )
                 validator(value)
                 tampered = copy.deepcopy(value)
@@ -247,10 +238,7 @@ class ModelEvolutionContractTest(unittest.TestCase):
     def test_external_schema_resolution_is_local_only(self) -> None:
         path = write_json(
             self.fixture["campaign_root"] / "summary-local.json",
-            with_self_hash(
-                make_v5_schema_examples()["analysis-summary-v4.schema.json"],
-                "summary_hash",
-            ),
+            analysis_summary(),
         )
         with mock.patch(
             "urllib.request.urlopen", side_effect=AssertionError("network attempted")

@@ -30,22 +30,22 @@ from _model_evolution_calibration_receipt import (  # noqa: E402
 )
 from _model_evolution_contract import (  # noqa: E402
     make_binding,
+    self_hash,
     validate_document,
     with_self_hash,
 )
 from _model_evolution_qualification import project_qualification  # noqa: E402
 import model_evolution as controller  # noqa: E402
 import run_model_calibration as calibration_runner  # noqa: E402
-from model_evolution_test_support import (  # noqa: E402
-    materialize_campaign,
-    write_json,
-)
-from skill_evaluator_test_support import materialize_v5_calibration_inputs
+from support.model_evolution.host import materialize_campaign  # noqa: E402
+from support.model_evolution.documents import host_manifest  # noqa: E402
+from support.model_evolution.repository import write_json  # noqa: E402
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SENTINEL_ROOT = REPOSITORY_ROOT / "evaluation/model-evolution/sentinels"
 EVALUATOR = REPOSITORY_ROOT / "skill-evaluator"
+EVALUATOR_FIXTURES = REPOSITORY_ROOT / "tests/fixtures/skill_evaluator"
 RUNNER = EVALUATOR / "scripts/run_model_calibration.py"
 VALIDATOR = EVALUATOR / "scripts/validate_eval_suite.py"
 FAKE_HOST = REPOSITORY_ROOT / "tests/fixtures/model_evolution/calibration-host.py"
@@ -62,7 +62,6 @@ def _file_hash(path: Path) -> str:
 
 
 def _materialize(root: Path, skill_id: str) -> dict[str, Path]:
-    fixture = materialize_v5_calibration_inputs(root / "fixture")
     target = root / "calibration"
     target.mkdir()
     source = SENTINEL_ROOT / skill_id
@@ -74,9 +73,7 @@ def _materialize(root: Path, skill_id: str) -> dict[str, Path]:
     ):
         shutil.copy2(source / name, target / name)
     shutil.copy2(FAKE_HOST, target / "calibration-host.py")
-    shutil.copy2(fixture["host"], target / "host.json")
-
-    host = json.loads((target / "host.json").read_text())
+    host = host_manifest()
     executable = Path(sys.executable).resolve()
     host["command"].update({
         "argv": [str(executable), str(target / "calibration-host.py")],
@@ -85,17 +82,13 @@ def _materialize(root: Path, skill_id: str) -> dict[str, Path]:
         "env_allowlist": [],
     })
     host["identity"]["host_build"] = _file_hash(target / "calibration-host.py")
-    host["manifest_hash"] = "sha256:" + sha256(json.dumps(
-        {key: value for key, value in host.items() if key != "manifest_hash"},
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()).hexdigest()
+    host["manifest_hash"] = self_hash(host, "manifest_hash")
     (target / "host.json").write_text(
         json.dumps(host, indent=2) + "\n",
         encoding="utf-8",
     )
     template = json.loads((source / "eval-spec.template.json").read_text())
-    fixture_spec = json.loads(fixture["spec"].read_text())
+    fixture_spec = json.loads((EVALUATOR_FIXTURES / "spec-v5.json").read_text())
     template["host"] = fixture_spec["host"]
     template["host"]["manifest"] = {
         "path": "host.json",
@@ -626,23 +619,12 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
     def test_controller_prepares_four_exact_no_overwrite_workspaces(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
-            fixture = materialize_v5_calibration_inputs(base / "fixture")
             campaign_root = base / "campaign"
             campaign_root.mkdir()
             host_path = campaign_root / "target-host.json"
-            shutil.copy2(fixture["host"], host_path)
-            host = json.loads(host_path.read_text())
+            host = host_manifest()
             host["command"]["argv"].extend(["--timeout", "10"])
-            host["manifest_hash"] = "sha256:" + sha256(json.dumps(
-                {
-                    key: value
-                    for key, value in host.items()
-                    if key != "manifest_hash"
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode()).hexdigest()
-            host_path.write_text(json.dumps(host, indent=2) + "\n")
+            write_json(host_path, {**host, "manifest_hash": self_hash(host, "manifest_hash")})
             sentinel_path = (
                 REPOSITORY_ROOT / "evaluation/model-evolution/sentinel-index-v1.json"
             )
