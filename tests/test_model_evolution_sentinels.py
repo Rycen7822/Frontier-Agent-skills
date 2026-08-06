@@ -505,6 +505,9 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 self.assertIn("syntax-only compilation is insufficient", prompt)
             elif skill_id == "long-document-segmented-writing":
                 self.assertIn("Current recovery anchor", prompt)
+                self.assertIn("compaction-resume", prompt)
+                self.assertIn("intermediate recovery anchor", prompt)
+                self.assertIn("four-field rule does not apply", prompt)
                 self.assertIn("full-mode-selection", prompt)
                 self.assertIn("ordered section drafts", prompt)
             elif skill_id == "skill-evaluator":

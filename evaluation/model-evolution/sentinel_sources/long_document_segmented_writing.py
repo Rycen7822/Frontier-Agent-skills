@@ -11,6 +11,7 @@ DEFINITION = {
     "claims": ["segmented-writing", "compaction-recovery", "whole-draft-review"],
     "grader_rules": [
         "For long-document-segmented-writing-compact-recovery, quality passes only when the artifact has distinct Current recovery anchor, Next action, Final-assembly order, and Confidence gaps/proof fields bound to the supplied facts; a generic section/source/decision summary is insufficient.",
+        "For long-document-segmented-writing-compaction-resume, quality judges only the final self-contained two-section report and its distinction between request retries and fresh attempts; the intermediate recovery anchor is not a required final-report field, and the compact-recovery four-field rule does not apply.",
         "For long-document-segmented-writing-full-mode-selection, quality passes only when it selects full because the source count exceeds 12 and names one scope, source inventory, reading ledger, section matrix, recovery packet, ordered section drafts, confidence review, and final document; a generic full-workflow label is insufficient.",
     ],
     "process_evidence": [
