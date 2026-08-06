@@ -5,6 +5,17 @@ DEFINITION = {
     "version": "8.2.0",
     "context_ceiling": 24576,
     "regression_origin": "writing-plans-description-semantic-collapse",
+    "verifier_source": "writing_plans_verifier.py",
+    "expected_pairing": {
+        "baseline_failures": [
+            "source-bound-plan",
+            "resume-preflight",
+            "proof-owner",
+            "explicit-handoff",
+            "continuous-execution",
+        ],
+        "protected_no_regression": "protected-description",
+    },
     "claims": [
         "source-bound-planning",
         "unambiguous-handoff",
@@ -15,48 +26,100 @@ DEFINITION = {
         "the handoff records its artifacts, authority limit, and next executable command",
         "ordered steps have explicit prerequisites and exits with no unstated choice",
     ],
+    "fixtures": {
+        "fixtures/src/config.py": "timeout_ms = 30000\n",
+        "fixtures/src/client.py": "from .config import timeout_ms\n\ndef request():\n    return timeout_ms\n",
+        "fixtures/tests/test_client.py": "from src.client import request\n\ndef test_timeout():\n    assert request() == 30000\n",
+        "fixtures/resume-state.md": "Commit abc123 added the parser and unit tests. Pending: docs/config.md and the integration check.\n",
+        "fixtures/docs/config.md": "# Configuration\n\nParser configuration is not yet documented.\n",
+        "fixtures/schema.json": '{"type": "object", "properties": {"mode": {"type": "string"}}}\n',
+        "fixtures/src/parser.py": "def parse(value):\n    return value.strip()\n",
+        "fixtures/scripts/build_package.py": "def build():\n    return 'package'\n",
+        "fixtures/release-status.md": "Implementation commit: signed. Unit tests: pass. Publish authority: release engineering.\n",
+        "fixtures/cli.py": "def main(argv):\n    return 0\n",
+        "fixtures/tests/test_cli.py": "def test_cli_smoke():\n    assert True\n",
+        "fixtures/README.md": "# CLI\n",
+        "fixtures/agents/openai.yaml": "version: 8.2.0\ndescription: Write source-bound software implementation Handoffs and multi-session Programs from settled decisions; not diagnosis or execution.\n",
+    },
     "cases": [
-        (
-            "source-bound-plan",
-            "source-bound",
-            "Plan a rename of `timeout_ms` to `request_timeout_ms` owned by `src/config.py`, with consumers in `src/client.py` and tests in `tests/test_client.py`. Bind every step to exact files and checks.",
-            False,
-            1,
-        ),
-        (
-            "resume-preflight",
-            "resume-preflight",
-            "Commit `abc123` already added the parser and its unit tests; only `docs/config.md` and the integration check remain. Record completed and pending state, then give the next executable step without repeats.",
-            False,
-            2,
-        ),
-        (
-            "proof-owner",
-            "proof-owner",
-            "For stages schema update, parser update, and release packaging, assign one evidence owner and one measurable exit condition to each. The owners are `schema.json`, `src/parser.py`, and `scripts/build_package.py`.",
-            False,
-            1,
-        ),
-        (
-            "explicit-handoff",
-            "handoff",
-            "The implementation commit is signed and unit tests pass, but publishing is owned by release engineering. Define the exact handoff artifacts, authority boundary, and next executable verification command.",
-            False,
-            1,
-        ),
-        (
-            "continuous-execution",
-            "continuous-execution",
-            "Produce consecutive steps to add `--dry-run` in `cli.py`, cover it in `tests/test_cli.py`, update `README.md`, and run the existing CLI smoke command. Include prerequisites and exits without unstated choices.",
-            False,
-            1,
-        ),
-        (
-            "protected-description",
-            "protected",
-            "Plan a metadata-only version bump in `agents/openai.yaml` from `8.1.0` to `8.1.1` while preserving this description verbatim: 'Use when a plan must bind exact source owners, verification commands, handoff authority, and consecutive execution steps.'",
-            True,
-            1,
-        ),
+        {
+            "id": "source-bound-plan",
+            "coverage": "source-bound",
+            "task": "Plan the rename `timeout_ms` to `request_timeout_ms` using `fixtures/src/config.py`, `fixtures/src/client.py`, and `fixtures/tests/test_client.py`. Bind every step to exact files and checks.",
+            "protected": False,
+            "turns": 1,
+            "initial_files": [
+                "fixtures/src/config.py",
+                "fixtures/src/client.py",
+                "fixtures/tests/test_client.py",
+            ],
+            "semantic_oracle": [
+                "definition, consumer, and test owners are ordered with exact checks"
+            ],
+        },
+        {
+            "id": "resume-preflight",
+            "coverage": "resume-preflight",
+            "task": "Read `fixtures/resume-state.md` and `fixtures/docs/config.md`. Record completed and pending state, then give the next executable step without repeating completed work.",
+            "protected": False,
+            "turns": 2,
+            "initial_files": [
+                "fixtures/resume-state.md",
+                "fixtures/docs/config.md",
+            ],
+            "semantic_oracle": [
+                "abc123 work remains complete and documentation is the next source change"
+            ],
+        },
+        {
+            "id": "proof-owner",
+            "coverage": "proof-owner",
+            "task": "Using `fixtures/schema.json`, `fixtures/src/parser.py`, and `fixtures/scripts/build_package.py`, assign one evidence owner and one measurable exit condition to each stage.",
+            "protected": False,
+            "turns": 1,
+            "initial_files": [
+                "fixtures/schema.json",
+                "fixtures/src/parser.py",
+                "fixtures/scripts/build_package.py",
+            ],
+            "semantic_oracle": [
+                "each stage has one exact file owner and measurable exit"
+            ],
+        },
+        {
+            "id": "explicit-handoff",
+            "coverage": "handoff",
+            "task": "Read `fixtures/release-status.md`. Define the exact handoff artifacts, the publish authority boundary, and the next executable verification command.",
+            "protected": False,
+            "turns": 1,
+            "initial_files": ["fixtures/release-status.md"],
+            "semantic_oracle": ["release engineering retains publish authority"],
+        },
+        {
+            "id": "continuous-execution",
+            "coverage": "continuous-execution",
+            "task": "Produce consecutive implementation steps for adding `--dry-run` across `fixtures/cli.py`, `fixtures/tests/test_cli.py`, and `fixtures/README.md`. Include prerequisites, exact checks, and exits.",
+            "protected": False,
+            "turns": 1,
+            "initial_files": [
+                "fixtures/cli.py",
+                "fixtures/tests/test_cli.py",
+                "fixtures/README.md",
+            ],
+            "semantic_oracle": [
+                "CLI, test, docs, and smoke verification form one executable sequence"
+            ],
+        },
+        {
+            "id": "protected-description",
+            "coverage": "protected",
+            "task": "Plan only a version bump from 8.2.0 to 8.2.1 in `fixtures/agents/openai.yaml`. Preserve its full description verbatim and do not shorten it.",
+            "protected": True,
+            "turns": 1,
+            "initial_files": ["fixtures/agents/openai.yaml"],
+            "semantic_oracle": [
+                "only the version changes and the complete description remains intact"
+            ],
+        },
     ],
 }

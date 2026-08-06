@@ -23,15 +23,33 @@ def _artifact(name: str, value: object) -> dict[str, str]:
 
 def _judgment(item: dict[str, object]) -> tuple[bool, str]:
     evidence = str(item["grader_view"].get("candidate_evidence", "")).lower()
-    if any(marker in evidence for marker in (
-        "not captured", "no readable", "no process trace", "cannot establish",
-    )):
+    if any(
+        marker in evidence
+        for marker in (
+            "not captured",
+            "no readable",
+            "no process trace",
+            "cannot establish",
+        )
+    ):
         return False, "high"
-    if any(marker in evidence for marker in (
-        "placeholder", "contradicts", "performed ad hoc", "unrelated workflow",
-        "are absent", "is missing", "only part", "completion and cleanup",
-        "=not_run",
-    )):
+    if any(
+        marker in evidence
+        for marker in (
+            "placeholder",
+            "contradicts",
+            "performed ad hoc",
+            "unrelated workflow",
+            "are absent",
+            "is absent",
+            "is missing",
+            "only part",
+            "completion and cleanup",
+            "does not preserve",
+            "forbidden input",
+            "=not_run",
+        )
+    ):
         return False, "none"
     return True, "none"
 

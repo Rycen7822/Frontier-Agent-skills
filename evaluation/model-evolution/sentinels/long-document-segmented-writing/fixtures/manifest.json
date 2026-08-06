@@ -2,8 +2,43 @@
   "artifacts": [
     {
       "encoding": "utf-8",
-      "path": "task.json",
-      "sha256": "sha256:4b1b8d1fc191a06182374b2acee7da7a73bf78d64b37f7ba6cd66d3b92b7d001"
+      "path": "completion.md",
+      "sha256": "sha256:fbb7c4a431f966f9c92661affb6732ef4fafb020662a6e523482a7662c3ceb55"
+    },
+    {
+      "encoding": "utf-8",
+      "path": "draft.md",
+      "sha256": "sha256:a755c0dee9f097fb1fedcb94c2922c30bdc914857accd52bf66a72a3e00f0b6b"
+    },
+    {
+      "encoding": "utf-8",
+      "path": "failure-ownership.md",
+      "sha256": "sha256:1959dbb02a5f323a3a0d7c697cfc1c3728a45b007dc8e988af3a788072db9586"
+    },
+    {
+      "encoding": "utf-8",
+      "path": "recovery-state.md",
+      "sha256": "sha256:9aec2eb61718a1a2f6b1a157a12cd2f186245ac36ca4fd380e0c38cd1370bf08"
+    },
+    {
+      "encoding": "utf-8",
+      "path": "release.md",
+      "sha256": "sha256:c96a1ee854ac8e0e2a8a9937fa054ebe192778720b430a48d1be2f3193955e17"
+    },
+    {
+      "encoding": "utf-8",
+      "path": "run-a.md",
+      "sha256": "sha256:e1e73d0efa9ec3e39d6565c06fbcefea62c33c1600f8ecc8d5f0ee028df9d543"
+    },
+    {
+      "encoding": "utf-8",
+      "path": "run-b.md",
+      "sha256": "sha256:0696f7a1afb16f7150307c1f42b88cd4248700aaffcd9c7dac8e7df76abb737f"
+    },
+    {
+      "encoding": "utf-8",
+      "path": "service-scope.md",
+      "sha256": "sha256:5de7bd7e1d94c499b7413866be2a0d6936f8f32134847276f1ceafde621055dd"
     }
   ],
   "schema_version": 1

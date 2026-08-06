@@ -45,27 +45,12 @@
     ],
     "exposure_status": "not_applicable",
     "split_hashes": {
-      "dev": "sha256:c4c2ba0fafe876af498a5a35b6dc1e3a1cc164641f2371615f4bf40668ed8266",
+      "dev": "sha256:59de0814d98f2b17c8d3b690372d03880738f2359c00179755068a9a31359937",
       "heldout": null,
-      "regression": "sha256:1a6879d7abcb0ad04b8db70fa2e653eb5c2a61165eaadb3fb0210283604b82f8"
+      "regression": "sha256:7197285cbc91d1d52aa563045f362700b224ccabd10459eec879a1299867044d"
     }
   },
-  "duplicate_groups": [
-    {
-      "case_ids": [
-        "writing-plans-continuous-execution",
-        "writing-plans-explicit-handoff",
-        "writing-plans-proof-owner",
-        "writing-plans-protected-description",
-        "writing-plans-resume-preflight",
-        "writing-plans-source-bound-plan"
-      ],
-      "group_id": "fixture_overlap-1",
-      "kind": "fixture_overlap",
-      "review_locator": null,
-      "status": "allowed"
-    }
-  ],
+  "duplicate_groups": [],
   "evaluation_id": "frontier-writing-plans-sentinel-v1",
   "golden": {
     "case_ids": [
@@ -97,7 +82,7 @@
     {
       "artifact": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:ad9cf8d67dcd4434fb479daecadbb78eaf9ff9a84d13c012a48cfe70856dfe1d"
+        "sha256": "sha256:1b523230688ba330eda1eb906990ec1eae17c61b9df1382b04cbf8479f47ab57"
       },
       "locator": {
         "artifact": "grader-prompt.md",
@@ -136,7 +121,7 @@
         "start_line": 1
       },
       "source_hashes": [
-        "sha256:ad9cf8d67dcd4434fb479daecadbb78eaf9ff9a84d13c012a48cfe70856dfe1d"
+        "sha256:1b523230688ba330eda1eb906990ec1eae17c61b9df1382b04cbf8479f47ab57"
       ],
       "status": "closed"
     }

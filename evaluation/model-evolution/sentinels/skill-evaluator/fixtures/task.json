@@ -1,9 +1,0 @@
-{
-  "allowed_effects": [
-    "workspace-local-output"
-  ],
-  "marker": "frontier-skill-evaluator-sentinel-v1",
-  "regression_origin": "deterministic-evidence-loop-and-reviewer-overuse",
-  "schema_version": 1,
-  "skill_id": "skill-evaluator"
-}

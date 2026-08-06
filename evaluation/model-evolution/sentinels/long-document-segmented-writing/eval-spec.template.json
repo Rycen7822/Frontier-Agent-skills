@@ -13,7 +13,7 @@
         ],
         "estimand_id": "task-benefit",
         "metric": "task_pass_rate",
-        "minimum_benefit": 0.0
+        "minimum_benefit": 0.166667
       },
       {
         "candidate_treatment_id": "candidate",
@@ -266,7 +266,7 @@
           0
         ],
         "path": "verify.py",
-        "sha256": "sha256:11a177a2d4042db62240fe27a25871e12b675ceedbf2001705538ac686d7a941",
+        "sha256": "sha256:ba32e5ded6906ffa746cf956cc6141e57628f224e8fb4f4b9f8d47ef37746170",
         "timeout_seconds": 10
       }
     },
@@ -294,7 +294,7 @@
       },
       "prompt": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:18691fd9bcad70514239433d930d27df35cc77c0fa06faad2ff93042841dfc82"
+        "sha256": "sha256:d69b59351d368ad6d08b9aeba00eaad9fd6b61fcade6a8ec175e16e5f34e8df6"
       },
       "type": "model"
     }
@@ -307,7 +307,7 @@
       "kind": "benefit",
       "metric": "task_pass_rate",
       "required": true,
-      "threshold": 0.0
+      "threshold": 0.166667
     },
     {
       "authority": "evaluation-owner",
@@ -395,26 +395,26 @@
     "version": "1.1.0"
   },
   "suite": {
-    "fixture_set_hash": "sha256:d0db941299d08eb88442c9412604aa2ad474285f5eaf364018f1a5358e6b76a5",
+    "fixture_set_hash": "sha256:fe5be08186aa9ba939426a8e3694694bf844033aab96ab082458571ea1f1f0df",
     "grader_schedule_hash": "sha256:16d5313a811df774642b535aa7e8c74a326cdce23f6d236901e1857f9104cca6",
-    "grader_set_hash": "sha256:23baff2a355de6ff6042bfe962ba2483b457ee47824ec32e1778c61401b18e40",
+    "grader_set_hash": "sha256:ef1ba880a211cb0db1c1eeda703423ae0c8c62db3ccd0437c34d4d81150f6685",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:83187c0f731ad16b1db496d20969337b8ab25ce65a3aba061196f695e49f3bcf"
+      "sha256": "sha256:0901d43bfbfca2573c6436afd56525d97fe42c547dbdc28101c29e8ca468045c"
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:afda77ce4fdcb7c38daac0d5545e9133316e6ff82be2f872f34b91b61caa37b4"
+      "sha256": "sha256:af3268d163bfe8f1cfb13ed0de964ad4938638e2275cb17b495bbb5d6acfa5d6"
     },
-    "quality_contract_hash": "sha256:dabd438b613f74fa162dfbb6301498924a63b4ba8d8e724a9df53aab7e886a12",
+    "quality_contract_hash": "sha256:a5d9d08d3e00ce03e1878968fb50360033d82c3afe58fde5fc3efcd91e03134a",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:83187c0f731ad16b1db496d20969337b8ab25ce65a3aba061196f695e49f3bcf"
+      "sha256": "sha256:0901d43bfbfca2573c6436afd56525d97fe42c547dbdc28101c29e8ca468045c"
     },
     "treatment_contract_hash": "sha256:e4bd4bebd6c87fbb043b4f822673435a02cdc74ae4e4e38e56646555a9ef5e9b"
   },
