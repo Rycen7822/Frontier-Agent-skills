@@ -302,7 +302,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             ),
             "writing-plans": (
                 "writing-plans-explicit-handoff,",
-                "writing-plans-explicit-handoff-heldout,",
+                "writing-plans-resumable-program-heldout,",
             ),
         }
         for skill_id, rules in expected.items():

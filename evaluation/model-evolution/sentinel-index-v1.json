@@ -1,6 +1,6 @@
 {
   "schema_version": "model-evolution-sentinel-index/1",
-  "sentinel_hash": "sha256:b9554b174634aaf2f773d6c06676f51f14d7ef2b1d099f4ca75b65c375891e01",
+  "sentinel_hash": "sha256:97f18a362b8b2438208677ee103b3fe118fa776af0d9326d6e5a3ed5f39f4b26",
   "sentinel_id": "frontier-four-skill-sentinel-v1",
   "skills": {
     "long-document-segmented-writing": {
@@ -377,7 +377,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/writing-plans/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:8dc013a28ddc73e818270de5cca83850bbd8f08a1523d41b1b9159a11ef29455"
+        "sha256": "sha256:b1fc95c0e43e111dda4970b3a395c221167763bb0c9951b08766152b2c41c8cd"
       },
       "verifier_roots": [
         {
