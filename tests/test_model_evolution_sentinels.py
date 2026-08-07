@@ -326,6 +326,12 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             for rule in rules:
                 self.assertIn(rule, prompt)
         self.assertIn(
+            "For long-document-segmented-writing-direct-small-task, count "
+            "complete sentences by sentence-final punctuation",
+            (SENTINEL_ROOT / "long-document-segmented-writing" / "grader-prompt.md")
+            .read_text(),
+        )
+        self.assertIn(
             "exit 3, no change to that exit from --report-only, and an "
             "inconclusive_ceiling maximum claim in the final artifact directly "
             "demonstrate quality and process. An answer may also state that "
