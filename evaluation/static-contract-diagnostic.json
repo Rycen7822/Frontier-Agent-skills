@@ -6,7 +6,7 @@
     "long-document-segmented-writing": 10599,
     "skill-evaluator": 10309,
     "software-quality-workflows": 3065,
-    "writing-plans": 5390
+    "writing-plans": 5554
   },
   "legacy_protocol_matches": [],
   "legacy_runtime_paths_present": [],
@@ -124,14 +124,14 @@
     "writing-plans/SKILL.md",
     "writing-plans/agents/openai.yaml"
   ],
-  "package_bytes": 1480345,
+  "package_bytes": 1480632,
   "package_file_count": 118,
   "profile_command_hashes": {
     "extended": "sha256:cc748f9af31ab0f5737675c7f6c5a4fa78a4899f5b43e9dfe11011d83e84d30a",
     "quick": "sha256:c895e68a59c34c1e2c98cfbedb132c79340a6856f08b76a1c7fc6f32dcb96236",
     "release": "sha256:796f0f9d60160f8c23a7c6e15a0fe95cf7e2676845a509f7803691363a746f77"
   },
-  "report_hash": "sha256:28a92ad2b83af52460029372155e074959eca62ed07f39f0576b9e17a511cd42",
+  "report_hash": "sha256:d67e126a4c083542e969572c097ce9f1f84ac76f924f615a32bf223e51360ca8",
   "schema_epoch": 5,
   "schema_version": "static-contract-diagnostic/1.0",
   "skill_activation": {
@@ -144,7 +144,7 @@
     "long-document-segmented-writing": "1.1.0",
     "skill-evaluator": "3.3.1",
     "software-quality-workflows": "9.0.0",
-    "writing-plans": "8.2.3"
+    "writing-plans": "8.2.4"
   },
   "version": "6.3.0"
 }

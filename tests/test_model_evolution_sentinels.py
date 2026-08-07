@@ -540,6 +540,11 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             elif skill_id == "skill-evaluator":
                 self.assertIn("evaluator directory variable", prompt)
                 self.assertIn("repository-relative substitute", prompt)
+            elif skill_id == "writing-plans":
+                self.assertIn("resolve each relative proof path", prompt)
+                self.assertIn("raw substring exclusion", prompt)
+                self.assertIn("exactly the version line", prompt)
+                self.assertIn("invented file-shape requirement", prompt)
             self.assertIn("Within calibration items", prompt)
             self.assertIn("not an abstention", prompt)
             self.assertIn("`uncertainty` to `high`", prompt)

@@ -43,7 +43,7 @@ def frontmatter(path: Path) -> dict:
 class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_explicit_activation(self) -> None:
         metadata = frontmatter(SKILL_PATH)
-        self.assertEqual("8.2.3", metadata["metadata"]["version"])
+        self.assertEqual("8.2.4", metadata["metadata"]["version"])
         self.assertEqual(
             "Write source-bound software implementation Handoffs and "
             "multi-session Programs from settled decisions; not diagnosis "
@@ -167,6 +167,8 @@ class QuickWritingPlansTests(unittest.TestCase):
             '"follow existing conventions"',
             "must end as a native ordered plan",
             "argument-parser calls",
+            "make the residual check identifier-aware",
+            "never reject the old name with a raw substring test",
             "non-git identity forbids git status, diff, or rollback",
         ):
             self.assertIn(contract, body)

@@ -2,12 +2,12 @@
 name: writing-plans
 description: "Write source-bound software implementation Handoffs and multi-session Programs from settled decisions; not diagnosis or execution."
 metadata:
-  version: 8.2.3
+  version: 8.2.4
 ---
 
 Handoff crosses contexts; Program tracks a changing frontier; otherwise stay native. Skill-source changes use skill authoring. Do not decide, diagnose, execute, verify or claim.
 
-A bounded single-session request naming files and checks must end as a native ordered plan; the Handoff/Program contract below does not apply. Inspect each available bound file once. State observed symbols and behavior, exact edits, checks, expected results, and failure exits. Exact means observed old→new symbols/expressions, argument-parser calls, complete runnable test bodies when exact tests are requested, and documentation text; generic "add parsing", prose-only test descriptions, or "follow existing conventions" fails. Derive the test cwd and module path, including `PYTHONPATH` when required, from the observed imports and layout. Use only prompt- or source-bound checks executable in the observed workspace; do not inherit the Program Proof defaults for diff scope, protected boundary, residue, whitespace, rollback, or cleanup. An explicit non-Git identity forbids Git status, diff, or rollback. Do not add contract rows, attestation, combined-only proof or unrequested owners.
+A bounded single-session request naming files and checks must end as a native ordered plan; the Handoff/Program contract below does not apply. Inspect each available bound file once. State observed symbols and behavior, exact edits, checks, expected results, and failure exits. Exact means observed old→new symbols/expressions, argument-parser calls, complete runnable test bodies when exact tests are requested, and documentation text; generic "add parsing", prose-only test descriptions, or "follow existing conventions" fails. For a symbol rename, make the residual check identifier-aware; never reject the old name with a raw substring test when the new identifier contains that substring. Derive the test cwd and module path, including `PYTHONPATH` when required, from the observed imports and layout. Use only prompt- or source-bound checks executable in the observed workspace; do not inherit the Program Proof defaults for diff scope, protected boundary, residue, whitespace, rollback, or cleanup. An explicit non-Git identity forbids Git status, diff, or rollback. Do not add contract rows, attestation, combined-only proof or unrequested owners.
 
 ## Bind
 

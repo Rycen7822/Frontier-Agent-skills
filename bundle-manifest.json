@@ -20,7 +20,7 @@
     {
       "id": "writing-plans",
       "path": "writing-plans",
-      "version": "8.2.3"
+      "version": "8.2.4"
     }
   ],
   "activation_ceiling": "implicit_local_pilot",
