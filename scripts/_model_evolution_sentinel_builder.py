@@ -549,23 +549,27 @@ def _calibration_view(
     evidence = {
         "quality-check": {
             "known_good": (
-                "The final answer artifact addresses every explicit task requirement, "
-                "matches all bound fixture facts, and introduces no contradictory claim.",
-                "The readable final artifact contains every requested result; its evidence "
-                "map binds each factual claim to a supplied fixture, and the completeness "
-                "check reports zero missing or contradictory requirements.",
+                "Final artifact:\nOwner: fixtures/input.md\nResult: ready\n"
+                "Verification: check --input fixtures/input.md",
+                "Readable final artifact: Owner is fixtures/input.md; Result is ready; "
+                "Verification is check --input fixtures/input.md. No other claim is present.",
             ),
             "known_bad": (
                 "The submission is only a placeholder and omits the requested result.",
-                "The output contradicts a mandatory input and cannot be used for the task.",
+                "Final artifact: Owner is fixtures/other.md; Result is blocked; "
+                "Verification is check --all. Every supplied fact contradicts the task.",
             ),
             "boundary": (
-                "The main result is present, but one explicit required outcome is absent.",
-                "Most explicit requirements are addressed, but one mandatory result is missing.",
+                "Partial artifact: Owner is fixtures/input.md and Result is ready, but "
+                "the required Verification entry is absent.",
+                "Partial artifact: Owner is fixtures/input.md and Verification is "
+                "check --input fixtures/input.md, but the required Result is absent.",
             ),
             "abstain": (
-                "A truncated capture shows part of a readable answer, but the task requirements and fixture bindings are unavailable; the record cannot determine whether the deliverable is complete or incorrect.",
-                "Conflicting capture metadata marks the artifact both complete and truncated; the readable fragment cannot establish whether the requested outcome is correct.",
+                "A truncated artifact shows only Owner: fixtures/input.md; it cannot "
+                "establish the required Result or Verification.",
+                "Conflicting capture fragments report Result as both ready and blocked; "
+                "they cannot establish a correct final artifact.",
             ),
         },
         "process-check": {
@@ -612,11 +616,35 @@ def _calibration_view(
             'The task supplies JSON `{"status": "completed"}`, but the patch uses '
             'YAML-like `schema_version: "1"`; it adds a string instead of the required integer and does '
             "not preserve JSON syntax or provide passing verification.",
-            evidence[check_id]["boundary"][1],
+            "The answer names `$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py` "
+            "and `fixtures/l0-spec.json` but omits the required `contract` subcommand, "
+            "so the documented single-spec command is incomplete.",
+        )
+        evidence[check_id]["abstain"] = (
+            'A truncated capture shows only the input fragment `{"status": "completed"}`; '
+            "it cannot establish whether the required patch or verification exists.",
+            "Conflicting fragments show both the required single-spec contract command "
+            "and a runner invocation with Host inputs; they cannot establish the final answer.",
+        )
+    quality_tasks = (
+        "The task requires a final artifact with Owner: fixtures/input.md, Result: "
+        "ready, and Verification: check --input fixtures/input.md. Judge whether the "
+        "supplied artifact establishes all three facts without contradiction.",
+        "The task requires a readable final artifact that binds Owner to "
+        "fixtures/input.md, reports Result ready, and gives Verification check --input "
+        "fixtures/input.md. Judge the supplied artifact against those exact facts.",
+    )
+    if skill_id == "skill-evaluator":
+        quality_tasks = (
+            "The task supplies JSON with status completed and requires adding integer "
+            "schema_version 1 while preserving the field, JSON syntax, and passing "
+            "schema verification. Judge the supplied artifact against those facts.",
+            "The L0 task requires the documented single-spec contract command using "
+            "$SKILL_EVALUATOR_DIR and fixtures/l0-spec.json, and forbids runner, "
+            "scenario, or Host inputs. Judge the supplied artifact against those facts.",
         )
     task = (
-        f"Judge whether the supplied evidence establishes a complete, correct, and "
-        f"usable deliverable for the {skill_id} sentinel task."
+        quality_tasks[repetition - 1]
         if check_id == "quality-check"
         else (
             "Judge whether the trace demonstrates exactly the mechanisms required by "
