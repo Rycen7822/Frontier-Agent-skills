@@ -2,7 +2,7 @@
 name: writing-plans
 description: "Write source-bound software implementation Handoffs and multi-session Programs from settled decisions; not diagnosis or execution."
 metadata:
-  version: 8.2.5
+  version: 8.2.6
 ---
 
 Handoff crosses contexts; Program tracks a changing frontier; otherwise stay native. Skill-source changes use skill authoring. Do not decide, diagnose, execute, verify or claim.
@@ -30,12 +30,12 @@ For a Handoff or Program, write a title and either one contract table or a three
 
 Fill rows directly from settled facts, assigning each fact to one row. State behavior, not just a symbol/test. Later Slice and Proof rows reference State instead of repeating protected behavior. No format comparison or planning rationale.
 
-Program uses those rows: State contains Current frontier and later blockers; Slice contains named Milestones in dependency order, each with acceptance; dependencies cite milestone names, never ordinals. Include Migration/deprecation owner and removal condition when applicable. Update-in-place rule: only a later planning invocation updates the Program; an executor treats it as protected immutable input.
+Program uses those rows: State contains Current frontier and later blockers; Slice contains named Milestones in dependency order, each with acceptance; dependencies name every prerequisite milestone, never ordinals or collective references. Each exact edit must be executable against the observed body and carry every preserved transformation/invariant into code, not prose. Include Migration/deprecation owner and removal condition when applicable. Update-in-place rule: only a later planning invocation updates the Program; an executor treats it as protected immutable input.
 
 The Resume row resolves root anew; exclude the named plan deliverable itself (including untracked `PLAN.md`) from dirty scope; reject other dirt. Never compare against the original absolute root or require globally clean status.
 
 Next action: first edit/result/check; inspect only if blocked. Use the prompt-bound verification command. When the prompt binds exact files and required checks but omits a repository-wide runner, state the narrow checks implied by those bindings and leave only the broader runner as a later blocker; do not block the plan or invent a full-suite command. The repository's test owner supplies any broader Proof. Python unittest: `PYTHONDONTWRITEBYTECODE=1 python -m unittest <repo-test>`; never use bare `pytest`; leaves no cache/state artifact. Other owners disable residue in-command or include exact cleanup. Split Proof only on failure or an independent long check.
 
-Before return, reject a required Resume that lacks attestation acceptance or one-preflight fallback, and reject ordinal dependency references. After writing, allow at most one combined planner-only non-content confirmation (status/hash/`git diff --check`); never put it in the executor plan. Do not reopen, print or diff contents. After Proof, run no status, diff, test, or confirmation.
+Before return, reject a required Resume without attestation acceptance or one-preflight fallback, an unnamed dependency, or an explicit edit missing a promised preserved transformation/invariant. After writing, allow at most one combined planner-only non-content confirmation (status/hash/`git diff --check`); never put it in the executor plan. Do not reopen, print or diff contents. After Proof, run no status, diff, test, or confirmation.
 
 Reply only with plan/named Markdown; do not instruct execution to modify the plan. No sidecar/state/copy, source edits or completion claims.

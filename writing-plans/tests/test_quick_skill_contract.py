@@ -43,7 +43,7 @@ def frontmatter(path: Path) -> dict:
 class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_explicit_activation(self) -> None:
         metadata = frontmatter(SKILL_PATH)
-        self.assertEqual("8.2.5", metadata["metadata"]["version"])
+        self.assertEqual("8.2.6", metadata["metadata"]["version"])
         self.assertEqual(
             "Write source-bound software implementation Handoffs and "
             "multi-session Programs from settled decisions; not diagnosis "
@@ -117,6 +117,17 @@ class QuickWritingPlansTests(unittest.TestCase):
         ):
             self.assertIn(contract, body)
         self.assertNotIn("root/revision/head/dirty scope", body)
+
+    def test_program_edits_preserve_observed_transformations_and_name_dependencies(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        for contract in (
+            "dependencies name every prerequisite milestone",
+            "never ordinals or collective references",
+            "executable against the observed body",
+            "carry every preserved transformation/invariant into code, not prose",
+            "explicit edit missing a promised preserved transformation/invariant",
+        ):
+            self.assertIn(contract, body)
 
     def test_verification_owner_is_observed_not_inferred(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
@@ -221,8 +232,8 @@ class QuickWritingPlansTests(unittest.TestCase):
             "do not inventory, seek alternate owners, or check existence",
             "only a later planning invocation updates the program",
             "protected immutable input",
-            "dependencies cite milestone names, never ordinals",
-            "required resume that lacks attestation acceptance or one-preflight fallback",
+            "dependencies name every prerequisite milestone, never ordinals",
+            "required resume without attestation acceptance or one-preflight fallback",
             "do not instruct execution to modify the plan",
             "repository's test owner",
             "state the narrow checks implied by those bindings",
