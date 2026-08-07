@@ -5,7 +5,7 @@
   "entry_bytes": {
     "long-document-segmented-writing": 10599,
     "skill-evaluator": 10309,
-    "software-quality-workflows": 3069,
+    "software-quality-workflows": 3042,
     "writing-plans": 5682
   },
   "legacy_protocol_matches": [],
@@ -124,14 +124,14 @@
     "writing-plans/SKILL.md",
     "writing-plans/agents/openai.yaml"
   ],
-  "package_bytes": 1482489,
+  "package_bytes": 1482462,
   "package_file_count": 118,
   "profile_command_hashes": {
     "extended": "sha256:cc748f9af31ab0f5737675c7f6c5a4fa78a4899f5b43e9dfe11011d83e84d30a",
     "quick": "sha256:c895e68a59c34c1e2c98cfbedb132c79340a6856f08b76a1c7fc6f32dcb96236",
     "release": "sha256:796f0f9d60160f8c23a7c6e15a0fe95cf7e2676845a509f7803691363a746f77"
   },
-  "report_hash": "sha256:65fefb7ef5b2a15fc0ed67dd5da6b8e7610e01635cfe7519376d87fc4cc46bf2",
+  "report_hash": "sha256:bc12604223df4e1f523a44ea5b1b3e5d51e6a7b70bcdad6bf5c4cde26ab6fd66",
   "schema_epoch": 5,
   "schema_version": "static-contract-diagnostic/1.0",
   "skill_activation": {

@@ -34,7 +34,7 @@ A settled exact disposition is binding: perform or describe it; no retention, co
 
 ## Evidence and test retention
 
-Keep only durable-contract, confirmed-regression, or risk-boundary tests; remove temporary, duplicate, or implementation-coupled tests without weakening oracles. Migration tests need an owner, observable removal condition, and gate. Load [test lifecycle](references/test/test-suite-lifecycle.md) only for material retention risk.
+Keep only durable-contract, confirmed-regression, or risk-boundary tests. Remove a test whose sole owner is retired behavior; retarget it only when replacement coverage is explicitly required. Load [test lifecycle](references/test/test-suite-lifecycle.md) only for material retention or migration risk.
 
 ## Durable escalation
 
