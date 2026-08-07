@@ -22,6 +22,11 @@
     },
     {
       "encoding": "utf-8",
+      "path": "program-state.md",
+      "sha256": "sha256:9d167468e8780b32ff7163b83ce3a28b619702c7ff89e9263a9ce56326ddb03d"
+    },
+    {
+      "encoding": "utf-8",
       "path": "release-status.md",
       "sha256": "sha256:4cc88577e92f9da9829536d69e0a99f6d2841b6c50e1743d344a71716e95d09b"
     },

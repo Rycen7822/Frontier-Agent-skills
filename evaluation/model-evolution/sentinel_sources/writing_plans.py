@@ -10,6 +10,7 @@ DEFINITION = {
         "source-bound-planning",
         "unambiguous-handoff",
         "continuous-execution",
+        "multi-session-program",
     ],
     "grader_rules": [
         "A case-specific rule applies only when task_evidence.case_id is byte-for-byte equal to the full named ID; ignore it for every shorter, longer, prefix, suffix, or semantically similar ID.",
@@ -17,11 +18,13 @@ DEFINITION = {
         "For writing-plans-protected-description, the observed fixture is exactly the version line and the full description line. Quality and process pass when the plan changes only the version, preserves that complete description verbatim, and verifies those two observed lines exactly; do not label that exact fixture assertion an invented file-shape requirement.",
         "For writing-plans-explicit-handoff, quality and process require the exact handoff artifacts, publication authority boundary, and next executable verification command requested by the task; do not require State, Next action, or Proof labels, or any Resume statement or omission.",
         "For writing-plans-explicit-handoff-heldout, quality and process require a minimal State, Next action, and Proof contract, the exact bound unittest command, the release-engineering publication boundary, and explicit omission of Resume because only immutable artifact verification remains.",
+        "For writing-plans-multi-session-program, quality and process require the explicit non-Git identity, a freshness-bound attestation or one combined preflight for resumption, named milestones whose dependencies cite milestone names, the parser migration owner and one-release zero-legacy removal condition, and the exact bound unittest command. Reject Git checks, source execution, ordinal-only dependencies, or an unbound repository-wide check.",
     ],
     "process_evidence": [
         "each implementation step names its exact source owner and verification command",
         "the handoff records its artifacts, authority limit, and next executable command",
         "ordered steps have explicit prerequisites and exits with no unstated choice",
+        "the Program binds resumable state, named milestone dependencies, a deprecation removal condition, and one proof command",
     ],
     "fixtures": {
         "fixtures/src/config.py": "timeout_ms = 30000\n",
@@ -32,6 +35,7 @@ DEFINITION = {
         "fixtures/schema.json": '{"type": "object", "properties": {"mode": {"type": "string"}}}\n',
         "fixtures/src/parser.py": "def parse(value):\n    return value.strip()\n",
         "fixtures/scripts/build_package.py": "def build():\n    return 'package'\n",
+        "fixtures/program-state.md": "Workspace identity: non-Git. Settled migration: mode becomes the enum safe|fast. Compatibility owner: fixtures/src/parser.py maps legacy normal to safe and turbo to fast for one release. The parser compatibility milestone precedes schema enforcement; the package switch follows both. Removal condition: release telemetry records zero normal or turbo values for one full release. Proof command: PYTHONDONTWRITEBYTECODE=1 python -m unittest tests.test_mode_migration.\n",
         "fixtures/release-status.md": "Implementation commit: signed. Unit tests: pass. Verification command: PYTHONDONTWRITEBYTECODE=1 python -m unittest tests.test_release. Publish authority: release engineering. Only immutable artifact verification remains; no later source-changing slice is pending.\n",
         "fixtures/cli.py": "def main(argv):\n    return 0\n",
         "fixtures/tests/test_cli.py": "def test_cli_smoke():\n    assert True\n",
@@ -70,18 +74,19 @@ DEFINITION = {
             ],
         },
         {
-            "id": "proof-owner",
-            "coverage": "proof-owner",
-            "task": "Using `fixtures/schema.json`, `fixtures/src/parser.py`, and `fixtures/scripts/build_package.py`, assign one evidence owner and one measurable exit condition to each stage.",
+            "id": "multi-session-program",
+            "coverage": "program",
+            "task": "Read `fixtures/program-state.md`, `fixtures/schema.json`, `fixtures/src/parser.py`, and `fixtures/scripts/build_package.py`. Write a multi-session implementation Program for the settled mode migration that another session can resume safely. Do not edit files or execute the plan.",
             "protected": False,
             "turns": 1,
             "initial_files": [
                 "fixtures/schema.json",
                 "fixtures/src/parser.py",
                 "fixtures/scripts/build_package.py",
+                "fixtures/program-state.md",
             ],
             "semantic_oracle": [
-                "each stage has one exact file owner and measurable exit"
+                "the non-Git Program binds resumable named milestones, the parser compatibility owner and removal condition, and the exact proof command"
             ],
         },
         {
