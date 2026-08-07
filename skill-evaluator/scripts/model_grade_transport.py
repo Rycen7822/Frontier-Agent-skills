@@ -232,9 +232,30 @@ def _relative_evidence_paths(assessment: dict[str, Any]) -> list[str]:
     return sorted(paths, key=len, reverse=True)
 
 
-def _blind_unbound_local_path(match: re.Match[str]) -> str:
-    trailing_periods = len(match.group(0)) - len(match.group(0).rstrip("."))
-    return LOCAL_PATH_PLACEHOLDER + "." * trailing_periods
+def _blind_unbound_local_paths(value: str) -> str:
+    """Blind roots while preserving suffixes below an explicitly cited root."""
+    paths = {
+        match.group(0).rstrip(".").replace("\\", "/").rstrip("/")
+        for match in UNBOUND_LOCAL_PATH.finditer(value)
+    }
+    roots = sorted(paths, key=len)
+
+    def replace(match: re.Match[str]) -> str:
+        raw = match.group(0)
+        trailing_periods = len(raw) - len(raw.rstrip("."))
+        path = raw.rstrip(".").replace("\\", "/").rstrip("/")
+        ancestor = next(
+            (
+                root
+                for root in roots
+                if path != root and path.startswith(root + "/")
+            ),
+            None,
+        )
+        suffix = path[len(ancestor):] if ancestor is not None else ""
+        return LOCAL_PATH_PLACEHOLDER + suffix + "." * trailing_periods
+
+    return UNBOUND_LOCAL_PATH.sub(replace, value)
 
 
 def _redact_workspace_paths(
@@ -261,7 +282,7 @@ def _redact_workspace_paths(
             lambda match: f"{path}{match.group('line') or ''}",
             redacted,
         )
-    return UNBOUND_LOCAL_PATH.sub(_blind_unbound_local_path, redacted)
+    return _blind_unbound_local_paths(redacted)
 
 
 def _workspace_evidence(

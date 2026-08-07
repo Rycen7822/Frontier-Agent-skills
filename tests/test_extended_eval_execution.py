@@ -716,6 +716,14 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                         assessment,
                     ),
                 )
+        self.assertEqual(
+            "Root local-path-redacted; from local-path-redacted/fixtures.",
+            transport._redact_workspace_paths(  # noqa: SLF001
+                "Root /tmp/frontier-workspace; from "
+                "/tmp/frontier-workspace/fixtures.",
+                assessment,
+            ),
+        )
         unchanged_cases = (
             home_url,
             'Use relative fixtures/app.py and home/example prose.',

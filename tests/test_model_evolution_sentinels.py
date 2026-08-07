@@ -521,6 +521,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             self.assertIn("Treat bound task fixtures as supplied facts", prompt)
             self.assertIn("Judge each item independently", prompt)
             self.assertIn("Each `local-path-redacted` occurrence", prompt)
+            self.assertIn("a following `/relative` suffix preserves", prompt)
             self.assertIn("exact-match patterns, and counts", prompt)
             self.assertIn("execution hygiene, not a separate workflow", prompt)
             self.assertIn("single target-Skill body is the intentional treatment delivery", prompt)
