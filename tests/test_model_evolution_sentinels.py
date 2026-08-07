@@ -290,6 +290,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
     def test_case_specific_grader_rules_are_exactly_scoped(self) -> None:
         expected = {
             "skill-evaluator": (
+                "skill-evaluator-transition-vs-revision,",
                 "skill-evaluator-analyzer-exit-contract,",
                 "skill-evaluator-protected-no-reviewer,",
                 "skill-evaluator-analyzer-exit-contract-heldout,",
