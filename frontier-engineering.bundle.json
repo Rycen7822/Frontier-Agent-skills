@@ -2,14 +2,14 @@
   "activation_ceiling": "implicit_local_pilot",
   "bundle_id": "frontier-engineering/6.3.0",
   "compatible_schema_epoch": 5,
-  "release_build_id": "build-e9e360d3c3f476f86b9ae76c",
+  "release_build_id": "build-101e449f32f00c0f4a032c72",
   "remote_writes": false,
   "schema_version": "frontier-engineering-bundle/2.0",
   "skills": {
     "long-document-segmented-writing": {
       "allow_implicit_invocation": true,
-      "root_hash": "sha256:0c0481c6fe6fecb83954d584965c1598f4902be71b1df4f8240ad6429986dd70",
-      "version": "1.1.2"
+      "root_hash": "sha256:9ed8d2281b2f056f06de16a03cb3a3869d28283c36a4c8f0eeb0b1752470d206",
+      "version": "1.1.3"
     },
     "skill-evaluator": {
       "allow_implicit_invocation": false,

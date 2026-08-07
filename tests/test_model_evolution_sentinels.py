@@ -643,6 +643,9 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 self.assertIn("syntax-only compilation is insufficient", prompt)
             elif skill_id == "long-document-segmented-writing":
                 self.assertIn("Current recovery anchor", prompt)
+                skill_body = (REPOSITORY_ROOT / skill_id / "SKILL.md").read_text(encoding="utf-8")
+                self.assertIn("contains exactly four labeled fields", skill_body)
+                self.assertIn("emit no opening status or other ledger section", skill_body)
                 self.assertIn("compaction-resume", prompt)
                 self.assertIn("intermediate recovery anchor", prompt)
                 self.assertIn("four-field rule does not apply", prompt)

@@ -380,7 +380,7 @@
     "principal_mode": "single",
     "shape": "single_skill",
     "skill_id": "long-document-segmented-writing",
-    "version": "1.1.2"
+    "version": "1.1.3"
   },
   "suite": {
     "fixture_set_hash": "sha256:a548f827d8014324b783828cfba6a3e8e1f5ad90a5cb477c86d17dfe53c223ec",
