@@ -282,7 +282,7 @@
       },
       "prompt": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:67bf9403b4490830485e3d7c46f8ddad8ec9a150c685eedccfe48e57ad5f7154"
+        "sha256": "sha256:2f946b03ee57e68f54c0a8b1c8d8c9ff314c05220dae5c501c2082d867659bbc"
       },
       "type": "model"
     }
@@ -363,7 +363,8 @@
     "claims": [
       "source-bound-planning",
       "unambiguous-handoff",
-      "continuous-execution"
+      "continuous-execution",
+      "multi-session-program"
     ],
     "mechanisms": [
       "procedure_workflow",
@@ -383,28 +384,28 @@
     "version": "8.2.4"
   },
   "suite": {
-    "fixture_set_hash": "sha256:a1d8db9b0f2ef15f69428957872f617a213e37eb87511db213e8e6a3356b3085",
-    "grader_schedule_hash": "sha256:f7d77634e73a1db4de8b67262028b506e58629437313e09210269259bfaf787f",
-    "grader_set_hash": "sha256:e9de41f097bebb98f04846e935c0c30ffbd8999b6b43268de41afbce84ff4eca",
+    "fixture_set_hash": "sha256:415a7eb4989676c0b891780b4573b70832650bcc5e8999cb3d1d767cc056594b",
+    "grader_schedule_hash": "sha256:7188bbba5484edc1e79ede2e7c1b8fc1a79aef5941ce74a09731ef115ffeaffe",
+    "grader_set_hash": "sha256:3aaac72ca44276ad9cc177a1d698fa761455df8620e43e560178412b4b3958d5",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:bdbb16ff35ceff6245623eefa4c528277a220cc4c6d0db1009e0dde1934001e0"
+      "sha256": "sha256:b9050dde651e39bd0a830555129a662b14795a88817e24fbbb4dcd1ce531a27f"
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:853b4173be4947e4c4f52fa5b05de1a3fdfd9367a1fe73ba2a5d0f5edf1a9e41"
+      "sha256": "sha256:b9ad9b3d52a815d76bde44a603649670e7db780b2e617455a5102561e66793a5"
     },
-    "quality_contract_hash": "sha256:a4111e875cdff2649998e42ac9a788543c5cb914c517b3cab4b71cac00230df9",
+    "quality_contract_hash": "sha256:1541be3e912a2a117d4346127d8187d193a3c5ff65607c3c5b84d82bfdeb52ce",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
       "path": "scenarios.public.jsonl",
-      "sha256": "sha256:bdbb16ff35ceff6245623eefa4c528277a220cc4c6d0db1009e0dde1934001e0"
+      "sha256": "sha256:b9050dde651e39bd0a830555129a662b14795a88817e24fbbb4dcd1ce531a27f"
     },
-    "treatment_contract_hash": "sha256:dd7a1e4fcd2008d204f98ec5465eb5399d6e4a5f89ae0eab47b1bb8a05d5e302"
+    "treatment_contract_hash": "sha256:e5915663d54874efcbce00f99a8144057fb551d9a984ec5049dd7ac82982fdf8"
   },
   "treatments": [
     {
@@ -432,7 +433,7 @@
       "scenario_ids": [
         "writing-plans-source-bound-plan",
         "writing-plans-resume-preflight",
-        "writing-plans-proof-owner",
+        "writing-plans-multi-session-program",
         "writing-plans-explicit-handoff",
         "writing-plans-continuous-execution",
         "writing-plans-protected-description"
@@ -442,7 +443,7 @@
         "continuous-execution",
         "core",
         "handoff",
-        "proof-owner",
+        "program",
         "protected",
         "resume-preflight",
         "source-bound"
@@ -475,7 +476,7 @@
       "scenario_ids": [
         "writing-plans-source-bound-plan",
         "writing-plans-resume-preflight",
-        "writing-plans-proof-owner",
+        "writing-plans-multi-session-program",
         "writing-plans-explicit-handoff",
         "writing-plans-continuous-execution",
         "writing-plans-protected-description"
@@ -485,7 +486,7 @@
         "continuous-execution",
         "core",
         "handoff",
-        "proof-owner",
+        "program",
         "protected",
         "resume-preflight",
         "source-bound"

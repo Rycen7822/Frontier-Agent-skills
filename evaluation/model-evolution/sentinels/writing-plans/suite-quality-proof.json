@@ -19,7 +19,7 @@
       "class": "positive"
     },
     {
-      "case_id": "writing-plans-proof-owner",
+      "case_id": "writing-plans-multi-session-program",
       "class": "positive"
     },
     {
@@ -45,9 +45,9 @@
     ],
     "exposure_status": "not_applicable",
     "split_hashes": {
-      "dev": "sha256:321de797b68c992c4c7c8115382a30e13a2b89f6a64dea7bdf85d8557fa3499f",
+      "dev": "sha256:458903ddd91605bea0859f99cc6e45bd77ff0fb60251c6f7bb65da8792187e82",
       "heldout": null,
-      "regression": "sha256:8b72df708e1ab1ac12b81334fae2062f73c10155ead9435a8edc1e293caf55ab"
+      "regression": "sha256:e4220a07fae4430643c712b9bb1f158a5b35e6bb5abebae694b983f67e41afe1"
     }
   },
   "duplicate_groups": [],
@@ -56,7 +56,7 @@
     "case_ids": [
       "writing-plans-source-bound-plan",
       "writing-plans-resume-preflight",
-      "writing-plans-proof-owner",
+      "writing-plans-multi-session-program",
       "writing-plans-explicit-handoff",
       "writing-plans-continuous-execution",
       "writing-plans-protected-description"
@@ -64,7 +64,7 @@
     "passed_ids": [
       "writing-plans-source-bound-plan",
       "writing-plans-resume-preflight",
-      "writing-plans-proof-owner",
+      "writing-plans-multi-session-program",
       "writing-plans-explicit-handoff",
       "writing-plans-continuous-execution",
       "writing-plans-protected-description"
@@ -82,7 +82,7 @@
     {
       "artifact": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:67bf9403b4490830485e3d7c46f8ddad8ec9a150c685eedccfe48e57ad5f7154"
+        "sha256": "sha256:2f946b03ee57e68f54c0a8b1c8d8c9ff314c05220dae5c501c2082d867659bbc"
       },
       "locator": {
         "artifact": "grader-prompt.md",
@@ -108,7 +108,7 @@
       "case_ids": [
         "writing-plans-source-bound-plan",
         "writing-plans-resume-preflight",
-        "writing-plans-proof-owner",
+        "writing-plans-multi-session-program",
         "writing-plans-explicit-handoff",
         "writing-plans-continuous-execution",
         "writing-plans-protected-description"
@@ -121,7 +121,7 @@
         "start_line": 1
       },
       "source_hashes": [
-        "sha256:67bf9403b4490830485e3d7c46f8ddad8ec9a150c685eedccfe48e57ad5f7154"
+        "sha256:2f946b03ee57e68f54c0a8b1c8d8c9ff314c05220dae5c501c2082d867659bbc"
       ],
       "status": "closed"
     }

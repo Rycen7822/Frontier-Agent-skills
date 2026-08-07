@@ -1,6 +1,6 @@
 {
   "schema_version": "model-evolution-sentinel-index/1",
-  "sentinel_hash": "sha256:af1f4b65dee7e95066520a43f9ada58421d6b2e76955c92c2472434637e951c1",
+  "sentinel_hash": "sha256:8c36aa9bd8209738813c326be51d8edc510b7c62efc5001bd3c3d0a3e4bc081d",
   "sentinel_id": "frontier-four-skill-sentinel-v1",
   "skills": {
     "long-document-segmented-writing": {
@@ -275,7 +275,7 @@
       "calibration_gold": {
         "path": "evaluation/model-evolution/sentinels/writing-plans/calibration-gold.jsonl",
         "root": "repository",
-        "sha256": "sha256:03bf0041175a317f3b0211c4eba854822a6202aade05b442d6394962d48f404e"
+        "sha256": "sha256:8296f54f6d1e1fa198db9938442c11cb131c71bdbe1c18450dc395dd5c229554"
       },
       "calibration_request_ceiling": 16,
       "critical_bucket_id": "writing-plans-critical",
@@ -284,7 +284,7 @@
         {
           "path": "evaluation/model-evolution/sentinels/writing-plans/fixtures/manifest.json",
           "root": "repository",
-          "sha256": "sha256:83de3a197bef9716d5cb1ae0240451a651c703303277172b472f365915a5ca1f"
+          "sha256": "sha256:aaf2b884d56b6e38d1a9618479274b6291e9e72de0fcfef2ef1e115c0a397a33"
         },
         {
           "path": "evaluation/model-evolution/sentinels/writing-plans/fixtures/README.md",
@@ -305,6 +305,11 @@
           "path": "evaluation/model-evolution/sentinels/writing-plans/fixtures/docs/config.md",
           "root": "repository",
           "sha256": "sha256:e3e49fcdea442f1dceb234fee80864880f269b2c284f2f7e5747314740304951"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/writing-plans/fixtures/program-state.md",
+          "root": "repository",
+          "sha256": "sha256:9d167468e8780b32ff7163b83ce3a28b619702c7ff89e9263a9ce56326ddb03d"
         },
         {
           "path": "evaluation/model-evolution/sentinels/writing-plans/fixtures/release-status.md",
@@ -359,12 +364,12 @@
       "public_scenarios": {
         "path": "evaluation/model-evolution/sentinels/writing-plans/scenarios.public.jsonl",
         "root": "repository",
-        "sha256": "sha256:bdbb16ff35ceff6245623eefa4c528277a220cc4c6d0db1009e0dde1934001e0"
+        "sha256": "sha256:b9050dde651e39bd0a830555129a662b14795a88817e24fbbb4dcd1ce531a27f"
       },
       "required_coverage_tags": [
         "source-bound",
         "resume-preflight",
-        "proof-owner",
+        "program",
         "handoff",
         "continuous-execution",
         "protected"
@@ -372,7 +377,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/writing-plans/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:aaf789c9ba1de35d2978e136044e2a80ab3cf31bc9a3585a9af369e6cd9886cb"
+        "sha256": "sha256:40d48f618df58d33910c89e776722f59275d75405af5aa27efc83aa4202f1005"
       },
       "verifier_roots": [
         {

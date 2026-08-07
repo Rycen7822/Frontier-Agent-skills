@@ -342,6 +342,33 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             for required_text in required_texts:
                 self.assertIn(required_text, task)
 
+    def test_writing_program_case_binds_observable_resume_contract(self) -> None:
+        root = SENTINEL_ROOT / "writing-plans"
+        rows = [
+            json.loads(line)
+            for line in (root / "scenarios.public.jsonl").read_text().splitlines()
+        ]
+        case = next(
+            row
+            for row in rows
+            if row["case_id"] == "writing-plans-multi-session-program"
+        )
+        self.assertIn(
+            "fixtures/program-state.md",
+            {item["path"] for item in case["fixture"]["initial_files"]},
+        )
+        task = case["execution_context"]["task"]
+        self.assertIn("multi-session implementation Program", task)
+        self.assertIn("Do not edit files or execute the plan", task)
+        prompt = (root / "grader-prompt.md").read_text()
+        for text in (
+            "explicit non-Git identity",
+            "freshness-bound attestation or one combined preflight",
+            "one-release zero-legacy removal condition",
+            "ordinal-only dependencies",
+        ):
+            self.assertIn(text, prompt)
+
     def test_subject_versions_match_bundle_manifest(self) -> None:
         manifest = load_json(REPOSITORY_ROOT / "bundle-manifest.json", label="Bundle")
         versions = {row["id"]: row["version"] for row in manifest["skills"]}
