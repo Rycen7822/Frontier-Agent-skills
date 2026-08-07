@@ -726,6 +726,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                     assert Path({str(private_home_secret)!r}).exists() is False
                     assert Path({str(global_codex_auth)!r}).exists() is False
                     assert Path('/run/frontier-codex-home/auth.json').is_file()
+                    assert Path('/run/frontier-codex-bin/codex-code-mode-host').is_file()
                     assert Path('/tmp/frontier-workspace/fixture.txt').read_text() == 'workspace-only\\n'
                     processes = subprocess.check_output(['ps', '-eo', 'args='], text=True)
                     assert {str(source)!r} not in processes
@@ -741,6 +742,9 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                 encoding="utf-8",
             )
             fake.chmod(0o700)
+            code_mode_host = fake.with_name("codex-code-mode-host")
+            shutil.copyfile(fake, code_mode_host)
+            code_mode_host.chmod(0o700)
             isolation_name = shutil.which("bwrap")
             self.assertIsNotNone(isolation_name)
             assert isolation_name is not None
@@ -757,6 +761,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                 sandbox=args.sandbox,
                 source_root=args.source_root,
                 codex=args.codex,
+                code_mode_host=code_mode_host.resolve(strict=True),
                 argv=[
                     str(fake),
                     "--cd",

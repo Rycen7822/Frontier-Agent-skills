@@ -768,6 +768,8 @@ def validate_target_host_staging(
         repository_root.parent.name != ".worktrees"
         or argv.count("--isolation-tool") != 1
         or argv.count("--isolation-tool-sha256") != 1
+        or argv.count("--code-mode-host") != 1
+        or argv.count("--code-mode-host-sha256") != 1
     ):
         raise OperationError("target Host lacks the required worktree isolation")
     return host
