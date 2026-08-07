@@ -69,7 +69,7 @@ class QuickStaticContractDiagnosticTests(unittest.TestCase):
         self.assertEqual("frontier-engineering/6.3.0", first["bundle_id"])
         self.assertEqual("6.3.0", first["version"])
         self.assertEqual(5, first["schema_epoch"])
-        self.assertEqual("3.3.1", first["skill_versions"]["skill-evaluator"])
+        self.assertEqual("3.3.2", first["skill_versions"]["skill-evaluator"])
         self.assertEqual(checker.LIMITATIONS, first["limitations"])
         profile_hashes = list(first["profile_command_hashes"].values())
         self.assertEqual(3, len(profile_hashes))

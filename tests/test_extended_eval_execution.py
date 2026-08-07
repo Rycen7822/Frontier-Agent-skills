@@ -608,6 +608,12 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 item['grader_view']['task_evidence']['tags']
                 for item in batch['items']
             ))
+            self.assertTrue(all(
+                isinstance(
+                    item['grader_view']['task_evidence']['fixture_paths'], list,
+                )
+                for item in batch['items']
+            ))
             for item in batch['items']:
                 view = item['grader_view']
                 self.assertTrue(view['deterministic_claims'])
@@ -722,6 +728,15 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 "Root /tmp/frontier-workspace; from "
                 "/tmp/frontier-workspace/fixtures.",
                 assessment,
+            ),
+        )
+        self.assertEqual(
+            "Run from fixtures with fixtures/tests/test_cli.py.",
+            transport._redact_workspace_paths(  # noqa: SLF001
+                "Run from /tmp/frontier-workspace/fixtures with "
+                "/tmp/frontier-workspace/fixtures/tests/test_cli.py.",
+                {},
+                ["fixtures/tests/test_cli.py", "fixtures"],
             ),
         )
         unchanged_cases = (

@@ -2,7 +2,7 @@
 
 DEFINITION = {
     "name": "Software Quality Workflows",
-    "version": "9.0.0",
+    "version": "9.0.1",
     "context_ceiling": 24576,
     "regression_origin": "session-card-artifact-accumulation",
     "verifier_source": "software_quality_workflows_verifier.py",
@@ -16,6 +16,7 @@ DEFINITION = {
         "For this Skill, an evidence owner is the smallest code, API, config, test, or component controlling the behavior; a team or role alone is insufficient.",
         "When the task requests a behavior-focused check, syntax-only compilation is insufficient.",
         "For software-quality-workflows-single-specialist-risk, judge only the requested specialist risk, concrete behavior owner, focused correction, and verification boundary; do not require a durable-state decision, escalation set, authority, or Git provenance.",
+        "For software-quality-workflows-retire-dead-code, quality and process require the exact legacy function and obsolete-test deletion plus a zero-reference scan; a related post-deletion behavior test is proportionate validation, not unrelated workflow.",
         "For software-quality-workflows-single-specialist-risk-heldout, quality and process require log_request as the behavior owner, no durable state for this local single-owner task, the complete escalation set of cross-context work, destructive or external effects, staged migration or release, and multiple writers, plus one credential-safe correction and behavior check; authority and Git provenance remain excluded.",
         "For software-quality-workflows-protected-no-state-heldout, quality and process require the Direct route, the unapplied tmp-to-normalized_path rename, one behavior check, and exclusion of references, workflow or router state, cards, persistent state, JSON receipts, and ledgers.",
     ],

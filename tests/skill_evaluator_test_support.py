@@ -1222,7 +1222,7 @@ def make_v5_schema_examples() -> dict[str, dict]:
         'comparison_observations_hash': _v5_hash('comparison-observations'),
         'generator': {
             'name': 'analyze_runs.py',
-            'version': '3.3.1',
+            'version': '3.3.2',
             'source_hash': _v5_hash('analyzer-source'),
         },
         'evaluation_id': spec['evaluation_id'],
@@ -1297,7 +1297,7 @@ def make_v5_schema_examples() -> dict[str, dict]:
         'claim_scope': 'diagnostic_only',
         'generator': {
             'name': 'compare_cycles.py',
-            'version': '3.3.1',
+            'version': '3.3.2',
             'source_hash': _v5_hash('comparator-source'),
         },
         'registration_status': 'exploratory',
