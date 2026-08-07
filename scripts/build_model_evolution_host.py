@@ -175,6 +175,13 @@ def build_host(
         Path(argv[argv.index("--codex") + 1])
     )
     codex_hash = _hash_bytes(codex_path.read_bytes())
+    code_mode_host_input = codex_path.with_name("codex-code-mode-host")
+    if code_mode_host_input.is_symlink() or not code_mode_host_input.is_file():
+        raise HostBuildError("Codex code-mode Host executable is invalid")
+    code_mode_host = code_mode_host_input.resolve(strict=True)
+    if not os.access(code_mode_host, os.X_OK):
+        raise HostBuildError("Codex code-mode Host executable is invalid")
+    code_mode_host_hash = _hash_bytes(code_mode_host.read_bytes())
     isolation_name = shutil.which("bwrap")
     if isolation_name is None:
         raise HostBuildError("bubblewrap isolation executable is unavailable")
@@ -186,6 +193,8 @@ def build_host(
     _bind(argv, "--codex-version", codex_version)
     _bind(argv, "--isolation-tool", str(isolation_tool))
     _bind(argv, "--isolation-tool-sha256", isolation_hash)
+    _bind(argv, "--code-mode-host", str(code_mode_host))
+    _bind(argv, "--code-mode-host-sha256", code_mode_host_hash)
     _replace(argv, "--host-manifest", str(output_path.resolve()))
     _replace(argv, "--plugin-root", str(plugin_root))
     command.update({
@@ -221,6 +230,7 @@ def build_host(
     execution["tool_schema_hash"] = isolated_tool_schema_hash(
         codex_hash,
         isolation_hash,
+        code_mode_host_hash,
     )
     if execution.get("model") != argv[argv.index("--model") + 1]:
         raise HostBuildError("template model identity differs from its command")

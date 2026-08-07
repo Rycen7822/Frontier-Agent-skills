@@ -55,7 +55,7 @@ from _codex_eval_isolation import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
-ADAPTER_VERSION = "1.6"
+ADAPTER_VERSION = "1.7"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_delivery.py",
@@ -173,6 +173,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     if execution.get("tool_schema_hash") != isolated_tool_schema_hash(
         args.codex_sha256,
         args.isolation_tool_sha256,
+        args.code_mode_host_sha256,
     ):
         raise AdapterError("tool schema identity differs from the host manifest")
     if (
@@ -199,14 +200,27 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     if _file_sha256(args.codex) != args.codex_sha256:
         raise AdapterError("Codex executable bytes differ from the bound hash")
     if args.isolation_tool is None:
-        if args.isolation_tool_sha256 is not None:
-            raise AdapterError("filesystem isolation hash lacks an executable")
+        if any(
+            value is not None
+            for value in (
+                args.isolation_tool_sha256,
+                args.code_mode_host,
+                args.code_mode_host_sha256,
+            )
+        ):
+            raise AdapterError("filesystem isolation identity lacks an executable")
     elif (
         not isinstance(args.isolation_tool_sha256, str)
         or not HASH.fullmatch(args.isolation_tool_sha256)
         or _file_sha256(args.isolation_tool) != args.isolation_tool_sha256
+        or args.code_mode_host is None
+        or args.code_mode_host.name != "codex-code-mode-host"
+        or args.code_mode_host.parent != args.codex.parent
+        or not isinstance(args.code_mode_host_sha256, str)
+        or not HASH.fullmatch(args.code_mode_host_sha256)
+        or _file_sha256(args.code_mode_host) != args.code_mode_host_sha256
     ):
-        raise AdapterError("filesystem isolation executable differs from its bound hash")
+        raise AdapterError("filesystem isolation runtime differs from its bound hash")
     command = manifest.get("command")
     argv = command.get("argv") if isinstance(command, dict) else None
     if not isinstance(argv, list) or any(not isinstance(item, str) for item in argv):
@@ -232,6 +246,10 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
             str(args.isolation_tool) if args.isolation_tool is not None else None
         ),
         "--isolation-tool-sha256": args.isolation_tool_sha256,
+        "--code-mode-host": (
+            str(args.code_mode_host) if args.code_mode_host is not None else None
+        ),
+        "--code-mode-host-sha256": args.code_mode_host_sha256,
     }
     if (
         bound_codex != args.codex
@@ -294,6 +312,19 @@ def validate_bound_manifest(path: Path, plugin_root: Path) -> dict[str, Any]:
             argv,
             "--isolation-tool-sha256",
         )
+        code_mode_host_value = _optional_bound_command_option(
+            argv,
+            "--code-mode-host",
+        )
+        code_mode_host = (
+            Path(code_mode_host_value).resolve(strict=True)
+            if code_mode_host_value is not None
+            else None
+        )
+        code_mode_host_sha256 = _optional_bound_command_option(
+            argv,
+            "--code-mode-host-sha256",
+        )
         timeout = float(_bound_command_option(argv, "--timeout"))
     except (KeyError, OSError, TypeError, ValueError) as exc:
         raise AdapterError("host manifest command binding is invalid") from exc
@@ -314,6 +345,8 @@ def validate_bound_manifest(path: Path, plugin_root: Path) -> dict[str, Any]:
         plugin_root=plugin_root.resolve(strict=True),
         isolation_tool=isolation_tool,
         isolation_tool_sha256=isolation_tool_sha256,
+        code_mode_host=code_mode_host,
+        code_mode_host_sha256=code_mode_host_sha256,
     )
     validated = _validate_manifest(path, args)
     project_command_environment(
@@ -407,11 +440,13 @@ def _run_child(
     effective_argv = argv
     if args.isolation_tool is not None:
         assert codex_home is not None
+        assert args.code_mode_host is not None
         effective_argv = isolated_child_argv(
             isolation_tool=args.isolation_tool,
             sandbox=args.sandbox,
             source_root=args.source_root,
             codex=args.codex,
+            code_mode_host=args.code_mode_host,
             argv=argv,
             workspace=workspace,
             codex_home=codex_home,
@@ -1476,6 +1511,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--codex-version", required=True)
     parser.add_argument("--isolation-tool", type=Path)
     parser.add_argument("--isolation-tool-sha256")
+    parser.add_argument("--code-mode-host", type=Path)
+    parser.add_argument("--code-mode-host-sha256")
     parser.add_argument("--host-manifest", type=Path, required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--effort", required=True)
@@ -1495,6 +1532,8 @@ def main(argv: list[str] | None = None) -> int:
         args.codex = args.codex.resolve(strict=True)
         if args.isolation_tool is not None:
             args.isolation_tool = args.isolation_tool.resolve(strict=True)
+        if args.code_mode_host is not None:
+            args.code_mode_host = args.code_mode_host.resolve(strict=True)
         if args.plugin_root is not None:
             args.plugin_root = args.plugin_root.resolve(strict=True)
         if (

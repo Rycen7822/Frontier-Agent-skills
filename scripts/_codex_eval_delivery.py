@@ -37,6 +37,7 @@ class DeliveryError(ValueError):
 def isolated_tool_schema_hash(
     codex_sha256: str,
     isolation_tool_sha256: str | None = None,
+    code_mode_host_sha256: str | None = None,
 ) -> str:
     """Bind the model-visible tool surface to Codex and its feature isolation."""
     descriptor = {
@@ -46,11 +47,12 @@ def isolated_tool_schema_hash(
             None
             if isolation_tool_sha256 is None
             else {
-                "mode": "bubblewrap-workspace-only-v1",
+                "code_mode_host_sha256": code_mode_host_sha256,
+                "mode": "bubblewrap-workspace-only-v2",
                 "tool_sha256": isolation_tool_sha256,
             }
         ),
-        "schema_version": 1,
+        "schema_version": 2,
         "transport": "codex-exec-json-single-principal",
     }
     payload = json.dumps(descriptor, sort_keys=True, separators=(",", ":"))

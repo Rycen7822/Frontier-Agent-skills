@@ -64,6 +64,9 @@ def _materialize_fake_host(
     fake.parent.mkdir(parents=True, exist_ok=True)
     fake.write_text(FAKE_CODEX, encoding="utf-8")
     fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+    code_mode_host = fake.with_name("codex-code-mode-host")
+    shutil.copyfile(fake, code_mode_host)
+    code_mode_host.chmod(code_mode_host.stat().st_mode | stat.S_IXUSR)
     isolation_name = shutil.which("bwrap")
     if isolation_name is None:
         raise RuntimeError("bubblewrap fixture dependency is unavailable")
@@ -110,6 +113,10 @@ def _materialize_fake_host(
                 str(isolation_tool),
                 "--isolation-tool-sha256",
                 isolation_hash,
+                "--code-mode-host",
+                str(code_mode_host),
+                "--code-mode-host-sha256",
+                file_hash(code_mode_host),
                 "--host-manifest",
                 str(host_path),
                 "--model",
@@ -151,6 +158,7 @@ def _materialize_fake_host(
             "tool_schema_hash": isolated_tool_schema_hash(
                 file_hash(fake),
                 isolation_hash,
+                file_hash(code_mode_host),
             ),
         }
     )

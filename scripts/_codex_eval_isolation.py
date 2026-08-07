@@ -42,6 +42,7 @@ def isolated_child_argv(
     sandbox: str,
     source_root: Path,
     codex: Path,
+    code_mode_host: Path,
     argv: list[str],
     workspace: Path,
     codex_home: Path,
@@ -52,6 +53,11 @@ def isolated_child_argv(
         raise IsolationError(
             "source worktree is outside the in-repository worktree root"
         )
+    if (
+        code_mode_host.name != "codex-code-mode-host"
+        or code_mode_host.parent != codex.parent
+    ):
+        raise IsolationError("Codex code-mode Host is not the bound runtime sibling")
     user_home = Path.home().resolve(strict=True)
     global_codex_home = user_home / ".codex"
     auth = global_codex_home / "auth.json"
@@ -94,6 +100,7 @@ def isolated_child_argv(
         "--tmpfs", "/run",
         "--dir", ISOLATED_CODEX_BIN,
         "--ro-bind", str(codex), rewritten[0],
+        "--ro-bind", str(code_mode_host), f"{ISOLATED_CODEX_BIN}/codex-code-mode-host",
         "--dir", ISOLATED_HOME,
         "--dir", ISOLATED_CODEX_HOME,
         "--bind", str(codex_home), ISOLATED_CODEX_HOME,

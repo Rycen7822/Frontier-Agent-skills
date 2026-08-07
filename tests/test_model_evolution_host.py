@@ -111,6 +111,7 @@ class ModelEvolutionHostTest(unittest.TestCase):
                 ("source-tree", "repository identity differs"),
                 ("source-path", "repository identity differs"),
                 ("host-path", "command binding is invalid"),
+                ("code-mode-host-hash", "tool schema identity differs"),
                 ("transport-env", "transport environment differs"),
             )
             for mutation, message in mutations:
@@ -132,6 +133,13 @@ class ModelEvolutionHostTest(unittest.TestCase):
                 elif mutation == "host-path":
                     position = invalid_host["command"]["argv"].index("--host-manifest")
                     invalid_host["command"]["argv"][position + 1] = "/missing"
+                elif mutation == "code-mode-host-hash":
+                    position = invalid_host["command"]["argv"].index(
+                        "--code-mode-host-sha256"
+                    )
+                    invalid_host["command"]["argv"][position + 1] = (
+                        "sha256:" + "0" * 64
+                    )
                 else:
                     invalid_host["command"]["env_allowlist"] = []
                 write_json(host, with_self_hash(invalid_host, "manifest_hash"))
@@ -317,6 +325,9 @@ class ModelEvolutionHostTest(unittest.TestCase):
                 ],
                 built["command"]["argv"][
                     built["command"]["argv"].index("--isolation-tool-sha256") + 1
+                ],
+                built["command"]["argv"][
+                    built["command"]["argv"].index("--code-mode-host-sha256") + 1
                 ],
             ),
             built["identity"]["execution"]["tool_schema_hash"],
