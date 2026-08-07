@@ -18,6 +18,7 @@ DEFINITION = {
         "For software-quality-workflows-single-specialist-risk, judge only the requested specialist risk, concrete behavior owner, focused correction, and verification boundary; do not require a durable-state decision, escalation set, authority, or Git provenance.",
         "For software-quality-workflows-retire-dead-code, quality and process require the exact legacy function and obsolete-test deletion plus a zero-reference scan; a related post-deletion behavior test is proportionate validation, not unrelated workflow.",
         "For software-quality-workflows-protected-no-state, quality and process require the exact unapplied tmp-to-normalized_path rename plus one focused check; syntax-only compilation is sufficient because this public task does not request a behavior-focused check, and do not import the heldout case requirements.",
+        "For software-quality-workflows-durable-resume-boundary, quality and process require durable state because work crosses contexts, exactly one controller fallback ledger because host and repository state are unavailable, the owner seam, next action, and proof in that ledger, and explicit exclusion of leases, daemons, event stores, and compatibility readers; do not require creating the ledger in this read-only task.",
         "For software-quality-workflows-single-specialist-risk-heldout, quality and process require log_request as the behavior owner, no durable state for this local single-owner task, the complete escalation set of cross-context work, destructive or external effects, staged migration or release, and multiple writers, plus one credential-safe correction and behavior check; authority and Git provenance remain excluded.",
         "For software-quality-workflows-protected-no-state-heldout, quality and process require the Direct route, the unapplied tmp-to-normalized_path rename, one behavior check, and exclusion of references, workflow or router state, cards, persistent state, JSON receipts, and ledgers.",
     ],
@@ -27,7 +28,7 @@ DEFINITION = {
         "the obsolete path is removed and the reference scan reports no live owner",
     ],
     "fixtures": {
-        "fixtures/src/even.py": "def is_even(n):\n    return n % 2 == 1\n",
+        "fixtures/work-boundary.md": "The work must resume in a different context. There is one writer. Repository and host state cannot persist the owner seam, next action, or proof. The work is local-only, non-destructive, and is not a migration or release.\n",
         "fixtures/src/logger.py": "def log_request(request, debug):\n    debug.write(request.headers['Authorization'])\n",
         "fixtures/src/upload.py": "def target(root, filename):\n    return root / filename\n",
         "fixtures/src/payment.py": "def charge(client, payment):\n    return client.retry(lambda: client.post('/charge', payment))\n",
@@ -38,13 +39,15 @@ DEFINITION = {
     },
     "cases": [
         {
-            "id": "direct-routine-change",
-            "coverage": "direct",
-            "task": "Read `fixtures/src/even.py`. Provide the minimal corrected function and the smallest relevant verification.",
+            "id": "durable-resume-boundary",
+            "coverage": "durable-state",
+            "task": "Read `fixtures/work-boundary.md`. Apply the bound durable escalation contract. State whether durable state is required, name the exact minimal mechanism and its required contents, and exclude every prohibited mechanism. Do not create files.",
             "protected": False,
             "turns": 1,
-            "initial_files": ["fixtures/src/even.py"],
-            "semantic_oracle": ["even predicate compares modulo result with zero"],
+            "initial_files": ["fixtures/work-boundary.md"],
+            "semantic_oracle": [
+                "cross-context work with no host or repository state uses one controller fallback ledger and no distributed lifecycle machinery"
+            ],
         },
         {
             "id": "single-specialist-risk",

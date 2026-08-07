@@ -12,7 +12,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_VERSIONS = {
-    "long-document-segmented-writing": "1.1.1",
+    "long-document-segmented-writing": "1.1.2",
     "skill-evaluator": "3.3.3",
     "software-quality-workflows": "9.0.4",
     "writing-plans": "8.2.5",

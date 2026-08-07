@@ -2,11 +2,6 @@
   "artifacts": [
     {
       "encoding": "utf-8",
-      "path": "src/even.py",
-      "sha256": "sha256:810f8dc57fa3502b3f19aa0252769779186957132067876b76cc3f6b8ad520ae"
-    },
-    {
-      "encoding": "utf-8",
       "path": "src/legacy.py",
       "sha256": "sha256:5fdcbb21409274b4e766bd4ea4034a557bf134b908960e51b31f0e2313b2a9a6"
     },
@@ -39,6 +34,11 @@
       "encoding": "utf-8",
       "path": "tests/test_legacy.py",
       "sha256": "sha256:6990535854b2bfbf5d213218f80d91840cdc0e22cfb4cc689eba0d2ece5faa6a"
+    },
+    {
+      "encoding": "utf-8",
+      "path": "work-boundary.md",
+      "sha256": "sha256:c0757ae2aa002c7a28c5543fa364a6ad485a1b99efe3cc4b1a3619eb6eab42a8"
     }
   ],
   "schema_version": 1

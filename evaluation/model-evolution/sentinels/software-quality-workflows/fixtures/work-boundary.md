@@ -1,0 +1,1 @@
+The work must resume in a different context. There is one writer. Repository and host state cannot persist the owner seam, next action, or proof. The work is local-only, non-destructive, and is not a migration or release.
