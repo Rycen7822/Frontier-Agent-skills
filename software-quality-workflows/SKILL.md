@@ -3,7 +3,7 @@ name: software-quality-workflows
 description: Use when software work has a material boundary in evidence, authority, ownership, source, or effects.
 license: MIT
 metadata:
-  version: 9.0.3
+  version: 9.0.4
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -28,7 +28,7 @@ For a bound read-only/local-only target with forbidden effects, inspect minimal 
 
 Load [authority](references/control/scope-authority-and-effects.md) only for unresolved write scope; protected/dirty/concurrent work; destructive/external/privileged effects; material source root/revision; multiple owners/writers; or authorization for the proposed effect.
 
-Otherwise derive behavior from bounded evidence; unknown cause permits diagnosis, not a guessed fix. Change only the owner seam—no parallel abstraction, speculative compatibility, unrelated cleanup, routine owner inventory, or fixed process/RED/report. Match proof to risk. Behavior proof covers the intended change and its nearest protected control; a one-sided check cannot support a two-sided claim. Ask only for outcome-changing authority, irreversible effects, unavailable facts, or an unsound route.
+Otherwise derive behavior from bounded evidence; unknown cause permits diagnosis, not a guessed fix. Change only the owner seam—no parallel abstraction, speculative compatibility, unrelated cleanup, routine owner inventory, or fixed process/RED/report. Match proof to risk. Behavior proof covers the intended change and its nearest protected control; for filtering, verify retained values and order. A one-sided check cannot support a two-sided claim. Ask only for outcome-changing authority, irreversible effects, unavailable facts, or an unsound route.
 
 A settled exact disposition is binding: perform or describe it; no retention, compatibility, or alternative branches.
 

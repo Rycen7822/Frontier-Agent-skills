@@ -23,7 +23,7 @@
       "properties": {
         "long-document-segmented-writing": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.1.0"}, "implicit_eligible": {"const": true}}}]},
         "skill-evaluator": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "3.3.3"}, "implicit_eligible": {"const": false}}}]},
-        "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "9.0.3"}, "implicit_eligible": {"const": false}}}]},
+        "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "9.0.4"}, "implicit_eligible": {"const": false}}}]},
         "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.2.4"}, "implicit_eligible": {"const": false}}}]}
       }
     },

@@ -48,12 +48,13 @@ def linked_markdown(path: Path) -> set[Path]:
 
 class QuickSkillContractTests(unittest.TestCase):
     def test_metadata_budget_and_explicit_activation(self) -> None:
-        self.assertEqual("9.0.3", frontmatter(SKILL_PATH)["metadata"]["version"])
+        self.assertEqual("9.0.4", frontmatter(SKILL_PATH)["metadata"]["version"])
         skill_text = SKILL_PATH.read_text(encoding="utf-8")
-        self.assertLessEqual(len(skill_text.encode()), 3200)
+        self.assertLessEqual(len(skill_text.encode()), 3264)
         self.assertIn(
             "Behavior proof covers the intended change and its nearest protected "
-            "control; a one-sided check cannot support a two-sided claim.",
+            "control; for filtering, verify retained values and order. A one-sided "
+            "check cannot support a two-sided claim.",
             skill_text,
         )
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))

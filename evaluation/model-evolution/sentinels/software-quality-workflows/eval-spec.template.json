@@ -380,7 +380,7 @@
     "principal_mode": "single",
     "shape": "single_skill",
     "skill_id": "software-quality-workflows",
-    "version": "9.0.3"
+    "version": "9.0.4"
   },
   "suite": {
     "fixture_set_hash": "sha256:cbe87f178339bca6379070c8223d070c98343f785a6bfa25448c6a080e819cdf",
