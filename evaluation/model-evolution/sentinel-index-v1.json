@@ -1,6 +1,6 @@
 {
   "schema_version": "model-evolution-sentinel-index/1",
-  "sentinel_hash": "sha256:88b4a4380a4cfae8827c7a9523266a000be998fe162ba326aa5b678cdc510d44",
+  "sentinel_hash": "sha256:665e578ce440ffe883d90b061c9d569a1e4f3544de15afbdaa64bc539ccc1cd0",
   "sentinel_id": "frontier-four-skill-sentinel-v1",
   "skills": {
     "long-document-segmented-writing": {
@@ -103,7 +103,7 @@
       "calibration_gold": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/calibration-gold.jsonl",
         "root": "repository",
-        "sha256": "sha256:ba2bdbe4c29def86e115498e0fb41fbba8b2743bd5c5c4f6747237c40af19f55"
+        "sha256": "sha256:d8a68f8d3e7df2255193ba83bfc8bdd00af734d916bfa1d5a343b6e3b0bbe597"
       },
       "calibration_request_ceiling": 16,
       "critical_bucket_id": "skill-evaluator-critical",

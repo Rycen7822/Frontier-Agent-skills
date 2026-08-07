@@ -494,6 +494,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     quality_boundary_one["payload"]["view"]["candidate_evidence"],
                 )
                 self.assertIn("validate_eval_suite.py", quality_evidence)
+                self.assertIn("$SKILL_EVALUATOR_DIR", quality_evidence)
                 self.assertIn("fixtures/l0-spec.json", quality_evidence)
                 self.assertIn("single-spec", quality_evidence)
                 self.assertIn("contract fixtures/l0-spec.json", quality_evidence)
