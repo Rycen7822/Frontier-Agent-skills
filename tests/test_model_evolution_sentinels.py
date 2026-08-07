@@ -478,8 +478,15 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             for row in abstentions:
                 candidate_evidence = row["payload"]["view"]["candidate_evidence"]
                 self.assertTrue(
-                    "truncated" in candidate_evidence
-                    or "Conflicting" in candidate_evidence
+                    any(
+                        marker in candidate_evidence
+                        for marker in (
+                            "truncated",
+                            "Conflicting",
+                            "unavailable",
+                            "untrusted",
+                        )
+                    )
                 )
                 self.assertIn("cannot", candidate_evidence)
             if skill_id == "software-quality-workflows":
@@ -510,6 +517,16 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             quality_evidence = quality_positive_two["payload"]["view"][
                 "candidate_evidence"
             ]
+            quality_abstain_one = next(
+                row
+                for row in rows
+                if row["example_id"].endswith("quality-check-cal-04")
+            )
+            quality_abstain_two = next(
+                row
+                for row in rows
+                if row["example_id"].endswith("quality-check-cal-08")
+            )
             if skill_id == "skill-evaluator":
                 quality_positive_one = next(
                     row
@@ -582,6 +599,10 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     self.assertIn("Owner", task)
                     self.assertIn("Result", task)
                     self.assertIn("Verification", task)
+                for row in (quality_abstain_one, quality_abstain_two):
+                    evidence = row["payload"]["view"]["candidate_evidence"]
+                    self.assertIn("artifact bytes", evidence)
+                    self.assertIn("cannot establish or contradict", evidence)
             prompt = (root / grader["prompt"]["path"]).read_text()
             self.assertIn("only against relevant observable behavior", prompt)
             self.assertIn("task leaves irrelevant", prompt)

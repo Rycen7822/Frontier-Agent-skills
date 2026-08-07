@@ -566,10 +566,12 @@ def _calibration_view(
                 "check --input fixtures/input.md, but the required Result is absent.",
             ),
             "abstain": (
-                "A truncated artifact shows only Owner: fixtures/input.md; it cannot "
-                "establish the required Result or Verification.",
-                "Conflicting capture fragments report Result as both ready and blocked; "
-                "they cannot establish a correct final artifact.",
+                "Capture status is unavailable: no artifact bytes, finality marker, or "
+                "provenance are present. The record cannot establish or contradict the "
+                "required Owner, Result, or Verification facts.",
+                "Two untrusted metadata fragments disagree about whether a final artifact "
+                "was captured, and neither includes artifact bytes or provenance. The "
+                "record cannot establish or contradict any required fact.",
             ),
         },
         "process-check": {
