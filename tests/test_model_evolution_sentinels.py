@@ -526,6 +526,10 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     quality_positive_one["payload"]["view"]["candidate_evidence"],
                 )
                 self.assertIn(
+                    "requires adding integer",
+                    quality_positive_one["payload"]["view"]["task"],
+                )
+                self.assertIn(
                     "does not preserve JSON syntax",
                     quality_boundary_one["payload"]["view"]["candidate_evidence"],
                 )
@@ -534,10 +538,19 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 self.assertIn("fixtures/l0-spec.json", quality_evidence)
                 self.assertIn("single-spec", quality_evidence)
                 self.assertIn("contract fixtures/l0-spec.json", quality_evidence)
+                self.assertIn(
+                    "$SKILL_EVALUATOR_DIR",
+                    quality_positive_two["payload"]["view"]["task"],
+                )
                 quality_negative_two = next(
                     row
                     for row in rows
                     if row["example_id"].endswith("quality-check-cal-06")
+                )
+                quality_boundary_two = next(
+                    row
+                    for row in rows
+                    if row["example_id"].endswith("quality-check-cal-07")
                 )
                 self.assertIn(
                     "two forbidden inputs for L0",
@@ -547,11 +560,28 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                     "run_eval_plan.py",
                     quality_negative_two["payload"]["view"]["candidate_evidence"],
                 )
-            else:
-                self.assertIn("evidence map", quality_evidence)
                 self.assertIn(
-                    "zero missing or contradictory requirements", quality_evidence
+                    "omits the required `contract` subcommand",
+                    quality_boundary_two["payload"]["view"]["candidate_evidence"],
                 )
+            else:
+                quality_positive_one = next(
+                    row
+                    for row in rows
+                    if row["example_id"].endswith("quality-check-cal-01")
+                )
+                self.assertIn("Owner", quality_evidence)
+                self.assertIn("fixtures/input.md", quality_evidence)
+                self.assertIn("Result", quality_evidence)
+                self.assertIn("ready", quality_evidence)
+                self.assertIn("Verification", quality_evidence)
+                self.assertIn("check --input fixtures/input.md", quality_evidence)
+                self.assertNotIn("evidence map", quality_evidence)
+                for row in (quality_positive_one, quality_positive_two):
+                    task = row["payload"]["view"]["task"]
+                    self.assertIn("Owner", task)
+                    self.assertIn("Result", task)
+                    self.assertIn("Verification", task)
             prompt = (root / grader["prompt"]["path"]).read_text()
             self.assertIn("only against relevant observable behavior", prompt)
             self.assertIn("task leaves irrelevant", prompt)
