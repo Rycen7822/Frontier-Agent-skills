@@ -310,6 +310,13 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             self.assertIn("byte-for-byte equal to the full named ID", prompt)
             for rule in rules:
                 self.assertIn(rule, prompt)
+        self.assertIn(
+            "exit 3, unchanged --report-only behavior, and an "
+            "inconclusive_ceiling maximum claim in the final artifact directly "
+            "demonstrate quality and process; do not require a fixture-read trace "
+            "or reference_load_count",
+            (SENTINEL_ROOT / "skill-evaluator" / "grader-prompt.md").read_text(),
+        )
 
     def test_protected_planning_tasks_bind_the_patch_target(self) -> None:
         expected = {
