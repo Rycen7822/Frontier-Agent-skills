@@ -1,6 +1,6 @@
 # Frontier Agent Skills
 
-This repository is the development source of truth for the dual-host `frontier-engineering/6.3.0` bundle. It contains exactly four skills: `long-document-segmented-writing` 1.1.0, `skill-evaluator` 3.3.2, `software-quality-workflows` 9.0.1, and `writing-plans` 8.2.4. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository never mutates an active installation.
+This repository is the development source of truth for the dual-host `frontier-engineering/6.3.0` bundle. It contains exactly four skills: `long-document-segmented-writing` 1.1.0, `skill-evaluator` 3.3.3, `software-quality-workflows` 9.0.1, and `writing-plans` 8.2.4. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository never mutates an active installation.
 
 ## Release identity
 

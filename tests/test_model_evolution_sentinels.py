@@ -296,6 +296,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             ),
             "software-quality-workflows": (
                 "software-quality-workflows-single-specialist-risk,",
+                "software-quality-workflows-protected-no-state,",
                 "software-quality-workflows-single-specialist-risk-heldout,",
             ),
             "writing-plans": (

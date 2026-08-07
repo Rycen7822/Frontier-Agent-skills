@@ -2,7 +2,7 @@
 name: skill-evaluator
 description: "Evaluate, benchmark, compare, regression-test, or security-audit an Agent Skill package. Use when deciding whether a skill triggers correctly, improves task outcomes over a no-skill or prior-version baseline, follows its intended process, remains efficient and safe, generalizes beyond development examples, or is ready to install, publish, or deploy."
 metadata:
-  version: 3.3.2
+  version: 3.3.3
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
