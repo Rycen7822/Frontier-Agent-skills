@@ -4757,7 +4757,7 @@ def _comparison_observations(
         "comparison_observations_hash": "sha256:" + "0" * 64,
         "generator": {
             "name": "analyze_runs.py",
-            "version": "3.3.1",
+            "version": "3.3.2",
             "source_hash": file_sha256(Path(__file__)),
         },
         "evaluation_id": summary["evaluation_id"],

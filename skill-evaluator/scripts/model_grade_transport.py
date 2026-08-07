@@ -118,8 +118,24 @@ def _task_evidence(entry: dict[str, Any]) -> dict[str, Any]:
         or not all(isinstance(tag, str) and tag for tag in tags)
     ):
         raise ValueError("model grader task identity is invalid")
+    fixture = case.get("fixture")
+    initial_files = (
+        fixture.get("initial_files") if isinstance(fixture, dict) else None
+    )
+    if not isinstance(initial_files, list):
+        raise ValueError("model grader fixture paths are invalid")
+    fixture_paths = set()
+    for item in initial_files:
+        path = item.get("path") if isinstance(item, dict) else None
+        if not _valid_relative_path(path):
+            raise ValueError("model grader fixture path is invalid")
+        parts = path.split("/")
+        fixture_paths.update(
+            "/".join(parts[:end]) for end in range(1, len(parts) + 1)
+        )
     return {
         "case_id": case_id,
+        "fixture_paths": sorted(fixture_paths, key=len, reverse=True),
         "request_text": "\n\n".join(messages),
         "tags": sorted(tags),
     }
@@ -218,9 +234,14 @@ def blinded_execution(
     }
 
 
-def _relative_evidence_paths(assessment: dict[str, Any]) -> list[str]:
+def _relative_evidence_paths(
+    assessment: dict[str, Any],
+    fixture_paths: list[str] | None = None,
+) -> list[str]:
     """Validate and collect fixture-relative paths from host evidence."""
-    paths = set()
+    paths = set(fixture_paths or [])
+    if any(not _valid_relative_path(path) for path in paths):
+        raise ValueError("model grader fixture path is invalid")
     for field in PATH_FIELDS:
         values = assessment.get(field, [])
         if not isinstance(values, list):
@@ -261,12 +282,13 @@ def _blind_unbound_local_paths(value: str) -> str:
 def _redact_workspace_paths(
     final_answer: str,
     assessment: dict[str, Any],
+    fixture_paths: list[str] | None = None,
 ) -> str:
     """Blind local paths while retaining bound relative evidence paths."""
     if not isinstance(final_answer, str):
         raise ValueError("model grader final answer is invalid")
     redacted = final_answer
-    for path in _relative_evidence_paths(assessment):
+    for path in _relative_evidence_paths(assessment, fixture_paths):
         angle_path = re.compile(
             rf"<[^>\n]*/{re.escape(path)}(?P<line>:\d+)?>",
         )
@@ -420,6 +442,7 @@ def execution_item(
         "final_answer": _redact_workspace_paths(
             evidence["final-answer"],
             assessment,
+            observations[0]["task_evidence"].get("fixture_paths"),
         ),
     }
     checks = []

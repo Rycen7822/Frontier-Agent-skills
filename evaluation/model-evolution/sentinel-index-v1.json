@@ -1,6 +1,6 @@
 {
   "schema_version": "model-evolution-sentinel-index/1",
-  "sentinel_hash": "sha256:69969308009bc5fffe577ffaa23bc51a726223b530dfc8843adc925e3567d897",
+  "sentinel_hash": "sha256:88b4a4380a4cfae8827c7a9523266a000be998fe162ba326aa5b678cdc510d44",
   "sentinel_id": "frontier-four-skill-sentinel-v1",
   "skills": {
     "long-document-segmented-writing": {
@@ -84,7 +84,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/long-document-segmented-writing/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:995690ddc73d3d1a123cf395cd488f64027b855a0a263d1d5718e9307985db01"
+        "sha256": "sha256:bf6c6b6e9c4cfddf8a5cb99514a11a497fed117341b1efb68f2b843ba8cf2440"
       },
       "verifier_roots": [
         {
@@ -165,7 +165,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/skill-evaluator/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:0daf44d4a2b883d0f5b544e3fc030a217f2ed186221f670cdbc4d5b4f98236a9"
+        "sha256": "sha256:0a434c47e59807bcbd5eefd0d7c826c79df7f9b8373bc5a2c0fff4b14eebe8e4"
       },
       "verifier_roots": [
         {
@@ -256,7 +256,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/software-quality-workflows/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:bd3cb93ea9ad58725a8c05f30ab78e9e1893e73d1535aab46b73064a579ef001"
+        "sha256": "sha256:2430a52c4f7544b96a1c854332843686be5bbe9c1a177b1002454c9ba91cfebc"
       },
       "verifier_roots": [
         {
@@ -372,7 +372,7 @@
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/writing-plans/eval-spec.template.json",
         "root": "repository",
-        "sha256": "sha256:8c15c8123b04d6f94b00f623763ace14d750ee39d5e7a962aabddad70c668cb0"
+        "sha256": "sha256:aaf789c9ba1de35d2978e136044e2a80ab3cf31bc9a3585a9af369e6cd9886cb"
       },
       "verifier_roots": [
         {

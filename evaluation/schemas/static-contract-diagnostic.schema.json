@@ -36,8 +36,8 @@
       "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
         "long-document-segmented-writing": {"const": "1.1.0"},
-        "skill-evaluator": {"const": "3.3.1"},
-        "software-quality-workflows": {"const": "9.0.0"},
+        "skill-evaluator": {"const": "3.3.2"},
+        "software-quality-workflows": {"const": "9.0.1"},
         "writing-plans": {"const": "8.2.4"}
       }
     },

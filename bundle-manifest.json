@@ -10,12 +10,12 @@
     {
       "id": "skill-evaluator",
       "path": "skill-evaluator",
-      "version": "3.3.1"
+      "version": "3.3.2"
     },
     {
       "id": "software-quality-workflows",
       "path": "software-quality-workflows",
-      "version": "9.0.0"
+      "version": "9.0.1"
     },
     {
       "id": "writing-plans",

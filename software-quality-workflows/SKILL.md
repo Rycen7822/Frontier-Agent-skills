@@ -3,7 +3,7 @@ name: software-quality-workflows
 description: Use when software work has a material boundary in evidence, authority, ownership, source, or effects.
 license: MIT
 metadata:
-  version: 9.0.0
+  version: 9.0.1
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -22,13 +22,15 @@ At material boundaries preserve work, scope, and authority; never invent intent 
 
 Known-seam work stays Direct: no reference, workflow/router/card/state, JSON receipt, or ledger.
 
-Owner seam means the smallest code/API/config/test/component controlling behavior, not Git authorship, filesystem owner, repo objects, or ancestry unless provenance is requested.
+Owner seam is the smallest code/API/config/test/component controlling behavior, not repository ownership unless provenance is requested.
 
-For a bound read-only/local-only target and forbidden effects, inspect minimal evidence inside it. Do not load [authority](references/control/scope-authority-and-effects.md), inspect Git authors/config/refs/objects, or widen inventory unless provenance or source identity is material.
+For a bound read-only/local-only target with forbidden effects, inspect minimal in-scope evidence; do not inspect Git provenance or widen inventory unless source identity is material.
 
-Load authority only for unresolved write scope; protected/dirty/concurrent work; destructive/external/privileged effects; material source root/revision; multiple owners/writers; or authorization for the proposed effect.
+Load [authority](references/control/scope-authority-and-effects.md) only for unresolved write scope; protected/dirty/concurrent work; destructive/external/privileged effects; material source root/revision; multiple owners/writers; or authorization for the proposed effect.
 
-Otherwise derive current and required behavior from bounded evidence; unknown cause permits diagnosis, not a guessed fix. Change only the owner seam: no parallel abstraction, speculative compatibility, or unrelated cleanup. Match proof to risk. No routine owner inventory or fixed process/RED/report. Ask only for outcome-changing authority, irreversible effects, unavailable facts, or an unsound route.
+Otherwise derive behavior from bounded evidence; unknown cause permits diagnosis, not a guessed fix. Change only the owner seam—no parallel abstraction, speculative compatibility, unrelated cleanup, routine owner inventory, or fixed process/RED/report. Match proof to risk; ask only for outcome-changing authority, irreversible effects, unavailable facts, or an unsound route.
+
+A settled exact disposition is binding: perform or describe it; no retention, compatibility, or alternative branches.
 
 ## Evidence and test retention
 
