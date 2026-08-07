@@ -168,7 +168,8 @@ class QuickWritingPlansTests(unittest.TestCase):
             "must end as a native ordered plan",
             "argument-parser calls",
             "make the residual check identifier-aware",
-            "never reject the old name with a raw substring test",
+            "same collected identifier set",
+            "tokenizer token-type constant",
             "non-git identity forbids git status, diff, or rollback",
         ):
             self.assertIn(contract, body)
