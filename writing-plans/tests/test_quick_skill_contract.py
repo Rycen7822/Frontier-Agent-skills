@@ -43,7 +43,7 @@ def frontmatter(path: Path) -> dict:
 class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_explicit_activation(self) -> None:
         metadata = frontmatter(SKILL_PATH)
-        self.assertEqual("8.2.4", metadata["metadata"]["version"])
+        self.assertEqual("8.2.5", metadata["metadata"]["version"])
         self.assertEqual(
             "Write source-bound software implementation Handoffs and "
             "multi-session Programs from settled decisions; not diagnosis "
@@ -163,9 +163,10 @@ class QuickWritingPlansTests(unittest.TestCase):
             "exact edits, checks, expected results, and failure exits",
             "complete runnable test bodies when exact tests are requested",
             "including `pythonpath` when required",
-            "do not inherit the program proof defaults",
             '"follow existing conventions"',
             "must end as a native ordered plan",
+            "even when git identity, dirty/protected paths, or exact source identity are visible",
+            "a native proof never adds whole-file snapshots",
             "argument-parser calls",
             "make the residual check identifier-aware",
             "same collected identifier set",

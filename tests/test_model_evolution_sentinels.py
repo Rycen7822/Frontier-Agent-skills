@@ -311,11 +311,18 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             for rule in rules:
                 self.assertIn(rule, prompt)
         self.assertIn(
-            "exit 3, unchanged --report-only behavior, and an "
+            "exit 3, no change to that exit from --report-only, and an "
             "inconclusive_ceiling maximum claim in the final artifact directly "
-            "demonstrate quality and process; do not require a fixture-read trace "
+            "demonstrate quality and process. An answer may also state that "
+            "--report-only generally changes only exit 1 to 0; that is consistent "
+            "with this result, not a contradiction. Do not require a fixture-read trace "
             "or reference_load_count",
             (SENTINEL_ROOT / "skill-evaluator" / "grader-prompt.md").read_text(),
+        )
+        self.assertIn(
+            "Both import argparse with argparse.ArgumentParser and from argparse "
+            "import ArgumentParser with ArgumentParser satisfy it",
+            (SENTINEL_ROOT / "writing-plans" / "grader-prompt.md").read_text(),
         )
 
     def test_protected_planning_tasks_bind_the_patch_target(self) -> None:

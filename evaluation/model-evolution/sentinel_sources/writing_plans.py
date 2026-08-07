@@ -2,7 +2,7 @@
 
 DEFINITION = {
     "name": "Writing Plans",
-    "version": "8.2.4",
+    "version": "8.2.5",
     "context_ceiling": 24576,
     "regression_origin": "writing-plans-description-semantic-collapse",
     "verifier_source": "writing_plans_verifier.py",
@@ -15,6 +15,7 @@ DEFINITION = {
     "grader_rules": [
         "A case-specific rule applies only when task_evidence.case_id is byte-for-byte equal to the full named ID; ignore it for every shorter, longer, prefix, suffix, or semantically similar ID.",
         "For writing-plans-source-bound-plan, resolve each relative proof path against the working directory stated in that same answer even when transport replaces the concrete directory with local-path-redacted. Quality and process require ordered bindings to all three task files and an executable behavior and residual-name check; a raw substring exclusion of timeout_ms fails because request_timeout_ms contains that substring.",
+        "For writing-plans-continuous-execution, exact import means a concrete valid argparse import and matching parser call. Both import argparse with argparse.ArgumentParser and from argparse import ArgumentParser with ArgumentParser satisfy it. Do not require an unbound repository-wide check or require documentation to repeat every test assertion.",
         "For writing-plans-protected-description, the observed fixture is exactly the version line and the full description line. Quality and process pass when the plan changes only the version, preserves that complete description verbatim, and verifies those two observed lines exactly; do not label that exact fixture assertion an invented file-shape requirement.",
         "For writing-plans-explicit-handoff, quality and process require the exact handoff artifacts, publication authority boundary, and next executable verification command requested by the task; do not require State, Next action, or Proof labels, or any Resume statement or omission.",
         "For writing-plans-explicit-handoff-heldout, quality and process require a minimal State, Next action, and Proof contract, the exact bound unittest command, the release-engineering publication boundary, and explicit omission of Resume because only immutable artifact verification remains.",
