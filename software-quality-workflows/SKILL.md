@@ -3,7 +3,7 @@ name: software-quality-workflows
 description: Use when software work has a material boundary in evidence, authority, ownership, source, or effects.
 license: MIT
 metadata:
-  version: 9.0.1
+  version: 9.0.2
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -34,7 +34,7 @@ A settled exact disposition is binding: perform or describe it; no retention, co
 
 ## Evidence and test retention
 
-Keep only durable-contract, confirmed-regression, or risk-boundary tests. Remove a test whose sole owner is retired behavior; retarget it only when replacement coverage is explicitly required. Load [test lifecycle](references/test/test-suite-lifecycle.md) only for material retention or migration risk.
+Keep durable-contract, confirmed-regression, or risk-boundary tests. Delete tests that import/call only retired behavior; a replacement does not authorize retargeting. Retarget only for explicit replacement coverage. Load [test lifecycle](references/test/test-suite-lifecycle.md) only for material retention/migration risk.
 
 ## Durable escalation
 

@@ -2,7 +2,7 @@
 
 DEFINITION = {
     "name": "Software Quality Workflows",
-    "version": "9.0.1",
+    "version": "9.0.2",
     "context_ceiling": 24576,
     "regression_origin": "session-card-artifact-accumulation",
     "verifier_source": "software_quality_workflows_verifier.py",

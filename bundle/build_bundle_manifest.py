@@ -30,7 +30,7 @@ SOURCE_MANIFEST = ROOT / "bundle-manifest.json"
 EXPECTED_SKILLS = {
     "long-document-segmented-writing": "1.1.0",
     "skill-evaluator": "3.3.3",
-    "software-quality-workflows": "9.0.1",
+    "software-quality-workflows": "9.0.2",
     "writing-plans": "8.2.4",
 }
 EXPECTED_ACTIVATION = {
