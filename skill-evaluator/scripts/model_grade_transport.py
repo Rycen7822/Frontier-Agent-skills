@@ -135,7 +135,7 @@ def _task_evidence(entry: dict[str, Any]) -> dict[str, Any]:
         )
     return {
         "case_id": case_id,
-        "fixture_paths": sorted(fixture_paths, key=len, reverse=True),
+        "fixture_paths": sorted(fixture_paths, key=lambda path: (-len(path), path)),
         "request_text": "\n\n".join(messages),
         "tags": sorted(tags),
     }

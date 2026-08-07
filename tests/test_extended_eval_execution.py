@@ -4,6 +4,34 @@ from skill_evaluator_test_support import *  # noqa: F403
 
 
 class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
+    def test_model_grade_fixture_paths_have_a_total_order(self) -> None:
+        transport = load_analyzer_module().model_transport  # noqa: F405
+        entry = {
+            'execute_case_payload': {
+                'turns': [{'input': {'kind': 'user_message', 'content': 'Plan.'}}],
+                'case': {
+                    'case_id': 'case-path-order',
+                    'tags': ['source-bound'],
+                    'fixture': {'initial_files': [
+                        {'path': 'fixtures/src/client.py'},
+                        {'path': 'fixtures/src/config.py'},
+                        {'path': 'fixtures/tests/test_client.py'},
+                    ]},
+                },
+            },
+        }
+        self.assertEqual(
+            [
+                'fixtures/tests/test_client.py',
+                'fixtures/src/client.py',
+                'fixtures/src/config.py',
+                'fixtures/tests',
+                'fixtures/src',
+                'fixtures',
+            ],
+            transport._task_evidence(entry)['fixture_paths'],
+        )
+
     def _run_compiler(
         self,
         paths: dict[str, Path],
