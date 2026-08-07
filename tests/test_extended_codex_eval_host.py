@@ -896,6 +896,73 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
                 sorted(path.name for path in workspace.iterdir()),
             )
 
+    def test_model_grader_receives_hash_bound_fixture_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            fixture = workspace / "fixtures/source.md"
+            fixture.parent.mkdir(parents=True)
+            fixture.write_text("Bound source fact.\n", encoding="utf-8")
+            fake, state = _write_fake_codex(root)
+            manifest_path = root / "host.json"
+            _host_manifest(manifest_path, fake)
+            payload = _execute_payload()
+            payload["case"]["requirements"].append(
+                {"requirement_id": "quality", "owner": "model"}
+            )
+            payload["case"]["fixture"] = {
+                "initial_files": [{
+                    "path": "fixtures/source.md",
+                    "sha256": _sha256_file(fixture),
+                }]
+            }
+
+            result = _run_adapter(
+                workspace,
+                fake,
+                manifest_path,
+                _request("execute_case", payload),
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            terminal = _jsonl(result.stdout)[-1]
+            evidence_record = next(
+                item for item in terminal["artifacts"]
+                if "workspace-evidence-" in item["path"]
+            )
+            evidence = json.loads(
+                (workspace / Path(evidence_record["path"]).name).read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(
+                {"fixtures/source.md": "Bound source fact.\n"},
+                evidence["initial_files"],
+            )
+            observation_record = next(
+                item for item in terminal["artifacts"]
+                if "host-observation-" in item["path"]
+            )
+            observation = json.loads(
+                (workspace / Path(observation_record["path"]).name).read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(
+                ["fixtures/source.md"], observation["protected_paths"]
+            )
+
+            fixture.write_text("tampered\n", encoding="utf-8")
+            rejected = _run_adapter(
+                workspace,
+                fake,
+                manifest_path,
+                _request("execute_case", payload),
+            )
+            self.assertEqual(2, rejected.returncode)
+            self.assertIn("fixture hash differs", rejected.stderr)
+            self.assertEqual(1, len(_jsonl(state.read_text(encoding="utf-8"))))
+
     def test_each_turn_receives_the_full_bound_timeout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

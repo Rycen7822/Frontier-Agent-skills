@@ -23,7 +23,7 @@
       "additionalProperties": false,
       "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
-        "long-document-segmented-writing": {"const": "1.1.0"},
+        "long-document-segmented-writing": {"const": "1.1.1"},
         "skill-evaluator": {"const": "3.3.3"},
         "software-quality-workflows": {"const": "9.0.4"},
         "writing-plans": {"const": "8.2.4"}

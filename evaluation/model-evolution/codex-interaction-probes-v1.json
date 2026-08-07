@@ -1,6 +1,6 @@
 {
   "adapter_protocol_version": "codex-interaction-probe/1.0",
-  "probe_set_hash": "sha256:4e8b8e88189081e0325999820f9f2f7ab497df62f7950f2601599f44069f3278",
+  "probe_set_hash": "sha256:63f591a06056bb4a48455add894095dc0f3feda8c68efd27dad3e35ad5fd9252",
   "probe_set_id": "frontier-codex-interaction-probes-v1",
   "probes": [
     {
@@ -26,7 +26,7 @@
       "fixture": {
         "path": "scripts/codex_eval_host.py",
         "root": "repository",
-        "sha256": "sha256:74f1b71ddedcfdca0da64a210902010290c3cab2b16006952bd7a75dc75d9c6e"
+        "sha256": "sha256:6a47bec6b6d62379ba9b239a3bd6b814a79f924ced5ea4713703f49647e829b8"
       },
       "network": "denied",
       "probe_id": "natural-routing",
