@@ -266,6 +266,11 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
         long_tasks = {row["case_id"]: row for row in scenarios[
             "long-document-segmented-writing"
         ]}
+        direct_task = long_tasks[
+            "long-document-segmented-writing-direct-small-task"
+        ]["execution_context"]["task"]
+        self.assertIn("briefly explain why", direct_task)
+        self.assertNotIn("two sentences", direct_task)
         self.assertIn("bound compact ledger contract", long_tasks[
             "long-document-segmented-writing-compact-recovery"
         ]["execution_context"]["task"])
@@ -325,12 +330,6 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             self.assertIn("byte-for-byte equal to the full named ID", prompt)
             for rule in rules:
                 self.assertIn(rule, prompt)
-        self.assertIn(
-            "For long-document-segmented-writing-direct-small-task, count "
-            "complete sentences by sentence-final punctuation",
-            (SENTINEL_ROOT / "long-document-segmented-writing" / "grader-prompt.md")
-            .read_text(),
-        )
         self.assertIn(
             "exit 3, no change to that exit from --report-only, and an "
             "inconclusive_ceiling maximum claim in the final artifact directly "
