@@ -33,7 +33,8 @@ class QuickSkillEvaluatorCoreTests(unittest.TestCase):
         match = re.match(r"\A---\n(.*?)\n---\n", text, flags=re.DOTALL)
         self.assertIsNotNone(match)
         frontmatter = yaml.safe_load(match.group(1))
-        self.assertEqual("3.3.3", frontmatter["metadata"]["version"])
+        self.assertEqual("3.3.4", frontmatter["metadata"]["version"])
+        self.assertIn('Preserve `"$SKILL_EVALUATOR_DIR/..."`', text)
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
         self.assertIs(agents["policy"]["allow_implicit_invocation"], False)
         result = subprocess.run(

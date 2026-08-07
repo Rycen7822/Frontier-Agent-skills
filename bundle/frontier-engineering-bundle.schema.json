@@ -36,7 +36,7 @@
         },
         "skill-evaluator": {
           "$ref": "#/$defs/explicit_skill",
-          "properties": {"version": {"const": "3.3.3"}}
+          "properties": {"version": {"const": "3.3.4"}}
         },
         "software-quality-workflows": {
           "$ref": "#/$defs/explicit_skill",

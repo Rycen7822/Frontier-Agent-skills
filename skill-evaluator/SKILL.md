@@ -2,7 +2,7 @@
 name: skill-evaluator
 description: "Evaluate, benchmark, compare, regression-test, or security-audit an Agent Skill package. Use when deciding whether a skill triggers correctly, improves task outcomes over a no-skill or prior-version baseline, follows its intended process, remains efficient and safe, generalizes beyond development examples, or is ready to install, publish, or deploy."
 metadata:
-  version: 3.3.3
+  version: 3.3.4
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -17,7 +17,7 @@ metadata:
 
 Evaluate the complete Skill package and its runtime contribution. For a frontier model, reward only specialized, task-relevant help beyond the model's native competence; treat redundant instructions and loaded references as context cost.
 
-Use the lightest decision-supporting level. Resolve paths from this file's directory as `SKILL_EVALUATOR_DIR`.
+Use the lightest decision-supporting level. Resolve bundled paths from this file's directory through the literal shell variable `$SKILL_EVALUATOR_DIR`. Preserve `"$SKILL_EVALUATOR_DIR/..."` in every delivered command; never substitute a discovered absolute installation path.
 
 This skill is explicit-only. Invoke it for a requested package-quality, comparison, security, release, or longitudinal decision, never ordinary development.
 

@@ -380,7 +380,7 @@
     "principal_mode": "single",
     "shape": "single_skill",
     "skill_id": "skill-evaluator",
-    "version": "3.3.3"
+    "version": "3.3.4"
   },
   "suite": {
     "fixture_set_hash": "sha256:7a05d547b3e6f97dab73386c13bf05bd08ab0f21d54730ddb58fadd4889b1854",
