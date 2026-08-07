@@ -2,7 +2,7 @@
 
 DEFINITION = {
     "name": "Skill Evaluator",
-    "version": "3.3.3",
+    "version": "3.3.4",
     "context_ceiling": 28672,
     "minimum_baseline_failure_cases": 2,
     "regression_origin": "deterministic-evidence-loop-and-reviewer-overuse",
