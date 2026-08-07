@@ -2,7 +2,7 @@
 name: long-document-segmented-writing
 description: Use when Codex must read many files or a large source corpus and produce or substantially rewrite a long document, technical report, manual, roadmap, architecture guide, thesis-like draft, research synthesis, or other self-contained text. Preserves recovery state while keeping routine long-document work compact.
 metadata:
-  version: 1.1.0
+  version: 1.1.1
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -42,7 +42,7 @@ Use Direct, with no scratch root, only when all of these facts are true:
 
 Skill activation does not imply a long output. A small source bundle with no requested length remains Direct and the final document stays proportional to the source and requirements.
 
-In Direct, read the bounded sources, define the short section order in working context, write only the requested final document, run the source-style check against that final file, reread the final in one bounded pass, and reopen only exact source anchors needed to repair concrete gaps. Do not create a scratch root, owner allocation, ledger, section drafts, confidence review, `CODEX_STATE.md`, receipt, worknote, or sidecar; do not inspect `agents/openai.yaml` or search for owner-allocation tools; do not run assembler section/output modes. If a Direct fact becomes false before the final write, select compact or full once and do not maintain both paths.
+In Direct, read the bounded sources, define the short section order in working context, preserve every requested deliverable constraint including exact structure, count, and format, write only the requested final document, run the source-style check against that final file, reread the final in one bounded pass, and reopen only exact source anchors needed to repair concrete gaps. Do not create a scratch root, owner allocation, ledger, section drafts, confidence review, `CODEX_STATE.md`, receipt, worknote, or sidecar; do not inspect `agents/openai.yaml` or search for owner-allocation tools; do not run assembler section/output modes. If a Direct fact becomes false before the final write, select compact or full once and do not maintain both paths.
 
 ## Select one segmented profile
 

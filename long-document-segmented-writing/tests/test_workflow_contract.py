@@ -30,6 +30,12 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("do not inspect `agents/openai.yaml`", section)
         self.assertIn("do not run assembler section/output modes", section)
 
+    def test_direct_preserves_explicit_deliverable_constraints(self) -> None:
+        section = SKILL_TEXT.split("## Same-session Direct gate", 1)[1].split(
+            "## Select one segmented profile", 1
+        )[0]
+        self.assertIn("exact structure, count, and format", section)
+
     def test_compact_has_one_ledger_and_at_most_four_draft_shards(self) -> None:
         compact_row = next(
             line for line in SKILL_TEXT.splitlines() if line.startswith("| compact |")

@@ -676,6 +676,45 @@ def _snapshot_workspace(workspace: Path) -> dict[str, str]:
     return result
 
 
+def _fixture_text_evidence(
+    payload: dict[str, Any],
+    workspace: Path,
+) -> dict[str, str]:
+    """Read hash-bound text fixtures for semantic model grading."""
+    case = payload.get("case")
+    fixture = case.get("fixture") if isinstance(case, dict) else None
+    initial_files = (
+        fixture.get("initial_files") if isinstance(fixture, dict) else None
+    )
+    if not isinstance(initial_files, list):
+        raise AdapterError("model-graded fixture manifest is missing")
+    evidence: dict[str, str] = {}
+    for item in initial_files:
+        relative = item.get("path") if isinstance(item, dict) else None
+        expected_hash = item.get("sha256") if isinstance(item, dict) else None
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or Path(relative).is_absolute()
+            or "\\" in relative
+            or re.match(r"^[A-Za-z]:", relative) is not None
+            or any(part in {"", ".", ".."} for part in Path(relative).parts)
+            or not isinstance(expected_hash, str)
+            or not HASH.fullmatch(expected_hash)
+        ):
+            raise AdapterError("model-graded fixture binding is invalid")
+        path = workspace / relative
+        if path.is_symlink() or not path.is_file():
+            raise AdapterError("model-graded fixture file is unavailable")
+        if _file_sha256(path) != expected_hash:
+            raise AdapterError("model-graded fixture hash differs")
+        try:
+            evidence[relative] = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise AdapterError("model-graded fixture is not UTF-8") from exc
+    return evidence
+
+
 def _manifest_source_root(manifest: dict[str, Any]) -> Path:
     identity = manifest.get("identity")
     repository = identity.get("repository") if isinstance(identity, dict) else None
@@ -1001,6 +1040,14 @@ def _run_execute_in_workspace(
             exclude_skill_id=excluded,
         )
     initial_files = _snapshot_workspace(workspace)
+    model_fixture_evidence = (
+        _fixture_text_evidence(payload, workspace)
+        if any(
+            item.get("owner") == "model"
+            for item in payload["case"]["requirements"]
+        )
+        else None
+    )
     started_at = _utc_now()
     normalized_turns: list[dict[str, Any]] = []
     session_id: str | None = None
@@ -1133,6 +1180,7 @@ def _run_execute_in_workspace(
         }
     ]
     if any(item.get("owner") == "model" for item in payload["case"]["requirements"]):
+        assert model_fixture_evidence is not None
         final_files = _snapshot_workspace(workspace)
         changed_paths = sorted(
             {
@@ -1152,7 +1200,7 @@ def _run_execute_in_workspace(
         observation = {
             "allowed_change_paths": [],
             "changed_paths": changed_paths,
-            "protected_paths": [],
+            "protected_paths": sorted(model_fixture_evidence),
             "verification": verification,
         }
         host_observation = _artifact_json(
@@ -1162,7 +1210,7 @@ def _run_execute_in_workspace(
         workspace_evidence = _artifact_json(
             f"workspace-evidence-{suffix}.json",
             {
-                "initial_files": {},
+                "initial_files": model_fixture_evidence,
                 "final_files": {},
                 "changed_paths": changed_paths,
                 "diff": "",

@@ -28,7 +28,7 @@ OUTPUT = ROOT / "frontier-engineering.bundle.json"
 SCHEMA = ROOT / "bundle" / "frontier-engineering-bundle.schema.json"
 SOURCE_MANIFEST = ROOT / "bundle-manifest.json"
 EXPECTED_SKILLS = {
-    "long-document-segmented-writing": "1.1.0",
+    "long-document-segmented-writing": "1.1.1",
     "skill-evaluator": "3.3.3",
     "software-quality-workflows": "9.0.4",
     "writing-plans": "8.2.4",

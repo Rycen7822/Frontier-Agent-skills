@@ -32,7 +32,7 @@
       "properties": {
         "long-document-segmented-writing": {
           "$ref": "#/$defs/implicit_skill",
-          "properties": {"version": {"const": "1.1.0"}}
+          "properties": {"version": {"const": "1.1.1"}}
         },
         "skill-evaluator": {
           "$ref": "#/$defs/explicit_skill",
