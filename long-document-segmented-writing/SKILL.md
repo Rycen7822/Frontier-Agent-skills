@@ -2,7 +2,7 @@
 name: long-document-segmented-writing
 description: Use when Codex must read many files or a large source corpus and produce or substantially rewrite a long document, technical report, manual, roadmap, architecture guide, thesis-like draft, research synthesis, or other self-contained text. Preserves recovery state while keeping routine long-document work compact.
 metadata:
-  version: 1.1.1
+  version: 1.1.2
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -26,6 +26,8 @@ For compact or full work, at the start, after context compaction, or after a lon
 范围内证据置信：<low / medium / high / fully supported> — <main gap or proof>
 恢复锚点：<scratch root and current section>
 ```
+
+An explicit output-only shape remains authoritative. If the user asks for only one recovery block or another exact final structure, fold the required recovery facts into that structure and do not prepend this status triplet.
 
 Completion requires the final file and its named checks; a plan, partial draft, or self-assessment is not completion evidence.
 

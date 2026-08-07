@@ -3,7 +3,7 @@
   "bundle_id": "frontier-engineering/6.3.0",
   "classification": "static_contract_diagnostic",
   "entry_bytes": {
-    "long-document-segmented-writing": 10693,
+    "long-document-segmented-writing": 10919,
     "skill-evaluator": 10309,
     "software-quality-workflows": 3241,
     "writing-plans": 5911
@@ -124,14 +124,14 @@
     "writing-plans/SKILL.md",
     "writing-plans/agents/openai.yaml"
   ],
-  "package_bytes": 1483727,
+  "package_bytes": 1483953,
   "package_file_count": 118,
   "profile_command_hashes": {
     "extended": "sha256:cc748f9af31ab0f5737675c7f6c5a4fa78a4899f5b43e9dfe11011d83e84d30a",
     "quick": "sha256:c895e68a59c34c1e2c98cfbedb132c79340a6856f08b76a1c7fc6f32dcb96236",
     "release": "sha256:796f0f9d60160f8c23a7c6e15a0fe95cf7e2676845a509f7803691363a746f77"
   },
-  "report_hash": "sha256:87b33d5943ad5b5f72866d67031faaf7f81d44ee7183e2b3591928ef03646df9",
+  "report_hash": "sha256:b07271a1175697ff5449f1fed7b9500af68eeb3239a0d0d9b3780b9b85a9d925",
   "schema_epoch": 5,
   "schema_version": "static-contract-diagnostic/1.0",
   "skill_activation": {
@@ -141,7 +141,7 @@
     "writing-plans": false
   },
   "skill_versions": {
-    "long-document-segmented-writing": "1.1.1",
+    "long-document-segmented-writing": "1.1.2",
     "skill-evaluator": "3.3.3",
     "software-quality-workflows": "9.0.4",
     "writing-plans": "8.2.5"

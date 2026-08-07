@@ -11,7 +11,7 @@
   ],
   "case_classes": [
     {
-      "case_id": "software-quality-workflows-direct-routine-change",
+      "case_id": "software-quality-workflows-durable-resume-boundary",
       "class": "positive"
     },
     {
@@ -45,16 +45,16 @@
     ],
     "exposure_status": "not_applicable",
     "split_hashes": {
-      "dev": "sha256:f796aa27cc5f6bcbb4d9b83f8d1222562742888c1539979a3c725c2d6467ab08",
+      "dev": "sha256:7bf5ea6c13e1041a8ee7917d3bf539e89ac107abe08899c60993c9c8c91b4f27",
       "heldout": null,
-      "regression": "sha256:3f967418f1ebc3b42fb869b7b86590cecdbd4cb0d7d8e46e79cff809da89dbbb"
+      "regression": "sha256:8091ea4f11cc54fc91b8edb84553257d57456adc62a6677761489dca3e945c2f"
     }
   },
   "duplicate_groups": [],
   "evaluation_id": "frontier-software-quality-workflows-sentinel-v1",
   "golden": {
     "case_ids": [
-      "software-quality-workflows-direct-routine-change",
+      "software-quality-workflows-durable-resume-boundary",
       "software-quality-workflows-single-specialist-risk",
       "software-quality-workflows-two-independent-risks",
       "software-quality-workflows-proportionate-validation",
@@ -62,7 +62,7 @@
       "software-quality-workflows-protected-no-state"
     ],
     "passed_ids": [
-      "software-quality-workflows-direct-routine-change",
+      "software-quality-workflows-durable-resume-boundary",
       "software-quality-workflows-single-specialist-risk",
       "software-quality-workflows-two-independent-risks",
       "software-quality-workflows-proportionate-validation",
@@ -82,7 +82,7 @@
     {
       "artifact": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:419bd09ab9009fad5444dd9db19dcadc47edad700f0f664ad3f4dc2d57eaa82f"
+        "sha256": "sha256:25a59f3ed3c18dc2361ed404bd126804ffc233a19351f3f81859bb5c0bc23bef"
       },
       "locator": {
         "artifact": "grader-prompt.md",
@@ -106,7 +106,7 @@
   "provenance_clusters": [
     {
       "case_ids": [
-        "software-quality-workflows-direct-routine-change",
+        "software-quality-workflows-durable-resume-boundary",
         "software-quality-workflows-single-specialist-risk",
         "software-quality-workflows-two-independent-risks",
         "software-quality-workflows-proportionate-validation",
@@ -121,7 +121,7 @@
         "start_line": 1
       },
       "source_hashes": [
-        "sha256:419bd09ab9009fad5444dd9db19dcadc47edad700f0f664ad3f4dc2d57eaa82f"
+        "sha256:25a59f3ed3c18dc2361ed404bd126804ffc233a19351f3f81859bb5c0bc23bef"
       ],
       "status": "closed"
     }

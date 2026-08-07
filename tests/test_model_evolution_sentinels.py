@@ -260,6 +260,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             for skill_id in (
                 "long-document-segmented-writing",
                 "skill-evaluator",
+                "software-quality-workflows",
             )
         }
         long_tasks = {row["case_id"]: row for row in scenarios[
@@ -282,10 +283,23 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             ["fixtures/l0-spec.json"],
             [item["path"] for item in evaluator_case["fixture"]["initial_files"]],
         )
-        for row in (*long_tasks.values(), evaluator_case):
+        quality_case = next(
+            row for row in scenarios["software-quality-workflows"]
+            if row["case_id"] == "software-quality-workflows-durable-resume-boundary"
+        )
+        self.assertIn(
+            "bound durable escalation contract",
+            quality_case["execution_context"]["task"],
+        )
+        self.assertEqual(
+            ["fixtures/work-boundary.md"],
+            [item["path"] for item in quality_case["fixture"]["initial_files"]],
+        )
+        for row in (*long_tasks.values(), evaluator_case, quality_case):
             task = row["execution_context"]["task"]
             self.assertNotIn("Long Document Skill", task)
             self.assertNotIn("Skill Evaluator", task)
+            self.assertNotIn("Software Quality Workflows", task)
 
     def test_case_specific_grader_rules_are_exactly_scoped(self) -> None:
         expected = {
@@ -296,6 +310,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 "skill-evaluator-analyzer-exit-contract-heldout,",
             ),
             "software-quality-workflows": (
+                "software-quality-workflows-durable-resume-boundary,",
                 "software-quality-workflows-single-specialist-risk,",
                 "software-quality-workflows-protected-no-state,",
                 "software-quality-workflows-single-specialist-risk-heldout,",
