@@ -10,16 +10,16 @@
   ],
   "properties": {
     "schema_version": {"const": "plugin-build-evidence/3.0"},
-    "bundle_id": {"const": "frontier-engineering/6.3.0"},
-    "bundle_version": {"const": "6.3.0"},
+    "bundle_id": {"const": "frontier-engineering/6.3.1"},
+    "bundle_version": {"const": "6.3.1"},
     "skill_versions": {
       "type": "object", "additionalProperties": false,
       "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
         "long-document-segmented-writing": {"const": "1.1.3"},
         "skill-evaluator": {"const": "3.3.4"},
-        "software-quality-workflows": {"const": "9.0.4"},
-        "writing-plans": {"const": "8.2.7"}
+        "software-quality-workflows": {"const": "9.0.5"},
+        "writing-plans": {"const": "8.2.8"}
       }
     },
     "skill_activation": {
@@ -28,8 +28,8 @@
       "properties": {
         "long-document-segmented-writing": {"const": true},
         "skill-evaluator": {"const": false},
-        "software-quality-workflows": {"const": false},
-        "writing-plans": {"const": false}
+        "software-quality-workflows": {"const": true},
+        "writing-plans": {"const": true}
       }
     },
     "source_tree_hash": {"$ref": "#/$defs/hash"},

@@ -46,6 +46,7 @@ class ExtendedSourceArchiveTests(unittest.TestCase):
         self.assertEqual(expected, observed)
 
     def test_bundle_archive_is_reproducible_clean_and_schema_valid(self) -> None:
+        self.assertTrue({".worktrees", "reference"} <= self.archiver.IGNORED_TOP_LEVEL)
         archives = []
         evidences = []
         with tempfile.TemporaryDirectory() as directory:
@@ -87,7 +88,8 @@ class ExtendedSourceArchiveTests(unittest.TestCase):
             root = Path(directory)
             copied = root / "source"
             shutil.copytree(ROOT, copied, ignore=shutil.ignore_patterns(
-                ".git", ".work", "CODEX_STATE.md", "__pycache__", ".pytest_cache", "dist",
+                ".git", ".work", ".worktrees", "reference", "CODEX_STATE.md",
+                "__pycache__", ".pytest_cache", "dist",
             ))
             target = copied / "writing-plans" / "tests" / "test_quick_skill_contract.py"
             target.unlink()

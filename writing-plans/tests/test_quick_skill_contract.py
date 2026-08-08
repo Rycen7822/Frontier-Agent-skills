@@ -41,9 +41,9 @@ def frontmatter(path: Path) -> dict:
 
 
 class QuickWritingPlansTests(unittest.TestCase):
-    def test_metadata_budget_and_explicit_activation(self) -> None:
+    def test_metadata_budget_and_implicit_activation(self) -> None:
         metadata = frontmatter(SKILL_PATH)
-        self.assertEqual("8.2.7", metadata["metadata"]["version"])
+        self.assertEqual("8.2.8", metadata["metadata"]["version"])
         self.assertEqual(
             "Write source-bound software implementation Handoffs and "
             "multi-session Programs from settled decisions; not diagnosis "
@@ -56,7 +56,7 @@ class QuickWritingPlansTests(unittest.TestCase):
             self.assertIn(term, description)
         self.assertLessEqual(len(SKILL_PATH.read_bytes()), 6400)
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
-        self.assertIs(agents["policy"]["allow_implicit_invocation"], False)
+        self.assertIs(agents["policy"]["allow_implicit_invocation"], True)
 
     def test_package_has_single_runtime_body(self) -> None:
         self.assertEqual([SKILL_PATH], sorted(SKILL_ROOT.rglob("*.md")))

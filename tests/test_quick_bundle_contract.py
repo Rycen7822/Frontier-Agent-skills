@@ -14,8 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_VERSIONS = {
     "long-document-segmented-writing": "1.1.3",
     "skill-evaluator": "3.3.4",
-    "software-quality-workflows": "9.0.4",
-    "writing-plans": "8.2.7",
+    "software-quality-workflows": "9.0.5",
+    "writing-plans": "8.2.8",
 }
 
 
@@ -32,7 +32,7 @@ class QuickBundleContractTests(unittest.TestCase):
     def test_source_and_generated_bundle_are_exact_and_deterministic(self) -> None:
         source = json.loads((ROOT / "bundle-manifest.json").read_text(encoding="utf-8"))
         self.assertEqual("3.0", source["bundle_schema_version"])
-        self.assertEqual("6.3.0", source["bundle_version"])
+        self.assertEqual("6.3.1", source["bundle_version"])
         self.assertEqual(EXPECTED_VERSIONS, {item["id"]: item["version"] for item in source["skills"]})
         self.assertEqual({"quick", "extended", "release"}, set(source["test_profiles"]))
         self.assertEqual(3, len({tuple(commands) for commands in source["test_profiles"].values()}))

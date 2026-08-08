@@ -11,8 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPECTED = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": False,
-    "writing-plans": False,
+    "software-quality-workflows": True,
+    "writing-plans": True,
 }
 
 
@@ -34,8 +34,8 @@ class QuickActivationContractTests(unittest.TestCase):
         self.assertIs(generated["remote_writes"], False)
         self.assertTrue(all(set(item) == {"id", "path", "version"} for item in source["skills"]))
 
-    def test_explicit_only_prompts_name_the_skill(self) -> None:
-        for skill_id in ("skill-evaluator", "software-quality-workflows", "writing-plans"):
+    def test_explicit_only_prompt_names_the_skill(self) -> None:
+        for skill_id in ("skill-evaluator",):
             agents = yaml.safe_load((ROOT / skill_id / "agents" / "openai.yaml").read_text(encoding="utf-8"))
             self.assertIn(f"${skill_id}", agents["interface"]["default_prompt"])
 

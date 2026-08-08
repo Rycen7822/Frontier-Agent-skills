@@ -7,7 +7,6 @@ import argparse
 from hashlib import sha256
 import json
 from pathlib import Path
-import re
 import shutil
 import sys
 import tempfile
@@ -27,8 +26,8 @@ from build_codex_plugin import _strict_json  # noqa: E402
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": False,
-    "writing-plans": False,
+    "software-quality-workflows": True,
+    "writing-plans": True,
 }
 EXPECTED_SKILLS = set(EXPECTED_ACTIVATION)
 

@@ -437,7 +437,7 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
     def test_plugin_build_schema_and_release_identity_are_closed(self) -> None:
         build = json.loads(self.fixture["paths"]["bundle_build"].read_text())
         self.assertEqual(
-            validate_bundle_build(build)["bundle_id"], "frontier-engineering/6.3.0"
+            validate_bundle_build(build)["bundle_id"], "frontier-engineering/6.3.1"
         )
         build["release_build_id"] = "build-" + "0" * 24
         with self.assertRaisesRegex(ContractError, "release_build_id"):

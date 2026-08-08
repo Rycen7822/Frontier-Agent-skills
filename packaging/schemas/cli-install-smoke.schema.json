@@ -17,7 +17,7 @@
   "properties": {
     "schema_version": {"const": "cli-install-smoke/3.0"},
     "plugin_name": {"const": "frontier-engineering-plugin"},
-    "bundle_version": {"const": "6.3.0"},
+    "bundle_version": {"const": "6.3.1"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "build_evidence_hash": {"$ref": "#/$defs/hash"},
     "static_smoke_content_hash": {"$ref": "#/$defs/hash"},
@@ -42,8 +42,8 @@
       "properties": {
         "long-document-segmented-writing": {"const": true},
         "skill-evaluator": {"const": false},
-        "software-quality-workflows": {"const": false},
-        "writing-plans": {"const": false}
+        "software-quality-workflows": {"const": true},
+        "writing-plans": {"const": true}
       }
     },
     "installed_tree_hash": {"$ref": "#/$defs/hash"},

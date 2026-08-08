@@ -22,7 +22,7 @@ if str(SCRIPTS) not in sys.path:
 from _bundle_hash import FORBIDDEN_PARTS, FORBIDDEN_SUFFIXES, inventory, tree_hash  # noqa: E402
 
 
-BUNDLE_ID = "frontier-engineering/6.3.0"
+BUNDLE_ID = "frontier-engineering/6.3.1"
 SCHEMA_EPOCH = 5
 OUTPUT = ROOT / "frontier-engineering.bundle.json"
 SCHEMA = ROOT / "bundle" / "frontier-engineering-bundle.schema.json"
@@ -30,14 +30,14 @@ SOURCE_MANIFEST = ROOT / "bundle-manifest.json"
 EXPECTED_SKILLS = {
     "long-document-segmented-writing": "1.1.3",
     "skill-evaluator": "3.3.4",
-    "software-quality-workflows": "9.0.4",
-    "writing-plans": "8.2.7",
+    "software-quality-workflows": "9.0.5",
+    "writing-plans": "8.2.8",
 }
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": False,
-    "writing-plans": False,
+    "software-quality-workflows": True,
+    "writing-plans": True,
 }
 SOURCE_FIELDS = {
     "bundle_schema_version",
@@ -147,8 +147,8 @@ def build_manifest() -> dict[str, Any]:
     source = _load_json(SOURCE_MANIFEST)
     if set(source) != SOURCE_FIELDS:
         raise ValueError(f"source bundle fields differ from schema 3.0: {sorted(source)}")
-    if source.get("bundle_schema_version") != "3.0" or source.get("bundle_version") != "6.3.0":
-        raise ValueError("source bundle must bind schema 3.0 and release 6.3.0")
+    if source.get("bundle_schema_version") != "3.0" or source.get("bundle_version") != "6.3.1":
+        raise ValueError("source bundle must bind schema 3.0 and release 6.3.1")
     if source.get("activation_ceiling") != "implicit_local_pilot" or source.get("remote_writes") is not False:
         raise ValueError("source bundle activation ceiling or remote-write boundary is invalid")
     profiles = source.get("test_profiles")
