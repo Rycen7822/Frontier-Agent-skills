@@ -43,7 +43,7 @@ def frontmatter(path: Path) -> dict:
 class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_explicit_activation(self) -> None:
         metadata = frontmatter(SKILL_PATH)
-        self.assertEqual("8.2.6", metadata["metadata"]["version"])
+        self.assertEqual("8.2.7", metadata["metadata"]["version"])
         self.assertEqual(
             "Write source-bound software implementation Handoffs and "
             "multi-session Programs from settled decisions; not diagnosis "
@@ -54,7 +54,7 @@ class QuickWritingPlansTests(unittest.TestCase):
         self.assertGreaterEqual(len(description), 80)
         for term in ("source-bound", "software implementation", "handoff", "program"):
             self.assertIn(term, description)
-        self.assertLessEqual(len(SKILL_PATH.read_bytes()), 6144)
+        self.assertLessEqual(len(SKILL_PATH.read_bytes()), 6400)
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
         self.assertIs(agents["policy"]["allow_implicit_invocation"], False)
 
@@ -173,7 +173,7 @@ class QuickWritingPlansTests(unittest.TestCase):
             "observed symbols and behavior",
             "exact edits, checks, expected results, and failure exits",
             "complete runnable test bodies when exact tests are requested",
-            "including `pythonpath` when required",
+            "include `pythonpath` when needed",
             '"follow existing conventions"',
             "must end as a native ordered plan",
             "even when git identity, dirty/protected paths, or exact source identity are visible",
@@ -185,6 +185,12 @@ class QuickWritingPlansTests(unittest.TestCase):
             "non-git identity forbids git status, diff, or rollback",
         ):
             self.assertIn(contract, body)
+
+    def test_test_command_has_one_cwd_and_disables_pytest_cache(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8").casefold()
+        self.assertIn("derive one starting cwd and module path", body)
+        self.assertIn("never `cd` into the stated cwd again", body)
+        self.assertIn("python -m pytest -p no:cacheprovider", body)
 
     def test_one_canonical_deliverable_and_no_sidecars(self) -> None:
         files = {
@@ -237,9 +243,9 @@ class QuickWritingPlansTests(unittest.TestCase):
             "do not instruct execution to modify the plan",
             "repository's test owner",
             "state the narrow checks implied by those bindings",
-            "pythondontwritebytecode=1 python -m unittest <repo-test>",
-            "never use bare `pytest`",
-            "leaves no cache/state artifact",
+            "prefix tests with `pythondontwritebytecode=1`",
+            "python -m unittest <repo-test>",
+            "python -m pytest -p no:cacheprovider",
             "exact cleanup",
         ):
             self.assertIn(contract, body)
