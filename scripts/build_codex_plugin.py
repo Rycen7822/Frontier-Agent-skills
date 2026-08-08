@@ -50,14 +50,14 @@ PLACEHOLDER_PATTERN = re.compile(re.escape(chr(91)) + "TODO:")
 EXPECTED_SKILLS = {
     "long-document-segmented-writing": "1.1.3",
     "skill-evaluator": "3.3.4",
-    "software-quality-workflows": "9.0.4",
-    "writing-plans": "8.2.7",
+    "software-quality-workflows": "9.0.5",
+    "writing-plans": "8.2.8",
 }
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": False,
-    "writing-plans": False,
+    "software-quality-workflows": True,
+    "writing-plans": True,
 }
 EXPECTED_APPROVED_ACTIVATION = {
     skill_id: "implicit" if enabled else "explicit_only"
@@ -226,7 +226,7 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     skills = manifest.get("skills")
     if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != set(EXPECTED_SKILLS):
         raise ValueError("manifest must declare exactly the four canonical skills")
-    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "6.3.0"):
+    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "6.3.1"):
         raise ValueError("manifest bundle schema/version is invalid")
     if {item.get("id"): item.get("version") for item in skills} != EXPECTED_SKILLS:
         raise ValueError("version mismatch: manifest skill versions do not match the four-skill release identity")

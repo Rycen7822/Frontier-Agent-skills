@@ -3,4 +3,4 @@ interface:
   short_description: "Compile explicit software plans and durable handoffs"
   default_prompt: "Use $writing-plans to compile settled decisions into one source-bound Handoff or update-in-place Program; separate resume preflight from the first source-changing action and do not execute it."
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

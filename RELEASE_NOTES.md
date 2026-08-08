@@ -1,5 +1,11 @@
 # Release Notes
 
+## Bundle 6.3.1 development skill activation
+
+Bundle 6.3.1 makes `software-quality-workflows` 9.0.5 and `writing-plans` 8.2.8 eligible for implicit local selection. Development work can therefore select SQW from its material-boundary description, while software planning, Handoff, and Program requests can select Writing Plans without requiring an explicit `$skill-name`. `long-document-segmented-writing` 1.1.3 remains implicit-eligible, and `skill-evaluator` 3.3.4 remains explicit-only.
+
+The schema epoch remains 5, the activation ceiling remains `implicit_local_pilot`, and `remote_writes` remains false. This patch changes activation metadata and the exact release identities that bind it; it does not broaden installation, publication, deployment, or external-write authority.
+
 ## Bundle 6.3.0 model evolution qualification
 
 Bundle 6.3.0 advances Long Document from 1.0.0 to 1.1.3, Skill Evaluator from 3.2.0 to 3.3.4, Software Quality Workflows from 9.0.0 to 9.0.4, and Writing Plans from 8.1.0 to 8.2.7. Schema epoch 5, the mixed activation matrix, and the explicit-only evaluator boundary remain unchanged. It adds a bounded model-evolution controller, six inert Codex Host probes, exact four-Skill non-ready sentinel suites, deterministic suite-quality evidence, external holdout contracts, and fresh-process qualification verification.

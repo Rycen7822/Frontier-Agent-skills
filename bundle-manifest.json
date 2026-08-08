@@ -1,6 +1,6 @@
 {
   "bundle_schema_version": "3.0",
-  "bundle_version": "6.3.0",
+  "bundle_version": "6.3.1",
   "skills": [
     {
       "id": "long-document-segmented-writing",
@@ -15,12 +15,12 @@
     {
       "id": "software-quality-workflows",
       "path": "software-quality-workflows",
-      "version": "9.0.4"
+      "version": "9.0.5"
     },
     {
       "id": "writing-plans",
       "path": "writing-plans",
-      "version": "8.2.7"
+      "version": "8.2.8"
     }
   ],
   "activation_ceiling": "implicit_local_pilot",
