@@ -666,7 +666,8 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 self.assertIn("evaluator directory variable", prompt)
                 self.assertIn("repository-relative substitute", prompt)
             elif skill_id == "writing-plans":
-                self.assertIn("resolve each relative proof path", prompt)
+                self.assertIn("resolve only executable command arguments", prompt)
+                self.assertIn("Markdown link display text and link targets", prompt)
                 self.assertIn("one coherent starting cwd", prompt)
                 self.assertIn("-p no:cacheprovider", prompt)
                 self.assertIn("raw substring exclusion", prompt)
