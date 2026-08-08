@@ -344,6 +344,12 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             "import ArgumentParser with ArgumentParser satisfy it",
             (SENTINEL_ROOT / "writing-plans" / "grader-prompt.md").read_text(),
         )
+        self.assertIn(
+            "the existing handoff artifacts are exactly the signed implementation "
+            "commit and passing unit-test result. Immutable artifact verification is "
+            "explicitly still pending",
+            (SENTINEL_ROOT / "writing-plans" / "grader-prompt.md").read_text(),
+        )
 
     def test_protected_planning_tasks_bind_the_patch_target(self) -> None:
         expected = {
