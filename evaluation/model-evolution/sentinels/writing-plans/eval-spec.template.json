@@ -282,7 +282,7 @@
       },
       "prompt": {
         "path": "grader-prompt.md",
-        "sha256": "sha256:4e52e3e07140bbba2c072145906005243fb089324e5953875289304cd235bbbc"
+        "sha256": "sha256:cb5f6e967760550fd4ded8581b3764760685e054627ebe79253617be4e3874aa"
       },
       "type": "model"
     }
@@ -381,12 +381,12 @@
     "principal_mode": "single",
     "shape": "single_skill",
     "skill_id": "writing-plans",
-    "version": "8.2.6"
+    "version": "8.2.7"
   },
   "suite": {
     "fixture_set_hash": "sha256:415a7eb4989676c0b891780b4573b70832650bcc5e8999cb3d1d767cc056594b",
     "grader_schedule_hash": "sha256:7188bbba5484edc1e79ede2e7c1b8fc1a79aef5941ce74a09731ef115ffeaffe",
-    "grader_set_hash": "sha256:4a7c5cfbc4e0928a3832c2f610d6e2471135cc9c6c3f106e919574636614015a",
+    "grader_set_hash": "sha256:4efaa8c99c050467c0e267e5e8bd682afe95f3da8444cade92a3b356b97f9243",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
@@ -395,9 +395,9 @@
     },
     "quality": {
       "path": "suite-quality.json",
-      "sha256": "sha256:aa8c1bbfecbc02efabdcac6163c9ddbcc13165e171e5d058d4835c1b91953302"
+      "sha256": "sha256:07b7059f78fc19b6da051defadf8b364839cf447e9cfa805a30f2a484de74bfb"
     },
-    "quality_contract_hash": "sha256:ae8c4a7cf9acc4c8ccc6caf42ce1cbb14ccedfc0efc7c57ff5c755fe91824f2d",
+    "quality_contract_hash": "sha256:0aad29c9281d290cc79c56ee97cbfaf6acd7f93be8404e9cf71135d9585e80b1",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",

@@ -661,6 +661,8 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 self.assertIn("repository-relative substitute", prompt)
             elif skill_id == "writing-plans":
                 self.assertIn("resolve each relative proof path", prompt)
+                self.assertIn("one coherent starting cwd", prompt)
+                self.assertIn("-p no:cacheprovider", prompt)
                 self.assertIn("raw substring exclusion", prompt)
                 self.assertIn("exactly the version line", prompt)
                 self.assertIn("invented file-shape requirement", prompt)
