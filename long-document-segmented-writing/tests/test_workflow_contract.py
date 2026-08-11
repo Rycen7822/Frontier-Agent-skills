@@ -10,6 +10,11 @@ SKILL_TEXT = (ROOT / "SKILL.md").read_text(encoding="utf-8")
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_version_and_success_output_contract(self) -> None:
+        self.assertIn("version: 2.0.0", SKILL_TEXT)
+        self.assertIn("containing only `status` and output `bytes`", SKILL_TEXT)
+        self.assertIn("deterministic proof comes from direct candidate/output byte comparison", SKILL_TEXT)
+
     def test_direct_gate_is_bounded_and_conjunctive(self) -> None:
         section = SKILL_TEXT.split("## Same-session Direct gate", 1)[1].split(
             "## Select one segmented profile", 1
@@ -58,7 +63,8 @@ class WorkflowContractTests(unittest.TestCase):
             "## Deterministic segmented assembly", 1
         )[0]
         self.assertIn("dedicated command", section)
-        self.assertIn("stdout contains only the canonical status line", section)
+        self.assertIn("stdout contains only `status` and total `bytes`", section)
+        self.assertIn("contains no digest", section)
         self.assertIn("perform the bounded final reread separately", section)
 
 

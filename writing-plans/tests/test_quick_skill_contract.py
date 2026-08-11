@@ -43,7 +43,7 @@ def frontmatter(path: Path) -> dict:
 class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_implicit_activation(self) -> None:
         metadata = frontmatter(SKILL_PATH)
-        self.assertEqual("8.2.8", metadata["metadata"]["version"])
+        self.assertEqual("8.3.0", metadata["metadata"]["version"])
         self.assertEqual(
             "Write source-bound software implementation Handoffs and "
             "multi-session Programs from settled decisions; not diagnosis "
@@ -208,6 +208,8 @@ class QuickWritingPlansTests(unittest.TestCase):
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
         for contract in ("before return", "do not reopen", "git diff --check"):
             self.assertIn(contract, body)
+        self.assertIn("never calculate a plan/document hash", body)
+        self.assertNotIn("status/hash", body)
 
     def test_minimal_sufficient_plan_and_execution_contract(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()

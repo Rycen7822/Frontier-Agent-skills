@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -42,20 +41,18 @@ class AssembleMarkdownTests(unittest.TestCase):
         self.assertTrue(result.stderr.startswith(marker + " "), result.stderr)
         self.assertEqual(1, len(result.stderr.splitlines()))
 
-    def test_source_style_hash_binds_order_and_boundaries(self) -> None:
+    def test_source_style_reports_status_and_total_bytes(self) -> None:
         first = self.write("a.md", "Alpha.\n")
         second = self.write("b.md", "βeta.\n")
         result = self.run_cli("--check-source-style", first, "--check-source-style", second)
         self.assertEqual(0, result.returncode, result.stderr)
         payload = json.loads(result.stdout)
         raw_first, raw_second = first.read_bytes(), second.read_bytes()
-        digest = sha256(b"source-style-v1\0" + len(raw_first).to_bytes(8, "big") + raw_first + len(raw_second).to_bytes(8, "big") + raw_second)
-        self.assertEqual(["status", "bytes", "sha256"], list(payload))
+        self.assertEqual(["status", "bytes"], list(payload))
         self.assertEqual("source_style_valid", payload["status"])
         self.assertEqual(len(raw_first) + len(raw_second), payload["bytes"])
-        self.assertEqual("sha256:" + digest.hexdigest(), payload["sha256"])
         reversed_result = self.run_cli("--check-source-style", second, "--check-source-style", first)
-        self.assertNotEqual(payload["sha256"], json.loads(reversed_result.stdout)["sha256"])
+        self.assertEqual(payload, json.loads(reversed_result.stdout))
 
     def test_plain_prose_hard_wrap_is_rejected(self) -> None:
         source = self.write("plain.md", "This sentence was\nwrapped arbitrarily.\n")
@@ -110,9 +107,9 @@ class AssembleMarkdownTests(unittest.TestCase):
         expected = "# One\n\nText with trailing spaces.  \n\n# Two\n\nβ.\n".encode()
         self.assertEqual(expected, output.read_bytes())
         payload = json.loads(result.stdout)
+        self.assertEqual(["status", "bytes"], list(payload))
         self.assertEqual("written", payload["status"])
         self.assertEqual(len(expected), payload["bytes"])
-        self.assertEqual("sha256:" + sha256(expected).hexdigest(), payload["sha256"])
 
     def test_identical_replay_is_zero_write_and_check_is_read_only(self) -> None:
         source = self.write("section.md", "# Heading\n\nText.\n")
