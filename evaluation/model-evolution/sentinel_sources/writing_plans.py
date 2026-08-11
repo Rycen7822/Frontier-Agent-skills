@@ -13,13 +13,13 @@ DEFINITION = {
         "multi-session-program",
     ],
     "grader_rules": [
-        "A case-specific rule applies only when task_evidence.case_id is byte-for-byte equal to the full named ID; ignore it for every shorter, longer, prefix, suffix, or semantically similar ID.",
-        "For writing-plans-source-bound-plan, resolve only executable command arguments and inline proof-script file lists against the working directory stated in that same answer, even when transport replaces the concrete directory with local-path-redacted. Markdown link display text and link targets name source owners; they are not shell paths and do not invalidate an otherwise coherent cwd. Quality and process require ordered bindings to all three task files, one coherent starting cwd without a redundant relative cd, a pytest command with -p no:cacheprovider, and executable behavior and residual-name checks; a raw substring exclusion of timeout_ms fails because request_timeout_ms contains that substring.",
-        "For writing-plans-continuous-execution, exact import means a concrete valid argparse import and matching parser call. Both import argparse with argparse.ArgumentParser and from argparse import ArgumentParser with ArgumentParser satisfy it. Do not require an unbound repository-wide check or require documentation to repeat every test assertion.",
-        "For writing-plans-protected-description, the observed fixture is exactly the version line and the full description line. Quality and process pass when the plan changes only the version, preserves that complete description verbatim, and verifies those two observed lines exactly; do not label that exact fixture assertion an invented file-shape requirement.",
-        "For writing-plans-explicit-handoff, the existing handoff artifacts are exactly the signed implementation commit and passing unit-test result. Immutable artifact verification is explicitly still pending: require its exact next command separately, and reject any claim that its result already exists. Quality and process also require the release-engineering publication authority boundary; do not require State, Next action, or Proof labels, or any Resume statement or omission.",
-        "For writing-plans-resumable-program-heldout, quality and process require a Program with explicit non-Git identity, a freshness-bound attestation acceptance or one combined preflight for later source-changing resumption, named milestones whose dependencies cite milestone names, the parser compatibility owner and one-release zero-legacy removal condition, the exact bound unittest command, and the package switch retained as blocked because its target is absent. Reject Git checks, source execution, ordinal-only dependencies, or an unbound repository-wide check.",
-        "For writing-plans-multi-session-program, quality and process require the explicit non-Git identity, a freshness-bound attestation or one combined preflight for resumption, named milestones whose dependencies cite milestone names, the parser migration owner and one-release zero-legacy removal condition, and the exact bound unittest command. Reject Git checks, source execution, ordinal-only dependencies, or an unbound repository-wide check.",
+        "Apply a case-specific rule only when task_evidence.case_id exactly equals its full named ID.",
+        "For writing-plans-source-bound-plan, quality and process require ordered bindings to all three task files, one coherent starting cwd, a pytest command with -p no:cacheprovider, and executable behavior and residual-name checks. Resolve command arguments and inline proof-script files against that cwd; local-path-redacted preserves the rooted path, Markdown links remain source labels, and identifier-aware checks distinguish timeout_ms from request_timeout_ms.",
+        "For writing-plans-continuous-execution, both `import argparse` with `argparse.ArgumentParser` and `from argparse import ArgumentParser` with `ArgumentParser` pass. Bound proof covers cli.py and test_cli.py, while documentation states the interface behavior at its own granularity.",
+        "For writing-plans-protected-description, quality and process change only the version, preserve the complete observed description verbatim, and verify both lines exactly.",
+        "For writing-plans-explicit-handoff, quality and process name the signed commit, passing unit test, pending immutable-artifact verification command, and release-engineering publication authority.",
+        "For writing-plans-resumable-program-heldout, quality and process require explicit non-Git identity, a freshness preflight, named milestone dependencies, the parser compatibility owner and one-release zero-legacy removal condition, the exact unittest command, and a blocked package switch with its missing target.",
+        "For writing-plans-multi-session-program, quality and process require explicit non-Git identity, a freshness preflight, named milestone dependencies, the parser migration owner and one-release zero-legacy removal condition, and the exact unittest command.",
     ],
     "process_evidence": [
         "each implementation step names its exact source owner and verification command",
@@ -41,7 +41,7 @@ DEFINITION = {
         "fixtures/cli.py": "def main(argv):\n    return 0\n",
         "fixtures/tests/test_cli.py": "def test_cli_smoke():\n    assert True\n",
         "fixtures/README.md": "# CLI\n",
-        "fixtures/agents/openai.yaml": "version: 8.2.0\ndescription: Write source-bound software implementation Handoffs and multi-session Programs from settled decisions; not diagnosis or execution.\n",
+        "fixtures/agents/openai.yaml": "version: 8.2.0\ndescription: Use after software decisions and diagnosis are settled to write source-bound software implementation Handoffs and durable multi-session Programs.\n",
     },
     "cases": [
         {
@@ -62,8 +62,8 @@ DEFINITION = {
         {
             "id": "resume-preflight",
             "coverage": "resume-preflight",
-            "task": "This is a two-turn planning handoff. Read `fixtures/resume-state.md` and `fixtures/docs/config.md`; record completed and pending state and the next executable documentation step without repeating completed work or editing files. After the continuation request, return that state as a self-contained final handoff.",
-            "continuation": "Return the self-contained planning handoff now: restate completed and pending state and the next executable documentation step. Do not perform the source change.",
+            "task": "This is a two-turn planning handoff. Read `fixtures/resume-state.md` and `fixtures/docs/config.md`; record the exact completed state, pending state, and next executable documentation step. After the continuation request, return that state as a self-contained final handoff.",
+            "continuation": "Return the self-contained planning handoff now: restate completed and pending state and the next executable documentation step.",
             "protected": False,
             "turns": 2,
             "initial_files": [
@@ -77,7 +77,7 @@ DEFINITION = {
         {
             "id": "multi-session-program",
             "coverage": "program",
-            "task": "Read `fixtures/program-state.md`, `fixtures/schema.json`, `fixtures/src/parser.py`, and `fixtures/scripts/build_package.py`. Write a multi-session implementation Program for the settled mode migration that another session can resume safely. Do not edit files or execute the plan.",
+            "task": "Read `fixtures/program-state.md`, `fixtures/schema.json`, `fixtures/src/parser.py`, and `fixtures/scripts/build_package.py`. Return a resumable multi-session implementation Program for the settled mode migration as the complete artifact.",
             "protected": False,
             "turns": 1,
             "initial_files": [
@@ -117,7 +117,7 @@ DEFINITION = {
         {
             "id": "protected-description",
             "coverage": "protected",
-            "task": "Plan only a version bump from 8.2.0 to 8.2.1 in `fixtures/agents/openai.yaml`. Preserve its full description verbatim and do not shorten it.",
+            "task": "Plan one version bump from 8.2.0 to 8.2.1 in `fixtures/agents/openai.yaml`; the complete description remains verbatim.",
             "protected": True,
             "turns": 1,
             "initial_files": ["fixtures/agents/openai.yaml"],

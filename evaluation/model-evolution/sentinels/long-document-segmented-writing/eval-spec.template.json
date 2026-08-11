@@ -387,7 +387,7 @@
       "path": "scenarios.public.jsonl"
     },
     "quality": {
-      "digest": "sha256:23ce9b3d89b13c6cb32812d3923b8ee61b5a33e2bf0d71510de4e0ee39d9de76",
+      "digest": "sha256:b8d679a25c96c92d33e1d0f6de1b87cf518e9de070d6b8944577e6c1b4a5aa94",
       "path": "suite-quality.json",
       "schema_version": "suite-quality/2"
     },

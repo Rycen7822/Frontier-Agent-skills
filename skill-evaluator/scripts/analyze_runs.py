@@ -6154,7 +6154,7 @@ def _v5_exit_code(
 
 def _main_v5() -> int:
     parser = argparse.ArgumentParser(
-        description="Analyze an execution plan from index/receipt v4 evidence.",
+        description="Analyze an execution plan from index/receipt v5 evidence.",
     )
     parser.add_argument("index", type=Path)
     parser.add_argument("--spec", type=Path, required=True)

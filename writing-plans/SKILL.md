@@ -1,6 +1,6 @@
 ---
 name: writing-plans
-description: "Write source-bound software implementation Handoffs and multi-session Programs from settled decisions; not diagnosis or execution."
+description: "Use after software decisions and diagnosis are settled to write source-bound software implementation Handoffs and durable multi-session Programs."
 metadata:
   version: 8.3.0
 ---

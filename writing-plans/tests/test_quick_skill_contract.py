@@ -45,9 +45,9 @@ class QuickWritingPlansTests(unittest.TestCase):
         metadata = frontmatter(SKILL_PATH)
         self.assertEqual("8.3.0", metadata["metadata"]["version"])
         self.assertEqual(
-            "Write source-bound software implementation Handoffs and "
-            "multi-session Programs from settled decisions; not diagnosis "
-            "or execution.",
+            "Use after software decisions and diagnosis are settled to write "
+            "source-bound software implementation Handoffs and durable "
+            "multi-session Programs.",
             metadata["description"],
         )
         description = metadata["description"].casefold()

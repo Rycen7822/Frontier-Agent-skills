@@ -13,12 +13,12 @@ DEFINITION = {
         "evidence-qualified-comparison",
     ],
     "grader_rules": [
-        "A case-specific rule applies only when task_evidence.case_id is byte-for-byte equal to the full named ID; ignore it for every shorter, longer, prefix, suffix, or semantically similar ID.",
-        "For skill-evaluator-cli-schema-diagnosis, quality passes only when the command uses the evaluator directory variable, its contract validator, the contract subcommand, and fixtures/l0-spec.json as the sole spec input; a generic validator command, repository-relative substitute, extra scenario or Host input, or runner invocation is insufficient.",
-        "For skill-evaluator-transition-vs-revision, the correct classifications and complete frozen-control list in the final artifact directly demonstrate quality and process; do not require a fixture-read trace.",
-        "For skill-evaluator-analyzer-exit-contract, exit 3, no change to that exit from --report-only, and an inconclusive_ceiling maximum claim in the final artifact directly demonstrate quality and process. An answer may also state that --report-only generally changes only exit 1 to 0; that is consistent with this result, not a contradiction. Do not require a fixture-read trace or reference_load_count, and judge this item independently without using another batch item's answer as evidence.",
-        "For skill-evaluator-protected-no-reviewer, the requested single-operation JSON Patch directly demonstrates quality and process when it performs exactly the field/value replacement stated in the task and makes no application claim; do not require the final answer to prove fixture reading or absence of reviewer, provider, or tool use.",
-        "For skill-evaluator-analyzer-exit-contract-heldout, reading the named fixture is allowed; quality and process require exit 3 for inconclusive evidence, no change from --report-only, and no usefulness claim above inconclusive_ceiling, without executing the analyzer, runner, reviewer, or provider.",
+        "Apply a case-specific rule only when task_evidence.case_id exactly equals its full named ID.",
+        "For skill-evaluator-cli-schema-diagnosis, quality passes when the command uses the evaluator directory variable, its contract validator, the contract subcommand, and fixtures/l0-spec.json as the sole spec input, then names the validator and input owners.",
+        "For skill-evaluator-transition-vs-revision, the final artifact supplies both correct classifications and the complete frozen-control list.",
+        "For skill-evaluator-analyzer-exit-contract, the final artifact reports exit 3, the same exit under --report-only, and inconclusive_ceiling as the maximum claim. A statement that --report-only generally remaps only exit 1 is compatible. Judge this item from its own evidence.",
+        "For skill-evaluator-protected-no-reviewer, one unapplied JSON Patch operation that performs the stated field/value replacement is the complete artifact.",
+        "For skill-evaluator-analyzer-exit-contract-heldout, quality and process require exit 3 for inconclusive evidence, the same exit under --report-only, and a maximum claim of inconclusive_ceiling.",
     ],
     "process_evidence": [
         "the claim is assigned to the least expensive valid L0-L4 evidence owner",
@@ -70,7 +70,7 @@ DEFINITION = {
         {
             "id": "cli-schema-diagnosis",
             "coverage": "cli-diagnosis",
-            "task": "Read `fixtures/l0-spec.json`. Use the bound evaluator quick contract to give its exact single-spec L0 validation command for this file, name the validator and input owners, and do not start the runner or inspect implementation source.",
+            "task": "Read `fixtures/l0-spec.json`. Return the bound evaluator's exact single-spec L0 validation command for this file plus the validator and input owners as the complete diagnosis.",
             "protected": False,
             "turns": 1,
             "initial_files": ["fixtures/l0-spec.json"],
@@ -90,7 +90,7 @@ DEFINITION = {
         {
             "id": "protected-no-reviewer",
             "coverage": "protected",
-            "task": "Read `fixtures/invalid-record.json`. Give only the JSON patch that changes `schema_version` to integer 1. Do not claim application and do not invoke a reviewer or provider.",
+            "task": "Read `fixtures/invalid-record.json`. Return one unapplied JSON Patch operation that changes `schema_version` to integer 1 as the complete deliverable.",
             "protected": True,
             "turns": 1,
             "initial_files": ["fixtures/invalid-record.json"],
