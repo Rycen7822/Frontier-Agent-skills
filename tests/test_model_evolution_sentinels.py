@@ -55,6 +55,22 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), {"ok": True})
 
+    def test_sqw_source_preserves_evidence_without_hash_workflow(self) -> None:
+        definition = sentinel_builder.SKILLS["software-quality-workflows"]
+        self.assertEqual("10.0.0", definition["version"])
+        durable = next(
+            row for row in definition["cases"] if row["id"] == "durable-resume-boundary"
+        )
+        protected = next(
+            row for row in definition["cases"] if row["id"] == "protected-no-state"
+        )
+        rules = "\n".join(definition["grader_rules"])
+        self.assertIn("machine-only TASK_KEY", rules)
+        self.assertIn("non-replayable artifact with one digest", rules)
+        self.assertIn("limit invalidation to the actual consumer", durable["task"])
+        self.assertIn("Do not create files or print a digest value", durable["task"])
+        self.assertIn("or calculate/report a hash", protected["task"])
+
     def test_index_is_exact_four_and_every_binding_resolves(self) -> None:
         validate_document(self.index, "sentinel_index")
         self.assertEqual(set(self.index["skills"]), set(SKILL_IDS))

@@ -3,7 +3,7 @@ name: software-quality-workflows
 description: Use when software work has a material boundary in evidence, authority, ownership, source, or effects.
 license: MIT
 metadata:
-  version: 9.0.5
+  version: 10.0.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -18,9 +18,11 @@ metadata:
 
 At material boundaries preserve work, scope, and authority; never invent intent or equate local with release proof.
 
+Preserve readable evidence and its raw authority. A digest proves only that bound bytes match; it never replaces semantic content, coverage, freshness, producer, oracle, command/status, limitations, or evidence references.
+
 ## Default execution
 
-Known-seam work stays Direct: no reference, workflow/router/card/state, JSON receipt, or ledger.
+Known-seam work stays Direct: no reference, workflow/router/card/state, JSON receipt, ledger, or digest calculation/reporting without a real cross-boundary consumer.
 
 Owner seam is the smallest code/API/config/test/component controlling behavior, not repository ownership unless provenance is requested.
 

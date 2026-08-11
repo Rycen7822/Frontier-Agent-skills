@@ -1,16 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://frontier-agent.local/sqw/publication-readiness-1.0.schema.json",
-  "title": "SQW Publication Readiness 1.0",
+  "$id": "https://frontier-agent.local/sqw/publication-readiness-2.0.schema.json",
+  "title": "SQW Publication Readiness 2.0",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "review_result_ref", "review_result_hash", "source_revision", "scope_hash", "requested_action", "publication_ceiling", "remote_checks", "required_approvals", "branch_policy", "readiness", "blocking_reasons"],
+  "required": ["schema_version", "review_result_ref", "review_result_digest", "source_revision", "requested_action", "publication_ceiling", "remote_checks", "required_approvals", "branch_policy", "readiness", "blocking_reasons"],
   "properties": {
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"const": "2.0"},
     "review_result_ref": {"type": "string", "pattern": "^artifact:review/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
-    "review_result_hash": {"$ref": "#/$defs/hash"},
+    "review_result_digest": {"$ref": "#/$defs/digest"},
     "source_revision": {"$ref": "#/$defs/non_empty"},
-    "scope_hash": {"$ref": "#/$defs/hash"},
     "requested_action": {"$ref": "#/$defs/action"},
     "publication_ceiling": {
       "type": "object", "additionalProperties": false,
@@ -31,7 +30,7 @@
     {"if": {"properties": {"readiness": {"enum": ["blocked", "unknown"]}}, "required": ["readiness"]}, "then": {"properties": {"blocking_reasons": {"minItems": 1}}}}
   ],
   "$defs": {
-    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "non_empty": {"type": "string", "minLength": 1, "maxLength": 2048},
     "action": {"enum": ["review_comment", "branch_push", "merge", "release", "deploy", "publish"]},
     "remote_check": {

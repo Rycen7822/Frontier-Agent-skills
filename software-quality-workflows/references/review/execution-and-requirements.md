@@ -10,10 +10,10 @@ Execute one bounded independent review and trace stable requirements to implemen
 - Scope is unfrozen, review authority is absent, or R0 self-diff closeout is sufficient.
 
 ## Required inputs
-- `review-tier`; cycle budget; frozen base/head/scope/path snapshots; diff and owner context; exclusions; verification index; stable requirement anchors when applicable; and one bounded rubric assignment per specialist.
+- `review-tier`; cycle budget; frozen base/head revisions and explicit repo-relative path snapshots; diff and owner context; exclusions; verification index; stable requirement anchors when applicable; and one bounded rubric assignment per specialist.
 
 ## Procedure
-1. Validate identity and classify added, modified, deleted, renamed, untracked, generated, vendor, and binary paths.
+1. Validate base/head revisions and explicit reviewed paths, then classify added, modified, deleted, renamed, untracked, generated, vendor, and binary paths. Do not replace coverage with a scope digest.
 2. Review the full scoped diff plus enough owning context for behavior, compatibility, data flow, and local rules. Mark every path full, sampled with boundary, or not reviewed; truncation is never full.
 3. Give each independent reviewer shared short scope/authority/result contracts plus one triggered axis and bounded material. Reviewer/fixer separation is mandatory; no reviewer traverses siblings or receives the intended answer.
 4. Contextualize scanner/tool candidates, coalesce duplicate root causes, preserve positive evidence, and stop at the tier cycle budget.
