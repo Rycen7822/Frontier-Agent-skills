@@ -2,7 +2,7 @@
 
 DEFINITION = {
     "name": "Software Quality Workflows",
-    "version": "9.0.5",
+    "version": "10.0.0",
     "context_ceiling": 24576,
     "regression_origin": "session-card-artifact-accumulation",
     "verifier_source": "software_quality_workflows_verifier.py",
@@ -17,8 +17,20 @@ DEFINITION = {
         "When the task requests a behavior-focused check, syntax-only compilation is insufficient.",
         "For software-quality-workflows-single-specialist-risk, judge only the requested specialist risk, concrete behavior owner, focused correction, and verification boundary; do not require a durable-state decision, escalation set, authority, or Git provenance.",
         "For software-quality-workflows-retire-dead-code, quality and process require the exact legacy function and obsolete-test deletion plus a zero-reference scan; a related post-deletion behavior test is proportionate validation, not unrelated workflow.",
-        "For software-quality-workflows-protected-no-state, quality and process require the exact unapplied tmp-to-normalized_path rename plus one focused check; syntax-only compilation is sufficient because this public task does not request a behavior-focused check, and do not import the heldout case requirements.",
-        "For software-quality-workflows-durable-resume-boundary, quality and process require durable state because work crosses contexts, exactly one controller fallback ledger because host and repository state are unavailable, the owner seam, next action, and proof in that ledger, and explicit exclusion of leases, daemons, event stores, and compatibility readers; do not require creating the ledger in this read-only task.",
+        "For software-quality-workflows-protected-no-state, quality and process require the exact unapplied tmp-to-normalized_path rename plus one focused check; syntax-only compilation is sufficient because this public task does not request a behavior-focused check, no digest may be calculated or reported because no cross-boundary consumer exists, and do not import the heldout case requirements.",
+        (
+            "For software-quality-workflows-durable-resume-boundary, quality and "
+            "process require durable state because work crosses contexts, exactly one "
+            "controller fallback ledger because host and repository state are "
+            "unavailable, a machine-only TASK_KEY used only to locate that ledger, a "
+            "readable evidence index with coverage, producer, command/status, oracle "
+            "authority, freshness, limitations, changed/preserved facts, required "
+            "recheck and raw refs, retention of the named non-replayable artifact with "
+            "one digest, and invalidation limited to the changed helper's absent "
+            "consumer; explicitly exclude leases, daemons, event stores, compatibility "
+            "readers, a second ledger, and printing the digest, and do not require "
+            "creating files in this read-only task."
+        ),
         "For software-quality-workflows-single-specialist-risk-heldout, quality and process require log_request as the behavior owner, no durable state for this local single-owner task, the complete escalation set of cross-context work, destructive or external effects, staged migration or release, and multiple writers, plus one credential-safe correction and behavior check; authority and Git provenance remain excluded.",
         "For software-quality-workflows-protected-no-state-heldout, quality and process require the Direct route, the unapplied tmp-to-normalized_path rename, one behavior check, and exclusion of references, workflow or router state, cards, persistent state, JSON receipts, and ledgers.",
     ],
@@ -28,7 +40,7 @@ DEFINITION = {
         "the obsolete path is removed and the reference scan reports no live owner",
     ],
     "fixtures": {
-        "fixtures/work-boundary.md": "The work must resume in a different context. There is one writer. Repository and host state cannot persist the owner seam, next action, or proof. The work is local-only, non-destructive, and is not a migration or release.\n",
+        "fixtures/work-boundary.md": "The work must resume in a different context. There is one writer. Repository and host state cannot persist the owner seam, next action, or proof. A captured external response at `evidence/provider-output.json` is non-replayable and already has one canonical digest binding. An unrelated helper checksum changed, but no claim or consumer uses it. The work is local-only, non-destructive, and is not a migration or release.\n",
         "fixtures/src/logger.py": "def log_request(request, debug):\n    debug.write(request.headers['Authorization'])\n",
         "fixtures/src/upload.py": "def target(root, filename):\n    return root / filename\n",
         "fixtures/src/payment.py": "def charge(client, payment):\n    return client.retry(lambda: client.post('/charge', payment))\n",
@@ -41,12 +53,12 @@ DEFINITION = {
         {
             "id": "durable-resume-boundary",
             "coverage": "durable-state",
-            "task": "Read `fixtures/work-boundary.md`. Apply the bound durable escalation contract. State whether durable state is required, name the exact minimal mechanism and its required contents, and exclude every prohibited mechanism. Do not create files.",
+            "task": "Read `fixtures/work-boundary.md`. Apply the bound durable escalation contract. State whether durable state is required, name the exact locator and minimal mechanism, list the readable evidence fields and raw-artifact disposition, limit invalidation to the actual consumer, and exclude every prohibited mechanism. Do not create files or print a digest value.",
             "protected": False,
             "turns": 1,
             "initial_files": ["fixtures/work-boundary.md"],
             "semantic_oracle": [
-                "cross-context work with no host or repository state uses one controller fallback ledger and no distributed lifecycle machinery"
+                "cross-context work uses one controller fallback ledger with readable evidence and one binding for non-replayable raw bytes without global hash invalidation"
             ],
         },
         {
@@ -99,12 +111,12 @@ DEFINITION = {
         {
             "id": "protected-no-state",
             "coverage": "protected",
-            "task": "Read `fixtures/src/path.py`. Provide patch text that renames only `tmp` to `normalized_path`, plus one focused check. Do not claim application, create cards, call reviewers, or persist workflow state.",
+            "task": "Read `fixtures/src/path.py`. Provide patch text that renames only `tmp` to `normalized_path`, plus one focused check. Do not claim application, create cards, call reviewers, persist workflow state, or calculate/report a hash.",
             "protected": True,
             "turns": 1,
             "initial_files": ["fixtures/src/path.py"],
             "semantic_oracle": [
-                "two-line local rename preserves behavior and creates no workflow state"
+                "two-line local rename preserves behavior and creates no workflow state or digest"
             ],
         },
     ],

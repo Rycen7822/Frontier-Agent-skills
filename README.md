@@ -30,6 +30,12 @@ SQW uses one fallback Markdown ledger only when the host and repository have no 
 
 Development is distinction-first: each behavior change needs an observable test, probe, smoke, property, benchmark, or runtime proof, but strict RED is not mandatory. Closeout classifies only tests added or materially changed in the current diff as `durable_contract`, `regression`, `risk_boundary`, `migration_temporary`, `temporary_probe`, `duplicate`, or `implementation_coupled`; temporary and duplicate protection is removed, while migration tests carry a deterministic removal contract.
 
+## Evidence and digest policy
+
+Evidence remains readable and source-bound: a digest can establish byte equality across a real ownership, process, retention, package, or external-data boundary, but it never substitutes for semantic payload, coverage, producer, command/status, oracle authority, freshness, limitations, or raw-evidence references. Direct same-context work creates no digest or evidence artifact. Cross-context work keeps one durable frontier and one canonical copy of any non-replayable evidence; each independently consumed byte object may have one machine-side digest at its real boundary, while self hashes, sibling hashes, copied provenance bouquets, hash-derived semantic IDs, and model-visible success digests are forbidden.
+
+Every retained digest has one producer, one named validating consumer, a bounded mismatch action, the same lifecycle as its bytes, and machine-only visibility by default. Missing readable evidence fails a claim even when a digest matches; missing a required external/raw binding fails byte-integrity even when the prose is readable.
+
 ## Verification boundary
 
 Bundle 6.3.1 uses model-free repository tests, validators, canonical generated identities, and static smoke as local source-complete gates. Scored evaluator runs, graders, providers, and reviewer campaigns are not triggered by this release path. Deterministic local evidence can block a candidate but cannot authorize an external release. A canonical `release-authorization/1` binds the signed source, staged plugin, and static diagnostic to a human release-owner approval; it is identity authorization only, never scored usefulness evidence.

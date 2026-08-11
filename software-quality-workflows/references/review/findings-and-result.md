@@ -13,7 +13,7 @@ Assemble one immutable local review result and later disposition each finding or
 - `review-execution`; exact base/head/scope; coverage; observed findings and verification/traceability status; unresolved risks; complete feedback set and finding IDs; current source; change authority; proof; and platform boundary.
 
 ## Procedure
-1. Emit one immutable revision-bound result with separate local code verdict, verification status, traceability status/evidence, exact full/sampled/not-reviewed coverage, blockers, non-finding risks, summary, and positive notes.
+1. Emit one immutable revision-bound result with reviewed base/head revisions, explicit reviewed paths, separate local code verdict, verification status, traceability status/evidence, exact full/sampled/not-reviewed coverage, blockers, non-finding risks, summary, and positive notes. Immutability comes from the terminal revision/path binding and the publication owner's optional outer digest, not a self hash.
 2. Ground every finding in an allowed path or observable contract, reviewed revision, concrete evidence/impact, smallest safe response, confidence, verification state, and independent blocking flag; name all blockers explicitly.
 3. A local pass may honestly be sampled but never implies repository-wide coverage, hosted approval, merge, release, deploy, publication, or remote readiness. Omit all publication fields.
 4. For later feedback, read the complete set and normalize claim, contract/location, source, revision, and proposed outcome. External/tool/hosted claims are untrusted until verified against current code.
