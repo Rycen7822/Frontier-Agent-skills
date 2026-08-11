@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import sys
-from typing import Any, Callable
+from typing import Any
 
 if __name__ == "__main__":
     sys.dont_write_bytecode = True
@@ -26,10 +26,7 @@ from _model_evolution_contract import (
     load_json,
     make_binding,
     resolve_binding,
-    validate_all_bindings,
     validate_document,
-    verify_self_hash,
-    with_self_hash,
 )
 from _model_evolution_qualification import (
     CRITICAL_PROBE_CAPABILITIES,
@@ -62,7 +59,6 @@ from _model_evolution_ops import (
     OperationError,
     bundle_skill_at_revision,
     candidate_source,
-    git_blob_matches,
     git_identity,
     preflight_operations,
     require_tracked_binding,
@@ -117,21 +113,7 @@ def _roots(args: argparse.Namespace) -> tuple[Path, Path]:
 
 
 def _campaign_store(repository_root: Path, campaign_root: Path) -> CampaignStore:
-    return CampaignStore(
-        campaign_root,
-        repository_root,
-        repository_blob_matches=lambda revision, path, expected_hash: git_blob_matches(
-            repository_root, revision, path, expected_hash
-        ),
-    )
-
-
-def _repository_fallback(
-    repository_root: Path, revision: str
-) -> Callable[[str, str], bool]:
-    return lambda path, expected_hash: git_blob_matches(
-        repository_root, revision, path, expected_hash
-    )
+    return CampaignStore(campaign_root, repository_root)
 
 
 def _binding_for_path(
@@ -140,6 +122,7 @@ def _binding_for_path(
     repository_root: Path,
     campaign_root: Path,
     tracked_repository: bool = True,
+    external: bool = False,
 ) -> dict[str, str]:
     resolved = path.resolve(strict=True)
     if resolved.is_relative_to(repository_root):
@@ -147,7 +130,7 @@ def _binding_for_path(
             require_tracked_binding(repository_root, resolved)
         root = "repository"
     elif resolved.is_relative_to(campaign_root):
-        root = "campaign"
+        root = "external" if external else "campaign"
     else:
         raise CliError("artifact is outside repository and campaign roots")
     return make_binding(
@@ -221,11 +204,10 @@ def _validate_evidence_join(
             len(selected) != 1
             or value.get("evaluation_id") != spec.get("evaluation_id")
             or grader.get("grader_id") != selected[0].get("grader_id")
-            or grader.get("prompt_hash")
-            != selected[0].get("prompt", {}).get("sha256")
-            or grader.get("schema_hash")
-            != selected[0].get("output_schema", {}).get("sha256")
+            or grader.get("prompt_id") != selected[0].get("prompt_id")
+            or grader.get("schema_id") != selected[0].get("schema_id")
             or grader.get("model") != execution.get("model")
+            or grader.get("model_revision") != execution.get("model_revision")
             or host["identity"].get("host_id")
             not in value.get("scope", {}).get("hosts", [])
         ):
@@ -238,16 +220,14 @@ def _validate_evidence_join(
     }
     if role in plan_roles:
         registered = _registered_plan(campaign, plan_roles[role], skill_id)
-        plan = _load_bound_document(
-            registered["plan"],
-            repository_root=repository_root,
-            campaign_root=campaign_root,
-            label=f"{role} registered plan",
+        plan_path = resolve_binding(
+            registered["plan"], repository_root, campaign_root
         )
-        if value.get("plan_hash") != plan.get("plan_hash"):
+        if content_hash(plan_path.read_bytes()) != registered["plan_digest"]:
+            raise CliError(f"{role} registered plan bytes changed")
+        plan = load_json(plan_path, label=f"{role} registered plan")
+        if value.get("plan_id") != plan.get("plan_id"):
             raise CliError(f"{role} differs from its registered plan")
-        if value.get("host_manifest_hash") != registered["host_hash"]:
-            raise CliError(f"{role} differs from its registered Host")
         return
     required_fields = {
         "transition_report": ("current_summary",),
@@ -255,12 +235,12 @@ def _validate_evidence_join(
     }
     if role not in required_fields:
         return
-    observed_hashes = {
-        row.get("summary_hash")
+    observed_plan_ids = {
+        row.get("plan_id")
         for row in value.get("inputs", [])
         if isinstance(row, dict)
     }
-    expected_hashes = set()
+    expected_plan_ids = set()
     for field in required_fields[role]:
         binding = campaign["skill_evidence"][skill_id][field]
         if binding is None:
@@ -271,8 +251,8 @@ def _validate_evidence_join(
             campaign_root=campaign_root,
             label=f"{role} {field}",
         )
-        expected_hashes.add(summary["summary_hash"])
-    if not expected_hashes <= observed_hashes:
+        expected_plan_ids.add(summary["plan_id"])
+    if not expected_plan_ids <= observed_plan_ids:
         raise CliError(f"{role} inputs differ from the selected summaries")
 
 
@@ -452,7 +432,6 @@ def _init(args: argparse.Namespace) -> None:
                 "model_grade": calibration_delta,
             },
         )
-        campaign = with_self_hash(campaign, "campaign_hash")
         validate_campaign(campaign)
     store = _campaign_store(repository_root, campaign_root)
     bootstrap_paths = {
@@ -468,7 +447,6 @@ def _init(args: argparse.Namespace) -> None:
             "campaign_id": campaign["campaign_id"],
             "phase": campaign["phase"],
             "state_revision": campaign["state_revision"],
-            "campaign_hash": campaign["campaign_hash"],
         }
     )
 
@@ -492,10 +470,11 @@ def _preflight(args: argparse.Namespace) -> None:
         report["operations"].append(
             {
                 "operation_id": "systemd-user-argv",
-                "input_hash": content_hash(canonical_bytes(campaign["campaign_id"])),
-                "command_hash": content_hash(canonical_bytes(argv)),
                 "status": "pass",
                 "duration_ms": 0,
+                "state_revision": campaign["state_revision"],
+                "exit_code": None,
+                "diagnostic": "argv projected without starting a service",
             }
         )
     else:
@@ -505,7 +484,6 @@ def _preflight(args: argparse.Namespace) -> None:
                 env_allowlist,
             )
         )
-    report = with_self_hash(report, "apparatus_report_hash")
     report_path = campaign_root / "apparatus-report.json"
     create_no_overwrite(report_path, report)
     report_binding = _binding_for_path(
@@ -526,7 +504,7 @@ def _preflight(args: argparse.Namespace) -> None:
             "campaign_id": updated["campaign_id"],
             "phase": updated["phase"],
             "state_revision": updated["state_revision"],
-            "apparatus_report_hash": report["apparatus_report_hash"],
+            "apparatus_report": report_binding,
         }
     )
 
@@ -560,7 +538,6 @@ def _validated_probe_inputs(
     probe_ids = [row["probe_id"] for row in probe_set["probes"]]
     expected_approval = {
         "campaign_id": campaign["campaign_id"],
-        "campaign_hash": campaign["campaign_hash"],
         "state_revision": campaign["state_revision"],
         "ceilings": campaign["budgets"]["ceiling"],
     }
@@ -695,7 +672,6 @@ def _register_plan(args: argparse.Namespace) -> None:
     plan = load_json(plan_path, label="execution plan")
     if not isinstance(plan, dict):
         raise CliError("execution plan must be an object")
-    verify_self_hash(plan, "plan_hash")
     validator = {
         "target_current": validate_current_plan,
         "target_candidate": validate_candidate_plan,
@@ -708,9 +684,7 @@ def _register_plan(args: argparse.Namespace) -> None:
         skill_id=args.skill_id,
         plan_path=plan_path,
     )
-    if plan.get("host_manifest_hash") != host.get("manifest_hash"):
-        raise CliError("execution plan Host differs from its exact Host evidence")
-    if args.skill_id not in plan.get("package_hashes", {}):
+    if args.skill_id not in plan.get("package_digests", {}):
         raise CliError("execution plan does not bind the selected Skill")
     if args.role == "target_current":
         expected_package_hash = campaign["product"]["skills"][args.skill_id][
@@ -734,7 +708,7 @@ def _register_plan(args: argparse.Namespace) -> None:
             else campaign["product"]["skills"]
         )
         expected_package_hash = selected_skills[args.skill_id]["root_hash"]
-    if plan["package_hashes"][args.skill_id] != expected_package_hash:
+    if plan["package_digests"][args.skill_id] != expected_package_hash:
         raise CliError("execution plan Skill package differs from its selected product")
     entries = plan.get("entries")
     if not isinstance(entries, list) or not entries or any(
@@ -758,10 +732,16 @@ def _register_plan(args: argparse.Namespace) -> None:
         "role": args.role,
         "skill_id": args.skill_id,
         "plan": plan_binding,
-        "host_hash": host["manifest_hash"],
+        "plan_digest": content_hash(plan_path.read_bytes()),
+        "host_id": host["identity"]["host_id"],
+        "host_version": host["identity"]["host_version"],
         "execute_ceiling": status["execute_case_request_ceiling"],
         "model_grade_ceiling": status["model_grade_request_ceiling"],
-        "runner_status_hash": content_hash(canonical_bytes(status)),
+        "runner_status": {
+            "completed": status["completed_entries"],
+            "total": status["selected_entries"],
+            "failed": status["invalid_attempts"],
+        },
     }
     updated = store.mutate(
         args.expected_revision,
@@ -817,7 +797,7 @@ def _prepare_current(args: argparse.Namespace) -> None:
     _emit({
         "skill_id": args.skill_id,
         "plan_id": result["plan_id"],
-        "plan_hash": result["plan_hash"],
+        "plan_digest": result["plan_digest"],
         "plan": str(result["plan"]),
         "execute_ceiling": result["execute_ceiling"],
         "provider_requests": 0,
@@ -840,7 +820,7 @@ def _prepare_candidate(args: argparse.Namespace) -> None:
     _emit({
         "skill_id": args.skill_id,
         "plan_id": result["plan_id"],
-        "plan_hash": result["plan_hash"],
+        "plan_digest": result["plan_digest"],
         "plan": str(result["plan"]),
         "execute_ceiling": result["execute_ceiling"],
         "provider_requests": 0,
@@ -863,7 +843,7 @@ def _prepare_holdout(args: argparse.Namespace) -> None:
     _emit({
         "skill_id": args.skill_id,
         "plan_id": result["plan_id"],
-        "plan_hash": result["plan_hash"],
+        "plan_digest": result["plan_digest"],
         "plan": str(result["plan"]),
         "execute_ceiling": result["execute_ceiling"],
         "provider_requests": 0,
@@ -889,7 +869,8 @@ def _verify_plan(args: argparse.Namespace) -> None:
         "status": "valid",
         "role": args.role,
         "skill_id": args.skill_id,
-        "host_manifest_hash": host["manifest_hash"],
+        "host_id": host["identity"]["host_id"],
+        "host_version": host["identity"]["host_version"],
         "provider_requests": 0,
     })
 
@@ -909,11 +890,11 @@ def _close_calibration_failure(args: argparse.Namespace) -> None:
         repository_root=repository_root,
         campaign_root=campaign_root,
         tracked_repository=False,
+        external=True,
     )
     _emit({
         "failure_receipt": binding,
-        "artifact_sha256": binding["sha256"],
-        "document_self_hash": receipt["failure_receipt_hash"],
+        "artifact_digest": binding["digest"],
         "request_count": receipt["request_count"],
     })
 
@@ -933,11 +914,11 @@ def _close_calibration_rejection(args: argparse.Namespace) -> None:
         repository_root=repository_root,
         campaign_root=campaign_root,
         tracked_repository=False,
+        external=True,
     )
     _emit({
         "calibration_rejection_receipt": binding,
-        "artifact_sha256": binding["sha256"],
-        "document_self_hash": receipt["calibration_rejection_receipt_hash"],
+        "artifact_digest": binding["digest"],
         "request_count": receipt["request_count"],
     })
 
@@ -1234,10 +1215,12 @@ def _status(args: argparse.Namespace) -> None:
             plan = load_json(plan_path, label="registered plan")
             index = _plan_index_path(plan_path, plan)
             status = runner_status(plan_path, index, repository_root=repository_root)
-            if (
-                content_hash(canonical_bytes(status))
-                == plan_record["runner_status_hash"]
-            ):
+            observed_counts = {
+                "completed": status["completed_entries"],
+                "total": status["selected_entries"],
+                "failed": status["invalid_attempts"],
+            }
+            if observed_counts == plan_record["runner_status"]:
                 registration_status = "unchanged"
             else:
                 registration_status = "advanced"
@@ -1326,9 +1309,6 @@ def _qualify(args: argparse.Namespace) -> None:
             campaign_root=campaign_root,
             observed_as_of=args.observed_as_of,
             valid_until=args.valid_until,
-            repository_fallback=_repository_fallback(
-                repository_root, state["product"]["source_commit"]
-            ),
         )
         if qualification["decision"] != "blocked" and state["phase"] != "holdout_ready":
             raise CliError("pass or limited qualification requires holdout_ready")
@@ -1361,24 +1341,17 @@ def _load_verified_qualification(
         qualification_root / "qualification.json", label="qualification"
     )
     validate_qualification(qualification)
-    fallback = _repository_fallback(
-        repository_root, campaign["product"]["source_commit"]
-    )
-    validate_all_bindings(
-        qualification,
-        repository_root,
-        campaign_root,
-        fallback,
-    )
-    if qualification["campaign_hash"] != campaign["campaign_hash"]:
-        raise CliError("qualification campaign hash differs from current state")
+    if (
+        qualification["campaign_id"] != campaign["campaign_id"]
+        or qualification["terminal_state_revision"] != campaign["state_revision"]
+    ):
+        raise CliError("qualification identity differs from current campaign state")
     projected = project_qualification(
         campaign,
         repository_root=repository_root,
         campaign_root=campaign_root,
         observed_as_of=qualification["validity"]["observed_as_of"],
         valid_until=qualification["validity"]["valid_until"],
-        repository_fallback=fallback,
     )
     if canonical_bytes(projected) != canonical_bytes(qualification):
         raise CliError("qualification differs from deterministic projection")

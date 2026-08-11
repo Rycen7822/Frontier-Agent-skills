@@ -21,7 +21,7 @@ sys.dont_write_bytecode = True
 from _bundle_hash import inventory, tree_hash  # noqa: E402
 from _codex_eval_delivery import (  # noqa: E402
     MODEL_EVOLUTION_ENV_ALLOWLIST,
-    isolated_tool_schema_hash,
+    isolated_tool_schema_id,
     validate_plugin_catalog,
 )
 import codex_eval_host  # noqa: E402
@@ -140,7 +140,7 @@ def _model_revision(model: str, codex_version: str) -> str:
     )
     if cache.get("client_version") != codex_version or len(selected) != 1:
         raise HostBuildError("Codex model catalog differs from the bound runtime")
-    return f"codex-catalog-{codex_version}-{_hash_bytes(_canonical_bytes(selected[0]))}"
+    return f"codex-catalog-{codex_version}"
 
 
 def _tree_hash(root: Path) -> str:
@@ -200,7 +200,7 @@ def build_host(
     command.update({
         "argv": argv,
         "resolved_executable": str(executable),
-        "executable_sha256": _hash_bytes(executable.read_bytes()),
+        "executable_digest": _hash_bytes(executable.read_bytes()),
         "env_allowlist": list(MODEL_EVOLUTION_ENV_ALLOWLIST),
     })
 
@@ -218,16 +218,18 @@ def build_host(
     for skill_id in sorted(roots):
         entry = copy.deepcopy(by_id[skill_id])
         entry["version"] = versions[skill_id]
-        entry["root_hash"] = _tree_hash(roots[skill_id])
+        entry["root_digest"] = _tree_hash(roots[skill_id])
         refreshed.append(entry)
-    catalog_hash = _hash_bytes(_canonical_bytes(refreshed))
-    value["catalog"] = {"entries": refreshed, "catalog_hash": catalog_hash}
+    bundle_version = evidence.get("bundle_version")
+    if not isinstance(bundle_version, str):
+        raise HostBuildError("plugin build bundle version is invalid")
+    catalog_id = f"frontier-engineering-{bundle_version}"
+    value["catalog"] = {"catalog_id": catalog_id, "entries": refreshed}
 
     identity = value["identity"]
     execution = identity["execution"]
-    execution["catalog_hash"] = catalog_hash
-    execution["skill_hash"] = _tree_hash(plugin_root)
-    execution["tool_schema_hash"] = isolated_tool_schema_hash(
+    execution["catalog_id"] = catalog_id
+    execution["tool_schema_id"] = isolated_tool_schema_id(
         codex_hash,
         isolation_hash,
         code_mode_host_hash,
@@ -235,18 +237,15 @@ def build_host(
     if execution.get("model") != argv[argv.index("--model") + 1]:
         raise HostBuildError("template model identity differs from its command")
     execution["model_revision"] = _model_revision(execution["model"], codex_version)
-    execution["harness"] = (
-        f"codex-cli-{codex_version}"
-        f"-effort-{argv[argv.index('--effort') + 1]}"
-        f"-profile-{argv[argv.index('--profile') + 1]}-tier-default"
-    )
+    execution["harness"] = "codex-cli"
+    execution["harness_version"] = codex_version
     identity["adapter"].update(
         {
-            "sha256": codex_eval_host.adapter_source_hash(adapter.parent),
+            "id": "codex-eval-host",
             "version": codex_eval_host.ADAPTER_VERSION,
         }
     )
-    identity["host_build"] = codex_hash
+    identity["host_build"] = f"codex-cli-{codex_version}"
     identity["host_version"] = codex_version
     repository_identity = _repository_identity(repository_root)
     if repository_identity["dirty"]:
@@ -268,11 +267,8 @@ def build_host(
         path = (repository_root / artifact["path"]).resolve(strict=True)
         if not path.is_relative_to(repository_root) or path.is_symlink() or not path.is_file():
             raise HostBuildError("template probe artifact escapes the repository")
-        artifact["sha256"] = _hash_bytes(path.read_bytes())
+        artifact["digest"] = _hash_bytes(path.read_bytes())
 
-    value["manifest_hash"] = _hash_bytes(_canonical_bytes({
-        key: item for key, item in value.items() if key != "manifest_hash"
-    }))
     validate_plugin_catalog(plugin_root, value)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     created = False
@@ -315,7 +311,7 @@ def main() -> int:
     except (HostBuildError, OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"build_model_evolution_host: {exc}", file=sys.stderr)
         return 2
-    print(json.dumps({"manifest_hash": value["manifest_hash"]}, sort_keys=True))
+    print(json.dumps({"manifest_id": value["manifest_id"]}, sort_keys=True))
     return 0
 
 

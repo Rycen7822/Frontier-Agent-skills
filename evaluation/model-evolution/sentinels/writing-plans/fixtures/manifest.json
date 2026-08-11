@@ -1,74 +1,74 @@
 {
   "artifacts": [
     {
+      "digest": "sha256:cc41e13199bc586f0dabc9fd44d69a5691e7e2c5909ef49ddb2ef6e7f1b510de",
       "encoding": "utf-8",
-      "path": "README.md",
-      "sha256": "sha256:cc41e13199bc586f0dabc9fd44d69a5691e7e2c5909ef49ddb2ef6e7f1b510de"
+      "path": "README.md"
     },
     {
+      "digest": "sha256:9fdabd553e0a6462f27b12841bace694993a4b4da4b918fb5fd66e5e65833752",
       "encoding": "utf-8",
-      "path": "agents/openai.yaml",
-      "sha256": "sha256:9fdabd553e0a6462f27b12841bace694993a4b4da4b918fb5fd66e5e65833752"
+      "path": "agents/openai.yaml"
     },
     {
+      "digest": "sha256:1b97292c5a0f07335334b26aefe5e1a82064e6c3176101dfdec0965c8a70b684",
       "encoding": "utf-8",
-      "path": "cli.py",
-      "sha256": "sha256:1b97292c5a0f07335334b26aefe5e1a82064e6c3176101dfdec0965c8a70b684"
+      "path": "cli.py"
     },
     {
+      "digest": "sha256:e3e49fcdea442f1dceb234fee80864880f269b2c284f2f7e5747314740304951",
       "encoding": "utf-8",
-      "path": "docs/config.md",
-      "sha256": "sha256:e3e49fcdea442f1dceb234fee80864880f269b2c284f2f7e5747314740304951"
+      "path": "docs/config.md"
     },
     {
+      "digest": "sha256:9d167468e8780b32ff7163b83ce3a28b619702c7ff89e9263a9ce56326ddb03d",
       "encoding": "utf-8",
-      "path": "program-state.md",
-      "sha256": "sha256:9d167468e8780b32ff7163b83ce3a28b619702c7ff89e9263a9ce56326ddb03d"
+      "path": "program-state.md"
     },
     {
+      "digest": "sha256:4cc88577e92f9da9829536d69e0a99f6d2841b6c50e1743d344a71716e95d09b",
       "encoding": "utf-8",
-      "path": "release-status.md",
-      "sha256": "sha256:4cc88577e92f9da9829536d69e0a99f6d2841b6c50e1743d344a71716e95d09b"
+      "path": "release-status.md"
     },
     {
+      "digest": "sha256:75e38bc7169905894a157b22bcac5b6f9b2b7dc07c5c42b111fe1d000a76313e",
       "encoding": "utf-8",
-      "path": "resume-state.md",
-      "sha256": "sha256:75e38bc7169905894a157b22bcac5b6f9b2b7dc07c5c42b111fe1d000a76313e"
+      "path": "resume-state.md"
     },
     {
+      "digest": "sha256:df1285fa0e3a45b195007e4ae0a944c58c1b63cf663ff52cdf58f083afb27c8c",
       "encoding": "utf-8",
-      "path": "schema.json",
-      "sha256": "sha256:df1285fa0e3a45b195007e4ae0a944c58c1b63cf663ff52cdf58f083afb27c8c"
+      "path": "schema.json"
     },
     {
+      "digest": "sha256:a4f7d2866be8a43d1382f19d7890cd9671f6133be812df69fcb65ff093efd4a9",
       "encoding": "utf-8",
-      "path": "scripts/build_package.py",
-      "sha256": "sha256:a4f7d2866be8a43d1382f19d7890cd9671f6133be812df69fcb65ff093efd4a9"
+      "path": "scripts/build_package.py"
     },
     {
+      "digest": "sha256:5a92e587325db9d072241ece357e72a1ad49568e14a3d40ed569d9dd220658e9",
       "encoding": "utf-8",
-      "path": "src/client.py",
-      "sha256": "sha256:5a92e587325db9d072241ece357e72a1ad49568e14a3d40ed569d9dd220658e9"
+      "path": "src/client.py"
     },
     {
+      "digest": "sha256:9dade4ddd4298b20f04976c019dbe78ee3a2e500656644effd0cc58fc7107fc9",
       "encoding": "utf-8",
-      "path": "src/config.py",
-      "sha256": "sha256:9dade4ddd4298b20f04976c019dbe78ee3a2e500656644effd0cc58fc7107fc9"
+      "path": "src/config.py"
     },
     {
+      "digest": "sha256:7a2085093d082e2732cdace7384dc271b03ed6ef6756dcac8f9d0b13f82d458a",
       "encoding": "utf-8",
-      "path": "src/parser.py",
-      "sha256": "sha256:7a2085093d082e2732cdace7384dc271b03ed6ef6756dcac8f9d0b13f82d458a"
+      "path": "src/parser.py"
     },
     {
+      "digest": "sha256:26f937dba6f520a0d03a185b73d167f4e155c65f751b52f9a0bdf1c3910f4555",
       "encoding": "utf-8",
-      "path": "tests/test_cli.py",
-      "sha256": "sha256:26f937dba6f520a0d03a185b73d167f4e155c65f751b52f9a0bdf1c3910f4555"
+      "path": "tests/test_cli.py"
     },
     {
+      "digest": "sha256:548e49beb591b7b838173c2c4c22f047c86178ac67a6715d2a99156a116c7449",
       "encoding": "utf-8",
-      "path": "tests/test_client.py",
-      "sha256": "sha256:548e49beb591b7b838173c2c4c22f047c86178ac67a6715d2a99156a116c7449"
+      "path": "tests/test_client.py"
     }
   ],
   "schema_version": 1

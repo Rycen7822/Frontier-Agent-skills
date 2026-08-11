@@ -34,10 +34,10 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.index = load_json(
-            MODEL_ROOT / "sentinel-index-v1.json", label="sentinel index"
+            MODEL_ROOT / "sentinel-index-v2.json", label="sentinel index"
         )
         cls.probes = load_json(
-            MODEL_ROOT / "codex-interaction-probes-v1.json", label="probe set"
+            MODEL_ROOT / "codex-interaction-probes-v2.json", label="probe set"
         )
 
     def test_generator_check_is_deterministic(self) -> None:
@@ -263,7 +263,6 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             self.assertIsNone(spec["suite"]["holdout"])
             self.assertNotIn("calibration", spec["suite"])
             self.assertEqual(set(quality["gates"].values()), {"pass"})
-            self.assertEqual(quality["calibration_hash"], None)
             self.assertTrue((root / "calibration-gold.jsonl").is_file())
             self.assertFalse((root / "calibration-ratings.jsonl").exists())
         names = {path.name for path in SENTINEL_ROOT.rglob("*") if path.is_file()}
@@ -485,7 +484,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             )
             for row in rows:
                 self.assertEqual(
-                    row["payload_hash"],
+                    row["payload_digest"],
                     grader_semantics.semantic_payload_hash(row["payload"]),
                 )
                 self.assertEqual(

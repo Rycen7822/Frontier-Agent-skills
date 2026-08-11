@@ -32,9 +32,8 @@ def project_runner_status(
         if state["next_pass_new_attempts"] == 0:
             break
     return {
-        "schema_version": "runner-status/1",
+        "schema_version": "runner-status/2",
         "plan_id": plan["plan_id"],
-        "plan_hash": plan["plan_hash"],
         "selected_entries": len(selected),
         "execute_entries": len(execute_entries),
         "indexed_attempts": sum(

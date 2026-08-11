@@ -20,8 +20,6 @@ from _model_evolution_contract import (
     ContractError,
     SKILL_IDS,
     canonical_bytes,
-    validate_all_bindings,
-    with_self_hash,
 )
 
 
@@ -131,10 +129,12 @@ def reserve_probes(state: dict[str, Any], probe_ids: list[str]) -> None:
     if not probe_ids or len(probe_ids) > 6 or len(set(probe_ids)) != len(probe_ids):
         raise StateError("probe request set is empty, duplicated, or exceeds six")
     reserve_budget(state, {"provider_requests": len(probe_ids)})
-    prefix = state["campaign_hash"].removeprefix("sha256:")[:12]
+    prefix = f"{state['campaign_id']}.{state['state_revision']}"
+    if len(prefix) > 116:
+        raise StateError("campaign ID is too long for probe request IDs")
     state["interaction_probes"]["requests"] = [
         {
-            "request_id": f"probe-{prefix}-{index:02d}",
+            "request_id": f"probe.{prefix}.{index:02d}",
             "probe_id": probe_id,
             "status": "reserved",
             "artifact": None,
@@ -437,48 +437,27 @@ class CampaignStore:
         self,
         campaign_root: Path,
         repository_root: Path,
-        repository_blob_matches: Callable[[str, str, str], bool] | None = None,
     ):
         self.root = campaign_root.resolve()
         self.repository_root = repository_root.resolve(strict=True)
-        self.repository_blob_matches = repository_blob_matches
         self.path = self.root / "campaign.json"
         self.lock_path = self.root / ".campaign.lock"
         self.probe_lock_path = self.root / ".probe.operation.lock"
 
-    def _repository_fallback(
-        self, value: dict[str, Any]
-    ) -> Callable[[str, str], bool] | None:
-        if self.repository_blob_matches is None:
-            return None
-        revision = value["product"]["source_commit"]
-
-        def fallback(path: str, expected_hash: str) -> bool:
-            return self.repository_blob_matches(revision, path, expected_hash)
-
-        return fallback
-
-    def _read(self, *, verify_bindings: bool) -> dict[str, Any]:
+    def _read(self) -> dict[str, Any]:
         try:
             value = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise StateError("campaign state is missing or invalid JSON") from exc
         try:
             validate_campaign(value)
-            if verify_bindings:
-                validate_all_bindings(
-                    value,
-                    self.repository_root,
-                    self.root,
-                    self._repository_fallback(value),
-                )
         except ContractError as exc:
             raise StateError(str(exc)) from exc
         return value
 
-    def read(self, *, verify_bindings: bool = True) -> dict[str, Any]:
+    def read(self) -> dict[str, Any]:
         """Read-only state access: no lock, temp file, or timestamp mutation."""
-        return self._read(verify_bindings=verify_bindings)
+        return self._read()
 
     def create(
         self,
@@ -507,7 +486,6 @@ class CampaignStore:
             raise StateError("campaign directory contains undeclared bootstrap content")
         try:
             validate_campaign(value)
-            validate_all_bindings(value, self.repository_root, self.root)
         except ContractError as exc:
             raise StateError(str(exc)) from exc
         create_no_overwrite(self.path, value)
@@ -564,7 +542,7 @@ class CampaignStore:
             qualification_root = self.root / "qualification"
             if qualification_root.exists() or qualification_root.is_symlink():
                 raise StateError("qualified campaign is immutable")
-            current = self._read(verify_bindings=True)
+            current = self._read()
             if current["state_revision"] != expected_revision:
                 raise StateError(
                     f"stale expected revision {expected_revision}; current is {current['state_revision']}"
@@ -573,15 +551,8 @@ class CampaignStore:
             operation(updated)
             validate_transition(current["phase"], updated["phase"])
             updated["state_revision"] = expected_revision + 1
-            updated = with_self_hash(updated, "campaign_hash")
             try:
                 validate_campaign(updated)
-                validate_all_bindings(
-                    updated,
-                    self.repository_root,
-                    self.root,
-                    self._repository_fallback(updated),
-                )
             except ContractError as exc:
                 raise StateError(str(exc)) from exc
             _atomic_bytes(self.path, canonical_bytes(updated) + b"\n")
@@ -601,7 +572,7 @@ class CampaignStore:
                 fcntl.flock(lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as exc:
                 raise StateError("campaign mutation lock is held") from exc
-            current = self._read(verify_bindings=True)
+            current = self._read()
             if current["state_revision"] != expected_revision:
                 raise StateError(
                     f"stale expected revision {expected_revision}; current is "

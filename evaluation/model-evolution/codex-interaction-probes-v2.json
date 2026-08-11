@@ -1,14 +1,12 @@
 {
   "adapter_protocol_version": "codex-interaction-probe/1.0",
-  "probe_set_hash": "sha256:4aa048943262cf9b15843fdba93556db1bc271933eb65ec2fb928fe489ed3bce",
-  "probe_set_id": "frontier-codex-interaction-probes-v1",
+  "probe_set_id": "frontier-codex-interaction-probes-v2",
   "probes": [
     {
       "capability": "force_load",
       "fixture": {
         "path": "evaluation/model-evolution/probe-fixture.json",
-        "root": "repository",
-        "sha256": "sha256:641e3c2ec08f4bdc239f99aa14c672208429511113eed311c59c231e00cf0ad9"
+        "root": "repository"
       },
       "network": "denied",
       "probe_id": "force-load",
@@ -25,8 +23,7 @@
       "capability": "natural_routing",
       "fixture": {
         "path": "scripts/codex_eval_host.py",
-        "root": "repository",
-        "sha256": "sha256:b89c3f795b6d4724f42f084b58925dfe37ed018eb34cb2548238fb08362a249a"
+        "root": "repository"
       },
       "network": "denied",
       "probe_id": "natural-routing",
@@ -43,8 +40,7 @@
       "capability": "multi_turn",
       "fixture": {
         "path": "evaluation/model-evolution/probe-fixture.json",
-        "root": "repository",
-        "sha256": "sha256:641e3c2ec08f4bdc239f99aa14c672208429511113eed311c59c231e00cf0ad9"
+        "root": "repository"
       },
       "network": "denied",
       "probe_id": "multi-turn",
@@ -60,8 +56,7 @@
       "capability": "principal_tracing",
       "fixture": {
         "path": "evaluation/model-evolution/probe-fixture.json",
-        "root": "repository",
-        "sha256": "sha256:641e3c2ec08f4bdc239f99aa14c672208429511113eed311c59c231e00cf0ad9"
+        "root": "repository"
       },
       "network": "denied",
       "probe_id": "principal-tracing",
@@ -77,8 +72,7 @@
       "capability": "usage_capture",
       "fixture": {
         "path": "evaluation/model-evolution/probe-fixture.json",
-        "root": "repository",
-        "sha256": "sha256:641e3c2ec08f4bdc239f99aa14c672208429511113eed311c59c231e00cf0ad9"
+        "root": "repository"
       },
       "network": "denied",
       "probe_id": "usage-capture",
@@ -94,8 +88,7 @@
       "capability": "action_authorization_trace",
       "fixture": {
         "path": "evaluation/model-evolution/probe-fixture.json",
-        "root": "repository",
-        "sha256": "sha256:641e3c2ec08f4bdc239f99aa14c672208429511113eed311c59c231e00cf0ad9"
+        "root": "repository"
       },
       "network": "denied",
       "probe_id": "authorization-trace",
@@ -108,5 +101,5 @@
       "sandbox": "read-only"
     }
   ],
-  "schema_version": "model-evolution-interaction-probes/1"
+  "schema_version": "model-evolution-interaction-probes/2"
 }

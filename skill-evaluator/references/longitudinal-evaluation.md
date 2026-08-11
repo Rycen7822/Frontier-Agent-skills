@@ -10,7 +10,7 @@ L4 may establish only what its frozen version/cycle matrix supports: change in t
 
 ## Offline comparison owner
 
-`compare_cycles.py` consumes a self-hashed `comparison-plan v1` and two or three immutable cycle capsules. A `revision` plan binds one failure class, one change set, a prior and candidate, target closure, margins, protected metrics, and gates; its only terminal states are `closed`, `open`, and `not_evaluable`.
+`compare_cycles.py` consumes one readable comparison plan v2 and two or three immutable cycle capsules. The plan binds each imported capsule once with `{path,digest,schema_version}`. A `revision` plan binds one failure class, one change set, a prior and candidate, target closure, margins, protected metrics, and gates; its only terminal states are `closed`, `open`, and `not_evaluable`.
 
 First emit observations while analyzing every bound cycle, then run the comparator with the frozen plan:
 
@@ -36,9 +36,9 @@ Each transition binds absolute comparison observations, gain/stage retention, to
 Record these inputs before execution:
 
 - cycle ID and timestamps;
-- accepted prior and candidate package hashes;
+- accepted prior and candidate source revisions and package digests;
 - change reason and affected requirement IDs;
-- spec, public scenarios, holdout manifest/payload, fixtures, graders, model/harness, and environment hashes;
+- spec, public scenarios, holdout manifest/payload, fixtures, graders, and readable model/harness/environment identities, with digests only for independently consumed byte artifacts;
 - compiled plan/compiler, host manifest/probes, calibration/quality, declared treatments/modules, repeats, gates, context authority, manual-review contract, and rollback target;
 - protected case IDs and protected requirement IDs.
 
@@ -46,7 +46,7 @@ Store a new cycle. Never overwrite prior evidence or compare metrics across chan
 
 ## Comparable version matrix
 
-Use the same spec v5, execution plan v1, run-index row v2, receipt v4, summary v4, and failure-index v1 runtime contract as L1–L3. Bind each cycle through `comparison-plan v1`; model transitions also require `comparison-observations v1`. For each compared version, bind candidate revision/source/plugin identity plus package, catalog, treatment, host, compiler, fixture, grader, calibration/quality, artifact, provenance, module/stage, routing, principal/handoff/action/state/fault, usage, context, and cleanup evidence.
+Use the same spec v6, execution plan v2, run index v3, receipt v5, summary v5, and failure-index v2 runtime contract as L1–L3. Export each cycle as one capsule v2 and bind that capsule once through comparison plan v2; model transitions also require comparison observations v2. Inside each cycle, preserve readable candidate revision/source/plugin, package, catalog, treatment, host, compiler, fixture, grader, calibration/quality, module/stage, routing, principal/handoff/action/state/fault, usage, context, and cleanup evidence. The capsule remains the custody owner for its internal artifacts.
 
 The comparison is evaluable only when:
 
@@ -65,9 +65,9 @@ Preserve one row per cycle:
 
 | Field | Required meaning |
 |---|---|
-| Cycle/version/package hash | Immutable treatment identity |
+| Cycle ID, source revision, package digest | Immutable treatment identity |
 | Change reason/requirement IDs | Scope of the candidate difference |
-| Contract and environment hashes | Comparability boundary |
+| Readable contract and execution profile | Comparability boundary |
 | Receipt integrity and matrix status | Whether evidence is usable |
 | Distinct cases and run pairs | Inferential and descriptive denominators |
 | Benefit interval and guardrails | Incremental contribution evidence |

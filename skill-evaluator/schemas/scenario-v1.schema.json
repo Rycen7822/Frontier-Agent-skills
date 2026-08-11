@@ -278,15 +278,15 @@
     },
     "principal_slot": {
       "type": "object",
-      "required": ["slot_id", "role", "parent_slot_id", "allowed_model_class", "context_mode", "tool_schema_ceiling", "authority_ceiling", "budget_ceiling", "expected_return_schema_hash"],
+      "required": ["slot_id", "role", "parent_slot_id", "allowed_model_class", "context_mode", "tool_schema_id", "authority_id", "budget_ceiling", "expected_return_schema_id"],
       "properties": {
         "slot_id": {"$ref": "#/$defs/safe_id"},
         "role": {"type": "string", "minLength": 1},
         "parent_slot_id": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
         "allowed_model_class": {"type": "string", "minLength": 1},
         "context_mode": {"enum": ["single", "fresh", "forked", "scoped_handoff"]},
-        "tool_schema_ceiling": {"$ref": "#/$defs/sha256"},
-        "authority_ceiling": {"$ref": "#/$defs/sha256"},
+        "tool_schema_id": {"$ref": "#/$defs/safe_id"},
+        "authority_id": {"$ref": "#/$defs/safe_id"},
         "budget_ceiling": {
           "type": "object",
           "required": ["turns", "tokens", "seconds", "tool_calls"],
@@ -298,7 +298,7 @@
           },
           "additionalProperties": false
         },
-        "expected_return_schema_hash": {"$ref": "#/$defs/sha256"}
+        "expected_return_schema_id": {"$ref": "#/$defs/safe_id"}
       },
       "additionalProperties": false
     },
@@ -405,16 +405,16 @@
     },
     "observation_contract": {
       "type": "object",
-      "required": ["observation_id", "producer", "capture_authority", "artifact", "locator", "encoding", "schema_hash", "expected_hash", "predicate", "valid_from_seq", "valid_until_seq", "valid_from_utc", "valid_until_utc", "freshness_requirement", "clock_requirement", "consumer_requirement_ids"],
+      "required": ["observation_id", "producer", "capture_authority", "artifact", "locator", "encoding", "schema_id", "expected_digest", "predicate", "valid_from_seq", "valid_until_seq", "valid_from_utc", "valid_until_utc", "freshness_requirement", "clock_requirement", "consumer_requirement_ids"],
       "properties": {
         "observation_id": {"$ref": "#/$defs/safe_id"},
         "producer": {"type": "string", "minLength": 1},
         "capture_authority": {"type": "string", "minLength": 1},
         "artifact": {"$ref": "#/$defs/relative_path"},
-        "locator": {"$ref": "failure-index-v1.schema.json#/$defs/locator"},
+        "locator": {"$ref": "failure-index-v2.schema.json#/$defs/locator"},
         "encoding": {"enum": ["utf-8", "binary"]},
-        "schema_hash": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
-        "expected_hash": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "schema_id": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
+        "expected_digest": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
         "predicate": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
         "valid_from_seq": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
         "valid_until_seq": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},

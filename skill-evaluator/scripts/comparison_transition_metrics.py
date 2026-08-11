@@ -126,8 +126,11 @@ def metric_result(
     ):
         problems.append("comparison observation contracts differ")
     tokenizer_changed = (
-        reference.execution_plan["execution_identity"]["tokenizer_pricing_hash"]
-        != later.execution_plan["execution_identity"]["tokenizer_pricing_hash"]
+        any(
+            reference.execution_plan["execution_profile"][field]
+            != later.execution_plan["execution_profile"][field]
+            for field in ("tokenizer_id", "pricing_id")
+        )
     )
     if (
         tokenizer_changed
@@ -289,8 +292,11 @@ def _native_metric_result(
         if len(reference_values) < plan["decision_policy"]["minimum_distinct_cases"]:
             problems.append("native-capability support is below the frozen minimum")
         tokenizer_changed = (
-            reference.execution_plan["execution_identity"]["tokenizer_pricing_hash"]
-            != later.execution_plan["execution_identity"]["tokenizer_pricing_hash"]
+            any(
+                reference.execution_plan["execution_profile"][field]
+                != later.execution_plan["execution_profile"][field]
+                for field in ("tokenizer_id", "pricing_id")
+            )
         )
         if (
             tokenizer_changed
@@ -531,7 +537,7 @@ def gate_diagnostics(
         if item["gate_id"] in gate_ids
     ]
     if failed_items:
-        path, source_hash = artifact_source(plan, candidate, "failure_index")
+        path = artifact_source(plan, candidate, "failure_index")
         failures.append(make_diagnostic(
             severity="critical",
             fact_type="gate",
@@ -541,6 +547,6 @@ def gate_diagnostics(
             observed=[item["failure_id"] for item in failed_items],
             locator_artifact=path,
             json_pointer="/failures",
-            source_hash=source_hash,
+            source_ref=path,
         ))
     return blocking, failures

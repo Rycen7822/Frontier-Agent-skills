@@ -44,10 +44,14 @@
       "scenarios.public.jsonl"
     ],
     "exposure_status": "not_applicable",
-    "split_hashes": {
-      "dev": "sha256:458903ddd91605bea0859f99cc6e45bd77ff0fb60251c6f7bb65da8792187e82",
+    "split_bindings": {
+      "dev": {
+        "path": "scenarios.public.jsonl"
+      },
       "heldout": null,
-      "regression": "sha256:e4220a07fae4430643c712b9bb1f158a5b35e6bb5abebae694b983f67e41afe1"
+      "regression": {
+        "path": "scenarios.public.jsonl"
+      }
     }
   },
   "duplicate_groups": [],
@@ -81,8 +85,8 @@
   "leakage_probes": [
     {
       "artifact": {
-        "path": "grader-prompt.md",
-        "sha256": "sha256:9842ed8d2b5ecfbb92e656647af87c02c832affa46c53b7696814e5d71d85ae2"
+        "digest": "sha256:9842ed8d2b5ecfbb92e656647af87c02c832affa46c53b7696814e5d71d85ae2",
+        "path": "grader-prompt.md"
       },
       "locator": {
         "artifact": "grader-prompt.md",
@@ -120,8 +124,8 @@
         "kind": "text_lines",
         "start_line": 1
       },
-      "source_hashes": [
-        "sha256:9842ed8d2b5ecfbb92e656647af87c02c832affa46c53b7696814e5d71d85ae2"
+      "source_refs": [
+        "grader-prompt.md"
       ],
       "status": "closed"
     }

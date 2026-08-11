@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "evaluation_id": "evaluation-fixture",
   "level": "L2",
   "risk_tier": "standard",
@@ -15,7 +15,7 @@
   "subject": {
     "skill_id": "skill-evaluator",
     "name": "Skill Evaluator",
-    "version": "3.0.0",
+    "version": "4.0.0",
     "shape": "single_skill",
     "mechanisms": [
       "procedure_workflow",
@@ -27,10 +27,9 @@
     ],
     "package": {
       "path": "skill-evaluator",
-      "package_hash": "sha256:d8a26e69b3928afa0ced5f83deb8319af4cc828139264edc11e43268c661e0c6",
-      "repository_revision": "1111111111111111111111111111111111111111",
-      "repository_tree": "2222222222222222222222222222222222222222",
-      "dirty_state": "clean"
+      "source_revision": "1111111111111111111111111111111111111111",
+      "dirty_state": "clean",
+      "package_digest": "sha256:d8a26e69b3928afa0ced5f83deb8319af4cc828139264edc11e43268c661e0c6"
     },
     "claims": [
       "scoped-evaluation"
@@ -44,7 +43,7 @@
       "evidence": [
         {
           "kind": "text_lines",
-          "artifact": "spec-v5.json",
+          "artifact": "spec-v6.json",
           "start_line": 1,
           "end_line": 1
         }
@@ -58,7 +57,7 @@
       "evidence": [
         {
           "kind": "text_lines",
-          "artifact": "spec-v5.json",
+          "artifact": "spec-v6.json",
           "start_line": 1,
           "end_line": 1
         }
@@ -72,7 +71,7 @@
       "evidence": [
         {
           "kind": "text_lines",
-          "artifact": "spec-v5.json",
+          "artifact": "spec-v6.json",
           "start_line": 1,
           "end_line": 1
         }
@@ -86,7 +85,7 @@
       "evidence": [
         {
           "kind": "text_lines",
-          "artifact": "spec-v5.json",
+          "artifact": "spec-v6.json",
           "start_line": 1,
           "end_line": 1
         }
@@ -100,7 +99,7 @@
       "evidence": [
         {
           "kind": "text_lines",
-          "artifact": "spec-v5.json",
+          "artifact": "spec-v6.json",
           "start_line": 1,
           "end_line": 1
         }
@@ -114,7 +113,7 @@
       "evidence": [
         {
           "kind": "text_lines",
-          "artifact": "spec-v5.json",
+          "artifact": "spec-v6.json",
           "start_line": 1,
           "end_line": 1
         }
@@ -128,7 +127,7 @@
       "evidence": [
         {
           "kind": "text_lines",
-          "artifact": "spec-v5.json",
+          "artifact": "spec-v6.json",
           "start_line": 1,
           "end_line": 1
         }
@@ -142,7 +141,7 @@
       "evidence": [
         {
           "kind": "text_lines",
-          "artifact": "spec-v5.json",
+          "artifact": "spec-v6.json",
           "start_line": 1,
           "end_line": 1
         }
@@ -156,7 +155,7 @@
       "evidence": [
         {
           "kind": "text_lines",
-          "artifact": "spec-v5.json",
+          "artifact": "spec-v6.json",
           "start_line": 1,
           "end_line": 1
         }
@@ -170,7 +169,7 @@
       "evidence": [
         {
           "kind": "text_lines",
-          "artifact": "spec-v5.json",
+          "artifact": "spec-v6.json",
           "start_line": 1,
           "end_line": 1
         }
@@ -196,23 +195,17 @@
   },
   "suite": {
     "scenarios": {
-      "path": "scenarios-v1.jsonl",
-      "sha256": "sha256:e6b1e567a7a10e989259afe9665f7c0a1d5d28e4c740fc6d9949e17d7ff23fbc"
+      "path": "scenarios-v1.jsonl"
     },
     "public_scenarios": {
-      "path": "scenarios-v1.jsonl",
-      "sha256": "sha256:e6b1e567a7a10e989259afe9665f7c0a1d5d28e4c740fc6d9949e17d7ff23fbc"
+      "path": "scenarios-v1.jsonl"
     },
     "holdout": null,
-    "fixture_set_hash": "sha256:0347a4ddf936ea0c1ffcba857952a2df4e8863e9fc19e36a44f18345935a53b6",
-    "grader_set_hash": "sha256:25f216104d221b48297ac2c956592a43352ed54d7c64a00df15df4d7d880b290",
-    "grader_schedule_hash": "sha256:df677835f0bbc5a30dd906fa85e8c037fca704c28b4df1060228908f85e09f9f",
-    "treatment_contract_hash": "sha256:cd1ef42cbeda659104fd3143846adec1ec8c06026596d2a79cd3583be5f3c53a",
     "quality": {
-      "path": "suite-quality-v1.json",
-      "sha256": "sha256:e3176a4fba8d76c03e6f5ab45a81aa031f39032c20d824196cba289373044f34"
+      "path": "suite-quality-v2.json",
+      "digest": "sha256:fa56b164813441f3956fd88f0752c186ded5dba16c2e1350835917a49bd69373",
+      "schema_version": "suite-quality/2"
     },
-    "quality_contract_hash": "sha256:48c216d40645276b3cbd414dd6909c2bdb5c0df347a7a376111a165e00f9bd2f",
     "repeats": 1,
     "order_seed": 7,
     "reset_policy": "fresh-workspace",
@@ -220,8 +213,7 @@
   },
   "host": {
     "manifest": {
-      "path": "host-manifest-v1.json",
-      "sha256": "sha256:f6fb3089eeab1d83ad4791b006a19c8d1bc935fc2f45d703a1f5f0720af45d5f"
+      "path": "host-manifest-v2.json"
     },
     "required_capabilities": [
       "force_load"
@@ -236,16 +228,9 @@
       "intervention_axes": [
         "target-skill"
       ],
-      "model_identity": "sha256:0f2932e42ff4a364f5f9ff3b849257df786dd8362c81ca916087624ac9df0a48",
-      "harness_identity": "sha256:04ebc1267fab4654790c4dc4cc092b70e4545e4e6a6007a597ec11347fe93dac",
-      "host_identity": "sha256:720e1497762680d6cd714001fd471ac68a73fb8f96b562e6b692d9ec23c26ef2",
-      "implementation_hash": "sha256:34bf02e9d82363b2749a04ee745126d6eb9bf8e87d0082bd314b943e4f44e7e6",
-      "base_catalog_hash": "sha256:aa55b4fc409e67dc808ef32a9d7d7f5ebe63b68c59ea3bd4d75d3d7d12a18135",
-      "delivery_transform_hash": "sha256:12fc35510f716ca102a1498ececb6f9725931ec6bbe3b6e044083e0702b1b01d",
-      "tool_policy_hash": "sha256:6522f1b6f4bdf771f17878686721107dba84304ddfa0e2b8e1e8f5905d66f1db",
-      "permission_policy_hash": "sha256:d158ea0717bc436f050c6792d8b52cc08216c3866c0f22d626826fefb32c6b51",
-      "network_policy_hash": "sha256:064c876c4f965debe645b6598584f83762022dfc10f7a70e7d54a566105e06c6",
-      "context_policy_hash": "sha256:27781ec361e455f5ab4cba8dff996e6adf9b0411ba7c6f87d0d8993db74dc8ed",
+      "model_identity": "fixture-model",
+      "harness_identity": "fixture-harness",
+      "host_identity": "synthetic-host",
       "expected_capabilities": [
         "force_load"
       ],
@@ -256,7 +241,14 @@
         "core"
       ],
       "exclusions": [],
-      "exclusion_reason": null
+      "exclusion_reason": null,
+      "implementation_revision": "baseline-implementation",
+      "base_catalog_id": "fixture-catalog",
+      "delivery_transform_id": "fixture-delivery",
+      "tool_policy_id": "fixture-tool-policy",
+      "permission_policy_id": "fixture-permission-policy",
+      "network_policy_id": "fixture-network-policy",
+      "context_policy_id": "fixture-context-policy"
     },
     {
       "treatment_id": "candidate",
@@ -266,16 +258,9 @@
       "intervention_axes": [
         "target-skill"
       ],
-      "model_identity": "sha256:0f2932e42ff4a364f5f9ff3b849257df786dd8362c81ca916087624ac9df0a48",
-      "harness_identity": "sha256:04ebc1267fab4654790c4dc4cc092b70e4545e4e6a6007a597ec11347fe93dac",
-      "host_identity": "sha256:720e1497762680d6cd714001fd471ac68a73fb8f96b562e6b692d9ec23c26ef2",
-      "implementation_hash": "sha256:2830a2858b12b7bd66fcb5f5f47db1a3641ca185f91cb7fc5d0df2c83ae05d92",
-      "base_catalog_hash": "sha256:aa55b4fc409e67dc808ef32a9d7d7f5ebe63b68c59ea3bd4d75d3d7d12a18135",
-      "delivery_transform_hash": "sha256:36751f6d45e24c993d035591be2ea834af44a350d006af12136f1fa0226362e1",
-      "tool_policy_hash": "sha256:6522f1b6f4bdf771f17878686721107dba84304ddfa0e2b8e1e8f5905d66f1db",
-      "permission_policy_hash": "sha256:d158ea0717bc436f050c6792d8b52cc08216c3866c0f22d626826fefb32c6b51",
-      "network_policy_hash": "sha256:064c876c4f965debe645b6598584f83762022dfc10f7a70e7d54a566105e06c6",
-      "context_policy_hash": "sha256:27781ec361e455f5ab4cba8dff996e6adf9b0411ba7c6f87d0d8993db74dc8ed",
+      "model_identity": "fixture-model",
+      "harness_identity": "fixture-harness",
+      "host_identity": "synthetic-host",
       "expected_capabilities": [
         "force_load"
       ],
@@ -286,7 +271,14 @@
         "core"
       ],
       "exclusions": [],
-      "exclusion_reason": null
+      "exclusion_reason": null,
+      "implementation_revision": "candidate-implementation",
+      "base_catalog_id": "fixture-catalog",
+      "delivery_transform_id": "fixture-delivery",
+      "tool_policy_id": "fixture-tool-policy",
+      "permission_policy_id": "fixture-permission-policy",
+      "network_policy_id": "fixture-network-policy",
+      "context_policy_id": "fixture-context-policy"
     }
   ],
   "graders": [
@@ -313,7 +305,6 @@
           "synthetic-host.py"
         ],
         "path": "synthetic-host.py",
-        "sha256": "sha256:c7b0f1c218979af288cc77c51fe69fd44a9b469dec276c66ef27c6502c347a26",
         "cwd": ".",
         "env_allowlist": [],
         "timeout_seconds": 10,
@@ -322,7 +313,8 @@
         ],
         "pass_exit_codes": [
           0
-        ]
+        ],
+        "source_revision": "1111111111111111111111111111111111111111"
       }
     }
   ],
@@ -372,7 +364,7 @@
     "manual_review": {
       "required": false,
       "role": "evaluation-owner",
-      "decision_contract_hash": null
+      "decision_contract": null
     },
     "install": false,
     "publish": false,

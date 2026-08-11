@@ -13,7 +13,6 @@ sys.path.insert(0, str(SCRIPTS))
 from _model_evolution_contract import (  # noqa: E402
     canonical_bytes,
     content_hash,
-    verify_self_hash,  # noqa: E402
 )
 from _model_evolution_holdout import _load_holdout_bundle  # noqa: E402
 from _model_evolution_materialization import (  # noqa: E402
@@ -49,7 +48,11 @@ class ModelEvolutionMaterializationTests(unittest.TestCase):
             )
             argv = promoted["command"]["argv"]
             self.assertEqual(argv[argv.index("--host-manifest") + 1], str(final))
-            verify_self_hash(promoted, "manifest_hash")
+            self.assertEqual(
+                capability["probe"]["artifact"]["digest"],
+                "sha256:" + "1" * 64,
+            )
+            self.assertNotIn("manifest_hash", promoted)
 
             with self.assertRaisesRegex(MaterializationError, "already owns"):
                 promoted_model_grading_host(
@@ -137,17 +140,16 @@ class ModelEvolutionMaterializationTests(unittest.TestCase):
             }
             (bundle / "suite-quality-proof.json").write_bytes(canonical_bytes(proof))
             manifest = {
-                "schema_version": 1,
+                "schema_version": 2,
                 "external_holdout_contract_id": ("writing-plans-external-holdout-v1"),
                 "skill_id": "writing-plans",
                 "payload_file": payload.name,
-                "payload_sha256": content_hash(payload.read_bytes()),
+                "payload_digest": content_hash(payload.read_bytes()),
                 "scenario_count": 2,
                 "scenario_ids": [row["case_id"] for row in rows],
                 "scenarios": [
                     {
                         "case_id": row["case_id"],
-                        "scenario_sha256": content_hash(canonical_bytes(row)),
                         "risk": row["risk"],
                         "tags": row["tags"],
                     }

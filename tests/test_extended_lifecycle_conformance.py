@@ -16,7 +16,7 @@ class TestExtendedLifecycleConformance(SkillEvaluatorTestCase):  # noqa: F405
         self,
         root: Path,
     ) -> tuple[dict[str, Path], Path, dict, Path]:
-        paths = materialize_v5_lifecycle_inputs(root)  # noqa: F405
+        paths = materialize_epoch6_lifecycle_inputs(root)  # noqa: F405
         calibrated = self.run_cmd(
             'scripts/validate_eval_suite.py', 'calibration',
             '--spec', str(paths['spec']),
@@ -30,14 +30,15 @@ class TestExtendedLifecycleConformance(SkillEvaluatorTestCase):  # noqa: F405
         spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
         spec['suite']['calibration'] = {
             'path': paths['calibration'].name,
-            'sha256': 'sha256:' + hashlib.sha256(  # noqa: F405
+            'digest': 'sha256:' + hashlib.sha256(  # noqa: F405
                 paths['calibration'].read_bytes(),
             ).hexdigest(),
+            'schema_version': 'grader-calibration/3',
         }
         paths['spec'].write_text(
             json.dumps(spec, indent=2) + '\n', encoding='utf-8',
         )
-        rebind_v5_contract_fixture(paths)  # noqa: F405
+        rebind_epoch6_contract_fixture(paths)  # noqa: F405
 
         quality = self.run_cmd(
             'scripts/validate_eval_suite.py', 'suite-quality',
@@ -49,9 +50,10 @@ class TestExtendedLifecycleConformance(SkillEvaluatorTestCase):  # noqa: F405
         spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
         spec['suite']['quality'] = {
             'path': paths['generated_quality'].name,
-            'sha256': 'sha256:' + hashlib.sha256(  # noqa: F405
+            'digest': 'sha256:' + hashlib.sha256(  # noqa: F405
                 paths['generated_quality'].read_bytes(),
             ).hexdigest(),
+            'schema_version': 'suite-quality/2',
         }
         spec['execution']['ready'] = True
         paths['spec'].write_text(
@@ -178,9 +180,8 @@ class TestExtendedLifecycleConformance(SkillEvaluatorTestCase):  # noqa: F405
                 verifier_pid = int(stop_path.read_text(encoding='utf-8'))
                 self.assertIsNone(runner.poll())
                 self.assertTrue((attempt_dir / 'result.json').is_file())
-                self.assertEqual(
-                    3, len(index_path.read_text(encoding='utf-8').splitlines()),
-                )
+                _, interrupted_rows = load_run_index(index_path)
+                self.assertEqual(3, len(interrupted_rows))
                 active_result, active = self._status(plan_path, index_path)
                 self.assertEqual(
                     0, active_result.returncode,
@@ -245,13 +246,16 @@ class TestExtendedLifecycleConformance(SkillEvaluatorTestCase):  # noqa: F405
                 '--new-attempt-budget', '0',
             )
             self.assertEqual(3, sealed.returncode, sealed.stdout + sealed.stderr)
-            rows = [
-                json.loads(line)
-                for line in index_path.read_text(encoding='utf-8').splitlines()
-            ]
+            _, rows = load_run_index(index_path)
             self.assertEqual(4, len(rows))
             self.assertEqual(4, len({row['entry_id'] for row in rows}))
-            self.assertEqual({1}, {row['attempt'] for row in rows})
+            self.assertEqual(
+                {
+                    f"attempt.{entry['entry_ordinal']}.1"
+                    for entry in plan['entries']
+                },
+                {row['attempt_id'] for row in rows},
+            )
             self.assertFalse(any(root.rglob('attempt-0002')))
 
             requests = []
@@ -279,7 +283,7 @@ class TestExtendedLifecycleConformance(SkillEvaluatorTestCase):  # noqa: F405
                 (
                     request['envelope']['run_id'],
                     request['envelope']['request_kind'],
-                    request['request_hash'],
+                    request['envelope']['request_id'],
                 )
                 for request in requests
             ]

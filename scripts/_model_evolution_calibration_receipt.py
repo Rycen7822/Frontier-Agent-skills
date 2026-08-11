@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 from pathlib import Path
 from typing import Any
 
@@ -15,10 +14,7 @@ from _model_evolution_contract import (
     make_binding,
     resolve_binding,
     strict_json_bytes,
-    validate_all_bindings,
     validate_document,
-    verify_self_hash,
-    with_self_hash,
 )
 from _model_evolution_qualification import validate_qualification
 
@@ -44,7 +40,6 @@ def _verify_preparation_lineage(
     preparation: dict[str, Any],
 ) -> None:
     """Prove that only successful calibration records followed preparation."""
-    verify_self_hash(preparation, "preparation_hash")
     commands = {
         row.get("skill_id"): row.get("request_count")
         for row in preparation.get("commands", [])
@@ -65,24 +60,8 @@ def _verify_preparation_lineage(
     ):
         raise CalibrationReceiptError("campaign calibration lineage differs")
 
-    prepared = copy.deepcopy(campaign)
-    observed = prepared["budgets"]["observed"]
-    for skill_id in recorded:
-        request_count = commands[skill_id]
-        prepared["skill_evidence"][skill_id]["grader_calibration"] = None
-        for field in ("provider_requests", "model_grade"):
-            if observed[field] is not None:
-                observed[field] -= request_count
-                if observed[field] < 0:
-                    raise CalibrationReceiptError(
-                        "campaign calibration observed budget underflows",
-                    )
-    prepared["state_revision"] = prepared_revision
-    if recorded:
-        prepared["phase"] = "target_profile_ready"
-    prepared = with_self_hash(prepared, "campaign_hash")
-    if prepared["campaign_hash"] != preparation.get("campaign_hash"):
-        raise CalibrationReceiptError("campaign calibration ancestry differs")
+    if preparation.get("schema_version") != "model-evolution-calibration-preparation/2":
+        raise CalibrationReceiptError("calibration preparation schema differs")
 
 
 def _completed_identity(
@@ -101,7 +80,7 @@ def _completed_identity(
     cleanup = result.get("cleanup") if isinstance(result, dict) else None
     if (
         not isinstance(result, dict)
-        or result.get("record_type") != "skill-evaluator-host-result/1"
+        or result.get("record_type") != "skill-evaluator-host-result/2"
         or not isinstance(envelope, dict)
         or envelope.get("entry_ordinal") != ordinal
         or envelope.get("request_kind") != "model_grade"
@@ -114,25 +93,23 @@ def _completed_identity(
         or not isinstance(cleanup, dict)
         or cleanup.get("status") != "clean"
         or not isinstance(terminal, dict)
-        or terminal.get("schema_version") != "model-calibration-terminal/1"
+        or terminal.get("schema_version") != "model-calibration-terminal/2"
     ):
         raise ContractError("Host result is not a clean completed model-grade turn")
-    verify_self_hash(terminal, "terminal_hash")
     identity = {
         "entry_ordinal": ordinal,
         "entry_id": envelope.get("entry_id"),
-        "request_hash": result.get("request_hash"),
-        "payload_hash": terminal.get("payload_hash"),
+        "request_id": envelope.get("request_id"),
         "check_id": terminal.get("check_id"),
         "terminal_status": "completed",
     }
     if (
         terminal.get("example_id") != identity["entry_id"]
         or terminal.get("position") != ordinal + 1
-        or terminal.get("request_hash") != identity["request_hash"]
+        or terminal.get("request_id") != identity["request_id"]
         or any(
             not isinstance(identity[field], str)
-            for field in ("entry_id", "request_hash", "payload_hash", "check_id")
+            for field in ("entry_id", "request_id", "check_id")
         )
     ):
         raise ContractError("completed model-grade identity differs")
@@ -182,9 +159,7 @@ def _projection(
         rating = rating_map[key]
         request = request_map[key]
         if (
-            label.get("payload_hash") != request["payload_hash"]
-            or rating.get("payload_hash") != request["payload_hash"]
-            or rating.get("position") != request["entry_ordinal"] + 1
+            rating.get("position") != request["entry_ordinal"] + 1
             or label.get("gold_label") not in {"pass", "fail", "abstain"}
             or rating.get("label") not in {"pass", "fail", "abstain"}
         ):
@@ -224,7 +199,6 @@ def validate_calibration_rejection_receipt(
         label="calibration rejection receipt",
     )
     validate_document(receipt, "calibration_rejection_receipt")
-    validate_all_bindings(receipt, repository_root, campaign_root)
     qualification = load_json(
         resolve_binding(receipt["qualification"], repository_root, campaign_root),
         label="calibration rejection qualification",
@@ -236,8 +210,10 @@ def validate_calibration_rejection_receipt(
     validate_qualification(qualification)
     _verify_preparation_lineage(campaign, preparation)
     if (
-        receipt["campaign_hash"] != campaign["campaign_hash"]
-        or qualification.get("campaign_hash") != campaign["campaign_hash"]
+        receipt["campaign_id"] != campaign["campaign_id"]
+        or receipt["state_revision"] != campaign["state_revision"]
+        or qualification.get("campaign_id") != campaign["campaign_id"]
+        or qualification.get("terminal_state_revision") != campaign["state_revision"]
         or qualification.get("decision") != "blocked"
     ):
         raise ContractError("calibration rejection receipt differs from its campaign")
@@ -252,7 +228,7 @@ def validate_calibration_rejection_receipt(
         or receipt["request_count"] != len(requests)
         or sorted(row["entry_ordinal"] for row in requests)
         != list(range(len(requests)))
-        or len({row["request_hash"] for row in requests}) != len(requests)
+        or len({row["request_id"] for row in requests}) != len(requests)
     ):
         raise ContractError("calibration rejection receipt request set differs")
     for row in requests:
@@ -303,7 +279,8 @@ def close_calibration_rejection(
     _verify_preparation_lineage(campaign, preparation)
     if (
         qualification.get("decision") != "blocked"
-        or qualification.get("campaign_hash") != campaign["campaign_hash"]
+        or qualification.get("campaign_id") != campaign["campaign_id"]
+        or qualification.get("terminal_state_revision") != campaign["state_revision"]
     ):
         raise CalibrationReceiptError("campaign calibration identity differs")
     if campaign["skill_evidence"][skill_id]["grader_calibration"] is not None:
@@ -344,13 +321,13 @@ def close_calibration_rejection(
             **identity,
             "host_result": make_binding(
                 host_result,
-                root="campaign",
+                root="external",
                 repository_root=repository_root,
                 campaign_root=campaign_root,
             ),
             "terminal": make_binding(
                 terminal,
-                root="campaign",
+                root="external",
                 repository_root=repository_root,
                 campaign_root=campaign_root,
             ),
@@ -362,9 +339,10 @@ def close_calibration_rejection(
         load_jsonl(ratings_path, label="calibration ratings"),
         requests,
     )
-    receipt = with_self_hash({
-        "schema_version": "model-evolution-calibration-rejection-receipt/1",
-        "campaign_hash": campaign["campaign_hash"],
+    receipt = {
+        "schema_version": "model-evolution-calibration-rejection-receipt/2",
+        "campaign_id": campaign["campaign_id"],
+        "state_revision": campaign["state_revision"],
         "qualification": make_binding(
             qualification_path,
             root="campaign",
@@ -381,13 +359,13 @@ def close_calibration_rejection(
         "classification": "completed_turns_rejected_by_calibration_threshold",
         "labels": make_binding(
             labels_path,
-            root="campaign",
+            root="external",
             repository_root=repository_root,
             campaign_root=campaign_root,
         ),
         "ratings": make_binding(
             ratings_path,
-            root="campaign",
+            root="external",
             repository_root=repository_root,
             campaign_root=campaign_root,
         ),
@@ -396,7 +374,7 @@ def close_calibration_rejection(
         "check_metrics": metrics,
         "failed_checks": failed,
         "requests": requests,
-    }, "calibration_rejection_receipt_hash")
+    }
     validate_document(receipt, "calibration_rejection_receipt")
     payload = canonical_bytes(receipt) + b"\n"
     _write_exact(output, payload)

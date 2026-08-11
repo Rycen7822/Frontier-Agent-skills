@@ -16,7 +16,7 @@ def _artifact(name: str, value: object) -> dict[str, str]:
     Path(name).write_bytes(payload)
     return {
         "path": f"workspace/{name}",
-        "sha256": "sha256:" + sha256(payload).hexdigest(),
+        "digest": "sha256:" + sha256(payload).hexdigest(),
         "encoding": "utf-8",
     }
 
@@ -56,11 +56,10 @@ def main() -> int:
         "items": items,
     })
     result = {
-        "record_type": "skill-evaluator-host-result/1",
+        "record_type": "skill-evaluator-host-result/2",
         "terminal": True,
         "terminal_status": "completed",
         "envelope": request["envelope"],
-        "request_hash": request["request_hash"],
         "treatment_error": None,
         "refusal": False,
         "timeout": False,
@@ -70,7 +69,7 @@ def main() -> int:
         "actions": [],
         "artifacts": [grade],
         "state": [],
-        "cleanup": {"status": "clean"},
+        "cleanup": {"status": "clean", "state": "not_applicable"},
         "usage": {
             "pricing_identity": "fixture-pricing",
             "host_safety_review": {

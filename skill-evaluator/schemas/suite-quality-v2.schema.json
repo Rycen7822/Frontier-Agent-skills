@@ -1,20 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/skill-evaluator/schemas/suite-quality-v1.schema.json",
-  "title": "Skill Evaluator suite quality v1",
+  "$id": "https://example.invalid/skill-evaluator/schemas/suite-quality-v2.schema.json",
+  "title": "Skill Evaluator suite quality v2",
   "type": "object",
   "required": [
     "schema_version",
     "suite_quality_id",
-    "suite_quality_hash",
     "evaluation_id",
-    "quality_contract_hash",
-    "scenario_hash",
-    "holdout_hash",
-    "fixture_set_hash",
-    "grader_set_hash",
-    "treatment_contract_hash",
-    "calibration_hash",
     "raw_proofs",
     "duplicate_groups",
     "provenance_clusters",
@@ -28,17 +20,9 @@
     "gates"
   ],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "suite_quality_id": {"$ref": "#/$defs/safe_id"},
-    "suite_quality_hash": {"$ref": "#/$defs/sha256"},
     "evaluation_id": {"$ref": "#/$defs/safe_id"},
-    "quality_contract_hash": {"$ref": "#/$defs/sha256"},
-    "scenario_hash": {"$ref": "#/$defs/sha256"},
-    "holdout_hash": {"$ref": "#/$defs/nullable_sha256"},
-    "fixture_set_hash": {"$ref": "#/$defs/sha256"},
-    "grader_set_hash": {"$ref": "#/$defs/sha256"},
-    "treatment_contract_hash": {"$ref": "#/$defs/sha256"},
-    "calibration_hash": {"$ref": "#/$defs/nullable_sha256"},
     "raw_proofs": {"$ref": "#/$defs/raw_proofs"},
     "duplicate_groups": {
       "type": "array",
@@ -75,9 +59,6 @@
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
-    "nullable_sha256": {
-      "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
-    },
     "safe_id": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
@@ -87,12 +68,20 @@
       "minLength": 1,
       "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
     },
+    "repository_ref": {
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relative_path"}
+      },
+      "additionalProperties": false
+    },
     "artifact_binding": {
       "type": "object",
-      "required": ["path", "sha256"],
+      "required": ["path", "digest"],
       "properties": {
         "path": {"$ref": "#/$defs/relative_path"},
-        "sha256": {"$ref": "#/$defs/sha256"}
+        "digest": {"$ref": "#/$defs/sha256"}
       },
       "additionalProperties": false
     },
@@ -117,7 +106,7 @@
         "status": {"enum": ["allowed", "blocked", "reviewed_distinct"]},
         "review_locator": {
           "anyOf": [
-            {"$ref": "failure-index-v1.schema.json#/$defs/locator"},
+            {"$ref": "failure-index-v2.schema.json#/$defs/locator"},
             {"type": "null"}
           ]
         }
@@ -126,13 +115,13 @@
     },
     "provenance_cluster": {
       "type": "object",
-      "required": ["cluster_id", "case_ids", "source_hashes", "status", "review_locator"],
+      "required": ["cluster_id", "case_ids", "source_refs", "status", "review_locator"],
       "properties": {
         "cluster_id": {"$ref": "#/$defs/safe_id"},
         "case_ids": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/safe_id"}},
-        "source_hashes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/sha256"}},
+        "source_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
         "status": {"enum": ["closed", "open", "not_evaluable"]},
-        "review_locator": {"$ref": "failure-index-v1.schema.json#/$defs/locator"}
+        "review_locator": {"$ref": "failure-index-v2.schema.json#/$defs/locator"}
       },
       "additionalProperties": false
     },
@@ -144,21 +133,21 @@
         "surface": {"enum": ["holdout", "executor_context", "calibration", "suite_quality", "success_criteria"]},
         "status": {"enum": ["pass", "fail", "not_evaluable"]},
         "artifact": {"$ref": "#/$defs/artifact_binding"},
-        "locator": {"$ref": "failure-index-v1.schema.json#/$defs/locator"}
+        "locator": {"$ref": "failure-index-v2.schema.json#/$defs/locator"}
       },
       "additionalProperties": false
     },
     "custody": {
       "type": "object",
-      "required": ["split_hashes", "custodian", "exposure_status", "author_visible_paths", "executor_visible_paths"],
+      "required": ["split_bindings", "custodian", "exposure_status", "author_visible_paths", "executor_visible_paths"],
       "properties": {
-        "split_hashes": {
+        "split_bindings": {
           "type": "object",
           "required": ["dev", "regression", "heldout"],
           "properties": {
-            "dev": {"$ref": "#/$defs/nullable_sha256"},
-            "regression": {"$ref": "#/$defs/nullable_sha256"},
-            "heldout": {"$ref": "#/$defs/nullable_sha256"}
+            "dev": {"anyOf": [{"$ref": "#/$defs/repository_ref"}, {"type": "null"}]},
+            "regression": {"anyOf": [{"$ref": "#/$defs/repository_ref"}, {"type": "null"}]},
+            "heldout": {"anyOf": [{"$ref": "#/$defs/artifact_binding"}, {"type": "null"}]}
           },
           "additionalProperties": false
         },

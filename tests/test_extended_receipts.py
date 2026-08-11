@@ -4,8 +4,8 @@ from skill_evaluator_test_support import *  # noqa: F403
 
 
 class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
-    def _runtime_v4_bundle(self, root: Path) -> dict[str, object]:
-        paths = materialize_v5_contract_fixture(root)
+    def _runtime_epoch6_bundle(self, root: Path) -> dict[str, object]:
+        paths = materialize_epoch6_contract_fixture(root)
         plan_path = root / 'execution-plan.json'
         compiled = self.run_cmd(
             'scripts/compile_eval_plan.py',
@@ -31,7 +31,9 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
             '--new-attempt-budget', '1',
         )
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
-        row = json.loads(index_path.read_text(encoding='utf-8').strip())
+        header, rows = load_run_index(index_path)
+        self.assertEqual(1, len(rows))
+        row = rows[0]
         receipt_path = (
             root / plan['artifacts']['root'] / row['receipt']['path']
         )
@@ -41,6 +43,7 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
             'plan': plan,
             'entry': entry,
             'index_path': index_path,
+            'header': header,
             'row': row,
             'receipt_path': receipt_path,
             'receipt': json.loads(receipt_path.read_text(encoding='utf-8')),
@@ -50,8 +53,8 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
         self,
     ) -> None:
         validator = load_validator_module()
-        registry = validator.load_v5_schema_registry()
-        receipt = make_v5_schema_examples()['receipt-v4.schema.json']
+        registry = validator.load_epoch6_schema_registry()
+        receipt = make_epoch6_schema_examples()['receipt-v5.schema.json']
         receipt['usage']['host_safety_review'] = {
             'capture_status': 'captured',
             'host_safety_review_count': 1,
@@ -59,8 +62,8 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
         }
         self.assertEqual(
             [],
-            validator.validate_v5_schema(
-                receipt, 'receipt-v4.schema.json', registry,
+            validator.validate_epoch6_schema(
+                receipt, 'receipt-v5.schema.json', registry,
             ),
         )
         receipt['usage']['host_safety_review'][
@@ -70,8 +73,8 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
             'schema.minimum',
             {
                 item['code']
-                for item in validator.validate_v5_schema(
-                    receipt, 'receipt-v4.schema.json', registry,
+                for item in validator.validate_epoch6_schema(
+                    receipt, 'receipt-v5.schema.json', registry,
                 )
             },
         )
@@ -80,8 +83,8 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
         ] = 1
         receipt['host_protocol']['requests'] = []
         receipt['host_protocol']['results'] = []
-        normal = validator.validate_v5_schema(
-            receipt, 'receipt-v4.schema.json', registry,
+        normal = validator.validate_epoch6_schema(
+            receipt, 'receipt-v5.schema.json', registry,
         )
         self.assertIn('schema.minItems', {item['code'] for item in normal})
 
@@ -91,14 +94,14 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
         receipt['run']['error'] = 'apparatus interrupted'
         self.assertEqual(
             [],
-            validator.validate_v5_schema(
-                receipt, 'receipt-v4.schema.json', registry,
+            validator.validate_epoch6_schema(
+                receipt, 'receipt-v5.schema.json', registry,
             ),
         )
 
-    def test_runtime_receipt_v4_and_index_v2_bind_exact_artifacts(self) -> None:
+    def test_runtime_receipt_and_index_bind_exact_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            bundle = self._runtime_v4_bundle(Path(tmp))
+            bundle = self._runtime_epoch6_bundle(Path(tmp))
             evidence = load_evidence_io_module()
             validator = load_validator_module()
             receipt = bundle['receipt']
@@ -109,31 +112,28 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
 
             self.assertEqual(
                 [],
-                validator.validate_v5_schema(
+                validator.validate_epoch6_schema(
                     receipt,
-                    'receipt-v4.schema.json',
-                    validator.load_v5_schema_registry(),
+                    'receipt-v5.schema.json',
+                    validator.load_epoch6_schema_registry(),
                 ),
             )
-            self.assertTrue(evidence.verify_self_hash(receipt, 'receipt_hash'))
-            self.assertTrue(evidence.verify_self_hash(
-                receipt['attempt_start'], 'marker_hash',
-            ))
-            self.assertEqual(plan['plan_hash'], row['plan_hash'])
+            self.assertEqual(plan['plan_id'], bundle['header']['plan_id'])
+            self.assertEqual(
+                evidence.file_sha256(bundle['plan_path']),
+                bundle['header']['plan_digest'],
+            )
             self.assertEqual(entry['entry_id'], row['entry_id'])
             self.assertEqual(
                 evidence.file_sha256(receipt_path),
-                row['receipt']['sha256'],
+                row['receipt']['digest'],
             )
             evidence.verify_artifact_records(
                 receipt['artifacts'],
                 receipt_path.parent,
                 label='runtime receipt',
             )
-            self.assertEqual(
-                plan['host_manifest_hash'],
-                receipt['provenance']['host_manifest_hash'],
-            )
+            self.assertEqual(plan['plan_id'], receipt['run']['plan_id'])
             self.assertEqual(
                 {
                     'capture_status': 'captured',
@@ -142,22 +142,19 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
                 },
                 receipt['usage']['host_safety_review'],
             )
-            self.assertEqual(
-                entry['treatment_hash'],
-                receipt['provenance']['treatment_hash'],
-            )
+            self.assertEqual(entry['treatment_id'], receipt['run']['treatment_id'])
             self.assertTrue({'score', 'pass', 'usage'}.isdisjoint(row))
 
-    def test_resume_rejects_rehashed_v3_protection_tamper(self) -> None:
+    def test_resume_rejects_semantic_or_artifact_tamper(self) -> None:
         mutations = (
-            ('package', lambda receipt: receipt['provenance'].__setitem__(
-                'package_hash', 'sha256:' + '0' * 64,
+            ('entry', lambda receipt: receipt['run'].__setitem__(
+                'entry_id', 'entry.mismatch',
             )),
-            ('catalog', lambda receipt: receipt['provenance'].__setitem__(
-                'catalog_hash', 'sha256:' + '0' * 64,
+            ('catalog', lambda receipt: receipt['routing'].__setitem__(
+                'catalog', [],
             )),
-            ('treatment', lambda receipt: receipt['provenance'].__setitem__(
-                'treatment_hash', 'sha256:' + '0' * 64,
+            ('artifact', lambda receipt: receipt['artifacts'][0].__setitem__(
+                'digest', 'sha256:' + '0' * 64,
             )),
             ('context', lambda receipt: receipt['context_usage'].__setitem__(
                 'controlled_core_bytes', 1,
@@ -165,20 +162,18 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
         )
         for label, mutate in mutations:
             with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
-                bundle = self._runtime_v4_bundle(Path(tmp))
+                bundle = self._runtime_epoch6_bundle(Path(tmp))
                 evidence = load_evidence_io_module()
                 receipt = bundle['receipt']
                 mutate(receipt)
-                receipt['receipt_hash'] = evidence.canonical_self_hash(
-                    receipt, 'receipt_hash',
-                )
                 receipt_path = bundle['receipt_path']
                 receipt_path.write_bytes(evidence.canonical_json_bytes(receipt))
                 row = bundle['row']
-                row['receipt']['sha256'] = evidence.file_sha256(receipt_path)
+                row['receipt']['digest'] = evidence.file_sha256(receipt_path)
                 index_path = bundle['index_path']
                 index_path.write_bytes(
-                    evidence.canonical_json_bytes(row) + b'\n',
+                    evidence.canonical_json_bytes(bundle['header']) + b'\n'
+                    + evidence.canonical_json_bytes(row) + b'\n',
                 )
                 before = (receipt_path.read_bytes(), index_path.read_bytes())
 
@@ -203,14 +198,12 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
     ) -> None:
         evidence = load_evidence_io_module()
         analyzer = load_analyzer_module()
-        validator = load_validator_module()
         value = {'z': 2, 'é': ['line', None], 'a': 1}
         expected_bytes = '{"a":1,"z":2,"é":["line",null]}'.encode()
         expected_hash = 'sha256:' + hashlib.sha256(expected_bytes).hexdigest()
         self.assertEqual(expected_bytes, evidence.canonical_json_bytes(value))
         self.assertEqual(expected_hash, evidence.canonical_sha256(value))
         self.assertEqual(expected_hash, analyzer.canonical_sha256(value))
-        self.assertEqual(expected_hash, validator.canonical_sha256(value))
         with self.assertRaises(ValueError):
             evidence.canonical_json_bytes({'bad': float('nan')})
         for reference in ('/absolute', '../escape', 'a/../escape', r'a\escape'):

@@ -5,9 +5,9 @@
       "declared": true,
       "probe": {
         "artifact": {
+          "digest": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d",
           "encoding": "utf-8",
-          "path": "grader-output.schema.json",
-          "sha256": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d"
+          "path": "grader-output.schema.json"
         },
         "locator": {
           "artifact": "grader-output.schema.json",
@@ -24,9 +24,9 @@
       "declared": true,
       "probe": {
         "artifact": {
+          "digest": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d",
           "encoding": "utf-8",
-          "path": "grader-output.schema.json",
-          "sha256": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d"
+          "path": "grader-output.schema.json"
         },
         "locator": {
           "artifact": "grader-output.schema.json",
@@ -54,16 +54,16 @@
     "missing": []
   },
   "catalog": {
-    "catalog_hash": "sha256:aa55b4fc409e67dc808ef32a9d7d7f5ebe63b68c59ea3bd4d75d3d7d12a18135",
+    "catalog_id": "fixture-catalog",
     "entries": [
       {
         "description": "Fixture skill",
         "id": "skill-evaluator",
         "name": "Skill Evaluator",
-        "root_hash": "sha256:d8a26e69b3928afa0ced5f83deb8319af4cc828139264edc11e43268c661e0c6",
+        "root_digest": "sha256:d8a26e69b3928afa0ced5f83deb8319af4cc828139264edc11e43268c661e0c6",
         "scope": "fixture",
         "source": "local",
-        "version": "3.0.0"
+        "version": "4.0.0"
       }
     ]
   },
@@ -72,32 +72,33 @@
       "python3",
       "replace-with-host-adapter.py"
     ],
+    "command_id": "replace-host",
     "env_allowlist": [
       "PYTHONDONTWRITEBYTECODE"
     ],
-    "executable_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-    "protocol_version": 1,
+    "executable_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "protocol_version": 2,
     "resolved_executable": "/path/to/python3"
   },
   "identity": {
     "adapter": {
       "id": "jsonl-adapter",
-      "sha256": "sha256:7b9414b00ddf9aebc29f3a117a019f5cdee9e744a2d995fc9da70ebe17332f0a",
       "version": "1"
     },
     "execution": {
-      "catalog_hash": "sha256:aa55b4fc409e67dc808ef32a9d7d7f5ebe63b68c59ea3bd4d75d3d7d12a18135",
+      "catalog_id": "fixture-catalog",
       "harness": "fixture-harness",
+      "harness_version": "1.0.0",
       "model": "fixture-model",
       "model_revision": "fixture-revision",
       "monotonic_clock_id": "fixture-monotonic",
-      "policy_hash": "sha256:20298729b16ab50efb932bc666f6286e50934391decbf14a42e31a8c49b09a70",
+      "policy_id": "fixture-policy",
       "pricing_id": "fixture-pricing",
-      "prompt_hash": "sha256:fac5cd812575806bc5875a84cd1f149b6d45874239a70270a387daa252d75a61",
+      "prompt_id": "fixture-prompt",
       "provider": "fixture-provider",
-      "skill_hash": "sha256:d8a26e69b3928afa0ced5f83deb8319af4cc828139264edc11e43268c661e0c6",
+      "skill_id": "skill-evaluator",
       "tokenizer_id": "fixture-tokenizer",
-      "tool_schema_hash": "sha256:3e086143a06bdaae38d8cb9619a8eb0a58ef2969a3d27b4788110337df6fcf18",
+      "tool_schema_id": "fixture-tools",
       "utc_clock_id": "fixture-utc"
     },
     "host_build": "replace-build",
@@ -119,46 +120,39 @@
       "topology": "single"
     }
   },
-  "manifest_hash": "sha256:01b22f0afecd55b9bf9c02599ca7f99283d2fbadd1bcb681d1cc9f22301f5c88",
-  "manifest_id": "host-template",
+  "manifest_id": "replace-host-manifest",
   "policy": {
     "approval": {
-      "identity_hash": "sha256:7b6bf563884465dadd7eda39a17dba65b59a3ce037b76db4ef251c1dda9028f6",
       "mode": "isolated",
       "rules": [
         "fixture-only"
       ]
     },
     "credentials": {
-      "identity_hash": "sha256:7b6bf563884465dadd7eda39a17dba65b59a3ce037b76db4ef251c1dda9028f6",
       "mode": "isolated",
       "rules": [
         "fixture-only"
       ]
     },
     "filesystem": {
-      "identity_hash": "sha256:7b6bf563884465dadd7eda39a17dba65b59a3ce037b76db4ef251c1dda9028f6",
       "mode": "isolated",
       "rules": [
         "fixture-only"
       ]
     },
     "network": {
-      "identity_hash": "sha256:7b6bf563884465dadd7eda39a17dba65b59a3ce037b76db4ef251c1dda9028f6",
       "mode": "isolated",
       "rules": [
         "fixture-only"
       ]
     },
     "permissions": {
-      "identity_hash": "sha256:7b6bf563884465dadd7eda39a17dba65b59a3ce037b76db4ef251c1dda9028f6",
       "mode": "isolated",
       "rules": [
         "fixture-only"
       ]
     },
     "sandbox": {
-      "identity_hash": "sha256:7b6bf563884465dadd7eda39a17dba65b59a3ce037b76db4ef251c1dda9028f6",
       "mode": "isolated",
       "rules": [
         "fixture-only"
@@ -168,9 +162,9 @@
   "reset": {
     "probe": {
       "artifact": {
+        "digest": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d",
         "encoding": "utf-8",
-        "path": "grader-output.schema.json",
-        "sha256": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d"
+        "path": "grader-output.schema.json"
       },
       "locator": {
         "artifact": "grader-output.schema.json",
@@ -187,5 +181,5 @@
     ],
     "strategy": "fresh-workspace"
   },
-  "schema_version": 1
+  "schema_version": 2
 }

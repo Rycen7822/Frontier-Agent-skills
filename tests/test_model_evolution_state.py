@@ -5,7 +5,6 @@ import copy
 import fcntl
 import json
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -15,7 +14,6 @@ from unittest import mock
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 
-import _model_evolution_ops as operations  # noqa: E402
 import _model_evolution_state as state_module  # noqa: E402
 import model_evolution as controller  # noqa: E402
 import support.model_evolution.repository as repository_support  # noqa: E402
@@ -23,9 +21,9 @@ from _model_evolution_campaign import validate_campaign  # noqa: E402
 from _model_evolution_contract import (  # noqa: E402
     SKILL_IDS,
     ContractError,
+    content_hash,
     make_binding,
-    validate_all_bindings,
-    with_self_hash,
+    resolve_binding,
 )
 from _model_evolution_state import (  # noqa: E402
     CampaignStore,
@@ -52,10 +50,11 @@ from support.model_evolution.repository import (  # noqa: E402
 def operation_fact(operation_id: str = "fixture-gate") -> dict:
     return {
         "operation_id": operation_id,
-        "input_hash": "sha256:" + "3" * 64,
-        "command_hash": "sha256:" + "4" * 64,
         "status": "pass",
         "duration_ms": 1,
+        "state_revision": 0,
+        "exit_code": 0,
+        "diagnostic": None,
     }
 
 
@@ -66,12 +65,14 @@ def plan_record(skill_id: str, role: str = "target_current") -> dict:
         "plan": {
             "root": "campaign",
             "path": "plan.json",
-            "sha256": "sha256:" + "5" * 64,
+            "schema_version": "2",
         },
-        "host_hash": "sha256:" + "6" * 64,
+        "plan_digest": "sha256:" + "5" * 64,
+        "host_id": "synthetic-host",
+        "host_version": "1.0.0",
         "execute_ceiling": 1,
         "model_grade_ceiling": 0,
-        "runner_status_hash": "sha256:" + "7" * 64,
+        "runner_status": {"completed": 0, "total": 1, "failed": 0},
     }
 
 
@@ -94,7 +95,7 @@ class ModelEvolutionStateTest(unittest.TestCase):
         state["apparatus_report"] = materialize_apparatus_report(self.fixture)
         state["profiles"]["target_observed"] = self.fixture["bindings"]["host"]
         mark_probe_passed(state, self.fixture)
-        return with_self_hash(state, "campaign_hash")
+        return state
 
     def test_cas_lock_and_failed_replace_preserve_state_bytes(self) -> None:
         store = self.fixture["store"]
@@ -195,7 +196,7 @@ class ModelEvolutionStateTest(unittest.TestCase):
     def test_frozen_sentinel_budget_counts_both_holdout_treatments(self) -> None:
         sentinel = json.loads(
             (
-                REPOSITORY_ROOT / "evaluation/model-evolution/sentinel-index-v1.json"
+                REPOSITORY_ROOT / "evaluation/model-evolution/sentinel-index-v2.json"
             ).read_text(encoding="utf-8")
         )
         self.assertEqual(
@@ -213,79 +214,40 @@ class ModelEvolutionStateTest(unittest.TestCase):
             ),
         )
 
-    def test_repository_binding_can_fall_back_only_to_frozen_git_blob(self) -> None:
-        repository = Path(self.temporary.name) / "blob-repository"
-        campaign_root = repository / ".work/campaign"
-        campaign_root.mkdir(parents=True)
-        subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
-        subprocess.run(
-            ["git", "config", "user.name", "Fixture"], cwd=repository, check=True
-        )
-        subprocess.run(
-            ["git", "config", "user.email", "fixture@example.invalid"],
-            cwd=repository,
-            check=True,
-        )
-        source = repository / "bundle.json"
-        source.write_text("base\n", encoding="utf-8")
-        subprocess.run(["git", "add", "bundle.json"], cwd=repository, check=True)
-        subprocess.run(
-            ["git", "commit", "-q", "--no-gpg-sign", "-m", "base"],
-            cwd=repository,
-            check=True,
-        )
-        revision = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=repository,
-            check=True,
-            text=True,
-            capture_output=True,
-        ).stdout.strip()
-        binding = make_binding(
-            source,
-            root="repository",
-            repository_root=repository,
-            campaign_root=campaign_root,
-        )
-        source.write_text("candidate\n", encoding="utf-8")
-        with self.assertRaisesRegex(ContractError, "hash differs"):
-            validate_all_bindings(binding, repository, campaign_root)
-        validate_all_bindings(
-            binding,
-            repository,
-            campaign_root,
-            lambda path, expected_hash: operations.git_blob_matches(
-                repository, revision, path, expected_hash
-            ),
-        )
-        source.unlink()
-        source.symlink_to(repository / "outside")
-        with self.assertRaisesRegex(ContractError, "symlinked"):
-            validate_all_bindings(
-                binding,
-                repository,
-                campaign_root,
-                lambda path, expected_hash: operations.git_blob_matches(
-                    repository, revision, path, expected_hash
-                ),
-            )
-
+    def test_bindings_follow_repository_campaign_and_external_owners(self) -> None:
         source_manifest = self.fixture["paths"]["bundle_manifest"]
         source_manifest.write_text("candidate bytes\n", encoding="utf-8")
-        expected = self.fixture["bindings"]["bundle_manifest"]
+        repository_binding = self.fixture["bindings"]["bundle_manifest"]
+        self.assertEqual(
+            resolve_binding(
+                repository_binding,
+                self.fixture["repository_root"],
+                self.fixture["campaign_root"],
+            ),
+            source_manifest.resolve(),
+        )
 
-        def frozen_match(revision: str, path: str, expected_hash: str) -> bool:
-            return (
-                revision == FIXED_COMMIT
-                and path == expected["path"]
-                and expected_hash == expected["sha256"]
+        external_path = write_json(
+            self.fixture["campaign_root"] / "provider-result.json",
+            {"schema_version": 1, "status": "complete"},
+        )
+        external_binding = make_binding(
+            external_path,
+            root="external",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
+        external_path.write_text(
+            '{"schema_version":1,"status":"changed"}\n', encoding="utf-8"
+        )
+        with self.assertRaisesRegex(ContractError, "digest differs"):
+            resolve_binding(
+                external_binding,
+                self.fixture["repository_root"],
+                self.fixture["campaign_root"],
             )
 
-        store = CampaignStore(
-            self.fixture["campaign_root"],
-            self.fixture["repository_root"],
-            repository_blob_matches=frozen_match,
-        )
+        store = self.fixture["store"]
         self.assertEqual(store.read()["campaign_id"], "campaign-fixture")
         updated = store.mutate(0, lambda state: None)
         self.assertEqual(updated["state_revision"], 1)
@@ -295,23 +257,19 @@ class ModelEvolutionStateTest(unittest.TestCase):
         self._write_state(state)
         plan_path = write_json(
             self.fixture["campaign_root"] / "plan.json",
-            with_self_hash(
-                {
-                    "host_manifest_hash": json.loads(
-                        self.fixture["paths"]["host"].read_text()
-                    )["manifest_hash"],
-                    "package_hashes": {
-                        SKILL_IDS[0]: state["product"]["skills"][SKILL_IDS[0]][
-                            "root_hash"
-                        ]
-                    },
-                    "entries": [
-                        {"execute_case_payload": {"subject_skill_id": SKILL_IDS[0]}}
-                    ],
-                    "artifacts": {"root": "artifacts", "index_relpath": "index.jsonl"},
+            {
+                "schema_version": 2,
+                "plan_id": "plan.state-fixture",
+                "package_digests": {
+                    SKILL_IDS[0]: state["product"]["skills"][SKILL_IDS[0]][
+                        "root_hash"
+                    ]
                 },
-                "plan_hash",
-            ),
+                "entries": [
+                    {"execute_case_payload": {"subject_skill_id": SKILL_IDS[0]}}
+                ],
+                "artifacts": {"root": "artifacts", "index_relpath": "index.jsonl"},
+            },
         )
         args = argparse.Namespace(
             repository_root=self.fixture["repository_root"],
@@ -328,11 +286,13 @@ class ModelEvolutionStateTest(unittest.TestCase):
             "execute_case_request_ceiling": 1,
             "model_grade_request_ceiling": 0,
             "worst_case_remaining_attempts": 1,
+            "completed_entries": 0,
+            "selected_entries": 1,
+            "invalid_attempts": 0,
         }
         before = self.fixture["store"].path.read_bytes()
         wrong = json.loads(plan_path.read_text())
         wrong["entries"][0]["execute_case_payload"]["subject_skill_id"] = SKILL_IDS[1]
-        wrong = with_self_hash(wrong, "plan_hash")
         wrong_path = write_json(
             self.fixture["campaign_root"] / "wrong-plan.json", wrong
         )
@@ -367,11 +327,16 @@ class ModelEvolutionStateTest(unittest.TestCase):
             controller._register_plan(args)
         updated = self.fixture["store"].read()
         self.assertEqual(updated["budgets"]["reserved"]["provider_requests"], 1)
+        registered = updated["plans"][0]
+        self.assertEqual(registered["plan_digest"], content_hash(plan_path.read_bytes()))
+        self.assertEqual(registered["host_id"], host["identity"]["host_id"])
+        self.assertEqual(
+            registered["runner_status"], {"completed": 0, "total": 1, "failed": 0}
+        )
 
     def test_plugin_build_record_binds_selected_signed_identity(self) -> None:
         state = self._prepared_state()
         state["phase"] = "decision_ready"
-        state = with_self_hash(state, "campaign_hash")
         self._write_state(state)
         args = argparse.Namespace(
             repository_root=self.fixture["repository_root"],
@@ -408,17 +373,12 @@ class ModelEvolutionStateTest(unittest.TestCase):
 
     def test_summary_and_comparison_evidence_join_selected_inputs(self) -> None:
         campaign = self._prepared_state()
-        host_hash = json.loads(self.fixture["paths"]["host"].read_text())[
-            "manifest_hash"
-        ]
-        plan = with_self_hash(
-            {
-                "host_manifest_hash": host_hash,
-                "package_hashes": {SKILL_IDS[0]: "sha256:" + "8" * 64},
-                "artifacts": {"root": "artifacts", "index_relpath": "index.jsonl"},
-            },
-            "plan_hash",
-        )
+        plan = {
+            "schema_version": 2,
+            "plan_id": "plan.joined-fixture",
+            "package_digests": {SKILL_IDS[0]: "sha256:" + "8" * 64},
+            "artifacts": {"root": "artifacts", "index_relpath": "index.jsonl"},
+        }
         plan_path = write_json(self.fixture["campaign_root"] / "joined-plan.json", plan)
         plan_binding = make_binding(
             plan_path,
@@ -430,13 +390,11 @@ class ModelEvolutionStateTest(unittest.TestCase):
             {
                 **plan_record(SKILL_IDS[0]),
                 "plan": plan_binding,
-                "host_hash": host_hash,
+                "plan_digest": content_hash(plan_path.read_bytes()),
             }
         )
         summary = analysis_summary()
-        summary["plan_hash"] = plan["plan_hash"]
-        summary["host_manifest_hash"] = host_hash
-        summary = with_self_hash(summary, "summary_hash")
+        summary["plan_id"] = plan["plan_id"]
         controller._validate_evidence_join(
             campaign,
             role="current_summary",
@@ -446,7 +404,7 @@ class ModelEvolutionStateTest(unittest.TestCase):
             campaign_root=self.fixture["campaign_root"],
         )
         wrong = copy.deepcopy(summary)
-        wrong["plan_hash"] = "sha256:" + "0" * 64
+        wrong["plan_id"] = "plan.different-fixture"
         with self.assertRaisesRegex(controller.CliError, "registered plan"):
             controller._validate_evidence_join(
                 campaign,
@@ -593,7 +551,7 @@ class ModelEvolutionStateTest(unittest.TestCase):
                 skill_id=skill_id,
             )
         self.assertEqual(candidate["phase"], "holdout_ready")
-        validate_campaign(with_self_hash(candidate, "campaign_hash"))
+        validate_campaign(candidate)
 
 
 class RepositoryFixtureBoundaryTest(unittest.TestCase):

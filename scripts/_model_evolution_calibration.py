@@ -16,8 +16,6 @@ from _model_evolution_contract import (
     pre_turn_failure_identity,
     resolve_binding,
     validate_document,
-    verify_self_hash,
-    with_self_hash,
 )
 from _model_evolution_qualification import validate_qualification
 
@@ -101,10 +99,7 @@ def _materialize_skill(
     spec = copy.deepcopy(template)
     spec["execution"]["as_of"] = as_of
     spec["subject"]["claimed_hosts"] = [host["identity"]["host_id"]]
-    spec["host"]["manifest"] = {
-        "path": "host.json",
-        "sha256": campaign["profiles"]["target_observed"]["sha256"],
-    }
+    spec["host"]["manifest"] = {"path": "host.json"}
     grader = next(item for item in spec["graders"] if item["type"] == "model")
     grader["model"] = execution["model"]
     for row in labels:
@@ -211,19 +206,15 @@ def prepare_calibrations(
             "validate": validate,
             "record": record,
         })
-    preparation = with_self_hash(
-        {
-            "schema_version": "model-evolution-calibration-preparation/1",
-            "campaign_id": campaign["campaign_id"],
-            "campaign_hash": campaign["campaign_hash"],
-            "state_revision": campaign["state_revision"],
-            "as_of": as_of,
-            "created": created,
-            "expires": expires,
-            "commands": commands,
-        },
-        "preparation_hash",
-    )
+    preparation = {
+        "schema_version": "model-evolution-calibration-preparation/2",
+        "campaign_id": campaign["campaign_id"],
+        "state_revision": campaign["state_revision"],
+        "as_of": as_of,
+        "created": created,
+        "expires": expires,
+        "commands": commands,
+    }
     _write_exact(
         campaign_root / "calibration/preparation.json",
         canonical_bytes(preparation),
@@ -251,7 +242,8 @@ def close_calibration_failure(
     validate_qualification(qualification)
     if (
         qualification["decision"] != "blocked"
-        or qualification["campaign_hash"] != campaign["campaign_hash"]
+        or qualification["campaign_id"] != campaign["campaign_id"]
+        or qualification["terminal_state_revision"] != campaign["state_revision"]
     ):
         raise CalibrationPreparationError("campaign is not closed as blocked")
 
@@ -259,12 +251,11 @@ def close_calibration_failure(
     preparation = load_json(preparation_path, label="calibration preparation")
     if (
         preparation.get("schema_version")
-        != "model-evolution-calibration-preparation/1"
-        or preparation.get("campaign_hash") != campaign["campaign_hash"]
+        != "model-evolution-calibration-preparation/2"
+        or preparation.get("campaign_id") != campaign["campaign_id"]
         or preparation.get("state_revision") != campaign["state_revision"]
     ):
         raise CalibrationPreparationError("calibration preparation identity differs")
-    verify_self_hash(preparation, "preparation_hash")
     commands = [
         row for row in preparation.get("commands", [])
         if row.get("skill_id") == skill_id
@@ -288,7 +279,7 @@ def close_calibration_failure(
 
     outcomes = {"timeout": 0, "failed": 0}
     requests: list[dict[str, Any]] = []
-    request_hashes: set[str] = set()
+    request_ids: set[str] = set()
     for ordinal in range(request_count):
         root = terminal_root / f"{ordinal + 1:03d}"
         stdout_path = root / "host-stdout.jsonl"
@@ -302,29 +293,30 @@ def close_calibration_failure(
             identity = pre_turn_failure_identity(stdout_path, ordinal)
         except ValueError as exc:
             raise CalibrationPreparationError(str(exc)) from exc
-        if identity["request_hash"] in request_hashes:
-            raise CalibrationPreparationError("Host request hash is duplicated")
-        request_hashes.add(identity["request_hash"])
+        if identity["request_id"] in request_ids:
+            raise CalibrationPreparationError("Host request ID is duplicated")
+        request_ids.add(identity["request_id"])
         outcomes[identity["terminal_status"]] += 1
         requests.append({
             **identity,
             "host_result": make_binding(
                 stdout_path,
-                root="campaign",
+                root="external",
                 repository_root=repository_root,
                 campaign_root=campaign_root,
             ),
             "host_stderr": make_binding(
                 stderr_path,
-                root="campaign",
+                root="external",
                 repository_root=repository_root,
                 campaign_root=campaign_root,
             ),
         })
 
-    receipt = with_self_hash({
-        "schema_version": "model-evolution-failure-receipt/1",
-        "campaign_hash": campaign["campaign_hash"],
+    receipt = {
+        "schema_version": "model-evolution-failure-receipt/2",
+        "campaign_id": campaign["campaign_id"],
+        "state_revision": campaign["state_revision"],
         "qualification": make_binding(
             qualification_path,
             root="campaign",
@@ -343,7 +335,7 @@ def close_calibration_failure(
         "request_count": request_count,
         "outcomes": outcomes,
         "requests": requests,
-    }, "failure_receipt_hash")
+    }
     validate_document(receipt, "failure_receipt")
     payload = canonical_bytes(receipt) + b"\n"
     _write_exact(output, payload)

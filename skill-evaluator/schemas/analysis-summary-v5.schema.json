@@ -1,17 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/skill-evaluator/schemas/analysis-summary-v4.schema.json",
-  "title": "Skill Evaluator analysis summary v4",
+  "$id": "https://example.invalid/skill-evaluator/schemas/analysis-summary-v5.schema.json",
+  "title": "Skill Evaluator analysis summary v5",
   "type": "object",
   "required": [
     "schema_version",
-    "summary_hash",
     "evaluation_id",
     "plan_id",
-    "plan_hash",
-    "spec_hash",
-    "scenario_corpus_hash",
-    "host_manifest_hash",
     "analysis_ready",
     "subject",
     "modules",
@@ -38,26 +33,22 @@
     "blocking_observations",
     "output_manifest",
     "trust_boundaries",
+    "evidence_refs",
     "representative_failure_ids"
   ],
   "properties": {
-    "schema_version": {"const": 4},
-    "summary_hash": {"$ref": "#/$defs/sha256"},
+    "schema_version": {"const": 5},
     "evaluation_id": {"$ref": "#/$defs/safe_id"},
     "plan_id": {"$ref": "#/$defs/safe_id"},
-    "plan_hash": {"$ref": "#/$defs/sha256"},
-    "spec_hash": {"$ref": "#/$defs/sha256"},
-    "scenario_corpus_hash": {"$ref": "#/$defs/sha256"},
-    "host_manifest_hash": {"$ref": "#/$defs/sha256"},
     "analysis_ready": {"type": "boolean"},
     "subject": {
       "type": "object",
-      "required": ["skill_id", "version", "shape", "package_hash"],
+      "required": ["skill_id", "version", "shape", "source_revision"],
       "properties": {
         "skill_id": {"$ref": "#/$defs/safe_id"},
         "version": {"type": "string", "minLength": 1},
         "shape": {"enum": ["single_skill", "skill_catalog", "ordered_pipeline", "handoff_graph"]},
-        "package_hash": {"$ref": "#/$defs/sha256"}
+        "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
       },
       "additionalProperties": false
     },
@@ -65,12 +56,12 @@
       "type": "array",
       "minItems": 10,
       "maxItems": 10,
-      "items": {"$ref": "eval-spec-v5.schema.json#/$defs/module_decision"}
+      "items": {"$ref": "eval-spec-v6.schema.json#/$defs/module_decision"}
     },
     "treatments": {
       "type": "array",
       "minItems": 1,
-      "items": {"$ref": "eval-spec-v5.schema.json#/$defs/treatment"}
+      "items": {"$ref": "eval-spec-v6.schema.json#/$defs/treatment"}
     },
     "applicability_status": {"enum": ["applicable", "not_applicable", "not_evaluable"]},
     "feasibility_status": {"enum": ["feasible", "unsupported", "not_evaluable"]},
@@ -113,6 +104,10 @@
       "minItems": 1,
       "items": {"$ref": "#/$defs/trust_boundary"}
     },
+    "evidence_refs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/evidence_ref"}
+    },
     "representative_failure_ids": {
       "type": "array",
       "items": {"type": "string", "pattern": "^sf-[0-9a-f]{24}$"}
@@ -120,10 +115,6 @@
   },
   "additionalProperties": false,
   "$defs": {
-    "sha256": {
-      "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$"
-    },
     "safe_id": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
@@ -173,7 +164,7 @@
       "type": "object",
       "required": ["module", "eligible", "planned", "present", "valid", "invalid", "missing", "pass_rate", "lower", "upper", "repeat_consistency", "worst_slice", "failure_mechanisms", "hard_requirement_ids", "status"],
       "properties": {
-        "module": {"$ref": "eval-spec-v5.schema.json#/$defs/module_name"},
+        "module": {"$ref": "eval-spec-v6.schema.json#/$defs/module_name"},
         "eligible": {"type": "integer", "minimum": 0},
         "planned": {"type": "integer", "minimum": 0},
         "present": {"type": "integer", "minimum": 0},
@@ -244,21 +235,20 @@
     },
     "manual_authority": {
       "type": "object",
-      "required": ["required", "status", "decision", "receipt_hash"],
+      "required": ["required", "status", "decision", "receipt_path"],
       "properties": {
         "required": {"type": "boolean"},
         "status": {"enum": ["complete", "missing", "invalid", "not_applicable"]},
         "decision": {"anyOf": [{"enum": ["approve", "hold", "reject"]}, {"type": "null"}]},
-        "receipt_hash": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]}
+        "receipt_path": {"anyOf": [{"$ref": "#/$defs/relative_path"}, {"type": "null"}]}
       },
       "additionalProperties": false
     },
     "output_view": {
       "type": "object",
-      "required": ["path", "sha256", "schema_or_view_version", "item_count", "shown_count", "omitted_count", "truncated", "family_counts", "severity_counts"],
+      "required": ["path", "schema_or_view_version", "item_count", "shown_count", "omitted_count", "truncated", "family_counts", "severity_counts"],
       "properties": {
         "path": {"$ref": "#/$defs/relative_path"},
-        "sha256": {"$ref": "#/$defs/sha256"},
         "schema_or_view_version": {"type": "string", "minLength": 1},
         "item_count": {"type": "integer", "minimum": 0},
         "shown_count": {"type": "integer", "minimum": 0},
@@ -274,7 +264,7 @@
       "required": ["details", "failure_index", "markdown"],
       "properties": {
         "details": {"anyOf": [{"$ref": "#/$defs/output_view"}, {"type": "null"}]},
-        "failure_index": {"$ref": "#/$defs/output_view"},
+        "failure_index": {"anyOf": [{"$ref": "#/$defs/output_view"}, {"type": "null"}]},
         "markdown": {"anyOf": [{"$ref": "#/$defs/output_view"}, {"type": "null"}]}
       },
       "additionalProperties": false
@@ -286,6 +276,22 @@
         "surface": {"type": "string", "minLength": 1},
         "status": {"enum": ["locally_verified", "external_attestation", "not_verified"]},
         "reason": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "evidence_ref": {
+      "type": "object",
+      "required": ["claim_id", "receipt_paths", "raw_artifact_paths"],
+      "properties": {
+        "claim_id": {"$ref": "#/$defs/safe_id"},
+        "receipt_paths": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/relative_path"}
+        },
+        "raw_artifact_paths": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/relative_path"}
+        }
       },
       "additionalProperties": false
     }

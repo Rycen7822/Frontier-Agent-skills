@@ -23,7 +23,6 @@ import model_evolution as controller  # noqa: E402
 from _model_evolution_contract import (  # noqa: E402
     SKILL_IDS,
     validate_document,
-    with_self_hash,
 )
 from _model_evolution_qualification import validate_qualification  # noqa: E402
 from _model_evolution_state import (  # noqa: E402
@@ -56,7 +55,7 @@ class ModelEvolutionCliTest(unittest.TestCase):
         state["apparatus_report"] = materialize_apparatus_report(self.fixture)
         state["profiles"]["target_observed"] = self.fixture["bindings"]["host"]
         mark_probe_passed(state, self.fixture)
-        return with_self_hash(state, "campaign_hash")
+        return state
 
     def _read_status(self, args: argparse.Namespace) -> dict:
         raw = io.BytesIO()
@@ -338,7 +337,6 @@ class ModelEvolutionCliTest(unittest.TestCase):
         report = json.loads(report_path.read_text(encoding="utf-8"))
         systemd_fact = report["operations"][0]
         report["operations"] = []
-        report = with_self_hash(report, "apparatus_report_hash")
         report_path.unlink()
         args = argparse.Namespace(
             repository_root=self.fixture["repository_root"],
@@ -405,7 +403,7 @@ class ModelEvolutionCliTest(unittest.TestCase):
         self.assertEqual(before, after)
         invalid = json.loads(approval.read_text())
         invalid["state_revision"] += 1
-        write_json(approval, with_self_hash(invalid, "approval_hash"))
+        write_json(approval, invalid)
         rejected = self._read_status(args)
         self.assertIsNone(rejected["probe_command"])
         self.assertEqual(
@@ -441,17 +439,13 @@ class ModelEvolutionCliTest(unittest.TestCase):
 
     def test_preflight_schema_fixtures_match_their_live_contracts(self) -> None:
         campaign = self.fixture["store"].read()
-        hash_fields = {
-            "budget_approval": "approval_hash",
-            "campaign": "campaign_hash",
-            "interaction_probes": "probe_set_hash",
-            "sentinel_index": "sentinel_hash",
-        }
-        for name, hash_field in hash_fields.items():
-            fixture = with_self_hash(
-                operations._minimal_schema_fixture(name, campaign),
-                hash_field,
-            )
+        for name in (
+            "budget_approval",
+            "campaign",
+            "interaction_probes",
+            "sentinel_index",
+        ):
+            fixture = operations._minimal_schema_fixture(name, campaign)
             validate_document(fixture, name)
 
     def test_status_projection_counts_runner_attempt_arrays(self) -> None:

@@ -7,18 +7,27 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from comparison_contract import CycleCapsule, make_diagnostic
-from evidence_io import canonical_json_bytes, file_sha256
+from evidence_io import canonical_json_bytes
 
 
-_FIXED_EXECUTION_IDENTITY = (
-    "model_hash",
-    "harness_hash",
-    "prompt_hash",
-    "tool_surface_hash",
-    "policy_hash",
-    "runtime_hash",
-    "tokenizer_pricing_hash",
-    "clock_hash",
+_FIXED_EXECUTION_PROFILE = (
+    "host_id",
+    "host_version",
+    "provider",
+    "model",
+    "model_revision",
+    "harness",
+    "harness_version",
+    "platform",
+    "command_id",
+    "catalog_ids",
+    "prompt_id",
+    "tool_schema_id",
+    "policy_id",
+    "tokenizer_id",
+    "pricing_id",
+    "utc_clock_id",
+    "monotonic_clock_id",
 )
 _SPEC_STABLE_FIELDS = (
     "schema_version",
@@ -36,23 +45,14 @@ _SPEC_STABLE_FIELDS = (
 )
 _PLAN_STABLE_FIELDS = (
     "schema_version",
-    "grader_set_hash",
-    "calibration_hash",
     "subject_shape",
     "module_decisions",
     "dimension_coverage",
     "expected_counts",
     "ordering",
-    "compiler",
     "authority",
     "artifacts",
 )
-_TREATMENT_DERIVED_FIELDS = {
-    "base_catalog_hash",
-    "delivery_transform_hash",
-    "host_identity",
-    "implementation_hash",
-}
 
 
 def same(left: Any, right: Any) -> bool:
@@ -106,17 +106,23 @@ def _project_subject(subject: dict[str, Any]) -> dict[str, Any]:
 
 def _project_suite(suite: dict[str, Any]) -> dict[str, Any]:
     projected = deepcopy(suite)
-    for binding_name in ("scenarios", "public_scenarios"):
-        projected[binding_name].pop("sha256", None)
     holdout = projected.get("holdout")
     if isinstance(holdout, dict):
-        holdout["manifest"].pop("sha256", None)
-        holdout["payload"].pop("sha256", None)
-    quality = projected.get("quality")
-    if isinstance(quality, dict):
-        quality.pop("sha256", None)
-    projected.pop("fixture_set_hash", None)
-    projected.pop("quality_contract_hash", None)
+        holdout["manifest"].pop("digest", None)
+        holdout["payload"].pop("digest", None)
+    for field in ("quality", "calibration"):
+        binding = projected.get(field)
+        if isinstance(binding, dict):
+            binding.pop("digest", None)
+    return projected
+
+
+def _project_graders(graders: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    projected = deepcopy(graders)
+    for grader in projected:
+        verifier = grader.get("verifier")
+        if isinstance(verifier, dict):
+            verifier.pop("source_revision", None)
     return projected
 
 
@@ -124,6 +130,7 @@ def _project_spec(spec: dict[str, Any]) -> dict[str, Any]:
     projected = {field: deepcopy(spec[field]) for field in _SPEC_STABLE_FIELDS}
     projected["subject"] = _project_subject(spec["subject"])
     projected["suite"] = _project_suite(spec["suite"])
+    projected["graders"] = _project_graders(spec["graders"])
     projected["host_required_capabilities"] = deepcopy(
         spec["host"]["required_capabilities"],
     )
@@ -131,11 +138,7 @@ def _project_spec(spec: dict[str, Any]) -> dict[str, Any]:
 
 
 def _project_treatment(treatment: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: deepcopy(value)
-        for key, value in treatment.items()
-        if key not in _TREATMENT_DERIVED_FIELDS
-    }
+    return deepcopy(treatment)
 
 
 def _project_catalog_entries(
@@ -146,7 +149,7 @@ def _project_catalog_entries(
     for entry in entries:
         projected = deepcopy(entry)
         if projected["id"] == subject_id:
-            projected.pop("root_hash", None)
+            projected.pop("root_digest", None)
             projected.pop("version", None)
         projected_entries.append(projected)
     return projected_entries
@@ -157,16 +160,7 @@ def _project_entry(
     subject_id: str,
 ) -> dict[str, Any]:
     projected = deepcopy(entry)
-    for field in (
-        "entry_id",
-        "artifact_relpath",
-        "workspace",
-        "catalog_hash",
-        "treatment_hash",
-        "scenario_hash",
-        "fixture_hash",
-    ):
-        projected.pop(field, None)
+    projected.pop("artifact_relpath", None)
     payload = projected.get("execute_case_payload")
     if isinstance(payload, dict):
         payload.pop("workspace", None)
@@ -182,6 +176,11 @@ def _project_entry(
 
 def _project_plan(plan: dict[str, Any], subject_id: str) -> dict[str, Any]:
     projected = {field: deepcopy(plan[field]) for field in _PLAN_STABLE_FIELDS}
+    projected["compiler"] = {
+        key: deepcopy(value)
+        for key, value in plan["compiler"].items()
+        if key != "source_revision"
+    }
     projected["catalog"] = _project_catalog_entries(
         plan["catalog"],
         subject_id,
@@ -219,8 +218,6 @@ def _project_catalog(
 def _project_host(host: dict[str, Any], subject_id: str) -> dict[str, Any]:
     identity = host["identity"]
     execution = deepcopy(identity["execution"])
-    execution.pop("skill_hash", None)
-    execution.pop("catalog_hash", None)
     return {
         "identity": {
             "host_id": identity["host_id"],
@@ -246,25 +243,28 @@ def _subject_package_bindings(
     capsule: CycleCapsule,
     subject_id: str,
 ) -> dict[str, str | None]:
-    catalog_hashes = [
-        item["root_hash"]
+    catalog_digests = [
+        item["root_digest"]
         for item in capsule.host_manifest["catalog"]["entries"]
         if item["id"] == subject_id
     ]
     return {
-        "spec.package_hash": capsule.spec["subject"]["package"]["package_hash"],
-        "plan.package_hash": capsule.execution_plan["package_hashes"].get(
+        "spec.package_digest": capsule.spec["subject"]["package"][
+            "package_digest"
+        ],
+        "plan.package_digest": capsule.execution_plan["package_digests"].get(
             subject_id,
         ),
-        "plan.subject_hash": capsule.execution_plan["execution_identity"][
-            "subject_hash"
-        ],
-        "host.skill_hash": capsule.host_manifest["identity"]["execution"][
-            "skill_hash"
-        ],
-        "host.catalog_root_hash": (
-            catalog_hashes[0] if len(catalog_hashes) == 1 else None
+        "host.catalog_root_digest": (
+            catalog_digests[0] if len(catalog_digests) == 1 else None
         ),
+        "spec.source_revision": capsule.spec["subject"]["package"][
+            "source_revision"
+        ],
+        "plan.source_revision": capsule.execution_plan["source_revision"],
+        "profile.source_revision": capsule.execution_plan[
+            "execution_profile"
+        ]["source_revision"],
     }
 
 
@@ -281,11 +281,11 @@ def artifact_source(
     plan: dict[str, Any],
     capsule: CycleCapsule,
     artifact: str,
-) -> tuple[str, str]:
-    path = plan["input_bindings"][capsule.role][artifact]["path"]
-    source_hash = capsule.file_hashes[artifact]
-    assert isinstance(source_hash, str)
-    return path, source_hash
+) -> str:
+    del plan
+    path = capsule.source_refs[artifact]
+    assert isinstance(path, str)
+    return path
 
 
 def capsule_diagnostic(
@@ -303,7 +303,7 @@ def capsule_diagnostic(
     requirement_ids: list[str] | None = None,
     metric_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    path, source_hash = artifact_source(plan, capsule, artifact)
+    path = artifact_source(plan, capsule, artifact)
     return make_diagnostic(
         severity="high",
         fact_type=fact_type,
@@ -313,7 +313,7 @@ def capsule_diagnostic(
         observed=observed,
         locator_artifact=path,
         json_pointer=json_pointer,
-        source_hash=source_hash,
+        source_ref=path,
         case_ids=case_ids,
         requirement_ids=requirement_ids,
         metric_ids=metric_ids,
@@ -339,7 +339,7 @@ def plan_diagnostic(
         observed=observed,
         locator_artifact=plan_path.name,
         json_pointer=json_pointer,
-        source_hash=file_sha256(plan_path),
+        source_ref=plan_path.name,
     )
 
 
@@ -349,11 +349,11 @@ def identity_diagnostics(
     candidate: CycleCapsule,
 ) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
-    prior_identity = prior.execution_plan["execution_identity"]
-    candidate_identity = candidate.execution_plan["execution_identity"]
+    prior_identity = prior.execution_plan["execution_profile"]
+    candidate_identity = candidate.execution_plan["execution_profile"]
     identity_mismatches = [
         field
-        for field in _FIXED_EXECUTION_IDENTITY
+        for field in _FIXED_EXECUTION_PROFILE
         if prior_identity[field] != candidate_identity[field]
     ]
     if identity_mismatches:
@@ -365,7 +365,7 @@ def identity_diagnostics(
             reason_key="revision_execution_identity_drift",
             expected="model, harness, prompt, tools, policy, runtime, tokenizer, and clock match",
             observed=identity_mismatches,
-            json_pointer="/execution_identity",
+            json_pointer="/execution_profile",
         ))
 
     if not same(
@@ -422,49 +422,48 @@ def identity_diagnostics(
         ))
 
     change_set = plan["decision_policy"]["change_set"]
-    candidate_hash = change_set["candidate_hash"]
+    candidate_revision = change_set["candidate_revision"]
     package_root = PurePosixPath(candidate.spec["subject"]["package"]["path"])
     invalid_paths = [
         path
         for path in change_set["paths"]
         if not PurePosixPath(path).is_relative_to(package_root)
     ]
-    prior_hash = prior.spec["subject"]["package"]["package_hash"]
-    inconsistent_bindings = {
-        capsule.role: [
+    prior_digest = prior.spec["subject"]["package"]["package_digest"]
+    candidate_digest = candidate.spec["subject"]["package"]["package_digest"]
+    inconsistent_bindings: dict[str, list[str]] = {}
+    for capsule in (prior, candidate):
+        bindings = _subject_package_bindings(capsule, subject_id)
+        expected_digest = bindings["spec.package_digest"]
+        expected_revision = bindings["spec.source_revision"]
+        inconsistent_bindings[capsule.role] = [
             label
-            for label, value in _subject_package_bindings(
-                capsule,
-                subject_id,
-            ).items()
-            if value != capsule.spec["subject"]["package"]["package_hash"]
+            for label, value in bindings.items()
+            if (
+                label.endswith("digest") and value != expected_digest
+            ) or (
+                label.endswith("revision") and value != expected_revision
+            )
         ]
-        for capsule in (prior, candidate)
-    }
-    candidate_binding_mismatches = [
-        label
-        for label, value in _subject_package_bindings(
-            candidate,
-            subject_id,
-        ).items()
-        if value != candidate_hash
-    ]
     prior_other_packages = {
         key: value
-        for key, value in prior.execution_plan["package_hashes"].items()
+        for key, value in prior.execution_plan["package_digests"].items()
         if key != subject_id
     }
     candidate_other_packages = {
         key: value
-        for key, value in candidate.execution_plan["package_hashes"].items()
+        for key, value in candidate.execution_plan["package_digests"].items()
         if key != subject_id
     }
     if (
         invalid_paths
         or any(inconsistent_bindings.values())
-        or candidate_binding_mismatches
+        or candidate.spec["subject"]["package"]["source_revision"]
+        != candidate_revision
         or prior_other_packages != candidate_other_packages
-        or prior_hash == candidate_hash
+        or prior.spec["subject"]["package"]["source_revision"]
+        == candidate_revision
+        or prior_digest == candidate_digest
     ):
         diagnostics.append(capsule_diagnostic(
             plan,
@@ -472,15 +471,20 @@ def identity_diagnostics(
             "spec",
             fact_type="identity_mismatch",
             reason_key="revision_change_set_binding_invalid",
-            expected="one changed package binds the declared paths and candidate hash",
+            expected="one changed package binds the declared paths, revision, and digest",
             observed={
                 "invalid_paths": invalid_paths,
                 "inconsistent_cycle_bindings": inconsistent_bindings,
-                "candidate_hash_mismatches": candidate_binding_mismatches,
+                "candidate_revision_matches": (
+                    candidate.spec["subject"]["package"]["source_revision"]
+                    == candidate_revision
+                ),
                 "other_packages_match": (
                     prior_other_packages == candidate_other_packages
                 ),
-                "candidate_differs_from_prior": prior_hash != candidate_hash,
+                "candidate_differs_from_prior": (
+                    prior_digest != candidate_digest
+                ),
             },
             json_pointer="/subject/package",
         ))

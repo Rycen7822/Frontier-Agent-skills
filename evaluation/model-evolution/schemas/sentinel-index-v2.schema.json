@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://frontier.local/model-evolution/sentinel-index-v1.schema.json",
-  "title": "Frontier four-skill sentinel index v1",
+  "$id": "https://frontier.local/model-evolution/sentinel-index-v2.schema.json",
+  "title": "Frontier four-skill sentinel index v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "sentinel_id", "skills", "sentinel_hash"],
+  "required": ["schema_version", "sentinel_id", "skills"],
   "properties": {
-    "schema_version": {"const": "model-evolution-sentinel-index/1"},
+    "schema_version": {"const": "model-evolution-sentinel-index/2"},
     "sentinel_id": {"$ref": "#/$defs/safe_id"},
     "skills": {
       "type": "object",
@@ -23,8 +23,7 @@
         "software-quality-workflows": {"$ref": "#/$defs/skill"},
         "writing-plans": {"$ref": "#/$defs/skill"}
       }
-    },
-    "sentinel_hash": {"$ref": "#/$defs/hash"}
+    }
   },
   "$defs": {
     "safe_id": {
@@ -38,14 +37,13 @@
     "binding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["root", "path", "sha256"],
+      "required": ["root", "path"],
       "properties": {
         "root": {"const": "repository"},
         "path": {
           "type": "string",
           "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*://)[A-Za-z0-9._/-]+$"
-        },
-        "sha256": {"$ref": "#/$defs/hash"}
+        }
       }
     },
     "binding_list": {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute a compiled Skill Evaluator plan into receipt v4 and index v2."""
+"""Execute a compiled Skill Evaluator plan into receipt v5 and index v3."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import argparse
 import copy
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -33,8 +32,6 @@ from evidence_io import (
     atomic_write_json,
     atomic_write_jsonl,
     canonical_json_bytes,
-    canonical_self_hash,
-    canonical_sha256,
     file_sha256,
     load_json,
     load_jsonl_objects,
@@ -42,12 +39,11 @@ from evidence_io import (
     resolve_contained_path,
     validate_locator,
     verify_artifact_records,
-    verify_self_hash,
 )
 from validate_eval_suite import (
-    load_v5_schema_registry,
+    load_epoch6_schema_registry,
     validate_host_protocol_record,
-    validate_v5_schema,
+    validate_epoch6_schema,
 )
 
 
@@ -121,6 +117,11 @@ class _AttemptCustody:
             return
         try:
             if exc_type is None and self._committed:
+                marker = self.path.parent / "attempt-start.json"
+                if marker.exists() or marker.is_symlink():
+                    if not marker.is_file() or marker.is_symlink():
+                        raise RunnerFailure("attempt marker cleanup is unsafe")
+                    marker.unlink()
                 _owned_lock_stat(self.fd, self.path)
                 self.path.unlink()
         finally:
@@ -192,13 +193,11 @@ def _load_plan(
     registry: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     plan = load_json(plan_path)
-    diagnostics = validate_v5_schema(
-        plan, "execution-plan-v1.schema.json", registry,
+    diagnostics = validate_epoch6_schema(
+        plan, "execution-plan-v2.schema.json", registry,
     )
     if diagnostics:
         raise RunnerFailure(_first_diagnostic(diagnostics))
-    if not verify_self_hash(plan, "plan_hash"):
-        raise RunnerFailure("plan_hash does not match the canonical plan")
     return plan
 
 
@@ -216,15 +215,16 @@ def _find_bound_spec(
             continue
         if (
             isinstance(value, dict)
-            and value.get("schema_version") == 5
+            and value.get("schema_version") == 6
             and value.get("evaluation_id") == plan["evaluation_id"]
-            and canonical_sha256(compiler._normalize_spec(value))
-            == plan["spec_hash"]
+            and value.get("subject", {}).get("package", {}).get(
+                "source_revision"
+            ) == plan["source_revision"]
         ):
             matches.append(candidate)
     if len(matches) != 1:
         raise RunnerFailure(
-            "plan parent must contain exactly one spec matching plan spec_hash",
+            "plan parent must contain exactly one matching epoch-6 spec",
         )
     return matches[0]
 
@@ -262,43 +262,18 @@ def _load_bound_contract(
         spec,
         scenarios,
         host,
-        spec_path=spec_path,
-        source_path=Path(compiler.__file__).resolve(),
         registry=registry,
         runtime_override=plan["compiler"],
     )
     return spec, scenarios, host, registry, spec_path
 
 
-def _run_projection(
-    plan_hash: str,
-    entry_id: str,
-    attempt: int,
-) -> dict[str, Any]:
-    return {
-        "plan_hash": plan_hash,
-        "entry_id": entry_id,
-        "attempt": attempt,
-    }
-
-
 def _attempt_identity(
-    plan: dict[str, Any],
     entry: dict[str, Any],
     attempt: int,
 ) -> tuple[str, str]:
-    run_id = (
-        "run-"
-        + canonical_sha256(
-            _run_projection(plan["plan_hash"], entry["entry_id"], attempt),
-        ).removeprefix("sha256:")[:24]
-    )
-    ownership_token = canonical_sha256({
-        "plan_hash": plan["plan_hash"],
-        "run_id": run_id,
-        "purpose": "task-ownership",
-    })
-    return run_id, ownership_token
+    suffix = f"{entry['entry_ordinal']}.{attempt}"
+    return f"run.{suffix}", f"attempt.{suffix}"
 
 
 def _attempt_paths(
@@ -380,21 +355,18 @@ def _build_marker(
     entry: dict[str, Any],
     attempt: int,
     run_id: str,
-    ownership_token: str,
+    attempt_id: str,
 ) -> dict[str, Any]:
-    marker = {
-        "schema_version": 1,
-        "marker_hash": "sha256:" + "0" * 64,
-        "plan_hash": plan["plan_hash"],
+    return {
+        "schema_version": "attempt-start/1",
+        "state": "started",
         "plan_id": plan["plan_id"],
         "entry_ordinal": entry["entry_ordinal"],
         "entry_id": entry["entry_id"],
         "attempt": attempt,
         "run_id": run_id,
-        "ownership_token": ownership_token,
+        "attempt_id": attempt_id,
     }
-    marker["marker_hash"] = canonical_self_hash(marker, "marker_hash")
-    return marker
 
 
 def _validate_host_command(
@@ -409,8 +381,8 @@ def _validate_host_command(
         or executable.is_symlink()
     ):
         raise RunnerFailure("host resolved executable must be an absolute regular file")
-    if file_sha256(executable) != command["executable_sha256"]:
-        raise RunnerFailure("host executable sha256 mismatch")
+    if file_sha256(executable) != command["executable_digest"]:
+        raise RunnerFailure("host executable digest mismatch")
     declared = command["argv"]
     declared_executable = Path(declared[0])
     if declared_executable.is_absolute():
@@ -446,24 +418,25 @@ def _host_request(
     request_kind: str = "execute_case",
     payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    request = {
-        "record_type": "skill-evaluator-host-request/1",
-        "request_hash": "sha256:" + "0" * 64,
+    attempt_id = f"attempt.{entry['entry_ordinal']}.{attempt}"
+    return {
+        "record_type": "skill-evaluator-host-request/2",
         "envelope": {
             "plan_id": plan["plan_id"],
-            "plan_hash": plan["plan_hash"],
             "entry_ordinal": entry["entry_ordinal"],
             "entry_id": entry["entry_id"],
             "run_id": run_id,
+            "attempt_id": attempt_id,
             "attempt": attempt,
+            "request_id": (
+                f"request.{entry['entry_ordinal']}.{attempt}.{request_kind}"
+            ),
             "request_kind": request_kind,
         },
         "payload": copy.deepcopy(
             entry["execute_case_payload"] if payload is None else payload,
         ),
     }
-    request["request_hash"] = canonical_self_hash(request, "request_hash")
-    return request
 
 
 def _invocation_record(
@@ -471,7 +444,6 @@ def _invocation_record(
     declared_argv: list[str],
     resolved_argv: list[str],
     environment: dict[str, str],
-    executable: Path,
     cwd: Path,
     attempt_dir: Path,
     timeout_seconds: int,
@@ -480,17 +452,8 @@ def _invocation_record(
     return {
         "declared_argv": declared_argv,
         "resolved_argv": resolved_argv,
-        "resolved_executable_sha256": file_sha256(executable),
         "cwd": cwd.relative_to(attempt_dir).as_posix(),
         "env_allowlist": sorted(environment),
-        "env": [
-            {
-                "name": name,
-                "value_sha256": "sha256:"
-                + sha256(value.encode("utf-8")).hexdigest(),
-            }
-            for name, value in sorted(environment.items())
-        ],
         "credential_policy": credential_policy,
         "shell": False,
         "start_new_session": True,
@@ -568,14 +531,14 @@ def _parse_host_protocol(
         record_type = record.get("record_type")
         if terminal_seen:
             raise RunnerFailure("host emitted a record after its terminal result")
-        if record_type == "skill-evaluator-host-event/1":
+        if record_type == "skill-evaluator-host-event/2":
             diagnostics = validate_host_protocol_record(
                 "host_event", record, registry,
             )
             if diagnostics:
                 raise RunnerFailure(_first_diagnostic(diagnostics))
             events.append(record)
-        elif record_type == "skill-evaluator-host-result/1":
+        elif record_type == "skill-evaluator-host-result/2":
             diagnostics = validate_host_protocol_record(
                 "host_result", record, registry,
             )
@@ -592,9 +555,7 @@ def _parse_host_protocol(
 
     result = results[0]
     envelope = request["envelope"]
-    if result["envelope"] != envelope or result["request_hash"] != request[
-        "request_hash"
-    ]:
+    if result["envelope"] != envelope:
         raise RunnerFailure("host terminal identity does not match the request")
     for event in events:
         if event["principal_id"] not in {
@@ -648,17 +609,17 @@ def _validate_runtime_records(
             raise RunnerFailure("principal parent is absent from the result")
         execution = host["identity"]["execution"]
         for field in (
-            "provider", "model_revision", "prompt_hash", "skill_hash",
-            "catalog_hash", "policy_hash",
+            "provider", "model_revision", "prompt_id", "skill_id",
+            "catalog_id", "policy_id",
         ):
             if principal[field] != execution[field]:
                 raise RunnerFailure(f"principal {field} differs from host identity")
         if coordination is None:
             if principal["model"] != execution["model"]:
                 raise RunnerFailure("principal model differs from host identity")
-            if principal["tool_schema_hash"] != execution["tool_schema_hash"]:
+            if principal["tool_schema_id"] != execution["tool_schema_id"]:
                 raise RunnerFailure("principal tool schema differs from host identity")
-            if principal["authority_hash"] != entry["execute_case_payload"][
+            if principal["authority_id"] != entry["execute_case_payload"][
                 "permission_policy"
             ]:
                 raise RunnerFailure("principal authority differs from entry policy")
@@ -679,13 +640,13 @@ def _validate_runtime_records(
                 (principal["model"], slot["allowed_model_class"], "model"),
                 (principal["context_mode"], slot["context_mode"], "context mode"),
                 (
-                    principal["tool_schema_hash"],
-                    slot["tool_schema_ceiling"],
+                    principal["tool_schema_id"],
+                    slot["tool_schema_id"],
                     "tool schema",
                 ),
                 (
-                    principal["authority_hash"],
-                    slot["authority_ceiling"],
+                    principal["authority_id"],
+                    slot["authority_id"],
                     "authority",
                 ),
             ):
@@ -802,8 +763,8 @@ def _validate_runtime_records(
             ):
                 raise RunnerFailure("handoff endpoints differ from the plan edge")
             if (
-                handoff["expected_output_schema_hash"]
-                != receiver_slot["expected_return_schema_hash"]
+                handoff["expected_output_schema_id"]
+                != receiver_slot["expected_return_schema_id"]
             ):
                 raise RunnerFailure(
                     "handoff output schema differs from the receiver slot",
@@ -816,7 +777,7 @@ def _validate_runtime_records(
                 == principal["principal_id"]
             ]
             if mode in {"single", "fresh"}:
-                if principal["inherited_context_hash"] is not None:
+                if principal["inherited_context_digest"] is not None:
                     raise RunnerFailure(
                         f"{mode} principal cannot inherit hidden context",
                     )
@@ -827,25 +788,23 @@ def _validate_runtime_records(
                         "forked principal lacks captured context components",
                     )
                 component_hashes = {
-                    component.get("content_sha256")
+                    component["artifact"].get("digest")
                     for component in components
                     if (
                         isinstance(component, dict)
                         and isinstance(component.get("artifact"), dict)
-                        and component.get("content_sha256")
-                        == component["artifact"].get("sha256")
                     )
                 }
                 if (
                     principal["parent_principal_id"] is None
-                    or principal["inherited_context_hash"]
+                    or principal["inherited_context_digest"]
                     not in component_hashes
                 ):
                     raise RunnerFailure("forked principal lacks parent context proof")
             elif (
                 len(incoming) != 1
-                or principal["inherited_context_hash"]
-                != incoming[0]["payload"]["sha256"]
+                or principal["inherited_context_digest"]
+                != incoming[0]["payload"]["digest"]
             ):
                 raise RunnerFailure(
                     "scoped-handoff principal lacks exact payload proof",
@@ -1013,11 +972,11 @@ def _host_artifact_paths(
 
     def visit(value: Any) -> None:
         if isinstance(value, dict):
-            if set(value) == {"path", "sha256", "encoding"}:
+            if set(value) == {"path", "digest", "encoding"}:
                 path = value["path"]
                 if path not in verified or {
                     key: verified[path][key]
-                    for key in ("path", "sha256", "encoding")
+                    for key in ("path", "digest", "encoding")
                 } != value:
                     raise RunnerFailure(
                         f"host artifact reference is outside its catalog: {path}",
@@ -1130,7 +1089,7 @@ def _validate_action_lifecycle(
             if not approvals:
                 raise RunnerFailure("allow-with-changes lacks its source decision")
             for _, document in approvals:
-                if document.get("approved_input_sha256") != executed["sha256"]:
+                if document.get("approved_input_digest") != executed["digest"]:
                     raise RunnerFailure(
                         "executed input differs from the approved rewrite",
                     )
@@ -1194,11 +1153,11 @@ def _capture_observations(
             path, attempt_dir, encoding=contract["encoding"],
         )
         if (
-            contract["expected_hash"] is not None
-            and record["sha256"] != contract["expected_hash"]
+            contract["expected_digest"] is not None
+            and record["digest"] != contract["expected_digest"]
         ):
             raise ApparatusFailure(
-                f"observation {contract['observation_id']} hash mismatch",
+                f"observation {contract['observation_id']} digest mismatch",
             )
         verified = verify_artifact_records(
             [record], attempt_dir, label="observation",
@@ -1230,7 +1189,7 @@ def _capture_observations(
             "observation_id": contract["observation_id"],
             "artifact": record,
             "locator": copy.deepcopy(contract["locator"]),
-            "schema_hash": contract["schema_hash"],
+            "schema_id": contract["schema_id"],
             "integrity": "pass",
             "temporal_validity": "pass",
             "reason": "bound bytes, locator, and temporal window verified",
@@ -1469,6 +1428,7 @@ def _validate_grader_output(
 
 def _run_deterministic_graders(
     entry: dict[str, Any],
+    plan: dict[str, Any],
     spec: dict[str, Any],
     spec_path: Path,
     attempt_dir: Path,
@@ -1493,8 +1453,10 @@ def _run_deterministic_graders(
             f"grader {grader_id} verifier",
             kind="file",
         )
-        if file_sha256(verifier_path) != verifier["sha256"]:
-            raise RunnerFailure(f"grader {grader_id} verifier sha256 mismatch")
+        if verifier["source_revision"] != plan["source_revision"]:
+            raise RunnerFailure(
+                f"grader {grader_id} verifier revision differs from the plan",
+            )
 
         grader_dir = attempt_dir / "graders" / grader_id
         grader_dir.mkdir(parents=True)
@@ -1564,19 +1526,15 @@ def _run_deterministic_graders(
         _validate_grader_output(output, expected_checks)
         invocation = {
             "grader_id": grader_id,
-            "declared_argv": verifier["argv"],
-            "resolved_argv": argv,
-            "resolved_executable_sha256": file_sha256(executable.resolve()),
-            "cwd": cwd_value,
-            "env": [
-                {
-                    "name": name,
-                    "value_sha256": "sha256:"
-                    + sha256(value.encode("utf-8")).hexdigest(),
-                }
-                for name, value in sorted(environment.items())
-            ],
-            "timeout_seconds": verifier["timeout_seconds"],
+            **_invocation_record(
+                declared_argv=verifier["argv"],
+                resolved_argv=argv,
+                environment=environment,
+                cwd=grader_cwd,
+                attempt_dir=attempt_dir,
+                timeout_seconds=verifier["timeout_seconds"],
+                credential_policy=spec["execution"]["credential_policy"],
+            ),
             "input_allowlist": verifier["input_allowlist"],
             "inputs": [
                 artifact_record(path, attempt_dir, encoding="utf-8")
@@ -1584,9 +1542,6 @@ def _run_deterministic_graders(
             ],
             "exit_code": exit_code,
             "pass_exit_codes": verifier["pass_exit_codes"],
-            "credential_policy": spec["execution"]["credential_policy"],
-            "shell": False,
-            "start_new_session": True,
         }
         invocation_path = grader_dir / "invocation.json"
         atomic_write_json(invocation_path, invocation)
@@ -1749,8 +1704,6 @@ def _run_model_graders(
             kind="file",
         )
         prompt_bytes = prompt_path.read_bytes()
-        if file_sha256(prompt_path) != model_spec["prompt"]["sha256"]:
-            raise RunnerFailure("model grader prompt binding differs")
         blinded_path = grader_dir / "blinded-input.json"
         atomic_write_json(blinded_path, batch)
         request = _host_request(
@@ -1762,11 +1715,10 @@ def _run_model_graders(
             payload=model_transport.request_payload(
                 grader_id=grader_id,
                 batch=batch,
-                batch_hash=model_spec["batch_hash"],
-                schedule_hash=model_spec["schedule_hash"],
+                schedule_id=model_spec["schedule_id"],
                 prompt_bytes=prompt_bytes,
-                prompt_hash=model_spec["prompt"]["sha256"],
-                schema_hash=model_spec["schema"]["sha256"],
+                prompt_id=model_spec["prompt_id"],
+                schema_id=model_spec["schema_id"],
             ),
         )
         diagnostics = validate_host_protocol_record(
@@ -1783,7 +1735,6 @@ def _run_model_graders(
                 declared_argv=host["command"]["argv"],
                 resolved_argv=argv,
                 environment=environment,
-                executable=Path(argv[0]),
                 cwd=workspace,
                 attempt_dir=attempt_dir,
                 timeout_seconds=entry["timeout_seconds"],
@@ -1833,7 +1784,7 @@ def _run_model_graders(
         grader_outputs.append({
             "kind": "model",
             "grader_id": grader_id,
-            "schedule_hash": model_spec["schedule_hash"],
+            "schedule_id": model_spec["schedule_id"],
             "blinded_input": artifact_record(
                 blinded_path, attempt_dir, encoding="utf-8",
             ),
@@ -1882,7 +1833,6 @@ def _build_receipt(
     *,
     plan: dict[str, Any],
     entry: dict[str, Any],
-    spec: dict[str, Any],
     host: dict[str, Any],
     marker: dict[str, Any],
     reset_request: dict[str, Any],
@@ -1911,15 +1861,14 @@ def _build_receipt(
     ] is not None:
         raise RunnerFailure("host reported a protocol error")
     receipt = {
-        "schema_version": 4,
-        "receipt_hash": "sha256:" + "0" * 64,
-        "attempt_start": marker,
+        "schema_version": 5,
         "run": {
-            "plan_hash": plan["plan_hash"],
             "plan_id": plan["plan_id"],
             "entry_ordinal": entry["entry_ordinal"],
             "entry_id": entry["entry_id"],
             "run_id": marker["run_id"],
+            "attempt_id": marker["attempt_id"],
+            "request_id": request["envelope"]["request_id"],
             "case_id": entry["case_id"],
             "treatment_id": entry["treatment_id"],
             "repeat": entry["repeat"],
@@ -1931,22 +1880,6 @@ def _build_receipt(
             "valid": True,
             "error": result["treatment_error"],
             "terminal": result["terminal_status"],
-        },
-        "provenance": {
-            "spec_hash": plan["spec_hash"],
-            "scenario_corpus_hash": plan["scenario_corpus_hash"],
-            "scenario_hash": entry["scenario_hash"],
-            "plan_hash": plan["plan_hash"],
-            "host_manifest_hash": plan["host_manifest_hash"],
-            "package_hash": plan["package_hashes"][
-                spec["subject"]["skill_id"]
-            ],
-            "catalog_hash": entry["catalog_hash"],
-            "treatment_hash": entry["treatment_hash"],
-            "fixture_hash": entry["fixture_hash"],
-            "grader_set_hash": plan["grader_set_hash"],
-            "calibration_hash": plan["calibration_hash"],
-            "suite_quality_hash": plan["suite_quality_hash"],
         },
         "artifacts": artifacts,
         "host_protocol": {
@@ -2000,7 +1933,6 @@ def _build_receipt(
             "errors": [],
         },
     }
-    receipt["receipt_hash"] = canonical_self_hash(receipt, "receipt_hash")
     return receipt
 
 
@@ -2009,52 +1941,33 @@ def _validate_receipt(
     *,
     plan: dict[str, Any],
     entry: dict[str, Any],
-    marker: dict[str, Any],
-    spec: dict[str, Any],
+    attempt: int,
     registry: dict[str, dict[str, Any]],
 ) -> None:
-    diagnostics = validate_v5_schema(
-        receipt, "receipt-v4.schema.json", registry,
+    diagnostics = validate_epoch6_schema(
+        receipt, "receipt-v5.schema.json", registry,
     )
     if diagnostics:
         raise RunnerFailure(_first_diagnostic(diagnostics))
-    if not verify_self_hash(receipt, "receipt_hash"):
-        raise RunnerFailure("receipt_hash does not match the canonical receipt")
-    if receipt["attempt_start"] != marker:
-        raise RunnerFailure("receipt attempt marker differs from attempt-start.json")
     run = receipt["run"]
+    run_id, attempt_id = _attempt_identity(entry, attempt)
     expected = {
-        "plan_hash": plan["plan_hash"],
         "plan_id": plan["plan_id"],
         "entry_ordinal": entry["entry_ordinal"],
         "entry_id": entry["entry_id"],
         "case_id": entry["case_id"],
         "treatment_id": entry["treatment_id"],
         "repeat": entry["repeat"],
-        "attempt": marker["attempt"],
-        "run_id": marker["run_id"],
+        "attempt": attempt,
+        "run_id": run_id,
+        "attempt_id": attempt_id,
+        "request_id": (
+            f"request.{entry['entry_ordinal']}.{attempt}.execute_case"
+        ),
     }
     for field, value in expected.items():
         if run[field] != value:
             raise RunnerFailure(f"receipt run {field} differs from plan identity")
-    expected_provenance = {
-        "spec_hash": plan["spec_hash"],
-        "scenario_corpus_hash": plan["scenario_corpus_hash"],
-        "scenario_hash": entry["scenario_hash"],
-        "plan_hash": plan["plan_hash"],
-        "host_manifest_hash": plan["host_manifest_hash"],
-        "package_hash": plan["package_hashes"][
-            spec["subject"]["skill_id"]
-        ],
-        "catalog_hash": entry["catalog_hash"],
-        "treatment_hash": entry["treatment_hash"],
-        "fixture_hash": entry["fixture_hash"],
-        "grader_set_hash": plan["grader_set_hash"],
-        "calibration_hash": plan["calibration_hash"],
-        "suite_quality_hash": plan["suite_quality_hash"],
-    }
-    if receipt["provenance"] != expected_provenance:
-        raise RunnerFailure("receipt provenance differs from the plan entry")
     if receipt["routing"]["catalog"] != [
         item["id"] for item in entry["execute_case_payload"]["catalog"]
     ]:
@@ -2093,17 +2006,16 @@ def _validate_marker(
     entry: dict[str, Any],
     attempt: int,
 ) -> None:
-    run_id, ownership_token = _attempt_identity(plan, entry, attempt)
+    run_id, attempt_id = _attempt_identity(entry, attempt)
     expected = _build_marker(
-        plan, entry, attempt, run_id, ownership_token,
+        plan, entry, attempt, run_id, attempt_id,
     )
-    if marker != expected or not verify_self_hash(marker, "marker_hash"):
-        raise RunnerFailure("attempt marker identity or self-hash is invalid")
+    if marker != expected:
+        raise RunnerFailure("attempt marker identity is invalid")
 
 
 def _row_from_receipt(
     *,
-    plan: dict[str, Any],
     entry: dict[str, Any],
     attempt_rel: str,
     receipt_path: Path,
@@ -2111,58 +2023,84 @@ def _row_from_receipt(
     registry: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     row = {
-        "schema_version": 2,
-        "plan_hash": plan["plan_hash"],
-        "plan_id": plan["plan_id"],
-        "entry_ordinal": entry["entry_ordinal"],
+        "record_type": "attempt",
         "entry_id": entry["entry_id"],
         "run_id": receipt["run"]["run_id"],
-        "case_id": entry["case_id"],
-        "treatment_id": entry["treatment_id"],
-        "repeat": entry["repeat"],
-        "attempt": receipt["run"]["attempt"],
+        "attempt_id": receipt["run"]["attempt_id"],
         "artifact_dir": attempt_rel,
         "receipt": {
             "path": f"{attempt_rel}/receipt.json",
-            "sha256": file_sha256(receipt_path),
+            "digest": file_sha256(receipt_path),
         },
     }
-    diagnostics = validate_v5_schema(
-        row, "run-index-row-v2.schema.json", registry,
+    diagnostics = validate_epoch6_schema(
+        row, "run-index-v3.schema.json", registry,
     )
     if diagnostics:
         raise RunnerFailure(_first_diagnostic(diagnostics))
     return row
 
 
+def _index_row_order(
+    plan: dict[str, Any], row: dict[str, Any],
+) -> tuple[int, int]:
+    entry_ordinals = {
+        entry["entry_id"]: entry["entry_ordinal"] for entry in plan["entries"]
+    }
+    try:
+        entry_ordinal = entry_ordinals[row["entry_id"]]
+        prefix = f"attempt.{entry_ordinal}."
+        if not row["attempt_id"].startswith(prefix):
+            raise ValueError
+        attempt = int(row["attempt_id"][len(prefix):])
+        if attempt < 1 or row["run_id"] != f"run.{entry_ordinal}.{attempt}":
+            raise ValueError
+        return entry_ordinal, attempt
+    except (KeyError, ValueError) as exc:
+        raise RunnerFailure("index row has an invalid semantic identity") from exc
+
+
 def _load_index(
     index_path: Path,
     *,
     plan: dict[str, Any],
+    plan_digest: str,
     registry: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     if not index_path.exists():
         return []
-    rows = [row for _, row in load_jsonl_objects(index_path)]
-    identities: set[tuple[str, int]] = set()
-    for row in rows:
-        diagnostics = validate_v5_schema(
-            row, "run-index-row-v2.schema.json", registry,
+    records = [row for _, row in load_jsonl_objects(index_path)]
+    if not records:
+        raise RunnerFailure("index is missing its header")
+    expected_header = {
+        "record_type": "index_header",
+        "plan_id": plan["plan_id"],
+        "plan_digest": plan_digest,
+    }
+    if records[0] != expected_header:
+        raise RunnerFailure("index header differs from the selected plan bytes")
+    rows = records[1:]
+    identities: set[tuple[str, str]] = set()
+    entry_ordinals = {
+        entry["entry_id"]: entry["entry_ordinal"] for entry in plan["entries"]
+    }
+    for position, row in enumerate(records):
+        diagnostics = validate_epoch6_schema(
+            row, "run-index-v3.schema.json", registry,
         )
         if diagnostics:
             raise RunnerFailure(_first_diagnostic(diagnostics))
-        if (
-            row["plan_hash"] != plan["plan_hash"]
-            or row["plan_id"] != plan["plan_id"]
-        ):
-            raise RunnerFailure("index row belongs to a different plan")
-        identity = (row["entry_id"], row["attempt"])
+        if row["record_type"] == "index_header":
+            if position != 0:
+                raise RunnerFailure("index contains a non-leading header")
+            continue
+        if row["entry_id"] not in entry_ordinals:
+            raise RunnerFailure("index row names an unknown plan entry")
+        identity = (row["entry_id"], row["attempt_id"])
         if identity in identities:
             raise RunnerFailure("index contains a duplicate execute attempt")
         identities.add(identity)
-    if rows != sorted(
-        rows, key=lambda row: (row["entry_ordinal"], row["attempt"]),
-    ):
+    if rows != sorted(rows, key=lambda row: _index_row_order(plan, row)):
         raise RunnerFailure("index rows are not in canonical attempt order")
     return rows
 
@@ -2208,28 +2146,35 @@ def _existing_receipt(
     entry: dict[str, Any],
     attempt: int,
     attempt_dir: Path,
-    spec: dict[str, Any],
     registry: dict[str, dict[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
     marker_path = attempt_dir / "attempt-start.json"
-    if not marker_path.is_file() or marker_path.is_symlink():
-        raise RunnerFailure("attempt directory lacks a valid attempt marker")
-    marker = load_json(marker_path)
-    _validate_marker(
-        marker, plan=plan, entry=entry, attempt=attempt,
-    )
     receipt_path = attempt_dir / "receipt.json"
     if not receipt_path.exists():
+        if not marker_path.is_file() or marker_path.is_symlink():
+            raise RunnerFailure("open attempt lacks a valid attempt marker")
+        marker = load_json(marker_path)
+        _validate_marker(
+            marker, plan=plan, entry=entry, attempt=attempt,
+        )
         return None
     if not receipt_path.is_file() or receipt_path.is_symlink():
         raise RunnerFailure("receipt path is not a regular file")
+    run_id, attempt_id = _attempt_identity(entry, attempt)
+    marker = _build_marker(plan, entry, attempt, run_id, attempt_id)
+    if marker_path.exists() or marker_path.is_symlink():
+        if not marker_path.is_file() or marker_path.is_symlink():
+            raise RunnerFailure("attempt marker path is invalid")
+        persisted_marker = load_json(marker_path)
+        _validate_marker(
+            persisted_marker, plan=plan, entry=entry, attempt=attempt,
+        )
     receipt = load_json(receipt_path)
     _validate_receipt(
         receipt,
         plan=plan,
         entry=entry,
-        marker=marker,
-        spec=spec,
+        attempt=attempt,
         registry=registry,
     )
     verify_artifact_records(
@@ -2273,7 +2218,6 @@ def _resume_seal(
     *,
     plan: dict[str, Any],
     entry: dict[str, Any],
-    spec: dict[str, Any],
     host: dict[str, Any],
     attempt: int,
     attempt_dir: Path,
@@ -2346,15 +2290,16 @@ def _resume_seal(
     )
     observed = _utc_now()
     receipt = {
-        "schema_version": 4,
-        "receipt_hash": "sha256:" + "0" * 64,
-        "attempt_start": marker,
+        "schema_version": 5,
         "run": {
-            "plan_hash": plan["plan_hash"],
             "plan_id": plan["plan_id"],
             "entry_ordinal": entry["entry_ordinal"],
             "entry_id": entry["entry_id"],
             "run_id": marker["run_id"],
+            "attempt_id": marker["attempt_id"],
+            "request_id": (
+                f"request.{entry['entry_ordinal']}.{attempt}.execute_case"
+            ),
             "case_id": entry["case_id"],
             "treatment_id": entry["treatment_id"],
             "repeat": entry["repeat"],
@@ -2366,22 +2311,6 @@ def _resume_seal(
             "valid": False,
             "error": interruption_class,
             "terminal": "interrupted",
-        },
-        "provenance": {
-            "spec_hash": plan["spec_hash"],
-            "scenario_corpus_hash": plan["scenario_corpus_hash"],
-            "scenario_hash": entry["scenario_hash"],
-            "plan_hash": plan["plan_hash"],
-            "host_manifest_hash": plan["host_manifest_hash"],
-            "package_hash": plan["package_hashes"][
-                spec["subject"]["skill_id"]
-            ],
-            "catalog_hash": entry["catalog_hash"],
-            "treatment_hash": entry["treatment_hash"],
-            "fixture_hash": entry["fixture_hash"],
-            "grader_set_hash": plan["grader_set_hash"],
-            "calibration_hash": plan["calibration_hash"],
-            "suite_quality_hash": plan["suite_quality_hash"],
         },
         "artifacts": artifacts,
         "host_protocol": {
@@ -2442,13 +2371,11 @@ def _resume_seal(
             "errors": [],
         },
     }
-    receipt["receipt_hash"] = canonical_self_hash(receipt, "receipt_hash")
     _validate_receipt(
         receipt,
         plan=plan,
         entry=entry,
-        marker=marker,
-        spec=spec,
+        attempt=attempt,
         registry=registry,
     )
     receipt_path = attempt_dir / "receipt.json"
@@ -2496,7 +2423,10 @@ def _restore_fixture(
             })
     manifest = {
         "schema_version": 1,
-        "fixture_hash": entry["fixture_hash"],
+        "fixture": {
+            "path": fixture["manifest"],
+            "digest": fixture["sha256"],
+        },
         "fake_services": fixture["fake_services"],
         "files": manifest_rows,
     }
@@ -2631,11 +2561,9 @@ def _execute_entry(
     workspace = attempt_dir / "workspace"
     workspace.mkdir()
 
-    run_id, ownership_token = _attempt_identity(
-        plan, entry, attempt,
-    )
+    run_id, attempt_id = _attempt_identity(entry, attempt)
     marker = _build_marker(
-        plan, entry, attempt, run_id, ownership_token,
+        plan, entry, attempt, run_id, attempt_id,
     )
     marker_path = attempt_dir / "attempt-start.json"
     atomic_write_json(marker_path, marker)
@@ -2660,7 +2588,6 @@ def _execute_entry(
             declared_argv=host["command"]["argv"],
             resolved_argv=argv,
             environment=environment,
-            executable=Path(argv[0]),
             cwd=workspace,
             attempt_dir=attempt_dir,
             timeout_seconds=entry["timeout_seconds"],
@@ -2728,7 +2655,7 @@ def _execute_entry(
     atomic_write_bytes(result_path, canonical_json_bytes(result) + b"\n")
 
     grader_outputs, grader_artifacts = _run_deterministic_graders(
-        entry, spec, spec_path, attempt_dir, result_path, custody_fd,
+        entry, plan, spec, spec_path, attempt_dir, result_path, custody_fd,
     )
     (
         model_outputs,
@@ -2797,7 +2724,6 @@ def _execute_entry(
     receipt = _build_receipt(
         plan=plan,
         entry=entry,
-        spec=spec,
         host=host,
         marker=marker,
         reset_request=reset_request,
@@ -2827,8 +2753,7 @@ def _execute_entry(
         receipt,
         plan=plan,
         entry=entry,
-        marker=marker,
-        spec=spec,
+        attempt=attempt,
         registry=registry,
     )
     receipt_path = attempt_dir / "receipt.json"
@@ -2838,12 +2763,10 @@ def _execute_entry(
         written,
         plan=plan,
         entry=entry,
-        marker=marker,
-        spec=spec,
+        attempt=attempt,
         registry=registry,
     )
     return _row_from_receipt(
-        plan=plan,
         entry=entry,
         attempt_rel=attempt_rel,
         receipt_path=receipt_path,
@@ -2861,30 +2784,29 @@ def _verify_index_receipts(
     registry: dict[str, dict[str, Any]],
 ) -> None:
     entries = {entry["entry_id"]: entry for entry in plan["entries"]}
-    valid_by_identity: dict[tuple[str, int], bool] = {}
+    valid_by_identity: dict[tuple[str, str], bool] = {}
     for row in rows:
         entry = entries.get(row["entry_id"])
         if entry is None or entry["disposition"] != "execute":
             raise RunnerFailure("index references a non-execute plan entry")
+        _, attempt = _index_row_order(plan, row)
         _, attempt_rel, attempt_dir = _attempt_paths(
-            plan_path, plan, entry, row["attempt"],
+            plan_path, plan, entry, attempt,
         )
         existing = _existing_receipt(
             plan=plan,
             entry=entry,
-            attempt=row["attempt"],
+            attempt=attempt,
             attempt_dir=attempt_dir,
-            spec=spec,
             registry=registry,
         )
         if existing is None:
             raise RunnerFailure("index references an attempt without a receipt")
         _, receipt = existing
-        valid_by_identity[(row["entry_id"], row["attempt"])] = receipt[
+        valid_by_identity[(row["entry_id"], row["attempt_id"])] = receipt[
             "run"
         ]["valid"]
         expected = _row_from_receipt(
-            plan=plan,
             entry=entry,
             attempt_rel=attempt_rel,
             receipt_path=attempt_dir / "receipt.json",
@@ -2902,20 +2824,21 @@ def _verify_index_receipts(
     ]
     grouped: list[tuple[int, list[dict[str, Any]]]] = []
     for row in rows:
-        if not grouped or grouped[-1][0] != row["entry_ordinal"]:
-            grouped.append((row["entry_ordinal"], []))
+        entry_ordinal, _ = _index_row_order(plan, row)
+        if not grouped or grouped[-1][0] != entry_ordinal:
+            grouped.append((entry_ordinal, []))
         grouped[-1][1].append(row)
     observed_ordinals = [ordinal for ordinal, _ in grouped]
     if observed_ordinals != execute_ordinals[:len(observed_ordinals)]:
         raise RunnerFailure("index is not a prefix of execute entry order")
     for index, (_, group) in enumerate(grouped):
-        if [row["attempt"] for row in group] != list(
+        if [_index_row_order(plan, row)[1] for row in group] != list(
             range(1, len(group) + 1),
         ):
             raise RunnerFailure("index attempts are not a continuous prefix")
         if index < len(grouped) - 1:
             last = group[-1]
-            if not valid_by_identity[(last["entry_id"], last["attempt"])]:
+            if not valid_by_identity[(last["entry_id"], last["attempt_id"])]:
                 raise RunnerFailure(
                     "index advances past an entry without valid terminal evidence",
                 )
@@ -2956,7 +2879,6 @@ def _runner_status(
                 entry=entry,
                 attempt=attempt,
                 attempt_dir=attempt_dir,
-                spec=spec,
                 registry=registry,
             )
             if existing is None:
@@ -3036,8 +2958,8 @@ def _runner_status(
         recoverable_attempts=recoverable,
         invalid_attempts=invalid_attempts,
     )
-    diagnostics = validate_v5_schema(
-        status, "runner-status-v1.schema.json", registry,
+    diagnostics = validate_epoch6_schema(
+        status, "runner-status-v2.schema.json", registry,
     )
     if diagnostics:
         raise RunnerFailure(_first_diagnostic(diagnostics))
@@ -3046,24 +2968,30 @@ def _runner_status(
 
 def _append_index_row(
     index_path: Path,
+    plan: dict[str, Any],
+    plan_digest: str,
     rows: list[dict[str, Any]],
     row: dict[str, Any],
 ) -> bool:
-    identity = (row["entry_id"], row["attempt"])
+    identity = (row["entry_id"], row["attempt_id"])
     for existing in rows:
-        if (existing["entry_id"], existing["attempt"]) == identity:
+        if (existing["entry_id"], existing["attempt_id"]) == identity:
             if existing != row:
                 raise RunnerFailure("existing index row conflicts with receipt")
             return False
-    key = (row["entry_ordinal"], row["attempt"])
-    if rows and key <= (
-        rows[-1]["entry_ordinal"],
-        rows[-1]["attempt"],
-    ):
+    key = _index_row_order(plan, row)
+    if rows and key <= _index_row_order(plan, rows[-1]):
         raise RunnerFailure("new index row would violate canonical prefix order")
     rows.append(row)
     index_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_jsonl(index_path, rows, replace=index_path.exists())
+    header = {
+        "record_type": "index_header",
+        "plan_id": plan["plan_id"],
+        "plan_digest": plan_digest,
+    }
+    atomic_write_jsonl(
+        index_path, [header, *rows], replace=index_path.exists(),
+    )
     return True
 
 
@@ -3106,7 +3034,6 @@ def _resume_entry(
                 entry=entry,
                 attempt=attempt,
                 attempt_dir=attempt_dir,
-                spec=spec,
                 registry=registry,
             )
             if existing is None:
@@ -3117,14 +3044,12 @@ def _resume_entry(
                 receipt = _resume_seal(
                     plan=plan,
                     entry=entry,
-                    spec=spec,
                     host=host,
                     attempt=attempt,
                     attempt_dir=attempt_dir,
                     registry=registry,
                 )
                 row = _row_from_receipt(
-                    plan=plan,
                     entry=entry,
                     attempt_rel=attempt_rel,
                     receipt_path=attempt_dir / "receipt.json",
@@ -3137,7 +3062,6 @@ def _resume_entry(
                 break
             _, receipt = existing
             row = _row_from_receipt(
-                plan=plan,
                 entry=entry,
                 attempt_rel=attempt_rel,
                 receipt_path=attempt_dir / "receipt.json",
@@ -3219,8 +3143,9 @@ def _selected_entries(
 def _run_command(args: argparse.Namespace) -> int:
     plan_path = Path(args.plan).resolve()
     try:
-        registry = load_v5_schema_registry()
+        registry = load_epoch6_schema_registry()
         plan = _load_plan(plan_path, registry)
+        plan_digest = file_sha256(plan_path)
         spec, _, host, registry, spec_path = _load_bound_contract(
             plan, plan_path,
         )
@@ -3256,7 +3181,12 @@ def _run_command(args: argparse.Namespace) -> int:
                     entry, spec, spec_path, _utc_now(),
                 )
             _validate_host_command(host, spec_path.parent)
-        rows = _load_index(index_path, plan=plan, registry=registry)
+        rows = _load_index(
+            index_path,
+            plan=plan,
+            plan_digest=plan_digest,
+            registry=registry,
+        )
         _verify_index_receipts(
             rows,
             plan_path=plan_path,
@@ -3325,7 +3255,9 @@ def _run_command(args: argparse.Namespace) -> int:
                     prior_rows=rows,
                     budget=budget,
                 ):
-                    _append_index_row(index_path, rows, row)
+                    _append_index_row(
+                        index_path, plan, plan_digest, rows, row,
+                    )
             else:
                 with _new_attempt_custody(
                     plan_path, plan, entry, 1, budget,
@@ -3342,7 +3274,9 @@ def _run_command(args: argparse.Namespace) -> int:
                         custody_fd=custody.fd,
                     )
                     complete = True
-                    _append_index_row(index_path, rows, row)
+                    _append_index_row(
+                        index_path, plan, plan_digest, rows, row,
+                    )
                     custody.commit()
             incomplete = incomplete or not complete
             if not complete:

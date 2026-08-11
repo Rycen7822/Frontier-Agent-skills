@@ -1,11 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/skill-evaluator/schemas/comparison-plan-v1.schema.json",
-  "title": "Skill Evaluator comparison plan v1",
+  "$id": "https://example.invalid/skill-evaluator/schemas/comparison-plan-v2.schema.json",
+  "title": "Skill Evaluator comparison plan v2",
   "type": "object",
   "required": [
     "schema_version",
-    "comparison_plan_hash",
     "comparison_id",
     "kind",
     "claim_scope",
@@ -16,8 +15,7 @@
     "output"
   ],
   "properties": {
-    "schema_version": {"const": 1},
-    "comparison_plan_hash": {"$ref": "#/$defs/sha256"},
+    "schema_version": {"const": 2},
     "comparison_id": {"$ref": "#/$defs/safe_id"},
     "kind": {"enum": ["revision", "model_transition"]},
     "claim_scope": {
@@ -122,20 +120,11 @@
     },
     "bound_artifact": {
       "type": "object",
-      "required": ["path", "schema", "file_sha256"],
+      "required": ["path", "schema", "digest"],
       "properties": {
         "path": {"$ref": "#/$defs/relative_path"},
         "schema": {"type": "string", "minLength": 1},
-        "file_sha256": {"$ref": "#/$defs/sha256"}
-      },
-      "additionalProperties": false
-    },
-    "generated_artifact": {
-      "type": "object",
-      "required": ["path", "schema"],
-      "properties": {
-        "path": {"$ref": "#/$defs/relative_path"},
-        "schema": {"type": "string", "minLength": 1}
+        "digest": {"$ref": "#/$defs/sha256"}
       },
       "additionalProperties": false
     },
@@ -144,84 +133,27 @@
       "required": [
         "evaluation_id",
         "plan_id",
-        "spec_hash",
-        "scenario_corpus_hash",
-        "host_manifest_hash",
-        "execution_identity"
+        "execution_profile"
       ],
       "properties": {
         "evaluation_id": {"$ref": "#/$defs/safe_id"},
         "plan_id": {"$ref": "#/$defs/safe_id"},
-        "spec_hash": {"$ref": "#/$defs/sha256"},
-        "scenario_corpus_hash": {"$ref": "#/$defs/sha256"},
-        "host_manifest_hash": {"$ref": "#/$defs/sha256"},
-        "execution_identity": {
-          "$ref": "execution-plan-v1.schema.json#/$defs/execution_identity"
+        "execution_profile": {
+          "$ref": "execution-plan-v2.schema.json#/$defs/execution_profile"
         }
       },
       "additionalProperties": false
     },
     "cycle_binding": {
       "type": "object",
-      "required": [
-        "expected_identity",
-        "spec",
-        "execution_plan",
-        "host_manifest",
-        "summary",
-        "failure_index",
-        "observations"
-      ],
+      "required": ["cycle_id", "expected_identity", "capsule"],
       "properties": {
+        "cycle_id": {"$ref": "#/$defs/safe_id"},
         "expected_identity": {"$ref": "#/$defs/expected_identity"},
-        "spec": {
+        "capsule": {
           "allOf": [
             {"$ref": "#/$defs/bound_artifact"},
-            {"properties": {"schema": {"const": "eval-spec-v5"}}}
-          ]
-        },
-        "execution_plan": {
-          "allOf": [
-            {"$ref": "#/$defs/bound_artifact"},
-            {"properties": {"schema": {"const": "execution-plan-v1"}}}
-          ]
-        },
-        "host_manifest": {
-          "allOf": [
-            {"$ref": "#/$defs/bound_artifact"},
-            {"properties": {"schema": {"const": "host-manifest-v1"}}}
-          ]
-        },
-        "summary": {
-          "allOf": [
-            {"$ref": "#/$defs/generated_artifact"},
-            {"properties": {"schema": {"const": "analysis-summary-v4"}}}
-          ]
-        },
-        "failure_index": {
-          "anyOf": [
-            {
-              "allOf": [
-                {"$ref": "#/$defs/generated_artifact"},
-                {"properties": {"schema": {"const": "failure-index-v1"}}}
-              ]
-            },
-            {"type": "null"}
-          ]
-        },
-        "observations": {
-          "anyOf": [
-            {
-              "allOf": [
-                {"$ref": "#/$defs/generated_artifact"},
-                {
-                  "properties": {
-                    "schema": {"const": "comparison-observations-v1"}
-                  }
-                }
-              ]
-            },
-            {"type": "null"}
+            {"properties": {"schema": {"const": "comparison-cycle-capsule/2"}}}
           ]
         }
       },
@@ -232,47 +164,13 @@
       "required": ["prior", "candidate"],
       "properties": {
         "prior": {
-          "allOf": [
-            {"$ref": "#/$defs/cycle_binding"},
-            {
-              "properties": {
-                "failure_index": {
-                  "allOf": [
-                    {"$ref": "#/$defs/generated_artifact"},
-                    {
-                      "properties": {
-                        "schema": {"const": "failure-index-v1"}
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          ]
+          "$ref": "#/$defs/cycle_binding"
         },
         "candidate": {"$ref": "#/$defs/cycle_binding"}
       },
       "additionalProperties": false
     },
-    "transition_cycle_binding": {
-      "allOf": [
-        {"$ref": "#/$defs/cycle_binding"},
-        {
-          "properties": {
-            "observations": {
-              "allOf": [
-                {"$ref": "#/$defs/generated_artifact"},
-                {
-                  "properties": {
-                    "schema": {"const": "comparison-observations-v1"}
-                  }
-                }
-              ]
-            }
-          }
-        }
-      ]
-    },
+    "transition_cycle_binding": {"$ref": "#/$defs/cycle_binding"},
     "transition_ac_bindings": {
       "type": "object",
       "required": ["A", "C"],
@@ -325,7 +223,7 @@
     },
     "change_set": {
       "type": "object",
-      "required": ["category", "paths", "candidate_hash"],
+      "required": ["category", "paths", "candidate_revision"],
       "properties": {
         "category": {
           "enum": [
@@ -343,7 +241,7 @@
           "uniqueItems": true,
           "items": {"$ref": "#/$defs/relative_path"}
         },
-        "candidate_hash": {"$ref": "#/$defs/sha256"}
+        "candidate_revision": {"type": "string", "minLength": 1}
       },
       "additionalProperties": false
     },
@@ -488,14 +386,16 @@
           "uniqueItems": true,
           "items": {
             "enum": [
-              "host_hash",
-              "harness_hash",
-              "prompt_hash",
-              "tool_surface_hash",
-              "policy_hash",
-              "runtime_hash",
-              "tokenizer_pricing_hash",
-              "clock_hash"
+              "host_version",
+              "harness_version",
+              "prompt_id",
+              "tool_schema_id",
+              "policy_id",
+              "platform",
+              "tokenizer_id",
+              "pricing_id",
+              "utc_clock_id",
+              "monotonic_clock_id"
             ]
           }
         }

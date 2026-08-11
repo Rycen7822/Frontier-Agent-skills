@@ -4,16 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from evidence_io import canonical_sha256
-from grader_semantics import semantic_payload, semantic_payload_hash
+from evidence_io import canonical_json_bytes
+from grader_semantics import semantic_payload
 
 
-COMPACT_PACKET_SCHEMA = (
-    "context-clean-subagent-reviewer-message-packet/1.0"
-)
-FULL_PACKET_SCHEMA = "context-clean-subagent-reviewer-packet/1.0"
-PROMPT_SCHEMA = "context-clean-subagent-reviewer-prompt/4.0"
-MATRIX_RESPONSE_SCHEMA = "context-clean-subagent-reviewer-matrix/1.0"
+COMPACT_PACKET_SCHEMA = "context-clean-subagent-reviewer-message-packet/2.0"
+FULL_PACKET_SCHEMA = "context-clean-subagent-reviewer-packet/2.0"
+PROMPT_SCHEMA = "context-clean-subagent-reviewer-prompt/5.0"
+MATRIX_RESPONSE_SCHEMA = "context-clean-subagent-reviewer-matrix/2.0"
 TUPLE_FIELDS = ["opaque_example_id", "view_index", "check_index"]
 REVIEWER_INSTRUCTION = (
     'Return exactly {"matrix":[...]} with no other keys or text. Each '
@@ -34,7 +32,7 @@ REVIEWER_INSTRUCTION = (
 
 
 class PromptContractError(ValueError):
-    """The compact prompt packet cannot represent its bound full packet."""
+    """The compact prompt packet cannot represent its semantic payload."""
 
 
 def _closed(value: Any, fields: set[str], label: str) -> dict[str, Any]:
@@ -60,7 +58,7 @@ def expand_prompt_packet(
     *,
     campaign_id: str,
 ) -> dict[str, Any]:
-    """Expand one canonical compact packet into the authoritative shape."""
+    """Expand one compact packet into the authoritative semantic shape."""
     _closed(
         compact,
         {
@@ -70,7 +68,6 @@ def expand_prompt_packet(
             "views",
             "checks",
             "examples",
-            "source_packet_hash",
         },
         "compact reviewer packet",
     )
@@ -87,19 +84,14 @@ def expand_prompt_packet(
         or not checks
         or not isinstance(examples, list)
         or not examples
-        or len({canonical_sha256(view) for view in views}) != len(views)
-        or len({canonical_sha256(check) for check in checks}) != len(checks)
+        or len({canonical_json_bytes(view) for view in views}) != len(views)
+        or len({canonical_json_bytes(check) for check in checks}) != len(checks)
     ):
         raise PromptContractError("compact reviewer packet identity is invalid")
-    for view in views:
-        if not isinstance(view, dict) or not view:
-            raise PromptContractError("compact reviewer view is invalid")
+    if any(not isinstance(view, dict) or not view for view in views):
+        raise PromptContractError("compact reviewer view is invalid")
     for check in checks:
-        _closed(
-            check,
-            {"check_id", "pass_condition"},
-            "compact reviewer check",
-        )
+        _closed(check, {"check_id", "pass_condition"}, "reviewer check")
         if (
             not _safe_id(check["check_id"])
             or not isinstance(check["pass_condition"], str)
@@ -113,9 +105,7 @@ def expand_prompt_packet(
     seen_checks: set[int] = set()
     for example in examples:
         if not isinstance(example, list) or len(example) != 3:
-            raise PromptContractError(
-                "compact reviewer example is not a triple"
-            )
+            raise PromptContractError("compact reviewer example is not a triple")
         opaque_id, view_index, check_index = example
         if (
             not _safe_id(opaque_id)
@@ -128,60 +118,40 @@ def expand_prompt_packet(
             raise PromptContractError("compact reviewer example is invalid")
         if view_index not in seen_views:
             if view_index != len(seen_views):
-                raise PromptContractError(
-                    "compact reviewer view order is not canonical"
-                )
+                raise PromptContractError("reviewer view order is not canonical")
             seen_views.add(view_index)
         if check_index not in seen_checks:
             if check_index != len(seen_checks):
-                raise PromptContractError(
-                    "compact reviewer check order is not canonical"
-                )
+                raise PromptContractError("reviewer check order is not canonical")
             seen_checks.add(check_index)
         opaque_ids.add(opaque_id)
         check = checks[check_index]
-        payload = semantic_payload(
-            views[view_index],
-            check["check_id"],
-            check["pass_condition"],
-        )
         packet_examples.append({
             "opaque_example_id": opaque_id,
-            "payload": payload,
-            "payload_hash": semantic_payload_hash(payload),
+            "payload": semantic_payload(
+                views[view_index],
+                check["check_id"],
+                check["pass_condition"],
+            ),
         })
     if len(seen_views) != len(views) or len(seen_checks) != len(checks):
-        raise PromptContractError(
-            "compact reviewer dictionaries contain unused values"
-        )
-
-    packet = {
+        raise PromptContractError("reviewer dictionaries contain unused values")
+    return {
         "schema_version": FULL_PACKET_SCHEMA,
         "campaign_id": campaign_id,
         "examples": packet_examples,
-        "packet_hash": "",
     }
-    packet["packet_hash"] = canonical_sha256({
-        key: value for key, value in packet.items() if key != "packet_hash"
-    })
-    if packet["packet_hash"] != compact["source_packet_hash"]:
-        raise PromptContractError(
-            "compact reviewer source packet hash differs"
-        )
-    return packet
 
 
-def _matrix_response_contract(
+def matrix_response_contract(
     compact: dict[str, Any],
-    output_schema_hash: str,
+    output_schema_version: str,
 ) -> dict[str, Any]:
-    """Bind row-major compact output to the canonical expanded schema."""
+    """Describe the ordered value-only response expected from the reviewer."""
     columns = len(compact["checks"])
     rows, remainder = divmod(len(compact["examples"]), columns)
     if rows < 1 or columns < 1 or remainder:
-        raise PromptContractError(
-            "reviewer packet is not one canonical row-major matrix"
-        )
+        raise PromptContractError("reviewer packet is not a row-major matrix")
     return {
         "schema_version": MATRIX_RESPONSE_SCHEMA,
         "rows": rows,
@@ -192,7 +162,7 @@ def _matrix_response_contract(
             "A": {"label": "abstain", "severity": 0},
         },
         "example_order": "packet.examples row-major",
-        "canonical_output_schema_hash": output_schema_hash,
+        "output_schema_version": output_schema_version,
     }
 
 
@@ -201,7 +171,7 @@ def validate_reviewer_prompt(
     *,
     campaign_id: str,
     reviewer_id: str,
-    output_schema_hash: str,
+    output_schema_version: str,
 ) -> dict[str, Any]:
     """Validate one closed prompt and return its expanded semantic packet."""
     _closed(
@@ -215,18 +185,13 @@ def validate_reviewer_prompt(
         },
         "reviewer prompt",
     )
-    expanded = expand_prompt_packet(
-        prompt["packet"],
-        campaign_id=campaign_id,
-    )
+    expanded = expand_prompt_packet(prompt["packet"], campaign_id=campaign_id)
     if (
         prompt["schema_version"] != PROMPT_SCHEMA
         or prompt["reviewer_id"] != reviewer_id
         or prompt["instruction"] != REVIEWER_INSTRUCTION
         or prompt["response_contract"]
-        != _matrix_response_contract(prompt["packet"], output_schema_hash)
+        != matrix_response_contract(prompt["packet"], output_schema_version)
     ):
-        raise PromptContractError(
-            "reviewer prompt exposes or changes context"
-        )
+        raise PromptContractError("reviewer prompt exposes or changes context")
     return expanded

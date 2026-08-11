@@ -1,13 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://frontier.local/model-evolution/qualification-v1.schema.json",
-  "title": "Frontier model qualification v1",
+  "$id": "https://frontier.local/model-evolution/qualification-v2.schema.json",
+  "title": "Frontier model qualification v2",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "qualification_id",
-    "campaign_hash",
+    "campaign_id",
+    "terminal_state_revision",
     "identity",
     "claim",
     "lanes",
@@ -18,12 +19,13 @@
     "limits",
     "blockers",
     "validity",
-    "qualification_hash"
+    "evidence_refs"
   ],
   "properties": {
-    "schema_version": {"const": "model-qualification/1"},
+    "schema_version": {"const": "model-qualification/2"},
     "qualification_id": {"$ref": "#/$defs/safe_id"},
-    "campaign_hash": {"$ref": "#/$defs/hash"},
+    "campaign_id": {"$ref": "#/$defs/safe_id"},
+    "terminal_state_revision": {"type": "integer", "minimum": 0},
     "identity": {"$ref": "#/$defs/identity"},
     "claim": {"$ref": "#/$defs/claim"},
     "lanes": {
@@ -71,7 +73,10 @@
     "limits": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
     "blockers": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
     "validity": {"$ref": "#/$defs/validity"},
-    "qualification_hash": {"$ref": "#/$defs/hash"}
+    "evidence_refs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/evidence_ref"}
+    }
   },
   "$defs": {
     "safe_id": {
@@ -85,16 +90,65 @@
       "pattern": "Z$"
     },
     "binding": {
+      "oneOf": [
+        {"$ref": "#/$defs/repository_ref"},
+        {"$ref": "#/$defs/campaign_ref"},
+        {"$ref": "#/$defs/external_binding"}
+      ]
+    },
+    "repository_ref": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["root", "path", "sha256"],
+      "required": ["root", "path"],
       "properties": {
-        "root": {"enum": ["repository", "campaign"]},
+        "root": {"const": "repository"},
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*://)[A-Za-z0-9._/-]+$"
+        }
+      }
+    },
+    "campaign_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "path", "schema_version"],
+      "properties": {
+        "root": {"const": "campaign"},
         "path": {
           "type": "string",
           "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*://)[A-Za-z0-9._/-]+$"
         },
-        "sha256": {"$ref": "#/$defs/hash"}
+        "schema_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "external_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "path", "digest", "schema_version"],
+      "properties": {
+        "root": {"const": "external"},
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*://)[A-Za-z0-9._/-]+$"
+        },
+        "digest": {"$ref": "#/$defs/hash"},
+        "schema_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "evidence_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "receipt_paths", "raw_artifact_paths"],
+      "properties": {
+        "claim_id": {"$ref": "#/$defs/safe_id"},
+        "receipt_paths": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "raw_artifact_paths": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
       }
     },
     "skill_identity": {

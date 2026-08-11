@@ -23,10 +23,8 @@ from _model_evolution_contract import (
     load_json,
     load_jsonl,
     resolve_binding,
-    self_hash,
     validate_formal_plan_timeouts,
     validate_formal_timeout_inputs,
-    verify_self_hash,
 )
 
 
@@ -82,7 +80,7 @@ def _copy_relative_binding(
     relative = _relative_path(binding.get("path"), label=label)
     source = source_root.joinpath(*relative.parts)
     target = target_root.joinpath(*relative.parts)
-    _copy_file(source, target, expected_hash=binding.get("sha256"))
+    _copy_file(source, target, expected_hash=binding.get("digest"))
     return target
 
 
@@ -174,7 +172,6 @@ def _validate_selected_plugin(
     ):
         raise MaterializationError("selected plugin staging must be campaign-local")
     evidence = load_json(evidence_path, label="selected plugin build")
-    verify_self_hash(evidence, "evidence_hash")
     skills, source_commit, _ = _selected_product(campaign, role)
     if (
         evidence.get("source_revision") != source_commit
@@ -223,7 +220,7 @@ def _host_artifact_source(
         if (
             candidate.is_file()
             and not candidate.is_symlink()
-            and _file_hash(candidate) == binding.get("sha256")
+            and _file_hash(candidate) == binding.get("digest")
         ):
             matches.append(candidate)
     if len(matches) != 1:
@@ -253,7 +250,7 @@ def _copy_host_artifacts(
         _copy_file(
             source,
             target_root.joinpath(*relative.parts),
-            expected_hash=binding["sha256"],
+            expected_hash=binding["digest"],
         )
 
 
@@ -284,13 +281,13 @@ def promoted_model_grading_host(
                 "status": "pass",
                 "artifact": {
                     "path": "grader-calibration.json",
-                    "sha256": calibration_file_hash,
+                    "digest": calibration_file_hash,
                     "encoding": "utf-8",
                 },
                 "locator": {
                     "kind": "json_pointer",
                     "artifact": "grader-calibration.json",
-                    "json_pointer": "/calibration_hash",
+                    "json_pointer": "/metrics",
                 },
                 "observed": "bound validated grader calibration",
             },
@@ -338,25 +335,23 @@ def promoted_model_grading_host(
             item.update(
                 {
                     "description": frontmatter.get("description"),
-                    "root_hash": selected_skills[skill_id]["root_hash"],
+                    "root_digest": selected_skills[skill_id]["root_hash"],
                     "version": selected_skills[skill_id]["version"],
                 }
             )
             if not isinstance(item["description"], str) or not item["description"]:
                 raise MaterializationError(f"Skill description is invalid: {skill_id}")
             refreshed.append(item)
-        catalog_hash = content_hash(canonical_bytes(refreshed))
-        host["catalog"] = {"entries": refreshed, "catalog_hash": catalog_hash}
+        catalog_id = f"frontier-{source_commit[:12]}"
+        host["catalog"] = {"entries": refreshed, "catalog_id": catalog_id}
         execution = host["identity"]["execution"]
-        execution["catalog_hash"] = catalog_hash
-        execution["skill_hash"] = _tree_hash(plugin_root)
+        execution["catalog_id"] = catalog_id
         host["identity"]["repository"] = {
             "dirty": False,
             "revision": source_commit,
             "tree": source_tree,
             "worktree": str(repository_root.resolve(strict=True)),
         }
-    host["manifest_hash"] = self_hash(host, "manifest_hash")
     return host
 
 
@@ -364,7 +359,6 @@ def _copy_calibration(
     calibration_source: Path, *, target_root: Path
 ) -> tuple[dict[str, Any], Path]:
     calibration = load_json(calibration_source, label="recorded grader calibration")
-    verify_self_hash(calibration, "calibration_hash")
     target = target_root / "grader-calibration.json"
     _copy_file(calibration_source, target)
     for field in ("labeled_examples", "raw_ratings"):
@@ -422,7 +416,7 @@ def _copy_sentinel_support(
             relative = source.relative_to(template_path.parent)
         except ValueError as exc:
             raise MaterializationError("sentinel input escapes its Skill root") from exc
-        _copy_file(source, target_root / relative, expected_hash=binding["sha256"])
+        _copy_file(source, target_root / relative)
 
     model_graders = [item for item in template["graders"] if item["type"] == "model"]
     if len(model_graders) != 1:
@@ -519,7 +513,7 @@ def _filter_quality_proof(
         if reduced:
             clusters.append({**cluster, "case_ids": reduced})
     value["provenance_clusters"] = clusters
-    value["custody"]["split_hashes"] = evaluator._quality_split_hashes(
+    value["custody"]["split_bindings"] = evaluator._quality_split_bindings(
         spec, scenarios
     )
     return value
@@ -531,15 +525,6 @@ def _bind_scenarios(spec: dict[str, Any], scenarios: list[dict[str, Any]]) -> No
     for treatment in spec["treatments"]:
         treatment["scenario_ids"] = case_ids
         treatment["scenario_tags"] = tags
-    spec["suite"]["fixture_set_hash"] = evaluator.v5_fixture_set_hash(scenarios)
-    spec["suite"]["grader_set_hash"] = evaluator.v5_grader_set_hash(spec["graders"])
-    spec["suite"]["grader_schedule_hash"] = evaluator.v5_grader_schedule_hash(
-        spec, scenarios
-    )
-    spec["suite"]["treatment_contract_hash"] = evaluator.v5_treatment_contract_hash(
-        spec["treatments"]
-    )
-    spec["suite"]["quality_contract_hash"] = evaluator.quality_contract_hash(spec)
 
 
 def _materialized_spec(
@@ -548,9 +533,7 @@ def _materialized_spec(
     skill_id: str,
     selected_skill: dict[str, Any],
     source_commit: str,
-    source_tree: str,
     host: dict[str, Any],
-    host_file_hash: str,
     calibration: dict[str, Any],
     calibration_file_hash: str,
     scenarios: list[dict[str, Any]],
@@ -562,20 +545,20 @@ def _materialized_spec(
     spec["subject"]["version"] = selected_skill["version"]
     spec["subject"]["package"] = {
         "path": "package",
-        "package_hash": selected_skill["root_hash"],
-        "repository_revision": source_commit,
-        "repository_tree": source_tree,
+        "package_digest": selected_skill["root_hash"],
+        "source_revision": source_commit,
         "dirty_state": "clean",
     }
-    spec["host"]["manifest"] = {
-        "path": "host.json",
-        "sha256": host_file_hash,
-    }
+    spec["host"]["manifest"] = {"path": "host.json"}
+    for grader in spec["graders"]:
+        if grader["type"] == "deterministic":
+            grader["verifier"]["source_revision"] = source_commit
     model_grader = next(item for item in spec["graders"] if item["type"] == "model")
     model_grader["model"] = host["identity"]["execution"]["model"]
     spec["suite"]["calibration"] = {
         "path": "grader-calibration.json",
-        "sha256": calibration_file_hash,
+        "digest": calibration_file_hash,
+        "schema_version": "grader-calibration/3",
     }
     _bind_scenarios(spec, scenarios)
     return spec
@@ -721,9 +704,7 @@ def _build_public_plan(
         skill_id=skill_id,
         selected_skill=selected_skills[skill_id],
         source_commit=source_commit,
-        source_tree=source_tree,
         host=host,
-        host_file_hash=_file_hash(host_path),
         calibration=calibration,
         calibration_file_hash=_file_hash(calibration_path),
         scenarios=scenarios,
@@ -733,10 +714,7 @@ def _build_public_plan(
     except ContractError as exc:
         raise MaterializationError(str(exc)) from exc
     if role == "target_candidate":
-        scenario_binding = {
-            "path": scenario_path.name,
-            "sha256": _file_hash(scenario_path),
-        }
+        scenario_binding = {"path": scenario_path.name}
         spec["suite"]["scenarios"] = scenario_binding
         spec["suite"]["public_scenarios"] = copy.deepcopy(scenario_binding)
         _bind_scenarios(spec, scenarios)
@@ -767,13 +745,16 @@ def _build_public_plan(
         repository_root=repository_root,
         label="suite-quality normalization",
     )
-    spec["suite"]["quality"]["sha256"] = _file_hash(quality_path)
+    spec["suite"]["quality"] = {
+        "path": quality_path.name,
+        "digest": _file_hash(quality_path),
+        "schema_version": "suite-quality/2",
+    }
     spec["execution"]["ready"] = True
     spec_path.write_bytes(canonical_bytes(spec))
     plan_path = root / "plan.json"
     _compile_and_validate(root, repository_root=repository_root, plan_path=plan_path)
     plan = load_json(plan_path, label="compiled formal plan")
-    verify_self_hash(plan, "plan_hash")
     try:
         validate_formal_plan_timeouts(host, plan)
     except ContractError as exc:
@@ -784,7 +765,7 @@ def _build_public_plan(
         "host": host_path,
         "plan": plan_path,
         "plan_id": plan["plan_id"],
-        "plan_hash": plan["plan_hash"],
+        "plan_digest": _file_hash(plan_path),
         "execute_ceiling": sum(
             entry.get("disposition") == "execute" for entry in plan["entries"]
         ),

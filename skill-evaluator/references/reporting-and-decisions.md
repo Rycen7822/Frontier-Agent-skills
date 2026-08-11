@@ -1,6 +1,6 @@
 # Reporting and Decisions
 
-Use this owner after `analyze_runs.py` has atomically produced summary v4, failure index v1, optional full details/Markdown/observations, or after `compare_cycles.py` has produced comparison report/index v1. These outputs are separate immutable transactions. Human prose may explain them but cannot replace fields, repair evidence, or change authority.
+Use this owner after `analyze_runs.py` has atomically produced summary v5 and explicitly requested failure index v2, full details, Markdown, or observations, or after `compare_cycles.py` has produced comparison report/index v2. These outputs are separate immutable transactions. Human prose may explain them but cannot replace fields, repair evidence, or change authority.
 
 ## Status model
 
@@ -28,22 +28,20 @@ Delete sections that do not apply. Put missing required evidence in **Known gaps
 
 Read:
 
-1. summary v4 for identity, five axes, counts, modules/stages, gates, cost, and trust boundaries;
-2. failure index v1 for bounded stable failures and locators;
+1. summary v5 for identity, five axes, counts, modules/stages, gates, cost, trust boundaries, and claim-to-receipt/raw-evidence references;
+2. failure index v2 for bounded stable failures and locators when explicitly requested;
 3. full details only when the index says `truncated=true` or a named omitted failure is required;
 4. the representative receipt named by a failure ID;
-5. a raw receipt artifact only through that receipt's verified path/hash and locator.
+5. a raw receipt artifact only through that receipt's verified path and locator.
 
-For an L4 comparison, read comparison report v1 first, then its diagnostic index, then only the bound cycle artifact named by a diagnostic locator. Do not reopen every receipt or reconstruct the cycle matrix.
+For an L4 comparison, read comparison report v2 first, then its diagnostic index, then the bound cycle artifact named by a diagnostic locator. This canonical path keeps review bounded and evidence-complete.
 
-Do not begin with the artifact tree, construct a parallel run matrix, or copy receipts into model-authored evidence files.
-
-## Compact summary v4
+## Compact summary v5
 
 The summary's required top-level facts are:
 
 ```yaml
-schema_version: 4
+schema_version: 5
 evaluation_id: {{immutable evaluation ID}}
 plan_id: {{compiled plan ID}}
 analysis_ready: {{true|false}}
@@ -52,7 +50,7 @@ feasibility_status: {{feasible|unsupported|not_evaluable}}
 evidence_status: {{complete|incomplete|invalid}}
 usefulness_status: {{supported|not_supported|inconclusive_ceiling|not_evaluable}}
 final_authority_status: {{eligible|blocked}}
-subject: {{skill ID/version/shape/package hash}}
+subject: {{skill ID/version/shape/source revision}}
 counts: {{plan/execute/unsupported/not-evaluable/attempt/valid/invalid/missing counts}}
 blocking_observations: []
 ```
@@ -61,7 +59,7 @@ It also binds spec/scenario/host/plan identities, module decisions, treatments, 
 
 ## Identity and frozen scope
 
-Use the summary's subject, treatments, plan/spec/scenario/host hashes, package/catalog/policy identities, module evidence, and trust boundaries. Drill into the bound plan only when a named identity fact is outside the compact projection. Use immutable identities rather than `latest` paths.
+Use the summary's subject, treatments, readable execution profile, package/catalog/policy identities, module evidence, and trust boundaries. Drill into the bound plan only when a named identity fact is outside the compact projection. Use immutable revisions and semantic IDs rather than `latest` paths.
 
 For holdout evidence, report the public manifest hash, payload hash, custody status, and whether the payload was exposed. A public manifest is not the holdout payload.
 
@@ -69,11 +67,11 @@ For holdout evidence, report the public manifest hash, payload hash, custody sta
 
 Each failure has one stable ID derived from its factual projection, family/code/severity/reason, evidence state, expected/observed fact, impact/retest, typed optional joins, exact locator, and occurrence count. Prose and ordering do not change identity. An index may truncate to the spec budget; counts and representative IDs still bind the full failure set.
 
-When any sibling is requested, the analyzer preflights the complete immutable transaction and writes details → failure index → Markdown → summary. `output_manifest` binds the raw bytes, view/version, counts, truncation, and hashes of every emitted sibling. A byte-identical retry is allowed; conflicting existing bytes are refused. Summary self-hash removes only `summary_hash`; failure-index self-hash removes only `failure_index_hash`.
+The default analyzer transaction writes summary v5. When a sibling is explicitly requested, the analyzer preflights the complete immutable transaction and writes details → failure index → Markdown → summary. `output_manifest` records paths, view/schema versions, counts, and truncation; the transaction owner verifies existing bytes before reuse.
 
-## Offline comparison report v1
+## Offline comparison report v2
 
-The comparison report binds the plan hash, actual file hashes and cycle identities, registration status, comparability checks, metric/stage results, one revision state or transition classification, authority eligibility, claim ceiling, and diagnostic-index hash. The diagnostic index contains stable bounded facts and exact source locators; neither output copies complete summaries, observations, receipts, or absolute paths.
+The comparison plan binds each independently imported cycle through one capsule digest. The report records cycle IDs, capsule digests, readable execution profiles, registration status, comparability checks, metric/stage results, one revision state or transition classification, authority eligibility, claim ceiling, and the diagnostic-index path. The diagnostic index owns stable bounded facts and exact source locators; the capsule remains the custody owner for its internal artifacts.
 
 `revision` can report only `closed`, `open`, or `not_evaluable`. `model_transition` follows the frozen hard-gate and routing/loading/application precedence before value-retention classifications; `combined_model_harness_drift` never becomes single-factor attribution. `eligible` means only that local mechanical gates permit an external authority audit. It never means accepted, installed, published, deployed, deprecated, or removed.
 
@@ -112,7 +110,7 @@ Analyzer exit `0` means a complete supported/eligible or L0/L1 diagnostic result
 
 ## Manual authority
 
-When the spec declares manual review, report the verified receipt path/hash, reviewer role, decision, evidence objects/hashes, attestation, and the fact that signature text was not cryptographically verified. Missing, malformed, duplicated, or non-matching authority receipts fail closed.
+When the spec declares manual review, report the verified receipt path, reviewer role, decision, frozen packet digest, readable evidence paths, attestation, and the fact that signature text was not cryptographically verified. Missing, malformed, duplicated, or non-matching authority receipts fail closed.
 
 ## L4 boundary
 

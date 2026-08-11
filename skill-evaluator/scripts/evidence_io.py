@@ -32,25 +32,6 @@ def canonical_sha256(value: Any) -> str:
     return "sha256:" + sha256(canonical_json_bytes(value)).hexdigest()
 
 
-def canonical_self_hash(value: dict[str, Any], field: str) -> str:
-    if not isinstance(value, dict) or field not in value:
-        raise ValueError(f"{field} is required for self-hash verification")
-    payload = dict(value)
-    payload.pop(field)
-    return canonical_sha256(payload)
-
-
-def verify_self_hash(value: Any, field: str) -> bool:
-    if not isinstance(value, dict):
-        return False
-    claimed = value.get(field)
-    return (
-        isinstance(claimed, str)
-        and SHA256_RE.fullmatch(claimed) is not None
-        and claimed == canonical_self_hash(value, field)
-    )
-
-
 def file_sha256(path: Path) -> str:
     return "sha256:" + sha256(path.read_bytes()).hexdigest()
 
@@ -272,7 +253,7 @@ def artifact_record(path: Path, root: Path, *, encoding: str) -> dict[str, str]:
         except UnicodeDecodeError as exc:
             raise ValueError(f"artifact is not valid UTF-8: {path}: {exc}") from None
     relative = resolved.relative_to(resolved_root).as_posix()
-    return {"path": relative, "sha256": file_sha256(resolved), "encoding": encoding}
+    return {"path": relative, "digest": file_sha256(resolved), "encoding": encoding}
 
 
 def verify_artifact_records(
@@ -287,9 +268,9 @@ def verify_artifact_records(
     resolved_paths: set[Path] = set()
     for index, record in enumerate(records):
         item_label = f"{label} artifacts[{index}]"
-        if not isinstance(record, dict) or set(record) != {"path", "sha256", "encoding"}:
+        if not isinstance(record, dict) or set(record) != {"path", "digest", "encoding"}:
             raise ValueError(
-                f"{item_label} must contain exactly path, sha256, and encoding"
+                f"{item_label} must contain exactly path, digest, and encoding"
             )
         normalized, resolved = resolve_contained_path(
             root, record.get("path"), f"{label} artifact", kind="file"
@@ -302,14 +283,17 @@ def verify_artifact_records(
             raise ValueError(f"{label} duplicate resolved artifact path: {normalized}")
         if record.get("encoding") not in {"utf-8", "binary"}:
             raise ValueError(f"{item_label}.encoding must be utf-8 or binary")
-        claimed_hash = record.get("sha256")
-        if not isinstance(claimed_hash, str) or SHA256_RE.fullmatch(claimed_hash) is None:
-            raise ValueError(f"{item_label}.sha256 must be sha256:<64 lowercase hex>")
-        actual_hash = file_sha256(resolved)
-        if claimed_hash != actual_hash:
+        claimed_digest = record.get("digest")
+        if (
+            not isinstance(claimed_digest, str)
+            or SHA256_RE.fullmatch(claimed_digest) is None
+        ):
+            raise ValueError(f"{item_label}.digest must be sha256:<64 lowercase hex>")
+        actual_digest = file_sha256(resolved)
+        if claimed_digest != actual_digest:
             raise ValueError(
-                f"{label} artifact sha256 mismatch for {normalized}: "
-                f"expected {claimed_hash}, got {actual_hash}"
+                f"{label} artifact digest mismatch for {normalized}: "
+                f"expected {claimed_digest}, got {actual_digest}"
             )
         item: dict[str, Any] = {**record, "resolved": resolved}
         if record["encoding"] == "utf-8":

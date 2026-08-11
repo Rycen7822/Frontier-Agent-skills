@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate context-clean reviewer-pair evidence for grader calibration."""
+"""Validate minimal context-clean reviewer-pair calibration evidence."""
 
 from __future__ import annotations
 
@@ -11,40 +11,37 @@ import stat
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from evidence_io import canonical_sha256, verify_self_hash
-from grader_semantics import semantic_payload_hash
-from reviewer_prompt_contract import (
-    PromptContractError,
-    validate_reviewer_prompt,
-)
+from evidence_io import canonical_json_bytes
+from reviewer_prompt_contract import PromptContractError, validate_reviewer_prompt
 
 
-PAIR_FIELDS = {
-    "schema_version", "pair_id", "campaign_id", "packet", "output_schema",
-    "sealed_mapping", "requested_configuration", "reviewer_receipts",
-    "both_spawns_acknowledged_before_first_result_consumed", "pair_hash",
-}
-RECEIPT_FIELDS = {
-    "schema_version", "receipt_id", "campaign_id", "request_id",
-    "reviewer_id", "principal_id", "agent_id", "task_name",
-    "requested_configuration", "reservation_hash", "prompt_hash",
-    "packet_hash", "output_schema_hash", "spawn_request_hash",
-    "spawn_ack_hash", "terminal_result_hash", "raw_response_hash",
-    "parsed_ratings_hash", "terminal_status", "receipt_hash",
-}
-ARTIFACT_BINDING_FIELDS = {"path", "sha256"}
-REQUESTED_CONFIGURATION_FIELDS = {
-    "model", "reasoning_effort", "service_tier", "fork_turns",
+PAIR_SCHEMA = "context-clean-subagent-reviewer-pair/3.0"
+PACKET_SCHEMA = "context-clean-subagent-reviewer-packet/2.0"
+MAPPING_SCHEMA = "context-clean-subagent-reviewer-mapping/2.0"
+RECEIPT_SCHEMA = "context-clean-subagent-reviewer-receipt/2.0"
+PROMPT_SCHEMA = "context-clean-subagent-reviewer-prompt/5.0"
+RATINGS_SCHEMA = "context-clean-subagent-reviewer-ratings/3.0"
+ARTIFACT_FIELDS = {"path", "digest", "schema_version"}
+CONFIGURATION_FIELDS = {
+    "model",
+    "reasoning_effort",
+    "service_tier",
+    "fork_turns",
 }
 FORBIDDEN_PACKET_KEYS = {
-    "gold_label", "gold_severity", "expected_overall", "expected_checks",
-    "judge_output", "other_reviewer_output", "plan", "source_path",
+    "gold_label",
+    "gold_severity",
+    "expected_overall",
+    "expected_checks",
+    "judge_output",
+    "other_reviewer_output",
+    "plan",
+    "source_path",
     "filesystem_locator",
 }
 SAFE_ID_CHARS = frozenset(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-",
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
 )
-SHA256_PREFIX = "sha256:"
 
 
 class ReviewerPairError(ValueError):
@@ -60,6 +57,18 @@ def _fail(code: str, message: str) -> None:
     raise ReviewerPairError(code, message)
 
 
+def _closed(
+    value: Any,
+    fields: set[str],
+    *,
+    code: str,
+    label: str,
+) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != fields:
+        _fail(code, f"{label} must contain exactly {sorted(fields)}")
+    return value
+
+
 def _safe_id(value: Any) -> bool:
     return (
         isinstance(value, str)
@@ -69,19 +78,19 @@ def _safe_id(value: Any) -> bool:
     )
 
 
-def _sha256(value: Any) -> bool:
+def _digest(value: Any) -> bool:
     return (
         isinstance(value, str)
         and len(value) == 71
-        and value.startswith(SHA256_PREFIX)
+        and value.startswith("sha256:")
         and all(character in "0123456789abcdef" for character in value[7:])
     )
 
 
-def _validate_requested_configuration(value: Any) -> dict[str, str]:
-    _closed_object(
+def _validate_configuration(value: Any) -> dict[str, str]:
+    _closed(
         value,
-        REQUESTED_CONFIGURATION_FIELDS,
+        CONFIGURATION_FIELDS,
         code="calibration.reviewer_pair",
         label="requested configuration",
     )
@@ -96,60 +105,46 @@ def _validate_requested_configuration(value: Any) -> dict[str, str]:
             "calibration.reviewer_pair",
             "requested configuration is invalid or not context-clean",
         )
-    return {field: value[field] for field in sorted(REQUESTED_CONFIGURATION_FIELDS)}
+    return {field: value[field] for field in sorted(CONFIGURATION_FIELDS)}
 
 
-def _contains_forbidden_packet_key(value: Any) -> bool:
+def _contains_forbidden_packet_value(value: Any) -> bool:
     if isinstance(value, dict):
         return any(
             key in FORBIDDEN_PACKET_KEYS
-            or _contains_forbidden_packet_key(item)
+            or _contains_forbidden_packet_value(item)
             for key, item in value.items()
         )
     if isinstance(value, list):
-        return any(_contains_forbidden_packet_key(item) for item in value)
+        return any(_contains_forbidden_packet_value(item) for item in value)
     if isinstance(value, str):
-        return (
-            any(
-                prefix in value
-                for prefix in (
-                    "/home/", "/mnt/", "/tmp/", "/workspace/",
-                    "/workspaces/", "/private/", "/Users/", "/opt/",
-                )
-            )
-            or (
-                len(value) >= 3
-                and value[0].isalpha()
-                and value[1] == ":"
-                and value[2] in {"/", "\\"}
+        return any(
+            prefix in value
+            for prefix in (
+                "/home/",
+                "/mnt/",
+                "/tmp/",
+                "/workspace/",
+                "/workspaces/",
+                "/private/",
+                "/Users/",
             )
         )
     return False
 
 
-def _closed_object(
-    value: Any,
-    fields: set[str],
-    *,
-    code: str,
-    label: str,
-) -> dict[str, Any]:
-    if not isinstance(value, dict) or set(value) != fields:
-        _fail(code, f"{label} must contain exactly {sorted(fields)}")
-    return value
-
-
 def _open_directory_nofollow(path: Path) -> int:
     absolute = Path(os.path.abspath(path))
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
+        os, "O_NOFOLLOW", 0
+    )
     descriptor = os.open(absolute.anchor, flags)
     try:
         for part in absolute.parts[1:]:
             next_descriptor = os.open(part, flags, dir_fd=descriptor)
             os.close(descriptor)
             descriptor = next_descriptor
-        metadata = os.fstat(descriptor)
-        if not stat.S_ISDIR(metadata.st_mode):
+        if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
             _fail("calibration.artifact_path", f"not a directory: {path}")
         return descriptor
     except BaseException:
@@ -163,7 +158,7 @@ def read_nofollow_regular(
     *,
     label: str,
 ) -> tuple[dict[str, str], bytes, Path]:
-    """Open one regular file beneath root without following any component."""
+    """Read one regular file beneath root without following path components."""
     absolute_root = Path(os.path.abspath(root))
     absolute_path = Path(os.path.abspath(path))
     try:
@@ -172,13 +167,7 @@ def read_nofollow_regular(
         _fail("calibration.artifact_path", f"{label} is outside output root")
     if not relative.parts:
         _fail("calibration.artifact_path", f"{label} must identify a file")
-    try:
-        directory = _open_directory_nofollow(absolute_root)
-    except OSError as exc:
-        _fail(
-            "calibration.artifact_path",
-            f"cannot open {label} root without symlink components: {exc}",
-        )
+    directory = _open_directory_nofollow(absolute_root)
     try:
         for part in relative.parts[:-1]:
             next_directory = os.open(
@@ -196,17 +185,13 @@ def read_nofollow_regular(
             dir_fd=directory,
         )
         try:
-            metadata = os.fstat(descriptor)
-            if not stat.S_ISREG(metadata.st_mode):
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
                 _fail(
                     "calibration.artifact_path",
                     f"{label} is not a regular file",
                 )
             chunks: list[bytes] = []
-            while True:
-                chunk = os.read(descriptor, 1024 * 1024)
-                if not chunk:
-                    break
+            while chunk := os.read(descriptor, 1024 * 1024):
                 chunks.append(chunk)
             raw = b"".join(chunks)
         finally:
@@ -221,7 +206,7 @@ def read_nofollow_regular(
     return (
         {
             "path": relative.as_posix(),
-            "sha256": SHA256_PREFIX + hashlib.sha256(raw).hexdigest(),
+            "digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
         },
         raw,
         absolute_path,
@@ -242,16 +227,21 @@ def _read_binding(
     binding: Any,
     *,
     output_root: Path,
+    expected_schema: str,
     code: str,
     label: str,
-) -> tuple[dict[str, Any], bytes, Path]:
-    binding = _closed_object(
+) -> tuple[dict[str, Any], Path]:
+    binding = _closed(
         binding,
-        ARTIFACT_BINDING_FIELDS,
+        ARTIFACT_FIELDS,
         code=code,
         label=f"{label} binding",
     )
-    if not isinstance(binding["path"], str) or not _sha256(binding["sha256"]):
+    if (
+        not isinstance(binding["path"], str)
+        or not _digest(binding["digest"])
+        or binding["schema_version"] != expected_schema
+    ):
         _fail(code, f"{label} binding fields are invalid")
     relative = PurePosixPath(binding["path"])
     if (
@@ -260,43 +250,16 @@ def _read_binding(
         or any(part == ".." for part in relative.parts)
         or relative.as_posix() in {"", "."}
     ):
-        _fail(code, f"{label} binding path is not a contained POSIX path")
-    path = output_root / binding["path"]
-    observed_binding, raw, absolute = read_nofollow_regular(
-        path, output_root, label=label,
+        _fail(code, f"{label} binding path is not contained")
+    observed, raw, absolute = read_nofollow_regular(
+        output_root / binding["path"], output_root, label=label
     )
-    if observed_binding != binding:
+    if observed != {"path": binding["path"], "digest": binding["digest"]}:
         _fail(code, f"{label} binding does not match reopened bytes")
-    return _load_json(raw, code=code, label=label), raw, absolute
-
-
-def expected_ratings_schema() -> dict[str, Any]:
-    """Return the exact reviewer output schema independently owned by product."""
-    return {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://example.invalid/context-clean-subagent-reviewer-ratings-v2.schema.json",
-        "type": "object",
-        "required": ["schema_version", "ratings"],
-        "properties": {
-            "schema_version": {
-                "const": "context-clean-subagent-reviewer-ratings/2.0",
-            },
-            "ratings": {
-                "type": "array",
-                "minItems": 1,
-                "items": {
-                    "type": "object",
-                    "required": ["label", "severity"],
-                    "properties": {
-                        "label": {"enum": ["pass", "fail", "abstain"]},
-                        "severity": {"type": "number"},
-                    },
-                    "additionalProperties": False,
-                },
-            },
-        },
-        "additionalProperties": False,
-    }
+    document = _load_json(raw, code=code, label=label)
+    if document.get("schema_version") != expected_schema:
+        _fail(code, f"{label} schema version differs")
+    return document, absolute
 
 
 def _validate_packet(
@@ -305,421 +268,213 @@ def _validate_packet(
     campaign_id: str,
     expected_checks: dict[str, str],
 ) -> list[dict[str, Any]]:
-    fields = {"schema_version", "campaign_id", "examples", "packet_hash"}
-    _closed_object(
-        packet, fields, code="calibration.reviewer_packet", label="packet",
+    _closed(
+        packet,
+        {"schema_version", "campaign_id", "examples"},
+        code="calibration.reviewer_packet",
+        label="reviewer packet",
     )
+    examples = packet["examples"]
     if (
-        packet["schema_version"] != "context-clean-subagent-reviewer-packet/1.0"
+        packet["schema_version"] != PACKET_SCHEMA
         or packet["campaign_id"] != campaign_id
-        or not verify_self_hash(packet, "packet_hash")
-        or not isinstance(packet["examples"], list)
-        or not packet["examples"]
+        or not isinstance(examples, list)
+        or not examples
     ):
-        _fail("calibration.reviewer_packet", "packet identity or self-hash is invalid")
-    seen: set[str] = set()
-    for example in packet["examples"]:
-        _closed_object(
+        _fail("calibration.reviewer_packet", "reviewer packet is invalid")
+    opaque_ids: set[str] = set()
+    for example in examples:
+        _closed(
             example,
-            {"opaque_example_id", "payload", "payload_hash"},
+            {"opaque_example_id", "payload"},
             code="calibration.reviewer_packet",
-            label="packet example",
+            label="reviewer packet example",
         )
+        payload = example["payload"]
+        if not isinstance(payload, dict) or set(payload) != {"view", "check"}:
+            _fail("calibration.reviewer_packet", "semantic payload is invalid")
+        check = payload["check"]
+        if not isinstance(check, dict) or set(check) != {
+            "check_id",
+            "pass_condition",
+        }:
+            _fail("calibration.reviewer_packet", "semantic check is invalid")
         opaque_id = example["opaque_example_id"]
-        payload = _closed_object(
-            example["payload"],
-            {"view", "check"},
-            code="calibration.reviewer_packet",
-            label="packet payload",
-        )
-        check = _closed_object(
-            payload["check"],
-            {"check_id", "pass_condition"},
-            code="calibration.reviewer_packet",
-            label="packet check",
-        )
         try:
-            observed_payload_hash = semantic_payload_hash(payload)
-        except ValueError:
-            _fail(
-                "calibration.reviewer_packet",
-                "packet semantic payload is invalid",
-            )
+            canonical_json_bytes(payload)
+        except (TypeError, ValueError):
+            _fail("calibration.reviewer_packet", "semantic payload is not JSON")
         if (
             not _safe_id(opaque_id)
-            or opaque_id in seen
+            or opaque_id in opaque_ids
+            or check.get("check_id") not in expected_checks
+            or check.get("pass_condition")
+            != expected_checks.get(check.get("check_id"))
             or not isinstance(payload["view"], dict)
             or not payload["view"]
-            or not _safe_id(check["check_id"])
-            or not isinstance(check["pass_condition"], str)
-            or not check["pass_condition"].strip()
-            or expected_checks.get(check["check_id"])
-            != check["pass_condition"]
-            or _contains_forbidden_packet_key(payload)
-            or example["payload_hash"] != observed_payload_hash
+            or _contains_forbidden_packet_value(payload)
         ):
-            _fail("calibration.reviewer_packet", "packet examples are invalid or duplicated")
-        seen.add(opaque_id)
-    return packet["examples"]
+            _fail("calibration.reviewer_packet", "reviewer packet leaks or drifts")
+        opaque_ids.add(opaque_id)
+    return examples
 
 
 def _validate_mapping(
     mapping: dict[str, Any],
     *,
     campaign_id: str,
-    packet_binding: dict[str, str],
-    schema_binding: dict[str, str],
     packet_examples: list[dict[str, Any]],
     labels: dict[tuple[str, str], dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    fields = {
-        "schema_version", "campaign_id", "packet_hash", "output_schema_hash",
-        "examples", "mapping_hash",
-    }
-    _closed_object(
-        mapping, fields, code="calibration.reviewer_mapping", label="sealed mapping",
+    _closed(
+        mapping,
+        {"schema_version", "campaign_id", "examples"},
+        code="calibration.reviewer_mapping",
+        label="sealed reviewer mapping",
     )
+    items = mapping["examples"]
     if (
-        mapping["schema_version"] != "context-clean-subagent-reviewer-mapping/1.0"
+        mapping["schema_version"] != MAPPING_SCHEMA
         or mapping["campaign_id"] != campaign_id
-        or mapping["packet_hash"] != packet_binding["sha256"]
-        or mapping["output_schema_hash"] != schema_binding["sha256"]
-        or not verify_self_hash(mapping, "mapping_hash")
-        or not isinstance(mapping["examples"], list)
+        or not isinstance(items, list)
+        or len(items) != len(packet_examples)
     ):
-        _fail("calibration.reviewer_mapping", "sealed mapping identity or hash is invalid")
+        _fail("calibration.reviewer_mapping", "sealed mapping is invalid")
     expected_opaque = [item["opaque_example_id"] for item in packet_examples]
-    observed_opaque: list[str] = []
+    if [item.get("opaque_example_id") for item in items] != expected_opaque:
+        _fail("calibration.reviewer_mapping", "sealed mapping order differs")
     by_opaque: dict[str, dict[str, Any]] = {}
-    real_keys: set[tuple[str, str]] = set()
-    for item in mapping["examples"]:
-        _closed_object(
+    for packet_example, item in zip(packet_examples, items, strict=True):
+        _closed(
             item,
-            {
-                "opaque_example_id", "example_id", "check_id",
-                "dimension", "payload_hash",
-            },
+            {"opaque_example_id", "example_id", "check_id", "dimension"},
             code="calibration.reviewer_mapping",
-            label="sealed mapping example",
+            label="sealed mapping row",
         )
-        opaque_id = item["opaque_example_id"]
-        real_id = item["example_id"]
-        real_key = (real_id, item["check_id"])
-        label = labels.get(real_key)
+        label = labels.get((item["example_id"], item["check_id"]))
         if (
-            not _safe_id(opaque_id)
-            or not _safe_id(real_id)
-            or opaque_id in by_opaque
-            or real_key in real_keys
-            or label is None
-            or item["check_id"] != label["check_id"]
+            label is None
             or item["dimension"] != label["dimension"]
-            or item["payload_hash"] != label["payload_hash"]
+            or packet_example["payload"] != label["payload"]
         ):
-            _fail("calibration.reviewer_mapping", "sealed mapping does not join labels exactly")
-        observed_opaque.append(opaque_id)
-        real_keys.add(real_key)
-        by_opaque[opaque_id] = item
-    if observed_opaque != expected_opaque or real_keys != set(labels):
-        _fail("calibration.reviewer_mapping", "sealed mapping coverage or ordering differs")
-    for packet_example in packet_examples:
-        mapped = by_opaque[packet_example["opaque_example_id"]]
-        if (
-            mapped["payload_hash"] != packet_example["payload_hash"]
-            or mapped["check_id"]
-            != packet_example["payload"]["check"]["check_id"]
-        ):
-            _fail("calibration.reviewer_mapping", "packet and mapping payload/check binding differs")
+            _fail("calibration.reviewer_mapping", "mapping semantic join differs")
+        by_opaque[item["opaque_example_id"]] = item
     return by_opaque
 
 
-def _read_sibling_json(
-    receipt_path: Path,
-    name: str,
-    expected_hash: str,
-    *,
-    output_root: Path,
-    code: str,
-) -> tuple[dict[str, Any], bytes]:
-    binding, raw, _ = read_nofollow_regular(
-        receipt_path.parent / name,
-        output_root,
-        label=f"{receipt_path.parent.name}/{name}",
-    )
-    if binding["sha256"] != expected_hash:
-        _fail(code, f"{name} bytes do not match the receipt")
-    return _load_json(raw, code=code, label=name), raw
-
-
 def _validate_receipt(
-    receipt: dict[str, Any],
-    receipt_path: Path,
+    binding: dict[str, Any],
     *,
     output_root: Path,
     campaign_id: str,
-    packet: dict[str, Any],
-    packet_binding: dict[str, str],
-    output_schema: dict[str, Any],
-    schema_binding: dict[str, str],
     requested_configuration: dict[str, str],
+    packet: dict[str, Any],
     reviewer_rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    _closed_object(
-        receipt, RECEIPT_FIELDS,
+    receipt, _ = _read_binding(
+        binding,
+        output_root=output_root,
+        expected_schema=RECEIPT_SCHEMA,
+        code="calibration.reviewer_receipt",
+        label="reviewer receipt",
+    )
+    _closed(
+        receipt,
+        {
+            "schema_version",
+            "receipt_id",
+            "campaign_id",
+            "request_id",
+            "reviewer_id",
+            "principal_id",
+            "agent_id",
+            "task_name",
+            "requested_configuration",
+            "prompt",
+            "raw_response",
+            "terminal_status",
+            "ack_sequence",
+            "result_consumed_sequence",
+            "observable_extra_turns",
+            "observable_followups",
+            "observable_tool_events",
+        },
         code="calibration.reviewer_receipt",
         label="reviewer receipt",
     )
     id_fields = (
-        "receipt_id", "request_id", "reviewer_id", "principal_id",
-        "agent_id", "task_name",
+        "receipt_id",
+        "request_id",
+        "reviewer_id",
+        "principal_id",
+        "agent_id",
+        "task_name",
     )
     if (
-        receipt["schema_version"]
-        != "context-clean-subagent-reviewer-receipt/1.0"
-        or receipt["campaign_id"] != campaign_id
+        receipt["campaign_id"] != campaign_id
         or not all(_safe_id(receipt[field]) for field in id_fields)
-        or receipt["requested_configuration"] != requested_configuration
+        or _validate_configuration(receipt["requested_configuration"])
+        != requested_configuration
         or receipt["terminal_status"] != "complete"
-        or not verify_self_hash(receipt, "receipt_hash")
+        or type(receipt["ack_sequence"]) is not int
+        or type(receipt["result_consumed_sequence"]) is not int
+        or receipt["ack_sequence"] >= receipt["result_consumed_sequence"]
+        or receipt["observable_extra_turns"] != 0
+        or receipt["observable_followups"] != 0
+        or receipt["observable_tool_events"] != []
     ):
-        _fail("calibration.reviewer_receipt", "reviewer receipt identity or self-hash is invalid")
-    hash_fields = {
-        field for field in RECEIPT_FIELDS if field.endswith("_hash")
-    }
-    if not all(_sha256(receipt[field]) for field in hash_fields):
-        _fail("calibration.reviewer_receipt", "reviewer receipt contains an invalid hash")
-    if (
-        receipt["packet_hash"] != packet_binding["sha256"]
-        or receipt["output_schema_hash"] != schema_binding["sha256"]
-    ):
-        _fail("calibration.reviewer_receipt", "receipt packet/schema binding differs")
-
-    reservation, _ = _read_sibling_json(
-        receipt_path, "reservation.json", receipt["reservation_hash"],
-        output_root=output_root, code="calibration.reviewer_reservation",
-    )
-    _closed_object(
-        reservation,
-        {
-            "schema_version", "campaign_id", "request_id", "family",
-            "request_kind", "entry_hash",
-        },
-        code="calibration.reviewer_reservation",
-        label="reviewer reservation",
-    )
-    if (
-        reservation["schema_version"] != "frontier-provider-reservation/2.0"
-        or reservation["campaign_id"] != campaign_id
-        or reservation["request_id"] != receipt["request_id"]
-        or reservation["family"] != "reviewer_calibration"
-        or reservation["request_kind"] != "context_isolated_review"
-        or not _sha256(reservation["entry_hash"])
-    ):
-        _fail("calibration.reviewer_reservation", "reservation does not bind the reviewer request")
-
-    prompt, _ = _read_sibling_json(
-        receipt_path, "prompt.json", receipt["prompt_hash"],
-        output_root=output_root, code="calibration.reviewer_prompt",
+        _fail("calibration.reviewer_receipt", "reviewer lifecycle is invalid")
+    prompt, _ = _read_binding(
+        receipt["prompt"],
+        output_root=output_root,
+        expected_schema=PROMPT_SCHEMA,
+        code="calibration.reviewer_prompt",
+        label="reviewer prompt",
     )
     try:
-        expanded_prompt_packet = validate_reviewer_prompt(
+        expanded = validate_reviewer_prompt(
             prompt,
             campaign_id=campaign_id,
             reviewer_id=receipt["reviewer_id"],
-            output_schema_hash=schema_binding["sha256"],
+            output_schema_version=RATINGS_SCHEMA,
         )
     except PromptContractError as exc:
         _fail("calibration.reviewer_prompt", str(exc))
-    if expanded_prompt_packet != packet:
-        _fail("calibration.reviewer_prompt", "reviewer prompt exposes or changes context")
-
-    spawn_request, _ = _read_sibling_json(
-        receipt_path, "spawn-request.json", receipt["spawn_request_hash"],
-        output_root=output_root, code="calibration.reviewer_spawn_request",
+    if expanded != packet:
+        _fail("calibration.reviewer_prompt", "reviewer prompt packet differs")
+    response, _ = _read_binding(
+        receipt["raw_response"],
+        output_root=output_root,
+        expected_schema=RATINGS_SCHEMA,
+        code="calibration.reviewer_output",
+        label="reviewer raw response",
     )
-    _closed_object(
-        spawn_request,
-        {
-            "schema_version", "request_id", "reviewer_id", "task_name",
-            "model", "reasoning_effort", "service_tier", "fork_turns",
-            "message_hash",
-        },
-        code="calibration.reviewer_spawn_request",
-        label="spawn request",
-    )
-    expected_request = {
-        "request_id": receipt["request_id"],
-        "reviewer_id": receipt["reviewer_id"],
-        "task_name": receipt["task_name"],
-        **requested_configuration,
-        "message_hash": receipt["prompt_hash"],
-    }
-    if (
-        spawn_request["schema_version"] != "context-clean-subagent-spawn-request/1.0"
-        or {
-            field: spawn_request[field] for field in expected_request
-        } != expected_request
-    ):
-        _fail("calibration.reviewer_spawn_request", "spawn request configuration differs")
-
-    spawn_ack, _ = _read_sibling_json(
-        receipt_path, "spawn-ack.json", receipt["spawn_ack_hash"],
-        output_root=output_root, code="calibration.reviewer_spawn_ack",
-    )
-    _closed_object(
-        spawn_ack,
-        {
-            "schema_version", "request_id", "agent_id", "task_name",
-            "ack_sequence",
-        },
-        code="calibration.reviewer_spawn_ack",
-        label="spawn ack",
-    )
-    if (
-        spawn_ack["schema_version"] != "context-clean-subagent-spawn-ack/1.0"
-        or spawn_ack["request_id"] != receipt["request_id"]
-        or spawn_ack["agent_id"] != receipt["agent_id"]
-        or spawn_ack["task_name"] != receipt["task_name"]
-        or not isinstance(spawn_ack["ack_sequence"], int)
-        or isinstance(spawn_ack["ack_sequence"], bool)
-        or spawn_ack["ack_sequence"] < 1
-    ):
-        _fail("calibration.reviewer_spawn_ack", "spawn ack does not bind the request")
-
-    raw_response, raw_response_bytes = _read_sibling_json(
-        receipt_path, "raw-response.json", receipt["raw_response_hash"],
-        output_root=output_root, code="calibration.reviewer_output",
-    )
-    _closed_object(
-        raw_response,
+    _closed(
+        response,
         {"schema_version", "ratings"},
         code="calibration.reviewer_output",
-        label="reviewer output",
+        label="reviewer raw response",
     )
-    if (
-        raw_response["schema_version"]
-        != "context-clean-subagent-reviewer-ratings/2.0"
-        or not isinstance(raw_response["ratings"], list)
-        or not raw_response["ratings"]
-        or len(raw_response["ratings"]) != len(reviewer_rows)
-    ):
-        _fail(
-            "calibration.reviewer_output",
-            "reviewer output schema or cardinality is invalid",
-        )
-    for rating in raw_response["ratings"]:
-        _closed_object(
+    ratings = response["ratings"]
+    if not isinstance(ratings, list) or len(ratings) != len(reviewer_rows):
+        _fail("calibration.reviewer_output", "reviewer output coverage differs")
+    for rating, row in zip(ratings, reviewer_rows, strict=True):
+        _closed(
             rating,
             {"label", "severity"},
             code="calibration.reviewer_output",
-            label="reviewer output rating",
+            label="reviewer judgment",
         )
+        severity = rating["severity"]
         if (
             rating["label"] not in {"pass", "fail", "abstain"}
-            or not isinstance(rating["severity"], (int, float))
-            or isinstance(rating["severity"], bool)
-            or not math.isfinite(float(rating["severity"]))
+            or not isinstance(severity, (int, float))
+            or isinstance(severity, bool)
+            or not math.isfinite(float(severity))
+            or rating != {"label": row["label"], "severity": row["severity"]}
         ):
-            _fail("calibration.reviewer_output", "reviewer output rating is invalid")
-    projected_rows = [
-        {
-            "opaque_example_id": row["example_id"],
-            "label": row["label"],
-            "severity": row["severity"],
-        }
-        for row in reviewer_rows
-    ]
-    projected_raw = [
-        {
-            "label": row["label"],
-            "severity": row["severity"],
-        }
-        for row in reviewer_rows
-    ]
-    if raw_response["ratings"] != projected_raw:
-        _fail("calibration.reviewer_output", "reviewer output differs from raw rating rows")
-    if receipt["parsed_ratings_hash"] != canonical_sha256(projected_rows):
-        _fail("calibration.reviewer_output", "parsed ratings hash differs")
-
-    terminal, _ = _read_sibling_json(
-        receipt_path, "terminal-result.json", receipt["terminal_result_hash"],
-        output_root=output_root, code="calibration.reviewer_terminal",
-    )
-    _closed_object(
-        terminal,
-        {
-            "schema_version", "request_id", "agent_id", "status",
-            "result_consumed_sequence", "observable_extra_turns",
-            "observable_followups", "observable_tool_events",
-            "raw_response_hash",
-        },
-        code="calibration.reviewer_terminal",
-        label="terminal result",
-    )
-    tool_events = terminal["observable_tool_events"]
-    if tool_events:
-        if (
-            not isinstance(tool_events, list)
-            or len(tool_events) != 1
-            or not isinstance(tool_events[0], dict)
-            or set(tool_events[0]) != {
-                "tool", "purpose", "spawn_envelope_hash",
-            }
-            or tool_events[0]["tool"] != "exec_command"
-            or tool_events[0]["purpose"]
-            != "load_exact_bound_spawn_message"
-        ):
-            _fail(
-                "calibration.reviewer_terminal",
-                "reviewer tool observation is not the bound envelope load",
-            )
-        envelope, _ = _read_sibling_json(
-            receipt_path,
-            "spawn-envelope.json",
-            tool_events[0]["spawn_envelope_hash"],
-            output_root=output_root,
-            code="calibration.reviewer_terminal",
-        )
-        if (
-            not verify_self_hash(envelope, "envelope_hash")
-            or envelope.get("request_id") != receipt["request_id"]
-            or envelope.get("reviewer_id") != receipt["reviewer_id"]
-            or envelope.get("task_name") != receipt["task_name"]
-            or envelope.get("message_hash") != receipt["prompt_hash"]
-            or {
-                field: envelope.get(field)
-                for field in requested_configuration
-            }
-            != requested_configuration
-        ):
-            _fail(
-                "calibration.reviewer_terminal",
-                "reviewer envelope tool binding differs",
-            )
-    if (
-        terminal["schema_version"] != "context-clean-subagent-terminal-result/1.0"
-        or terminal["request_id"] != receipt["request_id"]
-        or terminal["agent_id"] != receipt["agent_id"]
-        or terminal["status"] != "complete"
-        or terminal["raw_response_hash"]
-        != SHA256_PREFIX + hashlib.sha256(raw_response_bytes).hexdigest()
-        or not isinstance(terminal["result_consumed_sequence"], int)
-        or isinstance(terminal["result_consumed_sequence"], bool)
-        or terminal["result_consumed_sequence"] < 1
-        or not isinstance(terminal["observable_extra_turns"], int)
-        or isinstance(terminal["observable_extra_turns"], bool)
-        or terminal["observable_extra_turns"] != 0
-        or not isinstance(terminal["observable_followups"], int)
-        or isinstance(terminal["observable_followups"], bool)
-        or terminal["observable_followups"] != 0
-        or not isinstance(tool_events, list)
-    ):
-        _fail("calibration.reviewer_terminal", "terminal result is incomplete or has extra observations")
-    return {
-        "receipt": receipt,
-        "ack_sequence": spawn_ack["ack_sequence"],
-        "result_consumed_sequence": terminal["result_consumed_sequence"],
-    }
+            _fail("calibration.reviewer_output", "reviewer judgment differs")
+    return receipt
 
 
 def validate_reviewer_pair(
@@ -735,63 +490,60 @@ def validate_reviewer_pair(
 ) -> dict[str, Any]:
     """Validate and map exactly two context-clean reviewer streams."""
     pair_binding, pair_raw, _ = read_nofollow_regular(
-        pair_path, output_root, label="reviewer pair",
+        pair_path, output_root, label="reviewer pair"
     )
     pair = _load_json(
-        pair_raw, code="calibration.reviewer_pair", label="reviewer pair",
+        pair_raw, code="calibration.reviewer_pair", label="reviewer pair"
     )
-    _closed_object(
-        pair, PAIR_FIELDS, code="calibration.reviewer_pair", label="reviewer pair",
+    _closed(
+        pair,
+        {
+            "schema_version",
+            "pair_id",
+            "campaign_id",
+            "packet",
+            "sealed_mapping",
+            "requested_configuration",
+            "reviewer_receipts",
+            "both_spawns_acknowledged_before_first_result_consumed",
+        },
+        code="calibration.reviewer_pair",
+        label="reviewer pair",
     )
     if (
-        pair["schema_version"] != "context-clean-subagent-reviewer-pair/2.0"
+        pair["schema_version"] != PAIR_SCHEMA
         or not _safe_id(pair["pair_id"])
         or not _safe_id(pair["campaign_id"])
         or pair["both_spawns_acknowledged_before_first_result_consumed"] is not True
-        or not verify_self_hash(pair, "pair_hash")
         or not isinstance(pair["reviewer_receipts"], list)
         or len(pair["reviewer_receipts"]) != 2
     ):
-        _fail("calibration.reviewer_pair", "reviewer pair identity or self-hash is invalid")
-    requested_configuration = _validate_requested_configuration(
-        pair["requested_configuration"]
-    )
-
-    packet, _, _ = _read_binding(
+        _fail("calibration.reviewer_pair", "reviewer pair identity is invalid")
+    requested = _validate_configuration(pair["requested_configuration"])
+    packet, _ = _read_binding(
         pair["packet"],
         output_root=output_root,
+        expected_schema=PACKET_SCHEMA,
         code="calibration.reviewer_packet",
         label="reviewer packet",
     )
-    output_schema, _, _ = _read_binding(
-        pair["output_schema"],
-        output_root=output_root,
-        code="calibration.reviewer_schema",
-        label="reviewer output schema",
-    )
-    mapping, _, _ = _read_binding(
-        pair["sealed_mapping"],
-        output_root=output_root,
-        code="calibration.reviewer_mapping",
-        label="sealed reviewer mapping",
-    )
-    if output_schema != expected_ratings_schema():
-        _fail("calibration.reviewer_schema", "reviewer output schema differs from product contract")
     packet_examples = _validate_packet(
         packet,
         campaign_id=pair["campaign_id"],
         expected_checks=expected_checks,
     )
-    labels = {
-        (row["example_id"], row["check_id"]): row for row in label_rows
-    }
+    mapping, _ = _read_binding(
+        pair["sealed_mapping"],
+        output_root=output_root,
+        expected_schema=MAPPING_SCHEMA,
+        code="calibration.reviewer_mapping",
+        label="sealed reviewer mapping",
+    )
     mapping_by_opaque = _validate_mapping(
         mapping,
         campaign_id=pair["campaign_id"],
-        packet_binding=pair["packet"],
-        schema_binding=pair["output_schema"],
         packet_examples=packet_examples,
-        labels=labels,
+        labels={(row["example_id"], row["check_id"]): row for row in label_rows},
     )
 
     rows_by_reviewer: dict[str, list[dict[str, Any]]] = {}
@@ -803,58 +555,60 @@ def validate_reviewer_pair(
             or not _safe_id(reviewer_id)
             or reviewer.get("blinded") is not True
             or row.get("grader_identity") is not None
-            or row.get("execution_identity") is not None
+            or row.get("execution_profile") is not None
             or row.get("independence_facts") is not None
             or row.get("grader_id") != judge_grader_id
         ):
-            _fail("calibration.reviewer_rows", "reviewer row carries invalid identity fields")
+            _fail("calibration.reviewer_rows", "reviewer row identity is invalid")
         rows_by_reviewer.setdefault(reviewer_id, []).append(row)
     if len(rows_by_reviewer) != 2:
-        _fail("calibration.reviewer_count", "reviewer pair requires exactly two reviewers")
+        _fail("calibration.reviewer_count", "exactly two reviewers are required")
+    opaque_ids = [item["opaque_example_id"] for item in packet_examples]
+    mapped_rows: list[dict[str, Any]] = []
+    for reviewer_id in sorted(rows_by_reviewer):
+        rows = rows_by_reviewer[reviewer_id]
+        if [row["example_id"] for row in rows] != opaque_ids:
+            _fail("calibration.reviewer_coverage", "reviewer ordering differs")
+        for row in rows:
+            mapped = mapping_by_opaque.get(row["example_id"])
+            if (
+                mapped is None
+                or row["check_id"] != mapped["check_id"]
+                or row["dimension"] != mapped["dimension"]
+            ):
+                _fail("calibration.reviewer_mapping", "reviewer mapping differs")
+            mapped_rows.append({**row, "example_id": mapped["example_id"]})
 
     receipt_bindings = pair["reviewer_receipts"]
-    if not all(isinstance(item, dict) for item in receipt_bindings):
-        _fail("calibration.reviewer_receipt", "receipt bindings must be objects")
-    receipt_paths = [item.get("path") for item in receipt_bindings]
-    if (
-        not all(isinstance(path, str) for path in receipt_paths)
-        or receipt_paths != sorted(receipt_paths)
-        or len(set(receipt_paths)) != 2
-    ):
-        _fail("calibration.reviewer_receipt", "receipt bindings must be path-sorted")
-    receipt_results: list[dict[str, Any]] = []
+    paths = [item.get("path") for item in receipt_bindings if isinstance(item, dict)]
+    if len(paths) != 2 or paths != sorted(paths) or len(set(paths)) != 2:
+        _fail("calibration.reviewer_receipt", "receipt bindings are not ordered")
+    receipts = []
     for binding in receipt_bindings:
-        receipt, _, receipt_path = _read_binding(
-            binding,
-            output_root=output_root,
-            code="calibration.reviewer_receipt",
-            label="reviewer receipt",
-        )
-        reviewer_id = receipt.get("reviewer_id")
+        path_hint = binding.get("path") if isinstance(binding, dict) else None
+        reviewer_id = Path(path_hint).parent.name if isinstance(path_hint, str) else ""
         rows = rows_by_reviewer.get(reviewer_id)
         if rows is None:
-            _fail("calibration.reviewer_receipt", "receipt reviewer has no raw rows")
-        receipt_results.append(
+            _fail("calibration.reviewer_receipt", "receipt reviewer has no rows")
+        receipts.append(
             _validate_receipt(
-                receipt,
-                receipt_path,
+                binding,
                 output_root=output_root,
                 campaign_id=pair["campaign_id"],
+                requested_configuration=requested,
                 packet=packet,
-                packet_binding=pair["packet"],
-                output_schema=output_schema,
-                schema_binding=pair["output_schema"],
-                requested_configuration=requested_configuration,
                 reviewer_rows=rows,
             )
         )
-
-    receipts = [result["receipt"] for result in receipt_results]
     unique_fields = (
-        "request_id", "reviewer_id", "principal_id", "agent_id", "task_name",
+        "request_id",
+        "reviewer_id",
+        "principal_id",
+        "agent_id",
+        "task_name",
     )
     if any(len({receipt[field] for receipt in receipts}) != 2 for field in unique_fields):
-        _fail("calibration.reviewer_identity", "reviewer receipt identities must be distinct")
+        _fail("calibration.reviewer_identity", "reviewer identities collide")
     reviewer_ids = {receipt["reviewer_id"] for receipt in receipts}
     principal_ids = {receipt["principal_id"] for receipt in receipts}
     if (
@@ -862,37 +616,20 @@ def validate_reviewer_pair(
         or not reviewer_ids.isdisjoint(judge_reviewer_ids)
         or not principal_ids.isdisjoint(judge_principal_ids)
     ):
-        _fail("calibration.reviewer_identity", "reviewer identity collides with the judge")
+        _fail("calibration.reviewer_identity", "reviewer identity collides")
     for receipt in receipts:
         reviewer = rows_by_reviewer[receipt["reviewer_id"]][0]["reviewer"]
         if reviewer["principal_id"] != receipt["principal_id"]:
-            _fail("calibration.reviewer_identity", "raw reviewer principal differs from receipt")
-
-    opaque_ids = [item["opaque_example_id"] for item in packet_examples]
-    mapped_rows: list[dict[str, Any]] = []
-    for reviewer_id in sorted(rows_by_reviewer):
-        rows = rows_by_reviewer[reviewer_id]
-        if [row["example_id"] for row in rows] != opaque_ids:
-            _fail("calibration.reviewer_coverage", "reviewer opaque coverage or ordering differs")
-        for row in rows:
-            mapped = mapping_by_opaque.get(row["example_id"])
-            if (
-                mapped is None
-                or row["check_id"] != mapped["check_id"]
-                or row["dimension"] != mapped["dimension"]
-                or row["payload_hash"] != mapped["payload_hash"]
-            ):
-                _fail("calibration.reviewer_mapping", "reviewer row does not join sealed mapping")
-            mapped_rows.append({**row, "example_id": mapped["example_id"]})
-
-    latest_ack = max(result["ack_sequence"] for result in receipt_results)
-    first_consumption = min(
-        result["result_consumed_sequence"] for result in receipt_results
-    )
-    if latest_ack >= first_consumption:
-        _fail("calibration.reviewer_barrier", "a result was consumed before both spawn acknowledgements")
+            _fail("calibration.reviewer_identity", "reviewer principal differs")
+    if max(item["ack_sequence"] for item in receipts) >= min(
+        item["result_consumed_sequence"] for item in receipts
+    ):
+        _fail("calibration.reviewer_barrier", "result consumed before both acks")
     return {
-        "binding": pair_binding,
+        "binding": {
+            **pair_binding,
+            "schema_version": PAIR_SCHEMA,
+        },
         "mapped_rows": mapped_rows,
         "reviewer_ids": sorted(reviewer_ids),
         "principal_ids": sorted(principal_ids),

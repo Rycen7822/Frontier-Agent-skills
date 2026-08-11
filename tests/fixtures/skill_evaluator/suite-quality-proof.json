@@ -1,18 +1,16 @@
 {
   "schema_version": 1,
-  "evaluation_id": "public-l2-template",
+  "evaluation_id": "evaluation-fixture",
   "authority": "suite-quality-owner",
   "thresholds": {
     "minimum_detection": 1.0
   },
   "golden": {
     "case_ids": [
-      "case-basic",
-      "case-boundary"
+      "case-basic"
     ],
     "passed_ids": [
-      "case-basic",
-      "case-boundary"
+      "case-basic"
     ]
   },
   "known_bad": {
@@ -37,28 +35,16 @@
       "class": "positive"
     },
     {
-      "case_id": "case-boundary",
+      "case_id": "case-basic",
       "class": "boundary_or_failure"
     }
   ],
-  "duplicate_groups": [
-    {
-      "group_id": "shared-fixture",
-      "kind": "fixture_overlap",
-      "case_ids": [
-        "case-basic",
-        "case-boundary"
-      ],
-      "status": "allowed",
-      "review_locator": null
-    }
-  ],
+  "duplicate_groups": [],
   "provenance_clusters": [
     {
       "cluster_id": "cluster-core",
       "case_ids": [
-        "case-basic",
-        "case-boundary"
+        "case-basic"
       ],
       "source_refs": [
         "cluster-core-source"
@@ -91,17 +77,19 @@
   ],
   "custody": {
     "split_bindings": {
-      "dev": {"path": "scenarios.example.jsonl"},
-      "regression": {"path": "scenarios.example.jsonl"},
+      "dev": {
+        "path": "scenarios-v1.jsonl"
+      },
+      "regression": null,
       "heldout": null
     },
     "custodian": "evaluation-owner",
     "exposure_status": "not_applicable",
     "author_visible_paths": [
-      "scenarios.example.jsonl"
+      "scenarios-v1.jsonl"
     ],
     "executor_visible_paths": [
-      "scenarios.example.jsonl"
+      "scenarios-v1.jsonl"
     ]
   },
   "boundary_coverage": [

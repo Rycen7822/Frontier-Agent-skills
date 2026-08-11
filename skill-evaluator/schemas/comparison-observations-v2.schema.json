@@ -1,31 +1,23 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/skill-evaluator/schemas/comparison-observations-v1.schema.json",
-  "title": "Skill Evaluator comparison observations v1",
+  "$id": "https://example.invalid/skill-evaluator/schemas/comparison-observations-v2.schema.json",
+  "title": "Skill Evaluator comparison observations v2",
   "type": "object",
   "required": [
     "schema_version",
-    "comparison_observations_hash",
     "generator",
+    "cycle_id",
     "evaluation_id",
     "plan_id",
-    "plan_hash",
-    "spec_hash",
-    "scenario_corpus_hash",
-    "host_manifest_hash",
     "subject",
     "metrics"
   ],
   "properties": {
-    "schema_version": {"const": 1},
-    "comparison_observations_hash": {"$ref": "#/$defs/sha256"},
+    "schema_version": {"const": 2},
     "generator": {"$ref": "#/$defs/generator"},
+    "cycle_id": {"$ref": "#/$defs/safe_id"},
     "evaluation_id": {"$ref": "#/$defs/safe_id"},
     "plan_id": {"$ref": "#/$defs/safe_id"},
-    "plan_hash": {"$ref": "#/$defs/sha256"},
-    "spec_hash": {"$ref": "#/$defs/sha256"},
-    "scenario_corpus_hash": {"$ref": "#/$defs/sha256"},
-    "host_manifest_hash": {"$ref": "#/$defs/sha256"},
     "subject": {"$ref": "#/$defs/subject"},
     "metrics": {
       "type": "array",
@@ -39,23 +31,19 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
     },
-    "sha256": {
-      "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$"
-    },
     "generator": {
       "type": "object",
-      "required": ["name", "version", "source_hash"],
+      "required": ["name", "version", "source_revision"],
       "properties": {
         "name": {"const": "analyze_runs.py"},
-        "version": {"const": "3.3.4"},
-        "source_hash": {"$ref": "#/$defs/sha256"}
+        "version": {"const": "4.0.0"},
+        "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
       },
       "additionalProperties": false
     },
     "subject": {
       "type": "object",
-      "required": ["skill_id", "version", "shape", "package_hash"],
+      "required": ["skill_id", "version", "shape", "source_revision"],
       "properties": {
         "skill_id": {"$ref": "#/$defs/safe_id"},
         "version": {"type": "string", "minLength": 1},
@@ -67,7 +55,7 @@
             "handoff_graph"
           ]
         },
-        "package_hash": {"$ref": "#/$defs/sha256"}
+        "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
       },
       "additionalProperties": false
     },

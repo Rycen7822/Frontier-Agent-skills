@@ -18,18 +18,15 @@ from evidence_io import (
     atomic_write_json,
     atomic_write_jsonl,
     canonical_json_bytes,
-    canonical_self_hash,
-    canonical_sha256,
     file_sha256,
     load_json,
     load_jsonl_objects,
-    verify_self_hash,
 )
 import model_grade_transport as transport
 from validate_eval_suite import (
-    load_v5_schema_registry,
+    load_epoch6_schema_registry,
     validate_host_protocol_record,
-    validate_v5_schema,
+    validate_epoch6_schema,
 )
 
 
@@ -115,7 +112,7 @@ def _host_command(host: dict[str, Any], root: Path) -> tuple[list[str], dict[str
         not executable.is_absolute()
         or not executable.is_file()
         or executable.is_symlink()
-        or file_sha256(executable) != command["executable_sha256"]
+        or file_sha256(executable) != command["executable_digest"]
     ):
         raise CalibrationFailure("Host executable identity differs")
     declared = command["argv"]
@@ -195,7 +192,7 @@ def _host_result(
     if diagnostics:
         raise CalibrationFailure(_first_diagnostic(diagnostics))
     if (
-        result.get("request_hash") != request["request_hash"]
+        result.get("envelope") != request["envelope"]
         or result.get("terminal") is not True
         or result.get("terminal_status") != "completed"
     ):
@@ -212,7 +209,7 @@ def _judgment(result: dict[str, Any], workspace: Path) -> dict[str, Any]:
     if not isinstance(record.get("path"), str) or not record["path"].startswith(prefix):
         raise CalibrationFailure("model-grade Host artifact path differs")
     path = workspace / record["path"][len(prefix):]
-    if not path.is_file() or file_sha256(path) != record.get("sha256"):
+    if not path.is_file() or file_sha256(path) != record.get("digest"):
         raise CalibrationFailure("model-grade Host artifact binding differs")
     value = load_json(path)
     if not isinstance(value, dict):
@@ -229,43 +226,64 @@ def _request(
     prompt_bytes: bytes,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     item = transport.calibration_item(label)
-    batch_id = "mcb-" + canonical_sha256({
-        "evaluation_id": spec["evaluation_id"],
-        "example_id": label["example_id"],
-        "grader_id": grader["grader_id"],
-    }).removeprefix("sha256:")[:24]
+    batch_id = f"batch.calibration.{position}"
     batch = transport.execution_batch([item], batch_id=batch_id)
     payload = transport.request_payload(
         grader_id=grader["grader_id"],
         batch=batch,
-        batch_hash=canonical_sha256({
-            "batch": batch,
-            "schedule_hash": grader["batch_schedule_hash"],
-        }),
-        schedule_hash=grader["batch_schedule_hash"],
+        schedule_id=grader["batch_schedule_id"],
         prompt_bytes=prompt_bytes,
-        prompt_hash=grader["prompt"]["sha256"],
-        schema_hash=grader["output_schema"]["sha256"],
+        prompt_id=grader["prompt_id"],
+        schema_id=grader["schema_id"],
     )
+    run_id = label["example_id"]
+    attempt_id = f"attempt.{position}"
     request = {
-        "record_type": "skill-evaluator-host-request/1",
-        "request_hash": "sha256:" + "0" * 64,
+        "record_type": "skill-evaluator-host-request/2",
         "envelope": {
-            "plan_id": f"calibration-{spec['evaluation_id']}",
-            "plan_hash": canonical_sha256({
-                "evaluation_id": spec["evaluation_id"],
-                "grader_id": grader["grader_id"],
-            }),
+            "plan_id": spec["evaluation_id"],
             "entry_ordinal": position - 1,
             "entry_id": label["example_id"],
-            "run_id": f"calrun-{spec['evaluation_id']}",
+            "run_id": run_id,
+            "attempt_id": attempt_id,
             "attempt": 1,
+            "request_id": f"request.{position}.model-grade",
             "request_kind": "model_grade",
         },
         "payload": payload,
     }
-    request["request_hash"] = canonical_self_hash(request, "request_hash")
     return request, batch
+
+
+def _project_terminal(
+    *,
+    request: dict[str, Any],
+    batch: dict[str, Any],
+    label: dict[str, Any],
+    position: int,
+    result: dict[str, Any],
+    terminal_root: Path,
+) -> dict[str, Any]:
+    judgment = _judgment(result, terminal_root)
+    transport.normalize_judgment(
+        judgment,
+        batch=batch,
+        requirements=[{"check_id": label["check_id"], "required": True}],
+        item_id=label["example_id"],
+    )
+    check = judgment["items"][0]["checks"][0]
+    projected_label, severity = transport.calibration_projection(check)
+    return {
+        "schema_version": "model-calibration-terminal/2",
+        "position": position,
+        "example_id": label["example_id"],
+        "check_id": label["check_id"],
+        "request_id": request["envelope"]["request_id"],
+        "label": projected_label,
+        "severity": severity,
+        "uncertainty": check["uncertainty"],
+        "notes": check["notes"],
+    }
 
 
 def _terminal(
@@ -283,18 +301,6 @@ def _terminal(
 ) -> dict[str, Any]:
     terminal_root = output_root / "terminals" / f"{position:03d}"
     terminal_path = terminal_root / "terminal.json"
-    if terminal_path.is_file():
-        terminal = load_json(terminal_path)
-        if not isinstance(terminal, dict) or not verify_self_hash(
-            terminal, "terminal_hash",
-        ):
-            raise CalibrationFailure(f"terminal {position} self-hash differs")
-        return terminal
-    if terminal_root.exists():
-        raise CalibrationFailure(
-            f"terminal {position} is partial; refusing an unprovable replay",
-        )
-    terminal_root.mkdir(parents=True)
     request, batch = _request(
         spec=spec,
         grader=grader,
@@ -305,6 +311,29 @@ def _terminal(
     diagnostics = validate_host_protocol_record("host_request", request, registry)
     if diagnostics:
         raise CalibrationFailure(_first_diagnostic(diagnostics))
+    if terminal_path.is_file():
+        terminal = load_json(terminal_path)
+        stdout_path = terminal_root / "host-stdout.jsonl"
+        stderr_path = terminal_root / "host-stderr.txt"
+        if not stdout_path.is_file() or not stderr_path.is_file():
+            raise CalibrationFailure(f"terminal {position} raw evidence is partial")
+        result = _host_result(stdout_path.read_bytes(), request, registry)
+        expected = _project_terminal(
+            request=request,
+            batch=batch,
+            label=label,
+            position=position,
+            result=result,
+            terminal_root=terminal_root,
+        )
+        if terminal != expected:
+            raise CalibrationFailure(f"terminal {position} projection differs")
+        return terminal
+    if terminal_root.exists():
+        raise CalibrationFailure(
+            f"terminal {position} is partial; refusing an unprovable replay",
+    )
+    terminal_root.mkdir(parents=True)
     code, stdout, stderr = _invoke(
         argv, environment, request, terminal_root, timeout,
     )
@@ -313,30 +342,14 @@ def _terminal(
     if code:
         raise CalibrationFailure(f"model-grade Host exited {code}")
     result = _host_result(stdout, request, registry)
-    judgment = _judgment(result, terminal_root)
-    transport.normalize_judgment(
-        judgment,
+    terminal = _project_terminal(
+        request=request,
         batch=batch,
-        requirements=[{"check_id": label["check_id"], "required": True}],
-        item_id=label["example_id"],
+        label=label,
+        position=position,
+        result=result,
+        terminal_root=terminal_root,
     )
-    check = judgment["items"][0]["checks"][0]
-    projected_label, severity = transport.calibration_projection(check)
-    terminal = {
-        "schema_version": "model-calibration-terminal/1",
-        "terminal_hash": "sha256:" + "0" * 64,
-        "position": position,
-        "example_id": label["example_id"],
-        "check_id": label["check_id"],
-        "payload_hash": label["payload_hash"],
-        "request_hash": request["request_hash"],
-        "host_result_hash": canonical_sha256(result),
-        "label": projected_label,
-        "severity": severity,
-        "uncertainty": check["uncertainty"],
-        "notes": check["notes"],
-    }
-    terminal["terminal_hash"] = canonical_self_hash(terminal, "terminal_hash")
     atomic_write_json(terminal_path, terminal)
     return terminal
 
@@ -359,10 +372,8 @@ def _preflight_terminal_roots(
                 f"terminal {position} is partial; refusing an unprovable replay",
             )
         terminal = load_json(terminal_path)
-        if not isinstance(terminal, dict) or not verify_self_hash(
-            terminal, "terminal_hash",
-        ):
-            raise CalibrationFailure(f"terminal {position} self-hash differs")
+        if not isinstance(terminal, dict):
+            raise CalibrationFailure(f"terminal {position} is not an object")
         request, _ = _request(
             spec=spec,
             grader=grader,
@@ -374,8 +385,7 @@ def _preflight_terminal_roots(
             "position": position,
             "example_id": label["example_id"],
             "check_id": label["check_id"],
-            "payload_hash": label["payload_hash"],
-            "request_hash": request["request_hash"],
+            "request_id": request["envelope"]["request_id"],
         }
         if any(terminal.get(key) != value for key, value in expected.items()):
             raise CalibrationFailure(f"terminal {position} identity differs")
@@ -393,16 +403,11 @@ def _ratings(
     expires: str,
 ) -> list[dict[str, Any]]:
     thresholds = _thresholds(spec)
-    schedule_hash = canonical_sha256([
-        {
-            "example_id": row["example_id"],
-            "check_id": row["check_id"],
-            "position": position,
-        }
-        for position, row in enumerate(labels, 1)
-    ])
     execution = host["identity"]["execution"]
-    evidence_hash = file_sha256(labels_path)
+    evidence_binding = {
+        "path": labels_path.name,
+        "digest": file_sha256(labels_path),
+    }
     reviewer = {
         "reviewer_id": "selected-model-grader",
         "role": "judge",
@@ -414,17 +419,17 @@ def _ratings(
         "grader_id": grader["grader_id"],
         "model": execution["model"],
         "model_revision": execution["model_revision"],
-        "prompt_id": "sentinel-grader-prompt",
-        "prompt_hash": grader["prompt"]["sha256"],
-        "schema_id": "sentinel-grader-output",
-        "schema_hash": grader["output_schema"]["sha256"],
+        "prompt_id": grader["prompt_id"],
+        "schema_id": grader["schema_id"],
     }
-    execution_identity = {
-        "host_hash": host["manifest_hash"],
-        "harness_hash": canonical_sha256(execution["harness"]),
+    execution_profile = {
+        "host_id": host["identity"]["host_id"],
+        "host_version": host["identity"]["host_version"],
+        "harness": execution["harness"],
+        "harness_version": execution["harness_version"],
         "model_genealogy": [execution["model"]],
         "context_exposure": [],
-        "evidence_source_hashes": [evidence_hash],
+        "evidence_sources": [evidence_binding],
     }
     independence = {
         "candidate_principal_id": "target-executor-principal",
@@ -433,44 +438,43 @@ def _ratings(
         "rationale_exposed": False,
         "candidate_model_genealogy": [execution["model"]],
         "grader_model_genealogy": [execution["model"]],
-        "candidate_evidence_source_hashes": [evidence_hash],
-        "grader_evidence_source_hashes": [evidence_hash],
+        "candidate_evidence_source_ids": ["calibration-labels"],
+        "grader_evidence_source_ids": ["calibration-labels"],
     }
     ordering = {
         "method": "counterbalanced",
         "seed": spec["suite"]["order_seed"],
-        "schedule_hash": schedule_hash,
+        "schedule_id": grader["batch_schedule_id"],
     }
     drift = [
         {
-            "field": "prompt_hash",
-            "expected": grader["prompt"]["sha256"],
-            "observed": grader["prompt"]["sha256"],
+            "field": "prompt_id",
+            "expected": grader["prompt_id"],
+            "observed": grader["prompt_id"],
             "status": "unchanged",
         },
         {
-            "field": "host_build_hash",
-            "expected": host["identity"]["host_build"],
-            "observed": host["identity"]["host_build"],
+            "field": "host_version",
+            "expected": host["identity"]["host_version"],
+            "observed": host["identity"]["host_version"],
             "status": "unchanged",
         },
     ]
     return [
         {
-            "schema_version": 2,
-            "rating_id": "rating-" + terminal["terminal_hash"][7:31],
+            "schema_version": 3,
+            "rating_id": f"rating.{position}",
             "example_id": label["example_id"],
             "grader_id": grader["grader_id"],
             "dimension": label["dimension"],
             "check_id": label["check_id"],
-            "payload_hash": label["payload_hash"],
             "label": terminal["label"],
             "severity": terminal["severity"],
             "position": position,
             "blinded_treatment_labels": True,
             "reviewer": reviewer,
             "grader_identity": grader_identity,
-            "execution_identity": execution_identity,
+            "execution_profile": execution_profile,
             "independence_facts": independence,
             "ordering": ordering,
             "created": created,
@@ -494,15 +498,13 @@ def run(args: argparse.Namespace) -> None:
     spec = load_json(spec_path)
     host = load_json(host_path)
     labels = [row for _, row in load_jsonl_objects(labels_path)]
-    registry = load_v5_schema_registry()
-    diagnostics = validate_v5_schema(spec, "eval-spec-v5.schema.json", registry)
+    registry = load_epoch6_schema_registry()
+    diagnostics = validate_epoch6_schema(spec, "eval-spec-v6.schema.json", registry)
     if diagnostics:
         raise CalibrationFailure(_first_diagnostic(diagnostics))
-    diagnostics = validate_v5_schema(host, "host-manifest-v1.schema.json", registry)
+    diagnostics = validate_epoch6_schema(host, "host-manifest-v2.schema.json", registry)
     if diagnostics:
         raise CalibrationFailure(_first_diagnostic(diagnostics))
-    if not verify_self_hash(host, "manifest_hash"):
-        raise CalibrationFailure("Host manifest self-hash differs")
     graders = [item for item in spec["graders"] if item["type"] == "model"]
     if len(graders) != 1 or len(labels) != args.expected_requests:
         raise CalibrationFailure("calibration grader or request count differs")
@@ -510,8 +512,6 @@ def run(args: argparse.Namespace) -> None:
     _preflight_labels(spec, grader, host, labels, args.created, args.expires)
     prompt_path = spec_path.parent / grader["prompt"]["path"]
     prompt_bytes = prompt_path.read_bytes()
-    if file_sha256(prompt_path) != grader["prompt"]["sha256"]:
-        raise CalibrationFailure("calibration grader prompt binding differs")
     argv, environment = _host_command(host, spec_path.parent)
     timeout = args.host_timeout + 30
     _preflight_terminal_roots(

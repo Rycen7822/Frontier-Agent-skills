@@ -9,16 +9,10 @@ from typing import Any
 
 from _codex_eval_delivery import (
     MODEL_EVOLUTION_ENV_ALLOWLIST,
-    isolated_tool_schema_hash,
+    isolated_tool_schema_id,
 )
-from _model_evolution_contract import (
-    SKILL_IDS,
-    canonical_bytes,
-    content_hash,
-    self_hash,
-    with_self_hash,
-)
-from codex_eval_host import ADAPTER_VERSION, adapter_source_hash
+from _model_evolution_contract import SKILL_IDS
+from codex_eval_host import ADAPTER_VERSION
 from support.model_evolution.documents import host_manifest
 from support.model_evolution.repository import (
     FIXED_COMMIT,
@@ -74,22 +68,16 @@ def _materialize_fake_host(
     isolation_hash = file_hash(isolation_tool)
     host_path = campaign_root / "inputs/target-provisional-host.json"
     host = host_manifest()
-    host["identity"]["adapter"].update(
-        {
-            "id": "codex-eval-host",
-            "version": ADAPTER_VERSION,
-            "sha256": adapter_source_hash(),
-        }
-    )
-    host["identity"]["host_build"] = file_hash(fake)
+    host["identity"]["adapter"] = {
+        "id": "codex-eval-host",
+        "version": ADAPTER_VERSION,
+    }
+    host["identity"]["host_build"] = "codex-cli-0.0.0"
     host["identity"]["host_version"] = "0.0.0"
     host["identity"]["execution"]["model"] = "fixture-model"
-    host["identity"]["execution"]["harness"] = (
-        "codex-cli-0.0.0-effort-high-profile-fixture-profile-tier-default"
-    )
-    host["identity"]["execution"]["model_revision"] = (
-        "codex-catalog-0.0.0-sha256:" + "1" * 64
-    )
+    host["identity"]["execution"]["harness"] = "codex-cli"
+    host["identity"]["execution"]["harness_version"] = "0.0.0"
+    host["identity"]["execution"]["model_revision"] = "codex-catalog-0.0.0"
     host["identity"]["repository"] = {
         "dirty": False,
         "revision": FIXED_COMMIT,
@@ -133,7 +121,7 @@ def _materialize_fake_host(
                 str(plugin_root),
             ],
             "resolved_executable": str(Path(sys.executable).resolve()),
-            "executable_sha256": file_hash(Path(sys.executable).resolve()),
+            "executable_digest": file_hash(Path(sys.executable).resolve()),
             "env_allowlist": list(MODEL_EVOLUTION_ENV_ALLOWLIST),
         }
     )
@@ -144,18 +132,16 @@ def _materialize_fake_host(
             "id": skill_root.name,
             "name": skill_root.name,
             "version": "1.0.0",
-            "root_hash": root_hash(skill_root),
+            "root_digest": root_hash(skill_root),
         }
         for skill_root in sorted((plugin_root / "skills").iterdir())
     ]
-    host["catalog"]["catalog_hash"] = content_hash(
-        canonical_bytes(host["catalog"]["entries"])
-    )
-    host["identity"]["execution"]["catalog_hash"] = host["catalog"]["catalog_hash"]
-    host["identity"]["execution"]["skill_hash"] = root_hash(plugin_root)
+    host["catalog"]["catalog_id"] = "frontier-engineering-catalog"
+    host["identity"]["execution"]["catalog_id"] = "frontier-engineering-catalog"
+    host["identity"]["execution"]["skill_id"] = "frontier-engineering-plugin"
     host["identity"]["execution"].update(
         {
-            "tool_schema_hash": isolated_tool_schema_hash(
+            "tool_schema_id": isolated_tool_schema_id(
                 file_hash(fake),
                 isolation_hash,
                 file_hash(code_mode_host),
@@ -163,7 +149,6 @@ def _materialize_fake_host(
         }
     )
     host["capabilities"][0]["probe"]["status"] = "unknown"
-    host["manifest_hash"] = self_hash(host, "manifest_hash")
     return write_json(host_path, host)
 
 
@@ -180,14 +165,11 @@ def _materialize_plugin_staging(campaign_root: Path) -> tuple[Path, Path]:
             ),
         )
     plugin_tree_hash = root_hash(plugin_root)
-    evidence = with_self_hash(
-        {
-            "schema_version": "plugin-build-evidence/3.0",
-            "source_revision": FIXED_COMMIT,
-            "plugin_tree_hash": plugin_tree_hash,
-        },
-        "evidence_hash",
-    )
+    evidence = {
+        "schema_version": "plugin-build-evidence/3.0",
+        "source_revision": FIXED_COMMIT,
+        "plugin_tree_hash": plugin_tree_hash,
+    }
     return plugin_root, write_json(
         campaign_root / "inputs/plugin-build-evidence.json",
         evidence,

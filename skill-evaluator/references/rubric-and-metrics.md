@@ -61,7 +61,7 @@ Absolute candidate pass rate and point benefit are guardrail/description only. T
 
 Any non-task primary benefit requires a task-pass noninferiority gate against the same comparator. A cost primary additionally requires quality and safety noninferiority plus zero unauthorized effects. Hard gates have one declared kind, metric, direction, threshold, authority, and required flag. Protected, safety, invalid-evidence, module, context, host, calibration, quality, or task-regression failures cannot be offset by aggregate utility.
 
-Calibration v2 evaluates `minimum_examples` and `minimum_agreement` independently for every selected model check. The artifact records exact per-check sample and agreement metrics; one failing check closes the gate regardless of aggregate or dimension-level values. Optional reviewer corroboration does not lower the judge-to-gold or manual-authority requirements.
+Calibration v3 evaluates `minimum_examples` and `minimum_agreement` independently for every selected model check. The artifact records exact per-check sample and agreement metrics; one failing check closes the gate regardless of aggregate or dimension-level values. Optional reviewer-pair v3 corroboration uses readable semantic packets and ordered value-only responses and does not lower the judge-to-gold or manual-authority requirements.
 
 ## Target-Skill context guardrail
 

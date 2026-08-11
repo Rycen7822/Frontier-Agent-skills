@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/skill-evaluator/schemas/eval-spec-v5.schema.json",
-  "title": "Skill Evaluator evaluation spec v5",
+  "$id": "https://example.invalid/skill-evaluator/schemas/eval-spec-v6.schema.json",
+  "title": "Skill Evaluator evaluation spec v6",
   "type": "object",
   "required": [
     "schema_version",
@@ -16,7 +16,7 @@
     "artifacts"
   ],
   "properties": {
-    "schema_version": {"const": 5},
+    "schema_version": {"const": 6},
     "evaluation_id": {"$ref": "#/$defs/safe_id"},
     "level": {"enum": ["L0", "L1", "L2", "L3", "L4"]},
     "risk_tier": {"enum": ["low", "standard", "high"]},
@@ -90,7 +90,7 @@
       "then": {
         "properties": {
           "execution": {"properties": {"mode": {"const": "scored"}}},
-          "suite": {"required": ["quality", "quality_contract_hash"]}
+          "suite": {"required": ["quality"]}
         }
       }
     }
@@ -113,12 +113,21 @@
       "type": "string",
       "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
     },
-    "binding": {
+    "repository_ref": {
       "type": "object",
-      "required": ["path", "sha256"],
+      "required": ["path"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relative_path"}
+      },
+      "additionalProperties": false
+    },
+    "external_binding": {
+      "type": "object",
+      "required": ["path", "digest", "schema_version"],
       "properties": {
         "path": {"$ref": "#/$defs/relative_path"},
-        "sha256": {"$ref": "#/$defs/sha256"}
+        "digest": {"$ref": "#/$defs/sha256"},
+        "schema_version": {"type": "string", "minLength": 1}
       },
       "additionalProperties": false
     },
@@ -162,13 +171,12 @@
         },
         "package": {
           "type": "object",
-          "required": ["path", "package_hash", "repository_revision", "repository_tree", "dirty_state"],
+          "required": ["path", "source_revision", "dirty_state", "package_digest"],
           "properties": {
             "path": {"$ref": "#/$defs/relative_path"},
-            "package_hash": {"$ref": "#/$defs/sha256"},
-            "repository_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-            "repository_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-            "dirty_state": {"enum": ["clean", "declared_dirty"]}
+            "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "dirty_state": {"enum": ["clean", "declared_dirty"]},
+            "package_digest": {"$ref": "#/$defs/sha256"}
           },
           "additionalProperties": false
         },
@@ -193,7 +201,7 @@
         "evidence": {
           "type": "array",
           "minItems": 1,
-          "items": {"$ref": "failure-index-v1.schema.json#/$defs/locator"}
+          "items": {"$ref": "failure-index-v2.schema.json#/$defs/locator"}
         },
         "approved_by": {"type": "string", "minLength": 1}
       },
@@ -231,26 +239,22 @@
         "scenarios",
         "public_scenarios",
         "holdout",
-        "fixture_set_hash",
-        "grader_set_hash",
-        "grader_schedule_hash",
-        "treatment_contract_hash",
         "repeats",
         "order_seed",
         "reset_policy",
         "retry_policy"
       ],
       "properties": {
-        "scenarios": {"$ref": "#/$defs/binding"},
-        "public_scenarios": {"$ref": "#/$defs/binding"},
+        "scenarios": {"$ref": "#/$defs/repository_ref"},
+        "public_scenarios": {"$ref": "#/$defs/repository_ref"},
         "holdout": {
           "anyOf": [
             {
               "type": "object",
               "required": ["manifest", "payload", "custodian", "exposure_status"],
               "properties": {
-                "manifest": {"$ref": "#/$defs/binding"},
-                "payload": {"$ref": "#/$defs/binding"},
+                "manifest": {"$ref": "#/$defs/external_binding"},
+                "payload": {"$ref": "#/$defs/external_binding"},
                 "custodian": {"type": "string", "minLength": 1},
                 "exposure_status": {"enum": ["sealed", "exposed", "not_applicable"]}
               },
@@ -259,13 +263,8 @@
             {"type": "null"}
           ]
         },
-        "fixture_set_hash": {"$ref": "#/$defs/sha256"},
-        "grader_set_hash": {"$ref": "#/$defs/sha256"},
-        "grader_schedule_hash": {"$ref": "#/$defs/sha256"},
-        "treatment_contract_hash": {"$ref": "#/$defs/sha256"},
-        "calibration": {"$ref": "#/$defs/binding"},
-        "quality": {"$ref": "#/$defs/binding"},
-        "quality_contract_hash": {"$ref": "#/$defs/sha256"},
+        "calibration": {"$ref": "#/$defs/external_binding"},
+        "quality": {"$ref": "#/$defs/external_binding"},
         "repeats": {"type": "integer", "minimum": 1},
         "order_seed": {"type": "integer"},
         "reset_policy": {"type": "string", "minLength": 1},
@@ -277,12 +276,12 @@
       "type": "object",
       "required": ["manifest", "required_capabilities"],
       "properties": {
-        "manifest": {"$ref": "#/$defs/binding"},
+        "manifest": {"$ref": "#/$defs/repository_ref"},
         "required_capabilities": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": {"$ref": "host-manifest-v1.schema.json#/$defs/capability_name"}
+          "items": {"$ref": "host-manifest-v2.schema.json#/$defs/capability_name"}
         }
       },
       "additionalProperties": false
@@ -301,13 +300,13 @@
         "model_identity",
         "harness_identity",
         "host_identity",
-        "implementation_hash",
-        "base_catalog_hash",
-        "delivery_transform_hash",
-        "tool_policy_hash",
-        "permission_policy_hash",
-        "network_policy_hash",
-        "context_policy_hash",
+        "implementation_revision",
+        "base_catalog_id",
+        "delivery_transform_id",
+        "tool_policy_id",
+        "permission_policy_id",
+        "network_policy_id",
+        "context_policy_id",
         "expected_capabilities",
         "scenario_ids",
         "scenario_tags",
@@ -320,17 +319,17 @@
         "causal_role": {"enum": ["baseline", "candidate", "prior", "comparator", "stratum"]},
         "prompt_variant_group_id": {"$ref": "#/$defs/safe_id"},
         "intervention_axes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/safe_id"}},
-        "model_identity": {"$ref": "#/$defs/sha256"},
-        "harness_identity": {"$ref": "#/$defs/sha256"},
-        "host_identity": {"$ref": "#/$defs/sha256"},
-        "implementation_hash": {"$ref": "#/$defs/sha256"},
-        "base_catalog_hash": {"$ref": "#/$defs/sha256"},
-        "delivery_transform_hash": {"$ref": "#/$defs/sha256"},
-        "tool_policy_hash": {"$ref": "#/$defs/sha256"},
-        "permission_policy_hash": {"$ref": "#/$defs/sha256"},
-        "network_policy_hash": {"$ref": "#/$defs/sha256"},
-        "context_policy_hash": {"$ref": "#/$defs/sha256"},
-        "expected_capabilities": {"type": "array", "items": {"$ref": "host-manifest-v1.schema.json#/$defs/capability_name"}},
+        "model_identity": {"$ref": "#/$defs/safe_id"},
+        "harness_identity": {"$ref": "#/$defs/safe_id"},
+        "host_identity": {"$ref": "#/$defs/safe_id"},
+        "implementation_revision": {"type": "string", "minLength": 1},
+        "base_catalog_id": {"$ref": "#/$defs/safe_id"},
+        "delivery_transform_id": {"$ref": "#/$defs/safe_id"},
+        "tool_policy_id": {"$ref": "#/$defs/safe_id"},
+        "permission_policy_id": {"$ref": "#/$defs/safe_id"},
+        "network_policy_id": {"$ref": "#/$defs/safe_id"},
+        "context_policy_id": {"$ref": "#/$defs/safe_id"},
+        "expected_capabilities": {"type": "array", "items": {"$ref": "host-manifest-v2.schema.json#/$defs/capability_name"}},
         "scenario_ids": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
         "scenario_tags": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
         "exclusions": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
@@ -360,11 +359,11 @@
             "checks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/grader_check"}},
             "verifier": {
               "type": "object",
-              "required": ["argv", "path", "sha256", "cwd", "env_allowlist", "timeout_seconds", "input_allowlist", "pass_exit_codes"],
+              "required": ["argv", "path", "source_revision", "cwd", "env_allowlist", "timeout_seconds", "input_allowlist", "pass_exit_codes"],
               "properties": {
                 "argv": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
                 "path": {"$ref": "#/$defs/relative_path"},
-                "sha256": {"$ref": "#/$defs/sha256"},
+                "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
                 "cwd": {"$ref": "#/$defs/relative_path"},
                 "env_allowlist": {"type": "array", "items": {"type": "string", "minLength": 1}},
                 "timeout_seconds": {"type": "integer", "minimum": 1},
@@ -378,15 +377,17 @@
         },
         {
           "type": "object",
-          "required": ["grader_id", "type", "checks", "model", "prompt", "output_schema", "batch_schedule_hash"],
+          "required": ["grader_id", "type", "checks", "model", "prompt_id", "prompt", "schema_id", "output_schema", "batch_schedule_id"],
           "properties": {
             "grader_id": {"$ref": "#/$defs/safe_id"},
             "type": {"const": "model"},
             "checks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/grader_check"}},
             "model": {"type": "string", "minLength": 1},
-            "prompt": {"$ref": "#/$defs/binding"},
-            "output_schema": {"$ref": "#/$defs/binding"},
-            "batch_schedule_hash": {"$ref": "#/$defs/sha256"}
+            "prompt_id": {"$ref": "#/$defs/safe_id"},
+            "prompt": {"$ref": "#/$defs/repository_ref"},
+            "schema_id": {"$ref": "#/$defs/safe_id"},
+            "output_schema": {"$ref": "#/$defs/repository_ref"},
+            "batch_schedule_id": {"$ref": "#/$defs/safe_id"}
           },
           "additionalProperties": false
         }
@@ -452,11 +453,11 @@
         "runner_capabilities": {"type": "array", "items": {"$ref": "#/$defs/safe_id"}},
         "manual_review": {
           "type": "object",
-          "required": ["required", "role", "decision_contract_hash"],
+          "required": ["required", "role", "decision_contract"],
           "properties": {
             "required": {"type": "boolean"},
             "role": {"type": "string", "minLength": 1},
-            "decision_contract_hash": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]}
+            "decision_contract": {"anyOf": [{"$ref": "#/$defs/external_binding"}, {"type": "null"}]}
           },
           "additionalProperties": false
         },

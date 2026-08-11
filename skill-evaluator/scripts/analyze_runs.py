@@ -25,7 +25,6 @@ import model_grade_transport as model_transport
 from evidence_io import (
     atomic_write_bytes,
     canonical_json_bytes,
-    canonical_self_hash,
     canonical_sha256,
     file_sha256,
     load_json,
@@ -34,13 +33,12 @@ from evidence_io import (
     resolve_contained_path,
     validate_locator,
     verify_artifact_records,
-    verify_self_hash,
 )
 from validate_eval_suite import (
     PAIRED_METRIC_DIRECTIONS,
-    load_v5_schema_registry,
+    load_epoch6_schema_registry,
     validate_host_protocol_record,
-    validate_v5_schema,
+    validate_epoch6_schema,
 )
 
 Z_95 = 1.959963984540054
@@ -1442,7 +1440,7 @@ def _find_v5_plan(
     registry: dict[str, dict[str, Any]],
 ) -> tuple[Path, dict[str, Any]]:
     spec = load_json(spec_path)
-    spec_hash = canonical_sha256(compiler._normalize_spec(spec))
+    source_revision = spec["subject"]["package"]["source_revision"]
     matches: list[tuple[Path, dict[str, Any]]] = []
     for candidate in sorted(spec_path.parent.glob("*.json")):
         if (
@@ -1457,15 +1455,16 @@ def _find_v5_plan(
             continue
         if (
             not isinstance(value, dict)
-            or value.get("schema_version") != 1
-            or value.get("spec_hash") != spec_hash
+            or value.get("schema_version") != 2
+            or value.get("evaluation_id") != spec["evaluation_id"]
+            or value.get("source_revision") != source_revision
             or not isinstance(value.get("entries"), list)
         ):
             continue
-        diagnostics = validate_v5_schema(
-            value, "execution-plan-v1.schema.json", registry,
+        diagnostics = validate_epoch6_schema(
+            value, "execution-plan-v2.schema.json", registry,
         )
-        if diagnostics or not verify_self_hash(value, "plan_hash"):
+        if diagnostics:
             continue
         _, artifacts_root = resolve_contained_path(
             candidate.parent,
@@ -1498,7 +1497,7 @@ def _load_v5_analysis_inputs(
     dict[str, Any],
     dict[str, dict[str, Any]],
 ]:
-    registry = load_v5_schema_registry()
+    registry = load_epoch6_schema_registry()
     plan_path, plan = _find_v5_plan(spec_path, index_path, registry)
     spec_value = load_json(spec_path)
     _, scenarios_path = resolve_contained_path(
@@ -1521,8 +1520,6 @@ def _load_v5_analysis_inputs(
         spec,
         scenarios,
         host,
-        spec_path=spec_path,
-        source_path=Path(compiler.__file__).resolve(),
         registry=registry,
         runtime_override=plan["compiler"],
     )
@@ -1535,7 +1532,6 @@ def _load_v5_bound_artifact(
     *,
     field: str,
     schema_name: str,
-    hash_field: str,
     registry: dict[str, dict[str, Any]],
 ) -> dict[str, Any] | None:
     binding = spec["suite"].get(field)
@@ -1547,14 +1543,12 @@ def _load_v5_bound_artifact(
         f"suite {field}",
         kind="file",
     )
-    if file_sha256(path) != binding["sha256"]:
+    if file_sha256(path) != binding["digest"]:
         raise ValueError(f"suite {field} bytes differ from the spec binding")
     artifact = load_json(path)
-    diagnostics = validate_v5_schema(artifact, schema_name, registry)
+    diagnostics = validate_epoch6_schema(artifact, schema_name, registry)
     if diagnostics:
         raise ValueError(_first_v5_diagnostic(diagnostics))
-    if not verify_self_hash(artifact, hash_field):
-        raise ValueError(f"suite {field} self-hash is invalid")
     return artifact
 
 
@@ -1567,16 +1561,14 @@ def _load_v5_bound_evidence(
         spec,
         spec_path,
         field="quality",
-        schema_name="suite-quality-v1.schema.json",
-        hash_field="suite_quality_hash",
+        schema_name="suite-quality-v2.schema.json",
         registry=registry,
     )
     calibration = _load_v5_bound_artifact(
         spec,
         spec_path,
         field="calibration",
-        schema_name="grader-calibration-v2.schema.json",
-        hash_field="calibration_hash",
+        schema_name="grader-calibration-v3.schema.json",
         registry=registry,
     )
     quality_status = "not_applicable"
@@ -1601,6 +1593,7 @@ def _load_v5_bound_evidence(
 
 def _load_v5_index(
     index_path: Path,
+    plan_path: Path,
     plan: dict[str, Any],
     registry: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -1610,40 +1603,59 @@ def _load_v5_index(
     entries = {
         entry["entry_id"]: entry for entry in plan["entries"]
     }
+    if not records:
+        raise ValueError("run index is missing its header")
+    header_line, header = records[0]
+    diagnostics = validate_epoch6_schema(
+        header, "run-index-v3.schema.json", registry,
+    )
+    if diagnostics:
+        raise ValueError(
+            f"index line {header_line}: {_first_v5_diagnostic(diagnostics)}",
+        )
+    if header != {
+        "record_type": "index_header",
+        "plan_id": plan["plan_id"],
+        "plan_digest": file_sha256(plan_path),
+    }:
+        raise ValueError("run index header differs from the selected plan bytes")
     rows: list[dict[str, Any]] = []
     previous_key: tuple[int, int] | None = None
     attempts: dict[str, int] = defaultdict(int)
-    for line_no, row in records:
-        diagnostics = validate_v5_schema(
-            row, "run-index-row-v2.schema.json", registry,
+    for line_no, row in records[1:]:
+        diagnostics = validate_epoch6_schema(
+            row, "run-index-v3.schema.json", registry,
         )
         if diagnostics:
             raise ValueError(
                 f"index line {line_no}: {_first_v5_diagnostic(diagnostics)}",
             )
+        if row["record_type"] != "attempt":
+            raise ValueError(f"index line {line_no} contains a non-leading header")
         entry = entries.get(row["entry_id"])
         if entry is None or entry["disposition"] != "execute":
             raise ValueError(
                 f"index line {line_no} does not name an execute plan entry",
             )
-        expected = {
-            "plan_hash": plan["plan_hash"],
-            "plan_id": plan["plan_id"],
-            "entry_ordinal": entry["entry_ordinal"],
-            "case_id": entry["case_id"],
-            "treatment_id": entry["treatment_id"],
-            "repeat": entry["repeat"],
-        }
-        if any(row[field] != value for field, value in expected.items()):
+        prefix = f"attempt.{entry['entry_ordinal']}."
+        if not row["attempt_id"].startswith(prefix):
+            raise ValueError(f"index line {line_no} has an invalid attempt ID")
+        try:
+            attempt = int(row["attempt_id"][len(prefix):])
+        except ValueError as exc:
             raise ValueError(
-                f"index line {line_no} differs from its plan entry",
-            )
+                f"index line {line_no} has an invalid attempt ID",
+            ) from exc
+        if attempt < 1 or row["run_id"] != (
+            f"run.{entry['entry_ordinal']}.{attempt}"
+        ):
+            raise ValueError(f"index line {line_no} differs from its plan entry")
         attempts[row["entry_id"]] += 1
-        if row["attempt"] != attempts[row["entry_id"]]:
+        if attempt != attempts[row["entry_id"]]:
             raise ValueError(
                 f"index line {line_no} breaks the contiguous attempt sequence",
             )
-        key = (row["entry_ordinal"], row["attempt"])
+        key = (entry["entry_ordinal"], attempt)
         if previous_key is not None and key <= previous_key:
             raise ValueError(
                 f"index line {line_no} breaks deterministic global order",
@@ -1653,25 +1665,14 @@ def _load_v5_index(
     return rows
 
 
-def _expected_v4_provenance(
-    plan: dict[str, Any],
-    entry: dict[str, Any],
-    spec: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        "spec_hash": plan["spec_hash"],
-        "scenario_corpus_hash": plan["scenario_corpus_hash"],
-        "scenario_hash": entry["scenario_hash"],
-        "plan_hash": plan["plan_hash"],
-        "host_manifest_hash": plan["host_manifest_hash"],
-        "package_hash": plan["package_hashes"][spec["subject"]["skill_id"]],
-        "catalog_hash": entry["catalog_hash"],
-        "treatment_hash": entry["treatment_hash"],
-        "fixture_hash": entry["fixture_hash"],
-        "grader_set_hash": plan["grader_set_hash"],
-        "calibration_hash": plan["calibration_hash"],
-        "suite_quality_hash": plan["suite_quality_hash"],
-    }
+def _index_attempt(row: dict[str, Any]) -> int:
+    try:
+        attempt = int(row["attempt_id"].rsplit(".", 1)[1])
+    except (KeyError, ValueError) as exc:
+        raise ValueError("index attempt identity is invalid") from exc
+    if attempt < 1:
+        raise ValueError("index attempt identity is invalid")
+    return attempt
 
 
 def _load_v4_receipt(
@@ -1680,10 +1681,14 @@ def _load_v4_receipt(
     artifacts_root: Path,
     plan: dict[str, Any],
     entry: dict[str, Any],
-    spec: dict[str, Any],
     registry: dict[str, dict[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
-    expected_dir = f"{entry['artifact_relpath']}/attempt-{row['attempt']:04d}"
+    prefix = f"attempt.{entry['entry_ordinal']}."
+    try:
+        attempt = int(row["attempt_id"][len(prefix):])
+    except (ValueError, TypeError) as exc:
+        raise ValueError("index attempt identity is invalid") from exc
+    expected_dir = f"{entry['artifact_relpath']}/attempt-{attempt:04d}"
     expected_receipt = f"{expected_dir}/receipt.json"
     if (
         row["artifact_dir"] != expected_dir
@@ -1696,42 +1701,31 @@ def _load_v4_receipt(
     _, receipt_path = resolve_contained_path(
         artifacts_root, expected_receipt, "receipt", kind="file",
     )
-    if file_sha256(receipt_path) != row["receipt"]["sha256"]:
-        raise ValueError("indexed receipt bytes do not match receipt.sha256")
+    if file_sha256(receipt_path) != row["receipt"]["digest"]:
+        raise ValueError("indexed receipt bytes do not match receipt digest")
     receipt = load_json(receipt_path)
-    diagnostics = validate_v5_schema(
-        receipt, "receipt-v4.schema.json", registry,
+    diagnostics = validate_epoch6_schema(
+        receipt, "receipt-v5.schema.json", registry,
     )
     if diagnostics:
         raise ValueError(_first_v5_diagnostic(diagnostics))
-    if not verify_self_hash(receipt, "receipt_hash"):
-        raise ValueError("receipt_hash does not match canonical receipt bytes")
-
-    _, marker_path = resolve_contained_path(
-        attempt_dir, "attempt-start.json", "attempt marker", kind="file",
-    )
-    marker = load_json(marker_path)
-    if (
-        not verify_self_hash(marker, "marker_hash")
-        or marker != receipt["attempt_start"]
-    ):
-        raise ValueError("receipt attempt marker is invalid or mismatched")
     run = receipt["run"]
     expected_run = {
-        "plan_hash": plan["plan_hash"],
         "plan_id": plan["plan_id"],
         "entry_ordinal": entry["entry_ordinal"],
         "entry_id": entry["entry_id"],
         "case_id": entry["case_id"],
         "treatment_id": entry["treatment_id"],
         "repeat": entry["repeat"],
-        "attempt": row["attempt"],
+        "attempt": attempt,
         "run_id": row["run_id"],
+        "attempt_id": row["attempt_id"],
+        "request_id": (
+            f"request.{entry['entry_ordinal']}.{attempt}.execute_case"
+        ),
     }
     if any(run[field] != value for field, value in expected_run.items()):
         raise ValueError("receipt run identity differs from plan/index identity")
-    if receipt["provenance"] != _expected_v4_provenance(plan, entry, spec):
-        raise ValueError("receipt provenance differs from the plan entry")
     if receipt["routing"]["catalog"] != [
         item["id"] for item in entry["execute_case_payload"]["catalog"]
     ]:
@@ -1775,7 +1769,7 @@ def _verified_v4_artifact(
         raise ValueError(f"{label} is absent from verified artifacts")
     if any(
         artifact[field] != reference[field]
-        for field in ("path", "sha256", "encoding")
+        for field in ("path", "digest", "encoding")
     ):
         raise ValueError(f"{label} reference differs from verified artifacts")
     return artifact
@@ -1808,8 +1802,8 @@ def _model_v4_output(
     if len(references) != 1:
         raise ValueError("model grader batch owner output is ambiguous")
     reference = references[0]
-    if reference["schedule_hash"] != model_spec["schedule_hash"]:
-        raise ValueError("model grader schedule hash differs from the plan")
+    if reference["schedule_id"] != model_spec["schedule_id"]:
+        raise ValueError("model grader schedule ID differs from the plan")
     blinded_artifact = _verified_v4_artifact(
         reference["blinded_input"], artifacts, "model blinded input",
     )
@@ -1834,16 +1828,7 @@ def _model_v4_output(
         ]
         if (
             len(member_specs) != 1
-            or any(
-                member_specs[0][field] != model_spec[field]
-                for field in (
-                    "batch_id",
-                    "batch_entry_ids",
-                    "batch_owner_entry_id",
-                    "batch_hash",
-                    "schedule_hash",
-                )
-            )
+            or member_specs[0] != model_spec
         ):
             raise ValueError("model grader batch member differs from the plan")
         result = model_transport.execution_result(member["receipt"])
@@ -1884,8 +1869,11 @@ def _model_v4_output(
         raise ValueError("model grader requires one bound host request")
     request = requests[0]
     if (
-        request["payload"].get("batch_hash") != model_spec["batch_hash"]
-        or request["payload"].get("schedule_hash") != model_spec["schedule_hash"]
+        request["payload"].get("schedule_id") != model_spec["schedule_id"]
+        or request["payload"].get("grader_prompt_id")
+        != model_spec["prompt_id"]
+        or request["payload"].get("grader_schema_id")
+        != model_spec["schema_id"]
         or request["payload"].get("blinded_input") != batch
     ):
         raise ValueError("model grader host request differs from the plan/batch")
@@ -1905,9 +1893,9 @@ def _model_v4_output(
         record_type = record.get("record_type")
         schema_name = (
             "host_event"
-            if record_type == "skill-evaluator-host-event/1"
+            if record_type == "skill-evaluator-host-event/2"
             else "host_result"
-            if record_type == "skill-evaluator-host-result/1"
+            if record_type == "skill-evaluator-host-result/2"
             else None
         )
         if schema_name is None:
@@ -1920,14 +1908,13 @@ def _model_v4_output(
         records.append(record)
     results = [
         item for item in records
-        if item["record_type"] == "skill-evaluator-host-result/1"
+        if item["record_type"] == "skill-evaluator-host-result/2"
     ]
     if not records or len(results) != 1 or records[-1] is not results[0]:
         raise ValueError("model raw batch requires one final terminal result")
     result = results[0]
     if (
         result["envelope"] != request["envelope"]
-        or result["request_hash"] != request["request_hash"]
         or result["terminal_status"] != "completed"
         or result["protocol_error"] is not None
     ):
@@ -1982,17 +1969,20 @@ def _deterministic_v4_output(
         raise ValueError(f"grader artifact is invalid JSON: {exc.msg}") from None
     expected_fields = {
         "grader_id", "declared_argv", "resolved_argv",
-        "resolved_executable_sha256", "cwd", "env", "timeout_seconds",
+        "cwd", "env_allowlist", "timeout_seconds",
         "input_allowlist", "inputs", "exit_code", "pass_exit_codes",
         "credential_policy", "shell", "start_new_session",
     }
     if not isinstance(invocation, dict) or set(invocation) != expected_fields:
         raise ValueError("deterministic grader invocation fields are invalid")
     verifier = declaration["verifier"]
+    expected_cwd = f"graders/{reference['grader_id']}"
+    if verifier["cwd"] != ".":
+        expected_cwd += "/" + verifier["cwd"]
     expected = {
         "grader_id": reference["grader_id"],
         "declared_argv": verifier["argv"],
-        "cwd": verifier["cwd"],
+        "cwd": expected_cwd,
         "timeout_seconds": verifier["timeout_seconds"],
         "input_allowlist": verifier["input_allowlist"],
         "pass_exit_codes": verifier["pass_exit_codes"],
@@ -2002,10 +1992,10 @@ def _deterministic_v4_output(
     }
     if any(invocation[field] != value for field, value in expected.items()):
         raise ValueError("deterministic grader invocation differs from the spec")
+    if not set(invocation["env_allowlist"]) <= set(verifier["env_allowlist"]):
+        raise ValueError("deterministic grader environment exceeds the allowlist")
     expected_inputs = []
-    prefix = f"graders/{reference['grader_id']}"
-    if verifier["cwd"] != ".":
-        prefix += "/" + verifier["cwd"]
+    prefix = expected_cwd
     for relative in verifier["input_allowlist"]:
         expected_inputs.append(f"{prefix}/{relative}")
     observed_inputs = [item["path"] for item in invocation["inputs"]]
@@ -2148,7 +2138,7 @@ def _v4_context_projection(context: dict[str, Any]) -> dict[str, Any]:
         if item["kind"] == "failed_command_output"
     )
     first_host_static = {
-        (item["kind"], item["source_path"], item["content_sha256"])
+        (item["kind"], item["source_path"], item["artifact"]["digest"])
         for item in components
         if (
             item["kind"] in {"metadata", "body"}
@@ -2163,7 +2153,7 @@ def _v4_context_projection(context: dict[str, Any]) -> dict[str, Any]:
             and (
                 item["kind"],
                 item["source_path"],
-                item["content_sha256"],
+                item["artifact"]["digest"],
             ) in first_host_static
         )
     )
@@ -2179,7 +2169,7 @@ def _v4_context_projection(context: dict[str, Any]) -> dict[str, Any]:
     return {
         **context,
         "attributed": context["status"] == "captured",
-        "measurement_source": "receipt-v4",
+        "measurement_source": "receipt-v5",
         "unique_static_content_bytes": unique_static,
         "repeated_static_content_bytes": repeated_static,
         "protocol_output_bytes": protocol_output,
@@ -2394,7 +2384,6 @@ def _collect_v5_evidence(
                 artifacts_root=artifacts_root,
                 plan=plan,
                 entry=entry,
-                spec=spec,
                 registry=registry,
             )
             _, receipt_path = resolve_contained_path(
@@ -2492,7 +2481,7 @@ def _collect_v5_evidence(
         "receipt_issues": receipt_issues,
         "attempt_count": len(index_rows),
         "invalid_attempts": len({
-            (item["row"]["entry_id"], item["row"]["attempt"])
+            (item["row"]["entry_id"], item["row"]["attempt_id"])
             for values in attempts.values()
             for item in values
             if (
@@ -2500,7 +2489,7 @@ def _collect_v5_evidence(
                 or item["analysis_error"] is not None
             )
         } | {
-            (item["row"]["entry_id"], item["row"]["attempt"])
+            (item["row"]["entry_id"], item["row"]["attempt_id"])
             for item in receipt_issues
             if item["status"] == "invalid"
         }),
@@ -3971,14 +3960,26 @@ def _manual_review_input_binding(
 ) -> dict[str, Any]:
     root = spec_path.parent.resolve(strict=True)
 
-    def suite_file(field: str) -> tuple[Path, str] | None:
-        reference = spec["suite"].get(field)
+    def external_file(
+        reference: dict[str, Any] | None,
+        label: str,
+    ) -> tuple[Path, dict[str, str]] | None:
         if reference is None:
             return None
         if not isinstance(reference, dict) or set(reference) != {
-            "path",
-            "sha256",
+            "path", "digest", "schema_version",
         }:
+            raise ValueError(f"{label} binding is invalid")
+        _, path = resolve_contained_path(
+            root, reference["path"], label, kind="file",
+        )
+        if file_sha256(path) != reference["digest"]:
+            raise ValueError(f"{label} digest does not match")
+        return path, dict(reference)
+
+    def suite_file(field: str) -> Path:
+        reference = spec["suite"].get(field)
+        if not isinstance(reference, dict) or set(reference) != {"path"}:
             raise ValueError(f"suite {field} binding is invalid")
         _, path = resolve_contained_path(
             root,
@@ -3986,20 +3987,33 @@ def _manual_review_input_binding(
             f"suite {field}",
             kind="file",
         )
-        observed_hash = file_sha256(path)
-        if observed_hash != reference["sha256"]:
-            raise ValueError(f"suite {field} raw hash does not match")
-        return path, observed_hash
+        return path
 
     scenarios = suite_file("scenarios")
-    quality_reference = suite_file("quality")
-    calibration = suite_file("calibration")
-    if scenarios is None or quality_reference is None:
-        raise ValueError("manual review requires scenarios and suite quality")
+    quality_reference = external_file(
+        spec["suite"].get("quality"), "suite quality",
+    )
+    calibration = external_file(
+        spec["suite"].get("calibration"), "grader calibration",
+    )
+    decision_contract = external_file(
+        spec["authority"]["manual_review"].get("decision_contract"),
+        "manual-review decision contract",
+    )
+    if quality_reference is None or decision_contract is None:
+        raise ValueError(
+            "manual review requires suite quality and a decision contract",
+        )
+    decision = load_json(decision_contract[0])
+    if decision != {
+        "schema_version": "manual-review-contract/1",
+        "reviewer_role": spec["authority"]["manual_review"]["role"],
+        "required_evidence": ["frozen-study-input-binding"],
+    }:
+        raise ValueError("manual-review decision contract is invalid")
     quality = load_json(quality_reference[0])
-    proof_hashes: set[str] = set()
     for item in quality["raw_proofs"].values():
-        if not isinstance(item, dict) or set(item) != {"path", "sha256"}:
+        if not isinstance(item, dict) or set(item) != {"path", "digest"}:
             raise ValueError("suite quality raw proof binding is invalid")
         _, proof_path = resolve_contained_path(
             root,
@@ -4007,11 +4021,8 @@ def _manual_review_input_binding(
             "suite quality raw proof",
             kind="file",
         )
-        if file_sha256(proof_path) != item["sha256"]:
-            raise ValueError("suite quality raw proof hash does not match")
-        proof_hashes.add(item["sha256"])
-    if len(proof_hashes) != 1:
-        raise ValueError("suite quality must bind one canonical raw proof")
+        if file_sha256(proof_path) != item["digest"]:
+            raise ValueError("suite quality raw proof digest does not match")
 
     release_gate_reference = None
     if release_gate_contract is not None:
@@ -4029,23 +4040,28 @@ def _manual_review_input_binding(
             raise ValueError("release gate contract is invalid")
         release_gate_reference = {
             "path": normalized,
-            "sha256": file_sha256(release_gate_path),
+            "digest": file_sha256(release_gate_path),
+            "schema_version": "gate-contract/1.0",
         }
 
-    binding = {
-        "schema_version": "manual-review-input-binding/1.1",
+    plan_relative = plan_path.resolve(strict=True).relative_to(root).as_posix()
+    return {
+        "schema_version": "manual-review-input-binding/2",
         "study_id": spec["evaluation_id"],
-        "spec_content_hash": file_sha256(spec_path),
-        "scenarios_content_hash": scenarios[1],
-        "suite_quality_proof_content_hash": next(iter(proof_hashes)),
-        "grader_calibration_content_hash": (
-            calibration[1] if calibration is not None else None
-        ),
-        "execution_plan_content_hash": file_sha256(plan_path),
+        "source_revision": spec["subject"]["package"]["source_revision"],
+        "scenarios": {
+            "path": scenarios.relative_to(root).as_posix(),
+        },
+        "decision_contract": decision_contract[1],
+        "suite_quality": quality_reference[1],
+        "grader_calibration": calibration[1] if calibration else None,
+        "execution_plan": {
+            "path": plan_relative,
+            "digest": file_sha256(plan_path),
+            "schema_version": "execution-plan/2",
+        },
         "release_gate_contract": release_gate_reference,
     }
-    binding["binding_hash"] = canonical_sha256(binding)
-    return binding
 
 
 def _verify_v5_manual_review(
@@ -4065,14 +4081,14 @@ def _verify_v5_manual_review(
             "required": False,
             "status": "not_applicable",
             "decision": None,
-            "receipt_hash": None,
+            "receipt_path": None,
         }, None
     if reference is None:
         return {
             "required": True,
             "status": "missing",
             "decision": None,
-            "receipt_hash": None,
+            "receipt_path": None,
         }, {
             "reason_key": "required_manual_receipt_missing",
             "evidence_state": "missing",
@@ -4100,11 +4116,14 @@ def _verify_v5_manual_review(
         )
         receipt = load_json(receipt_path)
         if set(receipt) != {
-            "reviewer_role", "evidence", "decision", "signature",
+            "schema_version", "reviewer_role", "evidence", "decision",
+            "signature",
         }:
             raise ValueError(
                 "manual-review receipt fields differ from the exact contract",
             )
+        if receipt["schema_version"] != "manual-review-receipt/1":
+            raise ValueError("manual-review receipt version is invalid")
         if receipt["reviewer_role"] != config["role"]:
             raise ValueError("manual-review reviewer role mismatches the contract")
         if receipt["decision"] not in {"approve", "hold", "reject"}:
@@ -4119,8 +4138,12 @@ def _verify_v5_manual_review(
             not isinstance(evidence, list)
             or len(evidence) != 1
             or not isinstance(evidence[0], dict)
-            or set(evidence[0]) != {"type", "artifact", "sha256"}
+            or set(evidence[0]) != {
+                "type", "artifact", "digest", "schema_version",
+            }
             or evidence[0]["type"] != "frozen-study-input-binding"
+            or evidence[0]["schema_version"]
+            != "manual-review-input-binding/2"
         ):
             raise ValueError(
                 "manual-review evidence must contain exactly one input binding",
@@ -4138,13 +4161,13 @@ def _verify_v5_manual_review(
             "manual-review input binding",
             kind="file",
         )
-        if item["sha256"] != file_sha256(evidence_path):
-            raise ValueError("manual-review input binding hash mismatch")
+        if item["digest"] != file_sha256(evidence_path):
+            raise ValueError("manual-review input binding digest mismatch")
         binding = load_json(evidence_path)
         release_gate = binding.get("release_gate_contract")
         if release_gate is not None and (
             not isinstance(release_gate, dict)
-            or set(release_gate) != {"path", "sha256"}
+            or set(release_gate) != {"path", "digest", "schema_version"}
         ):
             raise ValueError("release gate contract binding is invalid")
         if binding != _manual_review_input_binding(
@@ -4156,29 +4179,18 @@ def _verify_v5_manual_review(
             ),
         ):
             raise ValueError("manual-review input binding owner mismatch")
-        decision_projection = {
-            "reviewer_role": receipt["reviewer_role"],
-            "required_evidence": ["frozen-study-input-binding"],
-        }
-        if (
-            config["decision_contract_hash"]
-            != canonical_sha256(decision_projection)
-        ):
-            raise ValueError(
-                "manual-review evidence types mismatch decision_contract_hash",
-            )
         return {
             "required": True,
             "status": "complete",
             "decision": receipt["decision"],
-            "receipt_hash": file_sha256(receipt_path),
+            "receipt_path": normalized,
         }, None
     except (OSError, ValueError, TypeError) as exc:
         return {
             "required": True,
             "status": "invalid",
             "decision": None,
-            "receipt_hash": None,
+            "receipt_path": None,
         }, {
             "reason_key": "required_manual_receipt_invalid",
             "evidence_state": "invalid",
@@ -4286,7 +4298,7 @@ def _derive_v5_failures(
             spec=spec,
             plan=plan,
             entry=entry,
-            attempt=issue["row"]["attempt"],
+            attempt=_index_attempt(issue["row"]),
             reason_key=(
                 "receipt_evidence_invalid"
                 if invalid
@@ -4336,7 +4348,7 @@ def _derive_v5_failures(
                 spec=spec,
                 plan=plan,
                 entry=entry,
-                attempt=attempt["row"]["attempt"],
+                attempt=_index_attempt(attempt["row"]),
                 reason_key="attempt_invalid",
                 locator={
                     "kind": "json_pointer",
@@ -4386,7 +4398,7 @@ def _derive_v5_failures(
                 spec=spec,
                 plan=plan,
                 entry=entry,
-                attempt=attempt["row"]["attempt"],
+                attempt=_index_attempt(attempt["row"]),
                 reason_key="required_treatment_requirement_failed",
                 locator=locator,
                 observed=f"required {requirement['dimension']} evidence failed",
@@ -4564,9 +4576,8 @@ def _v5_failure_index(
         failure["severity"] for failure in failures
     ).items()))
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
         "view": view,
-        "failure_index_hash": "sha256:" + "0" * 64,
         "evaluation_id": spec["evaluation_id"],
         "plan_id": plan["plan_id"],
         "item_count": len(failures),
@@ -4577,10 +4588,24 @@ def _v5_failure_index(
         "severity_counts": severity_counts,
         "failures": shown,
     }
-    result["failure_index_hash"] = canonical_self_hash(
-        result, "failure_index_hash",
-    )
     return result
+
+
+def _summary_evidence_refs(evidence: dict[str, Any]) -> list[dict[str, Any]]:
+    refs: list[dict[str, Any]] = []
+    for entry_id, attempt in sorted(evidence["selected_attempts"].items()):
+        receipt = attempt["receipt"]
+        raw_paths = {receipt["host_protocol"]["raw_stdout"]["path"]}
+        for output in receipt["grader_outputs"]:
+            for field in ("output", "raw_batch"):
+                if field in output:
+                    raw_paths.add(output[field]["path"])
+        refs.append({
+            "claim_id": entry_id,
+            "receipt_paths": [attempt["row"]["receipt"]["path"]],
+            "raw_artifact_paths": sorted(raw_paths),
+        })
+    return refs
 
 
 def _v5_summary_base(
@@ -4672,22 +4697,15 @@ def _v5_summary_base(
         spec, plan, evidence, bound_evidence,
     )
     summary = {
-        "schema_version": 4,
-        "summary_hash": "sha256:" + "0" * 64,
+        "schema_version": 5,
         "evaluation_id": spec["evaluation_id"],
         "plan_id": plan["plan_id"],
-        "plan_hash": plan["plan_hash"],
-        "spec_hash": plan["spec_hash"],
-        "scenario_corpus_hash": plan["scenario_corpus_hash"],
-        "host_manifest_hash": plan["host_manifest_hash"],
         "analysis_ready": evidence_complete,
         "subject": {
             "skill_id": spec["subject"]["skill_id"],
             "version": spec["subject"]["version"],
             "shape": spec["subject"]["shape"],
-            "package_hash": plan["package_hashes"][
-                spec["subject"]["skill_id"]
-            ],
+            "source_revision": plan["source_revision"],
         },
         "modules": plan["module_decisions"],
         "treatments": plan["treatments"],
@@ -4738,9 +4756,13 @@ def _v5_summary_base(
             {
                 "surface": "plan-index-receipt",
                 "status": "locally_verified",
-                "reason": "schema, identity, provenance, hashes, and artifacts verified",
+                "reason": (
+                    "schema, semantic identity, plan/index/receipt custody, "
+                    "and raw artifact bytes verified"
+                ),
             },
         ],
+        "evidence_refs": _summary_evidence_refs(evidence),
         "representative_failure_ids": [
             failure["failure_id"] for failure in failures[:10]
         ],
@@ -4752,28 +4774,19 @@ def _comparison_observations(
     summary: dict[str, Any],
     metric_analysis: dict[str, Any],
 ) -> dict[str, Any]:
-    observations = {
-        "schema_version": 1,
-        "comparison_observations_hash": "sha256:" + "0" * 64,
+    return {
+        "schema_version": 2,
         "generator": {
             "name": "analyze_runs.py",
-            "version": "3.3.4",
-            "source_hash": file_sha256(Path(__file__)),
+            "version": "4.0.0",
+            "source_revision": summary["subject"]["source_revision"],
         },
+        "cycle_id": summary["evaluation_id"],
         "evaluation_id": summary["evaluation_id"],
         "plan_id": summary["plan_id"],
-        "plan_hash": summary["plan_hash"],
-        "spec_hash": summary["spec_hash"],
-        "scenario_corpus_hash": summary["scenario_corpus_hash"],
-        "host_manifest_hash": summary["host_manifest_hash"],
         "subject": summary["subject"],
         "metrics": metric_analysis["comparison_observations"],
     }
-    observations["comparison_observations_hash"] = canonical_self_hash(
-        observations,
-        "comparison_observations_hash",
-    )
-    return observations
 
 
 def _relative_output_path(path: Path, root: Path) -> str:
@@ -4788,7 +4801,6 @@ def _relative_output_path(path: Path, root: Path) -> str:
 
 def _output_view(
     path: Path,
-    payload: bytes,
     *,
     root: Path,
     version: str,
@@ -4801,7 +4813,6 @@ def _output_view(
 ) -> dict[str, Any]:
     return {
         "path": _relative_output_path(path, root),
-        "sha256": "sha256:" + hashlib.sha256(payload).hexdigest(),
         "schema_or_view_version": version,
         "item_count": item_count,
         "shown_count": shown_count,
@@ -4859,7 +4870,7 @@ def _commit_v5_outputs(
     failure_details: dict[str, Any] | None,
     comparison_observations: dict[str, Any] | None,
     summary_path: Path,
-    failure_path: Path,
+    failure_path: Path | None,
     markdown_path: Path | None,
     details_path: Path | None,
     observations_path: Path | None,
@@ -4910,9 +4921,8 @@ def _commit_v5_outputs(
         "details": (
             _output_view(
                 details_path,
-                details_payload,
                 root=root,
-                version="failure-index-v1/full",
+                version="failure-index-v2/full",
                 **detail_counts,
             )
             if (
@@ -4922,17 +4932,19 @@ def _commit_v5_outputs(
             )
             else None
         ),
-        "failure_index": _output_view(
-            failure_path,
-            failure_payload,
-            root=root,
-            version="failure-index-v1/index",
-            **index_counts,
+        "failure_index": (
+            _output_view(
+                failure_path,
+                root=root,
+                version="failure-index-v2/index",
+                **index_counts,
+            )
+            if failure_path is not None
+            else None
         ),
         "markdown": (
             _output_view(
                 markdown_path,
-                markdown_payload,
                 root=root,
                 version="markdown-v1",
                 **index_counts,
@@ -4941,25 +4953,24 @@ def _commit_v5_outputs(
             else None
         ),
     }
-    summary["summary_hash"] = canonical_self_hash(summary, "summary_hash")
     summary_payload = canonical_json_bytes(summary)
-    diagnostics = validate_v5_schema(
-        summary, "analysis-summary-v4.schema.json", registry,
+    diagnostics = validate_epoch6_schema(
+        summary, "analysis-summary-v5.schema.json", registry,
     )
     if diagnostics:
         raise ValueError(_first_v5_diagnostic(diagnostics))
     for value in (failure_index, failure_details):
         if value is None:
             continue
-        diagnostics = validate_v5_schema(
-            value, "failure-index-v1.schema.json", registry,
+        diagnostics = validate_epoch6_schema(
+            value, "failure-index-v2.schema.json", registry,
         )
         if diagnostics:
             raise ValueError(_first_v5_diagnostic(diagnostics))
     if comparison_observations is not None:
-        diagnostics = validate_v5_schema(
+        diagnostics = validate_epoch6_schema(
             comparison_observations,
-            "comparison-observations-v1.schema.json",
+            "comparison-observations-v2.schema.json",
             registry,
         )
         if diagnostics:
@@ -4998,10 +5009,12 @@ def _release_bound_path(
     reference = binding.get(field)
     if (
         not isinstance(reference, dict)
-        or set(reference) != {"path", "sha256"}
+        or set(reference) != {"path", "digest", "schema_version"}
         or not isinstance(reference["path"], (str, Path))
-        or not isinstance(reference["sha256"], str)
-        or SHA256_RE.fullmatch(reference["sha256"]) is None
+        or not isinstance(reference["digest"], str)
+        or SHA256_RE.fullmatch(reference["digest"]) is None
+        or not isinstance(reference["schema_version"], str)
+        or not reference["schema_version"]
     ):
         raise ValueError(f"{field} release binding is invalid")
     path = Path(reference["path"])
@@ -5010,8 +5023,8 @@ def _release_bound_path(
     resolved = path.resolve(strict=True)
     if path.absolute() != resolved or not resolved.is_file():
         raise ValueError(f"{field} release path contains a substituted component")
-    if file_sha256(resolved) != reference["sha256"]:
-        raise ValueError(f"{field} release binding hash mismatch")
+    if file_sha256(resolved) != reference["digest"]:
+        raise ValueError(f"{field} release binding digest mismatch")
     return resolved
 
 
@@ -5112,7 +5125,9 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
         paths["spec"],
         registry,
     )
-    index_rows = _load_v5_index(paths["index"], plan, registry)
+    index_rows = _load_v5_index(
+        paths["index"], paths["plan"], plan, registry,
+    )
     _, artifacts_root = resolve_contained_path(
         paths["plan"].parent,
         plan["artifacts"]["root"],
@@ -5135,22 +5150,20 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
 
     summary = load_json(paths["summary"])
     failure_index = load_json(paths["failure_index"])
-    for document, schema_name, hash_field, path in (
+    for document, schema_name, path in (
         (
             summary,
-            "analysis-summary-v4.schema.json",
-            "summary_hash",
+            "analysis-summary-v5.schema.json",
             paths["summary"],
         ),
         (
             failure_index,
-            "failure-index-v1.schema.json",
-            "failure_index_hash",
+            "failure-index-v2.schema.json",
             paths["failure_index"],
         ),
     ):
-        diagnostics = validate_v5_schema(document, schema_name, registry)
-        if diagnostics or not verify_self_hash(document, hash_field):
+        diagnostics = validate_epoch6_schema(document, schema_name, registry)
+        if diagnostics:
             raise ValueError(f"{schema_name} release artifact is invalid")
         if path.read_bytes() != canonical_json_bytes(document):
             raise ValueError(f"{schema_name} is not canonical JSON")
@@ -5166,7 +5179,6 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
         summary["output_manifest"]["details"] is not None
         or summary["output_manifest"]["markdown"] is not None
         or manifested_failure != paths["failure_index"]
-        or failure_view["sha256"] != file_sha256(paths["failure_index"])
         or failure_view["item_count"] != failure_index["item_count"]
         or failure_view["shown_count"] != failure_index["shown_count"]
         or failure_view["omitted_count"] != failure_index["omitted_count"]
@@ -5194,8 +5206,7 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
     if (
         summary["evaluation_id"] != spec["evaluation_id"]
         or summary["plan_id"] != plan["plan_id"]
-        or summary["plan_hash"] != plan["plan_hash"]
-        or summary["spec_hash"] != plan["spec_hash"]
+        or summary["subject"]["source_revision"] != plan["source_revision"]
         or failure_index["evaluation_id"] != spec["evaluation_id"]
         or failure_index["plan_id"] != plan["plan_id"]
         or any(
@@ -5273,7 +5284,9 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
     selected_receipts = [
         {
             "entry_id": entry_id,
-            "receipt_hash": file_sha256(attempt["receipt_path"]),
+            "path": attempt["receipt_path"].relative_to(
+                paths["plan"].parent,
+            ).as_posix(),
         }
         for entry_id, attempt in sorted(evidence["selected_attempts"].items())
     ]
@@ -5281,13 +5294,8 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
         "identity": {
             "evaluation_id": spec["evaluation_id"],
             "plan_id": plan["plan_id"],
-            "plan_hash": plan["plan_hash"],
-            "spec_content_hash": binding["spec"]["sha256"],
-            "plan_content_hash": binding["plan"]["sha256"],
-            "index_content_hash": binding["index"]["sha256"],
-            "summary_content_hash": binding["summary"]["sha256"],
-            "failure_index_content_hash": binding["failure_index"]["sha256"],
-            "selected_receipt_set_hash": canonical_sha256(selected_receipts),
+            "source_revision": plan["source_revision"],
+            "selected_receipts": selected_receipts,
         },
         "manual": manual,
         "completeness": {
@@ -5941,8 +5949,6 @@ def project_release_estimands(
             "source_case_id",
             "planner_repeat",
             "planner_entry_id",
-            "planner_receipt_hash",
-            "executor_receipt_hash",
         }:
             join_reason_codes.add("writing_plans_join_shape_invalid")
             continue
@@ -5955,10 +5961,6 @@ def project_release_estimands(
             or executor_attempt is None
             or item["source_case_id"] != planner_record["case_id"]
             or item["planner_repeat"] != planner_record["repeat"]
-            or item["planner_receipt_hash"]
-            != file_sha256(planner_attempt["receipt_path"])
-            or item["executor_receipt_hash"]
-            != file_sha256(executor_attempt["receipt_path"])
             or planner_roles.get(planner_record["variant"])
             != transfer_roles.get(executor_record["variant"])
         ):
@@ -6157,7 +6159,7 @@ def _main_v5() -> int:
     parser.add_argument("index", type=Path)
     parser.add_argument("--spec", type=Path, required=True)
     parser.add_argument("--json", type=Path, required=True)
-    parser.add_argument("--failure-index", type=Path, required=True)
+    parser.add_argument("--failure-index", type=Path)
     parser.add_argument("--markdown", type=Path)
     parser.add_argument("--details", type=Path)
     parser.add_argument("--comparison-observations", type=Path)
@@ -6167,7 +6169,11 @@ def _main_v5() -> int:
 
     try:
         summary_path = args.json.resolve()
-        failure_path = args.failure_index.resolve()
+        failure_path = (
+            args.failure_index.resolve()
+            if args.failure_index is not None
+            else None
+        )
         markdown_path = (
             args.markdown.resolve() if args.markdown is not None else None
         )
@@ -6206,7 +6212,9 @@ def _main_v5() -> int:
         bound_evidence = _load_v5_bound_evidence(
             spec, spec_path, registry,
         )
-        index_rows = _load_v5_index(index_path, plan, registry)
+        index_rows = _load_v5_index(
+            index_path, plan_path, plan, registry,
+        )
         _, artifacts_root = resolve_contained_path(
             plan_path.parent,
             plan["artifacts"]["root"],
@@ -6263,10 +6271,6 @@ def _main_v5() -> int:
         failures = _v5_failure_index(
             spec, plan, failure_items, view="index",
         )
-        if failures["truncated"] and details_path is None and not args.report_only:
-            details_path = failure_path.with_name(
-                f"{failure_path.stem}.details{failure_path.suffix}",
-            )
         details = (
             _v5_failure_index(spec, plan, failure_items, view="full")
             if details_path is not None

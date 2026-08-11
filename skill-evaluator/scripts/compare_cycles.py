@@ -18,9 +18,6 @@ from comparison_contract import (
 )
 from comparison_revision import evaluate_revision
 from comparison_transition import evaluate_transition
-from evidence_io import file_sha256
-
-
 def _report(
     plan: dict[str, Any],
     capsules: dict[str, CycleCapsule],
@@ -28,16 +25,16 @@ def _report(
 ) -> dict[str, Any]:
     roles = sorted(capsules, key=ROLE_ORDER.__getitem__)
     return {
-        "schema_version": 1,
-        "comparison_report_hash": "sha256:" + "0" * 64,
+        "schema_version": 2,
         "comparison_id": plan["comparison_id"],
-        "comparison_plan_hash": plan["comparison_plan_hash"],
         "kind": plan["kind"],
         "claim_scope": plan["claim_scope"],
         "generator": {
             "name": "compare_cycles.py",
-            "version": "3.3.4",
-            "source_hash": file_sha256(Path(__file__)),
+            "version": "4.0.0",
+            "source_revision": capsules[roles[-1]].execution_plan[
+                "source_revision"
+            ],
         },
         "registration_status": decision["registration_status"],
         "inputs": [
@@ -49,7 +46,7 @@ def _report(
         "result": decision["result"],
         "authority_eligibility": decision["authority_eligibility"],
         "claim_ceiling": decision["claim_ceiling"],
-        "diagnostic_index_hash": "sha256:" + "0" * 64,
+        "diagnostic_index_path": plan["output"]["diagnostic_index"],
     }
 
 
@@ -99,9 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"comparison={outcome} "
         f"report={report_path.relative_to(root).as_posix()} "
-        f"report_sha256={file_sha256(report_path)} "
-        f"diagnostic_index={index_path.relative_to(root).as_posix()} "
-        f"diagnostic_index_sha256={file_sha256(index_path)}",
+        f"diagnostic_index={index_path.relative_to(root).as_posix()}",
     )
     return 0
 

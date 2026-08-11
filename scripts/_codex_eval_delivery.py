@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -34,29 +33,18 @@ class DeliveryError(ValueError):
     """An exact catalog, treatment, or workspace delivery contract failed."""
 
 
-def isolated_tool_schema_hash(
+def isolated_tool_schema_id(
     codex_sha256: str,
     isolation_tool_sha256: str | None = None,
     code_mode_host_sha256: str | None = None,
 ) -> str:
-    """Bind the model-visible tool surface to Codex and its feature isolation."""
-    descriptor = {
-        "codex_sha256": codex_sha256,
-        "disabled_features": list(SKILL_ISOLATION_DISABLED_FEATURES),
-        "filesystem_isolation": (
-            None
-            if isolation_tool_sha256 is None
-            else {
-                "code_mode_host_sha256": code_mode_host_sha256,
-                "mode": "bubblewrap-workspace-only-v2",
-                "tool_sha256": isolation_tool_sha256,
-            }
-        ),
-        "schema_version": 2,
-        "transport": "codex-exec-json-single-principal",
-    }
-    payload = json.dumps(descriptor, sort_keys=True, separators=(",", ":"))
-    return "sha256:" + sha256(payload.encode("utf-8")).hexdigest()
+    """Return the readable model-visible tool-surface contract ID."""
+    del codex_sha256, code_mode_host_sha256
+    return (
+        "codex-tools-workspace-isolated-v2"
+        if isolation_tool_sha256 is not None
+        else "codex-tools-host-sandbox-v2"
+    )
 
 
 def project_command_environment(
@@ -80,7 +68,7 @@ def project_command_environment(
     return environment
 
 
-def _skill_hashes(plugin_root: Path) -> dict[str, str]:
+def _skill_digests(plugin_root: Path) -> dict[str, str]:
     skills_root = plugin_root / "skills"
     if not skills_root.is_dir() or skills_root.is_symlink():
         raise DeliveryError("plugin Skill root is invalid")
@@ -110,33 +98,20 @@ def validate_plugin_catalog(plugin_root: Path, manifest: dict[str, Any]) -> None
         if (
             not isinstance(entry, dict)
             or not isinstance(entry.get("id"), str)
-            or not isinstance(entry.get("root_hash"), str)
+            or not isinstance(entry.get("root_digest"), str)
             or entry["id"] in expected
         ):
             raise DeliveryError("Host catalog Skill identities are invalid")
-        expected[entry["id"]] = entry["root_hash"]
-    actual = _skill_hashes(plugin_root)
+        expected[entry["id"]] = entry["root_digest"]
+    actual = _skill_digests(plugin_root)
     if expected != actual:
         raise DeliveryError("plugin Skill bytes differ from the Host catalog")
-    catalog_hash = "sha256:" + sha256(
-        json.dumps(entries, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-    if catalog.get("catalog_hash") != catalog_hash:
-        raise DeliveryError("Host catalog hash differs from its entries")
-    try:
-        plugin_paths = [
-            path
-            for path in plugin_root.rglob("*")
-            if path.is_file() or path.is_symlink()
-        ]
-        plugin_hash = tree_hash(inventory(plugin_root, plugin_paths))
-    except (OSError, ValueError) as exc:
-        raise DeliveryError("plugin tree inventory is invalid") from exc
     identity = manifest.get("identity")
     execution = identity.get("execution") if isinstance(identity, dict) else None
-    if not isinstance(execution, dict) or execution.get("skill_hash") != plugin_hash:
-        raise DeliveryError("plugin tree differs from the Host identity")
-    if execution.get("catalog_hash") != catalog_hash:
+    if (
+        not isinstance(execution, dict)
+        or execution.get("catalog_id") != catalog.get("catalog_id")
+    ):
         raise DeliveryError("Host catalog identity differs from its entries")
 
 
@@ -215,7 +190,7 @@ def treatment_delivery(
     ):
         raise DeliveryError("execute payload lacks a bound treatment catalog")
     catalog_ids = [row.get("id") for row in catalog if isinstance(row, dict)]
-    if catalog_ids.count(skill_id) != 1 or skill_id not in _skill_hashes(plugin_root):
+    if catalog_ids.count(skill_id) != 1 or skill_id not in _skill_digests(plugin_root):
         raise DeliveryError("subject Skill is not uniquely bound by the catalog")
     profile = treatment.get("profile")
     allowed = {
@@ -245,9 +220,8 @@ def forced_probe_delivery(prompt: str, plugin_root: Path) -> tuple[str, str]:
 
 
 def force_loaded_prompt(skill_id: str, body: str, user_prompt: str) -> str:
-    digest = "sha256:" + sha256(body.encode("utf-8")).hexdigest()
     return (
-        f"<force_loaded_skill id={json.dumps(skill_id)} sha256={json.dumps(digest)}>\n"
+        f"<force_loaded_skill id={json.dumps(skill_id)}>\n"
         f"{body}\n</force_loaded_skill>\n\n<user_task>\n{user_prompt}\n</user_task>"
     )
 
@@ -279,7 +253,7 @@ def observed_skill_routing(raw: bytes, plugin_root: Path) -> list[str]:
     ]
     return [
         skill_id
-        for skill_id in sorted(_skill_hashes(plugin_root))
+        for skill_id in sorted(_skill_digests(plugin_root))
         if any(
             isinstance(command, str)
             and f".agents/skills/{skill_id}/SKILL.md" in command

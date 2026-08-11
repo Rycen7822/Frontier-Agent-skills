@@ -38,13 +38,9 @@ def _artifact(name: str, value: object) -> dict[str, str]:
     path.write_bytes(payload)
     return {
         "path": f"workspace/{path.as_posix()}",
-        "sha256": "sha256:" + sha256(payload).hexdigest(),
+        "digest": "sha256:" + sha256(payload).hexdigest(),
         "encoding": "utf-8",
     }
-
-
-def _identity(prefix: str, value: object) -> str:
-    return prefix + sha256(_canonical_bytes(value)).hexdigest()
 
 
 def _grader() -> int:
@@ -109,13 +105,13 @@ def _actions(
     first_seq: int,
     mode: str,
     principal_id: str,
-    tool_schema_hash: str,
+    tool_schema_id: str,
 ) -> list[dict[str, object]]:
     actions = []
     for offset, tool_id in enumerate(
         payload["execution_context"]["expected_tools"],
     ):
-        action_id = _identity("action-", {"tool_id": tool_id})
+        action_id = f"action.{tool_id}"
         proposed = _artifact(
             f"{action_id}-proposed.json",
             {"tool_id": tool_id, "value": "fixture-input"},
@@ -141,12 +137,12 @@ def _actions(
             f"{action_id}-authorization.json",
             {
                 "decision": decision,
-                "approved_input_sha256": (
+                "approved_input_digest": (
                     None
                     if decision == "deny"
-                    else proposed["sha256"]
+                    else proposed["digest"]
                     if mode == "approval-mismatch"
-                    else executed["sha256"]
+                    else executed["digest"]
                 ),
             },
         )
@@ -156,14 +152,18 @@ def _actions(
         )
         transform = _artifact(
             f"{action_id}-transform.json",
-            {"kind": "identity", "source_sha256": backend["sha256"]},
+            {"kind": "identity", "source_digest": backend["digest"]},
         )
         effect = _artifact(
             f"{action_id}-effect.json",
             {"confirmed": True, "tool_id": tool_id},
         )
         blocked = decision == "deny" and mode != "unauthorized-execution"
-        artifacts.extend([proposed, authorization])
+        tool_schema = _artifact(
+            f"{action_id}-tool-schema.json",
+            {"schema_id": tool_schema_id, "type": "object"},
+        )
+        artifacts.extend([proposed, authorization, tool_schema])
         if executed is not proposed:
             artifacts.append(executed)
         if not blocked:
@@ -201,9 +201,9 @@ def _actions(
             "tool_identity": {
                 "server": "fixture-server",
                 "name": tool_id,
-                "schema_hash": tool_schema_hash,
-                "description_hash": _identity("sha256:", "fixture description"),
-                "annotation_hash": _identity("sha256:", "fixture annotation"),
+                "schema": tool_schema,
+                "description": "fixture description",
+                "annotations": {},
             },
             "entity": "fixture-entity",
             "target": "fixture-target",
@@ -286,8 +286,8 @@ def _host(request: dict[str, object], mode: str) -> int:
             "parent_slot_id": None,
             "allowed_model_class": "fixture-model",
             "context_mode": "single",
-            "tool_schema_ceiling": "sha256:3e086143a06bdaae38d8cb9619a8eb0a58ef2969a3d27b4788110337df6fcf18",
-            "authority_ceiling": payload["permission_policy"],
+            "tool_schema_id": "fixture-tools",
+            "authority_id": payload["permission_policy"],
             "budget_ceiling": {
                 "turns": len(payload["turns"]),
                 "tokens": 1000,
@@ -399,7 +399,7 @@ def _host(request: dict[str, object], mode: str) -> int:
                 else [routing_contract["target_skill_id"]]
             )
         events.append({
-            "record_type": "skill-evaluator-host-event/1",
+            "record_type": "skill-evaluator-host-event/2",
             "seq": seq,
             "parent_seq": seq - 1 if seq else None,
             "principal_id": lead_id,
@@ -433,18 +433,14 @@ def _host(request: dict[str, object], mode: str) -> int:
             "worktree_id": envelope["entry_id"],
             "sandbox_id": f"{envelope['run_id']}-{slot['slot_id']}",
             "context_mode": slot["context_mode"],
-            "inherited_context_hash": (
-                request["request_hash"]
-                if slot["context_mode"] in {"forked", "scoped_handoff"}
-                else None
-            ),
-            "untrusted_input_hash": None,
-            "prompt_hash": "sha256:fac5cd812575806bc5875a84cd1f149b6d45874239a70270a387daa252d75a61",
-            "skill_hash": target_catalog_entry["root_hash"],
-            "catalog_hash": payload["treatment"]["base_catalog_hash"],
-            "tool_schema_hash": slot["tool_schema_ceiling"],
-            "policy_hash": "sha256:20298729b16ab50efb932bc666f6286e50934391decbf14a42e31a8c49b09a70",
-            "authority_hash": slot["authority_ceiling"],
+            "inherited_context_digest": None,
+            "untrusted_input_digest": None,
+            "prompt_id": "fixture-prompt",
+            "skill_id": target_catalog_entry["id"],
+            "catalog_id": payload["treatment"]["base_catalog_id"],
+            "tool_schema_id": slot["tool_schema_id"],
+            "policy_id": "fixture-policy",
+            "authority_id": slot["authority_id"],
             "requested_budget": slot["budget_ceiling"],
             "effective_budget": slot["budget_ceiling"],
             "started_at": now,
@@ -458,13 +454,13 @@ def _host(request: dict[str, object], mode: str) -> int:
     handoffs = []
     if coordination is not None:
         for edge in coordination["dependency_edges"]:
-            handoff_id = _identity("handoff-", edge)
+            handoff_id = f"handoff.{edge['from']}.{edge['to']}"
             payload_artifact = _artifact(
                 f"{handoff_id}-payload.json",
                 {
                     "sender": edge["from"],
                     "receiver": edge["to"],
-                    "request_hash": request["request_hash"],
+                    "request_id": envelope["request_id"],
                 },
             )
             artifacts.append(payload_artifact)
@@ -486,8 +482,8 @@ def _host(request: dict[str, object], mode: str) -> int:
                 "intentionally_omitted": [],
                 "authority_transferred": [],
                 "capabilities_transferred": [],
-                "expected_output_schema_hash": receiver[
-                    "expected_return_schema_hash"
+                "expected_output_schema_id": receiver[
+                    "expected_return_schema_id"
                 ],
                 "status": "result",
                 "raw_result": payload_artifact,
@@ -498,8 +494,8 @@ def _host(request: dict[str, object], mode: str) -> int:
                 if principal["slot_id"] == edge["to"]
             )
             if receiver_principal["context_mode"] == "scoped_handoff":
-                receiver_principal["inherited_context_hash"] = payload_artifact[
-                    "sha256"
+                receiver_principal["inherited_context_digest"] = payload_artifact[
+                    "digest"
                 ]
     context_components = []
     controlled_context_bytes = 0
@@ -519,7 +515,6 @@ def _host(request: dict[str, object], mode: str) -> int:
             "component_id": "effective-catalog",
             "kind": "metadata",
             "source_path": catalog_artifact["path"],
-            "content_sha256": catalog_artifact["sha256"],
             "artifact": catalog_artifact,
             "bytes": controlled_context_bytes,
             "tokens": None,
@@ -532,11 +527,11 @@ def _host(request: dict[str, object], mode: str) -> int:
             f"{principal['principal_id']}-inherited-context.json",
             {
                 "parent_principal_id": principal["parent_principal_id"],
-                "request_hash": request["request_hash"],
+                "request_id": envelope["request_id"],
             },
         )
         artifacts.append(context_artifact)
-        principal["inherited_context_hash"] = context_artifact["sha256"]
+        principal["inherited_context_digest"] = context_artifact["digest"]
         component_bytes = Path(
             context_artifact["path"].removeprefix("workspace/"),
         ).stat().st_size
@@ -545,7 +540,6 @@ def _host(request: dict[str, object], mode: str) -> int:
             "component_id": f"{principal['slot_id']}-inherited-context",
             "kind": "protocol_output",
             "source_path": context_artifact["path"],
-            "content_sha256": context_artifact["sha256"],
             "artifact": context_artifact,
             "bytes": component_bytes,
             "tokens": None,
@@ -557,7 +551,7 @@ def _host(request: dict[str, object], mode: str) -> int:
         len(events),
         mode,
         lead_id,
-        slots[0]["tool_schema_ceiling"],
+        slots[0]["tool_schema_id"],
     )
     assertions = []
     if model_observation is not None:
@@ -582,7 +576,7 @@ def _host(request: dict[str, object], mode: str) -> int:
         artifacts.append(observation)
         if contract["observation_id"] == "untrusted-tool-result":
             for principal in principals:
-                principal["untrusted_input_hash"] = observation["sha256"]
+                principal["untrusted_input_digest"] = observation["digest"]
         assertions.append({
             "claim": f"captured {contract['observation_id']}",
             "artifact": observation,
@@ -627,13 +621,13 @@ def _host(request: dict[str, object], mode: str) -> int:
             "tokens": principals[-1]["requested_budget"]["tokens"] + 1,
         }
     elif mode == "principal-context-mismatch":
-        principals[-1]["inherited_context_hash"] = "sha256:" + "0" * 64
+        principals[-1]["inherited_context_digest"] = "sha256:" + "0" * 64
     elif mode == "principal-cycle" and len(principals) > 1:
         principals[0]["parent_principal_id"] = principals[-1]["principal_id"]
     elif mode == "principal-span-mismatch" and len(principals) > 1:
         principals[-1]["parent_span_id"] = "span-mismatch"
     elif mode == "principal-authority-mismatch":
-        principals[-1]["authority_hash"] = "sha256:" + "0" * 64
+        principals[-1]["authority_id"] = "unexpected-authority"
     if mode == "async-delivery" and len(events) > 1:
         events[0]["payload"]["delivery_order"] = 1
         events[1]["payload"]["delivery_order"] = 0
@@ -643,7 +637,7 @@ def _host(request: dict[str, object], mode: str) -> int:
     if mode == "handoff-transform-missing" and handoffs:
         handoffs[0]["transform"] = {"kind": "summary", "artifact": None}
     elif mode == "handoff-schema-mismatch" and handoffs:
-        handoffs[0]["expected_output_schema_hash"] = "sha256:" + "0" * 64
+        handoffs[0]["expected_output_schema_id"] = "unexpected-schema"
     elif mode == "handoff-result-missing" and handoffs:
         handoffs[0]["raw_result"] = None
     elif mode == "handoff-premature-result" and handoffs:
@@ -689,11 +683,10 @@ def _host(request: dict[str, object], mode: str) -> int:
     if mode == "state-cleanup-mismatch":
         cleanup_state = "unexpected"
     result = {
-        "record_type": "skill-evaluator-host-result/1",
+        "record_type": "skill-evaluator-host-result/2",
         "terminal": True,
         "terminal_status": "completed",
         "envelope": envelope,
-        "request_hash": request["request_hash"],
         "treatment_error": None,
         "refusal": False,
         "timeout": False,
@@ -748,7 +741,10 @@ def _host(request: dict[str, object], mode: str) -> int:
     if mode == "sequence-gap":
         events[0]["seq"] = 1
     elif mode == "identity-mismatch":
-        result["request_hash"] = "sha256:" + "0" * 64
+        result["envelope"] = {
+            **result["envelope"],
+            "request_id": "request.mismatch",
+        }
     elif mode == "treatment-failure":
         result["terminal_status"] = "failed"
         result["treatment_error"] = "synthetic treatment failure"
@@ -812,11 +808,10 @@ def _model_grade(request: dict[str, object]) -> int:
         },
     )
     result = {
-        "record_type": "skill-evaluator-host-result/1",
+        "record_type": "skill-evaluator-host-result/2",
         "terminal": True,
         "terminal_status": "completed",
         "envelope": envelope,
-        "request_hash": request["request_hash"],
         "treatment_error": None,
         "refusal": False,
         "timeout": False,
@@ -882,11 +877,10 @@ def _probe(request: dict[str, object]) -> int:
         },
     )
     _emit({
-        "record_type": "skill-evaluator-host-result/1",
+        "record_type": "skill-evaluator-host-result/2",
         "terminal": True,
         "terminal_status": "completed",
         "envelope": request["envelope"],
-        "request_hash": request["request_hash"],
         "treatment_error": None,
         "refusal": False,
         "timeout": False,

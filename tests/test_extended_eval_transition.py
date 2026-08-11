@@ -17,6 +17,7 @@ class TestExtendedEvalTransition(ComparisonTestCase):
         expected: str,
     ) -> dict:
         plan = copy.deepcopy(baseline)
+        self._refresh_all_cycle_bindings(root, plan)
         plan['output']['root'] = output_root
         plan_path = root / f'{output_root}.plan.json'
         self._rewrite_plan(plan_path, plan)
@@ -57,11 +58,7 @@ class TestExtendedEvalTransition(ComparisonTestCase):
             'reported': unit,
             'normalization': f'per_{unit}',
         }
-        self._write_self_hashed(
-            paths['observations'],
-            observations,
-            'comparison_observations_hash',
-        )
+        self._write_document(paths['observations'], observations)
 
     def test_direct_terminal_classifications_and_authority(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -220,7 +217,7 @@ class TestExtendedEvalTransition(ComparisonTestCase):
             root = Path(tmp)
             _, drift = self._transition_fixture(
                 root,
-                target_execution_updates={'prompt_hash': 'sha256:' + '7' * 64},
+                target_execution_updates={'prompt_id': 'unexpected-prompt'},
             )
             self._run_transition(
                 root,
@@ -274,7 +271,7 @@ class TestExtendedEvalTransition(ComparisonTestCase):
             root = Path(tmp)
             _, judge_drift = self._transition_fixture(
                 root,
-                target_grader_set_hash='sha256:' + '6' * 64,
+                target_judge_revision='v2',
             )
             self._run_transition(
                 root,
@@ -293,7 +290,7 @@ class TestExtendedEvalTransition(ComparisonTestCase):
                 target['summary'].read_text(encoding='utf-8'),
             )
             summary['paired_metrics']['task-benefit']['lower'] = 0.6
-            self._write_self_hashed(target['summary'], summary, 'summary_hash')
+            self._write_document(target['summary'], summary)
             self._run_transition(
                 root,
                 baseline,
@@ -314,11 +311,7 @@ class TestExtendedEvalTransition(ComparisonTestCase):
                 if item['metric_id'] == 'task-benefit'
             ][0]
             metric['values'].append(copy.deepcopy(metric['values'][0]))
-            self._write_self_hashed(
-                target['observations'],
-                observations,
-                'comparison_observations_hash',
-            )
+            self._write_document(target['observations'], observations)
             self._run_transition(
                 root,
                 baseline,
@@ -340,7 +333,7 @@ class TestExtendedEvalTransition(ComparisonTestCase):
                 and item['stage'] == 'retrieved'
             ][0]
             retrieved['passed'] = retrieved['eligible'] + 1
-            self._write_self_hashed(target['summary'], summary, 'summary_hash')
+            self._write_document(target['summary'], summary)
             self._run_transition(
                 root,
                 baseline,
@@ -374,11 +367,11 @@ class TestExtendedEvalTransition(ComparisonTestCase):
             root = Path(tmp)
             _, combined = self._transition_fixture(
                 root,
-                target_execution_updates={'harness': 'target-harness'},
+                target_execution_updates={'harness_version': '2.0.0'},
             )
             combined['decision_policy'].update({
                 'mode': 'combined',
-                'apparatus_change_fields': ['host_hash', 'harness_hash'],
+                'apparatus_change_fields': ['harness_version'],
             })
             report = self._run_transition(
                 root,

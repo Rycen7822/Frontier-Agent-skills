@@ -1,13 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/skill-evaluator/schemas/comparison-report-v1.schema.json",
-  "title": "Skill Evaluator comparison report v1",
+  "$id": "https://example.invalid/skill-evaluator/schemas/comparison-report-v2.schema.json",
+  "title": "Skill Evaluator comparison report v2",
   "type": "object",
   "required": [
     "schema_version",
-    "comparison_report_hash",
     "comparison_id",
-    "comparison_plan_hash",
     "kind",
     "claim_scope",
     "generator",
@@ -18,13 +16,11 @@
     "result",
     "authority_eligibility",
     "claim_ceiling",
-    "diagnostic_index_hash"
+    "diagnostic_index_path"
   ],
   "properties": {
-    "schema_version": {"const": 1},
-    "comparison_report_hash": {"$ref": "#/$defs/sha256"},
+    "schema_version": {"const": 2},
     "comparison_id": {"$ref": "#/$defs/safe_id"},
-    "comparison_plan_hash": {"$ref": "#/$defs/sha256"},
     "kind": {"enum": ["revision", "model_transition"]},
     "claim_scope": {
       "enum": [
@@ -69,7 +65,7 @@
         "transition_retention"
       ]
     },
-    "diagnostic_index_hash": {"$ref": "#/$defs/sha256"}
+    "diagnostic_index_path": {"$ref": "#/$defs/relative_path"}
   },
   "additionalProperties": false,
   "oneOf": [
@@ -97,15 +93,14 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
     },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
     "sha256": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
-    },
-    "nullable_sha256": {
-      "anyOf": [
-        {"$ref": "#/$defs/sha256"},
-        {"type": "null"}
-      ]
     },
     "nullable_number": {
       "anyOf": [
@@ -118,31 +113,11 @@
     },
     "generator": {
       "type": "object",
-      "required": ["name", "version", "source_hash"],
+      "required": ["name", "version", "source_revision"],
       "properties": {
         "name": {"const": "compare_cycles.py"},
-        "version": {"const": "3.3.4"},
-        "source_hash": {"$ref": "#/$defs/sha256"}
-      },
-      "additionalProperties": false
-    },
-    "file_hashes": {
-      "type": "object",
-      "required": [
-        "spec",
-        "execution_plan",
-        "host_manifest",
-        "summary",
-        "failure_index",
-        "observations"
-      ],
-      "properties": {
-        "spec": {"$ref": "#/$defs/sha256"},
-        "execution_plan": {"$ref": "#/$defs/sha256"},
-        "host_manifest": {"$ref": "#/$defs/sha256"},
-        "summary": {"$ref": "#/$defs/sha256"},
-        "failure_index": {"$ref": "#/$defs/nullable_sha256"},
-        "observations": {"$ref": "#/$defs/nullable_sha256"}
+        "version": {"const": "4.0.0"},
+        "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
       },
       "additionalProperties": false
     },
@@ -150,31 +125,21 @@
       "type": "object",
       "required": [
         "role",
+        "cycle_id",
         "evaluation_id",
         "plan_id",
-        "spec_hash",
-        "plan_hash",
-        "host_manifest_hash",
-        "summary_hash",
-        "failure_index_hash",
-        "observations_hash",
-        "execution_identity",
-        "file_hashes"
+        "capsule_digest",
+        "execution_profile"
       ],
       "properties": {
         "role": {"$ref": "#/$defs/role"},
+        "cycle_id": {"$ref": "#/$defs/safe_id"},
         "evaluation_id": {"$ref": "#/$defs/safe_id"},
         "plan_id": {"$ref": "#/$defs/safe_id"},
-        "spec_hash": {"$ref": "#/$defs/sha256"},
-        "plan_hash": {"$ref": "#/$defs/sha256"},
-        "host_manifest_hash": {"$ref": "#/$defs/sha256"},
-        "summary_hash": {"$ref": "#/$defs/sha256"},
-        "failure_index_hash": {"$ref": "#/$defs/nullable_sha256"},
-        "observations_hash": {"$ref": "#/$defs/nullable_sha256"},
-        "execution_identity": {
-          "$ref": "execution-plan-v1.schema.json#/$defs/execution_identity"
-        },
-        "file_hashes": {"$ref": "#/$defs/file_hashes"}
+        "capsule_digest": {"$ref": "#/$defs/sha256"},
+        "execution_profile": {
+          "$ref": "execution-plan-v2.schema.json#/$defs/execution_profile"
+        }
       },
       "additionalProperties": false
     },
@@ -193,10 +158,7 @@
         "diagnostic_ids": {
           "type": "array",
           "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "^cd-[0-9a-f]{24}$"
-          }
+          "items": {"$ref": "#/$defs/safe_id"}
         }
       },
       "additionalProperties": false
@@ -246,10 +208,7 @@
         "diagnostic_ids": {
           "type": "array",
           "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "^cd-[0-9a-f]{24}$"
-          }
+          "items": {"$ref": "#/$defs/safe_id"}
         }
       },
       "additionalProperties": false
@@ -270,12 +229,12 @@
         "closed_diagnostic_ids": {
           "type": "array",
           "uniqueItems": true,
-          "items": {"type": "string", "pattern": "^sf-[0-9a-f]{24}$"}
+          "items": {"$ref": "#/$defs/safe_id"}
         },
         "remaining_diagnostic_ids": {
           "type": "array",
           "uniqueItems": true,
-          "items": {"type": "string", "pattern": "^sf-[0-9a-f]{24}$"}
+          "items": {"$ref": "#/$defs/safe_id"}
         }
       },
       "additionalProperties": false

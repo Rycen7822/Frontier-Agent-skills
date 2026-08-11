@@ -97,11 +97,11 @@ Static package findings and runtime behavior answer different questions. A conta
 
 ## Suite-quality preparation
 
-Before L2–L4 execution, normalize a raw suite-quality proof against the non-ready draft spec. The artifact binds the acyclic quality contract, corpus/fixture/grader/treatment identities, optional calibration, golden/known-bad/mutation evidence, duplicate/provenance review, leakage/custody, coverage, grader sensitivity, authority, and its self-hash. It never reads candidate scored results.
+Before L2–L4 execution, normalize a raw suite-quality proof against the non-ready draft spec. The artifact records the acyclic quality contract, readable corpus/fixture/grader/treatment identities, optional calibration, golden/known-bad/mutation evidence, duplicate/provenance review, leakage/custody, coverage, grader sensitivity, and authority. Its external spec binding owns the only artifact digest. It never reads candidate scored results.
 
 Required preparation closes golden solvability, required mutation detection, duplicate/provenance review, leakage review, required slice/module/treatment/check coverage, and grader sensitivity. Required modules need positive and boundary/failure evidence unless the spec proves the finite set is exhausted. Model-only duplicate, leakage, or semantic observations require the declared reviewer receipt and locator.
 
-The order is fixed: draft non-ready spec → optional selected-model calibration → suite-quality normalization → bind both artifacts and `quality_contract_hash` → set `execution.ready=true` → validate the final contract → compile.
+The order is fixed: draft non-ready spec → optional selected-model calibration → suite-quality normalization → bind each external artifact once with `{path,digest,schema_version}` → set `execution.ready=true` → validate the final contract and recomputed raw semantics → compile.
 
 ## Suite review
 

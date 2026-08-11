@@ -70,8 +70,6 @@ def verify_systemd_user(
             )
         return _operation_fact(
             "systemd-user-lifecycle",
-            argv[:-1] + ["<completion>"],
-            campaign_id,
             round((time.monotonic() - started) * 1000),
         )
 

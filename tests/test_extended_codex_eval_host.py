@@ -19,7 +19,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 sys.path.insert(0, str(REPOSITORY_ROOT / "skill-evaluator/scripts"))
 
 from _bundle_hash import inventory, tree_hash  # noqa: E402
-from _codex_eval_delivery import isolated_tool_schema_hash  # noqa: E402
+from _codex_eval_delivery import isolated_tool_schema_id  # noqa: E402
 import _codex_eval_isolation as isolation  # noqa: E402
 from codex_eval_host import (  # noqa: E402
     ADAPTER_SOURCE_FILES,
@@ -27,14 +27,14 @@ from codex_eval_host import (  # noqa: E402
     adapter_source_hash,
 )
 from validate_eval_suite import (  # noqa: E402
-    load_v5_schema_registry,
+    load_epoch6_schema_registry,
     validate_host_protocol_record,
 )
 from skill_evaluator_test_support import (  # noqa: E402
     SkillEvaluatorTestCase,
     canonical_hash,
-    materialize_v5_contract_fixture,
-    rebind_v5_contract_fixture,
+    materialize_epoch6_contract_fixture,
+    rebind_epoch6_contract_fixture,
     runner_worst_case_attempt_budget,
 )
 
@@ -118,17 +118,13 @@ def _sha256_file(path: Path) -> str:
 
 
 def _grade_payload(batch: dict[str, object]) -> dict[str, object]:
-    import hashlib
-
     prompt = "Judge the blinded fixture evidence.\n"
-    prompt_hash = "sha256:" + hashlib.sha256(prompt.encode()).hexdigest()
     return {
         "grader_id": "fixture-grader",
-        "batch_hash": "sha256:" + "1" * 64,
-        "schedule_hash": "sha256:" + "2" * 64,
+        "schedule_id": "fixture-schedule",
         "grader_prompt": prompt,
-        "grader_prompt_hash": prompt_hash,
-        "grader_schema_hash": "sha256:" + "3" * 64,
+        "grader_prompt_id": "fixture-prompt",
+        "grader_schema_id": "grader-output",
         "blinded_input": batch,
     }
 
@@ -152,14 +148,11 @@ def _materialize_plugin(root: Path) -> tuple[Path, str]:
 def _plugin_bound_manifest(path: Path, fake: Path, plugin: Path, *, mode: str = "host") -> dict:
     manifest = _host_manifest(path, fake, mode=mode, sandbox="read-only")
     entry = manifest["catalog"]["entries"][0]
-    entry.update({"id": "writing-plans", "name": "Writing Plans", "root_hash": _tree_hash(plugin / "skills/writing-plans")})
-    manifest["catalog"]["catalog_hash"] = canonical_hash([entry])
-    manifest["identity"]["execution"]["catalog_hash"] = manifest["catalog"]["catalog_hash"]
-    manifest["identity"]["execution"]["skill_hash"] = _tree_hash(plugin)
+    entry.update({"id": "writing-plans", "name": "Writing Plans", "root_digest": _tree_hash(plugin / "skills/writing-plans")})
+    manifest["catalog"]["catalog_id"] = "fixture-writing-plans"
+    manifest["identity"]["execution"]["catalog_id"] = "fixture-writing-plans"
+    manifest["identity"]["execution"]["skill_id"] = "writing-plans"
     manifest["command"]["argv"].extend(["--plugin-root", str(plugin)])
-    manifest["manifest_hash"] = canonical_hash(
-        {key: value for key, value in manifest.items() if key != "manifest_hash"}
-    )
     path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest
 
@@ -252,28 +245,22 @@ def _host_manifest(
 ) -> dict:
     manifest = json.loads(
         (
-            REPOSITORY_ROOT / "tests/fixtures/skill_evaluator/host-manifest-v1.json"
+            REPOSITORY_ROOT / "tests/fixtures/skill_evaluator/host-manifest-v2.json"
         ).read_text(encoding="utf-8")
     )
-    manifest["identity"]["adapter"].update(
-        {
-            "id": "codex-eval-host",
-            "version": ADAPTER_VERSION,
-            "sha256": adapter_source_hash(),
-        }
-    )
+    manifest["identity"]["adapter"] = {
+        "id": "codex-eval-host",
+        "version": ADAPTER_VERSION,
+    }
     manifest["identity"]["repository"]["worktree"] = str(path.parent.resolve())
     manifest["identity"]["execution"]["model"] = MODEL
-    manifest["identity"]["host_build"] = _sha256_file(fake)
+    manifest["identity"]["host_build"] = "codex-cli-0.0.0"
     manifest["identity"]["host_version"] = "0.0.0"
-    manifest["identity"]["execution"]["harness"] = (
-        f"codex-cli-0.0.0-effort-high-profile-{profile}-tier-default"
-    )
-    manifest["identity"]["execution"]["model_revision"] = (
-        "codex-catalog-0.0.0-sha256:" + "1" * 64
-    )
-    manifest["identity"]["execution"]["tool_schema_hash"] = (
-        isolated_tool_schema_hash(_sha256_file(fake))
+    manifest["identity"]["execution"]["harness"] = "codex-cli"
+    manifest["identity"]["execution"]["harness_version"] = "0.0.0"
+    manifest["identity"]["execution"]["model_revision"] = "codex-catalog-0.0.0"
+    manifest["identity"]["execution"]["tool_schema_id"] = (
+        isolated_tool_schema_id(_sha256_file(fake))
     )
     manifest["command"].update(
         {
@@ -286,69 +273,57 @@ def _host_manifest(
                 sandbox=sandbox,
             ),
             "resolved_executable": str(Path(sys.executable).resolve()),
-            "executable_sha256": _sha256_file(Path(sys.executable).resolve()),
+            "executable_digest": _sha256_file(Path(sys.executable).resolve()),
         }
-    )
-    manifest["manifest_hash"] = canonical_hash(
-        {key: value for key, value in manifest.items() if key != "manifest_hash"}
     )
     path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest
 
 
 def _materialize_adapter_fixture(root: Path, fake: Path) -> dict[str, Path]:
-    paths = materialize_v5_contract_fixture(root)
+    paths = materialize_epoch6_contract_fixture(root)
     host = json.loads(paths["host"].read_text(encoding="utf-8"))
-    host["identity"]["adapter"].update(
-        {
-            "id": "codex-eval-host",
-            "version": ADAPTER_VERSION,
-            "sha256": adapter_source_hash(),
-        }
-    )
+    host["identity"]["adapter"] = {
+        "id": "codex-eval-host",
+        "version": ADAPTER_VERSION,
+    }
     host["identity"]["repository"]["worktree"] = str(root.resolve())
     host["identity"]["execution"]["model"] = MODEL
-    host["identity"]["host_build"] = _sha256_file(fake)
+    host["identity"]["host_build"] = "codex-cli-0.0.0"
     host["identity"]["host_version"] = "0.0.0"
-    host["identity"]["execution"]["harness"] = (
-        "codex-cli-0.0.0-effort-high-profile-fixture-profile-tier-default"
-    )
-    host["identity"]["execution"]["model_revision"] = (
-        "codex-catalog-0.0.0-sha256:" + "1" * 64
-    )
-    host["identity"]["execution"]["tool_schema_hash"] = (
-        isolated_tool_schema_hash(_sha256_file(fake))
+    host["identity"]["execution"]["harness"] = "codex-cli"
+    host["identity"]["execution"]["harness_version"] = "0.0.0"
+    host["identity"]["execution"]["model_revision"] = "codex-catalog-0.0.0"
+    host["identity"]["execution"]["tool_schema_id"] = (
+        isolated_tool_schema_id(_sha256_file(fake))
     )
     host["command"].update(
         {
             "argv": _bound_adapter_argv(fake, paths["host"]),
             "resolved_executable": str(Path(sys.executable).resolve()),
-            "executable_sha256": _sha256_file(Path(sys.executable).resolve()),
+            "executable_digest": _sha256_file(Path(sys.executable).resolve()),
         }
     )
     paths["host"].write_text(json.dumps(host, indent=2) + "\n", encoding="utf-8")
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
     return paths
 
 
 def _request(kind: str, payload: dict) -> dict:
     request = {
-        "record_type": "skill-evaluator-host-request/1",
-        "request_hash": "",
+        "record_type": "skill-evaluator-host-request/2",
         "envelope": {
             "attempt": 1,
+            "attempt_id": "attempt-0001",
             "entry_id": "entry-fixture",
             "entry_ordinal": 0,
-            "plan_hash": "sha256:" + "1" * 64,
             "plan_id": "plan-fixture",
+            "request_id": f"request-{kind}",
             "request_kind": kind,
             "run_id": "run-fixture",
         },
         "payload": payload,
     }
-    request["request_hash"] = canonical_hash(
-        {key: value for key, value in request.items() if key != "request_hash"}
-    )
     return request
 
 
@@ -382,7 +357,7 @@ def _execute_payload(turn_count: int = 1) -> dict:
             "expected_principal_slots": ["lead"],
             "expected_tools": [],
         },
-        "permission_policy": "sha256:" + "a" * 64,
+        "permission_policy": "fixture-authority",
         "fault_script": [],
         "coordination": None,
     }
@@ -851,15 +826,15 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(0, result.returncode, result.stderr)
             records = _jsonl(result.stdout)
             self.assertEqual(
-                ["skill-evaluator-host-event/1"] * 2
-                + ["skill-evaluator-host-result/1"],
+                ["skill-evaluator-host-event/2"] * 2
+                + ["skill-evaluator-host-result/2"],
                 [record["record_type"] for record in records],
             )
             self.assertEqual("completed", records[-1]["terminal_status"])
             self.assertEqual(
                 [],
                 validate_host_protocol_record(
-                    "host_result", records[-1], load_v5_schema_registry()
+                    "host_result", records[-1], load_epoch6_schema_registry()
                 ),
             )
             self.assertEqual(THREAD_ID, records[-1]["principals"][0]["session_id"])
@@ -1046,7 +1021,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(
                 [],
                 validate_host_protocol_record(
-                    "host_result", terminal, load_v5_schema_registry()
+                    "host_result", terminal, load_epoch6_schema_registry()
                 ),
             )
             self.assertEqual(len(body.encode()), terminal["context"]["bytes"])
@@ -1060,7 +1035,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             ).name
             self.assertEqual(body, artifact.read_text(encoding="utf-8"))
             self.assertEqual(
-                component["content_sha256"], _sha256_file(artifact)
+                component["artifact"]["digest"], _sha256_file(artifact)
             )
             call = _jsonl(state.read_text(encoding="utf-8"))[0]
             self.assertIn(body, call["prompt"])
@@ -1207,9 +1182,6 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             manifest_path = campaign / "host.json"
             manifest = _plugin_bound_manifest(manifest_path, fake, plugin)
             manifest["identity"]["repository"]["worktree"] = str(source)
-            manifest["manifest_hash"] = canonical_hash(
-                {key: value for key, value in manifest.items() if key != "manifest_hash"}
-            )
             manifest_path.write_text(
                 json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
             )
@@ -1462,7 +1434,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(
                 [],
                 validate_host_protocol_record(
-                    "host_result", grade_record, load_v5_schema_registry()
+                    "host_result", grade_record, load_epoch6_schema_registry()
                 ),
             )
             self.assertEqual(1, len(grade_record["artifacts"]))
@@ -1502,7 +1474,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(1, len(invalid_record["usage"]["records"]))
 
             tampered = _grade_payload(batch)
-            tampered["grader_prompt"] = "Different instruction.\n"
+            tampered["grader_prompt_id"] = "invalid/prompt"
             rejected = _run_adapter(
                 workspace,
                 fake,
@@ -1638,27 +1610,13 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
 
             cases: list[tuple[str, list[str], dict]] = []
             bad_manifest = json.loads(json.dumps(manifest))
-            bad_manifest["identity"]["adapter"]["sha256"] = "sha256:" + "0" * 64
-            bad_manifest["manifest_hash"] = canonical_hash(
-                {
-                    key: value
-                    for key, value in bad_manifest.items()
-                    if key != "manifest_hash"
-                }
-            )
+            bad_manifest["identity"]["adapter"]["version"] = "0"
             bad_path = root / "bad-host.json"
             bad_path.write_text(json.dumps(bad_manifest) + "\n", encoding="utf-8")
             cases.append(("adapter", _adapter_argv(fake, bad_path), request))
             stale_tool_manifest = json.loads(json.dumps(manifest))
-            stale_tool_manifest["identity"]["execution"]["tool_schema_hash"] = (
-                "sha256:" + "3" * 64
-            )
-            stale_tool_manifest["manifest_hash"] = canonical_hash(
-                {
-                    key: value
-                    for key, value in stale_tool_manifest.items()
-                    if key != "manifest_hash"
-                }
+            stale_tool_manifest["identity"]["execution"]["tool_schema_id"] = (
+                "stale-tool-schema"
             )
             stale_tool_path = root / "stale-tool-host.json"
             stale_tool_path.write_text(
@@ -1676,7 +1634,7 @@ class TestCodexEvalHostProcess(SkillEvaluatorTestCase):
             self.assertEqual(2, stale_result.returncode)
             self.assertIn("tool schema identity differs", stale_result.stderr)
             bad_request = json.loads(json.dumps(request))
-            bad_request["request_hash"] = "sha256:" + "1" * 64
+            bad_request["envelope"]["request_id"] = "bad/request"
             cases.append(("request", _adapter_argv(fake, manifest_path), bad_request))
             bad_codex_hash = _adapter_argv(fake, manifest_path)
             bad_codex_hash[bad_codex_hash.index("--codex-sha256") + 1] = (

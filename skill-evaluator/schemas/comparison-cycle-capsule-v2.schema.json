@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/comparison-cycle-capsule-v2.schema.json",
+  "title": "Skill Evaluator comparison cycle capsule v2",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "cycle_id",
+    "evaluation_id",
+    "plan_id",
+    "execution_profile",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": {"const": "comparison-cycle-capsule/2"},
+    "cycle_id": {"$ref": "#/$defs/safe_id"},
+    "evaluation_id": {"$ref": "#/$defs/safe_id"},
+    "plan_id": {"$ref": "#/$defs/safe_id"},
+    "execution_profile": {
+      "$ref": "execution-plan-v2.schema.json#/$defs/execution_profile"
+    },
+    "artifacts": {
+      "type": "object",
+      "required": [
+        "spec",
+        "execution_plan",
+        "host_manifest",
+        "summary",
+        "failure_index",
+        "observations"
+      ],
+      "properties": {
+        "spec": {
+          "allOf": [
+            {"$ref": "#/$defs/artifact_ref"},
+            {"properties": {"schema": {"const": "eval-spec-v6"}}}
+          ]
+        },
+        "execution_plan": {
+          "allOf": [
+            {"$ref": "#/$defs/artifact_ref"},
+            {"properties": {"schema": {"const": "execution-plan-v2"}}}
+          ]
+        },
+        "host_manifest": {
+          "allOf": [
+            {"$ref": "#/$defs/artifact_ref"},
+            {"properties": {"schema": {"const": "host-manifest-v2"}}}
+          ]
+        },
+        "summary": {
+          "allOf": [
+            {"$ref": "#/$defs/artifact_ref"},
+            {"properties": {"schema": {"const": "analysis-summary-v5"}}}
+          ]
+        },
+        "failure_index": {
+          "anyOf": [
+            {
+              "allOf": [
+                {"$ref": "#/$defs/artifact_ref"},
+                {"properties": {"schema": {"const": "failure-index-v2"}}}
+              ]
+            },
+            {"type": "null"}
+          ]
+        },
+        "observations": {
+          "anyOf": [
+            {
+              "allOf": [
+                {"$ref": "#/$defs/artifact_ref"},
+                {"properties": {"schema": {"const": "comparison-observations-v2"}}}
+              ]
+            },
+            {"type": "null"}
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "artifact_ref": {
+      "type": "object",
+      "required": ["path", "schema", "digest"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relative_path"},
+        "schema": {"type": "string", "minLength": 1},
+        "digest": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

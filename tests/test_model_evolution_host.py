@@ -19,11 +19,11 @@ import _model_evolution_ops as operations  # noqa: E402
 import _model_evolution_state as state_module  # noqa: E402
 import build_model_evolution_host as host_builder  # noqa: E402
 import model_evolution as controller  # noqa: E402
-from _codex_eval_delivery import MODEL_EVOLUTION_ENV_ALLOWLIST  # noqa: E402
-from _model_evolution_contract import (  # noqa: E402
-    make_binding,
-    with_self_hash,
+from _codex_eval_delivery import (  # noqa: E402
+    MODEL_EVOLUTION_ENV_ALLOWLIST,
+    isolated_tool_schema_id,
 )
+from _model_evolution_contract import make_binding  # noqa: E402
 from _model_evolution_state import (  # noqa: E402
     CampaignStore,
     advance_preflight,
@@ -59,7 +59,7 @@ class ModelEvolutionHostTest(unittest.TestCase):
         argv = rebound_host["command"]["argv"]
         argv[argv.index("--host-manifest") + 1] = str(host)
         argv[argv.index("--plugin-root") + 1] = str(plugin_root)
-        write_json(host, with_self_hash(rebound_host, "manifest_hash"))
+        write_json(host, rebound_host)
         args = argparse.Namespace(
             repository_root=self.fixture["repository_root"],
             campaign_root=campaign_root,
@@ -105,25 +105,25 @@ class ModelEvolutionHostTest(unittest.TestCase):
             valid_host = json.loads(host.read_text())
             mutations = (
                 ("skill-root", "plugin Skill bytes differ"),
-                ("catalog", "catalog hash differs"),
+                ("catalog", "catalog identity differs"),
                 ("adapter", "adapter identity differs"),
                 ("source-commit", "repository identity differs"),
                 ("source-tree", "repository identity differs"),
                 ("source-path", "repository identity differs"),
                 ("host-path", "command binding is invalid"),
-                ("code-mode-host-hash", "tool schema identity differs"),
+                ("code-mode-host-hash", "filesystem isolation runtime differs"),
                 ("transport-env", "transport environment differs"),
             )
             for mutation, message in mutations:
                 invalid_host = copy.deepcopy(valid_host)
                 if mutation == "skill-root":
-                    invalid_host["catalog"]["entries"][0]["root_hash"] = (
+                    invalid_host["catalog"]["entries"][0]["root_digest"] = (
                         "sha256:" + "0" * 64
                     )
                 elif mutation == "catalog":
-                    invalid_host["catalog"]["catalog_hash"] = "sha256:" + "0" * 64
+                    invalid_host["catalog"]["catalog_id"] = "different-catalog"
                 elif mutation == "adapter":
-                    invalid_host["identity"]["adapter"]["sha256"] = "sha256:" + "0" * 64
+                    invalid_host["identity"]["adapter"]["id"] = "different-adapter"
                 elif mutation == "source-commit":
                     invalid_host["identity"]["repository"]["revision"] = "0" * 40
                 elif mutation == "source-tree":
@@ -142,7 +142,7 @@ class ModelEvolutionHostTest(unittest.TestCase):
                     )
                 else:
                     invalid_host["command"]["env_allowlist"] = []
-                write_json(host, with_self_hash(invalid_host, "manifest_hash"))
+                write_json(host, invalid_host)
                 with (
                     self.subTest(mutation=mutation),
                     self.assertRaisesRegex(
@@ -164,7 +164,7 @@ class ModelEvolutionHostTest(unittest.TestCase):
             state["product"]["plugin_root"],
         )
         self.assertEqual(evidence["plugin_tree_hash"], state["product"]["plugin_tree"])
-        self.assertEqual(state["schema_version"], "model-evolution-campaign/2")
+        self.assertEqual(state["schema_version"], "model-evolution-campaign/3")
         self.assertNotIn("supersedes", state)
 
     def test_preflight_binds_the_exact_staged_plugin_catalog(self) -> None:
@@ -173,10 +173,10 @@ class ModelEvolutionHostTest(unittest.TestCase):
         operations._validate_host_plugin_binding(host, plugin_root)
 
         stale_catalog = copy.deepcopy(host)
-        stale_catalog["catalog"]["catalog_hash"] = "sha256:" + "0" * 64
+        stale_catalog["catalog"]["entries"][0]["root_digest"] = "sha256:" + "0" * 64
         with self.assertRaisesRegex(
             operations.OperationError,
-            "catalog hash differs",
+            "plugin Skill bytes differ",
         ):
             operations._validate_host_plugin_binding(stale_catalog, plugin_root)
 
@@ -221,8 +221,7 @@ class ModelEvolutionHostTest(unittest.TestCase):
         self.assertEqual(runtime.resolve(), resolved)
         self.assertEqual("0.146.1", version)
         self.assertEqual(
-            "codex-catalog-0.146.1-"
-            + host_builder._hash_bytes(host_builder._canonical_bytes(selected)),
+            "codex-catalog-0.146.1",
             revision,
         )
 
@@ -231,15 +230,15 @@ class ModelEvolutionHostTest(unittest.TestCase):
         codex_argv = template["command"]["argv"]
         codex_path = Path(codex_argv[codex_argv.index("--codex") + 1]).resolve()
         template["command"]["env_allowlist"] = []
-        template["catalog"]["entries"][0]["root_hash"] = "sha256:" + "0" * 64
-        template["catalog"]["catalog_hash"] = "sha256:" + "0" * 64
-        template["identity"]["execution"]["catalog_hash"] = "sha256:" + "0" * 64
-        template["identity"]["execution"]["skill_hash"] = "sha256:" + "0" * 64
-        template["identity"]["adapter"]["sha256"] = "sha256:" + "0" * 64
+        template["catalog"]["entries"][0]["root_digest"] = "sha256:" + "0" * 64
+        template["catalog"]["catalog_id"] = "stale-catalog"
+        template["identity"]["execution"]["catalog_id"] = "stale-catalog"
+        template["identity"]["execution"]["tool_schema_id"] = "stale-tools"
+        template["identity"]["adapter"]["id"] = "stale-adapter"
         template["identity"]["host_version"] = "0.0.0"
         template["identity"]["execution"]["harness"] = "stale-harness"
         template["identity"]["execution"]["model_revision"] = "stale-catalog"
-        probe_path = "codex-interaction-probes-v1.json"
+        probe_path = "codex-interaction-probes-v2.json"
         template["reset"]["probe"]["artifact"]["path"] = probe_path
         for capability in template["capabilities"]:
             capability["probe"]["artifact"]["path"] = probe_path
@@ -248,6 +247,7 @@ class ModelEvolutionHostTest(unittest.TestCase):
             template,
         )
         builder_evidence = json.loads(self.fixture["paths"]["plugin_build"].read_text())
+        builder_evidence["bundle_version"] = "7.0.0"
         builder_evidence["skill_versions"] = {
             entry["id"]: entry["version"] for entry in template["catalog"]["entries"]
         }
@@ -280,7 +280,7 @@ class ModelEvolutionHostTest(unittest.TestCase):
             mock.patch.object(
                 host_builder,
                 "_model_revision",
-                return_value="codex-catalog-0.146.1-sha256:" + "3" * 64,
+                return_value="codex-catalog-0.146.1",
             ),
             mock.patch.object(
                 host_builder,
@@ -307,19 +307,22 @@ class ModelEvolutionHostTest(unittest.TestCase):
         )
         self.assertEqual("0.146.1", built["identity"]["host_version"])
         self.assertEqual(
-            "codex-cli-0.146.1-effort-high-profile-fixture-profile-tier-default",
+            "codex-cli",
             built["identity"]["execution"]["harness"],
         )
         self.assertEqual(
-            "codex-catalog-0.146.1-sha256:" + "3" * 64,
+            "0.146.1", built["identity"]["execution"]["harness_version"]
+        )
+        self.assertEqual(
+            "codex-catalog-0.146.1",
             built["identity"]["execution"]["model_revision"],
         )
         self.assertEqual(
-            host_builder.codex_eval_host.adapter_source_hash(scripts_target),
-            built["identity"]["adapter"]["sha256"],
+            "codex-eval-host",
+            built["identity"]["adapter"]["id"],
         )
         self.assertEqual(
-            host_builder.isolated_tool_schema_hash(
+            isolated_tool_schema_id(
                 built["command"]["argv"][
                     built["command"]["argv"].index("--codex-sha256") + 1
                 ],
@@ -330,7 +333,7 @@ class ModelEvolutionHostTest(unittest.TestCase):
                     built["command"]["argv"].index("--code-mode-host-sha256") + 1
                 ],
             ),
-            built["identity"]["execution"]["tool_schema_hash"],
+            built["identity"]["execution"]["tool_schema_id"],
         )
         self.assertEqual(identity, built["identity"]["repository"])
         operations.validate_target_host_staging(
@@ -350,7 +353,7 @@ class ModelEvolutionHostTest(unittest.TestCase):
             mock.patch.object(
                 host_builder,
                 "_model_revision",
-                return_value="codex-catalog-0.146.1-sha256:" + "3" * 64,
+                return_value="codex-catalog-0.146.1",
             ),
             mock.patch.object(
                 host_builder,
@@ -379,13 +382,12 @@ class ModelEvolutionHostTest(unittest.TestCase):
             store.read(),
         )
         invalid_approval = json.loads(approval.read_text())
-        invalid_approval["campaign_hash"] = "sha256:" + "0" * 64
-        invalid_approval = with_self_hash(invalid_approval, "approval_hash")
+        invalid_approval["campaign_id"] = "different-campaign"
         invalid_path = write_json(
             self.fixture["campaign_root"] / "invalid-budget-approval.json",
             invalid_approval,
         )
-        with self.assertRaisesRegex(controller.CliError, "campaign_hash differs"):
+        with self.assertRaisesRegex(controller.CliError, "campaign_id differs"):
             controller._probe(
                 argparse.Namespace(
                     repository_root=self.fixture["repository_root"],
@@ -470,7 +472,7 @@ class ModelEvolutionHostTest(unittest.TestCase):
         probe_set = json.loads(
             (
                 REPOSITORY_ROOT
-                / "evaluation/model-evolution/codex-interaction-probes-v1.json"
+                / "evaluation/model-evolution/codex-interaction-probes-v2.json"
             ).read_text()
         )
         probe_ids = [row["probe_id"] for row in probe_set["probes"]]

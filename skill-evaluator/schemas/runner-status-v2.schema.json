@@ -1,12 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/skill-evaluator/schemas/runner-status-v1.schema.json",
-  "title": "Skill Evaluator runner status v1",
+  "$id": "https://example.invalid/skill-evaluator/schemas/runner-status-v2.schema.json",
+  "title": "Skill Evaluator runner status v2",
   "type": "object",
   "required": [
     "schema_version",
     "plan_id",
-    "plan_hash",
     "selected_entries",
     "execute_entries",
     "indexed_attempts",
@@ -23,9 +22,8 @@
     "model_grade_request_ceiling"
   ],
   "properties": {
-    "schema_version": {"const": "runner-status/1"},
+    "schema_version": {"const": "runner-status/2"},
     "plan_id": {"$ref": "#/$defs/safe_id"},
-    "plan_hash": {"$ref": "#/$defs/sha256"},
     "selected_entries": {"$ref": "#/$defs/count"},
     "execute_entries": {"$ref": "#/$defs/count"},
     "indexed_attempts": {"$ref": "#/$defs/count"},
@@ -55,10 +53,6 @@
       "minLength": 1,
       "maxLength": 128,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
-    },
-    "sha256": {
-      "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "count": {"type": "integer", "minimum": 0},
     "attempts": {
