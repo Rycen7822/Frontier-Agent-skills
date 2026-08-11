@@ -19,7 +19,6 @@ from _model_evolution_contract import (
     resolve_binding,
     validate_formal_plan_timeouts,
     validate_formal_timeout_inputs,
-    verify_self_hash,
 )
 from _model_evolution_materialization import (
     MaterializationError,
@@ -82,7 +81,7 @@ def _load_holdout_bundle(
         "external_holdout_contract_id",
         "skill_id",
         "payload_file",
-        "payload_sha256",
+        "payload_digest",
         "scenario_count",
         "scenario_ids",
         "scenarios",
@@ -94,11 +93,11 @@ def _load_holdout_bundle(
         raise MaterializationError("holdout manifest fields differ from the contract")
     custodian = manifest.get("custodian")
     if (
-        manifest.get("schema_version") != 1
+        manifest.get("schema_version") != 2
         or manifest.get("external_holdout_contract_id") != contract_id
         or manifest.get("skill_id") != skill_id
         or manifest.get("payload_file") != payload_path.name
-        or manifest.get("payload_sha256") != _file_hash(payload_path)
+        or manifest.get("payload_digest") != _file_hash(payload_path)
         or manifest.get("scenario_count") != case_ceiling
         or manifest.get("scenario_ids") != [row.get("case_id") for row in rows]
         or not isinstance(custodian, str)
@@ -111,7 +110,6 @@ def _load_holdout_bundle(
     scenario_projection = [
         {
             "case_id": row.get("case_id"),
-            "scenario_sha256": content_hash(canonical_bytes(row)),
             "risk": row.get("risk"),
             "tags": row.get("tags"),
         }
@@ -176,15 +174,22 @@ def _load_holdout_bundle(
     return manifest, rows, proof_path
 
 
-def _manual_authority(spec: dict[str, Any]) -> None:
+def _manual_authority(spec: dict[str, Any], root: Path) -> None:
     projection = {
+        "schema_version": "manual-review-contract/1",
         "reviewer_role": "qualification-owner",
         "required_evidence": ["frozen-study-input-binding"],
     }
+    contract = root / "manual-review-contract.json"
+    _write_exact(contract, canonical_bytes(projection))
     spec["authority"]["manual_review"] = {
         "required": True,
         "role": projection["reviewer_role"],
-        "decision_contract_hash": content_hash(canonical_bytes(projection)),
+        "decision_contract": {
+            "path": contract.name,
+            "digest": _file_hash(contract),
+            "schema_version": projection["schema_version"],
+        },
     }
     required_kinds = {
         gate["kind"] for gate in spec["hard_gates"] if gate.get("required") is True
@@ -320,34 +325,29 @@ def _build_holdout_plan(
         skill_id=skill_id,
         selected_skill=selected_skills[skill_id],
         source_commit=source_commit,
-        source_tree=source_tree,
         host=host,
-        host_file_hash=_file_hash(host_path),
         calibration=calibration,
         calibration_file_hash=_file_hash(calibration_path),
         scenarios=scenarios,
     )
     spec["level"] = "L3"
-    spec["suite"]["public_scenarios"] = {
-        "path": public_path.name,
-        "sha256": _file_hash(public_path),
-    }
-    spec["suite"]["scenarios"] = {
-        "path": execution_path.name,
-        "sha256": _file_hash(execution_path),
-    }
+    spec["suite"]["public_scenarios"] = {"path": public_path.name}
+    spec["suite"]["scenarios"] = {"path": execution_path.name}
     spec["suite"]["holdout"] = {
-        "manifest": {"path": manifest_path.name, "sha256": _file_hash(manifest_path)},
-        "payload": {"path": payload_path.name, "sha256": _file_hash(payload_path)},
+        "manifest": {
+            "path": manifest_path.name,
+            "digest": _file_hash(manifest_path),
+            "schema_version": "holdout-manifest/2",
+        },
+        "payload": {
+            "path": payload_path.name,
+            "digest": _file_hash(payload_path),
+            "schema_version": "jsonl/scenario/1",
+        },
         "custodian": manifest["custodian"],
         "exposure_status": "exposed",
     }
-    spec["execution"]["retry_policy"] = {
-        "max_attempts": 2,
-        "retryable_apparatus_classes": ["official_transient"],
-        "backoff_seconds": 0,
-    }
-    _manual_authority(spec)
+    _manual_authority(spec, root)
     _bind_scenarios(spec, scenarios)
     try:
         validate_formal_timeout_inputs(host, spec, scenarios)
@@ -371,7 +371,11 @@ def _build_holdout_plan(
         repository_root=repository_root,
         label="holdout suite-quality normalization",
     )
-    spec["suite"]["quality"]["sha256"] = _file_hash(quality_path)
+    spec["suite"]["quality"] = {
+        "path": quality_path.name,
+        "digest": _file_hash(quality_path),
+        "schema_version": "suite-quality/2",
+    }
     spec["execution"]["ready"] = True
     spec_path.write_bytes(canonical_bytes(spec))
     plan_path = root / "plan.json"
@@ -382,7 +386,6 @@ def _build_holdout_plan(
         scenarios_name=execution_path.name,
     )
     plan = load_json(plan_path, label="compiled holdout plan")
-    verify_self_hash(plan, "plan_hash")
     try:
         validate_formal_plan_timeouts(host, plan)
     except ContractError as exc:
@@ -397,7 +400,7 @@ def _build_holdout_plan(
         "host": host_path,
         "plan": plan_path,
         "plan_id": plan["plan_id"],
-        "plan_hash": plan["plan_hash"],
+        "plan_digest": _file_hash(plan_path),
         "execute_ceiling": execute,
     }
 

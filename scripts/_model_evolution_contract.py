@@ -10,7 +10,7 @@ import json
 import math
 from pathlib import Path, PurePosixPath
 import re
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import urljoin
 
 import jsonschema
@@ -21,13 +21,13 @@ from referencing.exceptions import NoSuchResource, Unresolvable
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_ROOT = REPOSITORY_ROOT / "evaluation/model-evolution/schemas"
 SCHEMA_FILES = {
-    "budget_approval": "budget-approval-v1.schema.json",
-    "calibration_rejection_receipt": "calibration-rejection-receipt-v1.schema.json",
-    "campaign": "campaign-v2.schema.json",
-    "failure_receipt": "failure-receipt-v1.schema.json",
-    "interaction_probes": "interaction-probes-v1.schema.json",
-    "sentinel_index": "sentinel-index-v1.schema.json",
-    "qualification": "qualification-v1.schema.json",
+    "budget_approval": "budget-approval-v2.schema.json",
+    "calibration_rejection_receipt": "calibration-rejection-receipt-v2.schema.json",
+    "campaign": "campaign-v3.schema.json",
+    "failure_receipt": "failure-receipt-v2.schema.json",
+    "interaction_probes": "interaction-probes-v2.schema.json",
+    "sentinel_index": "sentinel-index-v2.schema.json",
+    "qualification": "qualification-v2.schema.json",
 }
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -48,17 +48,6 @@ BUDGET_FIELDS = (
     "candidates",
 )
 HOST_CLEANUP_GRACE_SECONDS = 30
-HASH_FIELDS = {
-    "model-evolution-budget-approval/1": "approval_hash",
-    "model-evolution-calibration-rejection-receipt/1": (
-        "calibration_rejection_receipt_hash"
-    ),
-    "model-evolution-campaign/2": "campaign_hash",
-    "model-evolution-failure-receipt/1": "failure_receipt_hash",
-    "model-evolution-interaction-probes/1": "probe_set_hash",
-    "model-evolution-sentinel-index/1": "sentinel_hash",
-    "model-qualification/1": "qualification_hash",
-}
 
 
 class ContractError(ValueError):
@@ -178,18 +167,6 @@ def content_hash(value: bytes) -> str:
     return "sha256:" + sha256(value).hexdigest()
 
 
-def self_hash(value: dict[str, Any], field: str) -> str:
-    return content_hash(
-        canonical_bytes({key: item for key, item in value.items() if key != field})
-    )
-
-
-def with_self_hash(value: dict[str, Any], field: str) -> dict[str, Any]:
-    result = dict(value)
-    result[field] = self_hash(result, field)
-    return result
-
-
 def strict_json_bytes(raw: bytes, *, label: str) -> Any:
     def no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -252,7 +229,7 @@ def pre_turn_failure_identity(path: Path, ordinal: int) -> dict[str, Any]:
         "failed": "provider_nonretryable",
     }
     if (
-        result.get("record_type") != "skill-evaluator-host-result/1"
+        result.get("record_type") != "skill-evaluator-host-result/2"
         or not isinstance(envelope, dict)
         or envelope.get("entry_ordinal") != ordinal
         or envelope.get("request_kind") != "model_grade"
@@ -278,18 +255,18 @@ def pre_turn_failure_identity(path: Path, ordinal: int) -> dict[str, Any]:
     ):
         raise ContractError("Host result is not a clean pre-turn terminal failure")
     entry_id = envelope.get("entry_id")
-    request_hash = result.get("request_hash")
+    request_id = envelope.get("request_id")
     if (
         not isinstance(entry_id, str)
         or not SAFE_ID.fullmatch(entry_id)
-        or not isinstance(request_hash, str)
-        or not HASH.fullmatch(request_hash)
+        or not isinstance(request_id, str)
+        or not SAFE_ID.fullmatch(request_id)
     ):
         raise ContractError("Host request identity is invalid")
     return {
         "entry_ordinal": ordinal,
         "entry_id": entry_id,
-        "request_hash": request_hash,
+        "request_id": request_id,
         "terminal_status": terminal_status,
         "failure_class": failure_class,
     }
@@ -318,21 +295,10 @@ def validate_schema(value: Any, name: str) -> None:
         ) from exc
 
 
-def verify_self_hash(value: dict[str, Any], field: str) -> None:
-    claimed = value.get(field)
-    if not isinstance(claimed, str) or claimed != self_hash(value, field):
-        raise ContractError(f"{field} differs from canonical content")
-
-
 def validate_document(value: Any, name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ContractError(f"{name} document must be an object")
     validate_schema(value, name)
-    schema_version = value.get("schema_version")
-    field = HASH_FIELDS.get(schema_version)
-    if field is None:
-        raise ContractError(f"{name} schema version has no hash owner")
-    verify_self_hash(value, field)
     if name == "interaction_probes":
         probe_ids = [probe["probe_id"] for probe in value["probes"]]
         if len(probe_ids) != len(set(probe_ids)):
@@ -356,20 +322,11 @@ def _relative_path(path: str) -> PurePosixPath:
     return relative
 
 
-def resolve_binding(
-    binding: dict[str, Any],
-    repository_root: Path,
-    campaign_root: Path,
-) -> Path:
-    if set(binding) != {"root", "path", "sha256"} or not HASH.fullmatch(
-        str(binding.get("sha256"))
-    ):
-        raise ContractError("artifact binding shape is invalid")
-    roots = {"repository": repository_root, "campaign": campaign_root}
+def _resolve_owned_path(binding: dict[str, Any], root: Path) -> Path:
     try:
-        root = roots[binding["root"]].resolve(strict=True)
-    except (KeyError, OSError) as exc:
-        raise ContractError("artifact binding root is invalid") from exc
+        root = root.resolve(strict=True)
+    except OSError as exc:
+        raise ContractError("artifact binding root is unavailable") from exc
     relative = _relative_path(binding["path"])
     candidate = root.joinpath(*relative.parts)
     if candidate.is_symlink() or not candidate.is_file():
@@ -379,9 +336,75 @@ def resolve_binding(
     resolved = candidate.resolve(strict=True)
     if not resolved.is_relative_to(root):
         raise ContractError("bound artifact escapes its declared root")
-    if content_hash(resolved.read_bytes()) != binding["sha256"]:
-        raise ContractError(f"bound artifact hash differs: {binding['path']}")
     return resolved
+
+
+def _artifact_schema_version(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        value = load_json(path, label=path.name)
+        version = value.get("schema_version") if isinstance(value, dict) else None
+        return str(version) if version is not None else "json/1"
+    if suffix == ".jsonl":
+        rows = [line for line in path.read_bytes().splitlines() if line.strip()]
+        if rows:
+            value = strict_json_bytes(rows[0], label=path.name)
+            version = value.get("schema_version") if isinstance(value, dict) else None
+            if version is not None:
+                return f"jsonl/{version}"
+        return "jsonl/1"
+    if suffix in {".md", ".txt", ".log"}:
+        path.read_text(encoding="utf-8")
+        return "text/utf-8"
+    return "bytes/1"
+
+
+def resolve_repository_ref(
+    binding: dict[str, Any], repository_root: Path,
+) -> Path:
+    if set(binding) != {"root", "path"} or binding.get("root") != "repository":
+        raise ContractError("repository binding shape is invalid")
+    return _resolve_owned_path(binding, repository_root)
+
+
+def resolve_campaign_ref(binding: dict[str, Any], campaign_root: Path) -> Path:
+    if (
+        set(binding) != {"root", "path", "schema_version"}
+        or binding.get("root") != "campaign"
+        or not isinstance(binding.get("schema_version"), str)
+    ):
+        raise ContractError("campaign binding shape is invalid")
+    resolved = _resolve_owned_path(binding, campaign_root)
+    if _artifact_schema_version(resolved) != binding["schema_version"]:
+        raise ContractError(f"campaign artifact schema differs: {binding['path']}")
+    return resolved
+
+
+def resolve_external_binding(binding: dict[str, Any], campaign_root: Path) -> Path:
+    if (
+        set(binding) != {"root", "path", "digest", "schema_version"}
+        or binding.get("root") != "external"
+        or not HASH.fullmatch(str(binding.get("digest")))
+        or not isinstance(binding.get("schema_version"), str)
+    ):
+        raise ContractError("external binding shape is invalid")
+    resolved = _resolve_owned_path(binding, campaign_root)
+    if content_hash(resolved.read_bytes()) != binding["digest"]:
+        raise ContractError(f"external artifact digest differs: {binding['path']}")
+    return resolved
+
+
+def resolve_binding(
+    binding: dict[str, Any], repository_root: Path, campaign_root: Path,
+) -> Path:
+    root = binding.get("root") if isinstance(binding, dict) else None
+    if root == "repository":
+        return resolve_repository_ref(binding, repository_root)
+    if root == "campaign":
+        return resolve_campaign_ref(binding, campaign_root)
+    if root == "external":
+        return resolve_external_binding(binding, campaign_root)
+    raise ContractError("artifact binding root is invalid")
 
 
 def make_binding(
@@ -391,7 +414,11 @@ def make_binding(
     repository_root: Path,
     campaign_root: Path,
 ) -> dict[str, str]:
-    roots = {"repository": repository_root, "campaign": campaign_root}
+    roots = {
+        "repository": repository_root,
+        "campaign": campaign_root,
+        "external": campaign_root,
+    }
     if root not in roots:
         raise ContractError("artifact binding root is invalid")
     base = roots[root].resolve(strict=True)
@@ -404,55 +431,16 @@ def make_binding(
         raise ContractError("artifact is outside its declared root")
     relative = resolved.relative_to(base).as_posix()
     _relative_path(relative)
-    return {
+    if root == "repository":
+        return {"root": root, "path": relative}
+    binding = {
         "root": root,
         "path": relative,
-        "sha256": content_hash(resolved.read_bytes()),
+        "schema_version": _artifact_schema_version(resolved),
     }
-
-
-def validate_all_bindings(
-    value: Any,
-    repository_root: Path,
-    campaign_root: Path,
-    repository_fallback: Callable[[str, str], bool] | None = None,
-) -> None:
-    if isinstance(value, dict):
-        if set(value) == {"root", "path", "sha256"}:
-            if value["root"] == "repository" and repository_fallback is not None:
-                if not HASH.fullmatch(str(value["sha256"])):
-                    raise ContractError("artifact binding shape is invalid")
-                relative = _relative_path(value["path"])
-                candidate = repository_root.joinpath(*relative.parts)
-                if candidate.is_symlink() or not candidate.resolve(
-                    strict=False
-                ).is_relative_to(repository_root.resolve(strict=True)):
-                    raise ContractError(
-                        f"bound artifact is symlinked or escapes: {value['path']}"
-                    )
-                try:
-                    resolve_binding(value, repository_root, campaign_root)
-                except ContractError:
-                    if not repository_fallback(value["path"], value["sha256"]):
-                        raise
-            else:
-                resolve_binding(value, repository_root, campaign_root)
-            return
-        for item in value.values():
-            validate_all_bindings(
-                item,
-                repository_root,
-                campaign_root,
-                repository_fallback,
-            )
-    elif isinstance(value, list):
-        for item in value:
-            validate_all_bindings(
-                item,
-                repository_root,
-                campaign_root,
-                repository_fallback,
-            )
+    if root == "external":
+        binding["digest"] = content_hash(resolved.read_bytes())
+    return binding
 
 
 def parse_utc(value: str) -> datetime:
@@ -513,10 +501,9 @@ def evaluator_evidence_status(path: Path, *, kind: str) -> str:
     if kind in {"current_summary", "candidate_summary", "holdout_summary"}:
         _validate_external_schema(
             value,
-            REPOSITORY_ROOT / "skill-evaluator/schemas/analysis-summary-v4.schema.json",
+            REPOSITORY_ROOT / "skill-evaluator/schemas/analysis-summary-v5.schema.json",
             kind,
         )
-        verify_self_hash(value, "summary_hash")
         if (
             value["evidence_status"] != "complete"
             or value["final_authority_status"] != "eligible"
@@ -527,10 +514,9 @@ def evaluator_evidence_status(path: Path, *, kind: str) -> str:
         _validate_external_schema(
             value,
             REPOSITORY_ROOT
-            / "skill-evaluator/schemas/comparison-report-v1.schema.json",
+            / "skill-evaluator/schemas/comparison-report-v2.schema.json",
             kind,
         )
-        verify_self_hash(value, "comparison_report_hash")
         if value["authority_eligibility"] != "eligible":
             return "blocked"
         result = value["result"]
@@ -551,10 +537,9 @@ def evaluator_evidence_status(path: Path, *, kind: str) -> str:
         _validate_external_schema(
             value,
             REPOSITORY_ROOT
-            / "skill-evaluator/schemas/grader-calibration-v2.schema.json",
+            / "skill-evaluator/schemas/grader-calibration-v3.schema.json",
             kind,
         )
-        verify_self_hash(value, "calibration_hash")
         return "pass"
     raise ContractError(f"unsupported evaluator evidence kind {kind!r}")
 

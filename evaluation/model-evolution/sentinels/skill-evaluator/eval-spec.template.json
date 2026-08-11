@@ -184,7 +184,7 @@
     "external_writes": false,
     "install": false,
     "manual_review": {
-      "decision_contract_hash": null,
+      "decision_contract": null,
       "required": false,
       "role": "evaluation-owner"
     },
@@ -254,12 +254,12 @@
           0
         ],
         "path": "verify.py",
-        "sha256": "sha256:13c1c987ebf29b46b9ec6e7283e1a9635fb52aa35ec7b7d50804bb952dcfe72b",
+        "source_revision": "0000000000000000000000000000000000000000",
         "timeout_seconds": 10
       }
     },
     {
-      "batch_schedule_hash": "sha256:fb873b6761298a52ada6d7c7fa88a9a39e35ecef5912355e0da29f5d89a1bafd",
+      "batch_schedule_id": "process-check-then-quality-check",
       "checks": [
         {
           "check_id": "quality-check",
@@ -277,13 +277,13 @@
       "grader_id": "sentinel-model-grader",
       "model": "replace-before-scored-run",
       "output_schema": {
-        "path": "grader-output.schema.json",
-        "sha256": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d"
+        "path": "grader-output.schema.json"
       },
       "prompt": {
-        "path": "grader-prompt.md",
-        "sha256": "sha256:ca106562f4e10f12a5209a350eba003c48cb93c4bb84903862eac8766ac01cb8"
+        "path": "grader-prompt.md"
       },
+      "prompt_id": "skill-evaluator-sentinel-grader-prompt-v1",
+      "schema_id": "skill-evaluator-grader-output-v1",
       "type": "model"
     }
   ],
@@ -345,8 +345,7 @@
   ],
   "host": {
     "manifest": {
-      "path": "host-manifest.template.json",
-      "sha256": "sha256:ba7931ab9a67fb3f7d9e8e38accf1a0fd2f70270a718bedb33fcaf8206807fe3"
+      "path": "host-manifest.template.json"
     },
     "required_capabilities": [
       "force_load",
@@ -355,7 +354,7 @@
   },
   "level": "L2",
   "risk_tier": "standard",
-  "schema_version": 5,
+  "schema_version": 6,
   "subject": {
     "claimed_hosts": [
       "replace-host"
@@ -372,10 +371,9 @@
     "name": "Skill Evaluator",
     "package": {
       "dirty_state": "clean",
-      "package_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "package_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
       "path": "replace-with-skill-evaluator-package",
-      "repository_revision": "0000000000000000000000000000000000000000",
-      "repository_tree": "0000000000000000000000000000000000000000"
+      "source_revision": "0000000000000000000000000000000000000000"
     },
     "principal_mode": "single",
     "shape": "single_skill",
@@ -383,50 +381,44 @@
     "version": "3.3.4"
   },
   "suite": {
-    "fixture_set_hash": "sha256:7a05d547b3e6f97dab73386c13bf05bd08ab0f21d54730ddb58fadd4889b1854",
-    "grader_schedule_hash": "sha256:13926d09f5eb502bb0a6e367f131f044b2eb9318e41637ea66d1ad2823c2b918",
-    "grader_set_hash": "sha256:6a0b2243c0e3ef052f2bb467c465557dcc70459ca79a7e293a8e39aa35b46f71",
     "holdout": null,
     "order_seed": 630,
     "public_scenarios": {
-      "path": "scenarios.public.jsonl",
-      "sha256": "sha256:b39f303184bbbd86de4a62c6bf7675e524ac195eb1becb043ea974bdbe36651f"
+      "path": "scenarios.public.jsonl"
     },
     "quality": {
+      "digest": "sha256:d9cc3e861f84068aa319cfcbefa0f7495591d2664b09c2423823917b96f7a0ae",
       "path": "suite-quality.json",
-      "sha256": "sha256:603a9ac192eeee28451a6922f668c2062ca2cb78db43c9828088e89535036eec"
+      "schema_version": "suite-quality/2"
     },
-    "quality_contract_hash": "sha256:4af730808eae60b3d71ab2c7573c5a6d4d1b589fcf537c7cd91e0bbfac89fd53",
     "repeats": 1,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
-      "path": "scenarios.public.jsonl",
-      "sha256": "sha256:b39f303184bbbd86de4a62c6bf7675e524ac195eb1becb043ea974bdbe36651f"
-    },
-    "treatment_contract_hash": "sha256:6af1e852fad9dc98a02b55d8ccd19234fcf41bd07e18591da31d891548bd89dc"
+      "path": "scenarios.public.jsonl"
+    }
   },
   "treatments": [
     {
-      "base_catalog_hash": "sha256:aa55b4fc409e67dc808ef32a9d7d7f5ebe63b68c59ea3bd4d75d3d7d12a18135",
+      "base_catalog_id": "fixture-catalog",
       "causal_role": "baseline",
-      "context_policy_hash": "sha256:27781ec361e455f5ab4cba8dff996e6adf9b0411ba7c6f87d0d8993db74dc8ed",
-      "delivery_transform_hash": "sha256:12fc35510f716ca102a1498ececb6f9725931ec6bbe3b6e044083e0702b1b01d",
+      "context_policy_id": "fixture-policy",
+      "delivery_transform_id": "fixture-delivery-disabled",
       "exclusion_reason": null,
       "exclusions": [],
       "expected_capabilities": [
         "force_load",
         "model_grading"
       ],
-      "harness_identity": "sha256:04ebc1267fab4654790c4dc4cc092b70e4545e4e6a6007a597ec11347fe93dac",
-      "host_identity": "sha256:720e1497762680d6cd714001fd471ac68a73fb8f96b562e6b692d9ec23c26ef2",
-      "implementation_hash": "sha256:34bf02e9d82363b2749a04ee745126d6eb9bf8e87d0082bd314b943e4f44e7e6",
+      "harness_identity": "fixture-harness",
+      "host_identity": "replace-host",
+      "implementation_revision": "baseline-implementation",
       "intervention_axes": [
         "target-skill"
       ],
-      "model_identity": "sha256:0f2932e42ff4a364f5f9ff3b849257df786dd8362c81ca916087624ac9df0a48",
-      "network_policy_hash": "sha256:064c876c4f965debe645b6598584f83762022dfc10f7a70e7d54a566105e06c6",
-      "permission_policy_hash": "sha256:d158ea0717bc436f050c6792d8b52cc08216c3866c0f22d626826fefb32c6b51",
+      "model_identity": "fixture-model",
+      "network_policy_id": "fixture-policy",
+      "permission_policy_id": "fixture-policy",
       "profile": "baseline/skill_disabled",
       "prompt_variant_group_id": "frontier-sentinel-v1",
       "scenario_ids": [
@@ -447,29 +439,29 @@
         "protected",
         "transition-revision"
       ],
-      "tool_policy_hash": "sha256:6522f1b6f4bdf771f17878686721107dba84304ddfa0e2b8e1e8f5905d66f1db",
+      "tool_policy_id": "fixture-tools",
       "treatment_id": "baseline"
     },
     {
-      "base_catalog_hash": "sha256:aa55b4fc409e67dc808ef32a9d7d7f5ebe63b68c59ea3bd4d75d3d7d12a18135",
+      "base_catalog_id": "fixture-catalog",
       "causal_role": "candidate",
-      "context_policy_hash": "sha256:27781ec361e455f5ab4cba8dff996e6adf9b0411ba7c6f87d0d8993db74dc8ed",
-      "delivery_transform_hash": "sha256:36751f6d45e24c993d035591be2ea834af44a350d006af12136f1fa0226362e1",
+      "context_policy_id": "fixture-policy",
+      "delivery_transform_id": "fixture-delivery-force-loaded",
       "exclusion_reason": null,
       "exclusions": [],
       "expected_capabilities": [
         "force_load",
         "model_grading"
       ],
-      "harness_identity": "sha256:04ebc1267fab4654790c4dc4cc092b70e4545e4e6a6007a597ec11347fe93dac",
-      "host_identity": "sha256:720e1497762680d6cd714001fd471ac68a73fb8f96b562e6b692d9ec23c26ef2",
-      "implementation_hash": "sha256:2830a2858b12b7bd66fcb5f5f47db1a3641ca185f91cb7fc5d0df2c83ae05d92",
+      "harness_identity": "fixture-harness",
+      "host_identity": "replace-host",
+      "implementation_revision": "candidate-implementation",
       "intervention_axes": [
         "target-skill"
       ],
-      "model_identity": "sha256:0f2932e42ff4a364f5f9ff3b849257df786dd8362c81ca916087624ac9df0a48",
-      "network_policy_hash": "sha256:064c876c4f965debe645b6598584f83762022dfc10f7a70e7d54a566105e06c6",
-      "permission_policy_hash": "sha256:d158ea0717bc436f050c6792d8b52cc08216c3866c0f22d626826fefb32c6b51",
+      "model_identity": "fixture-model",
+      "network_policy_id": "fixture-policy",
+      "permission_policy_id": "fixture-policy",
       "profile": "candidate/force_loaded",
       "prompt_variant_group_id": "frontier-sentinel-v1",
       "scenario_ids": [
@@ -490,7 +482,7 @@
         "protected",
         "transition-revision"
       ],
-      "tool_policy_hash": "sha256:6522f1b6f4bdf771f17878686721107dba84304ddfa0e2b8e1e8f5905d66f1db",
+      "tool_policy_id": "fixture-tools",
       "treatment_id": "candidate"
     }
   ]

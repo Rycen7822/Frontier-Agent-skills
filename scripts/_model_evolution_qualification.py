@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import json
 from pathlib import Path
 from typing import Any
@@ -14,17 +13,11 @@ from _model_evolution_contract import (
     HASH,
     SAFE_ID,
     SKILL_IDS,
-    canonical_bytes,
-    content_hash,
     evaluator_evidence_status,
     load_json,
     parse_utc,
     resolve_binding,
-    self_hash,
-    validate_all_bindings,
     validate_document,
-    verify_self_hash,
-    with_self_hash,
 )
 
 
@@ -47,7 +40,7 @@ CRITICAL_PROBE_CAPABILITIES = {
 
 
 def validate_qualification(value: Any) -> dict[str, Any]:
-    """Validate qualification schema, hash, gate order, and decision."""
+    """Validate qualification structure, gate order, and decision."""
     qualification = validate_document(value, "qualification")
     if [gate["gate_id"] for gate in qualification["gates"]] != list(GATE_IDS):
         raise ContractError("qualification gates are not in canonical order")
@@ -104,22 +97,21 @@ def _apparatus_artifact(
     required = {
         "schema_version",
         "campaign_id",
+        "state_revision",
         "source_commit",
         "source_tree",
-        "campaign_hash",
         "status",
         "operations",
-        "apparatus_report_hash",
     }
     if not isinstance(value, dict) or set(value) != required:
         raise ContractError("apparatus report shape is invalid")
-    verify_self_hash(value, "apparatus_report_hash")
     operation_fields = {
         "operation_id",
-        "input_hash",
-        "command_hash",
         "status",
         "duration_ms",
+        "state_revision",
+        "exit_code",
+        "diagnostic",
     }
 
     def valid_operation(operation: Any) -> bool:
@@ -128,17 +120,24 @@ def _apparatus_artifact(
             and set(operation) == operation_fields
             and isinstance(operation.get("operation_id"), str)
             and SAFE_ID.fullmatch(operation["operation_id"]) is not None
-            and HASH.fullmatch(str(operation.get("input_hash"))) is not None
-            and HASH.fullmatch(str(operation.get("command_hash"))) is not None
             and operation.get("status") == "pass"
             and isinstance(operation.get("duration_ms"), int)
             and not isinstance(operation["duration_ms"], bool)
             and operation["duration_ms"] >= 0
+            and isinstance(operation.get("state_revision"), int)
+            and not isinstance(operation["state_revision"], bool)
+            and operation["state_revision"] >= 0
+            and operation.get("exit_code") in {0, None}
+            and (
+                operation.get("diagnostic") is None
+                or isinstance(operation["diagnostic"], str)
+            )
         )
 
     if (
-        value["schema_version"] != "model-evolution-apparatus-report/1"
+        value["schema_version"] != "model-evolution-apparatus-report/2"
         or value["campaign_id"] != campaign["campaign_id"]
+        or value["state_revision"] > campaign["state_revision"]
         or value["source_commit"] != campaign["product"]["source_commit"]
         or value["source_tree"] != campaign["product"]["source_tree"]
         or value["status"] != "pass"
@@ -259,11 +258,43 @@ def _selected_plugin_tree(
     )
     if not isinstance(evidence, dict):
         raise ContractError("plugin build evidence must be an object")
-    verify_self_hash(evidence, "evidence_hash")
     plugin_tree = evidence.get("plugin_tree_hash")
     if not isinstance(plugin_tree, str) or not HASH.fullmatch(plugin_tree):
         raise ContractError("plugin build evidence lacks a valid plugin tree")
     return plugin_tree
+
+
+def _qualification_evidence_refs(
+    campaign: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Project the readable receipt and raw-artifact index for the decision."""
+    receipt_bindings = [
+        campaign["apparatus_report"],
+        campaign["interaction_probes"]["results"],
+        campaign["skill_evidence"]["plugin_build"],
+        *(binding
+          for skill_id in SKILL_IDS
+          for binding in campaign["skill_evidence"][skill_id].values()),
+    ]
+    raw_bindings = [
+        request["artifact"]
+        for request in campaign["interaction_probes"]["requests"]
+    ]
+
+    def locators(bindings: list[Any]) -> list[str]:
+        return sorted(
+            {
+                f"{binding['root']}:{binding['path']}"
+                for binding in bindings
+                if isinstance(binding, dict)
+            }
+        )
+
+    return [{
+        "claim_id": "qualification-decision",
+        "receipt_paths": locators(receipt_bindings),
+        "raw_artifact_paths": locators(raw_bindings),
+    }]
 
 
 def project_qualification(
@@ -273,15 +304,8 @@ def project_qualification(
     campaign_root: Path,
     observed_as_of: str,
     valid_until: str,
-    repository_fallback: Callable[[str, str], bool] | None = None,
 ) -> dict[str, Any]:
     validate_campaign(campaign)
-    validate_all_bindings(
-        campaign,
-        repository_root,
-        campaign_root,
-        repository_fallback,
-    )
     if parse_utc(valid_until) <= parse_utc(observed_as_of):
         raise ContractError("qualification valid-until must be after observed-as-of")
 
@@ -526,12 +550,10 @@ def project_qualification(
     )
     budget = campaign["budgets"]
     qualification = {
-        "schema_version": "model-qualification/1",
-        "qualification_id": "mq-"
-        + content_hash(
-            canonical_bytes([campaign["campaign_hash"], observed_as_of, valid_until])
-        ).removeprefix("sha256:")[:24],
-        "campaign_hash": campaign["campaign_hash"],
+        "schema_version": "model-qualification/2",
+        "qualification_id": f"qualification.r{campaign['state_revision']}",
+        "campaign_id": campaign["campaign_id"],
+        "terminal_state_revision": campaign["state_revision"],
         "identity": {
             "source_commit": final_commit,
             "source_tree": final_tree,
@@ -587,8 +609,8 @@ def project_qualification(
                 else None
             ),
         },
+        "evidence_refs": _qualification_evidence_refs(campaign),
     }
-    qualification = with_self_hash(qualification, "qualification_hash")
     return validate_qualification(qualification)
 
 
@@ -598,7 +620,7 @@ def render_qualification_markdown(value: dict[str, Any]) -> str:
         f"# Model qualification {value['qualification_id']}",
         "",
         f"Decision: `{value['decision']}`",
-        f"Campaign: `{value['campaign_hash']}`",
+        f"Campaign: `{value['campaign_id']}` revision `{value['terminal_state_revision']}`",
         f"Validity: `{value['validity']['observed_as_of']}` to `{value['validity']['valid_until']}`",
         "",
         "## Ordered gates",
@@ -624,8 +646,7 @@ def render_qualification_markdown(value: dict[str, Any]) -> str:
         lines.extend(
             f"- `{item['code']}` ({item['scope']})" for item in value["blockers"]
         )
-    lines.extend(["", f"Qualification hash: `{value['qualification_hash']}`", ""])
-    return "\n".join(lines)
+    return "\n".join([*lines, ""])
 
 
 def project_observed_host(
@@ -655,7 +676,7 @@ def project_observed_host(
             "status": result["status"],
             "artifact": {
                 "path": terminal["path"],
-                "sha256": terminal["sha256"],
+                "digest": terminal["digest"],
                 "encoding": "utf-8",
             },
             "locator": {
@@ -669,5 +690,4 @@ def project_observed_host(
     if "--host-manifest" not in command:
         raise ContractError("target Host command does not bind its manifest path")
     command[command.index("--host-manifest") + 1] = str(observed_manifest_path)
-    observed["manifest_hash"] = self_hash(observed, "manifest_hash")
     return observed

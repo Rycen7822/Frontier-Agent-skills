@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "evaluation_id": "public-l0-template",
   "level": "L0",
   "risk_tier": "standard",
@@ -15,7 +15,7 @@
   "subject": {
     "skill_id": "skill-evaluator",
     "name": "Skill Evaluator",
-    "version": "3.0.0",
+    "version": "4.0.0",
     "shape": "single_skill",
     "mechanisms": [
       "procedure_workflow",
@@ -27,10 +27,9 @@
     ],
     "package": {
       "path": "replace-with-skill-package",
-      "package_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-      "repository_revision": "0000000000000000000000000000000000000000",
-      "repository_tree": "0000000000000000000000000000000000000000",
-      "dirty_state": "clean"
+      "source_revision": "0000000000000000000000000000000000000000",
+      "dirty_state": "clean",
+      "package_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
     },
     "claims": [
       "scoped-evaluation"
@@ -200,7 +199,7 @@
     "manual_review": {
       "required": false,
       "role": "evaluation-owner",
-      "decision_contract_hash": null
+      "decision_contract": null
     },
     "install": false,
     "publish": false,

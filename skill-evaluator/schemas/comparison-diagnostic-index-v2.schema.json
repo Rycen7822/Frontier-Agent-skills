@@ -1,21 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/skill-evaluator/schemas/comparison-diagnostic-index-v1.schema.json",
-  "title": "Skill Evaluator comparison diagnostic index v1",
+  "$id": "https://example.invalid/skill-evaluator/schemas/comparison-diagnostic-index-v2.schema.json",
+  "title": "Skill Evaluator comparison diagnostic index v2",
   "type": "object",
   "required": [
     "schema_version",
-    "comparison_diagnostic_index_hash",
     "comparison_id",
-    "comparison_plan_hash",
     "item_count",
     "diagnostics"
   ],
   "properties": {
-    "schema_version": {"const": 1},
-    "comparison_diagnostic_index_hash": {"$ref": "#/$defs/sha256"},
+    "schema_version": {"const": 2},
     "comparison_id": {"$ref": "#/$defs/safe_id"},
-    "comparison_plan_hash": {"$ref": "#/$defs/sha256"},
     "item_count": {"type": "integer", "minimum": 0},
     "diagnostics": {
       "type": "array",
@@ -27,10 +23,6 @@
     "safe_id": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
-    },
-    "sha256": {
-      "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "role": {
       "enum": ["prior", "candidate", "A", "B", "C"]
@@ -49,13 +41,10 @@
         "expected",
         "observed",
         "locator",
-        "source_hash"
+        "source_ref"
       ],
       "properties": {
-        "diagnostic_id": {
-          "type": "string",
-          "pattern": "^cd-[0-9a-f]{24}$"
-        },
+        "diagnostic_id": {"$ref": "#/$defs/safe_id"},
         "severity": {
           "enum": ["low", "medium", "high", "critical"]
         },
@@ -96,9 +85,9 @@
         "expected": {"type": "string", "minLength": 1},
         "observed": {"type": "string", "minLength": 1},
         "locator": {
-          "$ref": "failure-index-v1.schema.json#/$defs/locator"
+          "$ref": "failure-index-v2.schema.json#/$defs/locator"
         },
-        "source_hash": {"$ref": "#/$defs/sha256"}
+        "source_ref": {"type": "string", "minLength": 1}
       },
       "additionalProperties": false
     }

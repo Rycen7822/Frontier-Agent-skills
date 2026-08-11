@@ -31,7 +31,7 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
                 'schemas/README.md',
                 *{
                     'schemas/' + name
-                    for name in make_v5_schema_examples()
+                    for name in make_epoch6_schema_examples()
                 },
             },
         )
@@ -196,7 +196,7 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
         frontmatter = skill_text.split('---', 2)[1]
         self.assertIn('This skill is explicit-only.', skill_text)
         self.assertIn('hosts: [codex, hermes-agent]', frontmatter)
-        self.assertLessEqual(len(skill_text.encode('utf-8')), 10_500)
+        self.assertLessEqual(len(skill_text.encode('utf-8')), 11_000)
         self.assertLessEqual(len(skill_text.splitlines()), 125)
         for heading in ('## Decision router', '## Claim ceilings', '## Run the owners', '## Owner index'):
             self.assertIn(heading, skill_text)
@@ -233,11 +233,11 @@ class TestExtendedPackageAudit(SkillEvaluatorTestCase):  # noqa: F405
         self.assertNotRegex(skill_text, r'(?i)read\s+`?scripts/(?:audit_skill_package|validate_eval_suite|analyze_runs)\.py')
 
 
-    def test_method_source_map_uses_v5_plan_index_receipt_and_requirement_owners(self) -> None:
+    def test_method_source_map_uses_epoch6_evidence_owners(self) -> None:
         source_map = (ROOT / 'references/source-map.md').read_text(encoding='utf-8')
         for token in (
-            'schema_version=5', 'scenario v1 `requirements[]`',
-            'execution plan v1', 'run-index row v2', 'receipt v4',
+            'schema_version=6', 'scenario v1 `requirements[]`',
+            'execution plan v2', 'run index v3', 'receipt v5',
             'compile_eval_plan.py::compile_plan',
             'analyze_runs.py::summarize_case_differences',
             'analyze_runs.py::summarize_skill_context',

@@ -71,7 +71,7 @@ def _target_diagnostics(
         or actual_cases != sorted(target["case_ids"])
         or actual_requirements != sorted(target["requirement_ids"])
     ):
-        path, source_hash = artifact_source(plan, prior, "failure_index")
+        path = artifact_source(plan, prior, "failure_index")
         blocking.append(make_diagnostic(
             severity="high",
             fact_type="evidence_gap",
@@ -89,7 +89,7 @@ def _target_diagnostics(
             },
             locator_artifact=path,
             json_pointer="/failures",
-            source_hash=source_hash,
+            source_ref=path,
             case_ids=target["case_ids"],
             requirement_ids=target["requirement_ids"],
         ))
@@ -156,7 +156,7 @@ def _target_diagnostics(
         if signature(item) in target_signatures
     ]
     if residual_items:
-        path, source_hash = artifact_source(plan, candidate, "failure_index")
+        path = artifact_source(plan, candidate, "failure_index")
         residual.append(make_diagnostic(
             severity="high",
             fact_type="revision_closure",
@@ -166,7 +166,7 @@ def _target_diagnostics(
             observed=[item["failure_id"] for item in residual_items],
             locator_artifact=path,
             json_pointer="/failures",
-            source_hash=source_hash,
+            source_ref=path,
             case_ids=target["case_ids"],
             requirement_ids=target["requirement_ids"],
         ))
@@ -367,7 +367,7 @@ def _gate_diagnostics(
         if item["gate_id"] in required_gate_ids
     ]
     if failed_items:
-        path, source_hash = artifact_source(plan, candidate, "failure_index")
+        path = artifact_source(plan, candidate, "failure_index")
         failures.append(make_diagnostic(
             severity="critical",
             fact_type="gate",
@@ -377,7 +377,7 @@ def _gate_diagnostics(
             observed=[item["failure_id"] for item in failed_items],
             locator_artifact=path,
             json_pointer="/failures",
-            source_hash=source_hash,
+            source_ref=path,
         ))
     return blocking, failures
 

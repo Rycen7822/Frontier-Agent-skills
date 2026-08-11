@@ -175,38 +175,21 @@ class TestExtendedEvalRevision(ComparisonTestCase):  # noqa: F405
             original_summary = json.loads(
                 candidate['summary'].read_text(encoding='utf-8'),
             )
-            evidence = load_evidence_io_module()  # noqa: F405
             for name in ('model-identity', 'other-package'):
                 with self.subTest(name=name):
                     cycle_plan = copy.deepcopy(original_plan)
                     if name == 'model-identity':
-                        cycle_plan['execution_identity']['model_hash'] = (
-                            'sha256:' + '8' * 64
+                        cycle_plan['execution_profile']['model'] = (
+                            'unexpected-model'
                         )
                     else:
-                        cycle_plan['package_hashes']['unexpected-module'] = (
+                        cycle_plan['package_digests']['unexpected-module'] = (
                             'sha256:' + '7' * 64
                         )
-                    self._write_self_hashed(
-                        candidate['plan'],
-                        cycle_plan,
-                        'plan_hash',
-                    )
-                    summary = copy.deepcopy(original_summary)
-                    summary['plan_hash'] = cycle_plan['plan_hash']
-                    self._write_self_hashed(
-                        candidate['summary'],
-                        summary,
-                        'summary_hash',
-                    )
+                    self._write_document(candidate['plan'], cycle_plan)
+                    self._write_document(candidate['summary'], original_summary)
                     plan = copy.deepcopy(baseline)
-                    binding = plan['input_bindings']['candidate']
-                    binding['execution_plan']['file_sha256'] = (
-                        evidence.file_sha256(candidate['plan'])
-                    )
-                    binding['expected_identity']['execution_identity'] = (
-                        cycle_plan['execution_identity']
-                    )
+                    self._refresh_all_cycle_bindings(root, plan)
                     plan['output']['root'] = f'{name}-drift-output'
                     plan_path = root / f'{name}.plan.json'
                     self._rewrite_plan(plan_path, plan)

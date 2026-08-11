@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/skill-evaluator/schemas/run-index-v3.schema.json",
+  "title": "Skill Evaluator run index v3 record",
+  "oneOf": [
+    {"$ref": "#/$defs/index_header"},
+    {"$ref": "#/$defs/attempt"}
+  ],
+  "$defs": {
+    "index_header": {
+      "type": "object",
+      "required": ["record_type", "plan_id", "plan_digest"],
+      "properties": {
+        "record_type": {"const": "index_header"},
+        "plan_id": {"$ref": "#/$defs/safe_id"},
+        "plan_digest": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "attempt": {
+      "type": "object",
+      "required": [
+        "record_type",
+        "entry_id",
+        "run_id",
+        "attempt_id",
+        "artifact_dir",
+        "receipt"
+      ],
+      "properties": {
+        "record_type": {"const": "attempt"},
+        "entry_id": {"$ref": "#/$defs/safe_id"},
+        "run_id": {"$ref": "#/$defs/safe_id"},
+        "attempt_id": {"$ref": "#/$defs/safe_id"},
+        "artifact_dir": {"$ref": "#/$defs/relative_path"},
+        "receipt": {"$ref": "#/$defs/artifact_binding"}
+      },
+      "additionalProperties": false
+    },
+    "artifact_binding": {
+      "type": "object",
+      "required": ["path", "digest"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relative_path"},
+        "digest": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    }
+  }
+}

@@ -51,7 +51,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         *,
         output_name: str = 'execution-plan.json',
     ) -> tuple[dict[str, Path], dict]:
-        paths = materialize_v5_contract_fixture(root)
+        paths = materialize_epoch6_contract_fixture(root)
         output = root / output_name
         result = self._run_compiler(paths, output)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -109,22 +109,24 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
 
             result = self._run_runner(plan_path, index_path)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            rows = [
+            records = [
                 json.loads(line)
                 for line in index_path.read_text(encoding='utf-8').splitlines()
             ]
+            header, *rows = records
             self.assertEqual(plan['expected_counts']['execute'], len(rows))
+            evidence_io = load_evidence_io_module()  # noqa: F405
+            self.assertEqual({
+                'record_type': 'index_header',
+                'plan_id': plan['plan_id'],
+                'plan_digest': evidence_io.file_sha256(plan_path),
+            }, header)
             for entry, row in zip(plan['entries'], rows, strict=True):
-                self.assertEqual(2, row['schema_version'])
                 self.assertEqual(entry['entry_id'], row['entry_id'])
-                self.assertEqual(entry['entry_ordinal'], row['entry_ordinal'])
-                self.assertEqual(1, row['attempt'])
                 self.assertEqual(
                     {
-                        'schema_version', 'plan_hash', 'plan_id',
-                        'entry_ordinal', 'entry_id', 'run_id', 'case_id',
-                        'treatment_id', 'repeat', 'attempt', 'artifact_dir',
-                        'receipt',
+                        'record_type', 'entry_id', 'run_id', 'attempt_id',
+                        'artifact_dir', 'receipt',
                     },
                     set(row),
                 )
@@ -132,18 +134,22 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     'receipt'
                 ]['path']
                 receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
-                self.assertEqual(4, receipt['schema_version'])
-                self.assertTrue(
-                    load_evidence_io_module().verify_self_hash(
-                        receipt, 'receipt_hash',
-                    ),
+                self.assertEqual(
+                    evidence_io.file_sha256(receipt_path),
+                    row['receipt']['digest'],
+                )
+                self.assertEqual(5, receipt['schema_version'])
+                self.assertNotIn('receipt_hash', receipt)
+                self.assertNotIn('provenance', receipt)
+                evidence_io.verify_artifact_records(
+                    receipt['artifacts'], receipt_path.parent,
                 )
                 self.assertEqual(entry['entry_id'], receipt['run']['entry_id'])
 
     def test_runner_closes_state_principal_and_handoff_contracts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_handoff_fixture(root)
+            paths = materialize_epoch6_handoff_fixture(root)
             plan_path = root / 'execution-plan.json'
             compile_result = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -151,12 +157,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 compile_result.stdout + compile_result.stderr,
             )
             plan = json.loads(plan_path.read_text(encoding='utf-8'))
-            handoff_id = (
-                'handoff-'
-                + canonical_hash({'from': 'lead', 'to': 'worker'}).removeprefix(
-                    'sha256:',
-                )
-            )
+            handoff_id = 'handoff.lead.worker'
             self.assertTrue(all(
                 entry['handoff_ids'] == [handoff_id]
                 for entry in plan['entries']
@@ -170,10 +171,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 run_result.returncode, 0,
                 run_result.stdout + run_result.stderr,
             )
-            for row in map(
-                json.loads,
-                index_path.read_text(encoding='utf-8').splitlines(),
-            ):
+            _, rows = load_run_index(index_path)  # noqa: F405
+            for row in rows:
                 receipt = json.loads(
                     (
                         root / plan['artifacts']['root']
@@ -192,8 +191,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
 
     def test_runner_closes_exact_routing_and_composition_contracts(self) -> None:
         for materialize in (
-            materialize_v5_routing_fixture,
-            materialize_v5_composition_fixture,
+            materialize_epoch6_routing_fixture,
+            materialize_epoch6_composition_fixture,
         ):
             with (
                 self.subTest(materialize=materialize.__name__),
@@ -220,10 +219,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 entries = {
                     item['entry_id']: item for item in plan['entries']
                 }
-                for row in map(
-                    json.loads,
-                    index_path.read_text(encoding='utf-8').splitlines(),
-                ):
+                _, rows = load_run_index(index_path)  # noqa: F405
+                for row in rows:
                     entry = entries[row['entry_id']]
                     receipt = json.loads(
                         (
@@ -270,8 +267,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_routing_fixture(root)
-            set_v5_synthetic_host_mode(paths, 'routing-mismatch')
+            paths = materialize_epoch6_routing_fixture(root)
+            set_epoch6_synthetic_host_mode(paths, 'routing-mismatch')
             plan_path = root / 'execution-plan.json'
             compiled = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -298,7 +295,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     def test_runner_closes_authorized_action_and_confirmed_effect(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_action_fixture(root)
+            paths = materialize_epoch6_action_fixture(root)
             plan_path = root / 'execution-plan.json'
             compile_result = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -306,12 +303,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 compile_result.stdout + compile_result.stderr,
             )
             plan = json.loads(plan_path.read_text(encoding='utf-8'))
-            action_id = (
-                'action-'
-                + canonical_hash({'tool_id': 'fixture-tool'}).removeprefix(
-                    'sha256:',
-                )
-            )
+            action_id = 'action.fixture-tool'
             required = {
                 'action_authorization_trace',
                 'render_effect_capture',
@@ -331,10 +323,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 run_result.returncode, 0,
                 run_result.stdout + run_result.stderr,
             )
-            for row in map(
-                json.loads,
-                index_path.read_text(encoding='utf-8').splitlines(),
-            ):
+            _, rows = load_run_index(index_path)  # noqa: F405
+            for row in rows:
                 receipt = json.loads(
                     (
                         root / plan['artifacts']['root']
@@ -370,8 +360,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         ):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
-                paths = materialize_v5_action_fixture(root)
-                set_v5_synthetic_host_mode(paths, mode)
+                paths = materialize_epoch6_action_fixture(root)
+                set_epoch6_synthetic_host_mode(paths, mode)
                 plan_path = root / 'execution-plan.json'
                 compile_result = self._run_compiler(paths, plan_path)
                 self.assertEqual(
@@ -395,9 +385,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 if expected_exit != 0:
                     self.assertFalse(index_path.exists())
                     continue
-                row = json.loads(
-                    index_path.read_text(encoding='utf-8').strip(),
-                )
+                _, [row] = load_run_index(index_path)  # noqa: F405
                 receipt = json.loads(
                     (
                         root / plan['artifacts']['root']
@@ -429,8 +417,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         ):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
-                paths = materialize_v5_contract_fixture(root)
-                set_v5_synthetic_host_mode(paths, mode)
+                paths = materialize_epoch6_contract_fixture(root)
+                set_epoch6_synthetic_host_mode(paths, mode)
                 plan_path = root / 'execution-plan.json'
                 compile_result = self._run_compiler(paths, plan_path)
                 self.assertEqual(
@@ -455,13 +443,12 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     root / plan['artifacts']['root']
                     / entry['artifact_relpath'] / 'attempt-0001'
                 )
-                self.assertTrue(
+                self.assertEqual(
+                    expected_exit != 0,
                     (attempt_dir / 'attempt-start.json').is_file(),
                 )
                 if expected_exit == 0:
-                    row = json.loads(
-                        index_path.read_text(encoding='utf-8').strip(),
-                    )
+                    _, [row] = load_run_index(index_path)  # noqa: F405
                     receipt = json.loads(
                         (
                             root / plan['artifacts']['root']
@@ -481,7 +468,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     def test_non_execute_selection_has_zero_runtime_side_effects(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
+            paths = materialize_epoch6_contract_fixture(root)
             host = json.loads(paths['host'].read_text(encoding='utf-8'))
             host['capabilities'][0]['probe']['status'] = 'unsupported'
             host['command']['argv'].append('--mode=host-exit')
@@ -489,7 +476,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(host, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             plan_path = root / 'execution-plan.json'
             compile_result = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -520,7 +507,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     def test_model_grader_uses_only_blinded_host_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_model_ready_fixture(root)
+            paths = materialize_epoch6_model_ready_fixture(root)
             plan_path = root / 'execution-plan.json'
             compile_result = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -543,10 +530,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 run_result.returncode, 0,
                 run_result.stdout + run_result.stderr,
             )
-            rows = [
-                json.loads(line)
-                for line in index_path.read_text(encoding='utf-8').splitlines()
-            ]
+            _, rows = load_run_index(index_path)  # noqa: F405
             row = next(
                 item for item in rows if item['entry_id'] == entry['entry_id']
             )
@@ -835,7 +819,6 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         self,
     ) -> None:
         transport = load_analyzer_module().model_transport
-        semantics = load_grader_semantics_module()
         grader_view = {
             'captured_output': {},
             'host_assessment': {},
@@ -843,13 +826,9 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         }
 
         def bound_check(check_id: str, pass_condition: str) -> dict:
-            payload = semantics.semantic_payload(
-                grader_view, check_id, pass_condition,
-            )
             return {
                 'id': check_id,
                 'pass_condition': pass_condition,
-                'payload_hash': semantics.semantic_payload_hash(payload),
             }
 
         batch = transport.execution_batch(
@@ -940,24 +919,17 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         check_id = 'quality-check'
         pass_condition = 'The result meets the quality bar.'
         payload = semantics.semantic_payload(view, check_id, pass_condition)
-        payload_hash = semantics.semantic_payload_hash(payload)
         packet = {
-            'schema_version': 'context-clean-subagent-reviewer-packet/1.0',
+            'schema_version': 'context-clean-subagent-reviewer-packet/2.0',
             'campaign_id': 'campaign-one',
             'examples': [{
                 'opaque_example_id': 'opaque-one',
                 'payload': payload,
-                'payload_hash': payload_hash,
             }],
-            'packet_hash': None,
         }
-        packet['packet_hash'] = canonical_hash({
-            key: value for key, value in packet.items()
-            if key != 'packet_hash'
-        })
         compact = {
             'schema_version': (
-                'context-clean-subagent-reviewer-message-packet/1.0'
+                'context-clean-subagent-reviewer-message-packet/2.0'
             ),
             'campaign_id': 'campaign-one',
             'tuple_fields': [
@@ -969,7 +941,6 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 'pass_condition': pass_condition,
             }],
             'examples': [['opaque-one', 0, 0]],
-            'source_packet_hash': packet['packet_hash'],
         }
         self.assertEqual(
             packet,
@@ -980,19 +951,18 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             'checks': [{
                 'id': check_id,
                 'pass_condition': pass_condition,
-                'payload_hash': payload_hash,
             }],
             'grader_view': view,
         }], batch_id='batch-one')
         self.assertEqual(
-            payload_hash,
-            batch['items'][0]['checks'][0]['payload_hash'],
+            {'id': check_id, 'pass_condition': pass_condition},
+            batch['items'][0]['checks'][0],
         )
         changed = semantics.semantic_payload(
             view, check_id, pass_condition + ' Changed.',
         )
         self.assertNotEqual(
-            payload_hash,
+            semantics.semantic_payload_hash(payload),
             semantics.semantic_payload_hash(changed),
         )
         for invalid in (
@@ -1005,7 +975,6 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
 
     def test_model_grader_batch_limit_is_consistent(self) -> None:
         transport = load_analyzer_module().model_transport
-        semantics = load_grader_semantics_module()
 
         def batch_item(index: int) -> dict:
             grader_view = {
@@ -1013,17 +982,11 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 'host_assessment': {},
                 'final_answer': f'done-{index}',
             }
-            payload = semantics.semantic_payload(
-                grader_view,
-                'outcome-check',
-                'The outcome is complete.',
-            )
             return {
                 'item_id': f'entry-{index}',
                 'checks': [{
                     'id': 'outcome-check',
                     'pass_condition': 'The outcome is complete.',
-                    'payload_hash': semantics.semantic_payload_hash(payload),
                 }],
                 'grader_view': grader_view,
             }
@@ -1036,7 +999,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(
             6,
             len({
-                item['checks'][0]['payload_hash']
+                item['item_id']
                 for item in accepted['items']
             }),
         )
@@ -1065,16 +1028,12 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 'entry_ordinal': index,
                 'model_grade_specs': [{
                     'grader_id': 'grader-a',
-                    'item_hash': f'sha256:{index:064x}',
-                    'schedule_hash': 'sha256:' + '1' * 64,
+                    'schedule_id': 'schedule-a',
                 }],
             }
 
         six_entries = [plan_entry(index) for index in range(6)]
-        compiler._bind_model_grade_batches(  # noqa: SLF001
-            six_entries,
-            'evaluation-a',
-        )
+        compiler._bind_model_grade_batches(six_entries)  # noqa: SLF001
         batch_entry_ids = six_entries[0]['model_grade_specs'][0][
             'batch_entry_ids'
         ]
@@ -1085,26 +1044,25 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         ):
             compiler._bind_model_grade_batches(  # noqa: SLF001
                 [plan_entry(index) for index in range(7)],
-                'evaluation-a',
             )
 
-    def test_model_batch_identity_binds_check_meaning(self) -> None:
+    def test_model_batch_uses_readable_semantic_identity(self) -> None:
         compiler = load_compiler_module()
         grader = {
             'grader_id': 'grader-a',
             'type': 'model',
+            'model': 'fixture-judge',
             'checks': [{
                 'check_id': 'check-a',
                 'dimension': 'quality',
                 'required': True,
                 'pass_condition': 'The first meaning.',
             }],
-            'batch_schedule_hash': 'sha256:' + '1' * 64,
-            'prompt': {'path': 'prompt.md', 'sha256': 'sha256:' + '2' * 64},
-            'output_schema': {
-                'path': 'output.schema.json',
-                'sha256': 'sha256:' + '3' * 64,
-            },
+            'prompt_id': 'prompt-a',
+            'prompt': {'path': 'prompt.md'},
+            'schema_id': 'schema-a',
+            'output_schema': {'path': 'output.schema.json'},
+            'batch_schedule_id': 'schedule-a',
         }
         scenario = {
             'case_id': 'case-a',
@@ -1117,32 +1075,27 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             }],
         }
 
-        def identity(pass_condition: str) -> tuple[str, str]:
-            grader['checks'][0]['pass_condition'] = pass_condition
-            model_spec = compiler._model_grade_specs(  # noqa: SLF001
-                {'graders': [grader]}, scenario, 1, ['grader-a'],
-            )[0]
-            entry = {
-                'case_id': 'case-a',
-                'disposition': 'execute',
-                'entry_id': 'entry-a',
-                'entry_ordinal': 1,
-                'model_grade_specs': [model_spec],
-            }
-            compiler._bind_model_grade_batches(  # noqa: SLF001
-                [entry], 'evaluation-a',
-            )
-            return model_spec['item_hash'], model_spec['batch_hash']
-
-        self.assertNotEqual(
-            identity('The first meaning.'),
-            identity('A materially different meaning.'),
-        )
+        model_spec = compiler._model_grade_specs(  # noqa: SLF001
+            {'graders': [grader]}, scenario, ['grader-a'],
+        )[0]
+        entry = {
+            'case_id': 'case-a',
+            'disposition': 'execute',
+            'entry_id': 'entry-a',
+            'entry_ordinal': 1,
+            'model_grade_specs': [model_spec],
+        }
+        compiler._bind_model_grade_batches([entry])  # noqa: SLF001
+        self.assertEqual('batch.case-a.grader-a', model_spec['batch_id'])
+        self.assertEqual('schedule-a', model_spec['schedule_id'])
+        self.assertEqual('prompt-a', model_spec['prompt_id'])
+        self.assertEqual('schema-a', model_spec['schema_id'])
+        self.assertNotIn('hash', json.dumps(model_spec, sort_keys=True))
 
     def test_non_execute_model_entry_emits_no_model_grade_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_model_ready_fixture(root)
+            paths = materialize_epoch6_model_ready_fixture(root)
             host = json.loads(paths['host'].read_text(encoding='utf-8'))
             next(
                 item for item in host['capabilities']
@@ -1152,7 +1105,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(host, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             plan_path = root / 'execution-plan.json'
             compile_result = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -1183,7 +1136,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_model_ready_fixture(root)
+            paths = materialize_epoch6_model_ready_fixture(root)
             ratings = [
                 json.loads(line)
                 for line in paths['ratings'].read_text(
@@ -1212,7 +1165,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 calibration_result.stdout + calibration_result.stderr,
             )
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
-            spec['suite']['calibration']['sha256'] = (
+            spec['suite']['calibration']['digest'] = (
                 'sha256:' + hashlib.sha256(
                     paths['calibration'].read_bytes(),
                 ).hexdigest()
@@ -1221,7 +1174,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(spec, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             plan_path = root / 'execution-plan.json'
             compile_result = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -1247,8 +1200,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
 
     def test_runner_captures_observation_and_fault_lifecycles(self) -> None:
         for materialize, expected_kind in (
-            (materialize_v5_observation_fixture, 'observation'),
-            (materialize_v5_fault_fixture, 'fault'),
+            (materialize_epoch6_observation_fixture, 'observation'),
+            (materialize_epoch6_fault_fixture, 'fault'),
         ):
             with (
                 self.subTest(kind=expected_kind),
@@ -1275,9 +1228,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     run_result.returncode, 0,
                     run_result.stdout + run_result.stderr,
                 )
-                row = json.loads(
-                    index_path.read_text(encoding='utf-8').strip(),
-                )
+                _, [row] = load_run_index(index_path)  # noqa: F405
                 receipt = json.loads(
                     (
                         root / plan['artifacts']['root']
@@ -1314,16 +1265,16 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     ) -> None:
         cases = (
             (
-                materialize_v5_observation_fixture,
+                materialize_epoch6_observation_fixture,
                 'observation-mismatch',
             ),
-            (materialize_v5_fault_fixture, 'fault-not-triggered'),
+            (materialize_epoch6_fault_fixture, 'fault-not-triggered'),
         )
         for materialize, mode in cases:
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 paths = materialize(root)
-                set_v5_synthetic_host_mode(paths, mode)
+                set_epoch6_synthetic_host_mode(paths, mode)
                 plan_path = root / 'execution-plan.json'
                 compile_result = self._run_compiler(paths, plan_path)
                 self.assertEqual(
@@ -1351,8 +1302,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
-            set_v5_synthetic_host_mode(paths, 'host-exit')
+            paths = materialize_epoch6_contract_fixture(root)
+            set_epoch6_synthetic_host_mode(paths, 'host-exit')
             plan_path = root / 'execution-plan.json'
             compile_result = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -1376,7 +1327,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(
                 resumed.returncode, 3, resumed.stdout + resumed.stderr,
             )
-            row = json.loads(index_path.read_text(encoding='utf-8').strip())
+            _, [row] = load_run_index(index_path)  # noqa: F405
             receipt = json.loads(
                 (
                     root / plan['artifacts']['root']
@@ -1479,10 +1430,13 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(
                 initial.returncode, 0, initial.stdout + initial.stderr,
             )
-            row = json.loads(index_path.read_text(encoding='utf-8'))
-            row['receipt']['sha256'] = 'sha256:' + '0' * 64
+            header, [row] = load_run_index(index_path)  # noqa: F405
+            row['receipt']['digest'] = 'sha256:' + '0' * 64
             index_path.write_text(
-                json.dumps(row, separators=(',', ':')) + '\n',
+                '\n'.join(
+                    json.dumps(record, sort_keys=True, separators=(',', ':'))
+                    for record in (header, row)
+                ) + '\n',
                 encoding='utf-8',
             )
             tampered = index_path.read_bytes()
@@ -1501,8 +1455,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
-            set_v5_synthetic_host_mode(
+            paths = materialize_epoch6_contract_fixture(root)
+            set_epoch6_synthetic_host_mode(
                 paths, 'transient-first-attempt',
             )
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
@@ -1515,7 +1469,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(spec, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             plan_path = root / 'execution-plan.json'
             compile_result = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -1539,11 +1493,11 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(
                 resumed.returncode, 0, resumed.stdout + resumed.stderr,
             )
-            rows = [
-                json.loads(line)
-                for line in index_path.read_text(encoding='utf-8').splitlines()
-            ]
-            self.assertEqual([1, 2], [row['attempt'] for row in rows])
+            _, rows = load_run_index(index_path)  # noqa: F405
+            self.assertEqual(
+                ['attempt.0.1', 'attempt.0.2'],
+                [row['attempt_id'] for row in rows],
+            )
             receipts = [
                 json.loads(
                     (
@@ -1588,8 +1542,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
-            set_v5_synthetic_host_mode(paths, 'protocol-gap-first-attempt')
+            paths = materialize_epoch6_contract_fixture(root)
+            set_epoch6_synthetic_host_mode(paths, 'protocol-gap-first-attempt')
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
             spec['execution']['retry_policy'] = {
                 'max_attempts': 2,
@@ -1599,7 +1553,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             paths['spec'].write_text(
                 json.dumps(spec, indent=2) + '\n', encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             plan_path = root / 'execution-plan.json'
             compiled = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -1624,17 +1578,14 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(
                 0, resumed.returncode, resumed.stdout + resumed.stderr,
             )
-            rows = [
-                json.loads(line)
-                for line in index_path.read_text(encoding='utf-8').splitlines()
-            ]
+            _, rows = load_run_index(index_path)  # noqa: F405
             receipt = json.loads(
                 (root / plan['artifacts']['root'] / rows[0]['receipt']['path'])
                 .read_text(encoding='utf-8'),
             )
             self.assertEqual('official_transient', receipt['run']['error'])
             self.assertFalse(receipt['run']['valid'])
-            self.assertEqual(2, rows[-1]['attempt'])
+            self.assertEqual('attempt.0.2', rows[-1]['attempt_id'])
 
     def test_timeout_cancel_and_process_timeout_cleanup(self) -> None:
         for mode, terminal in (
@@ -1643,8 +1594,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         ):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
-                paths = materialize_v5_contract_fixture(root)
-                set_v5_synthetic_host_mode(paths, mode)
+                paths = materialize_epoch6_contract_fixture(root)
+                set_epoch6_synthetic_host_mode(paths, mode)
                 plan_path = root / 'execution-plan.json'
                 compile_result = self._run_compiler(paths, plan_path)
                 self.assertEqual(
@@ -1664,9 +1615,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     run_result.returncode, 0,
                     run_result.stdout + run_result.stderr,
                 )
-                row = json.loads(
-                    index_path.read_text(encoding='utf-8').strip(),
-                )
+                _, [row] = load_run_index(index_path)  # noqa: F405
                 receipt = json.loads(
                     (
                         root / plan['artifacts']['root']
@@ -1680,8 +1629,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
-            set_v5_synthetic_host_mode(paths, 'host-model-timeout')
+            paths = materialize_epoch6_contract_fixture(root)
+            set_epoch6_synthetic_host_mode(paths, 'host-model-timeout')
             plan_path = root / 'execution-plan.json'
             compile_result = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -1725,8 +1674,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
-            set_v5_synthetic_host_mode(paths, 'process-timeout')
+            paths = materialize_epoch6_contract_fixture(root)
+            set_epoch6_synthetic_host_mode(paths, 'process-timeout')
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
             spec['execution']['timeout_seconds'] = 1
             paths['spec'].write_text(
@@ -1741,7 +1690,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(scenario, separators=(',', ':')) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             plan_path = root / 'execution-plan.json'
             compile_result = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -1767,7 +1716,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(
                 sealed.returncode, 3, sealed.stdout + sealed.stderr,
             )
-            row = json.loads(index_path.read_text(encoding='utf-8').strip())
+            _, [row] = load_run_index(index_path)  # noqa: F405
             receipt = json.loads(
                 (
                     root / plan['artifacts']['root']
@@ -1803,7 +1752,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(
                 result.returncode, 0, result.stdout + result.stderr,
             )
-            row = json.loads(index_path.read_text(encoding='utf-8').strip())
+            _, [row] = load_run_index(index_path)  # noqa: F405
             attempt_dir = (
                 root / plan['artifacts']['root'] / row['artifact_dir']
             )
@@ -1817,10 +1766,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 ['PYTHONDONTWRITEBYTECODE'],
                 host_invocation['env_allowlist'],
             )
-            self.assertEqual(
-                ['PYTHONDONTWRITEBYTECODE'],
-                [item['name'] for item in host_invocation['env']],
-            )
+            self.assertNotIn('env', host_invocation)
             self.assertNotIn(
                 'secret-sentinel-value',
                 host_invocation_path.read_text(encoding='utf-8'),
@@ -1833,7 +1779,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             )
             self.assertFalse(grader_invocation['shell'])
             self.assertTrue(grader_invocation['start_new_session'])
-            self.assertEqual([], grader_invocation['env'])
+            self.assertEqual([], grader_invocation['env_allowlist'])
+            self.assertNotIn('env', grader_invocation)
             self.assertEqual('none', grader_invocation['credential_policy'])
 
     def test_index_cannot_skip_an_earlier_execute_entry(self) -> None:
@@ -1849,7 +1796,9 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 initial.returncode, 0, initial.stdout + initial.stderr,
             )
             rows = index_path.read_text(encoding='utf-8').splitlines()
-            index_path.write_text(rows[1] + '\n', encoding='utf-8')
+            index_path.write_text(
+                rows[0] + '\n' + rows[2] + '\n', encoding='utf-8',
+            )
             invalid_prefix = index_path.read_bytes()
 
             resumed = self._run_runner(
@@ -1863,7 +1812,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     def test_runner_restores_fixture_and_executes_reset_probe(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
+            paths = materialize_epoch6_contract_fixture(root)
             fixture_path = root / 'fixture-input.txt'
             fixture_path.write_text('fixture bytes\n', encoding='utf-8')
             fixture_path.chmod(0o444)
@@ -1882,7 +1831,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(scenario, separators=(',', ':')) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             plan_path = root / 'execution-plan.json'
             compile_result = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -1902,7 +1851,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 run_result.returncode, 0,
                 run_result.stdout + run_result.stderr,
             )
-            row = json.loads(index_path.read_text(encoding='utf-8').strip())
+            _, [row] = load_run_index(index_path)  # noqa: F405
             attempt_dir = (
                 root / plan['artifacts']['root'] / row['artifact_dir']
             )
@@ -1954,8 +1903,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         ):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
-                paths = materialize_v5_handoff_fixture(root)
-                set_v5_synthetic_host_mode(paths, mode)
+                paths = materialize_epoch6_handoff_fixture(root)
+                set_epoch6_synthetic_host_mode(paths, mode)
                 plan_path = root / 'execution-plan.json'
                 compiled = self._run_compiler(paths, plan_path)
                 self.assertEqual(
@@ -1982,8 +1931,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     def test_async_delivery_preserves_forward_causal_ancestry(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_handoff_fixture(root)
-            set_v5_synthetic_host_mode(paths, 'async-delivery')
+            paths = materialize_epoch6_handoff_fixture(root)
+            set_epoch6_synthetic_host_mode(paths, 'async-delivery')
             plan_path = root / 'execution-plan.json'
             compiled = self._run_compiler(paths, plan_path)
             self.assertEqual(
@@ -2002,7 +1951,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(
                 result.returncode, 0, result.stdout + result.stderr,
             )
-            row = json.loads(index_path.read_text(encoding='utf-8').strip())
+            _, [row] = load_run_index(index_path)  # noqa: F405
             receipt = json.loads(
                 (
                     root / plan['artifacts']['root']
@@ -2045,7 +1994,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 tempfile.TemporaryDirectory() as tmp,
             ):
                 root = Path(tmp)
-                paths = materialize_v5_handoff_fixture(root)
+                paths = materialize_epoch6_handoff_fixture(root)
                 scenario = json.loads(
                     paths['scenarios'].read_text(encoding='utf-8'),
                 )
@@ -2056,14 +2005,12 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     json.dumps(scenario, separators=(',', ':')) + '\n',
                     encoding='utf-8',
                 )
-                rebind_v5_contract_fixture(paths)
+                rebind_epoch6_contract_fixture(paths)
                 result, plan, index_path = compile_and_run(root, paths)
                 self.assertEqual(
                     result.returncode, 0, result.stdout + result.stderr,
                 )
-                row = json.loads(
-                    index_path.read_text(encoding='utf-8').strip(),
-                )
+                _, [row] = load_run_index(index_path)  # noqa: F405
                 receipt = json.loads(
                     (
                         root / plan['artifacts']['root']
@@ -2075,14 +2022,14 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     if item['slot_id'] == 'worker'
                 )
                 component_hashes = {
-                    item['content_sha256']
+                    item['artifact']['digest']
                     for item in receipt['context_usage']['components']
                 }
                 if context_mode == 'fresh':
-                    self.assertIsNone(worker['inherited_context_hash'])
+                    self.assertIsNone(worker['inherited_context_digest'])
                 else:
                     self.assertIn(
-                        worker['inherited_context_hash'], component_hashes,
+                        worker['inherited_context_digest'], component_hashes,
                     )
 
         for bound, value in (('max_width', 1), ('max_depth', 1)):
@@ -2091,7 +2038,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 tempfile.TemporaryDirectory() as tmp,
             ):
                 root = Path(tmp)
-                paths = materialize_v5_handoff_fixture(root)
+                paths = materialize_epoch6_handoff_fixture(root)
                 scenario = json.loads(
                     paths['scenarios'].read_text(encoding='utf-8'),
                 )
@@ -2102,7 +2049,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     json.dumps(scenario, separators=(',', ':')) + '\n',
                     encoding='utf-8',
                 )
-                rebind_v5_contract_fixture(paths)
+                rebind_epoch6_contract_fixture(paths)
                 result, _, index_path = compile_and_run(root, paths)
                 self.assertEqual(
                     result.returncode, 2, result.stdout + result.stderr,
@@ -2112,7 +2059,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     def test_compiler_emits_byte_identical_schema_valid_plan(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
+            paths = materialize_epoch6_contract_fixture(root)
             outputs = [root / 'plan-a.json', root / 'plan-b.json']
             results = [
                 self.run_cmd(
@@ -2135,35 +2082,23 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         validator = load_validator_module()
         self.assertEqual(
             [],
-            validator.validate_v5_schema(
+            validator.validate_epoch6_schema(
                 plan,
-                'execution-plan-v1.schema.json',
-                validator.load_v5_schema_registry(),
+                'execution-plan-v2.schema.json',
+                validator.load_epoch6_schema_registry(),
             ),
         )
-        self.assertTrue(
-            load_evidence_io_module().verify_self_hash(plan, 'plan_hash'),
+        self.assertNotIn('plan_hash', plan)
+        self.assertEqual(
+            plan['source_revision'], plan['compiler']['source_revision'],
         )
 
     def test_plan_and_entry_ids_counts_and_paths_use_exact_projections(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            paths, plan = self._compile_fixture(Path(tmp))
-            spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+            _, plan = self._compile_fixture(Path(tmp))
 
-        compiler = load_compiler_module()
-        plan_projection = {
-            'evaluation_id': plan['evaluation_id'],
-            'spec_hash': plan['spec_hash'],
-            'scenario_corpus_hash': plan['scenario_corpus_hash'],
-            'host_manifest_hash': plan['host_manifest_hash'],
-            'calibration_hash': plan['calibration_hash'],
-            'suite_quality_hash': plan['suite_quality_hash'],
-            'compiler_algorithm': plan['compiler']['algorithm'],
-            'compiler_version': plan['compiler']['version'],
-            'compiler_source_hash': plan['compiler']['source_hash'],
-        }
         self.assertEqual(
-            'pl-' + compiler._projection_digest(plan_projection).hex()[:24],
+            f"plan.{plan['evaluation_id']}",
             plan['plan_id'],
         )
         self.assertEqual(
@@ -2176,7 +2111,11 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             plan['expected_counts'],
         )
         self.assertEqual({'outcome': 2, 'safety': 2}, plan['dimension_coverage'])
-        self.assertIsNone(plan['calibration_hash'])
+        for retired in (
+            'plan_hash', 'spec_hash', 'scenario_corpus_hash',
+            'host_manifest_hash', 'calibration_hash', 'suite_quality_hash',
+        ):
+            self.assertNotIn(retired, plan)
         self.assertEqual(
             list(range(len(plan['entries']))),
             [entry['entry_ordinal'] for entry in plan['entries']],
@@ -2185,24 +2124,12 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             len(plan['entries']),
             len({entry['entry_id'] for entry in plan['entries']}),
         )
-        treatments = {
-            item['treatment_id']: item for item in plan['treatments']
-        }
         for entry in plan['entries']:
-            projection = compiler._entry_projection(
-                spec=compiler._normalize_spec(spec),
-                scenario=entry['execute_case_payload']['case'],
-                treatment=treatments[entry['treatment_id']],
-                repeat=entry['repeat'],
-                spec_hash=plan['spec_hash'],
-                scenario_corpus_hash=plan['scenario_corpus_hash'],
-                host_manifest_hash=plan['host_manifest_hash'],
-                calibration_hash=plan['calibration_hash'],
-                suite_quality_hash=plan['suite_quality_hash'],
-                catalog_hash=entry['catalog_hash'],
-            )
             self.assertEqual(
-                'pe-' + compiler._projection_digest(projection).hex()[:24],
+                (
+                    f"entry.{entry['case_id']}.{entry['treatment_id']}"
+                    f".r{entry['repeat']}"
+                ),
                 entry['entry_id'],
             )
             self.assertEqual(
@@ -2245,7 +2172,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(scenario, separators=(',', ':')) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(turn_paths)
+            rebind_epoch6_contract_fixture(turn_paths)
             turn_output = root / 'turn' / 'changed.json'
             turn_result = self._run_compiler(turn_paths, turn_output)
             self.assertEqual(
@@ -2267,26 +2194,14 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             extra.update({
                 'id': 'other-skill',
                 'name': 'Other Skill',
-                'root_hash': canonical_hash({'skill': 'other'}),
+                'root_digest': canonical_hash({'skill': 'other'}),
             })
             host['catalog']['entries'].append(extra)
-            catalog_hash = canonical_hash(host['catalog']['entries'])
-            host['catalog']['catalog_hash'] = catalog_hash
-            host['identity']['execution']['catalog_hash'] = catalog_hash
             catalog_paths['host'].write_text(
                 json.dumps(host, indent=2) + '\n',
                 encoding='utf-8',
             )
-            spec = json.loads(
-                catalog_paths['spec'].read_text(encoding='utf-8'),
-            )
-            for treatment in spec['treatments']:
-                treatment['base_catalog_hash'] = catalog_hash
-            catalog_paths['spec'].write_text(
-                json.dumps(spec, indent=2) + '\n',
-                encoding='utf-8',
-            )
-            rebind_v5_contract_fixture(catalog_paths)
+            rebind_epoch6_contract_fixture(catalog_paths)
             catalog_output = root / 'catalog' / 'changed.json'
             catalog_result = self._run_compiler(
                 catalog_paths, catalog_output,
@@ -2299,15 +2214,13 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             changed_catalog = json.loads(
                 catalog_output.read_text(encoding='utf-8'),
             )
-        self.assertNotEqual(turn_baseline['plan_hash'], changed_turn['plan_hash'])
-        self.assertNotEqual(
-            catalog_baseline['plan_hash'], changed_catalog['plan_hash'],
-        )
+        self.assertNotEqual(turn_baseline, changed_turn)
+        self.assertNotEqual(catalog_baseline, changed_catalog)
 
     def test_ordered_state_transition_change_alters_the_plan(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_stateful_fixture(root)
+            paths = materialize_epoch6_stateful_fixture(root)
             first_output = root / 'first.json'
             first = self._run_compiler(paths, first_output)
             self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
@@ -2321,31 +2234,29 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(scenario, separators=(',', ':')) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             second_output = root / 'second.json'
             second = self._run_compiler(paths, second_output)
             self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
             second_plan = json.loads(second_output.read_text(encoding='utf-8'))
-        self.assertNotEqual(first_plan['plan_hash'], second_plan['plan_hash'])
+        self.assertNotEqual(first_plan, second_plan)
 
-    def test_principal_context_tool_policy_and_observation_bind_plan_hash(
+    def test_principal_context_tool_policy_and_observation_bind_plan_bytes(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_handoff_fixture(root)
+            paths = materialize_epoch6_handoff_fixture(root)
 
-            def compile_hash(name: str) -> str:
+            def compile_bytes(name: str) -> bytes:
                 output = root / f'{name}.json'
                 result = self._run_compiler(paths, output)
                 self.assertEqual(
                     result.returncode, 0, result.stdout + result.stderr,
                 )
-                return json.loads(
-                    output.read_text(encoding='utf-8'),
-                )['plan_hash']
+                return output.read_bytes()
 
-            hashes = [compile_hash('baseline')]
+            plans = [compile_bytes('baseline')]
             scenario = json.loads(
                 paths['scenarios'].read_text(encoding='utf-8'),
             )
@@ -2356,8 +2267,8 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(scenario, separators=(',', ':')) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
-            hashes.append(compile_hash('principal'))
+            rebind_epoch6_contract_fixture(paths)
+            plans.append(compile_bytes('principal'))
 
             scenario = json.loads(
                 paths['scenarios'].read_text(encoding='utf-8'),
@@ -2382,28 +2293,28 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(host, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
-            hashes.append(compile_hash('topology-context'))
+            rebind_epoch6_contract_fixture(paths)
+            plans.append(compile_bytes('topology-context'))
 
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
-            new_tool_policy = canonical_hash({'tool-policy': 'changed'})
             for treatment in spec['treatments']:
-                treatment['tool_policy_hash'] = new_tool_policy
+                treatment['tool_policy_id'] = 'changed-tool-policy'
             paths['spec'].write_text(
                 json.dumps(spec, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
-            hashes.append(compile_hash('tool-policy'))
+            rebind_epoch6_contract_fixture(paths)
+            plans.append(compile_bytes('tool-policy'))
 
             host = json.loads(paths['host'].read_text(encoding='utf-8'))
             host['policy']['filesystem']['rules'].append('changed-policy')
+            host['identity']['execution']['policy_id'] = 'changed-host-policy'
             paths['host'].write_text(
                 json.dumps(host, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
-            hashes.append(compile_hash('host-policy'))
+            rebind_epoch6_contract_fixture(paths)
+            plans.append(compile_bytes('host-policy'))
 
             scenario = json.loads(
                 paths['scenarios'].read_text(encoding='utf-8'),
@@ -2412,16 +2323,16 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 'observation_id': 'outcome-observation',
                 'producer': 'synthetic-host',
                 'capture_authority': 'host-manifest',
-                'artifact': 'host-manifest-v1.json',
+                'artifact': 'host-manifest-v2.json',
                 'locator': {
                     'kind': 'text_lines',
-                    'artifact': 'host-manifest-v1.json',
+                    'artifact': 'host-manifest-v2.json',
                     'start_line': 1,
                     'end_line': 1,
                 },
                 'encoding': 'utf-8',
-                'schema_hash': None,
-                'expected_hash': (
+                'schema_id': None,
+                'expected_digest': (
                     'sha256:'
                     + hashlib.sha256(paths['host'].read_bytes()).hexdigest()
                 ),
@@ -2438,9 +2349,9 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(scenario, separators=(',', ':')) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
-            hashes.append(compile_hash('observation'))
-        self.assertEqual(len(hashes), len(set(hashes)))
+            rebind_epoch6_contract_fixture(paths)
+            plans.append(compile_bytes('observation'))
+        self.assertEqual(len(plans), len(set(plans)))
 
     def test_probe_status_derives_exact_disposition_and_execute_only_authority(
         self,
@@ -2454,7 +2365,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             root = Path(tmp)
             for status, (disposition, derived) in expected.items():
                 case_root = root / status
-                paths = materialize_v5_contract_fixture(case_root)
+                paths = materialize_epoch6_contract_fixture(case_root)
                 host = json.loads(
                     paths['host'].read_text(encoding='utf-8'),
                 )
@@ -2472,7 +2383,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     json.dumps(spec, indent=2) + '\n',
                     encoding='utf-8',
                 )
-                rebind_v5_contract_fixture(paths)
+                rebind_epoch6_contract_fixture(paths)
                 output = case_root / 'plan.json'
                 result = self._run_compiler(paths, output)
                 self.assertEqual(
@@ -2491,7 +2402,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     },
                 )
 
-            missing_paths = materialize_v5_contract_fixture(
+            missing_paths = materialize_epoch6_contract_fixture(
                 root / 'missing-authority',
             )
             spec = json.loads(
@@ -2502,7 +2413,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(spec, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(missing_paths)
+            rebind_epoch6_contract_fixture(missing_paths)
             missing = self._run_compiler(
                 missing_paths,
                 root / 'missing-authority' / 'plan.json',
@@ -2513,7 +2424,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     def test_unknown_probe_has_priority_over_unsupported_probe(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
+            paths = materialize_epoch6_contract_fixture(root)
             host = json.loads(paths['host'].read_text(encoding='utf-8'))
             host['capabilities'][0]['probe']['status'] = 'unknown'
             unsupported = copy.deepcopy(host['capabilities'][0])
@@ -2531,7 +2442,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(spec, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             output = root / 'plan.json'
             result = self._run_compiler(paths, output)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -2546,12 +2457,12 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_model_ready_fixture(root)
+            paths = materialize_epoch6_model_ready_fixture(root)
             output = root / 'plan.json'
             result = self._run_compiler(paths, output)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             plan = json.loads(output.read_text(encoding='utf-8'))
-        self.assertIsNotNone(plan['calibration_hash'])
+        self.assertNotIn('calibration_hash', plan)
         self.assertEqual({'execute'}, {
             entry['disposition'] for entry in plan['entries']
         })
@@ -2567,14 +2478,15 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     def test_calibration_semantic_change_rebinds_plan_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            original = materialize_v5_model_ready_fixture(root / 'original')
-            changed = materialize_v5_model_ready_fixture(root / 'changed')
+            original = materialize_epoch6_model_ready_fixture(root / 'original')
+            changed = materialize_epoch6_model_ready_fixture(root / 'changed')
             original_output = root / 'original-plan.json'
             changed_output = root / 'changed-plan.json'
             first = self._run_compiler(original, original_output)
             self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
 
             spec = json.loads(changed['spec'].read_text(encoding='utf-8'))
+            spec['subject']['package']['source_revision'] = '2' * 40
             check = spec['graders'][0]['checks'][0]
             check['pass_condition'] += ' Preserve the declared boundary.'
             semantics = load_grader_semantics_module()
@@ -2584,13 +2496,6 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     encoding='utf-8',
                 ).splitlines()
             ]
-            ratings = [
-                json.loads(line)
-                for line in changed['ratings'].read_text(
-                    encoding='utf-8',
-                ).splitlines()
-            ]
-            hashes = {}
             for row in labels:
                 if row['check_id'] != check['check_id']:
                     continue
@@ -2599,20 +2504,11 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     check['check_id'],
                     check['pass_condition'],
                 )
-                row['payload_hash'] = semantics.semantic_payload_hash(
+                row['payload_digest'] = semantics.semantic_payload_hash(
                     row['payload'],
                 )
-                hashes[(row['example_id'], row['check_id'])] = row['payload_hash']
-            for row in ratings:
-                key = (row['example_id'], row['check_id'])
-                if key in hashes:
-                    row['payload_hash'] = hashes[key]
             changed['labels'].write_text(
                 ''.join(json.dumps(row, separators=(',', ':')) + '\n' for row in labels),
-                encoding='utf-8',
-            )
-            changed['ratings'].write_text(
-                ''.join(json.dumps(row, separators=(',', ':')) + '\n' for row in ratings),
                 encoding='utf-8',
             )
             changed['spec'].write_text(
@@ -2630,7 +2526,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             self.assertEqual(
                 generated.returncode, 0, generated.stdout + generated.stderr,
             )
-            spec['suite']['calibration']['sha256'] = (
+            spec['suite']['calibration']['digest'] = (
                 'sha256:'
                 + hashlib.sha256(changed['calibration'].read_bytes()).hexdigest()
             )
@@ -2638,22 +2534,31 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(spec, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(changed)
+            rebind_epoch6_contract_fixture(changed)
             second = self._run_compiler(changed, changed_output)
             self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
             original_plan = json.loads(original_output.read_text(encoding='utf-8'))
             changed_plan = json.loads(changed_output.read_text(encoding='utf-8'))
+            original_spec = json.loads(
+                original['spec'].read_text(encoding='utf-8'),
+            )
+            changed_spec = json.loads(
+                changed['spec'].read_text(encoding='utf-8'),
+            )
 
         self.assertNotEqual(
-            original_plan['calibration_hash'], changed_plan['calibration_hash'],
+            original_spec['suite']['calibration']['digest'],
+            changed_spec['suite']['calibration']['digest'],
         )
-        self.assertNotEqual(original_plan['plan_id'], changed_plan['plan_id'])
-        self.assertNotEqual(original_plan['plan_hash'], changed_plan['plan_hash'])
+        self.assertEqual(original_plan['plan_id'], changed_plan['plan_id'])
+        self.assertNotEqual(
+            original_plan['source_revision'], changed_plan['source_revision'],
+        )
 
     def test_compiler_never_starts_host_or_grader_processes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
+            paths = materialize_epoch6_contract_fixture(root)
             sentinel = root / 'process-started'
             executable = root / 'must-not-run.py'
             executable.write_text(
@@ -2664,13 +2569,10 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 ),
                 encoding='utf-8',
             )
-            executable_hash = (
-                'sha256:' + hashlib.sha256(executable.read_bytes()).hexdigest()
-            )
             host = json.loads(paths['host'].read_text(encoding='utf-8'))
             host['command']['argv'] = [sys.executable, str(executable)]
             host['command']['resolved_executable'] = sys.executable
-            host['command']['executable_sha256'] = (
+            host['command']['executable_digest'] = (
                 'sha256:'
                 + hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest()
             )
@@ -2682,30 +2584,30 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             spec['graders'][0]['verifier'].update({
                 'argv': [sys.executable, str(executable)],
                 'path': executable.name,
-                'sha256': executable_hash,
+                'source_revision': spec['subject']['package']['source_revision'],
             })
             paths['spec'].write_text(
                 json.dumps(spec, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             result = self._run_compiler(paths, root / 'plan.json')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse(sentinel.exists())
 
-    def test_hash_profile_module_and_capability_drift_fail_closed(self) -> None:
+    def test_module_profile_and_capability_drift_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             results: dict[str, subprocess.CompletedProcess[str]] = {}
 
-            hash_paths = materialize_v5_contract_fixture(root / 'hash')
-            with hash_paths['scenarios'].open('ab') as stream:
+            source_paths = materialize_epoch6_contract_fixture(root / 'source')
+            with source_paths['scenarios'].open('ab') as stream:
                 stream.write(b'\n')
-            results['hash'] = self._run_compiler(
-                hash_paths, root / 'hash' / 'plan.json',
+            source_format = self._run_compiler(
+                source_paths, root / 'source' / 'plan.json',
             )
 
-            module_paths = materialize_v5_contract_fixture(root / 'module')
+            module_paths = materialize_epoch6_contract_fixture(root / 'module')
             spec = json.loads(
                 module_paths['spec'].read_text(encoding='utf-8'),
             )
@@ -2714,12 +2616,12 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(spec, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(module_paths)
+            rebind_epoch6_contract_fixture(module_paths)
             results['module'] = self._run_compiler(
                 module_paths, root / 'module' / 'plan.json',
             )
 
-            profile_paths = materialize_v5_contract_fixture(root / 'profile')
+            profile_paths = materialize_epoch6_contract_fixture(root / 'profile')
             spec = json.loads(
                 profile_paths['spec'].read_text(encoding='utf-8'),
             )
@@ -2736,7 +2638,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 profile_paths, root / 'profile' / 'plan.json',
             )
 
-            capability_paths = materialize_v5_contract_fixture(
+            capability_paths = materialize_epoch6_contract_fixture(
                 root / 'capability',
             )
             host = json.loads(
@@ -2747,13 +2649,16 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(host, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(capability_paths)
+            rebind_epoch6_contract_fixture(capability_paths)
             results['capability'] = self._run_compiler(
                 capability_paths, root / 'capability' / 'plan.json',
             )
 
+        self.assertEqual(
+            source_format.returncode, 0,
+            source_format.stdout + source_format.stderr,
+        )
         expected_codes = {
-            'hash': 'binding.hash_mismatch',
             'module': 'applicability.shape_mismatch',
             'profile': 'applicability.shape_mismatch',
             'capability': 'host.probe_missing',
@@ -2766,25 +2671,12 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             )
             self.assertIn(expected_codes[name], result.stderr)
 
-    def test_truncated_projection_collision_is_a_hard_failure(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
-            compiler = load_compiler_module()
-            spec, scenarios, host, _ = compiler._load_ready_contract(
-                paths['spec'], paths['scenarios'], paths['host'],
-            )
-            with self.assertRaises(compiler.ContractFailure) as raised:
-                compiler.compile_plan(
-                    spec,
-                    scenarios,
-                    host,
-                    spec_path=paths['spec'],
-                    source_path=ROOT / 'scripts/compile_eval_plan.py',
-                    digest_fn=lambda _: b'\x00' * 32,
-                )
+    def test_structured_identity_length_is_a_hard_failure(self) -> None:
+        compiler = load_compiler_module()
+        with self.assertRaises(compiler.ContractFailure) as raised:
+            compiler._structured_id('entry', 'x' * 128)  # noqa: SLF001
         self.assertEqual(
-            'compiler.entry_id_collision',
+            'compiler.semantic_id_length',
             raised.exception.code,
         )
 
@@ -2800,19 +2692,9 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(
             str(executable), plan['compiler']['python_executable'],
         )
-        self.assertEqual(
-            'sha256:' + hashlib.sha256(executable.read_bytes()).hexdigest(),
-            plan['compiler']['python_executable_hash'],
-        )
-        self.assertEqual(
-            (
-                'sha256:'
-                + hashlib.sha256(
-                    (ROOT / 'scripts/compile_eval_plan.py').read_bytes(),
-                ).hexdigest()
-            ),
-            plan['compiler']['source_hash'],
-        )
+        self.assertEqual(2, plan['compiler']['version'])
+        self.assertEqual(plan['source_revision'], plan['compiler']['source_revision'])
+        self.assertNotIn('hash', json.dumps(plan['compiler'], sort_keys=True))
         self.assertNotIn(str(root), serialized)
 
         forbidden_keys = {
@@ -2851,7 +2733,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
+            paths = materialize_epoch6_contract_fixture(root)
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
             candidate = next(
                 treatment for treatment in spec['treatments']
@@ -2863,7 +2745,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(spec, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             result = self._run_compiler(paths, root / 'plan.json')
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('compiler.causal_matrix', result.stderr)
@@ -2873,7 +2755,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
+            paths = materialize_epoch6_contract_fixture(root)
             scenario = json.loads(
                 paths['scenarios'].read_text(encoding='utf-8'),
             )
@@ -2893,7 +2775,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(spec, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             output = root / 'plan.json'
             result = self._run_compiler(paths, output)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -2906,7 +2788,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     def test_case_treatment_repeat_matrix_expands_exactly_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
+            paths = materialize_epoch6_contract_fixture(root)
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
             spec['suite']['repeats'] = 2
             paths['spec'].write_text(
@@ -2932,7 +2814,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     def test_compiler_rejects_nonready_and_placeholder_contracts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            nonready_paths = materialize_v5_contract_fixture(
+            nonready_paths = materialize_epoch6_contract_fixture(
                 root / 'nonready',
             )
             spec = json.loads(
@@ -2947,7 +2829,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 nonready_paths, root / 'nonready' / 'plan.json',
             )
 
-            placeholder_paths = materialize_v5_contract_fixture(
+            placeholder_paths = materialize_epoch6_contract_fixture(
                 root / 'placeholder',
             )
             spec = json.loads(
@@ -2960,7 +2842,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(spec, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(placeholder_paths)
+            rebind_epoch6_contract_fixture(placeholder_paths)
             placeholder = self._run_compiler(
                 placeholder_paths, root / 'placeholder' / 'plan.json',
             )
@@ -2975,7 +2857,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
         )
         self.assertIn('readiness.verifier_placeholder', placeholder.stderr)
 
-    def test_rehashed_semantic_tamper_and_conflicting_output_fail_closed(
+    def test_semantic_tamper_and_conflicting_output_fail_closed(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2985,9 +2867,6 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             compiler = load_compiler_module()
             tampered = copy.deepcopy(plan)
             tampered['entries'][0]['timeout_seconds'] += 1
-            tampered['plan_hash'] = compiler.canonical_self_hash(
-                tampered, 'plan_hash',
-            )
             spec, scenarios, host, registry = compiler._load_ready_contract(
                 paths['spec'], paths['scenarios'], paths['host'],
             )
@@ -2997,8 +2876,6 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
                     spec,
                     scenarios,
                     host,
-                    spec_path=paths['spec'],
-                    source_path=ROOT / 'scripts/compile_eval_plan.py',
                     registry=registry,
                 )
             tampered_bytes = compiler.canonical_json_bytes(tampered)
@@ -3013,7 +2890,7 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
     def test_committed_plan_golden_is_exact_compiler_output(self) -> None:
         golden_path = (
             Path(__file__).resolve().parent
-            / 'fixtures/skill_evaluator/execution-plan-v1.json'
+            / 'fixtures/skill_evaluator/execution-plan-v2.json'
         )
         golden = json.loads(golden_path.read_text(encoding='utf-8'))
         runtime = {
@@ -3021,37 +2898,33 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             for key in (
                 'python_executable',
                 'python_version',
-                'python_executable_hash',
             )
         }
-        with tempfile.TemporaryDirectory() as tmp:
-            paths = materialize_v5_contract_fixture(Path(tmp))
-            compiler = load_compiler_module()
-            spec, scenarios, host, registry = compiler._load_ready_contract(
-                paths['spec'], paths['scenarios'], paths['host'],
-            )
-            regenerated = compiler.compile_plan(
-                spec,
-                scenarios,
-                host,
-                spec_path=paths['spec'],
-                source_path=ROOT / 'scripts/compile_eval_plan.py',
-                runtime_override=runtime,
-            )
-            self.assertEqual(
-                golden_path.read_bytes(),
-                compiler.canonical_json_bytes(regenerated),
-            )
-            compiler.validate_compiled_plan(
-                golden,
-                spec,
-                scenarios,
-                host,
-                spec_path=paths['spec'],
-                source_path=ROOT / 'scripts/compile_eval_plan.py',
-                registry=registry,
-                runtime_override=runtime,
-            )
+        fixture_root = golden_path.parent
+        compiler = load_compiler_module()
+        spec, scenarios, host, registry = compiler._load_ready_contract(
+            fixture_root / 'spec-v6.json',
+            fixture_root / 'scenarios-v1.jsonl',
+            fixture_root / 'host-manifest-v2.json',
+        )
+        regenerated = compiler.compile_plan(
+            spec,
+            scenarios,
+            host,
+            runtime_override=runtime,
+        )
+        self.assertEqual(
+            golden_path.read_bytes(),
+            compiler.canonical_json_bytes(regenerated),
+        )
+        compiler.validate_compiled_plan(
+            golden,
+            spec,
+            scenarios,
+            host,
+            registry=registry,
+            runtime_override=runtime,
+        )
 
 
 if __name__ == '__main__':

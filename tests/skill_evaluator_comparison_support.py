@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 
@@ -13,10 +14,10 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         root: Path,
         *,
         observations: bool,
-        package_hash: str | None = None,
+        source_revision: str | None = None,
     ) -> dict[str, Path]:
         root.mkdir(parents=True)
-        paths = materialize_v5_contract_fixture(root)  # noqa: F405
+        paths = materialize_epoch6_contract_fixture(root)  # noqa: F405
         spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
         safety_estimand = copy.deepcopy(spec['analysis']['estimands'][0])
         safety_estimand.update({
@@ -73,34 +74,41 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
             json.dumps(proof, indent=2) + '\n',
             encoding='utf-8',
         )
-        host = json.loads(paths['host'].read_text(encoding='utf-8'))
-        if package_hash is not None:
-            spec['subject']['version'] = '3.3.0-test'
-            spec['subject']['package']['package_hash'] = package_hash
-            subject_id = spec['subject']['skill_id']
-            target = [
-                item
-                for item in host['catalog']['entries']
-                if item['id'] == subject_id
-            ][0]
-            target['root_hash'] = package_hash
-            target['version'] = spec['subject']['version']
-            host['identity']['execution']['skill_hash'] = package_hash
-        paths['host'].write_text(
-            json.dumps(host, indent=2) + '\n',
-            encoding='utf-8',
-        )
         package_root = root / spec['subject']['package']['path']
         package_root.mkdir(parents=True, exist_ok=True)
-        (package_root / 'SKILL.md').write_text(
-            '# Evaluated skill\n',
+        skill_path = package_root / 'SKILL.md'
+        skill_path.write_text(
+            '# Evaluated skill\n'
+            + ('\nCandidate revision.\n' if source_revision else ''),
+            encoding='utf-8',
+        )
+        package_digest = (
+            'sha256:' + hashlib.sha256(skill_path.read_bytes()).hexdigest()
+        )
+        spec['subject']['package']['package_digest'] = package_digest
+        host = json.loads(paths['host'].read_text(encoding='utf-8'))
+        subject_id = spec['subject']['skill_id']
+        target = next(
+            item for item in host['catalog']['entries']
+            if item['id'] == subject_id
+        )
+        target['root_digest'] = package_digest
+        if source_revision is not None:
+            spec['subject']['version'] = '3.3.0-test'
+            spec['subject']['package']['source_revision'] = source_revision
+            for grader in spec['graders']:
+                if grader['type'] == 'deterministic':
+                    grader['verifier']['source_revision'] = source_revision
+            target['version'] = spec['subject']['version']
+        paths['host'].write_text(
+            json.dumps(host, indent=2) + '\n',
             encoding='utf-8',
         )
         paths['spec'].write_text(
             json.dumps(spec, indent=2) + '\n',
             encoding='utf-8',
         )
-        rebind_v5_contract_fixture(paths)  # noqa: F405
+        rebind_epoch6_contract_fixture(paths)  # noqa: F405
 
         paths.update({
             'plan': root / 'execution-plan.json',
@@ -156,57 +164,38 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         execution_updates: dict[str, str],
     ) -> None:
         """Rebind closed synthetic evidence to a model-only host identity."""
-        evidence = load_evidence_io_module()  # noqa: F405
         compiler = load_compiler_module()  # noqa: F405
 
         host = json.loads(paths['host'].read_text(encoding='utf-8'))
         host['identity']['execution'].update(execution_updates)
-        self._write_self_hashed(paths['host'], host, 'manifest_hash')
-
-        spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
-        spec['host']['manifest']['sha256'] = evidence.file_sha256(paths['host'])
-        paths['spec'].write_text(
-            json.dumps(spec, indent=2) + '\n',
-            encoding='utf-8',
+        paths['host'].write_text(
+            json.dumps(host, indent=2) + '\n', encoding='utf-8',
         )
 
+        spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
         plan = json.loads(paths['plan'].read_text(encoding='utf-8'))
-        plan.update({
-            'spec_hash': compiler.canonical_sha256(
-                compiler._normalize_spec(spec),
-            ),
-            'host_manifest_hash': host['manifest_hash'],
-            'execution_identity': compiler._execution_identity(spec, host),
-        })
-        self._write_self_hashed(paths['plan'], plan, 'plan_hash')
-
-        for name, hash_field in (
-            ('summary', 'summary_hash'),
-            ('observations', 'comparison_observations_hash'),
-        ):
-            document = json.loads(paths[name].read_text(encoding='utf-8'))
-            document.update({
-                'plan_hash': plan['plan_hash'],
-                'spec_hash': plan['spec_hash'],
-                'host_manifest_hash': host['manifest_hash'],
-            })
-            self._write_self_hashed(paths[name], document, hash_field)
+        plan['execution_profile'] = compiler._execution_profile(spec, host)
+        paths['plan'].write_text(
+            json.dumps(plan, indent=2) + '\n', encoding='utf-8',
+        )
 
     def _rebind_cycle_judge(
         self,
         paths: dict[str, Path],
-        grader_set_hash: str,
+        grader_revision: str,
     ) -> None:
+        spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
+        grader = spec['graders'][0]
+        grader['grader_id'] = f"grader.changed.{grader_revision}"
+        paths['spec'].write_text(
+            json.dumps(spec, indent=2) + '\n', encoding='utf-8',
+        )
         plan = json.loads(paths['plan'].read_text(encoding='utf-8'))
-        plan['grader_set_hash'] = grader_set_hash
-        self._write_self_hashed(paths['plan'], plan, 'plan_hash')
-        for name, hash_field in (
-            ('summary', 'summary_hash'),
-            ('observations', 'comparison_observations_hash'),
-        ):
-            document = json.loads(paths[name].read_text(encoding='utf-8'))
-            document['plan_hash'] = plan['plan_hash']
-            self._write_self_hashed(paths[name], document, hash_field)
+        for entry in plan['entries']:
+            entry['grader_ids'] = [grader['grader_id']]
+        paths['plan'].write_text(
+            json.dumps(plan, indent=2) + '\n', encoding='utf-8',
+        )
 
     def _cycle_binding(
         self,
@@ -218,52 +207,58 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         evidence = load_evidence_io_module()  # noqa: F405
         spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
         plan = json.loads(paths['plan'].read_text(encoding='utf-8'))
-        host = json.loads(paths['host'].read_text(encoding='utf-8'))
 
-        def existing(name: str, schema: str) -> dict:
+        def artifact(name: str, schema: str) -> dict:
             path = paths[name]
             return {
-                'path': path.relative_to(comparison_root).as_posix(),
+                'path': path.name,
                 'schema': schema,
-                'file_sha256': evidence.file_sha256(path),
+                'digest': evidence.file_sha256(path),
             }
 
-        def generated(name: str, schema: str) -> dict:
-            return {
-                'path': paths[name].relative_to(
-                    comparison_root,
-                ).as_posix(),
-                'schema': schema,
-            }
+        cycle_id = f"{spec['evaluation_id']}.{paths['spec'].parent.name}"
+        if observations:
+            observation_document = json.loads(
+                paths['observations'].read_text(encoding='utf-8'),
+            )
+            observation_document['cycle_id'] = cycle_id
+            paths['observations'].write_bytes(
+                evidence.canonical_json_bytes(observation_document),
+            )
+        capsule = {
+            'schema_version': 'comparison-cycle-capsule/2',
+            'cycle_id': cycle_id,
+            'evaluation_id': spec['evaluation_id'],
+            'plan_id': plan['plan_id'],
+            'execution_profile': plan['execution_profile'],
+            'artifacts': {
+                'spec': artifact('spec', 'eval-spec-v6'),
+                'execution_plan': artifact('plan', 'execution-plan-v2'),
+                'host_manifest': artifact('host', 'host-manifest-v2'),
+                'summary': artifact('summary', 'analysis-summary-v5'),
+                'failure_index': artifact('failures', 'failure-index-v2'),
+                'observations': (
+                    artifact('observations', 'comparison-observations-v2')
+                    if observations else None
+                ),
+            },
+        }
+        capsule_path = paths['spec'].parent / 'cycle-capsule.json'
+        capsule_path.write_bytes(evidence.canonical_json_bytes(capsule))
+        paths['capsule'] = capsule_path
 
         return {
+            'cycle_id': cycle_id,
             'expected_identity': {
                 'evaluation_id': spec['evaluation_id'],
                 'plan_id': plan['plan_id'],
-                'spec_hash': plan['spec_hash'],
-                'scenario_corpus_hash': plan['scenario_corpus_hash'],
-                'host_manifest_hash': host['manifest_hash'],
-                'execution_identity': plan['execution_identity'],
+                'execution_profile': plan['execution_profile'],
             },
-            'spec': existing('spec', 'eval-spec-v5'),
-            'execution_plan': existing(
-                'plan',
-                'execution-plan-v1',
-            ),
-            'host_manifest': existing('host', 'host-manifest-v1'),
-            'summary': generated('summary', 'analysis-summary-v4'),
-            'failure_index': generated(
-                'failures',
-                'failure-index-v1',
-            ),
-            'observations': (
-                generated(
-                    'observations',
-                    'comparison-observations-v1',
-                )
-                if observations
-                else None
-            ),
+            'capsule': {
+                'path': capsule_path.relative_to(comparison_root).as_posix(),
+                'schema': 'comparison-cycle-capsule/2',
+                'digest': evidence.file_sha256(capsule_path),
+            },
         }
 
     def _write_plan(
@@ -285,11 +280,6 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         plan = json.loads(template_path.read_text(encoding='utf-8'))
         plan['input_bindings'] = copy.deepcopy(bindings)
         plan['output']['root'] = output_root
-        evidence = load_evidence_io_module()  # noqa: F405
-        plan['comparison_plan_hash'] = evidence.canonical_self_hash(
-            plan,
-            'comparison_plan_hash',
-        )
         path = root / 'comparison-plan.json'
         path.write_text(
             json.dumps(plan, indent=2) + '\n',
@@ -301,28 +291,18 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         self,
         path: Path,
         plan: dict,
-        *,
-        refresh_hash: bool = True,
     ) -> None:
-        if refresh_hash:
-            evidence = load_evidence_io_module()  # noqa: F405
-            plan['comparison_plan_hash'] = evidence.canonical_self_hash(
-                plan,
-                'comparison_plan_hash',
-            )
         path.write_text(
             json.dumps(plan, indent=2) + '\n',
             encoding='utf-8',
         )
 
-    def _write_self_hashed(
+    def _write_document(
         self,
         path: Path,
         value: dict,
-        hash_field: str,
     ) -> None:
         evidence = load_evidence_io_module()  # noqa: F405
-        value[hash_field] = evidence.canonical_self_hash(value, hash_field)
         path.write_bytes(evidence.canonical_json_bytes(value))
 
     def _set_failures(
@@ -347,15 +327,10 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
             },
             'failures': failures,
         })
-        self._write_self_hashed(
-            paths['failures'],
-            index,
-            'failure_index_hash',
-        )
+        self._write_document(paths['failures'], index)
         summary = json.loads(paths['summary'].read_text(encoding='utf-8'))
         failure_view = summary['output_manifest']['failure_index']
         failure_view.update({
-            'sha256': evidence.file_sha256(paths['failures']),
             'item_count': index['item_count'],
             'shown_count': index['shown_count'],
             'omitted_count': 0,
@@ -366,7 +341,7 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         summary['representative_failure_ids'] = [
             item['failure_id'] for item in failures[:10]
         ]
-        self._write_self_hashed(paths['summary'], summary, 'summary_hash')
+        self._write_document(paths['summary'], summary)
 
     def _set_metric_evidence(
         self,
@@ -390,7 +365,7 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
                     case_id: value for case_id in case_ids
                 },
             })
-        self._write_self_hashed(paths['summary'], summary, 'summary_hash')
+        self._write_document(paths['summary'], summary)
 
     def _set_transition_evidence(
         self,
@@ -434,7 +409,7 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
             }
             for stage in ('retrieved', 'loaded', 'applied')
         ]
-        self._write_self_hashed(paths['summary'], summary, 'summary_hash')
+        self._write_document(paths['summary'], summary)
 
         plan = json.loads(paths['plan'].read_text(encoding='utf-8'))
         case_ids = sorted({
@@ -465,11 +440,7 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
                     for case_id in case_ids
                 ],
             })
-        self._write_self_hashed(
-            paths['observations'],
-            observations,
-            'comparison_observations_hash',
-        )
+        self._write_document(paths['observations'], observations)
 
     def _revision_failure(self, paths: dict[str, Path]) -> dict:
         plan = json.loads(paths['plan'].read_text(encoding='utf-8'))
@@ -517,16 +488,65 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         role: str,
     ) -> dict[str, Path]:
         binding = plan['input_bindings'][role]
+        capsule_path = root / binding['capsule']['path']
+        capsule = json.loads(capsule_path.read_text(encoding='utf-8'))
+        capsule_root = capsule_path.parent
         paths = {
-            'spec': root / binding['spec']['path'],
-            'plan': root / binding['execution_plan']['path'],
-            'host': root / binding['host_manifest']['path'],
-            'summary': root / binding['summary']['path'],
-            'failures': root / binding['failure_index']['path'],
+            'spec': capsule_root / capsule['artifacts']['spec']['path'],
+            'plan': capsule_root / capsule['artifacts']['execution_plan']['path'],
+            'host': capsule_root / capsule['artifacts']['host_manifest']['path'],
+            'summary': capsule_root / capsule['artifacts']['summary']['path'],
+            'failures': capsule_root / capsule['artifacts']['failure_index']['path'],
+            'capsule': capsule_path,
         }
-        if binding.get('observations') is not None:
-            paths['observations'] = root / binding['observations']['path']
+        if capsule['artifacts']['observations'] is not None:
+            paths['observations'] = (
+                capsule_root / capsule['artifacts']['observations']['path']
+            )
         return paths
+
+    def _refresh_cycle_binding(
+        self,
+        root: Path,
+        plan: dict,
+        role: str,
+    ) -> None:
+        evidence = load_evidence_io_module()  # noqa: F405
+        binding = plan['input_bindings'][role]
+        capsule_path = root / binding['capsule']['path']
+        capsule = json.loads(capsule_path.read_text(encoding='utf-8'))
+        spec_path = capsule_path.parent / capsule['artifacts']['spec']['path']
+        plan_path = (
+            capsule_path.parent
+            / capsule['artifacts']['execution_plan']['path']
+        )
+        spec = json.loads(spec_path.read_text(encoding='utf-8'))
+        execution_plan = json.loads(plan_path.read_text(encoding='utf-8'))
+        capsule.update({
+            'evaluation_id': spec['evaluation_id'],
+            'plan_id': execution_plan['plan_id'],
+            'execution_profile': execution_plan['execution_profile'],
+        })
+        for reference in capsule['artifacts'].values():
+            if reference is not None:
+                reference['digest'] = evidence.file_sha256(
+                    capsule_path.parent / reference['path'],
+                )
+        capsule_path.write_bytes(evidence.canonical_json_bytes(capsule))
+        binding['expected_identity'] = {
+            'evaluation_id': capsule['evaluation_id'],
+            'plan_id': capsule['plan_id'],
+            'execution_profile': capsule['execution_profile'],
+        }
+        binding['capsule']['digest'] = evidence.file_sha256(capsule_path)
+
+    def _refresh_all_cycle_bindings(
+        self,
+        root: Path,
+        plan: dict,
+    ) -> None:
+        for role in plan['input_bindings']:
+            self._refresh_cycle_binding(root, plan, role)
 
     def _assert_revision_status(
         self,
@@ -536,6 +556,7 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         expected: str,
     ) -> dict:
         plan = copy.deepcopy(baseline)
+        self._refresh_all_cycle_bindings(root, plan)
         plan['output']['root'] = output_root
         plan_path = root / f'{output_root}.plan.json'
         self._rewrite_plan(plan_path, plan)
@@ -547,7 +568,7 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         return report
 
     def _revision_fixture(self, root: Path) -> tuple[Path, dict]:
-        candidate_hash = 'sha256:' + '9' * 64
+        candidate_revision = '9' * 40
         prior = self._materialize_cycle(
             root / 'cycles/prior',
             observations=False,
@@ -555,7 +576,7 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         candidate = self._materialize_cycle(
             root / 'cycles/candidate',
             observations=False,
-            package_hash=candidate_hash,
+            source_revision=candidate_revision,
         )
         failure = self._revision_failure(prior)
         self._set_failures(prior, [failure])
@@ -590,7 +611,7 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         })
         policy['change_set'].update({
             'paths': [f'{package_root}/SKILL.md'],
-            'candidate_hash': candidate_hash,
+            'candidate_revision': candidate_revision,
         })
         policy['metric_rules'] = [
             {
@@ -615,7 +636,7 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         root: Path,
         *,
         target_execution_updates: dict[str, str] | None = None,
-        target_grader_set_hash: str | None = None,
+        target_judge_revision: str | None = None,
     ) -> tuple[Path, dict]:
         reference = self._materialize_cycle(
             root / 'cycles/A',
@@ -632,8 +653,8 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
         }
         execution_updates.update(target_execution_updates or {})
         self._rebind_cycle_host(target, execution_updates)
-        if target_grader_set_hash is not None:
-            self._rebind_cycle_judge(target, target_grader_set_hash)
+        if target_judge_revision is not None:
+            self._rebind_cycle_judge(target, target_judge_revision)
         self._set_transition_evidence(
             reference,
             task_benefit=0.5,
@@ -683,17 +704,17 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
             root / 'cycles/C',
             observations=True,
         )
-        self._rebind_cycle_host(bridge, {'harness': 'bridge-harness'})
+        self._rebind_cycle_host(bridge, {'harness_version': '2.0.0'})
         self._rebind_cycle_host(target, {
-            'harness': 'bridge-harness',
+            'harness_version': '2.0.0',
             'provider': 'target-provider',
             'model': 'target-model',
             'model_revision': 'target-revision',
         })
         if judge_change:
-            grader_set_hash = 'sha256:' + '6' * 64
-            self._rebind_cycle_judge(bridge, grader_set_hash)
-            self._rebind_cycle_judge(target, grader_set_hash)
+            grader_revision = 'v2'
+            self._rebind_cycle_judge(bridge, grader_revision)
+            self._rebind_cycle_judge(target, grader_revision)
         for paths, benefit, native in (
             (reference, 0.5, 0.0),
             (bridge, 0.5, 0.0),
@@ -726,7 +747,7 @@ class ComparisonTestCase(SkillEvaluatorTestCase):  # noqa: F405
                 if judge_change
                 else 'require_same_judge'
             ),
-            'apparatus_change_fields': ['host_hash', 'harness_hash'],
+            'apparatus_change_fields': ['host_version', 'harness_version'],
         })
         self._rewrite_plan(plan_path, plan)
         return plan_path, plan

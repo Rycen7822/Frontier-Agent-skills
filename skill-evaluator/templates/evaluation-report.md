@@ -50,11 +50,11 @@ These five axes remain separate. `supported` is not a release decision; `eligibl
 
 ## 4. Receipt integrity and run accounting — L1+
 
-- Plan v1, run-index row v2, receipt v4, summary v4, and failure-index v1 verification:
+- Plan v2, run index v3, receipt v5, summary v5, and failure-index v2 verification:
 - Planned/execute/unsupported/not-evaluable entry counts:
 - Attempts, valid terminal attempts, invalid attempts, and missing entries:
 - Recomputed scenario/host/package/catalog/treatment/fixture/grader/calibration/quality/artifact/invocation bindings:
-- Output-manifest paths, view versions, counts, truncation, and raw-byte hashes:
+- Output-manifest paths, view versions, counts, truncation, and external byte bindings:
 - Trust boundaries still externally attested or unverified:
 - Representative failure IDs and exact locators:
 
@@ -137,14 +137,14 @@ Report Target-Skill context separately from total run usage. Do not derive token
 - Accepted residual risks:
 - Monitoring/rollback obligations:
 
-Do not infer this record from analyzer eligibility.
+The named external authority issues this record after reviewing analyzer eligibility and retained evidence.
 
 ## 14. Artifact manifest
 
-- Summary v4 self-hash and sibling `output_manifest`:
-- Failure index v1 and full details when emitted:
+- Summary v5 and sibling `output_manifest`:
+- Failure index v2 and full details when emitted:
 - Markdown view when emitted:
-- Bound spec/plan/scenario/host/index/receipt/artifact/package/grader/preparation hashes:
+- Bound spec/plan/scenario/host/index/receipt/artifact/package/grader/preparation identities and external digests:
 - Package audit and environment identity:
 - Manual-review receipt when declared:
 - Cleanup verification:

@@ -30,9 +30,7 @@ from _model_evolution_calibration_receipt import (  # noqa: E402
 )
 from _model_evolution_contract import (  # noqa: E402
     make_binding,
-    self_hash,
     validate_document,
-    with_self_hash,
 )
 from _model_evolution_qualification import project_qualification  # noqa: E402
 import model_evolution as controller  # noqa: E402
@@ -45,7 +43,6 @@ from support.model_evolution.repository import write_json  # noqa: E402
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SENTINEL_ROOT = REPOSITORY_ROOT / "evaluation/model-evolution/sentinels"
 EVALUATOR = REPOSITORY_ROOT / "skill-evaluator"
-EVALUATOR_FIXTURES = REPOSITORY_ROOT / "tests/fixtures/skill_evaluator"
 RUNNER = EVALUATOR / "scripts/run_model_calibration.py"
 VALIDATOR = EVALUATOR / "scripts/validate_eval_suite.py"
 FAKE_HOST = REPOSITORY_ROOT / "tests/fixtures/model_evolution/calibration-host.py"
@@ -79,33 +76,25 @@ def _materialize(root: Path, skill_id: str) -> dict[str, Path]:
         {
             "argv": [str(executable), str(target / "calibration-host.py")],
             "resolved_executable": str(executable),
-            "executable_sha256": _file_hash(executable),
+            "executable_digest": _file_hash(executable),
             "env_allowlist": [],
         }
     )
-    host["identity"]["host_build"] = _file_hash(target / "calibration-host.py")
-    host["manifest_hash"] = self_hash(host, "manifest_hash")
+    host["identity"]["host_build"] = "synthetic-calibration-host"
     (target / "host.json").write_text(
         json.dumps(host, indent=2) + "\n",
         encoding="utf-8",
     )
     template = json.loads((source / "eval-spec.template.json").read_text())
-    fixture_spec = json.loads((EVALUATOR_FIXTURES / "spec-v5.json").read_text())
-    template["host"] = fixture_spec["host"]
-    template["host"]["manifest"] = {
-        "path": "host.json",
-        "sha256": _file_hash(target / "host.json"),
-    }
-    template["suite"]["scenarios"] = {
-        "path": "scenarios.public.jsonl",
-        "sha256": _file_hash(target / "scenarios.public.jsonl"),
-    }
+    template["host"]["manifest"] = {"path": "host.json"}
+    template["suite"]["scenarios"] = {"path": "scenarios.public.jsonl"}
     template["suite"]["public_scenarios"] = dict(
         template["suite"]["scenarios"],
     )
     template["suite"]["quality"] = {
         "path": "suite-quality.json",
-        "sha256": _file_hash(target / "suite-quality.json"),
+        "digest": _file_hash(target / "suite-quality.json"),
+        "schema_version": "suite-quality/2",
     }
     template["subject"]["claimed_hosts"] = [host["identity"]["host_id"]]
     template["execution"]["as_of"] = "2026-08-04T00:00:00Z"
@@ -169,6 +158,18 @@ def _runner_command(
     return command
 
 
+def _preparation(campaign: dict, commands: list[dict]) -> dict:
+    return {
+        "schema_version": "model-evolution-calibration-preparation/2",
+        "campaign_id": campaign["campaign_id"],
+        "state_revision": campaign["state_revision"],
+        "as_of": "2026-08-03T00:00:00Z",
+        "created": "2026-08-03T00:00:00Z",
+        "expires": "2026-08-04T00:00:00Z",
+        "commands": commands,
+    }
+
+
 class ModelCalibrationLifecycleTests(unittest.TestCase):
     def test_calibration_host_uses_only_the_declared_transport_environment(
         self,
@@ -215,26 +216,15 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                     valid_until="2026-08-04T00:00:00Z",
                 ),
             )
-            preparation = with_self_hash(
-                {
-                    "schema_version": "model-evolution-calibration-preparation/1",
-                    "campaign_id": campaign["campaign_id"],
-                    "campaign_hash": campaign["campaign_hash"],
-                    "state_revision": campaign["state_revision"],
-                    "as_of": "2026-08-03T00:00:00Z",
-                    "created": "2026-08-03T00:00:00Z",
-                    "expires": "2026-08-04T00:00:00Z",
-                    "commands": [
-                        {
-                            "skill_id": "writing-plans",
-                            "request_count": 1,
-                            "run": [],
-                            "validate": [],
-                            "record": [],
-                        }
-                    ],
-                },
-                "preparation_hash",
+            preparation = _preparation(
+                campaign,
+                [{
+                    "skill_id": "writing-plans",
+                    "request_count": 1,
+                    "run": [],
+                    "validate": [],
+                    "record": [],
+                }],
             )
             write_json(
                 campaign_root / "calibration/preparation.json",
@@ -253,13 +243,13 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                 "envelope": {
                     "entry_id": "writing-plans-calibration-01",
                     "entry_ordinal": 0,
+                    "request_id": "request.1.model-grade",
                     "request_kind": "model_grade",
                 },
                 "failure_class": "model_task_timeout",
                 "handoffs": [],
                 "principals": [],
-                "record_type": "skill-evaluator-host-result/1",
-                "request_hash": "sha256:" + "2" * 64,
+                "record_type": "skill-evaluator-host-result/2",
                 "state": [],
                 "terminal": True,
                 "terminal_status": "timeout",
@@ -322,45 +312,34 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                     valid_until="2026-08-04T00:00:00Z",
                 ),
             )
-            preparation = with_self_hash(
-                {
-                    "schema_version": "model-evolution-calibration-preparation/1",
-                    "campaign_id": campaign["campaign_id"],
-                    "campaign_hash": campaign["campaign_hash"],
-                    "state_revision": campaign["state_revision"],
-                    "as_of": "2026-08-03T00:00:00Z",
-                    "created": "2026-08-03T00:00:00Z",
-                    "expires": "2026-08-04T00:00:00Z",
-                    "commands": [
-                        {
-                            "skill_id": "writing-plans",
-                            "request_count": 1,
-                            "run": [],
-                            "validate": [],
-                            "record": [],
-                        }
-                    ],
-                },
-                "preparation_hash",
+            preparation = _preparation(
+                campaign,
+                [{
+                    "skill_id": "writing-plans",
+                    "request_count": 1,
+                    "run": [],
+                    "validate": [],
+                    "record": [],
+                }],
             )
             write_json(campaign_root / "calibration/preparation.json", preparation)
             skill_root = campaign_root / "calibration/writing-plans"
             terminal_root = skill_root / "run/terminals/001"
             terminal_root.mkdir(parents=True)
-            payload_hash = "sha256:" + "4" * 64
-            request_hash = "sha256:" + "5" * 64
+            payload_digest = "sha256:" + "4" * 64
+            request_id = "request.1.model-grade"
             example_id = "writing-plans-quality-check-cal-01"
             host_result = {
                 "cleanup": {"state": "not_applicable", "status": "clean"},
                 "envelope": {
                     "entry_id": example_id,
                     "entry_ordinal": 0,
+                    "request_id": request_id,
                     "request_kind": "model_grade",
                 },
                 "protocol_error": None,
-                "record_type": "skill-evaluator-host-result/1",
+                "record_type": "skill-evaluator-host-result/2",
                 "refusal": False,
-                "request_hash": request_hash,
                 "terminal": True,
                 "terminal_status": "completed",
                 "timeout": False,
@@ -370,33 +349,30 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                 json.dumps(host_result, sort_keys=True, separators=(",", ":")) + "\n",
                 encoding="utf-8",
             )
-            terminal = with_self_hash(
-                {
-                    "schema_version": "model-calibration-terminal/1",
-                    "example_id": example_id,
-                    "check_id": "quality-check",
-                    "host_result_hash": "sha256:" + "6" * 64,
-                    "label": "abstain",
-                    "notes": "Evidence is insufficient.",
-                    "payload_hash": payload_hash,
-                    "position": 1,
-                    "request_hash": request_hash,
-                    "severity": 0,
-                    "uncertainty": "high",
-                },
-                "terminal_hash",
-            )
-            write_json(terminal_root / "terminal.json", terminal)
-            label = {
+            terminal = {
+                "schema_version": "model-calibration-terminal/2",
                 "example_id": example_id,
                 "check_id": "quality-check",
-                "payload_hash": payload_hash,
+                "request_id": request_id,
+                "label": "abstain",
+                "notes": "Evidence is insufficient.",
+                "position": 1,
+                "severity": 0,
+                "uncertainty": "high",
+            }
+            write_json(terminal_root / "terminal.json", terminal)
+            label = {
+                "schema_version": 3,
+                "example_id": example_id,
+                "check_id": "quality-check",
+                "payload_digest": payload_digest,
                 "gold_label": "pass",
             }
             rating = {
+                "schema_version": 3,
+                "rating_id": "rating.1",
                 "example_id": example_id,
                 "check_id": "quality-check",
-                "payload_hash": payload_hash,
                 "label": "abstain",
                 "position": 1,
                 "thresholds": {
@@ -454,35 +430,27 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             campaign = materialize_campaign(Path(raw))["campaign"]
             campaign["phase"] = "target_profile_ready"
-            campaign = with_self_hash(campaign, "campaign_hash")
-            preparation = with_self_hash(
-                {
-                    "campaign_id": campaign["campaign_id"],
-                    "campaign_hash": campaign["campaign_hash"],
-                    "state_revision": campaign["state_revision"],
-                    "commands": [
-                        {"skill_id": skill_id, "request_count": 16}
-                        for skill_id in SKILL_IDS
-                    ],
-                },
-                "preparation_hash",
+            preparation = _preparation(
+                campaign,
+                [
+                    {"skill_id": skill_id, "request_count": 16}
+                    for skill_id in SKILL_IDS
+                ],
             )
             campaign["skill_evidence"][SKILL_IDS[0]]["grader_calibration"] = {
                 "path": "calibration/first.json",
                 "root": "campaign",
-                "sha256": "sha256:" + "7" * 64,
+                "schema_version": "3",
             }
             campaign["budgets"]["observed"]["model_grade"] = 16
             campaign["budgets"]["observed"]["provider_requests"] = 16
             campaign["state_revision"] += 1
-            campaign = with_self_hash(campaign, "campaign_hash")
             _verify_preparation_lineage(campaign, preparation)
 
-            campaign["budgets"]["observed"]["model_grade"] += 1
-            campaign = with_self_hash(campaign, "campaign_hash")
+            campaign["state_revision"] += 1
             with self.assertRaisesRegex(
                 CalibrationReceiptError,
-                "calibration ancestry differs",
+                "campaign calibration lineage differs",
             ):
                 _verify_preparation_lineage(campaign, preparation)
 
@@ -566,7 +534,7 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
                 campaign = {
                     "sentinel_index": make_binding(
                         REPOSITORY_ROOT
-                        / "evaluation/model-evolution/sentinel-index-v1.json",
+                        / "evaluation/model-evolution/sentinel-index-v2.json",
                         root="repository",
                         repository_root=REPOSITORY_ROOT,
                         campaign_root=paths["root"],
@@ -670,15 +638,12 @@ class ModelCalibrationLifecycleTests(unittest.TestCase):
             host_path = campaign_root / "target-host.json"
             host = host_manifest()
             host["command"]["argv"].extend(["--timeout", "10"])
-            write_json(
-                host_path, {**host, "manifest_hash": self_hash(host, "manifest_hash")}
-            )
+            write_json(host_path, host)
             sentinel_path = (
-                REPOSITORY_ROOT / "evaluation/model-evolution/sentinel-index-v1.json"
+                REPOSITORY_ROOT / "evaluation/model-evolution/sentinel-index-v2.json"
             )
             campaign = {
                 "campaign_id": "calibration-preparation-fixture",
-                "campaign_hash": "sha256:" + "1" * 64,
                 "state_revision": 4,
                 "phase": "target_profile_ready",
                 "sentinel_index": make_binding(

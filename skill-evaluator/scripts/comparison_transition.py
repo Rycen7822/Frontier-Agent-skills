@@ -21,28 +21,26 @@ from comparison_transition_metrics import (
 )
 
 
-_DIRECT_IDENTITY_FIELDS = {"model_hash", "host_hash"}
+_DIRECT_IDENTITY_FIELDS = {"provider", "model", "model_revision"}
 _MODEL_HOST_FIELDS = {"provider", "model", "model_revision"}
 
 
 def _host_projection(
     host: dict[str, Any],
     *,
-    model_change: bool,
-    tokenizer_change: bool,
+    allowed_fields: set[str],
 ) -> dict[str, Any]:
     projected = deepcopy(host)
-    projected.pop("manifest_hash", None)
     identity = projected["identity"]
     identity["repository"].pop("worktree", None)
     identity["session"].pop("session_id", None)
     execution = identity["execution"]
-    if model_change:
-        for field in _MODEL_HOST_FIELDS:
-            execution.pop(field, None)
-    if tokenizer_change:
-        execution.pop("tokenizer_id", None)
-        execution.pop("pricing_id", None)
+    for field in allowed_fields & set(execution):
+        execution.pop(field, None)
+    if "host_version" in allowed_fields:
+        identity.pop("host_version", None)
+    if "platform" in allowed_fields:
+        identity.pop("platform", None)
     return projected
 
 
@@ -56,9 +54,8 @@ def _contract_projection(
     plan = cycle_plan_projection(capsule.execution_plan, subject_id)
     if omit_judge:
         spec.pop("graders", None)
-        spec["suite"].pop("grader_set_hash", None)
-        spec["suite"].pop("grader_schedule_hash", None)
-        plan.pop("grader_set_hash", None)
+        for entry in plan["entries"]:
+            entry.pop("grader_ids", None)
     return spec, plan
 
 
@@ -68,7 +65,6 @@ def _host_subject_projection(
 ) -> dict[str, Any]:
     """Keep the evaluated package fixed across apparatus changes."""
     return {
-        "skill_hash": host["identity"]["execution"]["skill_hash"],
         "subject_entries": [
             entry for entry in host["catalog"]["entries"]
             if entry["id"] == subject_id
@@ -84,20 +80,20 @@ def _pair_contract_diagnostics(
     allowed_identity_fields: set[str],
     require_model_change: bool,
     allow_judge_change: bool,
-    broad_host_change: bool,
-    model_host_change: bool,
-    tokenizer_host_change: bool,
 ) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
-    left_identity = left.execution_plan["execution_identity"]
-    right_identity = right.execution_plan["execution_identity"]
+    left_identity = left.execution_plan["execution_profile"]
+    right_identity = right.execution_plan["execution_profile"]
     changed_identity_fields = {
         field
         for field in left_identity
         if field != "as_of" and left_identity[field] != right_identity[field]
     }
     unexpected = sorted(changed_identity_fields - allowed_identity_fields)
-    model_changed = left_identity["model_hash"] != right_identity["model_hash"]
+    model_changed = any(
+        left_identity[field] != right_identity[field]
+        for field in _MODEL_HOST_FIELDS
+    )
     if unexpected or model_changed != require_model_change:
         diagnostics.append(capsule_diagnostic(
             plan,
@@ -115,7 +111,7 @@ def _pair_contract_diagnostics(
                 "unexpected_fields": unexpected,
                 "model_changed": model_changed,
             },
-            json_pointer="/execution_identity",
+            json_pointer="/execution_profile",
         ))
 
     left_spec, left_plan = _contract_projection(
@@ -138,17 +134,17 @@ def _pair_contract_diagnostics(
         same(left_host_subject, right_host_subject)
         and len(left_host_subject["subject_entries"]) == 1
         and len(right_host_subject["subject_entries"]) == 1
-        and left_host_subject["subject_entries"][0]["root_hash"]
-        == left.spec["subject"]["package"]["package_hash"]
-        and right_host_subject["subject_entries"][0]["root_hash"]
-        == right.spec["subject"]["package"]["package_hash"]
+        and left_host_subject["subject_entries"][0]["root_digest"]
+        == left.spec["subject"]["package"]["package_digest"]
+        and right_host_subject["subject_entries"][0]["root_digest"]
+        == right.spec["subject"]["package"]["package_digest"]
     )
     contract_parts = {
         "subject": same(left.spec["subject"], right.spec["subject"]),
         "host_subject": host_subject_valid,
-        "package_hashes": same(
-            left.execution_plan["package_hashes"],
-            right.execution_plan["package_hashes"],
+        "package_digests": same(
+            left.execution_plan["package_digests"],
+            right.execution_plan["package_digests"],
         ),
         "spec": same(left_spec, right_spec),
         "execution_plan": same(left_plan, right_plan),
@@ -170,8 +166,7 @@ def _pair_contract_diagnostics(
         ))
 
     judge_changed = (
-        left.execution_plan["grader_set_hash"]
-        != right.execution_plan["grader_set_hash"]
+        not same(left.spec["graders"], right.spec["graders"])
     )
     if judge_changed and not allow_judge_change:
         diagnostics.append(capsule_diagnostic(
@@ -182,21 +177,13 @@ def _pair_contract_diagnostics(
             reason_key="transition_judge_identity_drift",
             roles=[left.role, right.role],
             expected="the grader set remains fixed",
-            observed="grader_set_hash changed without a permitted bridge",
-            json_pointer="/grader_set_hash",
+            observed="the readable grader contract changed without a permitted bridge",
+            json_pointer="/graders",
         ))
 
-    if not broad_host_change and not same(
-        _host_projection(
-            left.host_manifest,
-            model_change=model_host_change,
-            tokenizer_change=tokenizer_host_change,
-        ),
-        _host_projection(
-            right.host_manifest,
-            model_change=model_host_change,
-            tokenizer_change=tokenizer_host_change,
-        ),
+    if not same(
+        _host_projection(left.host_manifest, allowed_fields=allowed_identity_fields),
+        _host_projection(right.host_manifest, allowed_fields=allowed_identity_fields),
     ):
         diagnostics.append(capsule_diagnostic(
             plan,
@@ -221,7 +208,7 @@ def _identity_diagnostics(
     tokenizer_change = policy["token_policy"] == "bytes_only_if_changed"
     direct_fields = set(_DIRECT_IDENTITY_FIELDS)
     if tokenizer_change:
-        direct_fields.add("tokenizer_pricing_hash")
+        direct_fields.update({"tokenizer_id", "pricing_id"})
     allow_bridge_judge = policy["judge_policy"] == "bridge_required_if_changed"
     if mode == "bridge":
         apparatus_fields = set(policy["apparatus_change_fields"])
@@ -233,11 +220,6 @@ def _identity_diagnostics(
                 allowed_identity_fields=apparatus_fields,
                 require_model_change=False,
                 allow_judge_change=allow_bridge_judge,
-                broad_host_change="host_hash" in apparatus_fields,
-                model_host_change=False,
-                tokenizer_host_change=(
-                    "tokenizer_pricing_hash" in apparatus_fields
-                ),
             )
             + _pair_contract_diagnostics(
                 plan,
@@ -246,9 +228,6 @@ def _identity_diagnostics(
                 allowed_identity_fields=direct_fields,
                 require_model_change=True,
                 allow_judge_change=False,
-                broad_host_change=False,
-                model_host_change=True,
-                tokenizer_host_change=tokenizer_change,
             )
         )
     allowed = direct_fields | (
@@ -263,11 +242,6 @@ def _identity_diagnostics(
         allowed_identity_fields=allowed,
         require_model_change=True,
         allow_judge_change=False,
-        broad_host_change=(
-            mode == "combined" and "host_hash" in allowed
-        ),
-        model_host_change=True,
-        tokenizer_host_change=tokenizer_change,
     )
 
 

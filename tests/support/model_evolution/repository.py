@@ -11,11 +11,7 @@ from _bundle_hash import inventory, tree_hash
 from _model_evolution_campaign import build_initial_campaign
 from _model_evolution_contract import (
     SKILL_IDS,
-    canonical_bytes,
-    content_hash,
     make_binding,
-    self_hash,
-    with_self_hash,
 )
 from _model_evolution_state import CampaignStore
 from support.model_evolution.documents import analysis_summary, host_manifest
@@ -179,14 +175,11 @@ def materialize_campaign(root: Path) -> dict[str, Any]:
     plugin_tree_hash = root_hash(plugin_root)
     plugin_build = write_json(
         campaign_root / "inputs/plugin-build-evidence.json",
-        with_self_hash(
-            {
-                "schema_version": "plugin-build-evidence/3.0",
-                "source_revision": FIXED_COMMIT,
-                "plugin_tree_hash": plugin_tree_hash,
-            },
-            "evidence_hash",
-        ),
+        {
+            "schema_version": "plugin-build-evidence/3.0",
+            "source_revision": FIXED_COMMIT,
+            "plugin_tree_hash": plugin_tree_hash,
+        },
     )
     host_path = campaign_root / "inputs/target-provisional-host.json"
     host_value = host_manifest()
@@ -205,21 +198,18 @@ def materialize_campaign(root: Path) -> dict[str, Any]:
             "id": skill_id,
             "name": skill_id,
             "version": "1.0.0",
-            "root_hash": root_hash(plugin_root / "skills" / skill_id),
+            "root_digest": root_hash(plugin_root / "skills" / skill_id),
         }
         for skill_id in SKILL_IDS
     ]
-    catalog_hash = content_hash(canonical_bytes(host_value["catalog"]["entries"]))
-    host_value["catalog"]["catalog_hash"] = catalog_hash
-    host_value["identity"]["execution"]["catalog_hash"] = catalog_hash
-    host_value["identity"]["execution"]["skill_hash"] = plugin_tree_hash
+    host_value["catalog"]["catalog_id"] = "fixture-frontier-catalog"
+    host_value["identity"]["execution"]["catalog_id"] = "fixture-frontier-catalog"
     host_value["command"]["argv"] = [
         "python3",
         "synthetic-host.py",
         "--host-manifest",
         str(host_path),
     ]
-    host_value["manifest_hash"] = self_hash(host_value, "manifest_hash")
     host = write_json(host_path, host_value)
     probe_set = materialize_probe_set(repository_root, campaign_root)
     sentinel = materialize_sentinel(repository_root, campaign_root)
@@ -239,29 +229,26 @@ def materialize_probe_set(repository_root: Path, campaign_root: Path) -> Path:
     fixture = repository_root / "fixtures/probe.txt"
     fixture.parent.mkdir(parents=True, exist_ok=True)
     fixture.write_text("inert probe fixture\n", encoding="utf-8")
-    probe_set = with_self_hash(
-        {
-            "schema_version": "model-evolution-interaction-probes/1",
-            "probe_set_id": "codex-host-probes-v1",
-            "adapter_protocol_version": "codex-interaction-probe/1.0",
-            "probes": [
-                {
-                    "probe_id": "force-load",
-                    "capability": "force_load",
-                    "prompt": "$skill-evaluator Return a short inert completion.",
-                    "fixture": repository_binding(
-                        fixture, repository_root, campaign_root
-                    ),
-                    "sandbox": "workspace-write",
-                    "network": "denied",
-                    "required_observations": ["thread.started", "turn.completed"],
-                    "request_ceiling": 1,
-                }
-            ],
-        },
-        "probe_set_hash",
-    )
-    return write_json(repository_root / "codex-interaction-probes-v1.json", probe_set)
+    probe_set = {
+        "schema_version": "model-evolution-interaction-probes/2",
+        "probe_set_id": "codex-host-probes-v2",
+        "adapter_protocol_version": "codex-interaction-probe/1.0",
+        "probes": [
+            {
+                "probe_id": "force-load",
+                "capability": "force_load",
+                "prompt": "$skill-evaluator Return a short inert completion.",
+                "fixture": repository_binding(
+                    fixture, repository_root, campaign_root
+                ),
+                "sandbox": "workspace-write",
+                "network": "denied",
+                "required_observations": ["thread.started", "turn.completed"],
+                "request_ceiling": 1,
+            }
+        ],
+    }
+    return write_json(repository_root / "codex-interaction-probes-v2.json", probe_set)
 
 
 def materialize_sentinel(repository_root: Path, campaign_root: Path) -> Path:
@@ -287,15 +274,12 @@ def materialize_sentinel(repository_root: Path, campaign_root: Path) -> Path:
         }
         for skill_id in SKILL_IDS
     }
-    sentinel = with_self_hash(
-        {
-            "schema_version": "model-evolution-sentinel-index/1",
-            "sentinel_id": "frontier-sentinel-v1",
-            "skills": skills,
-        },
-        "sentinel_hash",
-    )
-    return write_json(repository_root / "sentinel-index-v1.json", sentinel)
+    sentinel = {
+        "schema_version": "model-evolution-sentinel-index/2",
+        "sentinel_id": "frontier-sentinel-v2",
+        "skills": skills,
+    }
+    return write_json(repository_root / "sentinel-index-v2.json", sentinel)
 
 
 def materialize_bootstrap_evidence(fixture: dict[str, Any]) -> dict[str, Any]:
@@ -318,7 +302,7 @@ def materialize_bootstrap_evidence(fixture: dict[str, Any]) -> dict[str, Any]:
     for skill_id in SKILL_IDS:
         state["skill_evidence"][skill_id]["current_summary"] = summary
         state["skill_evidence"][skill_id]["holdout_summary"] = summary
-    return with_self_hash(state, "campaign_hash")
+    return state
 
 
 def mark_probe_passed(state: dict[str, Any], fixture: dict[str, Any]) -> None:
@@ -342,25 +326,21 @@ def materialize_budget_approval(
     probe_set = json.loads(fixture["paths"]["probe_set"].read_text())
     return write_json(
         fixture["campaign_root"] / name,
-        with_self_hash(
-            {
-                "schema_version": "model-evolution-budget-approval/1",
-                "campaign_id": state["campaign_id"],
-                "campaign_hash": state["campaign_hash"],
-                "state_revision": state["state_revision"],
-                "ceilings": state["budgets"]["ceiling"],
-                "planned": {
-                    "interaction_probe_requests": len(probe_set["probes"]),
-                    "public_plan_count": 4,
-                    "artifact_file_ceiling": 5_000,
-                    "wall_clock_seconds": 21_600,
-                },
-                "approved": True,
-                "approved_by": "fixture-release-owner",
-                "approved_at": "2026-08-03T00:00:00Z",
+        {
+            "schema_version": "model-evolution-budget-approval/2",
+            "campaign_id": state["campaign_id"],
+            "state_revision": state["state_revision"],
+            "ceilings": state["budgets"]["ceiling"],
+            "planned": {
+                "interaction_probe_requests": len(probe_set["probes"]),
+                "public_plan_count": 4,
+                "artifact_file_ceiling": 5_000,
+                "wall_clock_seconds": 21_600,
             },
-            "approval_hash",
-        ),
+            "approved": True,
+            "approved_by": "fixture-release-owner",
+            "approved_at": "2026-08-03T00:00:00Z",
+        },
     )
 
 
@@ -369,26 +349,24 @@ def materialize_apparatus_report(
     state: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     state = fixture["campaign"] if state is None else state
-    report = with_self_hash(
-        {
-            "schema_version": "model-evolution-apparatus-report/1",
-            "campaign_id": state["campaign_id"],
-            "source_commit": state["product"]["source_commit"],
-            "source_tree": state["product"]["source_tree"],
-            "campaign_hash": state["campaign_hash"],
-            "status": "pass",
-            "operations": [
-                {
-                    "operation_id": "fixture-preflight",
-                    "input_hash": "sha256:" + "3" * 64,
-                    "command_hash": "sha256:" + "4" * 64,
-                    "status": "pass",
-                    "duration_ms": 1,
-                }
-            ],
-        },
-        "apparatus_report_hash",
-    )
+    report = {
+        "schema_version": "model-evolution-apparatus-report/2",
+        "campaign_id": state["campaign_id"],
+        "state_revision": state["state_revision"],
+        "source_commit": state["product"]["source_commit"],
+        "source_tree": state["product"]["source_tree"],
+        "status": "pass",
+        "operations": [
+            {
+                "operation_id": "fixture-preflight",
+                "status": "pass",
+                "duration_ms": 1,
+                "state_revision": state["state_revision"],
+                "exit_code": 0,
+                "diagnostic": None,
+            }
+        ],
+    }
     path = write_json(fixture["campaign_root"] / "apparatus-report.json", report)
     return make_binding(
         path,

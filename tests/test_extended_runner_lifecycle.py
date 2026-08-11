@@ -10,7 +10,7 @@ class TestExtendedRunnerLifecycle(SkillEvaluatorTestCase):  # noqa: F405
         self,
         root: Path,
     ) -> tuple[dict[str, Path], Path, dict, dict, Path]:
-        paths = materialize_v5_contract_fixture(root)
+        paths = materialize_epoch6_contract_fixture(root)
         return self._compile_from_paths(root, paths)
 
     @staticmethod
@@ -76,10 +76,10 @@ class TestExtendedRunnerLifecycle(SkillEvaluatorTestCase):  # noqa: F405
                 )},
             )
             validator = load_validator_module()
-            self.assertEqual([], validator.validate_v5_schema(
+            self.assertEqual([], validator.validate_epoch6_schema(
                 status,
-                'runner-status-v1.schema.json',
-                validator.load_v5_schema_registry(),
+                'runner-status-v2.schema.json',
+                validator.load_epoch6_schema_registry(),
             ))
 
             ran = self.run_cmd(
@@ -140,7 +140,7 @@ class TestExtendedRunnerLifecycle(SkillEvaluatorTestCase):  # noqa: F405
     def test_status_counts_model_requests_from_frozen_plan(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_model_ready_fixture(root)
+            paths = materialize_epoch6_model_ready_fixture(root)
             _, plan_path, _, entry, index_path = self._compile_from_paths(
                 root, paths,
             )
@@ -214,8 +214,8 @@ class TestExtendedRunnerLifecycle(SkillEvaluatorTestCase):  # noqa: F405
                 if mutation == 'symlink-lock':
                     paths, plan_path, plan, entry, index_path = self._compile(root)
                 else:
-                    paths = materialize_v5_contract_fixture(root)
-                    set_v5_synthetic_host_mode(paths, 'host-exit')
+                    paths = materialize_epoch6_contract_fixture(root)
+                    set_epoch6_synthetic_host_mode(paths, 'host-exit')
                     (
                         paths, plan_path, plan, entry, index_path,
                     ) = self._compile_from_paths(root, paths)
@@ -243,10 +243,7 @@ class TestExtendedRunnerLifecycle(SkillEvaluatorTestCase):  # noqa: F405
                         marker = json.loads(
                             marker_path.read_text(encoding='utf-8'),
                         )
-                        marker['ownership_token'] = 'sha256:' + '0' * 64
-                        marker['marker_hash'] = evidence.canonical_self_hash(
-                            marker, 'marker_hash',
-                        )
+                        marker['run_id'] = 'run.mismatch'
                         marker_path.write_bytes(
                             evidence.canonical_json_bytes(marker) + b'\n',
                         )
@@ -258,9 +255,6 @@ class TestExtendedRunnerLifecycle(SkillEvaluatorTestCase):  # noqa: F405
                             request_path.read_text(encoding='utf-8'),
                         )
                         request['envelope']['run_id'] = 'run-' + '0' * 24
-                        request['request_hash'] = evidence.canonical_self_hash(
-                            request, 'request_hash',
-                        )
                         request_path.write_bytes(
                             evidence.canonical_json_bytes(request) + b'\n',
                         )
@@ -352,8 +346,8 @@ class TestExtendedRunnerLifecycle(SkillEvaluatorTestCase):  # noqa: F405
     def test_budget_zero_seals_but_does_not_create_retry(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_contract_fixture(root)
-            set_v5_synthetic_host_mode(paths, 'transient-first-attempt')
+            paths = materialize_epoch6_contract_fixture(root)
+            set_epoch6_synthetic_host_mode(paths, 'transient-first-attempt')
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
             spec['execution']['retry_policy'] = {
                 'max_attempts': 2,
@@ -363,7 +357,7 @@ class TestExtendedRunnerLifecycle(SkillEvaluatorTestCase):  # noqa: F405
             paths['spec'].write_text(
                 json.dumps(spec, indent=2) + '\n', encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             _, plan_path, plan, entry, index_path = self._compile_from_paths(
                 root, paths,
             )
@@ -385,11 +379,10 @@ class TestExtendedRunnerLifecycle(SkillEvaluatorTestCase):  # noqa: F405
             )
             self.assertEqual(3, resumed.returncode)
             self.assertIn('new-attempt budget exhausted', resumed.stderr)
-            rows = [
-                json.loads(line)
-                for line in index_path.read_text(encoding='utf-8').splitlines()
-            ]
-            self.assertEqual([1], [row['attempt'] for row in rows])
+            _, rows = load_run_index(index_path)
+            self.assertEqual([f"attempt.{entry['entry_ordinal']}.1"], [
+                row['attempt_id'] for row in rows
+            ])
             self.assertFalse((
                 root / plan['artifacts']['root']
                 / entry['artifact_relpath'] / 'attempt-0002'

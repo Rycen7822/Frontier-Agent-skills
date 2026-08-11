@@ -1,12 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/skill-evaluator/schemas/failure-index-v1.schema.json",
-  "title": "Skill Evaluator failure index v1",
+  "$id": "https://example.invalid/skill-evaluator/schemas/failure-index-v2.schema.json",
+  "title": "Skill Evaluator failure index v2",
   "type": "object",
   "required": [
     "schema_version",
     "view",
-    "failure_index_hash",
     "evaluation_id",
     "plan_id",
     "item_count",
@@ -18,9 +17,8 @@
     "failures"
   ],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "view": {"enum": ["index", "full"]},
-    "failure_index_hash": {"$ref": "#/$defs/sha256"},
     "evaluation_id": {"$ref": "#/$defs/safe_id"},
     "plan_id": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]},
     "item_count": {"type": "integer", "minimum": 0},
@@ -44,10 +42,6 @@
   },
   "additionalProperties": false,
   "$defs": {
-    "sha256": {
-      "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$"
-    },
     "safe_id": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"

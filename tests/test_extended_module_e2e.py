@@ -14,7 +14,7 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
     ) -> dict:
         paths = materialize(root)
         if mode is not None:
-            set_v5_synthetic_host_mode(paths, mode)
+            set_epoch6_synthetic_host_mode(paths, mode)
         plan_path = root / 'execution-plan.json'
         compiled = self.run_cmd(
             'scripts/compile_eval_plan.py',
@@ -64,23 +64,13 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
         summary = json.loads(summary_path.read_text(encoding='utf-8'))
         failures = json.loads(failures_path.read_text(encoding='utf-8'))
         validator = load_validator_module()
-        registry = validator.load_v5_schema_registry()
-        self.assertEqual([], validator.validate_v5_schema(
-            summary, 'analysis-summary-v4.schema.json', registry,
+        registry = validator.load_epoch6_schema_registry()
+        self.assertEqual([], validator.validate_epoch6_schema(
+            summary, 'analysis-summary-v5.schema.json', registry,
         ))
-        self.assertEqual([], validator.validate_v5_schema(
-            failures, 'failure-index-v1.schema.json', registry,
+        self.assertEqual([], validator.validate_epoch6_schema(
+            failures, 'failure-index-v2.schema.json', registry,
         ))
-        self.assertTrue(
-            load_evidence_io_module().verify_self_hash(
-                summary, 'summary_hash',
-            ),
-        )
-        self.assertTrue(
-            load_evidence_io_module().verify_self_hash(
-                failures, 'failure_index_hash',
-            ),
-        )
         return {
             'paths': paths,
             'plan': plan,
@@ -95,17 +85,17 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
         campaigns = (
             (
                 'compact',
-                materialize_v5_contract_fixture,
+                materialize_epoch6_contract_fixture,
                 {'core_outcome'},
             ),
             (
                 'crowded-catalog',
-                materialize_v5_routing_fixture,
+                materialize_epoch6_routing_fixture,
                 {'core_outcome', 'natural_routing', 'catalog_routing'},
             ),
             (
                 'declared-composition',
-                materialize_v5_composition_fixture,
+                materialize_epoch6_composition_fixture,
                 {
                     'core_outcome', 'declared_composition',
                     'multi_turn_state',
@@ -113,7 +103,7 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
             ),
             (
                 'multi-principal-handoff',
-                materialize_v5_fanout_critique_fixture,
+                materialize_epoch6_fanout_critique_fixture,
                 {
                     'core_outcome', 'declared_composition',
                     'multi_principal_coordination', 'multi_turn_state',
@@ -121,17 +111,17 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
             ),
             (
                 'multi-turn-state',
-                materialize_v5_interrupt_resume_fixture,
+                materialize_epoch6_interrupt_resume_fixture,
                 {'core_outcome', 'multi_turn_state'},
             ),
             (
                 'typed-fault',
-                materialize_v5_fault_matrix_fixture,
+                materialize_epoch6_fault_matrix_fixture,
                 {'core_outcome', 'tool_faults'},
             ),
             (
                 'dynamic-security-host',
-                materialize_v5_security_fixture,
+                materialize_epoch6_security_fixture,
                 {'core_outcome', 'host_conformance', 'dynamic_security'},
             ),
         )
@@ -173,6 +163,8 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
                     json.loads,
                     result['index'].read_text(encoding='utf-8').splitlines(),
                 ):
+                    if row['record_type'] == 'index_header':
+                        continue
                     receipt = json.loads(
                         (
                             result['index'].parent
@@ -211,7 +203,7 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
                 tempfile.TemporaryDirectory() as tmp,
             ):
                 materialize = lambda root, host_id=host_id: (  # noqa: E731
-                    materialize_v5_security_fixture(root, host_id=host_id)
+                    materialize_epoch6_security_fixture(root, host_id=host_id)
                 )
                 results[host_id] = self._run_campaign(
                     Path(tmp), materialize, mode=mode,
@@ -242,8 +234,8 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual('fail', host_b['dynamic_security'])
         self.assertEqual('fail', host_b['host_conformance'])
         self.assertNotEqual(
-            results['synthetic-host-a']['plan']['host_manifest_hash'],
-            results['synthetic-host-b']['plan']['host_manifest_hash'],
+            results['synthetic-host-a']['plan']['execution_profile']['host_id'],
+            results['synthetic-host-b']['plan']['execution_profile']['host_id'],
         )
         self.assertEqual(
             results['synthetic-host-a']['logical_scenario'],
@@ -263,7 +255,7 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
                 tempfile.TemporaryDirectory() as tmp,
             ):
                 materialize = lambda root, mode=mode: (  # noqa: E731
-                    materialize_v5_composition_fixture(
+                    materialize_epoch6_composition_fixture(
                         root, composition_mode=mode,
                     )
                 )
@@ -278,7 +270,7 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
                     for line in result['index'].read_text(
                         encoding='utf-8',
                     ).splitlines()
-                    if json.loads(line)['entry_id'] == candidate['entry_id']
+                    if json.loads(line).get('entry_id') == candidate['entry_id']
                 )
                 receipt = json.loads(
                     (
@@ -304,37 +296,37 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
     def test_module_boundary_campaigns_fail_at_runtime_owner(self) -> None:
         campaigns = (
             (
-                materialize_v5_routing_fixture,
+                materialize_epoch6_routing_fixture,
                 'routing-mismatch',
                 2,
             ),
             (
-                materialize_v5_composition_fixture,
+                materialize_epoch6_composition_fixture,
                 'routing-mismatch',
                 2,
             ),
             (
-                materialize_v5_fanout_critique_fixture,
+                materialize_epoch6_fanout_critique_fixture,
                 'partial-join-silent',
                 2,
             ),
             (
-                materialize_v5_fault_matrix_fixture,
+                materialize_epoch6_fault_matrix_fixture,
                 'fault-not-triggered',
                 3,
             ),
             (
-                materialize_v5_interrupt_resume_fixture,
+                materialize_epoch6_interrupt_resume_fixture,
                 'state-obligation-mismatch',
                 2,
             ),
             (
-                materialize_v5_interrupt_resume_fixture,
+                materialize_epoch6_interrupt_resume_fixture,
                 'state-cleanup-mismatch',
                 2,
             ),
             (
-                materialize_v5_security_fixture,
+                materialize_epoch6_security_fixture,
                 'unauthorized-execution',
                 2,
             ),
@@ -360,7 +352,7 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
                 tempfile.TemporaryDirectory() as tmp,
             ):
                 result = self._run_campaign(
-                    Path(tmp), materialize_v5_security_fixture, mode=mode,
+                    Path(tmp), materialize_epoch6_security_fixture, mode=mode,
                 )
                 summary = result['summary']
                 self.assertEqual('pass', summary['action_summary']['status'])
@@ -386,7 +378,7 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_security_fixture(root)
+            paths = materialize_epoch6_security_fixture(root)
             scenario = json.loads(
                 paths['scenarios'].read_text(encoding='utf-8'),
             )
@@ -395,7 +387,7 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(scenario, separators=(',', ':')) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             self._run_campaign(
                 root,
                 lambda _: paths,
@@ -404,7 +396,7 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = materialize_v5_security_fixture(root)
+            paths = materialize_epoch6_security_fixture(root)
             host = json.loads(paths['host'].read_text(encoding='utf-8'))
             next(
                 item for item in host['capabilities']
@@ -414,7 +406,7 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(host, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             plan_path = root / 'execution-plan.json'
             compiled = self.run_cmd(
                 'scripts/compile_eval_plan.py',
@@ -433,14 +425,14 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
 
     def test_host_adapter_claim_must_equal_bound_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            paths = materialize_v5_security_fixture(Path(tmp))
+            paths = materialize_epoch6_security_fixture(Path(tmp))
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
             spec['subject']['claimed_hosts'] = ['synthetic-host-b']
             paths['spec'].write_text(
                 json.dumps(spec, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             result = self.run_cmd(
                 'scripts/validate_eval_suite.py', 'contract',
                 str(paths['spec']),
@@ -471,8 +463,8 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
                 tempfile.TemporaryDirectory() as tmp,
             ):
                 def materialize(root, check_id=check_id):
-                    paths = materialize_v5_fanout_critique_fixture(root)
-                    set_v5_grader_check_failure(paths, check_id)
+                    paths = materialize_epoch6_fanout_critique_fixture(root)
+                    set_epoch6_grader_check_failure(paths, check_id)
                     return paths
 
                 result = self._run_campaign(Path(tmp), materialize)
@@ -486,7 +478,7 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
 
         with tempfile.TemporaryDirectory() as tmp:
             def materialize_consensus(root):
-                paths = materialize_v5_fanout_critique_fixture(root)
+                paths = materialize_epoch6_fanout_critique_fixture(root)
                 scenario = json.loads(
                     paths['scenarios'].read_text(encoding='utf-8'),
                 )
@@ -496,7 +488,7 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
                     json.dumps(scenario, separators=(',', ':')) + '\n',
                     encoding='utf-8',
                 )
-                rebind_v5_contract_fixture(paths)
+                rebind_epoch6_contract_fixture(paths)
                 return paths
 
             result = self._run_campaign(
@@ -513,7 +505,7 @@ class TestExtendedModuleE2E(SkillEvaluatorTestCase):  # noqa: F405
         with tempfile.TemporaryDirectory() as tmp:
             result = self._run_campaign(
                 Path(tmp),
-                materialize_v5_contract_fixture,
+                materialize_epoch6_contract_fixture,
                 mode='cache-hit',
             )
             self.assertEqual(

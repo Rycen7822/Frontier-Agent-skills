@@ -8,21 +8,22 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
         self.assertIsNotNone(jsonschema)
         schema_dir = ROOT / 'schemas'
         expected = {
-            'eval-spec-v5.schema.json',
+            'eval-spec-v6.schema.json',
             'scenario-v1.schema.json',
-            'execution-plan-v1.schema.json',
-            'host-manifest-v1.schema.json',
-            'run-index-row-v2.schema.json',
-            'runner-status-v1.schema.json',
-            'receipt-v4.schema.json',
-            'grader-calibration-v2.schema.json',
-            'suite-quality-v1.schema.json',
-            'analysis-summary-v4.schema.json',
-            'failure-index-v1.schema.json',
-            'comparison-plan-v1.schema.json',
-            'comparison-observations-v1.schema.json',
-            'comparison-report-v1.schema.json',
-            'comparison-diagnostic-index-v1.schema.json',
+            'execution-plan-v2.schema.json',
+            'host-manifest-v2.schema.json',
+            'run-index-v3.schema.json',
+            'runner-status-v2.schema.json',
+            'receipt-v5.schema.json',
+            'grader-calibration-v3.schema.json',
+            'suite-quality-v2.schema.json',
+            'analysis-summary-v5.schema.json',
+            'failure-index-v2.schema.json',
+            'comparison-plan-v2.schema.json',
+            'comparison-observations-v2.schema.json',
+            'comparison-report-v2.schema.json',
+            'comparison-diagnostic-index-v2.schema.json',
+            'comparison-cycle-capsule-v2.schema.json',
         }
         self.assertEqual(
             {path.name for path in schema_dir.glob('*.schema.json')},
@@ -39,7 +40,13 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                     schema['$id'],
                     f'https://example.invalid/skill-evaluator/schemas/{name}',
                 )
-                self.assertIs(schema['additionalProperties'], False)
+                if 'additionalProperties' in schema:
+                    self.assertIs(schema['additionalProperties'], False)
+                else:
+                    self.assertIn('oneOf', schema)
+                    for branch in schema['oneOf']:
+                        owner = schema['$defs'][branch['$ref'].split('/')[-1]]
+                        self.assertIs(owner['additionalProperties'], False)
                 jsonschema.Draft202012Validator.check_schema(schema)
 
     def test_v5_schema_registry_accepts_positive_examples_and_rejects_owner_mutations(self) -> None:
@@ -55,7 +62,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
             (schema['$id'], Resource.from_contents(schema))
             for schema in schemas.values()
         )
-        examples = make_v5_schema_examples()
+        examples = make_epoch6_schema_examples()
         self.assertEqual(set(examples), set(schemas))
 
         for name, example in examples.items():
@@ -65,7 +72,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
             )
             with self.subTest(schema=name, mutation='positive'):
                 self.assertEqual([], list(validator.iter_errors(example)))
-            for field in schemas[name]['required']:
+            for field in schemas[name].get('required', []):
                 mutated = copy.deepcopy(example)
                 mutated.pop(field)
                 with self.subTest(schema=name, mutation=f'missing-{field}'):
@@ -77,11 +84,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
             mutated = copy.deepcopy(example)
             mutated['unexpected_contract_owner'] = True
             with self.subTest(schema=name, mutation='extra-owner'):
-                errors = list(validator.iter_errors(mutated))
-                self.assertTrue(
-                    any(error.validator == 'additionalProperties' for error in errors),
-                    errors,
-                )
+                self.assertFalse(validator.is_valid(mutated))
 
             def resolve(current_schema: dict, current_name: str) -> tuple[dict, str]:
                 seen: set[tuple[str, str]] = set()
@@ -155,7 +158,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                     self.assertFalse(validator.is_valid(mutated))
 
         receipt_refs = set()
-        stack = [schemas['receipt-v4.schema.json']]
+        stack = [schemas['receipt-v5.schema.json']]
         while stack:
             value = stack.pop()
             if isinstance(value, dict):
@@ -170,29 +173,45 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
             'authorization_decision', 'action_trace',
         ):
             self.assertIn(
-                f'host-manifest-v1.schema.json#/$defs/{owner}',
+                f'host-manifest-v2.schema.json#/$defs/{owner}',
                 receipt_refs,
             )
 
     def test_stdlib_schema_loader_matches_positive_and_required_mutation_fixtures(self) -> None:
         validator = load_validator_module()
-        registry = validator.load_v5_schema_registry()
-        examples = make_v5_schema_examples()
+        registry = validator.load_epoch6_schema_registry()
+        examples = make_epoch6_schema_examples()
         self.assertEqual(set(registry), set(examples))
         for name, example in examples.items():
             with self.subTest(schema=name, mutation='positive'):
                 self.assertEqual(
-                    [], validator.validate_v5_schema(example, name, registry),
+                    [], validator.validate_epoch6_schema(example, name, registry),
                 )
             mutated = copy.deepcopy(example)
-            missing = registry[name]['required'][0]
-            mutated.pop(missing)
-            errors = validator.validate_v5_schema(mutated, name, registry)
-            with self.subTest(schema=name, mutation=f'missing-{missing}'):
-                self.assertTrue(
-                    any(error['code'] == 'schema.required' for error in errors),
-                    errors,
+            owner = registry[name]
+            if 'required' not in owner:
+                record_type = example['record_type']
+                owner = next(
+                    candidate
+                    for candidate in owner['$defs'].values()
+                    if candidate.get('properties', {})
+                    .get('record_type', {})
+                    .get('const') == record_type
                 )
+            missing = owner['required'][0]
+            mutated.pop(missing)
+            errors = validator.validate_epoch6_schema(mutated, name, registry)
+            with self.subTest(schema=name, mutation=f'missing-{missing}'):
+                if 'oneOf' in registry[name]:
+                    self.assertTrue(errors)
+                else:
+                    self.assertTrue(
+                        any(
+                            error['code'] == 'schema.required'
+                            for error in errors
+                        ),
+                        errors,
+                    )
 
     def test_validator_cli_accepts_public_l0_smoke(self) -> None:
         result = self.run_cmd(
@@ -273,7 +292,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
 
     def test_v5_contract_accepts_materialized_execution_ready_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            paths = materialize_v5_contract_fixture(Path(tmp))
+            paths = materialize_epoch6_contract_fixture(Path(tmp))
             result = self.run_cmd(
                 'scripts/validate_eval_suite.py',
                 'contract',
@@ -292,7 +311,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
 
     def test_v5_contract_readiness_and_strict_exit_are_separate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            paths = materialize_v5_contract_fixture(Path(tmp))
+            paths = materialize_epoch6_contract_fixture(Path(tmp))
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
             spec['execution']['ready'] = False
             paths['spec'].write_text(
@@ -343,14 +362,14 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
         }
         for name, (mutate, expected_code) in mutations.items():
             with self.subTest(mutation=name), tempfile.TemporaryDirectory() as tmp:
-                paths = materialize_v5_contract_fixture(Path(tmp))
+                paths = materialize_epoch6_contract_fixture(Path(tmp))
                 spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
                 mutate(spec)
                 paths['spec'].write_text(
                     json.dumps(spec, indent=2) + '\n', encoding='utf-8',
                 )
                 if name == 'module-shape':
-                    rebind_v5_contract_fixture(paths)
+                    rebind_epoch6_contract_fixture(paths)
                 result = self.run_cmd(
                     'scripts/validate_eval_suite.py', 'contract',
                     str(paths['spec']), str(paths['scenarios']), str(paths['host']),
@@ -382,7 +401,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
         )
         for case, expected_codes in fixtures:
             with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
-                paths = materialize_v5_contract_fixture(Path(tmp))
+                paths = materialize_epoch6_contract_fixture(Path(tmp))
                 spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
                 if case in {'L3', 'L4'}:
                     spec['level'] = case
@@ -392,7 +411,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                     json.dumps(spec, indent=2) + '\n',
                     encoding='utf-8',
                 )
-                rebind_v5_contract_fixture(paths)
+                rebind_epoch6_contract_fixture(paths)
                 result = self.run_cmd(
                     'scripts/validate_eval_suite.py', 'contract',
                     str(paths['spec']), str(paths['scenarios']), str(paths['host']),
@@ -411,7 +430,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
 
     def test_l4_prior_treatment_must_match_candidate_mode_and_estimand(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            paths = materialize_v5_contract_fixture(Path(tmp))
+            paths = materialize_epoch6_contract_fixture(Path(tmp))
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
             spec['level'] = 'L4'
             for decision in spec['applicability']:
@@ -423,14 +442,14 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                 'treatment_id': 'prior',
                 'profile': 'prior/natural_routing',
                 'causal_role': 'prior',
-                'implementation_hash': 'sha256:' + '9' * 64,
+                'implementation_revision': 'prior-implementation',
             })
             spec['treatments'].append(prior)
             paths['spec'].write_text(
                 json.dumps(spec, indent=2) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             result = self.run_cmd(
                 'scripts/validate_eval_suite.py', 'contract',
                 str(paths['spec']), str(paths['scenarios']), str(paths['host']),
@@ -455,7 +474,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                 self.subTest(level=level, exposure=exposure),
                 tempfile.TemporaryDirectory() as tmp,
             ):
-                paths = materialize_v5_contract_fixture(Path(tmp))
+                paths = materialize_epoch6_contract_fixture(Path(tmp))
                 root = Path(tmp)
                 public_scenario = json.loads(
                     paths['scenarios'].read_text(encoding='utf-8'),
@@ -480,7 +499,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                     json.dumps(heldout_scenario, separators=(',', ':')) + '\n',
                     encoding='utf-8',
                 )
-                payload_hash = (
+                payload_digest = (
                     'sha256:' + hashlib.sha256(payload.read_bytes()).hexdigest()
                 )
                 manifest = root / 'holdout-manifest.json'
@@ -488,7 +507,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                     json.dumps({
                         'schema_version': 1,
                         'payload_file': payload.name,
-                        'payload_sha256': payload_hash,
+                        'payload_sha256': payload_digest,
                         'scenario_count': 1,
                         'scenarios': [{
                             'case_id': 'heldout-case',
@@ -508,14 +527,16 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                 spec['suite']['holdout'] = {
                     'manifest': {
                         'path': manifest.name,
-                        'sha256': (
+                        'digest': (
                             'sha256:'
                             + hashlib.sha256(manifest.read_bytes()).hexdigest()
                         ),
+                        'schema_version': 'holdout-manifest/1',
                     },
                     'payload': {
                         'path': payload.name,
-                        'sha256': payload_hash,
+                        'digest': payload_digest,
+                        'schema_version': 'scenario/1',
                     },
                     'custodian': 'independent-evaluation-owner',
                     'exposure_status': exposure,
@@ -529,18 +550,28 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                         ),
                         encoding='utf-8',
                     )
-                    spec['suite']['scenarios'] = {
-                        'path': execution.name,
-                        'sha256': (
-                            'sha256:'
-                            + hashlib.sha256(execution.read_bytes()).hexdigest()
-                        ),
-                    }
+                    spec['suite']['scenarios'] = {'path': execution.name}
                     paths['scenarios'] = execution
+                decision_contract = root / 'manual-decision-contract.json'
+                decision_contract.write_text(
+                    json.dumps({
+                        'role': 'release-reviewer',
+                        'decision': 'required',
+                    }) + '\n',
+                    encoding='utf-8',
+                )
                 spec['authority']['manual_review'] = {
                     'required': True,
                     'role': 'release-reviewer',
-                    'decision_contract_hash': 'sha256:' + '7' * 64,
+                    'decision_contract': {
+                        'path': decision_contract.name,
+                        'digest': (
+                            'sha256:' + hashlib.sha256(
+                                decision_contract.read_bytes(),
+                            ).hexdigest()
+                        ),
+                        'schema_version': 'manual-decision-contract/1',
+                    },
                 }
                 for kind in ('safety', 'host', 'manual'):
                     spec['hard_gates'].append({
@@ -562,7 +593,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                         'treatment_id': 'prior',
                         'profile': 'prior/force_loaded',
                         'causal_role': 'prior',
-                        'implementation_hash': 'sha256:' + '9' * 64,
+                        'implementation_revision': 'prior-implementation',
                     })
                     prior['expected_capabilities'].append('clock_capture')
                     spec['treatments'].append(prior)
@@ -646,12 +677,11 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                             start=1,
                         )
                     ]
-                proof['custody']['split_hashes']['heldout'] = payload_hash
                 paths['quality_proof'].write_text(
                     json.dumps(proof, indent=2) + '\n',
                     encoding='utf-8',
                 )
-                rebind_v5_contract_fixture(paths)
+                rebind_epoch6_contract_fixture(paths)
                 result = self.run_cmd(
                     'scripts/validate_eval_suite.py', 'contract',
                     str(paths['spec']), str(paths['scenarios']), str(paths['host']),
@@ -668,7 +698,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
             'unknown': ('not_evaluable', 'not_evaluable'),
             'pass': ('execute', 'feasible'),
         }.items():
-            host = make_v5_schema_examples()['host-manifest-v1.schema.json']
+            host = make_epoch6_schema_examples()['host-manifest-v2.schema.json']
             host['capabilities'][0]['probe']['status'] = status
             with self.subTest(status=status):
                 self.assertEqual(
@@ -678,12 +708,12 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
         with self.assertRaisesRegex(ValueError, 'probe is missing'):
             validator.derive_entry_disposition(
                 {'model_grading'},
-                make_v5_schema_examples()['host-manifest-v1.schema.json'],
+                make_epoch6_schema_examples()['host-manifest-v2.schema.json'],
             )
 
-    def test_host_protocol_records_enforce_self_hash_and_terminal_result(self) -> None:
+    def test_host_protocol_records_reject_retired_hash_and_require_terminal_result(self) -> None:
         validator = load_validator_module()
-        receipt = make_v5_schema_examples()['receipt-v4.schema.json']
+        receipt = make_epoch6_schema_examples()['receipt-v5.schema.json']
         request = receipt['host_protocol']['requests'][0]
         result = receipt['host_protocol']['results'][0]
 
@@ -691,9 +721,9 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
             [], validator.validate_host_protocol_record('host_request', request),
         )
         tampered = copy.deepcopy(request)
-        tampered['payload']['case_id'] = 'case-tampered'
+        tampered['request_hash'] = 'sha256:' + '9' * 64
         self.assertEqual(
-            {'host_protocol.request_hash'},
+            {'schema.additionalProperties'},
             {
                 error['code']
                 for error in validator.validate_host_protocol_record(
@@ -719,7 +749,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
     def test_cross_contract_semantic_mutations_have_exact_codes(self) -> None:
         def mutate_treatment(paths: dict[str, Path]) -> None:
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
-            spec['treatments'][1]['model_identity'] = 'sha256:' + '9' * 64
+            spec['treatments'][1]['model_identity'] = 'other-model'
             paths['spec'].write_text(
                 json.dumps(spec, indent=2) + '\n', encoding='utf-8',
             )
@@ -789,9 +819,9 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
         )
         for mutate, expected_code in mutations:
             with self.subTest(code=expected_code), tempfile.TemporaryDirectory() as tmp:
-                paths = materialize_v5_contract_fixture(Path(tmp))
+                paths = materialize_epoch6_contract_fixture(Path(tmp))
                 mutate(paths)
-                rebind_v5_contract_fixture(paths)
+                rebind_epoch6_contract_fixture(paths)
                 result = self.run_cmd(
                     'scripts/validate_eval_suite.py', 'contract',
                     str(paths['spec']), str(paths['scenarios']), str(paths['host']),
@@ -809,7 +839,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
 
     def test_required_multi_turn_module_requires_two_actual_turns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            paths = materialize_v5_stateful_fixture(Path(tmp))
+            paths = materialize_epoch6_stateful_fixture(Path(tmp))
             scenario = json.loads(
                 paths['scenarios'].read_text(encoding='utf-8'),
             )
@@ -818,7 +848,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(scenario, separators=(',', ':')) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
 
             result = self.run_cmd(
                 'scripts/validate_eval_suite.py', 'contract',
@@ -836,7 +866,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
 
     def test_observation_contract_separates_bytes_temporality_and_grounding(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            paths = materialize_v5_contract_fixture(Path(tmp))
+            paths = materialize_epoch6_contract_fixture(Path(tmp))
             spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
             spec['graders'][0]['checks'].append({
                 'check_id': 'grounding-check',
@@ -867,16 +897,16 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                 'observation_id': 'source-observation',
                 'producer': 'synthetic-host',
                 'capture_authority': 'host-manifest',
-                'artifact': 'host-manifest-v1.json',
+                'artifact': 'host-manifest-v2.json',
                 'locator': {
                     'kind': 'text_lines',
-                    'artifact': 'host-manifest-v1.json',
+                    'artifact': 'host-manifest-v2.json',
                     'start_line': 1,
                     'end_line': 1,
                 },
                 'encoding': 'utf-8',
-                'schema_hash': None,
-                'expected_hash': 'sha256:' + hashlib.sha256(
+                'schema_id': None,
+                'expected_digest': 'sha256:' + hashlib.sha256(
                     paths['host'].read_bytes(),
                 ).hexdigest(),
                 'predicate': None,
@@ -892,7 +922,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(scenario, separators=(',', ':')) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             valid = self.run_cmd(
                 'scripts/validate_eval_suite.py', 'contract',
                 str(paths['spec']), str(paths['scenarios']), str(paths['host']),
@@ -906,7 +936,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                 json.dumps(scenario, separators=(',', ':')) + '\n',
                 encoding='utf-8',
             )
-            rebind_v5_contract_fixture(paths)
+            rebind_epoch6_contract_fixture(paths)
             invalid = self.run_cmd(
                 'scripts/validate_eval_suite.py', 'contract',
                 str(paths['spec']), str(paths['scenarios']), str(paths['host']),
@@ -921,7 +951,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
 
     def test_handoff_graph_closes_slots_dependencies_state_and_capabilities(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            paths = materialize_v5_handoff_fixture(Path(tmp))
+            paths = materialize_epoch6_handoff_fixture(Path(tmp))
             result = self.run_cmd(
                 'scripts/validate_eval_suite.py', 'contract',
                 str(paths['spec']), str(paths['scenarios']), str(paths['host']),
@@ -933,8 +963,8 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
         self,
     ) -> None:
         for materialize in (
-            materialize_v5_routing_fixture,
-            materialize_v5_composition_fixture,
+            materialize_epoch6_routing_fixture,
+            materialize_epoch6_composition_fixture,
         ):
             with (
                 self.subTest(materialize=materialize.__name__),
@@ -957,7 +987,7 @@ class TestExtendedEvalSpec(SkillEvaluatorTestCase):  # noqa: F405
                     json.dumps(scenario, separators=(',', ':')) + '\n',
                     encoding='utf-8',
                 )
-                rebind_v5_contract_fixture(paths)
+                rebind_epoch6_contract_fixture(paths)
                 invalid = self.run_cmd(
                     'scripts/validate_eval_suite.py', 'contract',
                     str(paths['spec']), str(paths['scenarios']),

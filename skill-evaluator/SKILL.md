@@ -2,7 +2,7 @@
 name: skill-evaluator
 description: "Evaluate, benchmark, compare, regression-test, or security-audit an Agent Skill package. Use when deciding whether a skill triggers correctly, improves task outcomes over a no-skill or prior-version baseline, follows its intended process, remains efficient and safe, generalizes beyond development examples, or is ready to install, publish, or deploy."
 metadata:
-  version: 3.3.4
+  version: 4.0.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -17,9 +17,9 @@ metadata:
 
 Evaluate the complete Skill package and its runtime contribution. For a frontier model, reward only specialized, task-relevant help beyond the model's native competence; treat redundant instructions and loaded references as context cost.
 
-Use the lightest decision-supporting level. Resolve bundled paths from this file's directory through the literal shell variable `$SKILL_EVALUATOR_DIR`. Preserve `"$SKILL_EVALUATOR_DIR/..."` in every delivered command; never substitute a discovered absolute installation path.
+Use the lightest decision-supporting level. Resolve bundled paths from this file's directory through the literal shell variable `$SKILL_EVALUATOR_DIR`. Deliver commands with the portable `"$SKILL_EVALUATOR_DIR/..."` form.
 
-This skill is explicit-only. Invoke it for a requested package-quality, comparison, security, release, or longitudinal decision, never ordinary development.
+This skill is explicit-only. Invoke it when the user requests a package-quality, comparison, security, release, or longitudinal decision.
 
 ## Decision router
 
@@ -32,13 +32,13 @@ This skill is explicit-only. Invoke it for a requested package-quality, comparis
 | Compare a controlled revision or model transition | L4 | [Longitudinal evaluation](references/longitudinal-evaluation.md) |
 | Trace method provenance | any | [Source map](references/source-map.md) |
 
-Load only the owner of the active question. Do not preload every reference.
+Load the one reference that owns the active question, then follow its exact links as needed.
 
 ## Evidence read surface
 
-Keep evidence immutable. Read the analyzer summary first, then its failure index and spec-bounded representative receipts. Open raw artifacts only for named failures, disagreements, or integrity audits by exact locator/hash. Never tree-walk or create per-step notes/receipt copies. Failure is an outcome, not an efficiency gain.
+Keep evidence immutable. Read the analyzer summary first, then its failure index and spec-bounded representative receipts. Open raw artifacts only for named failures, disagreements, or integrity audits by exact locator. The CLI verifies custody digests internally. Keep working context compact by using these canonical views and exact locators.
 
-When a validator names a concrete input file and missing field, keep that validator, file, and current level as the owner. Correct only the reported contract defect and rerun the same validation command; do not substitute another artifact or add arguments unless the validated level explicitly requires them.
+When a validator names a concrete input file and missing field, keep that validator, file, and current level as the owner. Correct that contract defect and rerun the same validation command. Add artifacts or arguments only when the selected level requires them.
 
 ## Claim ceilings
 
@@ -50,20 +50,20 @@ When a validator names a concrete input file and missing field, keep that valida
 | L3 | L2 plus sequestered holdout, adversarial controls, environment binding, and required manual-review receipt | Readiness for the tested scope only |
 | L4 | Immutable cycle capsules plus a frozen comparison plan | Revision closure or model-transition classification for the tested scope only |
 
-Without selection, order, and composition receipts, L4 cannot claim library-scale orchestration.
+L4 library-scale orchestration claims require selection, order, and composition receipts.
 
-## Non-negotiable invariants
+## Decision invariants
 
-- Spec v5, scenario v1 `requirements[]`, host manifest v1, one compiled plan v1, one run index v2, and self-hashed receipts v4 are the only runtime decision path. Never accept inline run scores, legacy case wires, or parallel oracle fields.
+- The epoch-6 runtime decision path is spec v6, scenario v1 `requirements[]`, host manifest v2, one compiled plan v2, one run index v3, and receipts v5. The index binds plan bytes once and each receipt once; receipts bind independently consumed raw artifacts.
 - L2+ contribution requires the same scenarios and controls for a no-Skill baseline and a candidate treatment: natural routing for a routing claim, or forced loading for explicit-invocation value. When both are declared, natural routing is the default comparison unless the analyzer caller selects the forced treatment; a prior comparator matches that mode.
 - Repeats diagnose run variability; inference resamples distinct case means. Point lift or absolute pass rate cannot replace the declared positive lower-bound benefit gate.
-- Missing, invalid, duplicate, or tampered evidence remains outside metric denominators and makes usefulness inconclusive. Treatment-attributable failures with complete host evidence remain valid outcome failures.
+- Metric denominators include complete valid evidence. Missing, duplicate, or tampered inputs produce an inconclusive usefulness state; treatment-attributable failures with complete Host evidence remain valid outcome failures.
 - Target-Skill context is verified from captured component artifacts. The frozen intended-trigger candidate plan is the attribution denominator; total input tokens cannot substitute for attributed body/reference cost.
-- Safety and protected outcomes are unweighted guardrails. Utility cannot offset a material safety or protected-case failure.
-- Static audit findings are provisional review locators. They never authorize deleting package resources, hiding matched text, weakening rules, or treating scanner silence as safety evidence.
+- Safety and protected outcomes are unweighted guardrails and must pass independently of utility.
+- Static audit findings are provisional review locators. A product change requires package-role, reachability, impact, and ownership evidence; scanner silence is only a scan result.
 - Empirical usefulness is `supported`, `not_supported`, `inconclusive_ceiling`, or `not_evaluable`. Manual review and deployment authority are separate final gates.
-- Public templates are placeholders, never live receipts, host evidence, or scored usefulness evidence.
-- Offline comparison consumes existing immutable cycle capsules; it never edits a Skill, schedules a run, promotes a release, or converts exploratory history into pre-registration.
+- Public templates are starting shapes; live decisions use run-owned receipts, Host evidence, and scored artifacts.
+- Offline comparison consumes immutable cycle capsules and returns a bounded revision or model-transition classification. Skill editing, run scheduling, and release decisions remain with their named owners.
 
 ## Run the owners
 
@@ -73,14 +73,14 @@ Run the matching CLI before opening its implementation source. Read implementati
 python3 "$SKILL_EVALUATOR_DIR/scripts/audit_skill_package.py" /path/to/skill
 ```
 
-L0 emits bounded triage without sidecars. Add `--json audit.json` for a frozen report; `--json -` reserves stdout. Its states route review, never safety approval.
+L0 emits bounded triage in the terminal. Add `--json audit.json` for a frozen report; `--json -` reserves stdout. Its states route the next review step; safety approval remains a separate authority decision.
 
 ```bash
 python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" contract eval-spec.l0.json
 python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" contract eval-spec.json scenarios.jsonl host-manifest.json
 ```
 
-Calibrate each model grader before suite quality. Gold rows own exact blinded payloads; ratings bind their hashes; thresholds apply per check. Reviewer pairs are optional; deterministic-only specs omit calibration. Set validity, request and timeout variables from frozen spec and Host.
+Calibrate each model grader before suite quality. Gold rows own exact blinded payloads and one payload digest; Host-normalized ratings use semantic IDs, while reviewer responses contain ordered judgment values only. Thresholds apply per check. Reviewer pairs are optional; deterministic-only specs omit calibration. Set validity, request and timeout variables from frozen spec and Host.
 
 ```bash
 python3 "$SKILL_EVALUATOR_DIR/scripts/run_model_calibration.py" \
@@ -105,9 +105,10 @@ python3 "$SKILL_EVALUATOR_DIR/scripts/run_eval_plan.py" execution-plan.json --in
 
 ```bash
 python3 "$SKILL_EVALUATOR_DIR/scripts/analyze_runs.py" artifacts/index.jsonl \
-  --spec eval-spec.ready.json --json summary.json --failure-index failures.json \
-  --markdown summary.md
+  --spec eval-spec.ready.json --json summary.json
 ```
+
+Add `--failure-index failures.json`, `--details details.json`, or `--markdown summary.md` only for a named diagnostic consumer.
 
 Analyzer exits: `0` supported/eligible or L0/L1 diagnostic; `1` verified not-supported or manual `hold|reject`; `2` contract/I/O error; `3` incomplete, invalid, unsupported, not-evaluable, inconclusive, or authority-ineligible. A required manual receipt is spec-relative. `--report-only` changes only `1` to `0`.
 

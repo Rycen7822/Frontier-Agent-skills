@@ -1,18 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://frontier.local/model-evolution/interaction-probes-v1.schema.json",
-  "title": "Frontier model evolution interaction probes v1",
+  "$id": "https://frontier.local/model-evolution/interaction-probes-v2.schema.json",
+  "title": "Frontier model evolution interaction probes v2",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "probe_set_id",
     "adapter_protocol_version",
-    "probes",
-    "probe_set_hash"
+    "probes"
   ],
   "properties": {
-    "schema_version": {"const": "model-evolution-interaction-probes/1"},
+    "schema_version": {"const": "model-evolution-interaction-probes/2"},
     "probe_set_id": {"$ref": "#/$defs/safe_id"},
     "adapter_protocol_version": {"const": "codex-interaction-probe/1.0"},
     "probes": {
@@ -20,8 +19,7 @@
       "minItems": 1,
       "maxItems": 6,
       "items": {"$ref": "#/$defs/probe"}
-    },
-    "probe_set_hash": {"$ref": "#/$defs/hash"}
+    }
   },
   "$defs": {
     "safe_id": {
@@ -35,14 +33,13 @@
     "binding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["root", "path", "sha256"],
+      "required": ["root", "path"],
       "properties": {
         "root": {"const": "repository"},
         "path": {
           "type": "string",
           "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*://)[A-Za-z0-9._/-]+$"
-        },
-        "sha256": {"$ref": "#/$defs/hash"}
+        }
       }
     },
     "probe": {

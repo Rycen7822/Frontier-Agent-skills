@@ -3,23 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path, PurePosixPath
+import re
 from typing import Any
 
 from evidence_io import (
     atomic_write_directory,
     canonical_json_bytes,
-    canonical_self_hash,
     file_sha256,
     load_json,
     normalize_relative_path,
     resolve_contained_path,
-    verify_self_hash,
 )
 from validate_eval_suite import (
-    load_v5_schema_registry,
-    validate_v5_schema,
+    load_epoch6_schema_registry,
+    validate_epoch6_schema,
 )
 
 
@@ -31,31 +29,13 @@ ROLE_ORDER = {
     "C": 4,
 }
 ARTIFACT_CONTRACTS = {
-    "spec": ("eval-spec-v5", "eval-spec-v5.schema.json", None),
-    "execution_plan": (
-        "execution-plan-v1",
-        "execution-plan-v1.schema.json",
-        "plan_hash",
-    ),
-    "host_manifest": (
-        "host-manifest-v1",
-        "host-manifest-v1.schema.json",
-        "manifest_hash",
-    ),
-    "summary": (
-        "analysis-summary-v4",
-        "analysis-summary-v4.schema.json",
-        "summary_hash",
-    ),
-    "failure_index": (
-        "failure-index-v1",
-        "failure-index-v1.schema.json",
-        "failure_index_hash",
-    ),
+    "spec": ("eval-spec-v6", "eval-spec-v6.schema.json"),
+    "execution_plan": ("execution-plan-v2", "execution-plan-v2.schema.json"),
+    "host_manifest": ("host-manifest-v2", "host-manifest-v2.schema.json"),
+    "summary": ("analysis-summary-v5", "analysis-summary-v5.schema.json"),
+    "failure_index": ("failure-index-v2", "failure-index-v2.schema.json"),
     "observations": (
-        "comparison-observations-v1",
-        "comparison-observations-v1.schema.json",
-        "comparison_observations_hash",
+        "comparison-observations-v2", "comparison-observations-v2.schema.json",
     ),
 }
 
@@ -69,6 +49,8 @@ class ContractError(ValueError):
 @dataclass(frozen=True)
 class CycleCapsule:
     role: str
+    cycle_id: str
+    capsule_digest: str
     spec: dict[str, Any]
     execution_plan: dict[str, Any]
     host_manifest: dict[str, Any]
@@ -76,29 +58,17 @@ class CycleCapsule:
     failure_index: dict[str, Any] | None
     observations: dict[str, Any] | None
     paths: dict[str, Path | None]
-    file_hashes: dict[str, str | None]
+    source_refs: dict[str, str | None]
+    artifact_digests: dict[str, str | None]
 
     def report_record(self) -> dict[str, Any]:
         return {
             "role": self.role,
+            "cycle_id": self.cycle_id,
             "evaluation_id": self.summary["evaluation_id"],
             "plan_id": self.execution_plan["plan_id"],
-            "spec_hash": self.execution_plan["spec_hash"],
-            "plan_hash": self.execution_plan["plan_hash"],
-            "host_manifest_hash": self.host_manifest["manifest_hash"],
-            "summary_hash": self.summary["summary_hash"],
-            "failure_index_hash": (
-                self.failure_index["failure_index_hash"]
-                if self.failure_index is not None
-                else None
-            ),
-            "observations_hash": (
-                self.observations["comparison_observations_hash"]
-                if self.observations is not None
-                else None
-            ),
-            "execution_identity": self.execution_plan["execution_identity"],
-            "file_hashes": self.file_hashes,
+            "capsule_digest": self.capsule_digest,
+            "execution_profile": self.execution_plan["execution_profile"],
         }
 
 
@@ -138,18 +108,16 @@ def load_comparison_plan(
     resolved = plan_path.resolve()
     try:
         plan = load_json(resolved)
-        registry = load_v5_schema_registry()
+        registry = load_epoch6_schema_registry()
     except (OSError, ValueError, TypeError) as exc:
         _raise("plan.load", exc)
-    diagnostics = validate_v5_schema(
+    diagnostics = validate_epoch6_schema(
         plan,
-        "comparison-plan-v1.schema.json",
+        "comparison-plan-v2.schema.json",
         registry,
     )
     if diagnostics:
         _schema_error("comparison plan", diagnostics)
-    if not verify_self_hash(plan, "comparison_plan_hash"):
-        _raise("plan.hash", "comparison plan self-hash is invalid")
     return resolved, plan, registry
 
 
@@ -160,9 +128,7 @@ def _load_artifact(
     role: str,
     registry: dict[str, dict[str, Any]],
 ) -> tuple[Path, dict[str, Any], str]:
-    declared_schema, schema_name, self_hash_field = ARTIFACT_CONTRACTS[
-        artifact
-    ]
+    declared_schema, schema_name = ARTIFACT_CONTRACTS[artifact]
     if binding["schema"] != declared_schema:
         _raise(
             "input.schema_binding",
@@ -183,22 +149,13 @@ def _load_artifact(
         raise
     except (OSError, ValueError, TypeError) as exc:
         _raise("input.path", f"{label}: {exc}")
-    diagnostics = validate_v5_schema(document, schema_name, registry)
+    diagnostics = validate_epoch6_schema(document, schema_name, registry)
     if diagnostics:
         _schema_error(label, diagnostics)
-    if (
-        self_hash_field is not None
-        and not verify_self_hash(document, self_hash_field)
-    ):
-        _raise("input.self_hash", f"{label} self-hash is invalid")
-    actual_file_hash = file_sha256(path)
-    expected_file_hash = binding.get("file_sha256")
-    if (
-        expected_file_hash is not None
-        and actual_file_hash != expected_file_hash
-    ):
-        _raise("input.file_hash", f"{label} file hash differs from its binding")
-    return path, document, actual_file_hash
+    actual_digest = file_sha256(path)
+    if actual_digest != binding["digest"]:
+        _raise("input.digest", f"{label} digest differs from its binding")
+    return path, document, actual_digest
 
 
 def _expect_equal(actual: Any, expected: Any, label: str) -> None:
@@ -212,18 +169,56 @@ def _load_cycle(
     binding: dict[str, Any],
     registry: dict[str, dict[str, Any]],
 ) -> CycleCapsule:
+    capsule_binding = binding["capsule"]
+    if capsule_binding["schema"] != "comparison-cycle-capsule/2":
+        _raise("input.schema_binding", f"{role}.capsule schema is invalid")
+    try:
+        capsule_relative = normalize_relative_path(
+            capsule_binding["path"], f"{role}.capsule",
+        )
+        _reject_symlink_components(root, capsule_relative, f"{role}.capsule")
+        _, capsule_path = resolve_contained_path(
+            root, capsule_relative, f"{role}.capsule", kind="file",
+        )
+        if file_sha256(capsule_path) != capsule_binding["digest"]:
+            _raise("input.digest", f"{role}.capsule digest differs")
+        capsule = load_json(capsule_path)
+    except ContractError:
+        raise
+    except (OSError, ValueError, TypeError) as exc:
+        _raise("input.path", f"{role}.capsule: {exc}")
+    diagnostics = validate_epoch6_schema(
+        capsule, "comparison-cycle-capsule-v2.schema.json", registry,
+    )
+    if diagnostics:
+        _schema_error(f"{role}.capsule", diagnostics)
+
+    expected = binding["expected_identity"]
+    _expect_equal(capsule["cycle_id"], binding["cycle_id"], f"{role}.cycle ID")
+    _expect_equal(
+        {
+            "evaluation_id": capsule["evaluation_id"],
+            "plan_id": capsule["plan_id"],
+            "execution_profile": capsule["execution_profile"],
+        },
+        expected,
+        f"{role}.expected identity",
+    )
+
     documents: dict[str, dict[str, Any] | None] = {}
     paths: dict[str, Path | None] = {}
-    file_hashes: dict[str, str | None] = {}
+    source_refs: dict[str, str | None] = {}
+    artifact_digests: dict[str, str | None] = {}
     for artifact in ARTIFACT_CONTRACTS:
-        artifact_binding = binding[artifact]
+        artifact_binding = capsule["artifacts"][artifact]
         if artifact_binding is None:
             documents[artifact] = None
             paths[artifact] = None
-            file_hashes[artifact] = None
+            source_refs[artifact] = None
+            artifact_digests[artifact] = None
             continue
-        path, document, actual_file_hash = _load_artifact(
-            root,
+        path, document, actual_digest = _load_artifact(
+            capsule_path.parent,
             artifact_binding,
             artifact,
             role,
@@ -231,7 +226,8 @@ def _load_cycle(
         )
         documents[artifact] = document
         paths[artifact] = path
-        file_hashes[artifact] = actual_file_hash
+        source_refs[artifact] = path.relative_to(root).as_posix()
+        artifact_digests[artifact] = actual_digest
 
     spec = documents["spec"]
     plan = documents["execution_plan"]
@@ -245,22 +241,17 @@ def _load_cycle(
     assert isinstance(summary, dict)
     failure_index = documents["failure_index"]
     observations = documents["observations"]
-    expected = binding["expected_identity"]
-
-    cross_references = {
-        "evaluation_id": spec["evaluation_id"],
-        "plan_id": plan["plan_id"],
-        "spec_hash": plan["spec_hash"],
-        "scenario_corpus_hash": plan["scenario_corpus_hash"],
-        "host_manifest_hash": host["manifest_hash"],
-        "execution_identity": plan["execution_identity"],
-    }
-    _expect_equal(cross_references, expected, f"{role}.expected_identity")
-    _expect_equal(plan["evaluation_id"], spec["evaluation_id"], f"{role}.plan evaluation")
     _expect_equal(
-        plan["host_manifest_hash"],
-        host["manifest_hash"],
-        f"{role}.plan host",
+        plan["execution_profile"],
+        capsule["execution_profile"],
+        f"{role}.execution profile",
+    )
+    _expect_equal(plan["evaluation_id"], spec["evaluation_id"], f"{role}.plan evaluation")
+    _expect_equal(plan["plan_id"], capsule["plan_id"], f"{role}.capsule plan")
+    _expect_equal(
+        plan["source_revision"],
+        spec["subject"]["package"]["source_revision"],
+        f"{role}.source revision",
     )
     _expect_equal(
         plan["subject_shape"],
@@ -273,23 +264,11 @@ def _load_cycle(
         f"{role}.summary evaluation",
     )
     _expect_equal(summary["plan_id"], plan["plan_id"], f"{role}.summary plan")
-    _expect_equal(summary["plan_hash"], plan["plan_hash"], f"{role}.summary plan hash")
-    _expect_equal(summary["spec_hash"], plan["spec_hash"], f"{role}.summary spec")
-    _expect_equal(
-        summary["scenario_corpus_hash"],
-        plan["scenario_corpus_hash"],
-        f"{role}.summary scenarios",
-    )
-    _expect_equal(
-        summary["host_manifest_hash"],
-        host["manifest_hash"],
-        f"{role}.summary host",
-    )
     expected_subject = {
         "skill_id": spec["subject"]["skill_id"],
         "version": spec["subject"]["version"],
         "shape": spec["subject"]["shape"],
-        "package_hash": plan["package_hashes"][spec["subject"]["skill_id"]],
+        "source_revision": plan["source_revision"],
     }
     _expect_equal(summary["subject"], expected_subject, f"{role}.summary subject")
 
@@ -313,8 +292,7 @@ def _load_cycle(
         assert failure_path is not None and summary_path is not None
         expected_failure_view = {
             "path": failure_path.relative_to(summary_path.parent).as_posix(),
-            "sha256": file_hashes["failure_index"],
-            "schema_or_view_version": "failure-index-v1/index",
+            "schema_or_view_version": "failure-index-v2/index",
             "item_count": failure_index["item_count"],
             "shown_count": failure_index["shown_count"],
             "omitted_count": failure_index["omitted_count"],
@@ -330,12 +308,9 @@ def _load_cycle(
     if observations is not None:
         assert isinstance(observations, dict)
         for field, expected_value in (
+            ("cycle_id", capsule["cycle_id"]),
             ("evaluation_id", spec["evaluation_id"]),
             ("plan_id", plan["plan_id"]),
-            ("plan_hash", plan["plan_hash"]),
-            ("spec_hash", plan["spec_hash"]),
-            ("scenario_corpus_hash", plan["scenario_corpus_hash"]),
-            ("host_manifest_hash", host["manifest_hash"]),
             ("subject", expected_subject),
         ):
             _expect_equal(
@@ -346,6 +321,8 @@ def _load_cycle(
 
     return CycleCapsule(
         role=role,
+        cycle_id=capsule["cycle_id"],
+        capsule_digest=capsule_binding["digest"],
         spec=spec,
         execution_plan=plan,
         host_manifest=host,
@@ -353,7 +330,8 @@ def _load_cycle(
         failure_index=failure_index,
         observations=observations,
         paths=paths,
-        file_hashes=file_hashes,
+        source_refs=source_refs,
+        artifact_digests=artifact_digests,
     )
 
 
@@ -381,11 +359,12 @@ def make_diagnostic(
     observed: Any,
     locator_artifact: str,
     json_pointer: str,
-    source_hash: str,
+    source_ref: str,
     case_ids: list[str] | None = None,
     requirement_ids: list[str] | None = None,
     metric_ids: list[str] | None = None,
 ) -> dict[str, Any]:
+    purpose = expected.get("purpose") if isinstance(expected, dict) else None
     projection = {
         "severity": severity,
         "fact_type": fact_type,
@@ -404,10 +383,22 @@ def make_diagnostic(
             ),
             "json_pointer": json_pointer,
         },
-        "source_hash": source_hash,
+        "source_ref": normalize_relative_path(source_ref, "diagnostic source"),
     }
-    digest = sha256(canonical_json_bytes(projection)).hexdigest()[:24]
-    return {"diagnostic_id": f"cd-{digest}", **projection}
+    identity_parts = [reason_key, *projection["roles"]]
+    if purpose:
+        identity_parts.append(str(purpose))
+    identity_parts.extend(projection["metric_ids"][:1])
+    identity_parts.extend(projection["requirement_ids"][:1])
+    identity_parts.extend([
+        Path(locator_artifact).stem,
+        json_pointer.strip("/").replace("/", ".") or "root",
+    ])
+    identity = ".".join(
+        re.sub(r"[^A-Za-z0-9._-]+", "-", part).strip("-.") or "item"
+        for part in identity_parts
+    )
+    return {"diagnostic_id": f"diagnostic.{identity}"[:128], **projection}
 
 
 def _output_root(plan_path: Path, plan: dict[str, Any]) -> Path:
@@ -429,7 +420,7 @@ def commit_outputs(
     diagnostics: list[dict[str, Any]],
     registry: dict[str, dict[str, Any]],
 ) -> tuple[Path, Path]:
-    for field in ("comparison_id", "comparison_plan_hash", "kind", "claim_scope"):
+    for field in ("comparison_id", "kind", "claim_scope"):
         _expect_equal(
             report[field],
             plan[field],
@@ -443,33 +434,21 @@ def commit_outputs(
     if len(diagnostic_ids) != len(set(diagnostic_ids)):
         _raise("output.diagnostic_id", "comparison diagnostic IDs must be unique")
     diagnostic_index = {
-        "schema_version": 1,
-        "comparison_diagnostic_index_hash": "sha256:" + "0" * 64,
+        "schema_version": 2,
         "comparison_id": plan["comparison_id"],
-        "comparison_plan_hash": plan["comparison_plan_hash"],
         "item_count": len(ordered_diagnostics),
         "diagnostics": ordered_diagnostics,
     }
-    diagnostic_index["comparison_diagnostic_index_hash"] = canonical_self_hash(
-        diagnostic_index,
-        "comparison_diagnostic_index_hash",
-    )
-    report["diagnostic_index_hash"] = diagnostic_index[
-        "comparison_diagnostic_index_hash"
-    ]
-    report["comparison_report_hash"] = canonical_self_hash(
-        report,
-        "comparison_report_hash",
-    )
+    report["diagnostic_index_path"] = plan["output"]["diagnostic_index"]
     for value, schema_name, label in (
         (
             diagnostic_index,
-            "comparison-diagnostic-index-v1.schema.json",
+            "comparison-diagnostic-index-v2.schema.json",
             "comparison diagnostic index",
         ),
-        (report, "comparison-report-v1.schema.json", "comparison report"),
+        (report, "comparison-report-v2.schema.json", "comparison report"),
     ):
-        schema_diagnostics = validate_v5_schema(
+        schema_diagnostics = validate_epoch6_schema(
             value,
             schema_name,
             registry,

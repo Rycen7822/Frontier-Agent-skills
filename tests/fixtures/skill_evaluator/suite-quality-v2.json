@@ -1,31 +1,23 @@
 {
-  "schema_version": 1,
-  "suite_quality_id": "sq-d1750ecd4024908c24dc1b51",
-  "suite_quality_hash": "sha256:a3190f21bc046c20fe28f589d3789e3b4f258fb6d5d26b78ce118e038f68fd18",
+  "schema_version": 2,
+  "suite_quality_id": "sq.evaluation-fixture",
   "evaluation_id": "evaluation-fixture",
-  "quality_contract_hash": "sha256:48c216d40645276b3cbd414dd6909c2bdb5c0df347a7a376111a165e00f9bd2f",
-  "scenario_hash": "sha256:e6b1e567a7a10e989259afe9665f7c0a1d5d28e4c740fc6d9949e17d7ff23fbc",
-  "holdout_hash": null,
-  "fixture_set_hash": "sha256:0347a4ddf936ea0c1ffcba857952a2df4e8863e9fc19e36a44f18345935a53b6",
-  "grader_set_hash": "sha256:25f216104d221b48297ac2c956592a43352ed54d7c64a00df15df4d7d880b290",
-  "treatment_contract_hash": "sha256:cd1ef42cbeda659104fd3143846adec1ec8c06026596d2a79cd3583be5f3c53a",
-  "calibration_hash": null,
   "raw_proofs": {
     "golden": {
       "path": "suite-quality-proof.json",
-      "sha256": "sha256:f778d27ba0f9eddd4dc7e877b1e840b12c7e4dd04256935cc6d51badb3d003bb"
+      "digest": "sha256:2185357714f896ac3ad8533747d14ece2d263d84e5482090e6b3b61098dac4c7"
     },
     "known_bad": {
       "path": "suite-quality-proof.json",
-      "sha256": "sha256:f778d27ba0f9eddd4dc7e877b1e840b12c7e4dd04256935cc6d51badb3d003bb"
+      "digest": "sha256:2185357714f896ac3ad8533747d14ece2d263d84e5482090e6b3b61098dac4c7"
     },
     "mutations": {
       "path": "suite-quality-proof.json",
-      "sha256": "sha256:f778d27ba0f9eddd4dc7e877b1e840b12c7e4dd04256935cc6d51badb3d003bb"
+      "digest": "sha256:2185357714f896ac3ad8533747d14ece2d263d84e5482090e6b3b61098dac4c7"
     },
     "reviews": {
       "path": "suite-quality-proof.json",
-      "sha256": "sha256:f778d27ba0f9eddd4dc7e877b1e840b12c7e4dd04256935cc6d51badb3d003bb"
+      "digest": "sha256:2185357714f896ac3ad8533747d14ece2d263d84e5482090e6b3b61098dac4c7"
     }
   },
   "duplicate_groups": [],
@@ -35,8 +27,8 @@
       "case_ids": [
         "case-basic"
       ],
-      "source_hashes": [
-        "sha256:6833a6b044cd14eb99d387d643c626f5287e58cabc2b27c1e0d02978bfbbd674"
+      "source_refs": [
+        "cluster-core-source"
       ],
       "status": "closed",
       "review_locator": {
@@ -54,7 +46,7 @@
       "status": "pass",
       "artifact": {
         "path": "grader-output.schema.json",
-        "sha256": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d"
+        "digest": "sha256:f110af59897fd3235eaabdeaa8e6d4be52506f033c77fdd8e1913078175a3b5d"
       },
       "locator": {
         "kind": "text_lines",
@@ -65,8 +57,10 @@
     }
   ],
   "custody": {
-    "split_hashes": {
-      "dev": "sha256:3fc252bb8afb46d8a4368870d285766fce8a22f3e41947b91135e5fe4daf69d2",
+    "split_bindings": {
+      "dev": {
+        "path": "scenarios-v1.jsonl"
+      },
       "regression": null,
       "heldout": null
     },
@@ -125,7 +119,15 @@
     "mutation_detection": 1.0,
     "sample_count": 3
   },
-  "boundary_coverage": [],
+  "boundary_coverage": [
+    {
+      "surface": "scenario-oracle",
+      "case_classes": [
+        "boundary_or_failure"
+      ],
+      "status": "pass"
+    }
+  ],
   "thresholds": {
     "minimum_detection": 1.0
   },

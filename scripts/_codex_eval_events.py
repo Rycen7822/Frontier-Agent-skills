@@ -475,11 +475,10 @@ def base_host_result(
 ) -> dict[str, Any]:
     """Build the common honest-missing Host result projection."""
     return {
-        "record_type": "skill-evaluator-host-result/1",
+        "record_type": "skill-evaluator-host-result/2",
         "terminal": True,
         "terminal_status": "completed",
         "envelope": request["envelope"],
-        "request_hash": request["request_hash"],
         "treatment_error": None,
         "refusal": False,
         "timeout": False,
@@ -708,14 +707,14 @@ def _principal_record(
         "worktree_id": manifest["identity"]["repository"]["tree"],
         "sandbox_id": f"sandbox-{session_id}",
         "context_mode": "single",
-        "inherited_context_hash": None,
-        "untrusted_input_hash": None,
-        "prompt_hash": execution["prompt_hash"],
-        "skill_hash": execution["skill_hash"],
-        "catalog_hash": execution["catalog_hash"],
-        "tool_schema_hash": execution["tool_schema_hash"],
-        "policy_hash": execution["policy_hash"],
-        "authority_hash": payload["permission_policy"],
+        "inherited_context_digest": None,
+        "untrusted_input_digest": None,
+        "prompt_id": execution["prompt_id"],
+        "skill_id": execution["skill_id"],
+        "catalog_id": execution["catalog_id"],
+        "tool_schema_id": execution["tool_schema_id"],
+        "policy_id": execution["policy_id"],
+        "authority_id": payload["permission_policy"],
         "requested_budget": requested_budget,
         "effective_budget": {
             **requested_budget,
@@ -775,7 +774,7 @@ def project_execute_result(
             event_payload["routing"] = normalized["routing"]
         events.append(
             {
-                "record_type": "skill-evaluator-host-event/1",
+                "record_type": "skill-evaluator-host-event/2",
                 "seq": seq,
                 "parent_seq": seq - 1 if seq else None,
                 "principal_id": principal_id,

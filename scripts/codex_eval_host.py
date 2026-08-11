@@ -25,7 +25,7 @@ from _codex_eval_delivery import (
     force_loaded_prompt,
     forced_probe_delivery,
     is_workspace_infrastructure,
-    isolated_tool_schema_hash,
+    isolated_tool_schema_id,
     observed_permission_denials,
     observed_skill_routing,
     prepare_workspace,
@@ -158,19 +158,12 @@ def _optional_bound_command_option(argv: list[str], name: str) -> str | None:
 
 def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     manifest = _load_json_object(path)
-    expected_hash = _sha256_bytes(
-        _canonical_bytes(
-            {key: value for key, value in manifest.items() if key != "manifest_hash"}
-        )
-    )
-    if manifest.get("manifest_hash") != expected_hash:
-        raise AdapterError("host manifest self-hash differs")
     identity = manifest.get("identity")
     execution = identity.get("execution") if isinstance(identity, dict) else None
     adapter = identity.get("adapter") if isinstance(identity, dict) else None
     if not isinstance(execution, dict) or execution.get("model") != args.model:
         raise AdapterError("model identity differs from the host manifest")
-    if execution.get("tool_schema_hash") != isolated_tool_schema_hash(
+    if execution.get("tool_schema_id") != isolated_tool_schema_id(
         args.codex_sha256,
         args.isolation_tool_sha256,
         args.code_mode_host_sha256,
@@ -178,23 +171,18 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         raise AdapterError("tool schema identity differs from the host manifest")
     if (
         not isinstance(adapter, dict)
-        or adapter.get("sha256") != adapter_source_hash()
+        or adapter.get("id") != "codex-eval-host"
         or adapter.get("version") != ADAPTER_VERSION
     ):
         raise AdapterError("adapter identity differs from the host manifest")
-    expected_harness = (
-        f"codex-cli-{args.codex_version}-effort-{args.effort}"
-        f"-profile-{args.profile}-tier-default"
-    )
-    model_revision = execution.get("model_revision")
-    model_revision_prefix = f"codex-catalog-{args.codex_version}-"
+    expected_harness = "codex-cli"
+    model_revision = f"codex-catalog-{args.codex_version}"
     if (
-        identity.get("host_build") != args.codex_sha256
+        identity.get("host_build") != f"codex-cli-{args.codex_version}"
         or identity.get("host_version") != args.codex_version
         or execution.get("harness") != expected_harness
-        or not isinstance(model_revision, str)
-        or not model_revision.startswith(model_revision_prefix)
-        or not HASH.fullmatch(model_revision.removeprefix(model_revision_prefix))
+        or execution.get("harness_version") != args.codex_version
+        or execution.get("model_revision") != model_revision
     ):
         raise AdapterError("Codex runtime identity differs from the host manifest")
     if _file_sha256(args.codex) != args.codex_sha256:
@@ -330,7 +318,7 @@ def validate_bound_manifest(path: Path, plugin_root: Path) -> dict[str, Any]:
         raise AdapterError("host manifest command binding is invalid") from exc
     if (
         declared != executable
-        or command.get("executable_sha256") != _file_sha256(executable)
+        or command.get("executable_digest") != _file_sha256(executable)
     ):
         raise AdapterError("host manifest executable identity differs")
     args = argparse.Namespace(
@@ -369,7 +357,7 @@ def _artifact_bytes(
         handle.write(payload)
     return {
         "path": f"workspace/{name}",
-        "sha256": _sha256_bytes(payload),
+        "digest": _sha256_bytes(payload),
         "encoding": encoding,
     }
 
@@ -569,7 +557,7 @@ def _captured_usage(
 
 def _captured_context(
     delivery: tuple[str, str, str | None] | None,
-    request_hash: str,
+    request_id: str,
 ) -> tuple[dict[str, Any], list[dict[str, str]]]:
     body = delivery[2] if delivery is not None else None
     if body is None:
@@ -584,14 +572,13 @@ def _captured_context(
         }, []
     payload = body.encode("utf-8")
     artifact = _artifact_bytes(
-        f"skill-body-{request_hash[7:19]}.md",
+        f"skill-body-{request_id}.md",
         payload,
     )
     component = {
         "component_id": "target-skill-body",
         "kind": "body",
         "source_path": f"skills/{delivery[0]}/SKILL.md",
-        "content_sha256": artifact["sha256"],
         "artifact": artifact,
         "bytes": len(payload),
         "tokens": None,
@@ -839,15 +826,11 @@ def _emit(value: dict[str, Any]) -> None:
 
 def _validate_request(request: dict[str, Any]) -> None:
     if (
-        set(request) != {"record_type", "request_hash", "envelope", "payload"}
-        or request.get("record_type") != "skill-evaluator-host-request/1"
-        or request.get("request_hash")
-        != _sha256_bytes(
-            _canonical_bytes(
-                {key: value for key, value in request.items() if key != "request_hash"}
-            )
-        )
+        set(request) != {"record_type", "envelope", "payload"}
+        or request.get("record_type") != "skill-evaluator-host-request/2"
         or not isinstance(request.get("envelope"), dict)
+        or not isinstance(request["envelope"].get("request_id"), str)
+        or not SAFE_ID.fullmatch(request["envelope"]["request_id"])
         or not isinstance(request.get("payload"), dict)
     ):
         raise AdapterError("host request identity or shape is invalid")
@@ -858,10 +841,10 @@ def _reset_probe(
     manifest: dict[str, Any],
 ) -> dict[str, Any]:
     proof = _artifact_json(
-        f"reset-proof-{request['request_hash'][7:19]}.json",
+        f"reset-proof-{request['envelope']['request_id']}.json",
         {
             "capability": request["payload"].get("capability"),
-            "request_hash": request["request_hash"],
+            "request_id": request["envelope"]["request_id"],
             "workspace": "contained",
         },
     )
@@ -936,11 +919,10 @@ def _run_model_grade(
     payload = request["payload"]
     required = {
         "grader_id",
-        "batch_hash",
-        "schedule_hash",
+        "schedule_id",
         "grader_prompt",
-        "grader_prompt_hash",
-        "grader_schema_hash",
+        "grader_prompt_id",
+        "grader_schema_id",
         "blinded_input",
     }
     grader_prompt = payload.get("grader_prompt")
@@ -950,16 +932,13 @@ def _run_model_grade(
         or not SAFE_ID.fullmatch(payload["grader_id"])
         or not isinstance(grader_prompt, str)
         or not grader_prompt.strip()
-        or payload.get("grader_prompt_hash")
-        != _sha256_bytes(grader_prompt.encode("utf-8"))
         or any(
             not isinstance(payload.get(field), str)
-            or not HASH.fullmatch(payload[field])
+            or not SAFE_ID.fullmatch(payload[field])
             for field in (
-                "batch_hash",
-                "schedule_hash",
-                "grader_prompt_hash",
-                "grader_schema_hash",
+                "schedule_id",
+                "grader_prompt_id",
+                "grader_schema_id",
             )
         )
     ):
@@ -1023,7 +1002,7 @@ def _run_model_grade(
     if not identity_diagnostics and bound_output is None:
         raise AdapterError("model-grade identity binding produced no output")
     artifact = _artifact_json(
-        f"model-grade-{request['request_hash'][7:19]}.json",
+        f"model-grade-{request['envelope']['request_id']}.json",
         output if identity_diagnostics else bound_output,
     )
     usage = _captured_usage(
@@ -1032,7 +1011,7 @@ def _run_model_grade(
             "principal_id": f"grader-{payload['grader_id']}",
             "turn_id": None,
             "phase": "model-grade",
-            "call_id": f"grade-{request['request_hash'][7:19]}",
+            "call_id": f"grade-{request['envelope']['request_id']}",
             "normalized": normalized,
             "runtime_ms": child["runtime_ms"],
         }],
@@ -1201,7 +1180,7 @@ def _run_execute_in_workspace(
         return [], result
 
     final_message = normalized_turns[-1]["final_message"] or ""
-    suffix = request["request_hash"][7:19]
+    suffix = request["envelope"]["request_id"]
     final_artifact = _artifact_bytes(
         f"final-answer-{suffix}.md",
         _redact_text(final_message, workspace).encode("utf-8"),
@@ -1256,7 +1235,7 @@ def _run_execute_in_workspace(
 
     context, context_artifacts = _captured_context(
         delivery,
-        request["request_hash"],
+        request["envelope"]["request_id"],
     )
     artifacts.extend(context_artifacts)
     events, result = project_execute_result(

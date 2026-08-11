@@ -1,14 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/skill-evaluator/schemas/receipt-v4.schema.json",
-  "title": "Skill Evaluator receipt v4",
+  "$id": "https://example.invalid/skill-evaluator/schemas/receipt-v5.schema.json",
+  "title": "Skill Evaluator receipt v5",
   "type": "object",
   "required": [
     "schema_version",
-    "receipt_hash",
-    "attempt_start",
     "run",
-    "provenance",
     "artifacts",
     "host_protocol",
     "routing",
@@ -24,11 +21,8 @@
     "cleanup"
   ],
   "properties": {
-    "schema_version": {"const": 4},
-    "receipt_hash": {"$ref": "#/$defs/sha256"},
-    "attempt_start": {"$ref": "#/$defs/attempt_start"},
+    "schema_version": {"const": 5},
     "run": {"$ref": "#/$defs/run"},
-    "provenance": {"$ref": "#/$defs/provenance"},
     "artifacts": {
       "type": "array",
       "items": {"$ref": "#/$defs/artifact"}
@@ -105,75 +99,50 @@
     },
     "artifact": {
       "type": "object",
-      "required": ["path", "sha256", "encoding"],
+      "required": ["path", "digest", "encoding"],
       "properties": {
         "path": {"$ref": "#/$defs/relative_path"},
-        "sha256": {"$ref": "#/$defs/sha256"},
+        "digest": {"$ref": "#/$defs/sha256"},
         "encoding": {"enum": ["utf-8", "binary"]}
       },
       "additionalProperties": false
     },
     "host_request": {
-      "$ref": "host-manifest-v1.schema.json#/$defs/host_request"
+      "$ref": "host-manifest-v2.schema.json#/$defs/host_request"
     },
     "host_event": {
-      "$ref": "host-manifest-v1.schema.json#/$defs/host_event"
+      "$ref": "host-manifest-v2.schema.json#/$defs/host_event"
     },
     "host_result": {
-      "$ref": "host-manifest-v1.schema.json#/$defs/host_result"
+      "$ref": "host-manifest-v2.schema.json#/$defs/host_result"
     },
     "checkpoint": {
-      "$ref": "host-manifest-v1.schema.json#/$defs/checkpoint"
+      "$ref": "host-manifest-v2.schema.json#/$defs/checkpoint"
     },
     "protocol_error": {
-      "$ref": "host-manifest-v1.schema.json#/$defs/protocol_error"
+      "$ref": "host-manifest-v2.schema.json#/$defs/protocol_error"
     },
     "principal": {
-      "$ref": "host-manifest-v1.schema.json#/$defs/principal"
+      "$ref": "host-manifest-v2.schema.json#/$defs/principal"
     },
     "handoff": {
-      "$ref": "host-manifest-v1.schema.json#/$defs/handoff"
+      "$ref": "host-manifest-v2.schema.json#/$defs/handoff"
     },
     "authorization_decision": {
-      "$ref": "host-manifest-v1.schema.json#/$defs/authorization_decision"
+      "$ref": "host-manifest-v2.schema.json#/$defs/authorization_decision"
     },
     "action_trace": {
-      "$ref": "host-manifest-v1.schema.json#/$defs/action_trace"
-    },
-    "attempt_start": {
-      "type": "object",
-      "required": [
-        "schema_version",
-        "marker_hash",
-        "plan_hash",
-        "plan_id",
-        "entry_ordinal",
-        "entry_id",
-        "attempt",
-        "run_id",
-        "ownership_token"
-      ],
-      "properties": {
-        "schema_version": {"const": 1},
-        "marker_hash": {"$ref": "#/$defs/sha256"},
-        "plan_hash": {"$ref": "#/$defs/sha256"},
-        "plan_id": {"$ref": "#/$defs/safe_id"},
-        "entry_ordinal": {"type": "integer", "minimum": 0},
-        "entry_id": {"$ref": "#/$defs/safe_id"},
-        "attempt": {"type": "integer", "minimum": 1, "maximum": 9999},
-        "run_id": {"$ref": "#/$defs/safe_id"},
-        "ownership_token": {"$ref": "#/$defs/sha256"}
-      },
-      "additionalProperties": false
+      "$ref": "host-manifest-v2.schema.json#/$defs/action_trace"
     },
     "run": {
       "type": "object",
       "required": [
-        "plan_hash",
         "plan_id",
         "entry_ordinal",
         "entry_id",
         "run_id",
+        "attempt_id",
+        "request_id",
         "case_id",
         "treatment_id",
         "repeat",
@@ -187,11 +156,12 @@
         "terminal"
       ],
       "properties": {
-        "plan_hash": {"$ref": "#/$defs/sha256"},
         "plan_id": {"$ref": "#/$defs/safe_id"},
         "entry_ordinal": {"type": "integer", "minimum": 0},
         "entry_id": {"$ref": "#/$defs/safe_id"},
         "run_id": {"$ref": "#/$defs/safe_id"},
+        "attempt_id": {"$ref": "#/$defs/safe_id"},
+        "request_id": {"$ref": "#/$defs/safe_id"},
         "case_id": {"$ref": "#/$defs/safe_id"},
         "treatment_id": {"$ref": "#/$defs/safe_id"},
         "repeat": {"type": "integer", "minimum": 1},
@@ -203,42 +173,6 @@
         "valid": {"type": "boolean"},
         "error": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
         "terminal": {"enum": ["completed", "failed", "cancelled", "timeout", "interrupted"]}
-      },
-      "additionalProperties": false
-    },
-    "provenance": {
-      "type": "object",
-      "required": [
-        "spec_hash",
-        "scenario_corpus_hash",
-        "scenario_hash",
-        "plan_hash",
-        "host_manifest_hash",
-        "package_hash",
-        "catalog_hash",
-        "treatment_hash",
-        "fixture_hash",
-        "grader_set_hash",
-        "calibration_hash",
-        "suite_quality_hash"
-      ],
-      "properties": {
-        "spec_hash": {"$ref": "#/$defs/sha256"},
-        "scenario_corpus_hash": {"$ref": "#/$defs/sha256"},
-        "scenario_hash": {"$ref": "#/$defs/sha256"},
-        "plan_hash": {"$ref": "#/$defs/sha256"},
-        "host_manifest_hash": {"$ref": "#/$defs/sha256"},
-        "package_hash": {"$ref": "#/$defs/sha256"},
-        "catalog_hash": {"$ref": "#/$defs/sha256"},
-        "treatment_hash": {"$ref": "#/$defs/sha256"},
-        "fixture_hash": {"$ref": "#/$defs/sha256"},
-        "grader_set_hash": {"$ref": "#/$defs/sha256"},
-        "calibration_hash": {
-          "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
-        },
-        "suite_quality_hash": {
-          "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
-        }
       },
       "additionalProperties": false
     },
@@ -275,13 +209,13 @@
     },
     "observation": {
       "type": "object",
-      "required": ["observation_id", "artifact", "locator", "schema_hash", "integrity", "temporal_validity", "reason"],
+      "required": ["observation_id", "artifact", "locator", "schema_id", "integrity", "temporal_validity", "reason"],
       "properties": {
         "observation_id": {"$ref": "#/$defs/safe_id"},
         "artifact": {"$ref": "#/$defs/artifact"},
-        "locator": {"$ref": "failure-index-v1.schema.json#/$defs/locator"},
-        "schema_hash": {
-          "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        "locator": {"$ref": "failure-index-v2.schema.json#/$defs/locator"},
+        "schema_id": {
+          "anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]
         },
         "integrity": {"enum": ["pass", "fail", "not_evaluable"]},
         "temporal_validity": {"enum": ["pass", "stale", "not_evaluable"]},
@@ -318,7 +252,7 @@
       "required": ["fault_id", "locator"],
       "properties": {
         "fault_id": {"$ref": "#/$defs/safe_id"},
-        "locator": {"$ref": "failure-index-v1.schema.json#/$defs/locator"}
+        "locator": {"$ref": "failure-index-v2.schema.json#/$defs/locator"}
       },
       "additionalProperties": false
     },
@@ -412,12 +346,11 @@
     },
     "context_component": {
       "type": "object",
-      "required": ["component_id", "kind", "source_path", "content_sha256", "artifact", "bytes", "tokens", "occurrence"],
+      "required": ["component_id", "kind", "source_path", "artifact", "bytes", "tokens", "occurrence"],
       "properties": {
         "component_id": {"$ref": "#/$defs/safe_id"},
         "kind": {"enum": ["metadata", "body", "reference", "protocol_output", "failed_command_output"]},
         "source_path": {"type": "string", "minLength": 1},
-        "content_sha256": {"$ref": "#/$defs/sha256"},
         "artifact": {"$ref": "#/$defs/artifact"},
         "bytes": {"type": "integer", "minimum": 0},
         "tokens": {
@@ -442,11 +375,11 @@
         },
         {
           "type": "object",
-          "required": ["kind", "grader_id", "schedule_hash", "blinded_input", "raw_batch"],
+          "required": ["kind", "grader_id", "schedule_id", "blinded_input", "raw_batch"],
           "properties": {
             "kind": {"const": "model"},
             "grader_id": {"$ref": "#/$defs/safe_id"},
-            "schedule_hash": {"$ref": "#/$defs/sha256"},
+            "schedule_id": {"$ref": "#/$defs/safe_id"},
             "blinded_input": {"$ref": "#/$defs/artifact"},
             "raw_batch": {"$ref": "#/$defs/artifact"}
           },

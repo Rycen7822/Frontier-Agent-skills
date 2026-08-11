@@ -1,6 +1,6 @@
 # Evaluation Contract
 
-This file owns eval-spec v5 semantics, evaluation levels, applicability, treatments, preparation, fairness, and claim ceilings. JSON Schema owns shape; `validate_eval_suite.py` owns cross-field and cross-file semantics. Freeze both before compiling a plan.
+This file owns eval-spec v6 semantics, evaluation levels, applicability, treatments, preparation, fairness, and claim ceilings. JSON Schema owns shape; `validate_eval_suite.py` owns cross-field and cross-file semantics. Freeze both before compiling a plan.
 
 ## Decision and claim ceiling
 
@@ -8,22 +8,22 @@ Record one decision: static audit, diagnosis, scoped incremental usefulness, rel
 
 Evaluation permission never grants permission to install dependencies, expose secrets, use networks, mutate persistent state, publish, deploy, or perform destructive, privileged, financial, or sensitive actions. Freeze those permissions separately.
 
-## Spec v5 owner
+## Spec v6 owner
 
-`schema_version=5` is the only accepted contract. It binds:
+`schema_version=6` binds:
 
 - immutable evaluation, decision, subject, risk, claim, package, source, plugin, model, harness, host, catalog, policy, and authority identities;
 - one decision for every applicability module, with evidence and approver;
 - `execution.mode`, owner-supplied `as_of`, readiness, timeout, reset, retry, order, network, credential, and parallelism boundaries;
 - scenario, holdout, fixture, grader, treatment, calibration, suite-quality, analysis, gate, artifact, retention, redaction, and cleanup contracts.
 
-L0 permits only the static subset and keeps `execution.ready=false`. L1–L4 add the behavioral fields. `execution.ready=true` means preparation is closed enough to compile; it does not mean every host capability is supported or that an evaluation passed. Public L1/L2 templates intentionally keep `execution.ready=false`. The deleted `ready_for_scored_run` field has no v5 reader.
+L0 uses the static subset and keeps `execution.ready=false`. L1–L4 add the behavioral fields. `execution.ready=true` means preparation is closed enough to compile; it does not mean every host capability is supported or that an evaluation passed. Public L1/L2 templates keep `execution.ready=false`.
 
 Each spec declares exactly one decision for every module: `core_outcome`, `natural_routing`, `catalog_routing`, `declared_composition`, `multi_principal_coordination`, `multi_turn_state`, `tool_faults`, `host_conformance`, `dynamic_security`, and `longitudinal`. A `not_applicable` decision requires a reason, evidence, and approval and never means that the candidate passed. Subject shape and mechanisms determine which modules must be required.
 
-Selected model graders require a bound, unexpired blinded calibration artifact. L2–L4 require a bound suite-quality artifact; L1 may bind one. `quality_contract_hash` excludes the quality artifact path/hash, readiness, outputs, timestamps, and candidate results, so the spec-to-quality binding is acyclic. Validator-produced calibration and quality artifacts are preparation evidence, never candidate score evidence.
+Selected model graders require one bound, unexpired blinded calibration artifact. L2–L4 require one bound suite-quality artifact; L1 may bind one. Each external artifact uses `{path,digest,schema_version}` once. The validator derives preparation semantics directly from the bound raw inputs. Validator-produced calibration and quality artifacts own preparation evidence; receipts own candidate score evidence.
 
-Calibration v2 is the only supported calibration contract; v1 input is rejected rather than migrated. It binds every gold row to the exact blinded `view + check` semantic payload and every judge/reviewer rating to that row's payload hash. Every selected model check independently meets its `minimum_examples` and judge-to-gold agreement thresholds, contains pass and fail gold, and covers every applicable risk tier. Candidate/grader genealogy dependence remains explicit and can never close an `independent_judge` gate. A context-clean reviewer pair is optional corroboration. Reviewer-pair v2 freezes the exact model, reasoning effort, service tier, and `fork_turns=none` configuration; every receipt, spawn request, and observed spawn envelope must match it. Without a pair, pair count is zero, reviewer agreements are null, and no reviewer-independence claim is available.
+Calibration v3 owns current calibration evidence. Every gold row owns the exact blinded `view + check` semantic payload and one payload digest. Judge ratings join through semantic IDs. Every selected model check independently meets its `minimum_examples` and judge-to-gold agreement thresholds, contains pass and fail gold, and covers every applicable risk tier. Candidate/grader genealogy dependence remains explicit. A context-clean reviewer pair is optional corroboration. Reviewer-pair v3 freezes the exact model, reasoning effort, service tier, and `fork_turns=none` configuration; its packet, mapping, two prompts, two ordered value-only raw responses, and two receipts form the canonical evidence set. Without a pair, pair count is zero, reviewer agreements are null, and no reviewer-independence claim is available.
 
 Placeholders are valid only in their exact non-ready forms. A public example that validates with warnings is a template, not a run receipt or usefulness result.
 
@@ -70,9 +70,9 @@ Repeats never increase `case_count`. Fewer than two complete independent cases c
 
 ## Isolation and provenance
 
-The compiler consumes the exact spec v5 execution scenario corpus, host manifest, and any bound calibration/quality artifacts and emits one deterministic execution plan v1. For an exposed L3/L4 decision, the execution corpus is the validated ordered union of the separate public and heldout bindings; the public file itself remains free of heldout rows. Each plan entry fixes its disposition (`execute`, `unsupported`, or `not_evaluable`) from verified capability probes. Unsupported or unknown capability evidence is feasibility evidence and produces no attempt.
+The compiler consumes the exact spec v6 execution scenario corpus, host manifest v2, and any bound calibration/quality artifacts and emits one deterministic execution plan v2. For an exposed L3/L4 decision, the execution corpus is the validated ordered union of the separate public and heldout bindings; the public file itself remains free of heldout rows. Each plan entry fixes its disposition (`execute`, `unsupported`, or `not_evaluable`) from verified capability probes. Unsupported or unknown capability evidence is feasibility evidence and produces no attempt.
 
-Every run-index row v2 joins one execute attempt to the plan/entry/case/treatment/repeat and a hashed receipt v4 under `spec.artifacts.root`. The analyzer recompiles the plan, verifies index and receipt identities, and recomputes spec, scenario, host, package, catalog, treatment, fixture, grader, artifact, invocation, calibration, and quality bindings before deriving a result. Index rows contain no pass, score, routing, usage, grader, or provenance claims.
+Run index v3 binds the plan bytes once in its header. Every attempt row then joins one execute attempt to readable entry/run/attempt IDs and one receipt v5 binding under `spec.artifacts.root`. The analyzer recompiles the plan, verifies the index header, receipt bindings, readable semantic facts, and independently consumed raw artifacts before deriving a result. Attempt rows contain no pass, score, routing, usage, grader, or provenance claims.
 
 Keep cases, hidden graders, holdout payloads, and evaluation-controller instructions outside the tested executor context unless the deployment contract genuinely supplies them. Preserve invalid apparatus rows, treatment failures, retries, timeouts, and raw artifacts under their declared semantics.
 
@@ -80,7 +80,7 @@ Keep cases, hidden graders, holdout payloads, and evaluation-controller instruct
 
 L3/generalization evidence uses a separately stored holdout payload and manifest with ordered case IDs, per-case hashes, payload hash, custodian, exposure state, and refresh state. Visible example holdouts must be replaced, access-controlled, and rehashed.
 
-When manual review is required, the sole authority input is one contained, hashed JSON receipt whose role and evidence types exactly match the spec. `approve` completes that authority gate; `hold` or `reject` blocks final-authority eligibility without rewriting empirical usefulness. The signature is an attestation unless an external system separately proves it.
+When manual review is required, the sole authority input is one contained JSON receipt whose role and evidence types exactly match the spec. Its frozen reviewer packet and required external artifacts are bound once at their file-custody boundaries. `approve` completes that authority gate; `hold` or `reject` blocks final-authority eligibility without rewriting empirical usefulness. The signature is an attestation unless an external system separately proves it.
 
 ## Contract changes
 

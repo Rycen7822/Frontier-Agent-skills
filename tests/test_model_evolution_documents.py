@@ -24,7 +24,6 @@ from _model_evolution_contract import (  # noqa: E402
     validate_document,
     validate_formal_plan_timeouts,
     validate_formal_timeout_inputs,
-    with_self_hash,
 )
 from _model_evolution_qualification import (  # noqa: E402
     project_observed_host,
@@ -99,7 +98,7 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
             valid_until="2026-08-04T00:00:00Z",
         )
 
-    def test_closed_schemas_and_self_hashes(self) -> None:
+    def test_current_schemas_use_semantic_identity(self) -> None:
         documents = {
             "budget_approval": json.loads(
                 materialize_budget_approval(
@@ -114,13 +113,6 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
             "sentinel_index": json.loads(self.fixture["paths"]["sentinel"].read_text()),
             "qualification": self._blocked_qualification(),
         }
-        hash_fields = {
-            "budget_approval": "approval_hash",
-            "campaign": "campaign_hash",
-            "interaction_probes": "probe_set_hash",
-            "sentinel_index": "sentinel_hash",
-            "qualification": "qualification_hash",
-        }
         validators = {
             "campaign": validate_campaign,
             "qualification": validate_qualification,
@@ -134,13 +126,12 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
                     ),
                 )
                 validator(value)
-                tampered = copy.deepcopy(value)
-                tampered[hash_fields[name]] = "sha256:" + "0" * 64
-                with self.assertRaisesRegex(ContractError, "canonical content"):
-                    validator(tampered)
+                self.assertFalse(
+                    any(key.endswith("_hash") for key in value),
+                    f"{name} unexpectedly exposes a self hash",
+                )
                 unknown = copy.deepcopy(value)
                 unknown["unknown"] = True
-                unknown = with_self_hash(unknown, hash_fields[name])
                 with self.assertRaisesRegex(ContractError, "schema violation"):
                     validator(unknown)
 
@@ -169,19 +160,30 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
                 campaign_root=campaign_root,
             )
         path.write_text("changed\n", encoding="utf-8")
-        with self.assertRaisesRegex(ContractError, "hash differs"):
-            resolve_binding(binding, repository_root, campaign_root)
+        self.assertEqual(resolve_binding(binding, repository_root, campaign_root), path)
+
+        external_path = campaign_root / "external.json"
+        write_json(external_path, {"schema_version": "external/1", "value": 1})
+        external = make_binding(
+            external_path,
+            root="external",
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+        )
+        write_json(external_path, {"schema_version": "external/1", "value": 2})
+        with self.assertRaisesRegex(ContractError, "digest differs"):
+            resolve_binding(external, repository_root, campaign_root)
 
     def test_exact_four_skill_identity_is_closed(self) -> None:
         campaign = copy.deepcopy(self.fixture["campaign"])
         campaign["product"]["skills"].pop("writing-plans")
-        campaign = with_self_hash(campaign, "campaign_hash")
         with self.assertRaisesRegex(ContractError, "schema violation"):
             validate_campaign(campaign)
 
-    def test_campaign_v2_is_fresh_and_rejects_supersession_state(self) -> None:
+    def test_campaign_v3_starts_at_revision_zero(self) -> None:
         campaign = self.fixture["campaign"]
-        self.assertEqual(campaign["schema_version"], "model-evolution-campaign/2")
+        self.assertEqual(campaign["schema_version"], "model-evolution-campaign/3")
+        self.assertEqual(campaign["state_revision"], 0)
         self.assertEqual(
             campaign["budgets"]["reserved"],
             {field: 0 for field in campaign["budgets"]["ceiling"]},
@@ -189,13 +191,11 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
 
         superseding = copy.deepcopy(campaign)
         superseding["supersedes"] = None
-        superseding = with_self_hash(superseding, "campaign_hash")
         with self.assertRaisesRegex(ContractError, "schema violation"):
             validate_campaign(superseding)
 
         legacy = copy.deepcopy(campaign)
-        legacy["schema_version"] = "model-evolution-campaign/1"
-        legacy = with_self_hash(legacy, "campaign_hash")
+        legacy["schema_version"] = "model-evolution-campaign/2"
         with self.assertRaisesRegex(ContractError, "schema violation"):
             validate_campaign(legacy)
 
@@ -205,13 +205,11 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
         probes = json.loads(self.fixture["paths"]["probe_set"].read_text())
         duplicate = copy.deepcopy(probes)
         duplicate["probes"].append(copy.deepcopy(duplicate["probes"][0]))
-        duplicate = with_self_hash(duplicate, "probe_set_hash")
         with self.assertRaisesRegex(ContractError, "IDs must be unique"):
             validate_document(duplicate, "interaction_probes")
 
         named = copy.deepcopy(probes)
         named["probes"][0]["prompt"] = "Use GPT behavior."
-        named = with_self_hash(named, "probe_set_hash")
         with self.assertRaisesRegex(ContractError, "schema violation"):
             validate_document(named, "interaction_probes")
 
@@ -231,7 +229,6 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
             row["probe_id"] = f"probe-{index}"
             row["capability"] = capability
             too_many["probes"].append(row)
-        too_many = with_self_hash(too_many, "probe_set_hash")
         with self.assertRaisesRegex(ContractError, "schema violation"):
             validate_document(too_many, "interaction_probes")
 
@@ -275,11 +272,11 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
             campaign_root=self.fixture["campaign_root"],
         )
         self.assertEqual(
-            predecessor["comparison_hash"], comparison["comparison_report_hash"]
+            predecessor["plugin_tree_digest"], ready["product"]["plugin_tree"]
         )
         unclosed = copy.deepcopy(ready)
         unclosed["phase"] = "decision_ready"
-        write_json(cycle_path, with_self_hash(unclosed, "campaign_hash"))
+        write_json(cycle_path, unclosed)
         cycle = make_binding(
             cycle_path,
             root="repository",
@@ -302,7 +299,12 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
     ) -> None:
         provisional = json.loads(self.fixture["paths"]["host"].read_text())
         probe_set = json.loads(self.fixture["paths"]["probe_set"].read_text())
-        terminal = self.fixture["bindings"]["host"]
+        terminal = make_binding(
+            self.fixture["paths"]["host"],
+            root="external",
+            repository_root=self.fixture["repository_root"],
+            campaign_root=self.fixture["campaign_root"],
+        )
         result = [{"probe_id": "force-load", "status": "pass", "terminal": terminal}]
         observed = project_observed_host(
             provisional,
@@ -318,7 +320,6 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
 
         missing = copy.deepcopy(probe_set)
         missing["probes"][0]["capability"] = "multi_turn"
-        missing = with_self_hash(missing, "probe_set_hash")
         with self.assertRaisesRegex(ContractError, "lacks probed capability"):
             project_observed_host(
                 provisional,
@@ -350,7 +351,6 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
         critical_unknown["interaction_probes"]["requests"][0]["result_status"] = (
             "unknown"
         )
-        critical_unknown = with_self_hash(critical_unknown, "campaign_hash")
         blocked_probe = project_qualification(
             critical_unknown,
             repository_root=self.fixture["repository_root"],
@@ -377,9 +377,7 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
         ready["profiles"]["predecessor"] = {
             "cycle": self.fixture["bindings"]["host"],
             "host": self.fixture["bindings"]["host"],
-            "product_hash": ready["product"]["plugin_tree"],
-            "sentinel_hash": ready["sentinel_index"]["sha256"],
-            "comparison_hash": closed_transition_report()["comparison_report_hash"],
+            "plugin_tree_digest": ready["product"]["plugin_tree"],
             "qualification": None,
         }
         for skill_id in ready["skill_evidence"]:
@@ -387,7 +385,6 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
                 ready["skill_evidence"][skill_id]["transition_report"] = (
                     comparison_binding
                 )
-        ready = with_self_hash(ready, "campaign_hash")
         qualified = project_qualification(
             ready,
             repository_root=self.fixture["repository_root"],
@@ -401,7 +398,6 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
         inconsistent["blockers"] = [
             {"code": "forced", "scope": "test", "evidence": None}
         ]
-        inconsistent = with_self_hash(inconsistent, "qualification_hash")
         with self.assertRaisesRegex(ContractError, "decision differs"):
             validate_qualification(inconsistent)
 
@@ -410,21 +406,21 @@ class ModelEvolutionDocumentsTest(unittest.TestCase):
         first = render_qualification_markdown(qualification)
         second = render_qualification_markdown(copy.deepcopy(qualification))
         self.assertEqual(first.encode(), second.encode())
-        self.assertIn(qualification["qualification_hash"], first)
+        self.assertIn(qualification["campaign_id"], first)
+        self.assertNotIn("Qualification hash", first)
 
-    def test_apparatus_gate_rejects_rehashed_failed_operation(self) -> None:
+    def test_apparatus_gate_rejects_failed_operation(self) -> None:
         ready = materialize_bootstrap_evidence(self.fixture)
         path = self.fixture["campaign_root"] / "apparatus-report.json"
         report = json.loads(path.read_text())
         report["operations"][0]["status"] = "fail"
-        write_json(path, with_self_hash(report, "apparatus_report_hash"))
+        write_json(path, report)
         ready["apparatus_report"] = make_binding(
             path,
             root="campaign",
             repository_root=self.fixture["repository_root"],
             campaign_root=self.fixture["campaign_root"],
         )
-        ready = with_self_hash(ready, "campaign_hash")
         with self.assertRaisesRegex(ContractError, "operation status"):
             project_qualification(
                 ready,

@@ -18,12 +18,10 @@ from _model_evolution_contract import (
     resolve_binding,
     strict_json_bytes,
     validate_document,
-    verify_self_hash,
-    with_self_hash,
 )
 
 
-CAMPAIGN_SCHEMA_VERSION = "model-evolution-campaign/2"
+CAMPAIGN_SCHEMA_VERSION = "model-evolution-campaign/3"
 def validate_campaign(value: Any) -> dict[str, Any]:
     """Validate the current fresh-only campaign contract."""
     campaign = validate_document(value, "campaign")
@@ -141,8 +139,6 @@ def build_initial_campaign(
         != f"frontier-engineering/{bundle_manifest.get('bundle_version')}"
     ):
         raise ContractError("Bundle and static report identities differ")
-    verify_self_hash(static_report, "report_hash")
-
     probe_set = load_json(
         resolve_binding(probe_set_binding, repository_root, campaign_root),
         label="interaction probe set",
@@ -159,10 +155,9 @@ def build_initial_campaign(
     validate_document(sentinel, "sentinel_index")
     _validate_external_schema(
         host,
-        REPOSITORY_ROOT / "skill-evaluator/schemas/host-manifest-v1.schema.json",
+        REPOSITORY_ROOT / "skill-evaluator/schemas/host-manifest-v2.schema.json",
         "target provisional Host",
     )
-    verify_self_hash(host, "manifest_hash")
     if set(ceilings) != set(BUDGET_FIELDS):
         raise ContractError("campaign budget ceilings are incomplete")
 
@@ -237,7 +232,6 @@ def build_initial_campaign(
         },
         "candidate": None,
     }
-    state = with_self_hash(state, "campaign_hash")
     return validate_campaign(state)
 
 
@@ -262,7 +256,7 @@ def prepare_predecessor(
     if cycle["product"]["bundle_id"] != current_bundle_id:
         raise ContractError("predecessor product differs from current Bundle")
     observed_host = cycle["profiles"]["target_observed"]
-    if observed_host is None or observed_host["sha256"] != host_binding["sha256"]:
+    if observed_host is None or observed_host != host_binding:
         raise ContractError("predecessor Host differs from its closed campaign")
 
     host = load_json(
@@ -271,17 +265,14 @@ def prepare_predecessor(
     )
     _validate_external_schema(
         host,
-        REPOSITORY_ROOT / "skill-evaluator/schemas/host-manifest-v1.schema.json",
+        REPOSITORY_ROOT / "skill-evaluator/schemas/host-manifest-v2.schema.json",
         "predecessor Host",
     )
-    verify_self_hash(host, "manifest_hash")
     comparison_path = resolve_binding(
         comparison_binding, repository_root, campaign_root
     )
     if evaluator_evidence_status(comparison_path, kind="transition_report") == "blocked":
         raise ContractError("predecessor comparison is not closed evidence")
-    comparison = load_json(comparison_path, label="predecessor comparison")
-
     product_hash = cycle["product"]["plugin_tree"]
     if qualification_binding is not None:
         from _model_evolution_qualification import validate_qualification
@@ -291,7 +282,10 @@ def prepare_predecessor(
             label="predecessor qualification",
         )
         validate_qualification(qualification)
-        if qualification["campaign_hash"] != cycle["campaign_hash"]:
+        if (
+            qualification["campaign_id"] != cycle["campaign_id"]
+            or qualification["terminal_state_revision"] != cycle["state_revision"]
+        ):
             raise ContractError("predecessor qualification differs from its campaign")
         if qualification["decision"] == "blocked":
             raise ContractError("blocked qualification cannot be a predecessor")
@@ -299,8 +293,6 @@ def prepare_predecessor(
     return {
         "cycle": cycle_binding,
         "host": host_binding,
-        "product_hash": product_hash,
-        "sentinel_hash": cycle["sentinel_index"]["sha256"],
-        "comparison_hash": comparison["comparison_report_hash"],
+        "plugin_tree_digest": product_hash,
         "qualification": qualification_binding,
     }

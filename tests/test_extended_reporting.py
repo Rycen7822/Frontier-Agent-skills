@@ -91,7 +91,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             requirements, checks, terminal_completed=False,
         ))
 
-    def _materialize_v5_analysis_bundle(
+    def _materialize_epoch6_analysis_bundle(
         self,
         root: Path,
         *,
@@ -100,7 +100,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         level: str = 'L1',
         case_count: int = 1,
     ) -> dict[str, Path]:
-        paths = materialize_v5_contract_fixture(root)
+        paths = materialize_epoch6_contract_fixture(root)
         spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
         package_root = root / spec['subject']['package']['path']
         package_root.mkdir(parents=True, exist_ok=True)
@@ -166,13 +166,29 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         if manual_required:
             role = 'independent-evaluator'
             required_evidence = ['frozen-study-input-binding']
+            decision_contract = root / 'manual-review-contract.json'
+            decision_contract.write_text(
+                json.dumps({
+                    'schema_version': 'manual-review-contract/1',
+                    'reviewer_role': role,
+                    'required_evidence': required_evidence,
+                }, indent=2) + '\n',
+                encoding='utf-8',
+            )
+            paths['decision_contract'] = decision_contract
             spec['authority']['manual_review'] = {
                 'required': True,
                 'role': role,
-                'decision_contract_hash': canonical_hash({
-                    'reviewer_role': role,
-                    'required_evidence': required_evidence,
-                }),
+                'decision_contract': {
+                    'path': decision_contract.name,
+                    'digest': (
+                        'sha256:'
+                        + hashlib.sha256(
+                            decision_contract.read_bytes(),
+                        ).hexdigest()
+                    ),
+                    'schema_version': 'manual-review-contract/1',
+                },
             }
         if failure_index_budget is not None:
             spec['artifacts']['failure_index_budget'] = failure_index_budget
@@ -180,7 +196,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             json.dumps(spec, indent=2) + '\n',
             encoding='utf-8',
         )
-        rebind_v5_contract_fixture(paths)
+        rebind_epoch6_contract_fixture(paths)
         paths.update({
             'plan': root / 'execution-plan.json',
             'index': root / 'artifacts/index.jsonl',
@@ -219,12 +235,13 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     ) -> None:
         plan = json.loads(paths['plan'].read_text(encoding='utf-8'))
         artifacts_root = paths['plan'].parent / plan['artifacts']['root']
-        rows = [
-            json.loads(line)
-            for line in paths['index'].read_text(encoding='utf-8').splitlines()
-        ]
+        header, rows = load_run_index(paths['index'])
+        entries = {
+            entry['entry_id']: entry for entry in plan['entries']
+        }
         for row in rows:
-            if (row['treatment_id'], row['case_id']) not in failing_keys:
+            entry = entries[row['entry_id']]
+            if (entry['treatment_id'], entry['case_id']) not in failing_keys:
                 continue
             attempt_root = artifacts_root / row['artifact_dir']
             receipt_path = artifacts_root / row['receipt']['path']
@@ -245,11 +262,11 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             output_hash = (
                 'sha256:' + hashlib.sha256(output_path.read_bytes()).hexdigest()
             )
-            reference['sha256'] = output_hash
+            reference['digest'] = output_hash
             next(
                 item for item in receipt['artifacts']
                 if item['path'] == reference['path']
-            )['sha256'] = output_hash
+            )['digest'] = output_hash
             invocation_reference = receipt['grader_outputs'][0]['invocation']
             invocation_path = attempt_root / invocation_reference['path']
             invocation = json.loads(
@@ -267,24 +284,21 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 'sha256:'
                 + hashlib.sha256(invocation_path.read_bytes()).hexdigest()
             )
-            invocation_reference['sha256'] = invocation_hash
+            invocation_reference['digest'] = invocation_hash
             next(
                 item for item in receipt['artifacts']
                 if item['path'] == invocation_reference['path']
-            )['sha256'] = invocation_hash
-            receipt['receipt_hash'] = canonical_hash({
-                key: value for key, value in receipt.items()
-                if key != 'receipt_hash'
-            })
+            )['digest'] = invocation_hash
             receipt_path.write_text(
                 json.dumps(receipt, sort_keys=True, separators=(',', ':')),
                 encoding='utf-8',
             )
-            row['receipt']['sha256'] = (
+            row['receipt']['digest'] = (
                 'sha256:' + hashlib.sha256(receipt_path.read_bytes()).hexdigest()
             )
         paths['index'].write_text(
-            ''.join(
+            json.dumps(header, sort_keys=True, separators=(',', ':')) + '\n'
+            + ''.join(
                 json.dumps(row, sort_keys=True, separators=(',', ':')) + '\n'
                 for row in rows
             ),
@@ -300,10 +314,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     ) -> None:
         plan = json.loads(paths['plan'].read_text(encoding='utf-8'))
         artifacts_root = paths['plan'].parent / plan['artifacts']['root']
-        rows = [
-            json.loads(line)
-            for line in paths['index'].read_text(encoding='utf-8').splitlines()
-        ]
+        header, rows = load_run_index(paths['index'])
         owner_ids = {
             entry['entry_id']
             for entry in plan['entries']
@@ -317,26 +328,23 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         receipt_path = artifacts_root / row['receipt']['path']
         receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
         mutation(receipt)
-        receipt['receipt_hash'] = canonical_hash({
-            key: value for key, value in receipt.items()
-            if key != 'receipt_hash'
-        })
         receipt_path.write_text(
             json.dumps(receipt, sort_keys=True, separators=(',', ':')),
             encoding='utf-8',
         )
-        row['receipt']['sha256'] = (
+        row['receipt']['digest'] = (
             'sha256:' + hashlib.sha256(receipt_path.read_bytes()).hexdigest()
         )
         paths['index'].write_text(
-            ''.join(
+            json.dumps(header, sort_keys=True, separators=(',', ':')) + '\n'
+            + ''.join(
                 json.dumps(item, sort_keys=True, separators=(',', ':')) + '\n'
                 for item in rows
             ),
             encoding='utf-8',
         )
 
-    def _materialize_v5_runtime_fixture(
+    def _materialize_epoch6_runtime_fixture(
         self,
         root: Path,
         materializer: Callable[[Path], dict[str, Path]],
@@ -382,7 +390,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         root: Path,
         materializer: Callable[[Path], dict[str, Path]],
     ) -> dict:
-        paths = self._materialize_v5_runtime_fixture(root, materializer)
+        paths = self._materialize_epoch6_runtime_fixture(root, materializer)
         summary_path = root / 'summary.json'
         analyzed = self.call_cli(
             'scripts/analyze_runs.py',
@@ -413,7 +421,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
 
     def test_v5_analyzer_writes_compact_bound_views(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            paths = self._materialize_v5_analysis_bundle(Path(tmp))
+            paths = self._materialize_epoch6_analysis_bundle(Path(tmp))
             result = self.call_cli(
                 'scripts/analyze_runs.py',
                 str(paths['index']),
@@ -432,23 +440,15 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 paths['failures'].read_text(encoding='utf-8'),
             )
             validator = load_validator_module()
-            registry = validator.load_v5_schema_registry()
-            self.assertEqual([], validator.validate_v5_schema(
-                summary, 'analysis-summary-v4.schema.json', registry,
+            registry = validator.load_epoch6_schema_registry()
+            self.assertEqual([], validator.validate_epoch6_schema(
+                summary, 'analysis-summary-v5.schema.json', registry,
             ))
-            self.assertEqual([], validator.validate_v5_schema(
-                failures, 'failure-index-v1.schema.json', registry,
+            self.assertEqual([], validator.validate_epoch6_schema(
+                failures, 'failure-index-v2.schema.json', registry,
             ))
-            self.assertTrue(
-                load_evidence_io_module().verify_self_hash(
-                    summary, 'summary_hash',
-                ),
-            )
-            self.assertTrue(
-                load_evidence_io_module().verify_self_hash(
-                    failures, 'failure_index_hash',
-                ),
-            )
+            self.assertNotIn('summary_hash', summary)
+            self.assertNotIn('failure_index_hash', failures)
             self.assertTrue(summary['analysis_ready'])
             self.assertNotIn('run_matrix', summary)
             self.assertEqual('applicable', summary['applicability_status'])
@@ -462,18 +462,17 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             ):
                 manifest = summary['output_manifest'][key]
                 self.assertEqual(
-                    'sha256:' + hashlib.sha256(
-                        paths[path_key].read_bytes(),
-                    ).hexdigest(),
-                    manifest['sha256'],
+                    paths[path_key].name,
+                    manifest['path'],
                 )
+                self.assertTrue(paths[path_key].is_file())
 
     def test_v5_comparison_observations_are_bound_and_noninvasive(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = self._materialize_v5_analysis_bundle(
+            paths = self._materialize_epoch6_analysis_bundle(
                 root,
                 case_count=2,
             )
@@ -491,29 +490,21 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 observations_path.read_text(encoding='utf-8'),
             )
             validator = load_validator_module()
-            registry = validator.load_v5_schema_registry()
-            self.assertEqual([], validator.validate_v5_schema(
+            registry = validator.load_epoch6_schema_registry()
+            self.assertEqual([], validator.validate_epoch6_schema(
                 observations,
-                'comparison-observations-v1.schema.json',
+                'comparison-observations-v2.schema.json',
                 registry,
             ))
-            self.assertTrue(
-                load_evidence_io_module().verify_self_hash(
-                    observations,
-                    'comparison_observations_hash',
-                ),
-            )
+            self.assertNotIn('comparison_observations_hash', observations)
             summary = json.loads(summary_bytes)
             for field in (
                 'evaluation_id',
                 'plan_id',
-                'plan_hash',
-                'spec_hash',
-                'scenario_corpus_hash',
-                'host_manifest_hash',
                 'subject',
             ):
                 self.assertEqual(summary[field], observations[field])
+            self.assertEqual(summary['evaluation_id'], observations['cycle_id'])
             metric = observations['metrics'][0]
             self.assertEqual('complete', metric['status'])
             self.assertIsNone(metric['reason'])
@@ -549,7 +540,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     def test_v5_comparison_observations_preserve_evidence_gap(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = self._materialize_v5_analysis_bundle(root)
+            paths = self._materialize_epoch6_analysis_bundle(root)
             observations_path = root / 'comparison-observations.json'
             result = self._run_v5_comparison_observations(
                 paths,
@@ -562,10 +553,10 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 observations_path.read_text(encoding='utf-8'),
             )
             validator = load_validator_module()
-            registry = validator.load_v5_schema_registry()
-            self.assertEqual([], validator.validate_v5_schema(
+            registry = validator.load_epoch6_schema_registry()
+            self.assertEqual([], validator.validate_epoch6_schema(
                 observations,
-                'comparison-observations-v1.schema.json',
+                'comparison-observations-v2.schema.json',
                 registry,
             ))
             metric = observations['metrics'][0]
@@ -581,7 +572,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = self._materialize_v5_analysis_bundle(
+            paths = self._materialize_epoch6_analysis_bundle(
                 root,
                 case_count=2,
             )
@@ -603,7 +594,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            paths = self._materialize_v5_analysis_bundle(Path(tmp))
+            paths = self._materialize_epoch6_analysis_bundle(Path(tmp))
             with (
                 mock.patch(
                     'subprocess.Popen',
@@ -628,7 +619,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     def test_v5_model_grader_uses_bound_calibration_and_raw_batch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             summary = self._run_v5_fixture_analysis(
-                Path(tmp), materialize_v5_model_ready_fixture,
+                Path(tmp), materialize_epoch6_model_ready_fixture,
             )
         self.assertEqual('complete', summary['evidence_status'])
         self.assertEqual('pass', summary['suite_quality_status'])
@@ -642,13 +633,13 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     def test_v5_model_batch_binding_tamper_is_invalid_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = self._materialize_v5_runtime_fixture(
-                root, materialize_v5_model_ready_fixture,
+            paths = self._materialize_epoch6_runtime_fixture(
+                root, materialize_epoch6_model_ready_fixture,
             )
             self._mutate_first_v5_receipt(
                 paths,
                 lambda receipt: receipt['grader_outputs'][0].update({
-                    'schedule_hash': 'sha256:' + '0' * 64,
+                    'schedule_id': 'schedule.mismatch',
                 }),
                 model_output=True,
             )
@@ -668,15 +659,15 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(3, analyzed.returncode, analyzed.stdout + analyzed.stderr)
         self.assertEqual('invalid', summary['evidence_status'])
         self.assertTrue(any(
-            'schedule hash differs' in item['observed']
+            'schedule ID differs' in item['observed']
             for item in failures['failures']
         ))
 
     def test_v5_model_attempt_must_remain_inside_calibration_window(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = self._materialize_v5_runtime_fixture(
-                root, materialize_v5_model_ready_fixture,
+            paths = self._materialize_epoch6_runtime_fixture(
+                root, materialize_epoch6_model_ready_fixture,
             )
             calibration = json.loads(
                 paths['calibration'].read_text(encoding='utf-8'),
@@ -716,14 +707,14 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 tempfile.TemporaryDirectory()
             ) as tmp:
                 root = Path(tmp)
-                paths = materialize_v5_contract_fixture(root)
+                paths = materialize_epoch6_contract_fixture(root)
                 host = json.loads(paths['host'].read_text(encoding='utf-8'))
                 host['capabilities'][0]['probe']['status'] = probe_status
                 paths['host'].write_text(
                     json.dumps(host, indent=2) + '\n',
                     encoding='utf-8',
                 )
-                rebind_v5_contract_fixture(paths)
+                rebind_epoch6_contract_fixture(paths)
                 plan_path = root / 'execution-plan.json'
                 compiled = self.call_cli(
                     'scripts/compile_eval_plan.py',
@@ -782,9 +773,13 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
 
     def test_v5_missing_execute_receipt_is_indexed_evidence_gap(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            paths = self._materialize_v5_analysis_bundle(Path(tmp))
-            rows = paths['index'].read_text(encoding='utf-8').splitlines()
-            paths['index'].write_text(rows[0] + '\n', encoding='utf-8')
+            paths = self._materialize_epoch6_analysis_bundle(Path(tmp))
+            header, rows = load_run_index(paths['index'])
+            paths['index'].write_text(
+                json.dumps(header, separators=(',', ':')) + '\n'
+                + json.dumps(rows[0], separators=(',', ':')) + '\n',
+                encoding='utf-8',
+            )
             result = self.call_cli(
                 'scripts/analyze_runs.py',
                 str(paths['index']),
@@ -806,26 +801,24 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     def test_v5_invalid_receipt_forms_reportable_invalid_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = self._materialize_v5_analysis_bundle(root)
+            paths = self._materialize_epoch6_analysis_bundle(root)
             plan = json.loads(paths['plan'].read_text(encoding='utf-8'))
-            rows = [
-                json.loads(line)
-                for line in paths['index'].read_text(encoding='utf-8').splitlines()
-            ]
+            header, rows = load_run_index(paths['index'])
             receipt_path = (
                 root / plan['artifacts']['root'] / rows[0]['receipt']['path']
             )
             receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
-            receipt['receipt_hash'] = 'sha256:' + '0' * 64
+            receipt['run']['entry_id'] = 'entry.mismatch'
             receipt_path.write_text(
                 json.dumps(receipt, separators=(',', ':')),
                 encoding='utf-8',
             )
-            rows[0]['receipt']['sha256'] = (
+            rows[0]['receipt']['digest'] = (
                 'sha256:' + hashlib.sha256(receipt_path.read_bytes()).hexdigest()
             )
             paths['index'].write_text(
-                ''.join(
+                json.dumps(header, separators=(',', ':')) + '\n'
+                + ''.join(
                     json.dumps(row, separators=(',', ':')) + '\n'
                     for row in rows
                 ),
@@ -1312,7 +1305,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     def test_v5_l2_cli_distinguishes_ceiling_support_and_negative(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = self._materialize_v5_analysis_bundle(
+            paths = self._materialize_epoch6_analysis_bundle(
                 root, level='L2', case_count=3,
             )
 
@@ -1383,7 +1376,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 'required': False,
                 'status': 'not_applicable',
                 'decision': None,
-                'receipt_hash': None,
+                'receipt_path': None,
             },
         }
         self.assertEqual(1, analyzer._v5_base_exit('L2', summary))
@@ -1417,7 +1410,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     def test_v5_manual_authority_missing_approve_hold_and_invalid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = self._materialize_v5_analysis_bundle(
+            paths = self._materialize_epoch6_analysis_bundle(
                 root, manual_required=True,
             )
             artifacts = root / 'artifacts'
@@ -1451,10 +1444,11 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             evidence = {
                 'type': 'frozen-study-input-binding',
                 'artifact': 'manual/input-binding.json',
-                'sha256': (
+                'digest': (
                     'sha256:'
                     + hashlib.sha256(evidence_path.read_bytes()).hexdigest()
                 ),
+                'schema_version': 'manual-review-input-binding/2',
             }
 
             def write_receipt(
@@ -1464,6 +1458,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             ) -> str:
                 receipt_path = review_root / f'{name}.json'
                 receipt_path.write_text(json.dumps({
+                    'schema_version': 'manual-review-receipt/1',
                     'reviewer_role': 'independent-evaluator',
                     'evidence': [evidence],
                     'decision': decision,
@@ -1501,10 +1496,11 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 **{
                     field: {
                         'path': path.resolve(),
-                        'sha256': (
+                        'digest': (
                             'sha256:'
                             + hashlib.sha256(path.read_bytes()).hexdigest()
                         ),
+                        'schema_version': 'release-study-artifact/1',
                     }
                     for field, path in {
                         'spec': paths['spec'],
@@ -1558,16 +1554,12 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             )
             self.assertEqual('invalid', invalid_summary['manual_authority']['status'])
             binding = json.loads(evidence_path.read_text(encoding='utf-8'))
-            binding['spec_content_hash'] = 'sha256:' + '0' * 64
-            binding['binding_hash'] = canonical_hash({
-                key: value for key, value in binding.items()
-                if key != 'binding_hash'
-            })
+            binding['source_revision'] = '0' * 40
             evidence_path.write_text(
                 json.dumps(binding, sort_keys=True, separators=(',', ':')),
                 encoding='utf-8',
             )
-            evidence['sha256'] = (
+            evidence['digest'] = (
                 'sha256:' + hashlib.sha256(evidence_path.read_bytes()).hexdigest()
             )
             drift = analyze(
@@ -1593,7 +1585,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 ),
                 encoding='utf-8',
             )
-            evidence['sha256'] = (
+            evidence['digest'] = (
                 'sha256:' + hashlib.sha256(evidence_path.read_bytes()).hexdigest()
             )
             release_gate_path.write_text(json.dumps({
@@ -1648,7 +1640,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             )
             studies = {}
             for study_id in study_ids:
-                paths = self._materialize_v5_analysis_bundle(
+                paths = self._materialize_epoch6_analysis_bundle(
                     root / study_id,
                     case_count=2,
                 )
@@ -1669,9 +1661,10 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             def bound(path: Path) -> dict:
                 return {
                     'path': path.resolve(),
-                    'sha256': (
+                    'digest': (
                         'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()
                     ),
+                    'schema_version': 'release-study-artifact/1',
                 }
 
             bindings = [
@@ -1718,19 +1711,6 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 if item['disposition'] == 'execute'
             }
 
-            def rows(path: Path) -> dict[str, dict]:
-                return {
-                    item['entry_id']: item
-                    for item in (
-                        json.loads(line)
-                        for line in path.read_text(
-                            encoding='utf-8',
-                        ).splitlines()
-                    )
-                }
-
-            planner_rows = rows(planner_paths['index'])
-            transfer_rows = rows(transfer_paths['index'])
             join = {}
             for executor in transfer_plan['entries']:
                 if executor['disposition'] != 'execute':
@@ -1744,12 +1724,6 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                     'source_case_id': planner['case_id'],
                     'planner_repeat': planner['repeat'],
                     'planner_entry_id': planner['entry_id'],
-                    'planner_receipt_hash': planner_rows[
-                        planner['entry_id']
-                    ]['receipt']['sha256'],
-                    'executor_receipt_hash': transfer_rows[
-                        executor['entry_id']
-                    ]['receipt']['sha256'],
                 }
 
             analyzer = load_analyzer_module()
@@ -1989,7 +1963,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 studies['software-quality-workflows']['summary'].read_bytes()
                 + b' ',
             )
-            with self.assertRaisesRegex(ValueError, 'binding hash mismatch'):
+            with self.assertRaisesRegex(ValueError, 'binding digest mismatch'):
                 analyzer.project_release_estimands(bindings, join, **kwargs)
 
     def test_release_join_excludes_mechanism_and_unmapped_planner_cases(
@@ -2116,22 +2090,6 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                         'source_case_id': case,
                         'planner_repeat': 1,
                         'planner_entry_id': planner_id,
-                        'planner_receipt_hash': (
-                            'sha256:'
-                            + hashlib.sha256(
-                                planner_attempts[planner_id][
-                                    'receipt_path'
-                                ].read_bytes(),
-                            ).hexdigest()
-                        ),
-                        'executor_receipt_hash': (
-                            'sha256:'
-                            + hashlib.sha256(
-                                transfer_attempts[executor_id][
-                                    'receipt_path'
-                                ].read_bytes(),
-                            ).hexdigest()
-                        ),
                     }
 
             treatments = [
@@ -2224,10 +2182,15 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     def test_v5_report_transaction_truncation_and_immutable_retry(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = self._materialize_v5_analysis_bundle(
+            paths = self._materialize_epoch6_analysis_bundle(
                 root, failure_index_budget=1,
             )
-            paths['index'].write_text('', encoding='utf-8')
+            header, _ = load_run_index(paths['index'])
+            paths['index'].write_text(
+                json.dumps(header, separators=(',', ':')) + '\n',
+                encoding='utf-8',
+            )
+            details_path = root / 'explicit-details.json'
             command = (
                 'scripts/analyze_runs.py',
                 str(paths['index']),
@@ -2235,6 +2198,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 '--json', str(paths['summary']),
                 '--failure-index', str(paths['failures']),
                 '--markdown', str(paths['markdown']),
+                '--details', str(details_path),
             )
             first = self.call_cli(*command)
             self.assertEqual(3, first.returncode, first.stdout + first.stderr)
@@ -2249,7 +2213,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             summary = json.loads(summary_bytes)
             compact = json.loads(paths['failures'].read_text(encoding='utf-8'))
             details_view = summary['output_manifest']['details']
-            details_path = root / details_view['path']
+            self.assertEqual(details_path.name, details_view['path'])
             details = json.loads(details_path.read_text(encoding='utf-8'))
             self.assertTrue(compact['truncated'])
             self.assertEqual((2, 1, 1), (
@@ -2263,20 +2227,21 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
                 details['omitted_count'],
                 details['truncated'],
             ))
-            self.assertEqual(
-                'sha256:' + hashlib.sha256(details_path.read_bytes()).hexdigest(),
-                details_view['sha256'],
-            )
+            self.assertTrue(details_path.is_file())
 
     def test_v5_report_only_truncation_writes_only_explicit_details(self) -> None:
         for explicit_details in (False, True):
             with self.subTest(explicit_details=explicit_details):
                 with tempfile.TemporaryDirectory() as tmp:
                     root = Path(tmp)
-                    paths = self._materialize_v5_analysis_bundle(
+                    paths = self._materialize_epoch6_analysis_bundle(
                         root, failure_index_budget=1,
                     )
-                    paths['index'].write_text('', encoding='utf-8')
+                    header, _ = load_run_index(paths['index'])
+                    paths['index'].write_text(
+                        json.dumps(header, separators=(',', ':')) + '\n',
+                        encoding='utf-8',
+                    )
                     command = [
                         'scripts/analyze_runs.py',
                         str(paths['index']),
@@ -2315,7 +2280,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     def test_v5_report_preflight_never_writes_false_complete_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = self._materialize_v5_analysis_bundle(root)
+            paths = self._materialize_epoch6_analysis_bundle(root)
             paths['markdown'].write_text('conflicting bytes\n', encoding='utf-8')
             result = self.call_cli(
                 'scripts/analyze_runs.py',
@@ -2336,22 +2301,22 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     def test_v5_active_surface_summaries_are_evidence_bound(self) -> None:
         fixtures = (
             (
-                materialize_v5_handoff_fixture,
+                materialize_epoch6_handoff_fixture,
                 'multi_principal_coordination',
                 'coordination_summary',
             ),
             (
-                materialize_v5_action_fixture,
+                materialize_epoch6_action_fixture,
                 None,
                 'action_summary',
             ),
             (
-                materialize_v5_fault_fixture,
+                materialize_epoch6_fault_fixture,
                 'tool_faults',
                 'action_summary',
             ),
             (
-                materialize_v5_observation_fixture,
+                materialize_epoch6_observation_fixture,
                 None,
                 'grounding_summary',
             ),
@@ -2936,10 +2901,16 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
             digit: str,
         ) -> dict:
             return {
+                'component_id': f'component-{digit}-{occurrence}',
                 'kind': kind,
                 'source_path': source_path,
-                'content_sha256': 'sha256:' + digit * 64,
+                'artifact': {
+                    'path': f'context/{digit}-{occurrence}.txt',
+                    'digest': 'sha256:' + digit * 64,
+                    'encoding': 'utf-8',
+                },
                 'bytes': size,
+                'tokens': None,
                 'occurrence': occurrence,
             }
 
@@ -3211,7 +3182,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
     def test_l1_smoke_expected_negative_is_diagnostic_rc_zero(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = self._materialize_v5_analysis_bundle(root)
+            paths = self._materialize_epoch6_analysis_bundle(root)
             self._rewrite_v5_outcomes(
                 paths, {('candidate', 'case-basic')},
             )
@@ -3236,7 +3207,7 @@ class TestExtendedReporting(SkillEvaluatorTestCase):  # noqa: F405
 
     def test_v5_status_stream_does_not_replace_json_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            paths = self._materialize_v5_analysis_bundle(Path(tmp))
+            paths = self._materialize_epoch6_analysis_bundle(Path(tmp))
             result = self.call_cli(
                 'scripts/analyze_runs.py',
                 str(paths['index']),

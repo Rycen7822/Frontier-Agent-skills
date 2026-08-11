@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import copy
-from hashlib import sha256
 import json
 import re
 from typing import Any, Callable
 
-from grader_semantics import semantic_payload, semantic_payload_hash
+from grader_semantics import semantic_payload_hash
 
 
 BLINDED_FIELDS = {
@@ -16,7 +15,7 @@ BLINDED_FIELDS = {
     "artifacts", "observations",
 }
 UNCERTAINTY = {"none", "low", "medium", "high"}
-SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
+SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 CONTEXT_FIELDS = {
     "controlled_bytes": "controlled_bytes",
     "controlled_core_bytes": "controlled_core_bytes",
@@ -68,17 +67,10 @@ def batch_identity(
     values = (evaluation_id, case_id, grader_id)
     if any(not isinstance(value, str) or not value for value in values):
         raise ValueError("model grader batch identity fields are invalid")
-    payload = json.dumps(
-        {
-            "case_id": case_id,
-            "evaluation_id": evaluation_id,
-            "grader_id": grader_id,
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    return "mgb-" + sha256(payload).hexdigest()[:24]
+    identity = f"batch.{evaluation_id}.{case_id}.{grader_id}"
+    if not SAFE_ID.fullmatch(identity):
+        raise ValueError("model grader batch identity is not a safe ID")
+    return identity
 
 
 def execution_result(receipt: dict[str, Any]) -> dict[str, Any]:
@@ -448,11 +440,9 @@ def execution_item(
     checks = []
     for check_id in requirement_ids:
         pass_condition = declarations[check_id]["pass_condition"]
-        payload = semantic_payload(grader_view, check_id, pass_condition)
         checks.append({
             "id": check_id,
             "pass_condition": pass_condition,
-            "payload_hash": semantic_payload_hash(payload),
         })
     return {
         "item_id": entry_id,
@@ -491,7 +481,7 @@ def execution_batch(
             or not checks
             or any(
                 not isinstance(check, dict)
-                or set(check) != {"id", "pass_condition", "payload_hash"}
+                or set(check) != {"id", "pass_condition"}
                 or not isinstance(check["id"], str)
                 or not check["id"]
                 or not isinstance(check["pass_condition"], str)
@@ -500,17 +490,6 @@ def execution_batch(
             )
             or len({check["id"] for check in checks}) != len(checks)
             for checks in check_lists
-        )
-        or any(
-            check["payload_hash"] != semantic_payload_hash(
-                semantic_payload(
-                    item["grader_view"],
-                    check["id"],
-                    check["pass_condition"],
-                )
-            )
-            for item in items
-            for check in item["checks"]
         )
         or any(
             [
@@ -532,35 +511,31 @@ def request_payload(
     *,
     grader_id: str,
     batch: dict[str, Any],
-    batch_hash: str,
-    schedule_hash: str,
+    schedule_id: str,
     prompt_bytes: bytes,
-    prompt_hash: str,
-    schema_hash: str,
+    prompt_id: str,
+    schema_id: str,
 ) -> dict[str, Any]:
     """Bind the declared grader instruction into one Host request."""
     try:
         prompt = prompt_bytes.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise ValueError("model grader prompt is not UTF-8") from exc
-    observed_prompt_hash = "sha256:" + sha256(prompt_bytes).hexdigest()
     if (
         not isinstance(grader_id, str)
         or not grader_id
         or not isinstance(batch, dict)
-        or observed_prompt_hash != prompt_hash
-        or not SHA256.fullmatch(batch_hash)
-        or not SHA256.fullmatch(schedule_hash)
-        or not SHA256.fullmatch(schema_hash)
+        or not SAFE_ID.fullmatch(schedule_id)
+        or not SAFE_ID.fullmatch(prompt_id)
+        or not SAFE_ID.fullmatch(schema_id)
     ):
         raise ValueError("model grader request identity is invalid")
     return {
         "grader_id": grader_id,
-        "batch_hash": batch_hash,
-        "schedule_hash": schedule_hash,
+        "schedule_id": schedule_id,
         "grader_prompt": prompt,
-        "grader_prompt_hash": prompt_hash,
-        "grader_schema_hash": schema_hash,
+        "grader_prompt_id": prompt_id,
+        "grader_schema_id": schema_id,
         "blinded_input": copy.deepcopy(batch),
     }
 
@@ -570,7 +545,7 @@ def calibration_item(label: dict[str, Any]) -> dict[str, Any]:
     payload = label.get("payload")
     if (
         not isinstance(payload, dict)
-        or label.get("payload_hash") != semantic_payload_hash(payload)
+        or label.get("payload_digest") != semantic_payload_hash(payload)
         or label.get("check_id") != payload["check"]["check_id"]
     ):
         raise ValueError("calibration label semantic payload is invalid")
@@ -579,7 +554,6 @@ def calibration_item(label: dict[str, Any]) -> dict[str, Any]:
         "checks": [{
             "id": label["check_id"],
             "pass_condition": payload["check"]["pass_condition"],
-            "payload_hash": label["payload_hash"],
         }],
         "grader_view": copy.deepcopy(payload["view"]),
     }

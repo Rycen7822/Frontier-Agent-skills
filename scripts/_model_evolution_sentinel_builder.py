@@ -20,10 +20,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 EVALUATOR_SCRIPTS = REPOSITORY_ROOT / "skill-evaluator/scripts"
 sys.path.insert(0, str(EVALUATOR_SCRIPTS))
 
-from evidence_io import (  # noqa: E402
-    canonical_json_bytes,
-    canonical_self_hash,
-)
+from evidence_io import canonical_json_bytes  # noqa: E402
 import grader_semantics  # noqa: E402
 import validate_eval_suite as evaluator  # noqa: E402
 
@@ -78,8 +75,8 @@ def _sha256(payload: bytes) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
-def _binding(path: str, payload: bytes) -> dict[str, str]:
-    return {"root": "repository", "path": path, "sha256": _sha256(payload)}
+def _binding(path: str) -> dict[str, str]:
+    return {"root": "repository", "path": path}
 
 
 def _write(path: Path, payload: bytes) -> None:
@@ -215,7 +212,6 @@ def _host_manifest() -> bytes:
     model_grading["capability"] = "model_grading"
     model_grading["probe"]["observed"] = "non-ready model-grading fixture"
     value["capabilities"].append(model_grading)
-    value["manifest_hash"] = canonical_self_hash(value, "manifest_hash")
     return _json_bytes(value)
 
 
@@ -238,11 +234,6 @@ def _spec(
     skill_id: str,
     config: dict[str, Any],
     scenarios: list[dict[str, Any]],
-    scenario_bytes: bytes,
-    host_bytes: bytes,
-    verifier_bytes: bytes,
-    prompt_bytes: bytes,
-    output_schema_bytes: bytes,
 ) -> dict[str, Any]:
     value = copy.deepcopy(base)
     value["evaluation_id"] = f"frontier-{skill_id}-sentinel-v1"
@@ -277,10 +268,7 @@ def _spec(
         treatment["scenario_tags"] = coverage
         treatment["expected_capabilities"] = ["force_load", "model_grading"]
     value["host"] = {
-        "manifest": {
-            "path": "host-manifest.template.json",
-            "sha256": _sha256(host_bytes),
-        },
+        "manifest": {"path": "host-manifest.template.json"},
         "required_capabilities": ["force_load", "model_grading"],
     }
     deterministic_checks = [
@@ -311,7 +299,7 @@ def _spec(
             "verifier": {
                 "argv": ["python3", "verify.py"],
                 "path": "verify.py",
-                "sha256": _sha256(verifier_bytes),
+                "source_revision": value["subject"]["package"]["source_revision"],
                 "cwd": ".",
                 "env_allowlist": ["PYTHONDONTWRITEBYTECODE"],
                 "timeout_seconds": 10,
@@ -324,44 +312,28 @@ def _spec(
             "type": "model",
             "checks": model_checks,
             "model": "replace-before-scored-run",
-            "prompt": {"path": "grader-prompt.md", "sha256": _sha256(prompt_bytes)},
-            "output_schema": {
-                "path": "grader-output.schema.json",
-                "sha256": _sha256(output_schema_bytes),
-            },
-            "batch_schedule_hash": _sha256(
-                canonical_json_bytes(["process-check", "quality-check"])
-            ),
+            "prompt_id": f"{skill_id}-sentinel-grader-prompt-v1",
+            "prompt": {"path": "grader-prompt.md"},
+            "schema_id": "skill-evaluator-grader-output-v1",
+            "output_schema": {"path": "grader-output.schema.json"},
+            "batch_schedule_id": "process-check-then-quality-check",
         },
     ]
     value["suite"].update(
         {
-            "scenarios": {
-                "path": "scenarios.public.jsonl",
-                "sha256": _sha256(scenario_bytes),
-            },
-            "public_scenarios": {
-                "path": "scenarios.public.jsonl",
-                "sha256": _sha256(scenario_bytes),
-            },
+            "scenarios": {"path": "scenarios.public.jsonl"},
+            "public_scenarios": {"path": "scenarios.public.jsonl"},
             "holdout": None,
-            "fixture_set_hash": evaluator.v5_fixture_set_hash(scenarios),
-            "grader_set_hash": evaluator.v5_grader_set_hash(value["graders"]),
-            "treatment_contract_hash": evaluator.v5_treatment_contract_hash(
-                value["treatments"]
-            ),
             "repeats": 1,
             "order_seed": 630,
         }
     )
     value["suite"]["quality"] = {
         "path": "suite-quality.json",
-        "sha256": "sha256:" + "0" * 64,
+        "digest": "sha256:" + "0" * 64,
+        "schema_version": "suite-quality/2",
     }
     value["suite"].pop("calibration", None)
-    value["suite"]["grader_schedule_hash"] = evaluator.v5_grader_schedule_hash(
-        value, scenarios
-    )
     minimum_interval_benefit = 0.0
     value["hard_gates"] = [
         {
@@ -426,7 +398,6 @@ def _spec(
     value["analysis"]["materiality"]["minimum_baseline_failure_cases"] = config.get(
         "minimum_baseline_failure_cases", 2
     )
-    value["suite"]["quality_contract_hash"] = evaluator.quality_contract_hash(value)
     return value
 
 
@@ -434,7 +405,7 @@ def _quality_proof(
     spec: dict[str, Any],
     scenarios: list[dict[str, Any]],
     *,
-    prompt_hash: str,
+    prompt_digest: str,
 ) -> dict[str, Any]:
     case_ids = [row["case_id"] for row in scenarios]
     duplicate_groups = []
@@ -480,7 +451,7 @@ def _quality_proof(
             {
                 "cluster_id": "frontier-model-evolution-analysis",
                 "case_ids": case_ids,
-                "source_hashes": [prompt_hash],
+                "source_refs": ["grader-prompt.md"],
                 "status": "closed",
                 "review_locator": {
                     "kind": "text_lines",
@@ -495,7 +466,10 @@ def _quality_proof(
                 "probe_id": "tracked-holdout-absence",
                 "surface": "holdout",
                 "status": "pass",
-                "artifact": {"path": "grader-prompt.md", "sha256": prompt_hash},
+                "artifact": {
+                    "path": "grader-prompt.md",
+                    "digest": prompt_digest,
+                },
                 "locator": {
                     "kind": "text_lines",
                     "artifact": "grader-prompt.md",
@@ -505,7 +479,7 @@ def _quality_proof(
             }
         ],
         "custody": {
-            "split_hashes": evaluator._quality_split_hashes(spec, scenarios),
+            "split_bindings": evaluator._quality_split_bindings(spec, scenarios),
             "custodian": "evaluation-owner",
             "exposure_status": "not_applicable",
             "author_visible_paths": ["scenarios.public.jsonl"],
@@ -688,13 +662,13 @@ def _calibration_gold(skill_id: str, claims: list[str]) -> bytes:
                 )
                 rows.append(
                     {
-                        "schema_version": 2,
+                        "schema_version": 3,
                         "example_id": example_id,
                         "class": class_name,
                         "dimension": dimension,
                         "check_id": check_id,
                         "payload": payload,
-                        "payload_hash": grader_semantics.semantic_payload_hash(payload),
+                        "payload_digest": grader_semantics.semantic_payload_hash(payload),
                         "source_support": "supported",
                         "gold_label": label,
                         "gold_severity": severity,
@@ -708,9 +682,9 @@ def _calibration_gold(skill_id: str, claims: list[str]) -> bytes:
     return _jsonl_bytes(rows)
 
 
-def _probe_set(fixture_bytes: bytes, natural_fixture_bytes: bytes) -> bytes:
-    fixture = _binding("evaluation/model-evolution/probe-fixture.json", fixture_bytes)
-    natural_fixture = _binding("scripts/codex_eval_host.py", natural_fixture_bytes)
+def _probe_set() -> bytes:
+    fixture = _binding("evaluation/model-evolution/probe-fixture.json")
+    natural_fixture = _binding("scripts/codex_eval_host.py")
     rows = [
         (
             "force-load",
@@ -750,8 +724,8 @@ def _probe_set(fixture_bytes: bytes, natural_fixture_bytes: bytes) -> bytes:
         ),
     ]
     value = {
-        "schema_version": "model-evolution-interaction-probes/1",
-        "probe_set_id": "frontier-codex-interaction-probes-v1",
+        "schema_version": "model-evolution-interaction-probes/2",
+        "probe_set_id": "frontier-codex-interaction-probes-v2",
         "adapter_protocol_version": "codex-interaction-probe/1.0",
         "probes": [
             {
@@ -768,9 +742,7 @@ def _probe_set(fixture_bytes: bytes, natural_fixture_bytes: bytes) -> bytes:
             }
             for probe_id, capability, prompt, required in rows
         ],
-        "probe_set_hash": "sha256:" + "0" * 64,
     }
-    value["probe_set_hash"] = canonical_self_hash(value, "probe_set_hash")
     return _json_bytes(value)
 
 
@@ -884,7 +856,7 @@ def materialize(repository_root: Path) -> list[Path]:
                 "artifacts": [
                     {
                         "path": Path(path).relative_to("fixtures").as_posix(),
-                        "sha256": _sha256(payload),
+                        "digest": _sha256(payload),
                         "encoding": "utf-8",
                     }
                     for path, payload in sorted(fixture_payloads.items())
@@ -929,17 +901,12 @@ def materialize(repository_root: Path) -> list[Path]:
             skill_id=skill_id,
             config=config,
             scenarios=scenarios,
-            scenario_bytes=scenario_bytes,
-            host_bytes=host_bytes,
-            verifier_bytes=verifier_bytes,
-            prompt_bytes=prompt_bytes,
-            output_schema_bytes=output_schema_bytes,
         )
         _validate_semantics(skill_id, config, spec, scenarios, seen_tasks)
         proof = _quality_proof(
             spec,
             scenarios,
-            prompt_hash=_sha256(prompt_bytes),
+            prompt_digest=_sha256(prompt_bytes),
         )
         spec_path = target / "eval-spec.template.json"
         proof_path = target / "suite-quality-proof.json"
@@ -965,45 +932,33 @@ def materialize(repository_root: Path) -> list[Path]:
         quality_bytes = quality_path.read_bytes()
         spec["suite"]["quality"] = {
             "path": "suite-quality.json",
-            "sha256": _sha256(quality_bytes),
+            "digest": _sha256(quality_bytes),
+            "schema_version": "suite-quality/2",
         }
         _write(spec_path, _json_bytes(spec))
         generated.extend([spec_path, proof_path, quality_path])
-        paths = {
-            path.relative_to(repository_root).as_posix(): path.read_bytes()
-            for path in generated
-            if target in path.parents
-        }
         skill_bindings[skill_id] = {
             "critical_bucket_id": f"{skill_id}-critical",
             "spec_template": _binding(
-                (relative_root / "eval-spec.template.json").as_posix(),
-                paths[(relative_root / "eval-spec.template.json").as_posix()],
+                (relative_root / "eval-spec.template.json").as_posix()
             ),
             "public_scenarios": _binding(
-                (relative_root / "scenarios.public.jsonl").as_posix(), scenario_bytes
+                (relative_root / "scenarios.public.jsonl").as_posix()
             ),
             "calibration_gold": _binding(
-                (relative_root / "calibration-gold.jsonl").as_posix(),
-                calibration_bytes,
+                (relative_root / "calibration-gold.jsonl").as_posix()
             ),
             "calibration_request_ceiling": len(calibration_bytes.splitlines()),
             "fixture_roots": [
-                _binding(
-                    (relative_root / "fixtures/manifest.json").as_posix(),
-                    manifest_bytes,
-                ),
+                _binding((relative_root / "fixtures/manifest.json").as_posix()),
                 *[
-                    _binding((relative_root / path).as_posix(), payload)
-                    for path, payload in sorted(fixture_payloads.items())
+                    _binding((relative_root / path).as_posix())
+                    for path in sorted(fixture_payloads)
                 ],
             ],
             "verifier_roots": [
-                _binding((relative_root / "verify.py").as_posix(), verifier_bytes),
-                _binding(
-                    (relative_root / "verify_common.py").as_posix(),
-                    COMMON_VERIFIER_BYTES,
-                ),
+                _binding((relative_root / "verify.py").as_posix()),
+                _binding((relative_root / "verify_common.py").as_posix()),
             ],
             "required_coverage_tags": [case["coverage"] for case in config["cases"]],
             "protected_case_ids": [
@@ -1022,23 +977,18 @@ def materialize(repository_root: Path) -> list[Path]:
         }
     )
     fixture_path = output_root / "probe-fixture.json"
-    probes_path = output_root / "codex-interaction-probes-v1.json"
+    probes_path = output_root / "codex-interaction-probes-v2.json"
     _write(fixture_path, fixture_bytes)
     _write(
         probes_path,
-        _probe_set(
-            fixture_bytes,
-            (REPOSITORY_ROOT / "scripts/codex_eval_host.py").read_bytes(),
-        ),
+        _probe_set(),
     )
     sentinel = {
-        "schema_version": "model-evolution-sentinel-index/1",
-        "sentinel_id": "frontier-four-skill-sentinel-v1",
+        "schema_version": "model-evolution-sentinel-index/2",
+        "sentinel_id": "frontier-four-skill-sentinel-v2",
         "skills": skill_bindings,
-        "sentinel_hash": "sha256:" + "0" * 64,
     }
-    sentinel["sentinel_hash"] = canonical_self_hash(sentinel, "sentinel_hash")
-    sentinel_path = output_root / "sentinel-index-v1.json"
+    sentinel_path = output_root / "sentinel-index-v2.json"
     _write(sentinel_path, _json_bytes(sentinel))
     generated.extend([fixture_path, probes_path, sentinel_path])
     return generated

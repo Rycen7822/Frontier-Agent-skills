@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 import math
 import os
@@ -31,7 +30,6 @@ from _model_evolution_contract import (
     SAFE_ID,
     SKILL_IDS,
     canonical_bytes,
-    content_hash,
     evaluator_evidence_status,
     load_json,
     load_jsonl,
@@ -41,8 +39,6 @@ from _model_evolution_contract import (
     validate_document,
     validate_bundle_build,
     validate_formal_timeout_inputs,
-    verify_self_hash,
-    with_self_hash,
 )
 from _model_evolution_qualification import (
     project_observed_host,
@@ -144,16 +140,6 @@ def _git_blob(repository_root: Path, revision: str, path: str) -> bytes | None:
     return result.stdout if result.returncode == 0 else None
 
 
-def git_blob_matches(
-    repository_root: Path,
-    revision: str,
-    path: str,
-    expected_hash: str,
-) -> bool:
-    blob = _git_blob(repository_root, revision, path)
-    return blob is not None and content_hash(blob) == expected_hash
-
-
 def bundle_skill_at_revision(
     repository_root: Path, revision: str, skill_id: str
 ) -> dict[str, Any]:
@@ -203,17 +189,20 @@ def require_tracked_binding(repository_root: Path, path: Path) -> None:
 
 def _operation_fact(
     operation_id: str,
-    argv: list[str],
-    input_value: Any,
     duration_ms: int,
+    *,
     status: str = "pass",
+    state_revision: int = 0,
+    exit_code: int | None = 0,
+    diagnostic: str | None = None,
 ) -> dict[str, Any]:
     return {
         "operation_id": operation_id,
-        "input_hash": content_hash(canonical_bytes(input_value)),
-        "command_hash": content_hash(canonical_bytes(argv)),
         "status": status,
         "duration_ms": duration_ms,
+        "state_revision": state_revision,
+        "exit_code": exit_code,
+        "diagnostic": diagnostic,
     }
 
 
@@ -243,7 +232,9 @@ def run_model_free_command(
     after = _git(repository_root, "status", "--porcelain=v1", "--untracked-files=all")
     if before != after:
         raise OperationError("model-free command changed the frozen worktree inventory")
-    return _operation_fact(operation_id, argv, before, duration), result
+    return _operation_fact(
+        operation_id, duration, exit_code=result.returncode,
+    ), result
 
 
 def _materialize_evaluator_fixture(
@@ -252,14 +243,14 @@ def _materialize_evaluator_fixture(
     code = (
         "import sys; from pathlib import Path; "
         f"sys.path.insert(0, {str(repository_root / 'tests')!r}); "
-        "from skill_evaluator_test_support import materialize_v5_contract_fixture; "
-        "materialize_v5_contract_fixture(Path(sys.argv[1]))"
+        "from skill_evaluator_test_support import materialize_epoch6_contract_fixture; "
+        "materialize_epoch6_contract_fixture(Path(sys.argv[1]))"
     )
     _run([sys.executable, "-c", code, str(target)], cwd=repository_root, timeout=60)
     return {
-        "spec": target / "spec-v5.json",
+        "spec": target / "spec-v6.json",
         "scenarios": target / "scenarios-v1.jsonl",
-        "host": target / "host-manifest-v1.json",
+        "host": target / "host-manifest-v2.json",
     }
 
 
@@ -345,8 +336,6 @@ def fake_full_chain(repository_root: Path) -> list[dict[str, Any]]:
         operations.append(
             _operation_fact(
                 "fake-bootstrap-comparison",
-                ["bootstrap-model-transition"],
-                {"predecessor": None, "summary": content_hash(summary.read_bytes())},
                 0,
             )
         )
@@ -500,29 +489,24 @@ def _load_probe_terminal(
     *,
     request: dict[str, Any],
     row: dict[str, Any],
-    probe_set_hash: str,
 ) -> dict[str, Any]:
     terminal = load_json(path, label="interaction probe terminal")
     required = {
         "schema_version",
         "request_id",
         "probe_id",
-        "probe_set_hash",
         "result",
         "stderr",
-        "terminal_hash",
     }
     if (
         not isinstance(terminal, dict)
         or set(terminal) != required
-        or terminal["schema_version"] != "model-evolution-probe-terminal/1"
+        or terminal["schema_version"] != "model-evolution-probe-terminal/2"
         or terminal["request_id"] != request["request_id"]
         or terminal["probe_id"] != row["probe_id"]
-        or terminal["probe_set_hash"] != probe_set_hash
         or not isinstance(terminal["stderr"], str)
     ):
         raise OperationError("interaction probe terminal shape or identity is invalid")
-    verify_self_hash(terminal, "terminal_hash")
     _validate_probe_result(terminal["result"], row)
     return terminal
 
@@ -582,7 +566,6 @@ def run_interaction_probes(
                 terminal_path,
                 request=request,
                 row=row,
-                probe_set_hash=probe_set["probe_set_hash"],
             )
             value = terminal["result"]
         else:
@@ -603,21 +586,17 @@ def run_interaction_probes(
                     workspace=workspace,
                     timeout=process_timeout,
                 )
-            terminal = with_self_hash(
-                {
-                    "schema_version": "model-evolution-probe-terminal/1",
-                    "request_id": request["request_id"],
-                    "probe_id": row["probe_id"],
-                    "probe_set_hash": probe_set["probe_set_hash"],
-                    "result": value,
-                    "stderr": stderr,
-                },
-                "terminal_hash",
-            )
+            terminal = {
+                "schema_version": "model-evolution-probe-terminal/2",
+                "request_id": request["request_id"],
+                "probe_id": row["probe_id"],
+                "result": value,
+                "stderr": stderr,
+            }
             _write_json_exclusive(terminal_path, terminal)
         binding = make_binding(
             terminal_path,
-            root="campaign",
+            root="external",
             repository_root=repository_root,
             campaign_root=campaign_root,
         )
@@ -635,16 +614,14 @@ def run_interaction_probes(
             raise OperationError(
                 "interaction probe protocol diagnostic stopped the probe set"
             )
-    results = with_self_hash(
-        {
-            "schema_version": "model-evolution-probe-results/1",
-            "campaign_hash": campaign["campaign_hash"],
-            "probe_set_hash": probe_set["probe_set_hash"],
-            "budget_approval": approval_binding,
-            "requests": result_rows,
-        },
-        "results_hash",
-    )
+    results = {
+        "schema_version": "model-evolution-probe-results/2",
+        "campaign_id": campaign["campaign_id"],
+        "state_revision": campaign["state_revision"],
+        "probe_set_id": probe_set["probe_set_id"],
+        "budget_approval": approval_binding,
+        "requests": result_rows,
+    }
     results_path = campaign_root / "probe-results.json"
     if results_path.exists():
         if canonical_bytes(
@@ -833,8 +810,6 @@ def preflight_operations(
     operations.append(
         _operation_fact(
             "host-plugin-binding",
-            ["validate-host-plugin-binding"],
-            validated_host["manifest_hash"],
             round((time.monotonic() - started) * 1000),
         )
     )
@@ -876,23 +851,10 @@ def preflight_operations(
         "sentinel_index",
     ):
         started = time.monotonic()
-        validate_document(
-            with_self_hash(
-                _minimal_schema_fixture(name, campaign),
-                {
-                    "budget_approval": "approval_hash",
-                    "campaign": "campaign_hash",
-                    "interaction_probes": "probe_set_hash",
-                    "sentinel_index": "sentinel_hash",
-                }[name],
-            ),
-            name,
-        )
+        validate_document(_minimal_schema_fixture(name, campaign), name)
         operations.append(
             _operation_fact(
                 f"schema-{name}",
-                ["validate-schema", name],
-                campaign["campaign_hash"],
                 round((time.monotonic() - started) * 1000),
             )
         )
@@ -907,32 +869,26 @@ def preflight_operations(
     operations.append(
         _operation_fact(
             "fake-qualification",
-            ["project-qualification"],
-            qualification["qualification_hash"],
             0,
         )
     )
     report = {
-        "schema_version": "model-evolution-apparatus-report/1",
+        "schema_version": "model-evolution-apparatus-report/2",
         "campaign_id": campaign["campaign_id"],
+        "state_revision": campaign["state_revision"],
         "source_commit": identity["commit"],
         "source_tree": identity["tree"],
-        "campaign_hash": campaign["campaign_hash"],
         "status": "pass",
         "operations": operations,
     }
-    return (
-        with_self_hash(report, "apparatus_report_hash"),
-        list(validated_host["command"]["env_allowlist"]),
-    )
+    return report, list(validated_host["command"]["env_allowlist"])
 
 
 def _minimal_schema_fixture(name: str, campaign: dict[str, Any]) -> dict[str, Any]:
     if name == "budget_approval":
         return {
-            "schema_version": "model-evolution-budget-approval/1",
+            "schema_version": "model-evolution-budget-approval/2",
             "campaign_id": campaign["campaign_id"],
-            "campaign_hash": campaign["campaign_hash"],
             "state_revision": campaign["state_revision"],
             "ceilings": campaign["budgets"]["ceiling"],
             "planned": {
@@ -946,10 +902,10 @@ def _minimal_schema_fixture(name: str, campaign: dict[str, Any]) -> dict[str, An
             "approved_at": "2026-08-03T00:00:00Z",
         }
     if name == "campaign":
-        return {key: value for key, value in campaign.items() if key != "campaign_hash"}
+        return dict(campaign)
     if name == "interaction_probes":
         return {
-            "schema_version": "model-evolution-interaction-probes/1",
+            "schema_version": "model-evolution-interaction-probes/2",
             "probe_set_id": "preflight-probes",
             "adapter_protocol_version": "codex-interaction-probe/1.0",
             "probes": [
@@ -981,7 +937,7 @@ def _minimal_schema_fixture(name: str, campaign: dict[str, Any]) -> dict[str, An
             "holdout_case_ceiling": 2,
         }
         return {
-            "schema_version": "model-evolution-sentinel-index/1",
+            "schema_version": "model-evolution-sentinel-index/2",
             "sentinel_id": "preflight-sentinel",
             "skills": {
                 skill_id: dict(item)
@@ -1102,11 +1058,14 @@ def _run_profile_command(repository_root: Path, words: list[str]) -> dict[str, A
     after = _git(repository_root, "status", "--porcelain=v1", "--untracked-files=all")
     if before != after:
         raise OperationError("focused gate changed the frozen worktree inventory")
+    owner = next(
+        (Path(word.split("::", 1)[0]).stem for word in words if ".py" in word),
+        "profile",
+    )
     return _operation_fact(
-        "focused-" + sha256(canonical_bytes(words)).hexdigest()[:16],
-        words,
-        before,
+        f"focused.{owner}",
         round((time.monotonic() - started) * 1000),
+        exit_code=result.returncode,
     )
 
 

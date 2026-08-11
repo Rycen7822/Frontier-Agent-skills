@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://frontier.local/model-evolution/campaign-v2.schema.json",
-  "title": "Frontier model evolution campaign v2",
+  "$id": "https://frontier.local/model-evolution/campaign-v3.schema.json",
+  "title": "Frontier model evolution campaign v3",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,11 +17,10 @@
     "budgets",
     "plans",
     "skill_evidence",
-    "candidate",
-    "campaign_hash"
+    "candidate"
   ],
   "properties": {
-    "schema_version": {"const": "model-evolution-campaign/2"},
+    "schema_version": {"const": "model-evolution-campaign/3"},
     "campaign_id": {"$ref": "#/$defs/safe_id"},
     "state_revision": {"type": "integer", "minimum": 0},
     "phase": {
@@ -46,8 +45,7 @@
     "budgets": {"$ref": "#/$defs/budgets"},
     "plans": {"type": "array", "items": {"$ref": "#/$defs/plan"}},
     "skill_evidence": {"$ref": "#/$defs/skill_evidence"},
-    "candidate": {"anyOf": [{"$ref": "#/$defs/candidate"}, {"type": "null"}]},
-    "campaign_hash": {"$ref": "#/$defs/hash"}
+    "candidate": {"anyOf": [{"$ref": "#/$defs/candidate"}, {"type": "null"}]}
   },
   "$defs": {
     "safe_id": {
@@ -57,16 +55,49 @@
     "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "git_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "binding": {
+      "oneOf": [
+        {"$ref": "#/$defs/repository_ref"},
+        {"$ref": "#/$defs/campaign_ref"},
+        {"$ref": "#/$defs/external_binding"}
+      ]
+    },
+    "repository_ref": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["root", "path", "sha256"],
+      "required": ["root", "path"],
       "properties": {
-        "root": {"enum": ["repository", "campaign"]},
+        "root": {"const": "repository"},
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*://)[A-Za-z0-9._/-]+$"
+        }
+      }
+    },
+    "campaign_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "path", "schema_version"],
+      "properties": {
+        "root": {"const": "campaign"},
         "path": {
           "type": "string",
           "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*://)[A-Za-z0-9._/-]+$"
         },
-        "sha256": {"$ref": "#/$defs/hash"}
+        "schema_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "external_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "path", "digest", "schema_version"],
+      "properties": {
+        "root": {"const": "external"},
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*://)[A-Za-z0-9._/-]+$"
+        },
+        "digest": {"$ref": "#/$defs/hash"},
+        "schema_version": {"type": "string", "minLength": 1}
       }
     },
     "nullable_binding": {
@@ -141,17 +172,13 @@
       "required": [
         "cycle",
         "host",
-        "product_hash",
-        "sentinel_hash",
-        "comparison_hash",
+        "plugin_tree_digest",
         "qualification"
       ],
       "properties": {
         "cycle": {"$ref": "#/$defs/binding"},
         "host": {"$ref": "#/$defs/binding"},
-        "product_hash": {"$ref": "#/$defs/hash"},
-        "sentinel_hash": {"$ref": "#/$defs/hash"},
-        "comparison_hash": {"$ref": "#/$defs/hash"},
+        "plugin_tree_digest": {"$ref": "#/$defs/hash"},
         "qualification": {"$ref": "#/$defs/nullable_binding"}
       }
     },
@@ -239,19 +266,32 @@
         "role",
         "skill_id",
         "plan",
-        "host_hash",
+        "plan_digest",
+        "host_id",
+        "host_version",
         "execute_ceiling",
         "model_grade_ceiling",
-        "runner_status_hash"
+        "runner_status"
       ],
       "properties": {
         "role": {"enum": ["target_current", "target_candidate", "target_holdout"]},
         "skill_id": {"$ref": "#/$defs/skill_id"},
-        "plan": {"$ref": "#/$defs/binding"},
-        "host_hash": {"$ref": "#/$defs/hash"},
+        "plan": {"$ref": "#/$defs/campaign_ref"},
+        "plan_digest": {"$ref": "#/$defs/hash"},
+        "host_id": {"$ref": "#/$defs/safe_id"},
+        "host_version": {"type": "string", "minLength": 1},
         "execute_ceiling": {"type": "integer", "minimum": 0},
         "model_grade_ceiling": {"type": "integer", "minimum": 0},
-        "runner_status_hash": {"$ref": "#/$defs/hash"}
+        "runner_status": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["completed", "total", "failed"],
+          "properties": {
+            "completed": {"type": "integer", "minimum": 0},
+            "total": {"type": "integer", "minimum": 0},
+            "failed": {"type": "integer", "minimum": 0}
+          }
+        }
       }
     },
     "skill_id": {
@@ -303,13 +343,14 @@
     "operation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["operation_id", "input_hash", "command_hash", "status", "duration_ms"],
+      "required": ["operation_id", "status", "duration_ms", "state_revision", "exit_code", "diagnostic"],
       "properties": {
         "operation_id": {"$ref": "#/$defs/safe_id"},
-        "input_hash": {"$ref": "#/$defs/hash"},
-        "command_hash": {"$ref": "#/$defs/hash"},
         "status": {"enum": ["pass", "fail"]},
-        "duration_ms": {"type": "integer", "minimum": 0}
+        "duration_ms": {"type": "integer", "minimum": 0},
+        "state_revision": {"type": "integer", "minimum": 0},
+        "exit_code": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+        "diagnostic": {"anyOf": [{"type": "string", "maxLength": 500}, {"type": "null"}]}
       }
     },
     "candidate": {

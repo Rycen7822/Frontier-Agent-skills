@@ -1,44 +1,44 @@
 {
   "artifacts": [
     {
+      "digest": "sha256:5fdcbb21409274b4e766bd4ea4034a557bf134b908960e51b31f0e2313b2a9a6",
       "encoding": "utf-8",
-      "path": "src/legacy.py",
-      "sha256": "sha256:5fdcbb21409274b4e766bd4ea4034a557bf134b908960e51b31f0e2313b2a9a6"
+      "path": "src/legacy.py"
     },
     {
+      "digest": "sha256:5b98d04ebd627c2b50eb9c1c4be9c23c839a8edd1044a9bcb1b5c048b360a28c",
       "encoding": "utf-8",
-      "path": "src/logger.py",
-      "sha256": "sha256:5b98d04ebd627c2b50eb9c1c4be9c23c839a8edd1044a9bcb1b5c048b360a28c"
+      "path": "src/logger.py"
     },
     {
+      "digest": "sha256:9874dd84a800cf6a27724155ac2a414158688251115af07241682b668e0b6502",
       "encoding": "utf-8",
-      "path": "src/parser.py",
-      "sha256": "sha256:9874dd84a800cf6a27724155ac2a414158688251115af07241682b668e0b6502"
+      "path": "src/parser.py"
     },
     {
+      "digest": "sha256:41082a054c5dafcd9733695cb044ef21b8fb298a6ca1d2eb86836de15d9af0e2",
       "encoding": "utf-8",
-      "path": "src/path.py",
-      "sha256": "sha256:41082a054c5dafcd9733695cb044ef21b8fb298a6ca1d2eb86836de15d9af0e2"
+      "path": "src/path.py"
     },
     {
+      "digest": "sha256:ed36c1487f690876b947030b73516a78005661c93a3f06a8919b29c0f6afae1a",
       "encoding": "utf-8",
-      "path": "src/payment.py",
-      "sha256": "sha256:ed36c1487f690876b947030b73516a78005661c93a3f06a8919b29c0f6afae1a"
+      "path": "src/payment.py"
     },
     {
+      "digest": "sha256:4c193b5c39daac167808ced4b7d9e852bc6b53828902240095c79409405261f0",
       "encoding": "utf-8",
-      "path": "src/upload.py",
-      "sha256": "sha256:4c193b5c39daac167808ced4b7d9e852bc6b53828902240095c79409405261f0"
+      "path": "src/upload.py"
     },
     {
+      "digest": "sha256:6990535854b2bfbf5d213218f80d91840cdc0e22cfb4cc689eba0d2ece5faa6a",
       "encoding": "utf-8",
-      "path": "tests/test_legacy.py",
-      "sha256": "sha256:6990535854b2bfbf5d213218f80d91840cdc0e22cfb4cc689eba0d2ece5faa6a"
+      "path": "tests/test_legacy.py"
     },
     {
+      "digest": "sha256:5bfc0f873a7d842e2a13628dd0775216d39ed85ef5c099485feb3f765dbdbdf8",
       "encoding": "utf-8",
-      "path": "work-boundary.md",
-      "sha256": "sha256:c0757ae2aa002c7a28c5543fa364a6ad485a1b99efe3cc4b1a3619eb6eab42a8"
+      "path": "work-boundary.md"
     }
   ],
   "schema_version": 1

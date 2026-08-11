@@ -64,6 +64,16 @@ def canonical_hash(value: object) -> str:
     return 'sha256:' + hashlib.sha256(payload).hexdigest()
 
 
+def load_run_index(path: Path) -> tuple[dict, list[dict]]:
+    records = [
+        json.loads(line)
+        for line in path.read_text(encoding='utf-8').splitlines()
+    ]
+    if not records or records[0].get('record_type') != 'index_header':
+        raise AssertionError('run index lacks its epoch-6 header')
+    return records[0], records[1:]
+
+
 def treatment_contract_hash(variants: list[dict]) -> str:
     return canonical_hash([
         {
@@ -857,15 +867,15 @@ def load_evidence_io_module():
     return module
 
 
-def _v5_hash(label: str) -> str:
+def _epoch6_digest(label: str) -> str:
     return canonical_hash({'fixture_identity': label})
 
 
-def _v5_artifact(path: str) -> dict:
-    return {'path': path, 'sha256': _v5_hash(path), 'encoding': 'utf-8'}
+def _epoch6_artifact(path: str) -> dict:
+    return {'path': path, 'digest': _epoch6_digest(path), 'encoding': 'utf-8'}
 
 
-def _v5_locator(path: str = 'fixture.txt') -> dict:
+def _epoch6_locator(path: str = 'fixture.txt') -> dict:
     return {
         'kind': 'text_lines',
         'artifact': path,
@@ -874,35 +884,32 @@ def _v5_locator(path: str = 'fixture.txt') -> dict:
     }
 
 
-def _v5_envelope(request_kind: str = 'execute_case') -> dict:
+def _epoch6_envelope(plan: dict, request_kind: str = 'execute_case') -> dict:
+    entry_id = plan['entries'][0]['entry_id']
     return {
-        'plan_id': 'pl-' + 'a' * 24,
-        'plan_hash': _v5_hash('plan'),
+        'plan_id': plan['plan_id'],
         'entry_ordinal': 0,
-        'entry_id': 'pe-' + 'b' * 24,
-        'run_id': 'run-' + 'c' * 24,
+        'entry_id': entry_id,
+        'run_id': 'run.fixture.1',
+        'attempt_id': 'attempt.fixture.1',
         'attempt': 1,
+        'request_id': 'request.fixture.1',
         'request_kind': request_kind,
     }
 
 
-def _v5_receipt(plan: dict, scenario: dict, spec: dict, host: dict) -> dict:
-    envelope = _v5_envelope()
+def _epoch6_receipt(plan: dict, scenario: dict) -> dict:
+    envelope = _epoch6_envelope(plan)
     request = {
-        'record_type': 'skill-evaluator-host-request/1',
-        'request_hash': _v5_hash('request'),
+        'record_type': 'skill-evaluator-host-request/2',
         'envelope': envelope,
         'payload': {'case_id': scenario['case_id']},
     }
-    request['request_hash'] = canonical_hash({
-        key: value for key, value in request.items() if key != 'request_hash'
-    })
     result = {
-        'record_type': 'skill-evaluator-host-result/1',
+        'record_type': 'skill-evaluator-host-result/2',
         'terminal': True,
         'terminal_status': 'completed',
         'envelope': envelope,
-        'request_hash': request['request_hash'],
         'treatment_error': None,
         'refusal': False,
         'timeout': False,
@@ -918,25 +925,14 @@ def _v5_receipt(plan: dict, scenario: dict, spec: dict, host: dict) -> dict:
         'assertions': [],
     }
     return {
-        'schema_version': 4,
-        'receipt_hash': _v5_hash('receipt'),
-        'attempt_start': {
-            'schema_version': 1,
-            'marker_hash': _v5_hash('marker'),
-            'plan_hash': plan['plan_hash'],
-            'plan_id': plan['plan_id'],
-            'entry_ordinal': 0,
-            'entry_id': plan['entries'][0]['entry_id'],
-            'attempt': 1,
-            'run_id': envelope['run_id'],
-            'ownership_token': _v5_hash('ownership'),
-        },
+        'schema_version': 5,
         'run': {
-            'plan_hash': plan['plan_hash'],
             'plan_id': plan['plan_id'],
             'entry_ordinal': 0,
             'entry_id': plan['entries'][0]['entry_id'],
             'run_id': envelope['run_id'],
+            'attempt_id': envelope['attempt_id'],
+            'request_id': envelope['request_id'],
             'case_id': scenario['case_id'],
             'treatment_id': 'candidate',
             'repeat': 1,
@@ -949,29 +945,18 @@ def _v5_receipt(plan: dict, scenario: dict, spec: dict, host: dict) -> dict:
             'error': None,
             'terminal': 'completed',
         },
-        'provenance': {
-            'spec_hash': plan['spec_hash'],
-            'scenario_corpus_hash': plan['scenario_corpus_hash'],
-            'scenario_hash': plan['entries'][0]['scenario_hash'],
-            'plan_hash': plan['plan_hash'],
-            'host_manifest_hash': host['manifest_hash'],
-            'package_hash': _v5_hash('skill'),
-            'catalog_hash': host['catalog']['catalog_hash'],
-            'treatment_hash': plan['entries'][0]['treatment_hash'],
-            'fixture_hash': scenario['fixture']['sha256'],
-            'grader_set_hash': plan['grader_set_hash'],
-            'calibration_hash': None,
-            'suite_quality_hash': plan['suite_quality_hash'],
-        },
-        'artifacts': [_v5_artifact('stdout.jsonl'), _v5_artifact('stderr.txt')],
+        'artifacts': [
+            _epoch6_artifact('stdout.jsonl'),
+            _epoch6_artifact('stderr.txt'),
+        ],
         'host_protocol': {
             'requests': [request],
             'events': [],
             'results': [result],
             'checkpoints': [],
             'errors': [],
-            'raw_stdout': _v5_artifact('stdout.jsonl'),
-            'raw_stderr': _v5_artifact('stderr.txt'),
+            'raw_stdout': _epoch6_artifact('stdout.jsonl'),
+            'raw_stderr': _epoch6_artifact('stderr.txt'),
         },
         'routing': {
             key: []
@@ -1017,7 +1002,7 @@ def _v5_receipt(plan: dict, scenario: dict, spec: dict, host: dict) -> dict:
     }
 
 
-def _v5_metric(metric_id: str) -> dict:
+def _epoch6_metric(metric_id: str) -> dict:
     return {
         'metric_id': metric_id,
         'status': 'pass',
@@ -1032,7 +1017,7 @@ def _v5_metric(metric_id: str) -> dict:
     }
 
 
-def _v5_summary(plan: dict, spec: dict) -> dict:
+def _epoch6_summary(plan: dict, spec: dict) -> dict:
     not_applicable = {
         'status': 'not_applicable',
         'metrics': {},
@@ -1040,8 +1025,7 @@ def _v5_summary(plan: dict, spec: dict) -> dict:
     }
     failure_view = {
         'path': 'failures.json',
-        'sha256': _v5_hash('failures'),
-        'schema_or_view_version': 'failure-index/1',
+        'schema_or_view_version': 'failure-index/2',
         'item_count': 0,
         'shown_count': 0,
         'omitted_count': 0,
@@ -1050,20 +1034,15 @@ def _v5_summary(plan: dict, spec: dict) -> dict:
         'severity_counts': {},
     }
     return {
-        'schema_version': 4,
-        'summary_hash': _v5_hash('summary'),
+        'schema_version': 5,
         'evaluation_id': spec['evaluation_id'],
         'plan_id': plan['plan_id'],
-        'plan_hash': plan['plan_hash'],
-        'spec_hash': plan['spec_hash'],
-        'scenario_corpus_hash': plan['scenario_corpus_hash'],
-        'host_manifest_hash': plan['host_manifest_hash'],
         'analysis_ready': True,
         'subject': {
             'skill_id': 'skill-evaluator',
-            'version': '3.0.0',
+            'version': '4.0.0',
             'shape': 'single_skill',
-            'package_hash': _v5_hash('skill'),
+            'source_revision': plan['source_revision'],
         },
         'modules': copy.deepcopy(spec['applicability']),
         'treatments': copy.deepcopy(spec['treatments']),
@@ -1082,7 +1061,7 @@ def _v5_summary(plan: dict, spec: dict) -> dict:
             'invalid_attempts': 0,
             'missing_entries': 0,
         },
-        'primary_benefit': _v5_metric('task-benefit'),
+        'primary_benefit': _epoch6_metric('task-benefit'),
         'paired_metrics': {},
         'module_summaries': [],
         'stage_summaries': [],
@@ -1093,9 +1072,9 @@ def _v5_summary(plan: dict, spec: dict) -> dict:
         'grounding_summary': None,
         'context_cost': {
             'attribution_coverage': 1.0,
-            'skill_context_bytes': _v5_metric('skill-context-bytes'),
-            'controlled_skill_context_bytes': _v5_metric('controlled-skill-context-bytes'),
-            'controlled_core_skill_context_bytes': _v5_metric('controlled-core-skill-context-bytes'),
+            'skill_context_bytes': _epoch6_metric('skill-context-bytes'),
+            'controlled_skill_context_bytes': _epoch6_metric('controlled-skill-context-bytes'),
+            'controlled_core_skill_context_bytes': _epoch6_metric('controlled-core-skill-context-bytes'),
             'tokens': copy.deepcopy(not_applicable),
             'latency_ms': copy.deepcopy(not_applicable),
             'calls': copy.deepcopy(not_applicable),
@@ -1110,7 +1089,7 @@ def _v5_summary(plan: dict, spec: dict) -> dict:
             'required': False,
             'status': 'not_applicable',
             'decision': None,
-            'receipt_hash': None,
+            'receipt_path': None,
         },
         'blocking_observations': [],
         'output_manifest': {
@@ -1123,66 +1102,58 @@ def _v5_summary(plan: dict, spec: dict) -> dict:
             'status': 'locally_verified',
             'reason': 'synthetic fixture evidence',
         }],
+        'evidence_refs': [{
+            'claim_id': 'task-benefit',
+            'receipt_paths': ['entries/fixture/receipt.json'],
+            'raw_artifact_paths': ['stdout.jsonl'],
+        }],
         'representative_failure_ids': [],
     }
 
 
-def load_v5_committed_fixtures() -> dict[str, dict]:
+def load_epoch6_committed_fixtures() -> dict[str, dict]:
     fixture_root = Path(__file__).resolve().parent / 'fixtures/skill_evaluator'
     return {
-        'eval-spec-v5.schema.json': json.loads(
-            (fixture_root / 'spec-v5.json').read_text(encoding='utf-8'),
+        'eval-spec-v6.schema.json': json.loads(
+            (fixture_root / 'spec-v6.json').read_text(encoding='utf-8'),
         ),
         'scenario-v1.schema.json': json.loads(
             (fixture_root / 'scenarios-v1.jsonl').read_text(encoding='utf-8'),
         ),
-        'host-manifest-v1.schema.json': json.loads(
-            (fixture_root / 'host-manifest-v1.json').read_text(encoding='utf-8'),
+        'host-manifest-v2.schema.json': json.loads(
+            (fixture_root / 'host-manifest-v2.json').read_text(encoding='utf-8'),
         ),
-        'grader-calibration-v2.schema.json': json.loads(
-            (fixture_root / 'calibration-v2.json').read_text(encoding='utf-8'),
+        'grader-calibration-v3.schema.json': json.loads(
+            (fixture_root / 'calibration-v3.json').read_text(encoding='utf-8'),
         ),
-        'suite-quality-v1.schema.json': json.loads(
-            (fixture_root / 'suite-quality-v1.json').read_text(encoding='utf-8'),
+        'suite-quality-v2.schema.json': json.loads(
+            (fixture_root / 'suite-quality-v2.json').read_text(encoding='utf-8'),
         ),
-        'execution-plan-v1.schema.json': json.loads(
-            (fixture_root / 'execution-plan-v1.json').read_text(
+        'execution-plan-v2.schema.json': json.loads(
+            (fixture_root / 'execution-plan-v2.json').read_text(
                 encoding='utf-8',
             ),
         ),
     }
 
 
-def make_v5_schema_examples() -> dict[str, dict]:
-    committed = load_v5_committed_fixtures()
+def make_epoch6_schema_examples() -> dict[str, dict]:
+    committed = load_epoch6_committed_fixtures()
     scenario = committed['scenario-v1.schema.json']
-    host = committed['host-manifest-v1.schema.json']
-    spec = committed['eval-spec-v5.schema.json']
-    calibration = committed['grader-calibration-v2.schema.json']
-    quality = committed['suite-quality-v1.schema.json']
-    plan = committed['execution-plan-v1.schema.json']
-    receipt = _v5_receipt(plan, scenario, spec, host)
+    host = committed['host-manifest-v2.schema.json']
+    spec = committed['eval-spec-v6.schema.json']
+    calibration = committed['grader-calibration-v3.schema.json']
+    quality = committed['suite-quality-v2.schema.json']
+    plan = committed['execution-plan-v2.schema.json']
+    receipt = _epoch6_receipt(plan, scenario)
     run_index = {
-        'schema_version': 2,
-        'plan_hash': plan['plan_hash'],
+        'record_type': 'index_header',
         'plan_id': plan['plan_id'],
-        'entry_ordinal': 0,
-        'entry_id': plan['entries'][0]['entry_id'],
-        'run_id': receipt['run']['run_id'],
-        'case_id': scenario['case_id'],
-        'treatment_id': 'candidate',
-        'repeat': 1,
-        'attempt': 1,
-        'artifact_dir': 'entries/' + plan['entries'][0]['entry_id'] + '/attempt-0001',
-        'receipt': {
-            'path': 'entries/' + plan['entries'][0]['entry_id'] + '/attempt-0001/receipt.json',
-            'sha256': receipt['receipt_hash'],
-        },
+        'plan_digest': canonical_hash(plan),
     }
     runner_status = {
-        'schema_version': 'runner-status/1',
+        'schema_version': 'runner-status/2',
         'plan_id': plan['plan_id'],
-        'plan_hash': plan['plan_hash'],
         'selected_entries': 1,
         'execute_entries': 1,
         'indexed_attempts': 0,
@@ -1199,9 +1170,8 @@ def make_v5_schema_examples() -> dict[str, dict]:
         'model_grade_request_ceiling': 0,
     }
     failure_index = {
-        'schema_version': 1,
+        'schema_version': 2,
         'view': 'index',
-        'failure_index_hash': _v5_hash('failure-index'),
         'evaluation_id': spec['evaluation_id'],
         'plan_id': plan['plan_id'],
         'item_count': 0,
@@ -1218,24 +1188,20 @@ def make_v5_schema_examples() -> dict[str, dict]:
         ),
     )
     comparison_observations = {
-        'schema_version': 1,
-        'comparison_observations_hash': _v5_hash('comparison-observations'),
+        'schema_version': 2,
         'generator': {
             'name': 'analyze_runs.py',
-            'version': '3.3.4',
-            'source_hash': _v5_hash('analyzer-source'),
+            'version': '4.0.0',
+            'source_revision': plan['source_revision'],
         },
+        'cycle_id': 'fixture-cycle',
         'evaluation_id': spec['evaluation_id'],
         'plan_id': plan['plan_id'],
-        'plan_hash': plan['plan_hash'],
-        'spec_hash': _v5_hash('comparison-spec'),
-        'scenario_corpus_hash': _v5_hash('comparison-scenarios'),
-        'host_manifest_hash': host['manifest_hash'],
         'subject': {
             'skill_id': spec['subject']['skill_id'],
             'version': spec['subject']['version'],
             'shape': spec['subject']['shape'],
-            'package_hash': spec['subject']['package']['package_hash'],
+            'source_revision': spec['subject']['package']['source_revision'],
         },
         'metrics': [{
             'metric_id': 'benefit',
@@ -1256,49 +1222,66 @@ def make_v5_schema_examples() -> dict[str, dict]:
     }
 
     def comparison_input(role: str) -> dict:
-        observations_hash = comparison_observations[
-            'comparison_observations_hash'
-        ]
         return {
             'role': role,
+            'cycle_id': f'{role}-cycle',
             'evaluation_id': spec['evaluation_id'],
             'plan_id': plan['plan_id'],
-            'spec_hash': _v5_hash(f'{role}-spec'),
-            'plan_hash': plan['plan_hash'],
-            'host_manifest_hash': host['manifest_hash'],
-            'summary_hash': _v5_hash(f'{role}-summary'),
-            'failure_index_hash': None,
-            'observations_hash': observations_hash,
-            'execution_identity': copy.deepcopy(plan['execution_identity']),
-            'file_hashes': {
-                'spec': _v5_hash(f'{role}-spec-file'),
-                'execution_plan': _v5_hash(f'{role}-plan-file'),
-                'host_manifest': _v5_hash(f'{role}-host-file'),
-                'summary': _v5_hash(f'{role}-summary-file'),
-                'failure_index': None,
-                'observations': _v5_hash(f'{role}-observations-file'),
-            },
+            'capsule_digest': _epoch6_digest(f'{role}-capsule'),
+            'execution_profile': copy.deepcopy(plan['execution_profile']),
         }
 
+    comparison_capsule = {
+        'schema_version': 'comparison-cycle-capsule/2',
+        'cycle_id': 'fixture-cycle',
+        'evaluation_id': spec['evaluation_id'],
+        'plan_id': plan['plan_id'],
+        'execution_profile': copy.deepcopy(plan['execution_profile']),
+        'artifacts': {
+            'spec': {
+                'path': 'spec-v6.json',
+                'schema': 'eval-spec-v6',
+                'digest': _epoch6_digest('capsule-spec'),
+            },
+            'execution_plan': {
+                'path': 'execution-plan-v2.json',
+                'schema': 'execution-plan-v2',
+                'digest': _epoch6_digest('capsule-plan'),
+            },
+            'host_manifest': {
+                'path': 'host-manifest-v2.json',
+                'schema': 'host-manifest-v2',
+                'digest': _epoch6_digest('capsule-host'),
+            },
+            'summary': {
+                'path': 'summary.json',
+                'schema': 'analysis-summary-v5',
+                'digest': _epoch6_digest('capsule-summary'),
+            },
+            'failure_index': None,
+            'observations': {
+                'path': 'comparison-observations.json',
+                'schema': 'comparison-observations-v2',
+                'digest': _epoch6_digest('capsule-observations'),
+            },
+        },
+    }
+
     comparison_index = {
-        'schema_version': 1,
-        'comparison_diagnostic_index_hash': _v5_hash('comparison-index'),
+        'schema_version': 2,
         'comparison_id': comparison_plan['comparison_id'],
-        'comparison_plan_hash': comparison_plan['comparison_plan_hash'],
         'item_count': 0,
         'diagnostics': [],
     }
     comparison_report = {
-        'schema_version': 1,
-        'comparison_report_hash': _v5_hash('comparison-report'),
+        'schema_version': 2,
         'comparison_id': comparison_plan['comparison_id'],
-        'comparison_plan_hash': comparison_plan['comparison_plan_hash'],
         'kind': 'revision',
         'claim_scope': 'diagnostic_only',
         'generator': {
             'name': 'compare_cycles.py',
-            'version': '3.3.4',
-            'source_hash': _v5_hash('comparator-source'),
+            'version': '4.0.0',
+            'source_revision': plan['source_revision'],
         },
         'registration_status': 'exploratory',
         'inputs': [comparison_input('prior'), comparison_input('candidate')],
@@ -1313,36 +1296,35 @@ def make_v5_schema_examples() -> dict[str, dict]:
         },
         'authority_eligibility': 'blocked',
         'claim_ceiling': 'diagnostic_only',
-        'diagnostic_index_hash': comparison_index[
-            'comparison_diagnostic_index_hash'
-        ],
+        'diagnostic_index_path': 'comparison-diagnostic-index.json',
     }
     return {
-        'eval-spec-v5.schema.json': spec,
+        'eval-spec-v6.schema.json': spec,
         'scenario-v1.schema.json': scenario,
-        'execution-plan-v1.schema.json': plan,
-        'host-manifest-v1.schema.json': host,
-        'run-index-row-v2.schema.json': run_index,
-        'runner-status-v1.schema.json': runner_status,
-        'receipt-v4.schema.json': receipt,
-        'grader-calibration-v2.schema.json': calibration,
-        'suite-quality-v1.schema.json': quality,
-        'analysis-summary-v4.schema.json': _v5_summary(plan, spec),
-        'failure-index-v1.schema.json': failure_index,
-        'comparison-plan-v1.schema.json': comparison_plan,
-        'comparison-observations-v1.schema.json': comparison_observations,
-        'comparison-report-v1.schema.json': comparison_report,
-        'comparison-diagnostic-index-v1.schema.json': comparison_index,
+        'execution-plan-v2.schema.json': plan,
+        'host-manifest-v2.schema.json': host,
+        'run-index-v3.schema.json': run_index,
+        'runner-status-v2.schema.json': runner_status,
+        'receipt-v5.schema.json': receipt,
+        'grader-calibration-v3.schema.json': calibration,
+        'suite-quality-v2.schema.json': quality,
+        'analysis-summary-v5.schema.json': _epoch6_summary(plan, spec),
+        'failure-index-v2.schema.json': failure_index,
+        'comparison-cycle-capsule-v2.schema.json': comparison_capsule,
+        'comparison-plan-v2.schema.json': comparison_plan,
+        'comparison-observations-v2.schema.json': comparison_observations,
+        'comparison-report-v2.schema.json': comparison_report,
+        'comparison-diagnostic-index-v2.schema.json': comparison_index,
     }
 
 
-def materialize_v5_contract_fixture(root: Path) -> dict[str, Path]:
+def materialize_epoch6_contract_fixture(root: Path) -> dict[str, Path]:
     root.mkdir(parents=True, exist_ok=True)
     paths = {
-        'spec': root / 'spec-v5.json',
+        'spec': root / 'spec-v6.json',
         'scenarios': root / 'scenarios-v1.jsonl',
-        'host': root / 'host-manifest-v1.json',
-        'quality': root / 'suite-quality-v1.json',
+        'host': root / 'host-manifest-v2.json',
+        'quality': root / 'suite-quality-v2.json',
         'quality_proof': root / 'suite-quality-proof.json',
         'quality_probe_artifact': root / 'grader-output.schema.json',
         'synthetic_host': root / 'synthetic-host.py',
@@ -1360,15 +1342,15 @@ def materialize_v5_contract_fixture(root: Path) -> dict[str, Path]:
         ROOT / 'templates/grader-output.schema.json',
         paths['quality_probe_artifact'],
     )
-    synthetic_hash = (
+    synthetic_digest = (
         'sha256:' + hashlib.sha256(paths['synthetic_host'].read_bytes()).hexdigest()
     )
 
-    committed = load_v5_committed_fixtures()
-    host = copy.deepcopy(committed['host-manifest-v1.schema.json'])
+    committed = load_epoch6_committed_fixtures()
+    host = copy.deepcopy(committed['host-manifest-v2.schema.json'])
     resolved_python = Path('/usr/bin/python3').resolve()
     host['command']['resolved_executable'] = str(resolved_python)
-    host['command']['executable_sha256'] = (
+    host['command']['executable_digest'] = (
         'sha256:' + hashlib.sha256(resolved_python.read_bytes()).hexdigest()
     )
     for probe in [
@@ -1377,69 +1359,46 @@ def materialize_v5_contract_fixture(root: Path) -> dict[str, Path]:
     ]:
         probe['artifact'] = {
             'path': 'synthetic-host.py',
-            'sha256': synthetic_hash,
+            'digest': synthetic_digest,
             'encoding': 'utf-8',
         }
-        probe['locator'] = _v5_locator('synthetic-host.py')
-    host['manifest_hash'] = canonical_hash({
-        key: value for key, value in host.items() if key != 'manifest_hash'
-    })
+        probe['locator'] = _epoch6_locator('synthetic-host.py')
     paths['host'].write_text(
         json.dumps(host, indent=2, ensure_ascii=False) + '\n',
         encoding='utf-8',
     )
-    host_file_hash = (
+    host_digest = (
         'sha256:' + hashlib.sha256(paths['host'].read_bytes()).hexdigest()
     )
 
     scenario = copy.deepcopy(committed['scenario-v1.schema.json'])
-    scenario['fixture']['manifest'] = 'host-manifest-v1.json'
-    scenario['fixture']['sha256'] = host_file_hash
+    scenario['fixture']['manifest'] = 'host-manifest-v2.json'
+    scenario['fixture']['sha256'] = host_digest
     paths['scenarios'].write_text(
         json.dumps(scenario, separators=(',', ':'), ensure_ascii=False) + '\n',
         encoding='utf-8',
     )
-    scenario_file_hash = (
-        'sha256:' + hashlib.sha256(paths['scenarios'].read_bytes()).hexdigest()
-    )
-
     validator = load_validator_module()
-    spec = copy.deepcopy(committed['eval-spec-v5.schema.json'])
+    spec = copy.deepcopy(committed['eval-spec-v6.schema.json'])
     for decision in spec['applicability']:
-        decision['evidence'][0]['artifact'] = 'spec-v5.json'
-    spec['suite']['scenarios'] = {
-        'path': 'scenarios-v1.jsonl', 'sha256': scenario_file_hash,
-    }
+        decision['evidence'][0]['artifact'] = 'spec-v6.json'
+    spec['suite']['scenarios'] = {'path': 'scenarios-v1.jsonl'}
     spec['suite']['public_scenarios'] = copy.deepcopy(
         spec['suite']['scenarios'],
     )
-    spec['host']['manifest'] = {
-        'path': 'host-manifest-v1.json', 'sha256': host_file_hash,
-    }
+    spec['host']['manifest'] = {'path': 'host-manifest-v2.json'}
     spec['graders'][0]['verifier'].update({
         'argv': ['python3', 'synthetic-host.py'],
         'path': 'synthetic-host.py',
-        'sha256': synthetic_hash,
+        'source_revision': spec['subject']['package']['source_revision'],
     })
-    spec['suite']['fixture_set_hash'] = validator.v5_fixture_set_hash(
-        [scenario],
-    )
-    spec['suite']['grader_set_hash'] = validator.v5_grader_set_hash(
-        spec['graders'],
-    )
-    spec['suite']['grader_schedule_hash'] = validator.v5_grader_schedule_hash(
-        spec, [scenario],
-    )
-    spec['suite']['treatment_contract_hash'] = (
-        validator.v5_treatment_contract_hash(spec['treatments'])
-    )
     spec['suite']['quality'] = {
-        'path': 'suite-quality-v1.json',
-        'sha256': 'sha256:' + '0' * 64,
+        'path': 'suite-quality-v2.json',
+        'digest': 'sha256:' + '0' * 64,
+        'schema_version': 'suite-quality/2',
     }
-    spec['suite']['quality_contract_hash'] = validator.quality_contract_hash(spec)
 
-    quality = copy.deepcopy(committed['suite-quality-v1.schema.json'])
+    quality = copy.deepcopy(committed['suite-quality-v2.schema.json'])
     proof = json.loads(paths['quality_proof'].read_text(encoding='utf-8'))
     proof['evaluation_id'] = spec['evaluation_id']
     proof['case_classes'] = [
@@ -1454,7 +1413,7 @@ def materialize_v5_contract_fixture(root: Path) -> dict[str, Path]:
     proof['provenance_clusters'][0]['case_ids'] = ['case-basic']
     proof['custody']['author_visible_paths'] = ['scenarios-v1.jsonl']
     proof['custody']['executor_visible_paths'] = ['scenarios-v1.jsonl']
-    proof['custody']['split_hashes'] = validator._quality_split_hashes(
+    proof['custody']['split_bindings'] = validator._quality_split_bindings(
         spec, [scenario],
     )
     paths['quality_proof'].write_text(
@@ -1468,45 +1427,25 @@ def materialize_v5_contract_fixture(root: Path) -> dict[str, Path]:
         raise AssertionError(normalization_error)
     proof_binding = {
         'path': paths['quality_proof'].name,
-        'sha256': (
+        'digest': (
             'sha256:'
             + hashlib.sha256(paths['quality_proof'].read_bytes()).hexdigest()
         ),
     }
     quality.update({
-        'suite_quality_id': 'sq-' + canonical_hash({
-            'evaluation_id': spec['evaluation_id'],
-            'quality_contract_hash': spec['suite']['quality_contract_hash'],
-            'proof_hash': proof_binding['sha256'],
-        }).removeprefix('sha256:')[:24],
+        'suite_quality_id': f"sq.{spec['evaluation_id']}",
         'evaluation_id': spec['evaluation_id'],
-        'quality_contract_hash': spec['suite']['quality_contract_hash'],
-        'scenario_hash': scenario_file_hash,
-        'holdout_hash': (
-            spec['suite']['holdout']['payload']['sha256']
-            if isinstance(spec['suite'].get('holdout'), dict)
-            else None
-        ),
-        'fixture_set_hash': spec['suite']['fixture_set_hash'],
-        'grader_set_hash': spec['suite']['grader_set_hash'],
-        'treatment_contract_hash': spec['suite']['treatment_contract_hash'],
-        'calibration_hash': None,
         'raw_proofs': {
             key: copy.deepcopy(proof_binding)
             for key in ('golden', 'known_bad', 'mutations', 'reviews')
         },
         **normalized,
     })
-    quality['suite_quality_hash'] = canonical_hash({
-        key: value
-        for key, value in quality.items()
-        if key != 'suite_quality_hash'
-    })
     paths['quality'].write_text(
         json.dumps(quality, indent=2, ensure_ascii=False) + '\n',
         encoding='utf-8',
     )
-    spec['suite']['quality']['sha256'] = (
+    spec['suite']['quality']['digest'] = (
         'sha256:' + hashlib.sha256(paths['quality'].read_bytes()).hexdigest()
     )
     paths['spec'].write_text(
@@ -1516,8 +1455,8 @@ def materialize_v5_contract_fixture(root: Path) -> dict[str, Path]:
     return paths
 
 
-def materialize_v5_stateful_fixture(root: Path) -> dict[str, Path]:
-    paths = materialize_v5_contract_fixture(root)
+def materialize_epoch6_stateful_fixture(root: Path) -> dict[str, Path]:
+    paths = materialize_epoch6_contract_fixture(root)
     required_modules = {'multi_turn_state'}
     required_capabilities = {'multi_turn', 'state_snapshot_reset'}
     spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
@@ -1548,7 +1487,7 @@ def materialize_v5_stateful_fixture(root: Path) -> dict[str, Path]:
         json.dumps(host, indent=2) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
 
     scenario = json.loads(paths['scenarios'].read_text(encoding='utf-8'))
     artifact = {
@@ -1582,12 +1521,12 @@ def materialize_v5_stateful_fixture(root: Path) -> dict[str, Path]:
         json.dumps(scenario, separators=(',', ':')) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
     return paths
 
 
-def materialize_v5_interrupt_resume_fixture(root: Path) -> dict[str, Path]:
-    paths = materialize_v5_stateful_fixture(root)
+def materialize_epoch6_interrupt_resume_fixture(root: Path) -> dict[str, Path]:
+    paths = materialize_epoch6_stateful_fixture(root)
     scenario = json.loads(paths['scenarios'].read_text(encoding='utf-8'))
     scenario['turns'][1:1] = [
         {
@@ -1617,11 +1556,11 @@ def materialize_v5_interrupt_resume_fixture(root: Path) -> dict[str, Path]:
         json.dumps(scenario, separators=(',', ':')) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
     return paths
 
 
-def _enable_v5_modules(
+def _enable_epoch6_modules(
     paths: dict[str, Path],
     *,
     modules: set[str],
@@ -1659,33 +1598,31 @@ def _enable_v5_modules(
     )
 
 
-def _set_v5_catalog(
+def _set_epoch6_catalog(
     paths: dict[str, Path],
     entries: list[dict],
 ) -> None:
     host = json.loads(paths['host'].read_text(encoding='utf-8'))
     host['catalog']['entries'] = entries
-    host['catalog']['catalog_hash'] = canonical_hash(entries)
-    host['identity']['execution']['catalog_hash'] = host['catalog'][
-        'catalog_hash'
-    ]
+    host['catalog']['catalog_id'] = 'fixture-catalog'
+    host['identity']['execution']['catalog_id'] = 'fixture-catalog'
     paths['host'].write_text(
         json.dumps(host, indent=2) + '\n',
         encoding='utf-8',
     )
     spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
     for treatment in spec['treatments']:
-        treatment['base_catalog_hash'] = host['catalog']['catalog_hash']
+        treatment['base_catalog_id'] = host['catalog']['catalog_id']
     paths['spec'].write_text(
         json.dumps(spec, indent=2) + '\n',
         encoding='utf-8',
     )
 
 
-def materialize_v5_routing_fixture(root: Path) -> dict[str, Path]:
-    paths = materialize_v5_contract_fixture(root)
+def materialize_epoch6_routing_fixture(root: Path) -> dict[str, Path]:
+    paths = materialize_epoch6_contract_fixture(root)
     capabilities = {'catalog_snapshot', 'discovery', 'natural_routing'}
-    _enable_v5_modules(
+    _enable_epoch6_modules(
         paths,
         modules={'natural_routing', 'catalog_routing'},
         capabilities=capabilities,
@@ -1729,16 +1666,16 @@ def materialize_v5_routing_fixture(root: Path) -> dict[str, Path]:
         'id': 'neighbor-skill',
         'name': 'Skill Evaluator Neighbor',
         'description': 'Fixture skill for evaluating a scoped task',
-        'root_hash': _v5_hash('neighbor-skill'),
+        'root_digest': _epoch6_digest('neighbor-skill'),
     }
     unrelated = {
         **copy.deepcopy(target),
         'id': 'unrelated-skill',
         'name': 'Unrelated Skill',
         'description': 'Fixture skill for an unrelated domain',
-        'root_hash': _v5_hash('unrelated-skill'),
+        'root_digest': _epoch6_digest('unrelated-skill'),
     }
-    _set_v5_catalog(paths, [target, neighbor, unrelated])
+    _set_epoch6_catalog(paths, [target, neighbor, unrelated])
 
     scenario = json.loads(paths['scenarios'].read_text(encoding='utf-8'))
     profiles = [
@@ -1815,18 +1752,18 @@ def materialize_v5_routing_fixture(root: Path) -> dict[str, Path]:
         json.dumps(scenario, separators=(',', ':')) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
     return paths
 
 
-def materialize_v5_composition_fixture(
+def materialize_epoch6_composition_fixture(
     root: Path,
     *,
     composition_mode: str = 'ordered_sequence',
 ) -> dict[str, Path]:
-    paths = materialize_v5_contract_fixture(root)
+    paths = materialize_epoch6_contract_fixture(root)
     capabilities = {'composition', 'multi_turn', 'state_snapshot_reset'}
-    _enable_v5_modules(
+    _enable_epoch6_modules(
         paths,
         modules={'declared_composition', 'multi_turn_state'},
         capabilities=capabilities,
@@ -1864,11 +1801,11 @@ def materialize_v5_composition_fixture(
         'id': 'fixture-preparer',
         'name': 'Fixture Preparer',
         'description': 'Prepare the exact input for Skill Evaluator.',
-        'root_hash': _v5_hash('fixture-preparer'),
+        'root_digest': _epoch6_digest('fixture-preparer'),
     }
     order = ['fixture-preparer', 'skill-evaluator']
-    _set_v5_catalog(paths, [preparer, target])
-    rebind_v5_contract_fixture(paths)
+    _set_epoch6_catalog(paths, [preparer, target])
+    rebind_epoch6_contract_fixture(paths)
 
     scenario = json.loads(paths['scenarios'].read_text(encoding='utf-8'))
     artifact = {
@@ -1957,12 +1894,12 @@ def materialize_v5_composition_fixture(
         json.dumps(scenario, separators=(',', ':')) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
     return paths
 
 
-def materialize_v5_action_fixture(root: Path) -> dict[str, Path]:
-    paths = materialize_v5_contract_fixture(root)
+def materialize_epoch6_action_fixture(root: Path) -> dict[str, Path]:
+    paths = materialize_epoch6_contract_fixture(root)
     capabilities = {
         'action_authorization_trace',
         'render_effect_capture',
@@ -1984,17 +1921,17 @@ def materialize_v5_action_fixture(root: Path) -> dict[str, Path]:
         json.dumps(scenario, separators=(',', ':')) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
     return paths
 
 
-def materialize_v5_security_fixture(
+def materialize_epoch6_security_fixture(
     root: Path,
     *,
     host_id: str = 'synthetic-host-a',
 ) -> dict[str, Path]:
-    paths = materialize_v5_action_fixture(root)
-    _enable_v5_modules(
+    paths = materialize_epoch6_action_fixture(root)
+    _enable_epoch6_modules(
         paths,
         modules={'dynamic_security', 'host_conformance'},
         capabilities={
@@ -2031,7 +1968,7 @@ def materialize_v5_security_fixture(
             'required': True,
         })
     for treatment in spec['treatments']:
-        treatment['host_identity'] = _v5_hash(host_id)
+        treatment['host_identity'] = host_id
     paths['spec'].write_text(
         json.dumps(spec, indent=2) + '\n',
         encoding='utf-8',
@@ -2073,8 +2010,8 @@ def materialize_v5_security_fixture(
                 'end_line': 1,
             },
             'encoding': 'utf-8',
-            'schema_hash': None,
-            'expected_hash': canonical_hash(payload),
+            'schema_id': None,
+            'expected_digest': canonical_hash(payload),
             'predicate': None,
             'valid_from_seq': 0,
             'valid_until_seq': 0,
@@ -2105,12 +2042,12 @@ def materialize_v5_security_fixture(
         json.dumps(scenario, separators=(',', ':')) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
     return paths
 
 
-def materialize_v5_observation_fixture(root: Path) -> dict[str, Path]:
-    paths = materialize_v5_contract_fixture(root)
+def materialize_epoch6_observation_fixture(root: Path) -> dict[str, Path]:
+    paths = materialize_epoch6_contract_fixture(root)
     spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
     spec['graders'][0]['checks'].append({
         'check_id': 'grounding-check',
@@ -2155,8 +2092,8 @@ def materialize_v5_observation_fixture(root: Path) -> dict[str, Path]:
             'end_line': 1,
         },
         'encoding': 'utf-8',
-        'schema_hash': None,
-        'expected_hash': canonical_hash(observation_payload),
+        'schema_id': None,
+        'expected_digest': canonical_hash(observation_payload),
         'predicate': None,
         'valid_from_seq': 0,
         'valid_until_seq': 0,
@@ -2170,12 +2107,12 @@ def materialize_v5_observation_fixture(root: Path) -> dict[str, Path]:
         json.dumps(scenario, separators=(',', ':')) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
     return paths
 
 
-def materialize_v5_fault_fixture(root: Path) -> dict[str, Path]:
-    paths = materialize_v5_action_fixture(root)
+def materialize_epoch6_fault_fixture(root: Path) -> dict[str, Path]:
+    paths = materialize_epoch6_action_fixture(root)
     spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
     spec['subject']['mechanisms'].append('tool_api_mcp')
     next(
@@ -2224,12 +2161,12 @@ def materialize_v5_fault_fixture(root: Path) -> dict[str, Path]:
         json.dumps(scenario, separators=(',', ':')) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
     return paths
 
 
-def materialize_v5_fault_matrix_fixture(root: Path) -> dict[str, Path]:
-    paths = materialize_v5_fault_fixture(root)
+def materialize_epoch6_fault_matrix_fixture(root: Path) -> dict[str, Path]:
+    paths = materialize_epoch6_fault_fixture(root)
     scenario = json.loads(paths['scenarios'].read_text(encoding='utf-8'))
     additions = (
         (
@@ -2275,11 +2212,11 @@ def materialize_v5_fault_matrix_fixture(root: Path) -> dict[str, Path]:
         json.dumps(scenario, separators=(',', ':')) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
     return paths
 
 
-def set_v5_synthetic_host_mode(
+def set_epoch6_synthetic_host_mode(
     paths: dict[str, Path],
     mode: str,
 ) -> None:
@@ -2293,11 +2230,11 @@ def set_v5_synthetic_host_mode(
         json.dumps(host, indent=2) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
 
 
-def materialize_v5_handoff_fixture(root: Path) -> dict[str, Path]:
-    paths = materialize_v5_contract_fixture(root)
+def materialize_epoch6_handoff_fixture(root: Path) -> dict[str, Path]:
+    paths = materialize_epoch6_contract_fixture(root)
     required_modules = {
         'declared_composition',
         'multi_principal_coordination',
@@ -2342,7 +2279,7 @@ def materialize_v5_handoff_fixture(root: Path) -> dict[str, Path]:
         json.dumps(host, indent=2) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
 
     scenario = json.loads(paths['scenarios'].read_text(encoding='utf-8'))
     artifact = {
@@ -2365,15 +2302,15 @@ def materialize_v5_handoff_fixture(root: Path) -> dict[str, Path]:
                 'parent_slot_id': None,
                 'allowed_model_class': 'fixture-model',
                 'context_mode': 'single',
-                'tool_schema_ceiling': 'sha256:' + '1' * 64,
-                'authority_ceiling': 'sha256:' + '2' * 64,
+                'tool_schema_id': 'fixture-tools',
+                'authority_id': 'fixture-permission-policy',
                 'budget_ceiling': {
                     'turns': 2,
                     'tokens': 2000,
                     'seconds': 30,
                     'tool_calls': 2,
                 },
-                'expected_return_schema_hash': 'sha256:' + '3' * 64,
+                'expected_return_schema_id': 'fixture-return-schema',
             },
             {
                 'slot_id': 'worker',
@@ -2381,15 +2318,15 @@ def materialize_v5_handoff_fixture(root: Path) -> dict[str, Path]:
                 'parent_slot_id': 'lead',
                 'allowed_model_class': 'fixture-model',
                 'context_mode': 'scoped_handoff',
-                'tool_schema_ceiling': 'sha256:' + '1' * 64,
-                'authority_ceiling': 'sha256:' + '2' * 64,
+                'tool_schema_id': 'fixture-tools',
+                'authority_id': 'fixture-permission-policy',
                 'budget_ceiling': {
                     'turns': 1,
                     'tokens': 1000,
                     'seconds': 15,
                     'tool_calls': 1,
                 },
-                'expected_return_schema_hash': 'sha256:' + '3' * 64,
+                'expected_return_schema_id': 'fixture-return-schema',
             },
         ],
         'max_width': 2,
@@ -2428,12 +2365,12 @@ def materialize_v5_handoff_fixture(root: Path) -> dict[str, Path]:
         json.dumps(scenario, separators=(',', ':')) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
     return paths
 
 
-def materialize_v5_fanout_critique_fixture(root: Path) -> dict[str, Path]:
-    paths = materialize_v5_handoff_fixture(root)
+def materialize_epoch6_fanout_critique_fixture(root: Path) -> dict[str, Path]:
+    paths = materialize_epoch6_handoff_fixture(root)
     spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
     spec['subject']['claims'].append('reviewer-feedback')
     critique_checks = (
@@ -2499,11 +2436,11 @@ def materialize_v5_fanout_critique_fixture(root: Path) -> dict[str, Path]:
         json.dumps(scenario, separators=(',', ':')) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
     return paths
 
 
-def set_v5_grader_check_failure(
+def set_epoch6_grader_check_failure(
     paths: dict[str, Path],
     check_id: str,
 ) -> None:
@@ -2515,20 +2452,17 @@ def set_v5_grader_check_failure(
         json.dumps(spec, indent=2) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
 
 
-def rebind_v5_contract_fixture(paths: dict[str, Path]) -> None:
+def rebind_epoch6_contract_fixture(paths: dict[str, Path]) -> None:
     validator = load_validator_module()
     host = json.loads(paths['host'].read_text(encoding='utf-8'))
-    host['manifest_hash'] = canonical_hash({
-        key: value for key, value in host.items() if key != 'manifest_hash'
-    })
     paths['host'].write_text(
         json.dumps(host, indent=2, ensure_ascii=False) + '\n',
         encoding='utf-8',
     )
-    host_file_hash = (
+    host_digest = (
         'sha256:' + hashlib.sha256(paths['host'].read_bytes()).hexdigest()
     )
 
@@ -2538,7 +2472,7 @@ def rebind_v5_contract_fixture(paths: dict[str, Path]) -> None:
         if line.strip()
     ]
     for scenario in scenarios:
-        scenario['fixture']['sha256'] = host_file_hash
+        scenario['fixture']['sha256'] = host_digest
     paths['scenarios'].write_text(
         ''.join(
             json.dumps(
@@ -2548,12 +2482,10 @@ def rebind_v5_contract_fixture(paths: dict[str, Path]) -> None:
         ),
         encoding='utf-8',
     )
-    scenario_file_hash = (
-        'sha256:' + hashlib.sha256(paths['scenarios'].read_bytes()).hexdigest()
-    )
-
     spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
-    def rebind_scenario_source(binding: dict[str, str]) -> Path:
+    def rebind_scenario_source(
+        binding: dict[str, str], *, external: bool = False,
+    ) -> Path:
         source = paths['spec'].parent / binding['path']
         if source != paths['scenarios']:
             rows = [
@@ -2562,7 +2494,7 @@ def rebind_v5_contract_fixture(paths: dict[str, Path]) -> None:
                 if line.strip()
             ]
             for row in rows:
-                row['fixture']['sha256'] = host_file_hash
+                row['fixture']['sha256'] = host_digest
             source.write_text(
                 ''.join(
                     json.dumps(row, separators=(',', ':')) + '\n'
@@ -2570,23 +2502,26 @@ def rebind_v5_contract_fixture(paths: dict[str, Path]) -> None:
                 ),
                 encoding='utf-8',
             )
-        binding['sha256'] = (
-            'sha256:' + hashlib.sha256(source.read_bytes()).hexdigest()
-        )
+        if external:
+            binding['digest'] = (
+                'sha256:' + hashlib.sha256(source.read_bytes()).hexdigest()
+            )
         return source
 
     public_path = rebind_scenario_source(spec['suite']['public_scenarios'])
     holdout = spec['suite'].get('holdout')
     if isinstance(holdout, dict) and holdout['exposure_status'] == 'exposed':
-        payload_path = rebind_scenario_source(holdout['payload'])
+        payload_path = rebind_scenario_source(
+            holdout['payload'], external=True,
+        )
         manifest_path = paths['spec'].parent / holdout['manifest']['path']
         manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-        manifest['payload_sha256'] = holdout['payload']['sha256']
+        manifest['payload_sha256'] = holdout['payload']['digest']
         manifest_path.write_text(
             json.dumps(manifest, indent=2) + '\n',
             encoding='utf-8',
         )
-        holdout['manifest']['sha256'] = (
+        holdout['manifest']['digest'] = (
             'sha256:' + hashlib.sha256(manifest_path.read_bytes()).hexdigest()
         )
         scenarios = [
@@ -2602,25 +2537,6 @@ def rebind_v5_contract_fixture(paths: dict[str, Path]) -> None:
             ),
             encoding='utf-8',
         )
-        scenario_file_hash = (
-            'sha256:'
-            + hashlib.sha256(paths['scenarios'].read_bytes()).hexdigest()
-        )
-    spec['suite']['scenarios']['sha256'] = scenario_file_hash
-    spec['host']['manifest']['sha256'] = host_file_hash
-    spec['suite']['fixture_set_hash'] = validator.v5_fixture_set_hash(
-        scenarios,
-    )
-    spec['suite']['grader_set_hash'] = validator.v5_grader_set_hash(
-        spec['graders'],
-    )
-    spec['suite']['grader_schedule_hash'] = validator.v5_grader_schedule_hash(
-        spec, scenarios,
-    )
-    spec['suite']['treatment_contract_hash'] = (
-        validator.v5_treatment_contract_hash(spec['treatments'])
-    )
-    spec['suite']['quality_contract_hash'] = validator.quality_contract_hash(spec)
 
     quality = json.loads(paths['quality'].read_text(encoding='utf-8'))
     proof = json.loads(paths['quality_proof'].read_text(encoding='utf-8'))
@@ -2634,7 +2550,7 @@ def rebind_v5_contract_fixture(paths: dict[str, Path]) -> None:
             validator._required_quality_boundaries(spec, scenarios).items(),
         )
     ]
-    proof['custody']['split_hashes'] = validator._quality_split_hashes(
+    proof['custody']['split_bindings'] = validator._quality_split_bindings(
         spec, scenarios,
     )
     paths['quality_proof'].write_text(
@@ -2648,49 +2564,25 @@ def rebind_v5_contract_fixture(paths: dict[str, Path]) -> None:
         raise AssertionError(normalization_error)
     proof_binding = {
         'path': paths['quality_proof'].name,
-        'sha256': (
+        'digest': (
             'sha256:'
             + hashlib.sha256(paths['quality_proof'].read_bytes()).hexdigest()
         ),
     }
-    calibration_hash = None
-    calibration_binding = spec['suite'].get('calibration')
-    if isinstance(calibration_binding, dict):
-        calibration_hash = calibration_binding['sha256']
     quality.update({
-        'suite_quality_id': 'sq-' + canonical_hash({
-            'evaluation_id': spec['evaluation_id'],
-            'quality_contract_hash': spec['suite']['quality_contract_hash'],
-            'proof_hash': proof_binding['sha256'],
-        }).removeprefix('sha256:')[:24],
+        'suite_quality_id': f"sq.{spec['evaluation_id']}",
         'evaluation_id': spec['evaluation_id'],
-        'quality_contract_hash': spec['suite']['quality_contract_hash'],
-        'scenario_hash': scenario_file_hash,
-        'holdout_hash': (
-            spec['suite']['holdout']['payload']['sha256']
-            if isinstance(spec['suite'].get('holdout'), dict)
-            else None
-        ),
-        'fixture_set_hash': spec['suite']['fixture_set_hash'],
-        'grader_set_hash': spec['suite']['grader_set_hash'],
-        'treatment_contract_hash': spec['suite']['treatment_contract_hash'],
-        'calibration_hash': calibration_hash,
         'raw_proofs': {
             key: copy.deepcopy(proof_binding)
             for key in ('golden', 'known_bad', 'mutations', 'reviews')
         },
         **normalized,
     })
-    quality['suite_quality_hash'] = canonical_hash({
-        key: value
-        for key, value in quality.items()
-        if key != 'suite_quality_hash'
-    })
     paths['quality'].write_text(
         json.dumps(quality, indent=2, ensure_ascii=False) + '\n',
         encoding='utf-8',
     )
-    spec['suite']['quality']['sha256'] = (
+    spec['suite']['quality']['digest'] = (
         'sha256:' + hashlib.sha256(paths['quality'].read_bytes()).hexdigest()
     )
     paths['spec'].write_text(
@@ -2699,16 +2591,13 @@ def rebind_v5_contract_fixture(paths: dict[str, Path]) -> None:
     )
 
 
-def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
-    paths = materialize_v5_contract_fixture(root)
+def materialize_epoch6_calibration_inputs(root: Path) -> dict[str, Path]:
+    paths = materialize_epoch6_contract_fixture(root)
     paths.update({
         'ratings': root / 'calibration-ratings.jsonl',
         'labels': root / 'calibration-gold.jsonl',
-        'calibration': root / 'calibration-v2.json',
+        'calibration': root / 'calibration-v3.json',
     })
-    synthetic_hash = (
-        'sha256:' + hashlib.sha256(paths['synthetic_host'].read_bytes()).hexdigest()
-    )
     host = json.loads(paths['host'].read_text(encoding='utf-8'))
     model_probe = copy.deepcopy(host['capabilities'][0])
     model_probe['capability'] = 'model_grading'
@@ -2732,16 +2621,11 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
         'type': 'model',
         'checks': checks,
         'model': 'fixture-judge',
-        'prompt': {'path': 'synthetic-host.py', 'sha256': synthetic_hash},
-        'output_schema': {
-            'path': paths['quality_probe_artifact'].name,
-            'sha256': (
-                'sha256:' + hashlib.sha256(
-                    paths['quality_probe_artifact'].read_bytes(),
-                ).hexdigest()
-            ),
-        },
-        'batch_schedule_hash': _v5_hash('model-batch'),
+        'prompt_id': 'judge-prompt',
+        'prompt': {'path': 'synthetic-host.py'},
+        'schema_id': 'grader-output',
+        'output_schema': {'path': paths['quality_probe_artifact'].name},
+        'batch_schedule_id': 'fixture-calibration-order',
     }]
     spec['host']['required_capabilities'].append('model_grading')
     for treatment in spec['treatments']:
@@ -2770,10 +2654,8 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
     paths['spec'].write_text(
         json.dumps(spec, indent=2) + '\n', encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
-    host_build_hash = json.loads(
-        paths['host'].read_text(encoding='utf-8'),
-    )['manifest_hash']
+    rebind_epoch6_contract_fixture(paths)
+    host = json.loads(paths['host'].read_text(encoding='utf-8'))
 
     classes = (
         ('known-good', 'known_good', 'pass', 0),
@@ -2802,13 +2684,13 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
                     check['pass_condition'],
                 )
                 labels.append({
-                    'schema_version': 2,
+                    'schema_version': 3,
                     'example_id': bound_example_id,
                     'class': class_name,
                     'dimension': check['dimension'],
                     'check_id': check['check_id'],
                     'payload': payload,
-                    'payload_hash': semantics.semantic_payload_hash(payload),
+                    'payload_digest': semantics.semantic_payload_hash(payload),
                     'source_support': 'supported',
                     'gold_label': label,
                     'gold_severity': severity,
@@ -2821,24 +2703,23 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
     ordering = {
         'method': 'counterbalanced',
         'seed': 7,
-        'schedule_hash': canonical_hash([
-            {
-                'example_id': item['example_id'],
-                'check_id': item['check_id'],
-                'position': index,
-            }
-            for index, item in enumerate(labels, start=1)
-        ]),
+        'schedule_id': 'fixture-calibration-order',
+    }
+    labels_payload = ''.join(
+        json.dumps(row, separators=(',', ':')) + '\n' for row in labels
+    ).encode('utf-8')
+    labels_binding = {
+        'path': paths['labels'].name,
+        'digest': 'sha256:' + hashlib.sha256(labels_payload).hexdigest(),
     }
     ratings = [
         {
-            'schema_version': 2,
+            'schema_version': 3,
             'rating_id': f'rating-{label["example_id"]}',
             'example_id': label['example_id'],
             'grader_id': 'model-grader',
             'dimension': label['dimension'],
             'check_id': label['check_id'],
-            'payload_hash': label['payload_hash'],
             'label': label['gold_label'],
             'severity': label['gold_severity'],
             'position': index,
@@ -2855,16 +2736,18 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
                 'model': 'fixture-judge',
                 'model_revision': 'judge-revision',
                 'prompt_id': 'judge-prompt',
-                'prompt_hash': synthetic_hash,
                 'schema_id': 'grader-output',
-                'schema_hash': spec['graders'][0]['output_schema']['sha256'],
             },
-            'execution_identity': {
-                'host_hash': _v5_hash('host'),
-                'harness_hash': _v5_hash('harness'),
+            'execution_profile': {
+                'host_id': host['identity']['host_id'],
+                'host_version': host['identity']['host_version'],
+                'harness': host['identity']['execution']['harness'],
+                'harness_version': (
+                    host['identity']['execution']['harness_version']
+                ),
                 'model_genealogy': ['fixture-family'],
                 'context_exposure': [],
-                'evidence_source_hashes': [_v5_hash('gold-source')],
+                'evidence_sources': [labels_binding],
             },
             'independence_facts': {
                 'candidate_principal_id': 'candidate-principal',
@@ -2873,8 +2756,8 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
                 'rationale_exposed': False,
                 'candidate_model_genealogy': ['candidate-family'],
                 'grader_model_genealogy': ['fixture-family'],
-                'candidate_evidence_source_hashes': [_v5_hash('candidate-source')],
-                'grader_evidence_source_hashes': [_v5_hash('gold-source')],
+                'candidate_evidence_source_ids': ['candidate-source'],
+                'grader_evidence_source_ids': ['gold-source'],
             },
             'ordering': ordering,
             'created': '2025-12-01T00:00:00Z',
@@ -2887,8 +2770,8 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
                     'status': 'unchanged',
                 }
                 for field, value in (
-                    ('prompt_hash', synthetic_hash),
-                    ('host_build_hash', host_build_hash),
+                    ('prompt_id', 'judge-prompt'),
+                    ('host_version', host['identity']['host_version']),
                 )
             ],
             'adjudication_policy': 'independent gold owner',
@@ -2899,13 +2782,7 @@ def materialize_v5_calibration_inputs(root: Path) -> dict[str, Path]:
         }
         for index, label in enumerate(labels, start=1)
     ]
-    paths['labels'].write_text(
-        ''.join(
-            json.dumps(row, separators=(',', ':')) + '\n'
-            for row in labels
-        ),
-        encoding='utf-8',
-    )
+    paths['labels'].write_bytes(labels_payload)
     paths['ratings'].write_text(
         ''.join(
             json.dumps(row, separators=(',', ':')) + '\n'
@@ -2935,7 +2812,7 @@ def compact_reviewer_prompt_packet(packet: dict) -> dict:
         ])
     return {
         'schema_version': (
-            'context-clean-subagent-reviewer-message-packet/1.0'
+            'context-clean-subagent-reviewer-message-packet/2.0'
         ),
         'campaign_id': packet['campaign_id'],
         'tuple_fields': [
@@ -2946,16 +2823,15 @@ def compact_reviewer_prompt_packet(packet: dict) -> dict:
         'views': views,
         'checks': checks,
         'examples': examples,
-        'source_packet_hash': packet['packet_hash'],
     }
 
 
 def reviewer_matrix_response_contract(
     compact: dict,
-    output_schema_hash: str,
+    output_schema_version: str,
 ) -> dict:
     return {
-        'schema_version': 'context-clean-subagent-reviewer-matrix/1.0',
+        'schema_version': 'context-clean-subagent-reviewer-matrix/2.0',
         'rows': len(compact['examples']) // len(compact['checks']),
         'columns': len(compact['checks']),
         'symbols': {
@@ -2964,69 +2840,34 @@ def reviewer_matrix_response_contract(
             'A': {'label': 'abstain', 'severity': 0},
         },
         'example_order': 'packet.examples row-major',
-        'canonical_output_schema_hash': output_schema_hash,
+        'output_schema_version': output_schema_version,
     }
 
 
-def positional_reviewer_ratings_schema() -> dict:
-    return {
-        '$schema': 'https://json-schema.org/draft/2020-12/schema',
-        '$id': (
-            'https://example.invalid/'
-            'context-clean-subagent-reviewer-ratings-v2.schema.json'
-        ),
-        'type': 'object',
-        'required': ['schema_version', 'ratings'],
-        'properties': {
-            'schema_version': {
-                'const': 'context-clean-subagent-reviewer-ratings/2.0',
-            },
-            'ratings': {
-                'type': 'array',
-                'minItems': 1,
-                'items': {
-                    'type': 'object',
-                    'required': ['label', 'severity'],
-                    'properties': {
-                        'label': {'enum': ['pass', 'fail', 'abstain']},
-                        'severity': {'type': 'number'},
-                    },
-                    'additionalProperties': False,
-                },
-            },
-        },
-        'additionalProperties': False,
-    }
-
-
-def materialize_v5_reviewer_pair(
+def materialize_epoch6_reviewer_pair(
     paths: dict[str, Path],
     requested_configuration: dict[str, str] | None = None,
 ) -> dict[str, Path]:
+    scripts = str(ROOT / 'scripts')
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    from reviewer_prompt_contract import REVIEWER_INSTRUCTION
+
     root = paths['calibration'].parent
     pair_root = root / 'reviewer-pair'
     pair_root.mkdir()
     packet_path = pair_root / 'packet.json'
-    schema_path = pair_root / 'ratings.schema.json'
     mapping_path = pair_root / 'sealed-mapping.json'
     pair_path = pair_root / 'pair.json'
     campaign_id = 'calibration-campaign'
-    requested = (
-        copy.deepcopy(requested_configuration)
-        if requested_configuration is not None
-        else {
-            'model': 'gpt-5.6-sol',
-            'reasoning_effort': 'max',
-            'service_tier': 'priority',
-            'fork_turns': 'none',
-        }
-    )
-    def with_self_hash(value: dict, field: str) -> dict:
-        closed = copy.deepcopy(value)
-        closed[field] = canonical_hash({
-            key: item for key, item in closed.items() if key != field
-        })
-        return closed
+    requested = copy.deepcopy(requested_configuration) if (
+        requested_configuration is not None
+    ) else {
+        'model': 'gpt-5.6-sol',
+        'reasoning_effort': 'max',
+        'service_tier': 'priority',
+        'fork_turns': 'none',
+    }
 
     def write_json(path: Path, value: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -3035,10 +2876,11 @@ def materialize_v5_reviewer_pair(
             encoding='utf-8',
         )
 
-    def binding(path: Path) -> dict[str, str]:
+    def binding(path: Path, schema_version: str) -> dict[str, str]:
         return {
             'path': path.relative_to(root).as_posix(),
-            'sha256': 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest(),
+            'digest': 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest(),
+            'schema_version': schema_version,
         }
 
     labels = [
@@ -3052,238 +2894,121 @@ def materialize_v5_reviewer_pair(
     judges_by_example = {
         (row['example_id'], row['check_id']): row for row in judge_rows
     }
-    spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
-    packet_examples = []
-    for index, label in enumerate(labels, start=1):
-        payload = label['payload']
-        packet_examples.append({
+    packet_examples = [
+        {
             'opaque_example_id': f'opaque-{index:03d}',
-            'payload': payload,
-            'payload_hash': label['payload_hash'],
-        })
-    paths['labels'].write_text(
-        ''.join(
-            json.dumps(row, sort_keys=True, separators=(',', ':')) + '\n'
-            for row in labels
-        ),
-        encoding='utf-8',
-    )
-    packet = with_self_hash({
-        'schema_version': 'context-clean-subagent-reviewer-packet/1.0',
+            'payload': label['payload'],
+        }
+        for index, label in enumerate(labels, start=1)
+    ]
+    packet = {
+        'schema_version': 'context-clean-subagent-reviewer-packet/2.0',
         'campaign_id': campaign_id,
         'examples': packet_examples,
-        'packet_hash': None,
-    }, 'packet_hash')
+    }
     write_json(packet_path, packet)
-
-    output_schema = positional_reviewer_ratings_schema()
-    write_json(schema_path, output_schema)
-    packet_binding = binding(packet_path)
-    schema_binding = binding(schema_path)
-    mapping = with_self_hash({
-        'schema_version': 'context-clean-subagent-reviewer-mapping/1.0',
+    mapping = {
+        'schema_version': 'context-clean-subagent-reviewer-mapping/2.0',
         'campaign_id': campaign_id,
-        'packet_hash': packet_binding['sha256'],
-        'output_schema_hash': schema_binding['sha256'],
         'examples': [
             {
                 'opaque_example_id': packet_example['opaque_example_id'],
                 'example_id': label['example_id'],
                 'check_id': label['check_id'],
                 'dimension': label['dimension'],
-                'payload_hash': label['payload_hash'],
             }
-            for packet_example, label in zip(packet_examples, labels, strict=True)
+            for packet_example, label in zip(
+                packet_examples, labels, strict=True,
+            )
         ],
-        'mapping_hash': None,
-    }, 'mapping_hash')
+    }
     write_json(mapping_path, mapping)
-    mapping_binding = binding(mapping_path)
 
     reviewer_rows: list[dict] = []
     receipt_paths: list[Path] = []
     for ordinal in (1, 2):
         reviewer_id = f'reviewer-{ordinal}'
         principal_id = f'reviewer-principal-{ordinal}'
-        request_id = f'reviewer-request-{ordinal}'
-        agent_id = f'reviewer-agent-{ordinal}'
-        task_name = f'calibration-reviewer-{ordinal}'
         reviewer_dir = pair_root / 'reviewers' / reviewer_id
         receipt_path = reviewer_dir / 'receipt.json'
+        prompt_path = reviewer_dir / 'prompt.json'
+        response_path = reviewer_dir / 'raw-response.json'
         receipt_paths.append(receipt_path)
         rows: list[dict] = []
-        output_ratings: list[dict] = []
-        parsed_ratings: list[dict] = []
+        judgments: list[dict] = []
         for packet_example, label in zip(packet_examples, labels, strict=True):
-            source = judges_by_example[
-                (label['example_id'], label['check_id'])
-            ]
+            source = judges_by_example[(label['example_id'], label['check_id'])]
             row = copy.deepcopy(source)
-            row['rating_id'] = (
-                f'{reviewer_id}-{packet_example["opaque_example_id"]}'
-            )
-            row['example_id'] = packet_example['opaque_example_id']
-            row['reviewer'] = {
-                'reviewer_id': reviewer_id,
-                'role': 'context_clean_subagent_reviewer',
-                'authority': 'calibration-owner',
-                'principal_id': principal_id,
-                'blinded': True,
-            }
-            row['grader_identity'] = None
-            row['execution_identity'] = None
-            row['independence_facts'] = None
-            rows.append(row)
-            parsed_ratings.append({
-                'opaque_example_id': row['example_id'],
-                'label': row['label'],
-                'severity': row['severity'],
+            row.update({
+                'rating_id': f'{reviewer_id}-{packet_example["opaque_example_id"]}',
+                'example_id': packet_example['opaque_example_id'],
+                'reviewer': {
+                    'reviewer_id': reviewer_id,
+                    'role': 'context_clean_subagent_reviewer',
+                    'authority': 'calibration-owner',
+                    'principal_id': principal_id,
+                    'blinded': True,
+                },
+                'grader_identity': None,
+                'execution_profile': None,
+                'independence_facts': None,
             })
-            output_ratings.append({
+            rows.append(row)
+            judgments.append({
                 'label': row['label'],
                 'severity': row['severity'],
             })
         reviewer_rows.extend(rows)
-
-        reservation = {
-            'schema_version': 'frontier-provider-reservation/2.0',
-            'campaign_id': campaign_id,
-            'request_id': request_id,
-            'family': 'reviewer_calibration',
-            'request_kind': 'context_isolated_review',
-            'entry_hash': _v5_hash(f'{request_id}-entry'),
-        }
         compact_packet = compact_reviewer_prompt_packet(packet)
         prompt = {
-            'schema_version': 'context-clean-subagent-reviewer-prompt/4.0',
+            'schema_version': 'context-clean-subagent-reviewer-prompt/5.0',
             'reviewer_id': reviewer_id,
-            'instruction': (
-                'Return exactly {"matrix":[...]} with no other keys or text. '
-                'Each [opaque_example_id, view_index, check_index] selects '
-                'views[view_index] and checks[check_index]. Rate pass '
-                'only when authoritative visible evidence satisfies the '
-                'pass condition. Rate fail when authoritative evidence '
-                'violates the condition or omits required evidence; an '
-                'ordinary missing fact fails. When the '
-                'view explicitly has evidence_state='
-                'conflicting_candidate_snapshots, authoritative_snapshot='
-                'null, and two conflicting candidate snapshots, rate every '
-                'example for that view abstain and do not assess its '
-                'candidate snapshots check by check. Otherwise do not rate '
-                'abstain. Arrange response_contract.rows strings with '
-                'response_contract.columns P/F/A symbols; flattening those '
-                'strings row-major must exactly follow packet.examples. Do '
-                'not infer hidden gold or unstated facts. Do not return '
-                'reviewer or opaque example identifiers, explanations, '
-                'Markdown, or any other keys.'
-            ),
+            'instruction': REVIEWER_INSTRUCTION,
             'packet': compact_packet,
             'response_contract': reviewer_matrix_response_contract(
                 compact_packet,
-                schema_binding['sha256'],
+                'context-clean-subagent-reviewer-ratings/3.0',
             ),
         }
-        raw_response = {
-            'schema_version': 'context-clean-subagent-reviewer-ratings/2.0',
-            'ratings': output_ratings,
+        response = {
+            'schema_version': 'context-clean-subagent-reviewer-ratings/3.0',
+            'ratings': judgments,
         }
-        reservation_path = reviewer_dir / 'reservation.json'
-        prompt_path = reviewer_dir / 'prompt.json'
-        raw_response_path = reviewer_dir / 'raw-response.json'
-        write_json(reservation_path, reservation)
         write_json(prompt_path, prompt)
-        write_json(raw_response_path, raw_response)
-
-        spawn_request = {
-            'schema_version': 'context-clean-subagent-spawn-request/1.0',
-            'request_id': request_id,
-            'reviewer_id': reviewer_id,
-            'task_name': task_name,
-            **requested,
-            'message_hash': binding(prompt_path)['sha256'],
-        }
-        spawn_envelope = with_self_hash({
-            'schema_version': 'frontier-context-clean-reviewer-spawn-envelope/1.0',
+        write_json(response_path, response)
+        receipt = {
+            'schema_version': 'context-clean-subagent-reviewer-receipt/2.0',
+            'receipt_id': f'reviewer-receipt-{ordinal}',
             'campaign_id': campaign_id,
-            'study_id': spec['evaluation_id'],
-            'request_id': request_id,
+            'request_id': f'reviewer-request-{ordinal}',
             'reviewer_id': reviewer_id,
-            'task_name': task_name,
-            **requested,
-            'message': prompt_path.read_text(encoding='utf-8'),
-            'message_hash': binding(prompt_path)['sha256'],
-            'packet_hash': packet_binding['sha256'],
-            'output_schema_hash': schema_binding['sha256'],
-            'sealed_mapping_hash': mapping_binding['sha256'],
-            'entry_hash': canonical_hash(request_id),
-            'envelope_hash': None,
-        }, 'envelope_hash')
-        spawn_ack = {
-            'schema_version': 'context-clean-subagent-spawn-ack/1.0',
-            'request_id': request_id,
-            'agent_id': agent_id,
-            'task_name': task_name,
+            'principal_id': principal_id,
+            'agent_id': f'reviewer-agent-{ordinal}',
+            'task_name': f'calibration-reviewer-{ordinal}',
+            'requested_configuration': requested,
+            'prompt': binding(
+                prompt_path, 'context-clean-subagent-reviewer-prompt/5.0',
+            ),
+            'raw_response': binding(
+                response_path, 'context-clean-subagent-reviewer-ratings/3.0',
+            ),
+            'terminal_status': 'complete',
             'ack_sequence': ordinal,
-        }
-        terminal = {
-            'schema_version': 'context-clean-subagent-terminal-result/1.0',
-            'request_id': request_id,
-            'agent_id': agent_id,
-            'status': 'complete',
             'result_consumed_sequence': ordinal + 2,
             'observable_extra_turns': 0,
             'observable_followups': 0,
             'observable_tool_events': [],
-            'raw_response_hash': binding(raw_response_path)['sha256'],
         }
-        spawn_request_path = reviewer_dir / 'spawn-request.json'
-        spawn_envelope_path = reviewer_dir / 'spawn-envelope.json'
-        spawn_ack_path = reviewer_dir / 'spawn-ack.json'
-        terminal_path = reviewer_dir / 'terminal-result.json'
-        write_json(spawn_request_path, spawn_request)
-        write_json(spawn_envelope_path, spawn_envelope)
-        write_json(spawn_ack_path, spawn_ack)
-        write_json(terminal_path, terminal)
-        receipt = with_self_hash({
-            'schema_version': 'context-clean-subagent-reviewer-receipt/1.0',
-            'receipt_id': f'reviewer-receipt-{ordinal}',
-            'campaign_id': campaign_id,
-            'request_id': request_id,
-            'reviewer_id': reviewer_id,
-            'principal_id': principal_id,
-            'agent_id': agent_id,
-            'task_name': task_name,
-            'requested_configuration': requested,
-            'reservation_hash': binding(reservation_path)['sha256'],
-            'prompt_hash': binding(prompt_path)['sha256'],
-            'packet_hash': packet_binding['sha256'],
-            'output_schema_hash': schema_binding['sha256'],
-            'spawn_request_hash': binding(spawn_request_path)['sha256'],
-            'spawn_ack_hash': binding(spawn_ack_path)['sha256'],
-            'terminal_result_hash': binding(terminal_path)['sha256'],
-            'raw_response_hash': binding(raw_response_path)['sha256'],
-            'parsed_ratings_hash': canonical_hash(parsed_ratings),
-            'terminal_status': 'complete',
-            'receipt_hash': None,
-        }, 'receipt_hash')
         write_json(receipt_path, receipt)
 
     ratings = judge_rows + reviewer_rows
-    for position, row in enumerate(ratings, start=1):
-        row['position'] = position
     ordering = {
         'method': 'counterbalanced',
         'seed': 7,
-        'schedule_hash': canonical_hash([
-            {
-                'example_id': row['example_id'],
-                'check_id': row['check_id'],
-                'position': row['position'],
-            }
-            for row in ratings
-        ]),
+        'schedule_id': 'fixture-calibration-order',
     }
-    for row in ratings:
+    for position, row in enumerate(ratings, start=1):
+        row['position'] = position
         row['ordering'] = ordering
     paths['ratings'].write_text(
         ''.join(
@@ -3292,35 +3017,35 @@ def materialize_v5_reviewer_pair(
         ),
         encoding='utf-8',
     )
-
-    pair = with_self_hash({
-        'schema_version': 'context-clean-subagent-reviewer-pair/2.0',
+    pair = {
+        'schema_version': 'context-clean-subagent-reviewer-pair/3.0',
         'pair_id': 'calibration-reviewer-pair',
         'campaign_id': campaign_id,
-        'packet': packet_binding,
-        'output_schema': schema_binding,
-        'sealed_mapping': binding(mapping_path),
+        'packet': binding(
+            packet_path, 'context-clean-subagent-reviewer-packet/2.0',
+        ),
+        'sealed_mapping': binding(
+            mapping_path, 'context-clean-subagent-reviewer-mapping/2.0',
+        ),
         'requested_configuration': requested,
         'reviewer_receipts': [
-            binding(path) for path in sorted(receipt_paths)
+            binding(path, 'context-clean-subagent-reviewer-receipt/2.0')
+            for path in sorted(receipt_paths)
         ],
         'both_spawns_acknowledged_before_first_result_consumed': True,
-        'pair_hash': None,
-    }, 'pair_hash')
+    }
     write_json(pair_path, pair)
     paths.update({
         'reviewer_pair': pair_path,
         'reviewer_packet': packet_path,
-        'reviewer_schema': schema_path,
         'reviewer_mapping': mapping_path,
         'reviewer_1': pair_root / 'reviewers/reviewer-1',
         'reviewer_2': pair_root / 'reviewers/reviewer-2',
     })
     return paths
 
-
-def materialize_v5_model_ready_fixture(root: Path) -> dict[str, Path]:
-    paths = materialize_v5_calibration_inputs(root)
+def materialize_epoch6_model_ready_fixture(root: Path) -> dict[str, Path]:
+    paths = materialize_epoch6_calibration_inputs(root)
     result = subprocess.run(
         [
             sys.executable,
@@ -3341,16 +3066,17 @@ def materialize_v5_model_ready_fixture(root: Path) -> dict[str, Path]:
     spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
     spec['suite']['calibration'] = {
         'path': paths['calibration'].name,
-        'sha256': (
+        'digest': (
             'sha256:'
             + hashlib.sha256(paths['calibration'].read_bytes()).hexdigest()
         ),
+        'schema_version': 'grader-calibration/3',
     }
     paths['spec'].write_text(
         json.dumps(spec, indent=2) + '\n',
         encoding='utf-8',
     )
-    rebind_v5_contract_fixture(paths)
+    rebind_epoch6_contract_fixture(paths)
     spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
     spec['execution']['ready'] = True
     paths['spec'].write_text(
@@ -3360,13 +3086,13 @@ def materialize_v5_model_ready_fixture(root: Path) -> dict[str, Path]:
     return paths
 
 
-def materialize_v5_lifecycle_inputs(root: Path) -> dict[str, Path]:
+def materialize_epoch6_lifecycle_inputs(root: Path) -> dict[str, Path]:
     """Build one four-entry mixed-grader fixture without ready artifacts."""
-    paths = materialize_v5_calibration_inputs(root)
+    paths = materialize_epoch6_calibration_inputs(root)
     paths.update({
         'workspace_module': root / 'workspace_module.py',
         'workspace_tool': root / 'workspace_tool.sh',
-        'generated_quality': root / 'generated-suite-quality-v1.json',
+        'generated_quality': root / 'generated-suite-quality-v2.json',
     })
     paths['workspace_module'].write_text(
         'VALUE = "package-native"\n', encoding='utf-8',
@@ -3426,9 +3152,6 @@ def materialize_v5_lifecycle_inputs(root: Path) -> dict[str, Path]:
         json.dumps(proof, indent=2) + '\n', encoding='utf-8',
     )
 
-    synthetic_hash = (
-        'sha256:' + hashlib.sha256(paths['synthetic_host'].read_bytes()).hexdigest()
-    )
     spec = json.loads(paths['spec'].read_text(encoding='utf-8'))
     model_grader = spec['graders'][0]
     model_grader['checks'] = [
@@ -3436,7 +3159,7 @@ def materialize_v5_lifecycle_inputs(root: Path) -> dict[str, Path]:
         if check['check_id'] == 'safety-check'
     ]
     deterministic = copy.deepcopy(
-        load_v5_committed_fixtures()['eval-spec-v5.schema.json']['graders'][0],
+        load_epoch6_committed_fixtures()['eval-spec-v6.schema.json']['graders'][0],
     )
     deterministic['checks'] = [
         check for check in deterministic['checks']
@@ -3448,7 +3171,7 @@ def materialize_v5_lifecycle_inputs(root: Path) -> dict[str, Path]:
             '--checks=outcome-check',
         ],
         'path': 'synthetic-host.py',
-        'sha256': synthetic_hash,
+        'source_revision': spec['subject']['package']['source_revision'],
         'env_allowlist': ['SKILL_EVALUATOR_STOP_ENTRY_ID'],
     })
     spec['graders'] = [deterministic, model_grader]
@@ -3493,14 +3216,7 @@ def materialize_v5_lifecycle_inputs(root: Path) -> dict[str, Path]:
     ordering = {
         'method': 'counterbalanced',
         'seed': 7,
-        'schedule_hash': canonical_hash([
-            {
-                'example_id': row['example_id'],
-                'check_id': row['check_id'],
-                'position': row['position'],
-            }
-            for row in ratings
-        ]),
+        'schedule_id': 'fixture-calibration-order',
     }
     for row in ratings:
         row['ordering'] = ordering
@@ -3512,17 +3228,17 @@ def materialize_v5_lifecycle_inputs(root: Path) -> dict[str, Path]:
             ),
             encoding='utf-8',
         )
-    set_v5_synthetic_host_mode(paths, 'lifecycle-conformance')
+    set_epoch6_synthetic_host_mode(paths, 'lifecycle-conformance')
     return paths
 
 
-def materialize_v5_suite_quality_input(root: Path) -> dict[str, Path]:
-    paths = materialize_v5_contract_fixture(root)
+def materialize_epoch6_suite_quality_input(root: Path) -> dict[str, Path]:
+    paths = materialize_epoch6_contract_fixture(root)
     paths.update({
         'quality_proof': root / 'suite-quality-proof.json',
-        'generated_quality': root / 'generated-suite-quality-v1.json',
+        'generated_quality': root / 'generated-suite-quality-v2.json',
     })
-    synthetic_hash = (
+    synthetic_digest = (
         'sha256:' + hashlib.sha256(paths['synthetic_host'].read_bytes()).hexdigest()
     )
     proof = {
@@ -3550,9 +3266,9 @@ def materialize_v5_suite_quality_input(root: Path) -> dict[str, Path]:
         'provenance_clusters': [{
             'cluster_id': 'cluster-core',
             'case_ids': ['case-basic'],
-            'source_hashes': [_v5_hash('case-source')],
+            'source_refs': ['case-source'],
             'status': 'closed',
-            'review_locator': _v5_locator('synthetic-host.py'),
+            'review_locator': _epoch6_locator('synthetic-host.py'),
         }],
         'leakage_probes': [{
             'probe_id': 'holdout-leakage',
@@ -3560,13 +3276,13 @@ def materialize_v5_suite_quality_input(root: Path) -> dict[str, Path]:
             'status': 'pass',
             'artifact': {
                 'path': 'synthetic-host.py',
-                'sha256': synthetic_hash,
+                'digest': synthetic_digest,
             },
-            'locator': _v5_locator('synthetic-host.py'),
+            'locator': _epoch6_locator('synthetic-host.py'),
         }],
         'custody': {
-            'split_hashes': {
-                'dev': _v5_hash('dev-split'),
+            'split_bindings': {
+                'dev': {'path': 'scenarios-v1.jsonl'},
                 'regression': None,
                 'heldout': None,
             },
@@ -3585,12 +3301,12 @@ def materialize_v5_suite_quality_input(root: Path) -> dict[str, Path]:
     spec['execution']['ready'] = False
     spec['suite']['quality'] = {
         'path': paths['generated_quality'].name,
-        'sha256': 'sha256:' + '0' * 64,
+        'digest': 'sha256:' + '0' * 64,
+        'schema_version': 'suite-quality/2',
     }
     validator = load_validator_module()
-    spec['suite']['quality_contract_hash'] = validator.quality_contract_hash(spec)
     scenario = json.loads(paths['scenarios'].read_text(encoding='utf-8'))
-    proof['custody']['split_hashes'] = validator._quality_split_hashes(
+    proof['custody']['split_bindings'] = validator._quality_split_bindings(
         spec, [scenario],
     )
     paths['quality_proof'].write_text(
