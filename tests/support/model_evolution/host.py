@@ -29,6 +29,20 @@ from support.model_evolution.repository import (
 
 SOURCE_ROOT = Path(__file__).resolve().parents[3]
 ADAPTER = SOURCE_ROOT / "scripts/codex_eval_host.py"
+PRODUCT_COPY_IGNORES = (
+    "__pycache__",
+    "*.pyc",
+    ".pytest_cache",
+    ".closure",
+    ".workflow",
+    "dist",
+)
+STATIC_SOURCE_FILES = (
+    "README.md",
+    "RELEASE_NOTES.md",
+    "packaging/codex-plugin/plugin.json.template",
+    "evaluation/schemas/static-contract-diagnostic.schema.json",
+)
 
 FAKE_CODEX = textwrap.dedent(
     """\
@@ -152,17 +166,30 @@ def _materialize_fake_host(
     return write_json(host_path, host)
 
 
-def _materialize_plugin_staging(campaign_root: Path) -> tuple[Path, Path]:
+def _materialize_repository_static_surface(repository_root: Path) -> None:
+    for relative in STATIC_SOURCE_FILES:
+        target = repository_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(SOURCE_ROOT / relative, target)
+    for skill_id in SKILL_IDS:
+        shutil.copytree(
+            SOURCE_ROOT / skill_id,
+            repository_root / skill_id,
+            ignore=shutil.ignore_patterns(*PRODUCT_COPY_IGNORES),
+        )
+
+
+def _materialize_plugin_staging(
+    repository_root: Path, campaign_root: Path
+) -> tuple[Path, Path]:
     plugin_root = campaign_root / "staging/frontier-engineering-plugin"
     (plugin_root / ".codex-plugin").mkdir(parents=True)
     (plugin_root / ".codex-plugin/plugin.json").write_text("{}\n", encoding="utf-8")
     for skill_id in SKILL_IDS:
         shutil.copytree(
-            SOURCE_ROOT / skill_id,
+            repository_root / skill_id,
             plugin_root / "skills" / skill_id,
-            ignore=shutil.ignore_patterns(
-                "__pycache__", "*.pyc", ".pytest_cache", ".closure", ".workflow", "dist"
-            ),
+            ignore=shutil.ignore_patterns(*PRODUCT_COPY_IGNORES),
         )
     plugin_tree_hash = root_hash(plugin_root)
     evidence = {
@@ -179,7 +206,10 @@ def _materialize_plugin_staging(campaign_root: Path) -> tuple[Path, Path]:
 def materialize_campaign(root: Path) -> dict[str, Any]:
     repository_root, campaign_root = campaign_layout(root)
     product = copy_product_files(repository_root)
-    plugin_root, plugin_build = _materialize_plugin_staging(campaign_root)
+    _materialize_repository_static_surface(repository_root)
+    plugin_root, plugin_build = _materialize_plugin_staging(
+        repository_root, campaign_root
+    )
     host = _materialize_fake_host(repository_root, campaign_root, plugin_root)
     probe_set = materialize_probe_set(repository_root, campaign_root)
     sentinel = materialize_sentinel(repository_root, campaign_root)
