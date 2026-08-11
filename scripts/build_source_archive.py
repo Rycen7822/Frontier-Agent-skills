@@ -330,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
                 "ok": True,
                 "layout": evidence["layout"],
                 "source_file_count": evidence["source_file_count"],
-                "archive_content_hash": evidence["archive_content_hash"],
+                "archive_file_count": evidence["archive_file_count"],
                 "source_revision_verified": False,
             },
             ensure_ascii=False,
