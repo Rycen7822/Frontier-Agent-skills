@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from contextlib import redirect_stdout
 import importlib.util
+from io import StringIO
 import json
 from pathlib import Path
 import shutil
@@ -66,6 +68,28 @@ class ExtendedSourceArchiveTests(unittest.TestCase):
             with zipfile.ZipFile(output) as archive:
                 roots = {Path(name).parts[0] for name in archive.namelist()}
             self.assertEqual(EXPECTED_SKILLS, roots)
+
+    def test_cli_success_output_has_compact_status_fields(self) -> None:
+        evidence = {"layout": "bundle", "source_file_count": 4, "archive_file_count": 4}
+        output = StringIO()
+        with (
+            mock.patch.object(self.archiver, "build_archive", return_value=evidence),
+            redirect_stdout(output),
+        ):
+            self.assertEqual(
+                self.archiver.main(
+                    ["--output", "bundle.zip", "--evidence-output", "bundle.json"]
+                ),
+                0,
+            )
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {
+                "ok": True,
+                **evidence,
+                "source_revision_verified": False,
+            },
+        )
 
     def test_no_overwrite_symlink_and_source_drift_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
