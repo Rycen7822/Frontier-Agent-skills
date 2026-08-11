@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 
 import build_codex_plugin as builder
+import evaluate_static_contracts as static_contracts
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,20 +38,23 @@ def create_authorization(
     authority_id = authority_id.strip()
     if not authority_id or not attestation:
         raise ValueError("release authority id and signature attestation are required")
-    static_report = builder._strict_json(
-        source_root / "evaluation" / "static-contract-diagnostic.json"
-    )
+    static_report = static_contracts.build_report(source_root)
+    if static_contracts.blocking_fact_count(static_report):
+        raise ValueError("static contract gate has blocking facts")
     bundle = builder._strict_json(
         source_root / "frontier-engineering.bundle.json"
     )
     authorization: dict[str, object] = {
-        "schema_version": "release-authorization/1",
+        "schema_version": "release-authorization/2",
         "bundle_id": bundle["bundle_id"],
         "bundle_version": manifest["bundle_version"],
         "source_revision": builder._source_revision(source_root),
         "source_tree_hash": builder.tree_hash(source_records),
         "plugin_tree_hash": builder.tree_hash(plugin_records),
-        "deterministic_report_hash": static_report["report_hash"],
+        "static_gate": {
+            "schema_version": static_report["schema_version"],
+            "status": "pass",
+        },
         "approved_skill_activation": dict(builder.EXPECTED_APPROVED_ACTIVATION),
         "remote_writes": False,
         "authority": {
@@ -60,10 +64,6 @@ def create_authorization(
             "signature_attestation": attestation,
         },
     }
-    authorization["authorization_hash"] = builder._self_hash_field(
-        authorization,
-        "authorization_hash",
-    )
     return builder._validate_release_authorization(
         authorization,
         source_root=source_root,
@@ -117,7 +117,11 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
         return 1
-    print(json.dumps({"ok": True, "authorization_hash": authorization["authorization_hash"]}))
+    print(json.dumps({
+        "ok": True,
+        "bundle_id": authorization["bundle_id"],
+        "bundle_version": authorization["bundle_version"],
+    }))
     return 0
 
 

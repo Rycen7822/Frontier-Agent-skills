@@ -1,23 +1,29 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://local.invalid/frontier-engineering/release-authorization-v1.schema.json",
+  "$id": "https://local.invalid/frontier-engineering/release-authorization-v2.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "authorization_hash", "bundle_id", "bundle_version",
-    "source_revision", "source_tree_hash", "plugin_tree_hash",
-    "deterministic_report_hash", "approved_skill_activation", "remote_writes",
-    "authority"
+    "schema_version", "bundle_id", "bundle_version", "source_revision",
+    "source_tree_hash", "plugin_tree_hash", "static_gate",
+    "approved_skill_activation", "remote_writes", "authority"
   ],
   "properties": {
-    "schema_version": {"const": "release-authorization/1"},
-    "authorization_hash": {"$ref": "#/$defs/hash"},
-    "bundle_id": {"const": "frontier-engineering/6.3.1"},
-    "bundle_version": {"const": "6.3.1"},
+    "schema_version": {"const": "release-authorization/2"},
+    "bundle_id": {"const": "frontier-engineering/7.0.0"},
+    "bundle_version": {"const": "7.0.0"},
     "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-    "source_tree_hash": {"$ref": "#/$defs/hash"},
-    "plugin_tree_hash": {"$ref": "#/$defs/hash"},
-    "deterministic_report_hash": {"$ref": "#/$defs/hash"},
+    "source_tree_hash": {"$ref": "#/$defs/digest"},
+    "plugin_tree_hash": {"$ref": "#/$defs/digest"},
+    "static_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "status"],
+      "properties": {
+        "schema_version": {"const": "static-contract-diagnostic/1.0"},
+        "status": {"const": "pass"}
+      }
+    },
     "approved_skill_activation": {
       "type": "object",
       "additionalProperties": false,
@@ -46,6 +52,6 @@
     }
   },
   "$defs": {
-    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
   }
 }

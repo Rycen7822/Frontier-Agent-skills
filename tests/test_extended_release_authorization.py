@@ -60,17 +60,18 @@ class ExtendedReleaseAuthorizationTests(unittest.TestCase):
         bundle = self.builder._strict_json(
             ROOT / "frontier-engineering.bundle.json"
         )
-        static = self.builder._strict_json(
-            ROOT / "evaluation" / "static-contract-diagnostic.json"
-        )
+        static = self.builder.static_contracts.build_report(ROOT)
         value = {
-            "schema_version": "release-authorization/1",
+            "schema_version": "release-authorization/2",
             "bundle_id": bundle["bundle_id"],
             "bundle_version": self.manifest["bundle_version"],
             "source_revision": self.revision,
             "source_tree_hash": self.source_tree_hash,
             "plugin_tree_hash": self.plugin_tree_hash,
-            "deterministic_report_hash": static["report_hash"],
+            "static_gate": {
+                "schema_version": static["schema_version"],
+                "status": "pass",
+            },
             "approved_skill_activation": dict(
                 self.builder.EXPECTED_APPROVED_ACTIVATION
             ),
@@ -82,10 +83,6 @@ class ExtendedReleaseAuthorizationTests(unittest.TestCase):
                 "signature_attestation": "approved in signed release record",
             },
         }
-        value["authorization_hash"] = self.builder._self_hash_field(
-            value,
-            "authorization_hash",
-        )
         return value
 
     def validate(self, value: dict) -> dict:
@@ -106,13 +103,13 @@ class ExtendedReleaseAuthorizationTests(unittest.TestCase):
         authorization = self.authorization()
         schema = self.builder._strict_json(
             ROOT / "packaging" / "schemas"
-            / "release-authorization-v1.schema.json"
+            / "release-authorization-v2.schema.json"
         )
         Draft202012Validator.check_schema(schema)
         Draft202012Validator(schema).validate(authorization)
         self.assertEqual(authorization, self.validate(authorization))
 
-    def test_identity_authority_and_hash_mutations_fail_closed(self) -> None:
+    def test_identity_authority_and_gate_mutations_fail_closed(self) -> None:
         mutations = {
             "source revision": lambda value: value.__setitem__(
                 "source_revision", "b" * 40
@@ -129,8 +126,8 @@ class ExtendedReleaseAuthorizationTests(unittest.TestCase):
             "bundle version": lambda value: value.__setitem__(
                 "bundle_version", "0.0.0"
             ),
-            "static report": lambda value: value.__setitem__(
-                "deterministic_report_hash", "sha256:" + "3" * 64
+            "static gate": lambda value: value["static_gate"].__setitem__(
+                "status", "fail"
             ),
             "activation": lambda value: value["approved_skill_activation"].__setitem__(
                 "skill-evaluator", "implicit"
@@ -159,17 +156,8 @@ class ExtendedReleaseAuthorizationTests(unittest.TestCase):
             with self.subTest(label=label):
                 value = copy.deepcopy(self.authorization())
                 mutate(value)
-                value["authorization_hash"] = self.builder._self_hash_field(
-                    value,
-                    "authorization_hash",
-                )
                 with self.assertRaises(ValueError):
                     self.validate(value)
-
-        invalid_hash = self.authorization()
-        invalid_hash["authorization_hash"] = "sha256:" + "0" * 64
-        with self.assertRaisesRegex(ValueError, "identity"):
-            self.validate(invalid_hash)
 
     def test_dirty_and_unsigned_sources_fail_independently(self) -> None:
         completed = subprocess.CompletedProcess
@@ -195,7 +183,7 @@ class ExtendedReleaseAuthorizationTests(unittest.TestCase):
                     self.builder._git_release_source_ok(ROOT, REVISION)
                 )
 
-    def test_symlink_authorization_and_legacy_cli_are_rejected(self) -> None:
+    def test_authorization_path_is_a_regular_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             real = root / "authorization.json"
@@ -210,19 +198,6 @@ class ExtendedReleaseAuthorizationTests(unittest.TestCase):
                     source_tree_hash=self.source_tree_hash,
                     plugin_tree_hash=self.plugin_tree_hash,
                 )
-        legacy = subprocess.run(
-            [
-                sys.executable,
-                str(BUILDER_PATH),
-                "--release-" + "evidence",
-                "x",
-            ],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        self.assertEqual(2, legacy.returncode)
-        self.assertIn("unrecognized arguments", legacy.stderr)
 
     def test_generator_is_canonical_no_overwrite_and_release_bound(self) -> None:
         generator = load_module("release_authorization_generator", GENERATOR_PATH)
@@ -309,7 +284,7 @@ class ExtendedReleaseAuthorizationTests(unittest.TestCase):
             self.assertEqual("release", build["output_class"])
             self.assertEqual(
                 "sha256:" + sha256(output.read_bytes()).hexdigest(),
-                build["release_authorization_hash"],
+                build["release_authorization_digest"],
             )
             with zipfile.ZipFile(marketplace_archive) as archive:
                 self.assertEqual(

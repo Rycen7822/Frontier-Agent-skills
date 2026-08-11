@@ -123,7 +123,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
         self._write_json(receipt_path, receipt)
         self._rebind_pair(paths)
 
-    def test_calibration_producer_recomputes_normalized_artifact_without_self_hash(self) -> None:
+    def test_calibration_producer_recomputes_normalized_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             paths = materialize_epoch6_calibration_inputs(Path(tmp))
             result = self.run_cmd(
@@ -144,7 +144,6 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 artifact, 'grader-calibration-v3.schema.json', registry,
             ),
         )
-        self.assertNotIn('calibration_hash', artifact)
         self.assertEqual(
             'cal.evaluation-fixture.model-grader',
             artifact['calibration_id'],
@@ -1273,7 +1272,7 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
         self.assertEqual(quality.returncode, 1, quality.stdout + quality.stderr)
         self.assertIn('quality.proof_shape', quality.stdout + quality.stderr)
 
-    def test_suite_quality_producer_recomputes_gates_without_self_hash(self) -> None:
+    def test_suite_quality_producer_recomputes_gates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             paths = materialize_epoch6_suite_quality_input(Path(tmp))
             result = self.run_cmd(
@@ -1296,7 +1295,6 @@ class TestExtendedEvalQuality(SkillEvaluatorTestCase):  # noqa: F405
                 validator.load_epoch6_schema_registry(),
             ),
         )
-        self.assertNotIn('suite_quality_hash', artifact)
         self.assertEqual('sq.evaluation-fixture', artifact['suite_quality_id'])
         self.assertTrue(
             all('digest' in binding for binding in artifact['raw_proofs'].values())

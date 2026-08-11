@@ -1,8 +1,6 @@
-# Static Contract Diagnostic
+# Static Contract Gate
 
-`static-contract-diagnostic.json` is the only tracked evaluation report in this directory. It is a deterministic source/package diagnostic, not a routing replay, usefulness result, activation decision, release approval, or deployment proof.
-
-The report binds the exact four-skill identity, versions, mixed activation, entrypoint byte budgets, model-facing path set, Markdown links, retired runtime absence, current-release owner language, test-profile command hashes, and package size. It explicitly does not test natural routing, model behavior, task success, real host tokens, longitudinal test growth, publication authority, or deployment readiness.
+`scripts/evaluate_static_contracts.py` evaluates the current source tree directly. It reports the four-skill identity, versions, activation matrix, entrypoint byte budgets, model-facing paths, Markdown links, package shape, and stated limitations as readable facts.
 
 Run from the repository root:
 
@@ -10,4 +8,4 @@ Run from the repository root:
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/evaluate_static_contracts.py --check
 ```
 
-Static package shrink, fewer files, or a lower entrypoint byte count does not establish usefulness, task quality, context efficiency, or token savings. Those claims require the external scored and longitudinal gates.
+The repository gate reads source directly. A named consumer can add `--output /temporary/path/report.json` for one no-overwrite diagnostic artifact. Scored and longitudinal evaluation own usefulness, behavior, and context-efficiency claims.

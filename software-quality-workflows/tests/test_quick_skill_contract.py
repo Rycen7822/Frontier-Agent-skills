@@ -57,8 +57,8 @@ class QuickSkillContractTests(unittest.TestCase):
             "check cannot support a two-sided claim.",
             skill_text,
         )
-        self.assertIn("A digest proves only that bound bytes match", skill_text)
-        self.assertIn("digest calculation/reporting without a real cross-boundary consumer", skill_text)
+        self.assertIn("Bound bytes establish integrity", skill_text)
+        self.assertIn("compute a digest, only for a named cross-boundary consumer", skill_text)
         agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
         self.assertIs(agents["policy"]["allow_implicit_invocation"], True)
 

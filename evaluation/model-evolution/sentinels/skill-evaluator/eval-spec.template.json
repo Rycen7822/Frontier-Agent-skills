@@ -378,7 +378,7 @@
     "principal_mode": "single",
     "shape": "single_skill",
     "skill_id": "skill-evaluator",
-    "version": "3.3.4"
+    "version": "4.0.0"
   },
   "suite": {
     "holdout": null,

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-from hashlib import sha256
 import json
 from pathlib import Path
 import shutil
@@ -53,14 +52,7 @@ def _frontmatter(path: Path) -> dict[str, str]:
 def inspect_plugin(plugin_root: Path, evidence_path: Path) -> dict[str, Any]:
     plugin_root = plugin_root.resolve(strict=True)
     evidence = _strict_json(evidence_path)
-    unhashed = dict(evidence)
-    observed_evidence_hash = unhashed.pop("evidence_hash", None)
-    expected_evidence_hash = "sha256:" + sha256(
-        json.dumps(unhashed, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-    if observed_evidence_hash != expected_evidence_hash:
-        raise ValueError("build evidence self-hash is invalid")
-    if evidence.get("schema_version") != "plugin-build-evidence/3.0" or evidence.get("skill_activation") != EXPECTED_ACTIVATION:
+    if evidence.get("schema_version") != "plugin-build-evidence/4.0" or evidence.get("skill_activation") != EXPECTED_ACTIVATION:
         raise ValueError("build evidence identity or skill activation is invalid")
     manifest = _strict_json(plugin_root / ".codex-plugin" / "plugin.json")
     if plugin_root.name != manifest.get("name") or manifest.get("name") != evidence.get("plugin_name"):
@@ -95,15 +87,16 @@ def inspect_plugin(plugin_root: Path, evidence_path: Path) -> dict[str, Any]:
             raise ValueError(f"skill metadata attempts to widen plugin authority: {name}")
         discovered[name] = {
             "version": fields["version"],
-            "description_hash": "sha256:" + sha256(fields["description"].encode("utf-8")).hexdigest(),
+            "description": fields["description"],
             "explicit_invocation": True,
             "implicit_eligible": activation,
         }
     return {
-        "schema_version": "static-plugin-smoke/3.0",
+        "schema_version": "static-plugin-smoke/4.0",
+        "bundle_id": evidence["bundle_id"],
+        "bundle_version": evidence["bundle_version"],
         "plugin_name": manifest["name"],
         "plugin_tree_hash": evidence["plugin_tree_hash"],
-        "build_evidence_hash": evidence["evidence_hash"],
         "activation_ceiling": evidence["activation_ceiling"],
         "actual_codex_cli_install": False,
         "model_invoked": False,
@@ -140,7 +133,17 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError, json.JSONDecodeError, yaml.YAMLError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 1
-    print(json.dumps({"ok": True, "plugin_tree_hash": result["plugin_tree_hash"], "actual_codex_cli_install": False}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "bundle_id": result["bundle_id"],
+                "bundle_version": result["bundle_version"],
+                "actual_codex_cli_install": False,
+            },
+            ensure_ascii=False,
+        )
+    )
     return 0
 
 

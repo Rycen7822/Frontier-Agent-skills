@@ -146,10 +146,6 @@ class ModelEvolutionCliTest(unittest.TestCase):
         manifest = json.loads((REPOSITORY_ROOT / "bundle-manifest.json").read_text())
         write_json(repository / "bundle-manifest.json", manifest)
         write_json(repository / "frontier-engineering.bundle.json", {"build": "base"})
-        write_json(
-            repository / "evaluation/static-contract-diagnostic.json",
-            {"static": "base"},
-        )
         (repository / "RELEASE_NOTES.md").write_text(
             "# Release notes\n", encoding="utf-8"
         )
@@ -179,10 +175,6 @@ class ModelEvolutionCliTest(unittest.TestCase):
         write_json(
             repository / "frontier-engineering.bundle.json", {"build": "candidate"}
         )
-        write_json(
-            repository / "evaluation/static-contract-diagnostic.json",
-            {"static": "candidate"},
-        )
         (repository / "RELEASE_NOTES.md").write_text(
             f"# Release notes\n\n- rc-1 {owner} {candidate_owner_version}\n",
             encoding="utf-8",
@@ -203,7 +195,6 @@ class ModelEvolutionCliTest(unittest.TestCase):
         changed = [
             "RELEASE_NOTES.md",
             "bundle-manifest.json",
-            "evaluation/static-contract-diagnostic.json",
             "frontier-engineering.bundle.json",
         ]
         self.assertEqual(

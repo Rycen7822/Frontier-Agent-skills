@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
-from hashlib import sha256
 import importlib.util
 import json
 from pathlib import Path
@@ -38,12 +36,6 @@ class ExtendedSourceArchiveTests(unittest.TestCase):
     def assert_valid_evidence(self, evidence: dict) -> None:
         schema = json.loads((ROOT / "packaging" / "schemas" / "source-archive-evidence.schema.json").read_text())
         Draft202012Validator(schema).validate(evidence)
-        unhashed = deepcopy(evidence)
-        observed = unhashed.pop("evidence_hash")
-        expected = "sha256:" + sha256(json.dumps(
-            unhashed, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-        ).encode("utf-8")).hexdigest()
-        self.assertEqual(expected, observed)
 
     def test_bundle_archive_is_reproducible_clean_and_schema_valid(self) -> None:
         self.assertTrue({".worktrees", "reference"} <= self.archiver.IGNORED_TOP_LEVEL)

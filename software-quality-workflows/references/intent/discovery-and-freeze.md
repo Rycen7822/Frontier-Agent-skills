@@ -24,7 +24,7 @@ Resolve material outcome semantics and freeze one authoritative implementation-p
 9. Emit the authoritative identity plus exact handoff to Writing Plans or the applicable non-implementation owner; do not implement or plan slices here.
 
 ## Required result
-- One `intent-discovery-and-freeze` with resolved facts/defaults, requirement blocks, selected/rejected outcomes, underdetermination or approval blocker, a `spec_ref` containing repository-relative path plus source revision or stable inline requirement IDs, component/flow/interface/failure/proof/rollout contract, assumptions/exclusions, and next-owner handoff. Freezing prevents silent decision changes; it does not require a document digest.
+- One `intent-discovery-and-freeze` with resolved facts/defaults, requirement blocks, selected/rejected outcomes, underdetermination or approval blocker, a `spec_ref` containing repository-relative path plus source revision or stable inline requirement IDs, component/flow/interface/failure/proof/rollout contract, assumptions/exclusions, and next-owner handoff. The `spec_ref` carries the frozen identity.
 
 ## Stop
 Stop at an internally reviewed authoritative spec or typed blocker; never infer approval, implement, or duplicate planning.

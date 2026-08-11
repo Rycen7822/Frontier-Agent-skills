@@ -30,6 +30,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from _bundle_hash import bundle_inventory, inventory, tree_hash  # noqa: E402
+import evaluate_static_contracts as static_contracts  # noqa: E402
 from _deterministic_zip import (  # noqa: E402
     ZipMember,
     verify_deterministic_zip,
@@ -48,10 +49,10 @@ LOCAL_PATH_PATTERNS = tuple(re.compile(pattern) for pattern in (
 ))
 PLACEHOLDER_PATTERN = re.compile(re.escape(chr(91)) + "TODO:")
 EXPECTED_SKILLS = {
-    "long-document-segmented-writing": "1.1.3",
-    "skill-evaluator": "3.3.4",
-    "software-quality-workflows": "9.0.5",
-    "writing-plans": "8.2.8",
+    "long-document-segmented-writing": "2.0.0",
+    "skill-evaluator": "4.0.0",
+    "software-quality-workflows": "10.0.0",
+    "writing-plans": "8.3.0",
 }
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,
@@ -186,23 +187,6 @@ def skill_activation(path: Path) -> bool:
     return activation
 
 
-def _self_hash_field(report: dict[str, Any], field: str) -> str:
-    value = dict(report)
-    value.pop(field, None)
-    encoded = json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
-    return "sha256:" + sha256(encoded).hexdigest()
-
-
-def _self_hash(report: dict[str, Any]) -> str:
-    return _self_hash_field(report, "report_hash")
-
-
 def _validate_exact_bundle_identity(source_root: Path) -> None:
     builder_path = source_root / "bundle" / "build_bundle_manifest.py"
     output_path = source_root / "frontier-engineering.bundle.json"
@@ -226,7 +210,7 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     skills = manifest.get("skills")
     if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != set(EXPECTED_SKILLS):
         raise ValueError("manifest must declare exactly the four canonical skills")
-    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "6.3.1"):
+    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "7.0.0"):
         raise ValueError("manifest bundle schema/version is invalid")
     if {item.get("id"): item.get("version") for item in skills} != EXPECTED_SKILLS:
         raise ValueError("version mismatch: manifest skill versions do not match the four-skill release identity")
@@ -316,7 +300,7 @@ def _validate_release_authorization(
 ) -> dict[str, Any]:
     _validate_schema(
         source_root,
-        "release-authorization-v1.schema.json",
+        "release-authorization-v2.schema.json",
         authorization,
         "release authorization",
     )
@@ -324,9 +308,7 @@ def _validate_release_authorization(
     revision = authorization.get("source_revision")
     authority = authorization.get("authority")
     if (
-        authorization.get("authorization_hash")
-        != _self_hash_field(authorization, "authorization_hash")
-        or authorization.get("bundle_id") != bundle.get("bundle_id")
+        authorization.get("bundle_id") != bundle.get("bundle_id")
         or authorization.get("bundle_version") != manifest.get("bundle_version")
         or authorization.get("source_tree_hash") != source_tree_hash
         or authorization.get("approved_skill_activation")
@@ -353,19 +335,20 @@ def _validate_release_authorization(
         raise ValueError(
             "release authorization plugin tree hash does not match the staged plugin"
         )
-    static_report = _strict_json(
-        source_root / "evaluation" / "static-contract-diagnostic.json"
-    )
+    static_report = static_contracts.build_report(source_root)
     if (
-        static_report.get("report_hash") != _self_hash(static_report)
-        or authorization.get("deterministic_report_hash")
-        != static_report.get("report_hash")
+        static_contracts.blocking_fact_count(static_report) != 0
+        or authorization.get("static_gate")
+        != {
+            "schema_version": static_report.get("schema_version"),
+            "status": "pass",
+        }
         or static_report.get("bundle_id") != bundle.get("bundle_id")
         or static_report.get("version") != manifest.get("bundle_version")
         or static_report.get("skill_activation") != EXPECTED_ACTIVATION
     ):
         raise ValueError(
-            "static contract diagnostic identity or report hash does not match"
+            "static contract gate differs from the selected source"
         )
     return authorization
 
@@ -446,12 +429,6 @@ def validate_plugin_build(
         evidence,
         "plugin build evidence",
     )
-    if evidence.get("evidence_hash") != _self_hash_field(
-        evidence,
-        "evidence_hash",
-    ):
-        raise ValueError("plugin build evidence self-hash is invalid")
-
     plugin_records = _validate_staging(plugin_root, evidence["plugin_name"])
     versions = {
         skill_id: skill_version(plugin_root / "skills" / skill_id)
@@ -481,7 +458,7 @@ def validate_plugin_build(
         raise ValueError("release validation requires release authorization")
     else:
         _reject_symlink_components(release_authorization)
-        if evidence.get("release_authorization_hash") != _content_hash(
+        if evidence.get("release_authorization_digest") != _content_hash(
             release_authorization
         ):
             raise ValueError(
@@ -792,13 +769,13 @@ def build(
                 source_tree_hash=source_tree_hash,
                 plugin_tree_hash=plugin_tree_hash,
             )
-        release_authorization_hash = (
+        release_authorization_digest = (
             _content_hash(release_authorization)
             if release_authorization is not None
             else None
         )
         evidence: dict[str, Any] = {
-            "schema_version": "plugin-build-evidence/3.0",
+            "schema_version": "plugin-build-evidence/4.0",
             "bundle_id": _strict_json(source_root / "frontier-engineering.bundle.json")["bundle_id"],
             "bundle_version": manifest["bundle_version"],
             "skill_versions": {item["id"]: item["version"] for item in sorted(manifest["skills"], key=lambda item: item["id"])},
@@ -810,13 +787,10 @@ def build(
             "plugin_file_count": len(plugin_records),
             "plugin_name": template["name"],
             "output_class": "release" if is_release else "staging",
-            "release_authorization_hash": release_authorization_hash,
+            "release_authorization_digest": release_authorization_digest,
             "activation_ceiling": manifest["activation_ceiling"],
             "files": plugin_records,
         }
-        evidence["evidence_hash"] = "sha256:" + sha256(
-            json.dumps(evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
         _validate_schema(
             source_root,
             "plugin-build-evidence.schema.json",
@@ -1060,15 +1034,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(json.dumps({
         "ok": True,
+        "bundle_id": evidence["bundle_id"],
+        "bundle_version": evidence["bundle_version"],
         "plugin_name": evidence["plugin_name"],
         "output_class": evidence["output_class"],
-        "plugin_tree_hash": evidence["plugin_tree_hash"],
-        "evidence_hash": evidence["evidence_hash"],
-        "marketplace_archive_hash": (
-            _content_hash(args.marketplace_archive_output)
-            if args.marketplace_archive_output is not None
-            else None
-        ),
     }, ensure_ascii=False))
     return 0
 

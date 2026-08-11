@@ -64,8 +64,8 @@ class WorkflowContractTests(unittest.TestCase):
         )[0]
         self.assertIn("dedicated command", section)
         self.assertIn("stdout contains only `status` and total `bytes`", section)
-        self.assertIn("contains no digest", section)
-        self.assertIn("perform the bounded final reread separately", section)
+        self.assertIn("direct candidate/output byte comparison owns assembly evidence", section)
+        self.assertIn("Perform the bounded final reread separately", section)
 
 
 if __name__ == "__main__":

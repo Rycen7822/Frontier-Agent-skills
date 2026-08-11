@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from hashlib import sha256
 import importlib.util
 import json
 from pathlib import Path
@@ -40,12 +39,6 @@ def load_static_smoke():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def canonical_hash(value: dict) -> str:
-    return "sha256:" + sha256(json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-    ).encode("utf-8")).hexdigest()
 
 
 class ExtendedPluginBuildTests(unittest.TestCase):
@@ -94,9 +87,7 @@ class ExtendedPluginBuildTests(unittest.TestCase):
             self.assertFalse((root / "plugin-build-staging").exists())
             schema = json.loads((ROOT / "packaging" / "schemas" / "plugin-build-evidence.schema.json").read_text())
             Draft202012Validator(schema).validate(evidence)
-            unhashed = dict(evidence)
-            observed_hash = unhashed.pop("evidence_hash")
-            self.assertEqual(canonical_hash(unhashed), observed_hash)
+            self.assertEqual("plugin-build-evidence/4.0", evidence["schema_version"])
             self.assertEqual(EXPECTED_ACTIVATION, evidence["skill_activation"])
             for skill_id, expected in EXPECTED_ACTIVATION.items():
                 agents = yaml.safe_load((output / "skills" / skill_id / "agents" / "openai.yaml").read_text())
@@ -122,7 +113,7 @@ class ExtendedPluginBuildTests(unittest.TestCase):
                 for path in writing_plans.rglob("*") if path.is_file()
             })
 
-    def test_static_smoke_is_hash_bound_and_preserves_mixed_activation(self) -> None:
+    def test_static_smoke_is_tree_bound_and_preserves_mixed_activation(self) -> None:
         smoke = load_static_smoke()
         with tempfile.TemporaryDirectory() as directory:
             output, evidence_path, evidence = self.build_staging(Path(directory))

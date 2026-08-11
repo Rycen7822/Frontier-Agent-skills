@@ -69,8 +69,6 @@ class TestExtendedEvalComparison(ComparisonTestCase):  # noqa: F405
                     'comparison-diagnostic-index-v2.schema.json',
                     registry,
                 ))
-                self.assertNotIn('comparison_report_hash', report)
-                self.assertNotIn('comparison_diagnostic_index_hash', index)
                 self.assertEqual(
                     index_path.name,
                     report['diagnostic_index_path'],

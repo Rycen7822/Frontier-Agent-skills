@@ -12,10 +12,10 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_VERSIONS = {
-    "long-document-segmented-writing": "1.1.3",
-    "skill-evaluator": "3.3.4",
-    "software-quality-workflows": "9.0.5",
-    "writing-plans": "8.2.8",
+    "long-document-segmented-writing": "2.0.0",
+    "skill-evaluator": "4.0.0",
+    "software-quality-workflows": "10.0.0",
+    "writing-plans": "8.3.0",
 }
 
 
@@ -32,7 +32,7 @@ class QuickBundleContractTests(unittest.TestCase):
     def test_source_and_generated_bundle_are_exact_and_deterministic(self) -> None:
         source = json.loads((ROOT / "bundle-manifest.json").read_text(encoding="utf-8"))
         self.assertEqual("3.0", source["bundle_schema_version"])
-        self.assertEqual("6.3.1", source["bundle_version"])
+        self.assertEqual("7.0.0", source["bundle_version"])
         self.assertEqual(EXPECTED_VERSIONS, {item["id"]: item["version"] for item in source["skills"]})
         self.assertEqual({"quick", "extended", "release"}, set(source["test_profiles"]))
         self.assertEqual(3, len({tuple(commands) for commands in source["test_profiles"].values()}))
@@ -60,7 +60,7 @@ class QuickBundleContractTests(unittest.TestCase):
         generated = json.loads((ROOT / "frontier-engineering.bundle.json").read_text(encoding="utf-8"))
         self.assertEqual(builder.build_manifest(), generated)
         self.assertEqual("frontier-engineering-bundle/2.0", generated["schema_version"])
-        self.assertEqual(5, generated["compatible_schema_epoch"])
+        self.assertEqual(6, generated["compatible_schema_epoch"])
         self.assertEqual(EXPECTED_VERSIONS, {key: value["version"] for key, value in generated["skills"].items()})
         self.assertEqual(
             {"version", "allow_implicit_invocation", "root_hash"},
@@ -82,7 +82,7 @@ class QuickBundleContractTests(unittest.TestCase):
         schema_names = (
             "plugin-build-evidence.schema.json", "source-archive-evidence.schema.json",
             "static-plugin-smoke.schema.json", "cli-install-smoke.schema.json",
-            "release-authorization-v1.schema.json",
+            "release-authorization-v2.schema.json",
         )
         for name in schema_names:
             text = (ROOT / "packaging" / "schemas" / name).read_text(encoding="utf-8")
@@ -100,7 +100,7 @@ class QuickBundleContractTests(unittest.TestCase):
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
         )
         self.assertEqual(0, help_result.returncode, help_result.stdout + help_result.stderr)
-        self.assertIn("Frontier 6.3", help_result.stdout)
+        self.assertIn("Frontier 7.0", help_result.stdout)
         self.assertNotIn("Frontier 5.0", help_result.stdout)
         result = subprocess.run(
             [sys.executable, str(ROOT / "bundle" / "build_bundle_manifest.py"), "--check"],

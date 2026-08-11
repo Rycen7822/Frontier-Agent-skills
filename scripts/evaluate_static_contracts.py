@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Build or verify the deterministic Frontier static contract report."""
+"""Evaluate the current Frontier static contracts from source."""
 
 from __future__ import annotations
 
 import argparse
 from collections import deque
-from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -25,13 +24,18 @@ from _bundle_hash import bundle_inventory
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "evaluation" / "static-contract-diagnostic.json"
 SCHEMA = ROOT / "evaluation" / "schemas" / "static-contract-diagnostic.schema.json"
 SOURCE_MANIFEST = ROOT / "bundle-manifest.json"
 GENERATED_BUNDLE = ROOT / "frontier-engineering.bundle.json"
 LIMITATIONS = (
     "Does not test natural routing, model behavior, task success, real host tokens, "
     "longitudinal test growth, publication authority, or deployment readiness."
+)
+BLOCKING_FIELDS = (
+    "markdown_link_errors",
+    "legacy_runtime_paths_present",
+    "legacy_protocol_matches",
+    "brainstorming_runtime_copies",
 )
 
 MODEL_FACING_EXACT = (
@@ -122,11 +126,6 @@ def _strict_object(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON object: {path}")
     return value
-
-
-def _canonical_hash(value: Any) -> str:
-    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
-    return "sha256:" + sha256(payload).hexdigest()
 
 
 def _line_number(text: str, offset: int) -> int:
@@ -308,11 +307,9 @@ def build_report(root: Path = ROOT) -> dict[str, Any]:
         skill_activation[skill_id] = _skill_activation(skill_root / "agents" / "openai.yaml")
         entry_bytes[skill_id] = len((skill_root / "SKILL.md").read_bytes())
 
-    profile_hashes: dict[str, str] = {}
     for name, commands in sorted(profiles.items()):
         if not isinstance(commands, list) or any(not isinstance(command, str) for command in commands):
             raise ValueError(f"invalid test profile: {name}")
-        profile_hashes[name] = _canonical_hash(commands)
 
     model_paths, link_errors = model_facing_graph(root)
     package = bundle_inventory(root, source_manifest)
@@ -328,12 +325,10 @@ def build_report(root: Path = ROOT) -> dict[str, Any]:
         "model_facing_files_checked": [path.relative_to(root).as_posix() for path in model_paths],
         "markdown_link_errors": link_errors,
         **collect_legacy_contract(root, model_paths),
-        "profile_command_hashes": profile_hashes,
         "package_file_count": len(package),
         "package_bytes": sum(item["size"] for item in package),
         "limitations": LIMITATIONS,
     }
-    report["report_hash"] = _canonical_hash(report)
     schema = _strict_object(root / SCHEMA.relative_to(ROOT))
     Draft202012Validator.check_schema(schema)
     Draft202012Validator(schema).validate(report)
@@ -344,25 +339,27 @@ def _encoded(report: dict[str, Any]) -> bytes:
     return (json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
 
 
+def blocking_fact_count(report: dict[str, Any]) -> int:
+    return sum(len(report[field]) for field in BLOCKING_FIELDS)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     try:
         report = build_report()
-        expected = _encoded(report)
-        if args.check:
-            if OUTPUT.is_symlink() or not OUTPUT.is_file() or OUTPUT.read_bytes() != expected:
-                raise ValueError("checked-in static contract diagnostic is missing or stale")
-        else:
-            if OUTPUT.is_symlink():
-                raise ValueError("refusing to replace symlinked static contract diagnostic")
-            OUTPUT.write_bytes(expected)
+        if args.output is not None:
+            if args.output.is_symlink():
+                raise ValueError("release evidence output must be a regular file")
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_bytes(_encoded(report))
     except (OSError, TypeError, ValueError, SchemaError, ValidationError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1
-    blocking = sum(len(report[field]) for field in ("markdown_link_errors", "legacy_runtime_paths_present", "legacy_protocol_matches", "brainstorming_runtime_copies"))
-    print(json.dumps({"ok": blocking == 0, "report_hash": report["report_hash"], "blocking_facts": blocking}, sort_keys=True))
+    blocking = blocking_fact_count(report)
+    print(json.dumps({"ok": blocking == 0, "blocking_facts": blocking}, sort_keys=True))
     return 0 if blocking == 0 else 1
 
 

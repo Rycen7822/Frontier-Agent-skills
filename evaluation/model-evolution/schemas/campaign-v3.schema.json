@@ -144,7 +144,7 @@
         "calibration_requests",
         "bundle_manifest",
         "bundle_build",
-        "static_report",
+        "static_gate",
         "skills"
       ],
       "properties": {
@@ -162,7 +162,15 @@
         "calibration_requests": {"type": "integer", "minimum": 1},
         "bundle_manifest": {"$ref": "#/$defs/binding"},
         "bundle_build": {"$ref": "#/$defs/binding"},
-        "static_report": {"$ref": "#/$defs/binding"},
+        "static_gate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schema_version", "status"],
+          "properties": {
+            "schema_version": {"const": "static-contract-diagnostic/1.0"},
+            "status": {"const": "pass"}
+          }
+        },
         "skills": {"$ref": "#/$defs/skill_identities"}
       }
     },

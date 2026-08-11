@@ -4,15 +4,16 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "plugin_name", "plugin_tree_hash", "build_evidence_hash", "activation_ceiling",
+    "schema_version", "bundle_id", "bundle_version", "plugin_name", "plugin_tree_hash", "activation_ceiling",
     "actual_codex_cli_install", "model_invoked", "remote_writes", "discovered_skills",
     "isolated_install_discovery", "uninstall_clean"
   ],
   "properties": {
-    "schema_version": {"const": "static-plugin-smoke/3.0"},
+    "schema_version": {"const": "static-plugin-smoke/4.0"},
+    "bundle_id": {"const": "frontier-engineering/7.0.0"},
+    "bundle_version": {"const": "7.0.0"},
     "plugin_name": {"const": "frontier-engineering-plugin"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
-    "build_evidence_hash": {"$ref": "#/$defs/hash"},
     "activation_ceiling": {"const": "implicit_local_pilot"},
     "actual_codex_cli_install": {"const": false},
     "model_invoked": {"const": false},
@@ -21,10 +22,10 @@
       "type": "object", "additionalProperties": false,
       "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
-        "long-document-segmented-writing": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.1.3"}, "implicit_eligible": {"const": true}}}]},
-        "skill-evaluator": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "3.3.4"}, "implicit_eligible": {"const": false}}}]},
-        "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "9.0.5"}, "implicit_eligible": {"const": true}}}]},
-        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.2.8"}, "implicit_eligible": {"const": true}}}]}
+        "long-document-segmented-writing": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "2.0.0"}, "implicit_eligible": {"const": true}}}]},
+        "skill-evaluator": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "4.0.0"}, "implicit_eligible": {"const": false}}}]},
+        "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "10.0.0"}, "implicit_eligible": {"const": true}}}]},
+        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.3.0"}, "implicit_eligible": {"const": true}}}]}
       }
     },
     "isolated_install_discovery": {"const": true},
@@ -34,10 +35,10 @@
     "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "skill": {
       "type": "object", "additionalProperties": false,
-      "required": ["version", "description_hash", "explicit_invocation", "implicit_eligible"],
+      "required": ["version", "description", "explicit_invocation", "implicit_eligible"],
       "properties": {
         "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
-        "description_hash": {"$ref": "#/$defs/hash"},
+        "description": {"type": "string", "minLength": 1},
         "explicit_invocation": {"const": true},
         "implicit_eligible": {"type": "boolean"}
       }

@@ -70,7 +70,7 @@ class ReleaseCliInstallTests(unittest.TestCase):
         self.assertEqual("release", build.get("output_class"))
         self.assertEqual(
             content_hash(release_authorization_path),
-            build.get("release_authorization_hash"),
+            build.get("release_authorization_digest"),
         )
         self.assertEqual(
             authorization.get("source_revision"), build.get("source_revision")
@@ -93,7 +93,7 @@ class ReleaseCliInstallTests(unittest.TestCase):
         )
         schema = _strict_json(ROOT / "packaging" / "schemas" / "cli-install-smoke.schema.json")
         Draft202012Validator(schema).validate(result)
-        self.assertEqual("cli-install-smoke/3.0", result["schema_version"])
+        self.assertEqual("cli-install-smoke/4.0", result["schema_version"])
         self.assertEqual("passed", result["release_gate"])
         self.assertTrue(result["release_eligible"])
         self.assertFalse(result["model_invoked"])

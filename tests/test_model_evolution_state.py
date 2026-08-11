@@ -562,7 +562,6 @@ class RepositoryFixtureBoundaryTest(unittest.TestCase):
             for relative in (
                 "bundle-manifest.json",
                 "frontier-engineering.bundle.json",
-                "evaluation/static-contract-diagnostic.json",
             ):
                 target = source_root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
