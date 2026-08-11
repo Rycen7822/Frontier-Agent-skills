@@ -68,11 +68,6 @@ MAX_FILE_SIZE = 16 * 1024 * 1024
 MAX_TOTAL_SIZE = 128 * 1024 * 1024
 
 
-def _canonical_hash(value: dict[str, Any]) -> str:
-    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return "sha256:" + sha256(payload).hexdigest()
-
-
 def _file_hash(path: Path) -> str:
     digest = sha256()
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -282,7 +277,7 @@ def build_archive(
 
         os.chmod(archive_temp, 0o644)
         evidence: dict[str, Any] = {
-            "schema_version": "source-archive-evidence/2.0",
+            "schema_version": "source-archive-evidence/3.0",
             "layout": layout,
             "bundle_version": manifest["bundle_version"],
             "root_prefix": BUNDLE_ROOT_PREFIX if layout == "bundle" else None,
@@ -295,7 +290,6 @@ def build_archive(
             "generated_artifacts_excluded": True,
             "files": records,
         }
-        evidence["evidence_hash"] = _canonical_hash(evidence)
         with evidence_temp.open("w", encoding="utf-8") as handle:
             json.dump(evidence, handle, ensure_ascii=False, indent=2, sort_keys=True)
             handle.write("\n")

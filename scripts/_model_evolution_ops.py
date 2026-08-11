@@ -1128,7 +1128,6 @@ def _validate_candidate_version(
     required_generated = {
         "bundle-manifest.json",
         "frontier-engineering.bundle.json",
-        "evaluation/static-contract-diagnostic.json",
         "RELEASE_NOTES.md",
     }
     if not required_generated <= set(changed_paths):
@@ -1244,7 +1243,6 @@ def candidate_source(
     allowed_exact = {
         "bundle-manifest.json",
         "frontier-engineering.bundle.json",
-        "evaluation/static-contract-diagnostic.json",
         "RELEASE_NOTES.md",
         "README.md",
     }

@@ -2111,11 +2111,6 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             plan['expected_counts'],
         )
         self.assertEqual({'outcome': 2, 'safety': 2}, plan['dimension_coverage'])
-        for retired in (
-            'plan_hash', 'spec_hash', 'scenario_corpus_hash',
-            'host_manifest_hash', 'calibration_hash', 'suite_quality_hash',
-        ):
-            self.assertNotIn(retired, plan)
         self.assertEqual(
             list(range(len(plan['entries']))),
             [entry['entry_ordinal'] for entry in plan['entries']],
@@ -2462,7 +2457,6 @@ class TestExtendedEvalExecution(SkillEvaluatorTestCase):  # noqa: F405
             result = self._run_compiler(paths, output)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             plan = json.loads(output.read_text(encoding='utf-8'))
-        self.assertNotIn('calibration_hash', plan)
         self.assertEqual({'execute'}, {
             entry['disposition'] for entry in plan['entries']
         })

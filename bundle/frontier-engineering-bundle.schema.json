@@ -15,8 +15,8 @@
   ],
   "properties": {
     "schema_version": {"const": "frontier-engineering-bundle/2.0"},
-    "bundle_id": {"const": "frontier-engineering/6.3.1"},
-    "compatible_schema_epoch": {"const": 5},
+    "bundle_id": {"const": "frontier-engineering/7.0.0"},
+    "compatible_schema_epoch": {"const": 6},
     "release_build_id": {"type": "string", "pattern": "^build-[0-9a-f]{24}$"},
     "activation_ceiling": {"const": "implicit_local_pilot"},
     "remote_writes": {"const": false},
@@ -32,19 +32,19 @@
       "properties": {
         "long-document-segmented-writing": {
           "$ref": "#/$defs/implicit_skill",
-          "properties": {"version": {"const": "1.1.3"}}
+          "properties": {"version": {"const": "2.0.0"}}
         },
         "skill-evaluator": {
           "$ref": "#/$defs/explicit_skill",
-          "properties": {"version": {"const": "3.3.4"}}
+          "properties": {"version": {"const": "4.0.0"}}
         },
         "software-quality-workflows": {
           "$ref": "#/$defs/implicit_skill",
-          "properties": {"version": {"const": "9.0.5"}}
+          "properties": {"version": {"const": "10.0.0"}}
         },
         "writing-plans": {
           "$ref": "#/$defs/implicit_skill",
-          "properties": {"version": {"const": "8.2.8"}}
+          "properties": {"version": {"const": "8.3.0"}}
         }
       }
     }

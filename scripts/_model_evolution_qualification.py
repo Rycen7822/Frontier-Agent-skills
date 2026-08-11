@@ -407,8 +407,8 @@ def project_qualification(
 
     lanes = {
         "static_product": {
-            "status": "pass",
-            "evidence": campaign["product"]["static_report"],
+            "status": campaign["product"]["static_gate"]["status"],
+            "evidence": campaign["product"]["bundle_build"],
         },
         "host_integration": {
             "status": probe_status if observed_host is not None else "unobserved",

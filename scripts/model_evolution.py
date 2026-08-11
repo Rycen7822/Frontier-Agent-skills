@@ -11,6 +11,7 @@ from typing import Any
 if __name__ == "__main__":
     sys.dont_write_bytecode = True
 
+import evaluate_static_contracts as static_contracts
 from _model_evolution_campaign import (
     build_initial_campaign,
     prepare_predecessor,
@@ -285,7 +286,6 @@ def _init(args: argparse.Namespace) -> None:
     fixed = {
         "bundle_manifest": repository_root / "bundle-manifest.json",
         "bundle_build": repository_root / "frontier-engineering.bundle.json",
-        "static_report": repository_root / "evaluation/static-contract-diagnostic.json",
         "plugin_build": args.plugin_build_evidence.resolve(strict=True),
         "target_host": args.target_host.resolve(strict=True),
         "probe_set": args.probe_set.resolve(strict=True),
@@ -308,7 +308,9 @@ def _init(args: argparse.Namespace) -> None:
         raise CliError("plugin staging root must be a campaign-local directory")
     bundle_manifest = load_json(fixed["bundle_manifest"], label="Bundle manifest")
     bundle_build = load_json(fixed["bundle_build"], label="Bundle build")
-    static_report = load_json(fixed["static_report"], label="static report")
+    static_report = static_contracts.build_report(repository_root)
+    if static_contracts.blocking_fact_count(static_report):
+        raise CliError("static contract gate has blocking facts")
     plugin_build = validate_plugin_staging(
         repository_root=repository_root,
         plugin_root=plugin_root,
@@ -382,9 +384,7 @@ def _init(args: argparse.Namespace) -> None:
             host_binding=historical["host"],
             comparison_binding=historical["comparison"],
             qualification_binding=historical["qualification"],
-            current_bundle_id=load_json(fixed["static_report"], label="static report")[
-                "bundle_id"
-            ],
+            current_bundle_id=static_report["bundle_id"],
             repository_root=repository_root,
             campaign_root=campaign_root,
         )
@@ -406,7 +406,6 @@ def _init(args: argparse.Namespace) -> None:
         plugin_tree_hash=plugin_build["plugin_tree_hash"],
         calibration_requests=request_ceilings["calibration"],
         static_report=static_report,
-        static_report_binding=bindings["static_report"],
         target_host_binding=bindings["target_host"],
         probe_set_binding=bindings["probe_set"],
         sentinel_binding=bindings["sentinel"],

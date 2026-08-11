@@ -18,11 +18,11 @@ metadata:
 
 At material boundaries preserve work, scope, and authority; never invent intent or equate local with release proof.
 
-Preserve readable evidence and its raw authority. A digest proves only that bound bytes match; it never replaces semantic content, coverage, freshness, producer, oracle, command/status, limitations, or evidence references.
+Preserve readable evidence and its raw authority. Bound bytes establish integrity; semantic content, coverage, freshness, producer, oracle, command/status, limitations, and evidence references establish meaning and claim scope.
 
 ## Default execution
 
-Known-seam work stays Direct: no reference, workflow/router/card/state, JSON receipt, ledger, or digest calculation/reporting without a real cross-boundary consumer.
+Known-seam work stays Direct and model-native. Create durable state or evidence, and compute a digest, only for a named cross-boundary consumer.
 
 Owner seam is the smallest code/API/config/test/component controlling behavior, not repository ownership unless provenance is requested.
 

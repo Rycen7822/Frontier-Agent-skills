@@ -46,13 +46,11 @@ def copy_product_files(repository_root: Path) -> dict[str, Path]:
     paths = {
         "bundle_manifest": repository_root / "bundle-manifest.json",
         "bundle_build": repository_root / "frontier-engineering.bundle.json",
-        "static_report": repository_root / "evaluation/static-contract-diagnostic.json",
     }
     for name, target in paths.items():
         source = {
             "bundle_manifest": SOURCE_ROOT / "bundle-manifest.json",
             "bundle_build": SOURCE_ROOT / "frontier-engineering.bundle.json",
-            "static_report": SOURCE_ROOT / "evaluation/static-contract-diagnostic.json",
         }[name]
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
@@ -105,6 +103,10 @@ def assemble_campaign(
         campaign_root=campaign_root,
     )
     values = {name: json.loads(path.read_text()) for name, path in product.items()}
+    static_report = {
+        "schema_version": "static-contract-diagnostic/1.0",
+        "bundle_id": values["bundle_build"]["bundle_id"],
+    }
     campaign = build_initial_campaign(
         campaign_id="campaign-fixture",
         git_identity={"commit": FIXED_COMMIT, "tree": FIXED_TREE},
@@ -116,8 +118,7 @@ def assemble_campaign(
         plugin_root=plugin_root.relative_to(campaign_root).as_posix(),
         plugin_tree_hash=json.loads(plugin_build.read_text())["plugin_tree_hash"],
         calibration_requests=4,
-        static_report=values["static_report"],
-        static_report_binding=bindings["static_report"],
+        static_report=static_report,
         target_host_binding=bindings["host"],
         probe_set_binding=bindings["probe_set"],
         sentinel_binding=bindings["sentinel"],
@@ -176,7 +177,7 @@ def materialize_campaign(root: Path) -> dict[str, Any]:
     plugin_build = write_json(
         campaign_root / "inputs/plugin-build-evidence.json",
         {
-            "schema_version": "plugin-build-evidence/3.0",
+            "schema_version": "plugin-build-evidence/4.0",
             "source_revision": FIXED_COMMIT,
             "plugin_tree_hash": plugin_tree_hash,
         },

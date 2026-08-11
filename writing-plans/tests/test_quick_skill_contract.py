@@ -125,7 +125,7 @@ class QuickWritingPlansTests(unittest.TestCase):
             "never ordinals or collective references",
             "executable against the observed body",
             "carry every preserved transformation/invariant into code, not prose",
-            "explicit edit missing a promised preserved transformation/invariant",
+            "carry every promised transformation or invariant into its exact edit",
         ):
             self.assertIn(contract, body)
 
@@ -149,9 +149,8 @@ class QuickWritingPlansTests(unittest.TestCase):
         for contract in (
             "only post-edit command",
             "behavior, diff scope, protected boundary, residue, and whitespace",
-            "after proof, run no status, diff, test, or confirmation",
-            "planner-only non-content confirmation",
-            "never put it in the executor plan",
+            "run at most one planner-only non-content confirmation",
+            "proof remains executor-owned",
         ):
             self.assertIn(contract, body)
 
@@ -204,12 +203,10 @@ class QuickWritingPlansTests(unittest.TestCase):
             "tests/test_quick_skill_contract.py",
         }, files)
 
-    def test_postwrite_checks_do_not_reemit_the_plan(self) -> None:
+    def test_postwrite_confirmation_returns_the_plan(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
-        for contract in ("before return", "do not reopen", "git diff --check"):
+        for contract in ("before return", "then return the plan", "git diff --check"):
             self.assertIn(contract, body)
-        self.assertIn("never calculate a plan/document hash", body)
-        self.assertNotIn("status/hash", body)
 
     def test_minimal_sufficient_plan_and_execution_contract(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
@@ -219,7 +216,7 @@ class QuickWritingPlansTests(unittest.TestCase):
             "assigning each fact to one row",
             "one combined preflight",
             "one combined final proof command",
-            "at most one combined planner-only non-content confirmation",
+            "run at most one planner-only non-content confirmation",
             "do not expand one sentence into its own heading",
             "skill-source changes use skill authoring",
             "portable identity",
@@ -241,8 +238,8 @@ class QuickWritingPlansTests(unittest.TestCase):
             "only a later planning invocation updates the program",
             "protected immutable input",
             "dependencies name every prerequisite milestone, never ordinals",
-            "required resume without attestation acceptance or one-preflight fallback",
-            "do not instruct execution to modify the plan",
+            "require attestation acceptance or one-preflight fallback for resume",
+            "reply only with the plan or named markdown",
             "repository's test owner",
             "state the narrow checks implied by those bindings",
             "prefix tests with `pythondontwritebytecode=1`",

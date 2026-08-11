@@ -166,7 +166,7 @@ def _materialize_plugin_staging(campaign_root: Path) -> tuple[Path, Path]:
         )
     plugin_tree_hash = root_hash(plugin_root)
     evidence = {
-        "schema_version": "plugin-build-evidence/3.0",
+        "schema_version": "plugin-build-evidence/4.0",
         "source_revision": FIXED_COMMIT,
         "plugin_tree_hash": plugin_tree_hash,
     }

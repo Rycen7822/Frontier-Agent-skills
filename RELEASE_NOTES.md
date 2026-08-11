@@ -1,5 +1,13 @@
 # Release Notes
 
+## Bundle 7.0.0 readable evidence boundaries
+
+Bundle 7.0.0 advances Long Document to 2.0.0, Skill Evaluator to 4.0.0, Software Quality Workflows to 10.0.0, and Writing Plans to 8.3.0 at schema epoch 6. The existing mixed activation matrix remains: Long Document, SQW, and Writing Plans are implicit-eligible; Skill Evaluator is explicit-only.
+
+The four skills now use readable semantic identities and one durable frontier for long work. Digests remain at real byte boundaries for raw external evidence, non-replayable receipts, source/plugin/archive integrity, and model-transition inputs. Evaluator epoch 6 and model-evolution schemas remove recursive and self-hash ownership while preserving raw evidence bindings, resumability, and claim ceilings.
+
+Release packaging now evaluates the static contract directly from source and uses `release-authorization/2`, plugin-build evidence 4.0, static plugin smoke 4.0, source-archive evidence 3.0, and CLI install smoke 4.0. These artifacts retain source, plugin, installed-tree, archive, and authorization content digests at their actual ownership boundaries; readable status and schema contracts carry the remaining meaning.
+
 ## Bundle 6.3.1 development skill activation
 
 Bundle 6.3.1 makes `software-quality-workflows` 9.0.5 and `writing-plans` 8.2.8 eligible for implicit local selection. Development work can therefore select SQW from its material-boundary description, while software planning, Handoff, and Program requests can select Writing Plans without requiring an explicit `$skill-name`. `long-document-segmented-writing` 1.1.3 remains implicit-eligible, and `skill-evaluator` 3.3.4 remains explicit-only.

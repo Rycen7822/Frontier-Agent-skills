@@ -111,7 +111,6 @@ def build_initial_campaign(
     plugin_tree_hash: str,
     calibration_requests: int,
     static_report: dict[str, Any],
-    static_report_binding: dict[str, Any],
     target_host_binding: dict[str, Any],
     probe_set_binding: dict[str, Any],
     sentinel_binding: dict[str, Any],
@@ -204,7 +203,10 @@ def build_initial_campaign(
             "calibration_requests": calibration_requests,
             "bundle_manifest": bundle_manifest_binding,
             "bundle_build": bundle_build_binding,
-            "static_report": static_report_binding,
+            "static_gate": {
+                "schema_version": static_report["schema_version"],
+                "status": "pass",
+            },
             "skills": skills,
         },
         "profiles": {

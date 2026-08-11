@@ -1,10 +1,10 @@
 # Frontier Agent Skills
 
-This repository is the development source of truth for the dual-host `frontier-engineering/6.3.1` bundle. It contains exactly four skills: `long-document-segmented-writing` 1.1.3, `skill-evaluator` 3.3.4, `software-quality-workflows` 9.0.5, and `writing-plans` 8.2.8. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository never mutates an active installation.
+This repository is the development source of truth for the dual-host `frontier-engineering/7.0.0` bundle. It contains exactly four skills: `long-document-segmented-writing` 2.0.0, `skill-evaluator` 4.0.0, `software-quality-workflows` 10.0.0, and `writing-plans` 8.3.0. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository leaves active installations unchanged.
 
 ## Release identity
 
-The indivisible release unit is bundle version 6.3.1 at schema epoch 5. Its manifest records the four exact versions and mixed activation matrix:
+The indivisible release unit is bundle version 7.0.0 at schema epoch 6. Its manifest records the four exact versions and mixed activation matrix:
 
 ```json
 {
@@ -15,7 +15,7 @@ The indivisible release unit is bundle version 6.3.1 at schema epoch 5. Its mani
 }
 ```
 
-`true` permits implicit local selection; `false` is explicit-only and its prompt retains the exact `$skill-name`. The bundle ceiling remains `implicit_local_pilot`, and `remote_writes` is false. Bundle 6.3.1 requires a signed, clean source candidate plus the repository's deterministic source, schema, bundle, plugin, archive, and test gates. Passing those local gates establishes source completeness only; it never grants installation, publication, deployment, or other external authority.
+`true` permits implicit local selection; `false` is explicit-only and its prompt retains the exact `$skill-name`. The bundle ceiling remains `implicit_local_pilot`, and `remote_writes` is false. Bundle 7.0.0 requires a signed, clean source candidate plus the repository's deterministic source, schema, bundle, plugin, archive, and test gates. Those local gates establish source completeness; installation, publication, deployment, and external effects retain their own authority boundaries.
 
 ## Design boundary
 
@@ -32,19 +32,19 @@ Development is distinction-first: each behavior change needs an observable test,
 
 ## Evidence and digest policy
 
-Evidence remains readable and source-bound: a digest can establish byte equality across a real ownership, process, retention, package, or external-data boundary, but it never substitutes for semantic payload, coverage, producer, command/status, oracle authority, freshness, limitations, or raw-evidence references. Direct same-context work creates no digest or evidence artifact. Cross-context work keeps one durable frontier and one canonical copy of any non-replayable evidence; each independently consumed byte object may have one machine-side digest at its real boundary, while self hashes, sibling hashes, copied provenance bouquets, hash-derived semantic IDs, and model-visible success digests are forbidden.
+Evidence remains readable and source-bound: a digest establishes byte equality across a real ownership, process, retention, package, or external-data boundary; semantic payload, coverage, producer, command/status, oracle authority, freshness, limitations, and raw-evidence references establish meaning. Direct same-context work stays model-native. Cross-context work keeps one durable frontier and one canonical copy of non-replayable evidence. Machine integrity uses one digest per independently consumed byte object at its real boundary, while readable names carry semantic identity.
 
 Every retained digest has one producer, one named validating consumer, a bounded mismatch action, the same lifecycle as its bytes, and machine-only visibility by default. Missing readable evidence fails a claim even when a digest matches; missing a required external/raw binding fails byte-integrity even when the prose is readable.
 
 ## Verification boundary
 
-Bundle 6.3.1 uses model-free repository tests, validators, canonical generated identities, and static smoke as local source-complete gates. Scored evaluator runs, graders, providers, and reviewer campaigns are not triggered by this release path. Deterministic local evidence can block a candidate but cannot authorize an external release. A canonical `release-authorization/1` binds the signed source, staged plugin, and static diagnostic to a human release-owner approval; it is identity authorization only, never scored usefulness evidence.
+Bundle 7.0.0 uses model-free repository tests, validators, canonical generated identities, live static checking, and plugin smoke as local source-complete gates. Scored usefulness remains a separate evaluator claim. A canonical `release-authorization/2` binds the signed source, staged plugin, live static-gate result, and release-owner attestation; external release still requires its own authority.
 
 ## Model evolution qualification
 
 The tracked `evaluation/model-evolution/` corpus defines six inert Host probes and one non-ready sentinel suite for each Skill. The suites contain public scenarios, deterministic verifiers, suite-quality proof, and calibration gold contracts; they contain no live Host identity, provider output, ratings, or holdout payload. `scripts/build_model_evolution_sentinels.py --check` verifies all generated bindings without contacting a provider.
 
-`scripts/model_evolution.py` owns one bounded external campaign. It freezes a signed source identity, project-wide budget, observed Host, existing Skill Evaluator plans and reports, at most one allowlisted candidate, and a deterministic qualification. A campaign-scoped non-blocking operation lock gives the probe stage one process owner; read-only status reports that owner and emits the sole canonical `systemd-run --user` command for an exact current budget approval. The controller never implements grading, optimization, worker supervision, reviewer selection, release authorization, installation, or publication. A model qualification and a separate `release-authorization/1` are both required for a model-support release claim; neither can substitute for the other.
+`scripts/model_evolution.py` owns one bounded external campaign. It binds a signed source identity, project-wide budget, observed Host, existing Skill Evaluator plans and reports, at most one allowlisted candidate, and a deterministic qualification. A campaign-scoped non-blocking operation lock gives the probe stage one process owner; read-only status reports that owner and emits the canonical `systemd-run --user` command for an exact current budget approval. Model qualification establishes model support, while `release-authorization/2` establishes release identity and authority; both are required for a model-support release claim.
 
 ## Source archives
 
@@ -52,7 +52,7 @@ The source archive uses root `frontier-engineering-bundle`; the skills-only arch
 
 ## Plugin staging
 
-The plugin identity is `frontier-engineering-plugin` version 6.3.1 with display name `Frontier Engineering`. Its release layout is:
+The plugin identity is `frontier-engineering-plugin` version 7.0.0 with display name `Frontier Engineering`. Its release layout is:
 
 ```text
 frontier-engineering-plugin/
@@ -64,15 +64,15 @@ frontier-engineering-plugin/
     writing-plans/
 ```
 
-Use `scripts/build_codex_plugin.py` to create a new staging tree and build evidence, then validate the staged tree and run `scripts/smoke_codex_plugin.py`. These commands copy the four complete skill directories and perform no global install, provider call, publication, or deployment.
+Use `scripts/build_codex_plugin.py` to create a new staging tree and build evidence, then validate the staged tree and run `scripts/smoke_codex_plugin.py`. These commands copy the four complete skill directories into a local staging output and preserve external deployment state.
 
-A release build additionally requires a canonical `release-authorization/1` file created by `scripts/create_release_authorization.py` from the signed-clean source revision, the verified staged plugin, the deterministic static report, and a non-empty release-owner attestation. Staging builds reject this authorization; release builds require and identity-check it. Scored evaluation reports are not packaging authorization.
+A release build additionally requires a canonical `release-authorization/2` file created by `scripts/create_release_authorization.py` from the signed-clean source revision, verified staged plugin, live static gate, and release-owner attestation. Release mode binds its content digest; staging mode remains a local source-completeness build. Scored evaluation and packaging authorization remain separate claims.
 
 Release mode also requires `--marketplace-root` and `--marketplace-archive-output`. The deterministic ZIP has `.agents/plugins/marketplace.json` and `plugins/frontier-engineering-plugin/` at its root, preserves canonical file modes, and is verified against the same release plugin tree before publication. Staging mode rejects both marketplace outputs.
 
 ## Same-thread Codex skill reload supervisor
 
-This optional developer tool is not used by the Bundle 6.3.1 source-complete or release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles. It never calls `fork`, never selects `--last`, never edits global Codex configuration, and never drives the TUI with synthesized keystrokes. It owns a local Unix-socket app-server and launches every TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
+This optional developer tool sits outside the Bundle 7.0.0 source-complete and release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles through a local Unix-socket app-server and launches each replacement TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
 
 The protocol is fail-closed and pinned to `codex-cli 0.144.6`. Validate the CLI schema and local Unix WebSocket transport before the first run:
 
@@ -112,8 +112,6 @@ Any CLI version drift, schema drift, thread/cwd mismatch, permission mismatch, p
 
 ## Evaluation boundary
 
-The [Skill Evaluator entrypoint](skill-evaluator/SKILL.md) remains an explicit-only product for users who deliberately request structured Skill evaluation. Its runtime evaluator and model-evolution sentinels are not invoked by ordinary development or the Bundle 6.3.1 source-complete path. The offline comparator consumes only explicitly supplied immutable cycle capsules and makes no scored usefulness, installation, or deployment claim on behalf of this bundle.
+The [Skill Evaluator entrypoint](skill-evaluator/SKILL.md) remains an explicit-only product for structured Skill evaluation. Bundle 7.0.0 source-completeness uses deterministic local gates; scored runtime evaluation and model-evolution qualification remain explicit evaluator operations. The offline comparator consumes explicitly supplied immutable cycle capsules and reports only the comparison claim they support.
 
-For the Bundle 6.3 / Skill Evaluator 3.3 upgrade, source rollback restores bundle 6.2.0 / Skill Evaluator 3.2.0 semantics at signed commit `9687f6d0590a229c5e082b09ab548c397f27cad3` through an ordinary revert; do not use a destructive worktree reset. Installed rollback requires a separately verified bundle-6.2 staged plugin/archive and never implies publication or deployment authority.
-
-Version 4 workflow/card/plan state is not read, migrated, aliased, or dual-written. Finish an active 4.x task under 4.x, or terminate it explicitly and restart from current repository truth.
+Rollback uses an ordinary revert to a selected signed predecessor. Installed rollback uses a separately verified predecessor plugin or archive under the same deployment authority boundary.

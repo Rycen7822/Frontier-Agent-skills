@@ -6,8 +6,7 @@ Decide evidence coverage/freshness, verifier independence, and the exact invalid
 ## Use when
 - A claim depends on multi-item, sampled, truncated, stale, candidate-influenced, changed, or preserved evidence/state.
 
-## Do not use when
-- One fresh bounded proof covers the whole declared seam and no relevant identity or dependency changed.
+One fresh bounded proof for the whole declared seam stays Direct and uses its existing proof owner.
 
 ## Required inputs
 - task context; source revision, explicit scope, environment facts, named external/raw artifact bindings; coverage and truncation metadata; required oracles/protected surfaces; typed dependencies and changed fields; side effects, authority, locks/leases/background work; and repair budget.
@@ -17,13 +16,13 @@ Decide evidence coverage/freshness, verifier independence, and the exact invalid
 2. Bind findings and proof to source revision, explicit scope, environment, producer, command/status, freshness policy, limitations, and raw evidence refs. Repository evidence uses revision plus path; transaction-owned derived evidence uses state revision plus path and consumer reprojection; external, unversioned, or non-replayable raw bytes use one digest. Re-observe these identities at review, fix, resume, and completion boundaries.
 3. Classify each oracle's authority, addressability, stability, discrimination, independence, protected inputs/thresholds/expected outputs, false-green risk, and cost/timeout/noise limit.
 4. Keep controller/policy, authoritative tests, benchmarks, thresholds, goldens, holdouts, authority manifests, and counterexample adapters outside candidate effects. Candidate-added tests are supplementary until independently reviewed, sensitivity-tested, lifecycle-accepted, and promoted by their owner.
-5. A verifier/kernel change requires an outer contract plus independent old/hidden/holdout proof; it cannot approve itself. Unavailable, skipped, self-derived, or non-discriminating evidence never counts as pass.
+5. A verifier/kernel change closes through an outer contract plus independent old/hidden/holdout proof. Pass evidence is available, executed, independently owned, and discriminating.
 6. Propagate changed refs through typed data/evidence/invariant/effect/resource/control dependencies; intersect declared fields and fail conservative when field detail is missing.
 7. Allow local repair only at one modeled owner seam when preserved dependencies remain fresh/equivalent, effects are known/reversible, precision proof exists, and retry/approval budget remains. Goal, authority, security, global invariant, root cause, multi-owner/shared state, uncertain rollback, or non-local changes require parent/global replan.
-8. Reconcile source/state revisions, explicit scope, each named external/raw binding, locks/leases, background work, effects, retry, and approvals before resume. A binding mismatch invalidates only its direct claims and consumers; never turn one opaque mismatch into a global replan or rerun. Never silently rewrite decisions, broaden scope, grant approval, weaken a gate, or retry a non-idempotent effect.
+8. Reconcile source/state revisions, explicit scope, each named external/raw binding, locks/leases, background work, effects, retry, and approvals before resume. A binding mismatch invalidates its direct claims and consumers; typed dependencies determine the smallest recheck or replan boundary. Settled decisions, scope, approvals, gates, and non-idempotent effects retain their named owners.
 
 ## Required result
-- One result in the current reply, existing owner state, or admitted fallback ledger with coverage ledger, freshness decision, oracle authority/independence map, protected surfaces, changed/affected/invalidated/preserved IDs, required rechecks, local-repair/global-replan/blocker decision, resume reconciliation, limitations, and evidence refs. Do not create a `control-evidence-*.json` or a second projection.
+- One result in the current reply, existing owner state, or admitted fallback ledger with coverage ledger, freshness decision, oracle authority/independence map, protected surfaces, changed/affected/invalidated/preserved IDs, required rechecks, local-repair/global-replan/blocker decision, resume reconciliation, limitations, and evidence refs. That selected owner is the sole projection.
 
 ## Stop
-Stop any completion/approval/publication claim with unread, stale, truncated, self-graded, unavailable, or insufficiently local evidence.
+Completion, approval, and publication claims require fresh, sufficiently local, independently owned evidence with disclosed coverage and truncation.

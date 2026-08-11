@@ -79,11 +79,6 @@ def _content_hash(path: Path) -> str:
     return "sha256:" + digest.hexdigest()
 
 
-def _canonical_hash(value: dict[str, Any]) -> str:
-    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return "sha256:" + sha256(payload).hexdigest()
-
-
 def _safe_environment(isolated_home: Path) -> dict[str, str]:
     environment = {
         key: value
@@ -284,10 +279,11 @@ def _expect_single_plugin_list(
 def _verify_static_evidence(static_path: Path, build: dict[str, Any]) -> dict[str, Any]:
     static = _strict_json(static_path)
     expected = {
-        "schema_version": "static-plugin-smoke/3.0",
+        "schema_version": "static-plugin-smoke/4.0",
+        "bundle_id": build.get("bundle_id"),
+        "bundle_version": build.get("bundle_version"),
         "plugin_name": EXPECTED_PLUGIN,
         "plugin_tree_hash": build.get("plugin_tree_hash"),
-        "build_evidence_hash": build.get("evidence_hash"),
         "activation_ceiling": build.get("activation_ceiling"),
         "actual_codex_cli_install": False,
         "model_invoked": False,
@@ -329,16 +325,12 @@ def run_cli_smoke(
         raise ValueError("work root must be a real directory")
     build = _strict_json(build_evidence_path)
     if (
-        build.get("schema_version") != "plugin-build-evidence/3.0"
+        build.get("schema_version") != "plugin-build-evidence/4.0"
         or build.get("plugin_name") != EXPECTED_PLUGIN
         or build.get("activation_ceiling") != "implicit_local_pilot"
         or build.get("skill_activation") != EXPECTED_ACTIVATION
     ):
         raise ValueError("CLI smoke build evidence identity is invalid")
-    unhashed_build = dict(build)
-    observed_build_hash = unhashed_build.pop("evidence_hash", None)
-    if observed_build_hash != _canonical_hash(unhashed_build):
-        raise ValueError("build evidence self-hash is invalid")
     static = _verify_static_evidence(static_smoke_path, build)
     if static != isolated_smoke(plugin_root, build_evidence_path):
         raise ValueError("static smoke evidence is not reproducible from the staged plugin")
@@ -534,23 +526,22 @@ def run_cli_smoke(
 
         activation_ceiling = build["activation_ceiling"]
         output_class = build.get("output_class")
-        release_binding = build.get("release_authorization_hash")
+        release_binding = build.get("release_authorization_digest")
         if output_class == "staging" and release_binding is not None:
             raise ValueError("staging build must not bind release authorization")
         if output_class == "release" and not (
             isinstance(release_binding, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", release_binding)
         ):
-            raise ValueError("release build must bind hashed release authorization")
+            raise ValueError("release build must bind the release authorization digest")
         if output_class not in {"staging", "release"}:
             raise ValueError("build evidence output class is invalid")
         release_eligible = output_class == "release"
         result: dict[str, Any] = {
-            "schema_version": "cli-install-smoke/3.0",
+            "schema_version": "cli-install-smoke/4.0",
+            "bundle_id": build["bundle_id"],
             "plugin_name": EXPECTED_PLUGIN,
             "bundle_version": build["bundle_version"],
             "plugin_tree_hash": build["plugin_tree_hash"],
-            "build_evidence_hash": build["evidence_hash"],
-            "static_smoke_content_hash": _content_hash(static_smoke_path),
             "activation_ceiling": activation_ceiling,
             "release_gate": "passed" if release_eligible else "blocked_prerequisites",
             "blocking_prerequisites": [] if release_eligible else [
@@ -584,7 +575,6 @@ def run_cli_smoke(
             "implicit_route_invocation": "not_run_model_free",
             "commands": commands,
         }
-        result["evidence_hash"] = _canonical_hash(result)
         return result
 
 
@@ -620,9 +610,10 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(
             {
                 "ok": True,
-                "plugin_tree_hash": result["plugin_tree_hash"],
-                "actual_codex_cli_install": True,
-                "activation_ceiling": result["activation_ceiling"],
+                "bundle_id": result["bundle_id"],
+                "bundle_version": result["bundle_version"],
+                "installed": result["actual_codex_cli_install"],
+                "source_installed_equal": result["cache_matches_staging"],
             },
             ensure_ascii=False,
         )
