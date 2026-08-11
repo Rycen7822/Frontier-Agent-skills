@@ -12,12 +12,12 @@ DEFINITION = {
         "lifecycle-cleanup",
     ],
     "grader_rules": [
-        "A case-specific rule applies only when task_evidence.case_id is byte-for-byte equal to the full named ID; ignore it for every shorter, longer, prefix, suffix, or semantically similar ID.",
-        "For this Skill, an evidence owner is the smallest code, API, config, test, or component controlling the behavior; a team or role alone is insufficient.",
-        "When the task requests a behavior-focused check, syntax-only compilation is insufficient.",
-        "For software-quality-workflows-single-specialist-risk, judge only the requested specialist risk, concrete behavior owner, focused correction, and verification boundary; do not require a durable-state decision, escalation set, authority, or Git provenance.",
-        "For software-quality-workflows-retire-dead-code, quality and process require the exact legacy function and obsolete-test deletion plus a zero-reference scan; a related post-deletion behavior test is proportionate validation, not unrelated workflow.",
-        "For software-quality-workflows-protected-no-state, quality and process require the exact unapplied tmp-to-normalized_path rename plus one focused check; syntax-only compilation is sufficient because this public task does not request a behavior-focused check, no digest may be calculated or reported because no cross-boundary consumer exists, and do not import the heldout case requirements.",
+        "Apply a case-specific rule only when task_evidence.case_id exactly equals its full named ID.",
+        "For this Skill, the evidence owner answer names the smallest code, API, config, test, or component controlling the behavior.",
+        "A requested behavior-focused check passes with behavioral evidence at the changed seam.",
+        "For software-quality-workflows-single-specialist-risk, the complete result contains the requested specialist risk, concrete behavior owner, focused correction, and verification boundary.",
+        "For software-quality-workflows-retire-dead-code, quality and process require the exact legacy function and obsolete-test deletion plus a zero-reference scan; a related post-deletion behavior test counts as proportionate validation.",
+        "For software-quality-workflows-protected-no-state, the exact unapplied tmp-to-normalized_path rename plus one syntax check is the complete Direct result.",
         (
             "For software-quality-workflows-durable-resume-boundary, quality and "
             "process require durable state because work crosses contexts, exactly one "
@@ -26,13 +26,12 @@ DEFINITION = {
             "readable evidence index with coverage, producer, command/status, oracle "
             "authority, freshness, limitations, changed/preserved facts, required "
             "recheck and raw refs, retention of the named non-replayable artifact with "
-            "one digest, and invalidation limited to the changed helper's absent "
-            "consumer; explicitly exclude leases, daemons, event stores, compatibility "
-            "readers, a second ledger, and printing the digest, and do not require "
-            "creating files in this read-only task."
+            "one digest, and an empty invalidation set because the changed helper has "
+            "zero consumers. The response reports this disposition directly while the "
+            "TASK_KEY and digest remain machine-side."
         ),
-        "For software-quality-workflows-single-specialist-risk-heldout, quality and process require log_request as the behavior owner, no durable state for this local single-owner task, the complete escalation set of cross-context work, destructive or external effects, staged migration or release, and multiple writers, plus one credential-safe correction and behavior check; authority and Git provenance remain excluded.",
-        "For software-quality-workflows-protected-no-state-heldout, quality and process require the Direct route, the unapplied tmp-to-normalized_path rename, one behavior check, and exclusion of references, workflow or router state, cards, persistent state, JSON receipts, and ledgers.",
+        "For software-quality-workflows-single-specialist-risk-heldout, quality and process identify log_request as the behavior owner, classify the local single-owner task as Direct, state the durable-escalation conditions, and provide one credential-safe correction and behavior check.",
+        "For software-quality-workflows-protected-no-state-heldout, the complete Direct result is the unapplied tmp-to-normalized_path rename plus one behavior check.",
     ],
     "process_evidence": [
         "the change map names `log_request` as the smallest controlling code owner for plaintext Authorization disclosure before editing",
@@ -40,7 +39,7 @@ DEFINITION = {
         "the obsolete path is removed and the reference scan reports no live owner",
     ],
     "fixtures": {
-        "fixtures/work-boundary.md": "The work must resume in a different context. There is one writer. Repository and host state cannot persist the owner seam, next action, or proof. A captured external response at `evidence/provider-output.json` is non-replayable and already has one canonical digest binding. An unrelated helper checksum changed, but no claim or consumer uses it. The work is local-only, non-destructive, and is not a migration or release.\n",
+        "fixtures/work-boundary.md": "Scope: local-only, non-destructive, single-writer continuity across contexts. Repository and host state are unavailable for the owner seam, next action, and proof. A captured external response at `evidence/provider-output.json` is non-replayable and already has one canonical digest binding. The changed helper has zero named consumers.\n",
         "fixtures/src/logger.py": "def log_request(request, debug):\n    debug.write(request.headers['Authorization'])\n",
         "fixtures/src/upload.py": "def target(root, filename):\n    return root / filename\n",
         "fixtures/src/payment.py": "def charge(client, payment):\n    return client.retry(lambda: client.post('/charge', payment))\n",
@@ -53,7 +52,7 @@ DEFINITION = {
         {
             "id": "durable-resume-boundary",
             "coverage": "durable-state",
-            "task": "Read `fixtures/work-boundary.md`. Apply the bound durable escalation contract. State whether durable state is required, name the exact locator and minimal mechanism, list the readable evidence fields and raw-artifact disposition, limit invalidation to the actual consumer, and exclude every prohibited mechanism. Do not create files or print a digest value.",
+            "task": "Read `fixtures/work-boundary.md`. Return the durable-state disposition, locator category, single minimal mechanism, readable evidence fields, raw-artifact retention, and consumer-local invalidation. Keep machine-side locator and digest values internal.",
             "protected": False,
             "turns": 1,
             "initial_files": ["fixtures/work-boundary.md"],
@@ -111,12 +110,12 @@ DEFINITION = {
         {
             "id": "protected-no-state",
             "coverage": "protected",
-            "task": "Read `fixtures/src/path.py`. Provide patch text that renames only `tmp` to `normalized_path`, plus one focused check. Do not claim application, create cards, call reviewers, persist workflow state, or calculate/report a hash.",
+            "task": "Read `fixtures/src/path.py`. Return an unapplied patch that renames only `tmp` to `normalized_path`, plus one focused check, as the complete Direct result.",
             "protected": True,
             "turns": 1,
             "initial_files": ["fixtures/src/path.py"],
             "semantic_oracle": [
-                "two-line local rename preserves behavior and creates no workflow state or digest"
+                "two-line local rename preserves behavior as one Direct response"
             ],
         },
     ],

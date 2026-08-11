@@ -71,9 +71,9 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
         rules = "\n".join(definition["grader_rules"])
         self.assertIn("machine-only TASK_KEY", rules)
         self.assertIn("non-replayable artifact with one digest", rules)
-        self.assertIn("limit invalidation to the actual consumer", durable["task"])
-        self.assertIn("Do not create files or print a digest value", durable["task"])
-        self.assertIn("or calculate/report a hash", protected["task"])
+        self.assertIn("consumer-local invalidation", durable["task"])
+        self.assertIn("machine-side locator and digest values internal", durable["task"])
+        self.assertIn("complete Direct result", protected["task"])
 
     def test_index_is_exact_four_and_every_binding_resolves(self) -> None:
         validate_document(self.index, "sentinel_index")
@@ -288,8 +288,8 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
         direct_task = long_tasks[
             "long-document-segmented-writing-direct-small-task"
         ]["execution_context"]["task"]
-        self.assertIn("briefly explain why", direct_task)
-        self.assertNotIn("two sentences", direct_task)
+        self.assertIn("brief reason", direct_task)
+        self.assertIn("complete response", direct_task)
         self.assertIn("bound compact ledger contract", long_tasks[
             "long-document-segmented-writing-compact-recovery"
         ]["execution_context"]["task"])
@@ -312,7 +312,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             if row["case_id"] == "software-quality-workflows-durable-resume-boundary"
         )
         self.assertIn(
-            "bound durable escalation contract",
+            "durable-state disposition",
             quality_case["execution_context"]["task"],
         )
         self.assertEqual(
@@ -346,27 +346,26 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
         }
         for skill_id, rules in expected.items():
             prompt = (SENTINEL_ROOT / skill_id / "grader-prompt.md").read_text()
-            self.assertIn("byte-for-byte equal to the full named ID", prompt)
+            self.assertIn("case_id exactly equals its full named ID", prompt)
             for rule in rules:
                 self.assertIn(rule, prompt)
         self.assertIn(
-            "exit 3, no change to that exit from --report-only, and an "
-            "inconclusive_ceiling maximum claim in the final artifact directly "
-            "demonstrate quality and process. An answer may also state that "
-            "--report-only generally changes only exit 1 to 0; that is consistent "
-            "with this result, not a contradiction. Do not require a fixture-read trace "
-            "or reference_load_count",
+            "exit 3, the same exit under --report-only, and "
+            "inconclusive_ceiling as the maximum claim",
             (SENTINEL_ROOT / "skill-evaluator" / "grader-prompt.md").read_text(),
         )
         self.assertIn(
-            "Both import argparse with argparse.ArgumentParser and from argparse "
-            "import ArgumentParser with ArgumentParser satisfy it",
+            "--report-only generally remaps only exit 1",
+            (SENTINEL_ROOT / "skill-evaluator" / "grader-prompt.md").read_text(),
+        )
+        self.assertIn(
+            "both `import argparse` with `argparse.ArgumentParser` and "
+            "`from argparse import ArgumentParser` with `ArgumentParser` pass",
             (SENTINEL_ROOT / "writing-plans" / "grader-prompt.md").read_text(),
         )
         self.assertIn(
-            "the existing handoff artifacts are exactly the signed implementation "
-            "commit and passing unit-test result. Immutable artifact verification is "
-            "explicitly still pending",
+            "signed commit, passing unit test, pending immutable-artifact "
+            "verification command",
             (SENTINEL_ROOT / "writing-plans" / "grader-prompt.md").read_text(),
         )
 
@@ -381,7 +380,7 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
                 (
                     "`fixtures/agents/openai.yaml`",
                     "from 8.2.0 to 8.2.1",
-                    "Preserve its full description verbatim",
+                    "complete description remains verbatim",
                 ),
             ),
         }
@@ -411,13 +410,13 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
         )
         task = case["execution_context"]["task"]
         self.assertIn("multi-session implementation Program", task)
-        self.assertIn("Do not edit files or execute the plan", task)
+        self.assertIn("complete artifact", task)
         prompt = (root / "grader-prompt.md").read_text()
         for text in (
             "explicit non-Git identity",
-            "freshness-bound attestation or one combined preflight",
+            "a freshness preflight",
             "one-release zero-legacy removal condition",
-            "ordinal-only dependencies",
+            "named milestone dependencies",
         ):
             self.assertIn(text, prompt)
 
@@ -669,29 +668,30 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
             self.assertIn("only when the task explicitly requires execution", prompt)
             self.assertIn("do not add a check or step absent from the task", prompt)
             if skill_id == "software-quality-workflows":
-                self.assertIn("a team or role alone is insufficient", prompt)
-                self.assertIn("syntax-only compilation is insufficient", prompt)
+                self.assertIn("evidence owner answer names the smallest", prompt)
+                self.assertIn("behavioral evidence at the changed seam", prompt)
             elif skill_id == "long-document-segmented-writing":
                 self.assertIn("Current recovery anchor", prompt)
                 skill_body = (REPOSITORY_ROOT / skill_id / "SKILL.md").read_text(encoding="utf-8")
                 self.assertIn("contains exactly four labeled fields", skill_body)
                 self.assertIn("emit no opening status or other ledger section", skill_body)
                 self.assertIn("compaction-resume", prompt)
-                self.assertIn("intermediate recovery anchor", prompt)
-                self.assertIn("four-field rule does not apply", prompt)
+                self.assertIn("turn one owns the recovery anchor", prompt)
+                self.assertIn("final self-contained two-section report", prompt)
                 self.assertIn("full-mode-selection", prompt)
                 self.assertIn("ordered section drafts", prompt)
             elif skill_id == "skill-evaluator":
                 self.assertIn("evaluator directory variable", prompt)
-                self.assertIn("repository-relative substitute", prompt)
+                self.assertIn("sole spec input", prompt)
+                self.assertIn("validator and input owners", prompt)
             elif skill_id == "writing-plans":
-                self.assertIn("resolve only executable command arguments", prompt)
-                self.assertIn("Markdown link display text and link targets", prompt)
+                self.assertIn("Resolve command arguments", prompt)
+                self.assertIn("Markdown links remain source labels", prompt)
                 self.assertIn("one coherent starting cwd", prompt)
                 self.assertIn("-p no:cacheprovider", prompt)
-                self.assertIn("raw substring exclusion", prompt)
-                self.assertIn("exactly the version line", prompt)
-                self.assertIn("invented file-shape requirement", prompt)
+                self.assertIn("identifier-aware checks distinguish", prompt)
+                self.assertIn("complete observed description verbatim", prompt)
+                self.assertIn("verify both lines exactly", prompt)
             self.assertIn("Within calibration items", prompt)
             self.assertIn("not an abstention", prompt)
             self.assertIn("`uncertainty` to `high`", prompt)

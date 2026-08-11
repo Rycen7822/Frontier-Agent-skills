@@ -36,7 +36,7 @@
       "path": "tests/test_legacy.py"
     },
     {
-      "digest": "sha256:5bfc0f873a7d842e2a13628dd0775216d39ed85ef5c099485feb3f765dbdbdf8",
+      "digest": "sha256:2b899c402fd8ce277f39ff9d2a6cde5cedae970366c35cb8da2ca5155991b278",
       "encoding": "utf-8",
       "path": "work-boundary.md"
     }

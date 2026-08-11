@@ -49,7 +49,7 @@ class TestExtendedReceipts(SkillEvaluatorTestCase):  # noqa: F405
             'receipt': json.loads(receipt_path.read_text(encoding='utf-8')),
         }
 
-    def test_receipt_v4_schema_allows_empty_protocol_only_for_resume_seal(
+    def test_receipt_v5_schema_allows_empty_protocol_only_for_resume_seal(
         self,
     ) -> None:
         validator = load_validator_module()

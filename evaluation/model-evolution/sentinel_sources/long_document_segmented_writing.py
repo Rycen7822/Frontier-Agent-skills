@@ -10,9 +10,9 @@ DEFINITION = {
     "verifier_source": "long_document_segmented_writing_verifier.py",
     "claims": ["segmented-writing", "compaction-recovery", "whole-draft-review"],
     "grader_rules": [
-        "For long-document-segmented-writing-compact-recovery, quality passes only when the artifact has distinct Current recovery anchor, Next action, Final-assembly order, and Confidence gaps/proof fields bound to the supplied facts; a generic section/source/decision summary is insufficient, and the explicit output-only instruction forbids a separate opening-status triplet.",
-        "For long-document-segmented-writing-compaction-resume, quality judges only the final self-contained two-section report and its distinction between request retries and fresh attempts; the intermediate recovery anchor is not a required final-report field, and the compact-recovery four-field rule does not apply.",
-        "For long-document-segmented-writing-full-mode-selection, quality passes only when it selects full because the source count exceeds 12 and names one scope, source inventory, reading ledger, section matrix, recovery packet, ordered section drafts, confidence review, and final document; a generic full-workflow label is insufficient.",
+        "For long-document-segmented-writing-compact-recovery, quality passes when the sole recovery block has distinct Current recovery anchor, Next action, Final-assembly order, and Confidence gaps/proof fields bound to the supplied facts.",
+        "For long-document-segmented-writing-compaction-resume, turn one owns the recovery anchor; quality evaluates the final self-contained two-section report and requires the correct distinction between request retries and fresh attempts.",
+        "For long-document-segmented-writing-full-mode-selection, quality passes when 13 sources select full mode and the answer names scope, source inventory, reading ledger, section matrix, recovery packet, ordered section drafts, confidence review, and final document.",
     ],
     "process_evidence": [
         "the source inventory is mapped to bounded draft sections",
@@ -34,7 +34,7 @@ DEFINITION = {
         {
             "id": "direct-small-task",
             "coverage": "direct",
-            "task": "Read `fixtures/service-scope.md`. State directly whether another host can reach the service and briefly explain why. Do not create workflow state.",
+            "task": "Read `fixtures/service-scope.md`. Return one direct statement of reachability plus a brief reason as the complete response.",
             "protected": False,
             "turns": 1,
             "initial_files": ["fixtures/service-scope.md"],
@@ -59,7 +59,7 @@ DEFINITION = {
         {
             "id": "full-mode-selection",
             "coverage": "mode-selection",
-            "task": "Read `fixtures/mode-selection.md`. Apply the bound long-document mode thresholds. State the selected mode, the triggering threshold fact, and every canonical artifact class owned by that mode. Do not draft the document.",
+            "task": "Read `fixtures/mode-selection.md`. Apply the bound long-document mode thresholds. Return only the selected mode, the triggering threshold fact, and every canonical artifact class owned by that mode.",
             "protected": False,
             "turns": 1,
             "initial_files": ["fixtures/mode-selection.md"],
@@ -97,12 +97,12 @@ DEFINITION = {
         {
             "id": "protected-no-scratch",
             "coverage": "protected",
-            "task": "Read `fixtures/completion.md` and state the completion rate directly. Do not create scratch files or expose internal workflow text.",
+            "task": "Read `fixtures/completion.md` and return the completion rate as the complete response.",
             "protected": True,
             "turns": 1,
             "initial_files": ["fixtures/completion.md"],
             "semantic_oracle": [
-                "completion rate is 100 percent with no workflow artifact"
+                "completion rate is 100 percent in one direct response"
             ],
         },
     ],
