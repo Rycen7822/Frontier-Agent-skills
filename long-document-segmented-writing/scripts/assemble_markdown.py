@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -152,22 +151,15 @@ def _candidate(sources: list[tuple[Path, bytes]]) -> bytes:
 
 def _status(status: str, raw: bytes) -> str:
     return json.dumps(
-        {"status": status, "bytes": len(raw), "sha256": "sha256:" + sha256(raw).hexdigest()},
+        {"status": status, "bytes": len(raw)},
         ensure_ascii=False,
         separators=(",", ":"),
     )
 
 
 def _style_status(sources: list[tuple[Path, bytes]]) -> str:
-    digest = sha256()
-    digest.update(b"source-style-v1\0")
-    total = 0
-    for _, raw in sources:
-        total += len(raw)
-        digest.update(len(raw).to_bytes(8, "big"))
-        digest.update(raw)
     return json.dumps(
-        {"status": "source_style_valid", "bytes": total, "sha256": "sha256:" + digest.hexdigest()},
+        {"status": "source_style_valid", "bytes": sum(len(raw) for _, raw in sources)},
         ensure_ascii=False,
         separators=(",", ":"),
     )

@@ -2,7 +2,7 @@
 
 DEFINITION = {
     "name": "Long Document Segmented Writing",
-    "version": "1.1.3",
+    "version": "2.0.0",
     "context_ceiling": 32768,
     "minimum_baseline_failure_cases": 2,
     "process_required": False,

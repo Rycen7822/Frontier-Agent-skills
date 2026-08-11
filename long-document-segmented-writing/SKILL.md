@@ -2,7 +2,7 @@
 name: long-document-segmented-writing
 description: Use when Codex must read many files or a large source corpus and produce or substantially rewrite a long document, technical report, manual, roadmap, architecture guide, thesis-like draft, research synthesis, or other self-contained text. Preserves recovery state while keeping routine long-document work compact.
 metadata:
-  version: 1.1.3
+  version: 2.0.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -93,7 +93,7 @@ Outside fenced code, one prose paragraph, list item, or blockquote paragraph occ
 
 Run the assembler's source-style check against the Direct final file or every segmented ledger, draft shard, confidence review, and final prose source before promotion:
 
-Run each source-style invocation as a dedicated command whose stdout contains only the canonical status line. Do not chain `wc`, readers, assembly, or any other command; perform the bounded final reread separately after the status is captured.
+Run each source-style invocation as a dedicated command whose stdout contains only `status` and total `bytes`; it is validation feedback, not an evidence identity, and contains no digest. Do not chain `wc`, readers, assembly, or any other command; perform the bounded final reread separately after the status is captured.
 
 ```bash
 python3 "$LONG_DOCUMENT_SKILL_ROOT/scripts/assemble_markdown.py" \
@@ -126,7 +126,7 @@ python3 "$LONG_DOCUMENT_SKILL_ROOT/scripts/assemble_markdown.py" \
   --check
 ```
 
-Successful stdout is one compact JSON status line. The tool creates no manifest, sidecar, receipt, or worknote.
+Successful stdout is one compact JSON line containing only `status` and output `bytes`. The tool creates no digest, manifest, sidecar, receipt, or worknote; deterministic proof comes from direct candidate/output byte comparison.
 
 ## Whole-document verification
 

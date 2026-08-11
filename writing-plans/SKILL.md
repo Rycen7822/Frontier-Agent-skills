@@ -2,7 +2,7 @@
 name: writing-plans
 description: "Write source-bound software implementation Handoffs and multi-session Programs from settled decisions; not diagnosis or execution."
 metadata:
-  version: 8.2.8
+  version: 8.3.0
 ---
 
 Handoff crosses contexts; Program tracks a changing frontier; otherwise stay native. Skill-source changes use skill authoring. Do not decide, diagnose, execute, verify or claim.
@@ -36,6 +36,6 @@ The Resume row resolves root anew; exclude the named plan deliverable itself (in
 
 Next action: first edit/result/check; inspect only if blocked. Use the prompt-bound verification command. When the prompt binds exact files and required checks but omits a repository-wide runner, state the narrow checks implied by those bindings and leave only the broader runner as a later blocker; do not block the plan or invent a full-suite command. The repository's test owner supplies any broader Proof. Prefix tests with `PYTHONDONTWRITEBYTECODE=1`; use `python -m unittest <repo-test>`, or `python -m pytest -p no:cacheprovider`; other owners disable residue in-command or include exact cleanup. Split Proof only on failure or an independent long check.
 
-Before return, reject a required Resume without attestation acceptance or one-preflight fallback, an unnamed dependency, or an explicit edit missing a promised preserved transformation/invariant. After writing, allow at most one combined planner-only non-content confirmation (status/hash/`git diff --check`); never put it in the executor plan. Do not reopen, print or diff contents. After Proof, run no status, diff, test, or confirmation.
+Before return, reject a required Resume without attestation acceptance or one-preflight fallback, an unnamed dependency, or an explicit edit missing a promised preserved transformation/invariant. After writing, allow at most one combined planner-only non-content confirmation using `git diff --check` or the owner-supplied non-content check; never calculate a plan/document hash. Never put it in the executor plan. Do not reopen, print or diff contents. After Proof, run no status, diff, test, or confirmation.
 
 Reply only with plan/named Markdown; do not instruct execution to modify the plan. No sidecar/state/copy, source edits or completion claims.

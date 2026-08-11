@@ -55,9 +55,13 @@ class ModelEvolutionSentinelTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), {"ok": True})
 
-    def test_sqw_source_preserves_evidence_without_hash_workflow(self) -> None:
+    def test_updated_skill_sources_preserve_contracts(self) -> None:
         definition = sentinel_builder.SKILLS["software-quality-workflows"]
         self.assertEqual("10.0.0", definition["version"])
+        self.assertEqual("8.3.0", sentinel_builder.SKILLS["writing-plans"]["version"])
+        self.assertEqual(
+            "2.0.0", sentinel_builder.SKILLS["long-document-segmented-writing"]["version"]
+        )
         durable = next(
             row for row in definition["cases"] if row["id"] == "durable-resume-boundary"
         )
