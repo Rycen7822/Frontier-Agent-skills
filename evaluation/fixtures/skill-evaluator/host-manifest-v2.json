@@ -62,7 +62,7 @@
         "status": "pass",
         "artifact": {
           "path": "synthetic-host.py",
-          "digest": "sha256:16e5812c2218a07bdb4eff49010f7ff4c5db53f469119cccfa0d93e09074f99e",
+          "digest": "sha256:74a5ee69f564988eda5c1b72cf5118bb2c1517022e8d27d6595435b7f3d4ee83",
           "encoding": "utf-8"
         },
         "locator": {
@@ -137,7 +137,7 @@
       "status": "pass",
       "artifact": {
         "path": "synthetic-host.py",
-        "digest": "sha256:16e5812c2218a07bdb4eff49010f7ff4c5db53f469119cccfa0d93e09074f99e",
+        "digest": "sha256:74a5ee69f564988eda5c1b72cf5118bb2c1517022e8d27d6595435b7f3d4ee83",
         "encoding": "utf-8"
       },
       "locator": {

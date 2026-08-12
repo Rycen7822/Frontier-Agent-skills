@@ -10,6 +10,7 @@ This directory owns the bounded qualification campaign used when a Codex Host or
 - `schemas/qualification-v2.schema.json` defines the deterministic qualification projection.
 - `codex-interaction-probes-v2.json` contains six model-independent Host probes.
 - `sentinel-index-v2.json` binds the four generated public suites under `sentinels/`.
+- `evaluation/fixtures/skill-evaluator/` is the single model-free compile-run-analyze fixture used by controller preflight and the public lifecycle test.
 - `scripts/build_model_evolution_sentinels.py` is the tracked-artifact generator.
 - `scripts/model_evolution.py` is the campaign command-line entry point.
 
@@ -34,17 +35,14 @@ Every mutation uses `--expected-revision`. Long-running evaluation remains owned
 
 ## Development verification
 
-Run the focused local modules:
+Run the model-free source gates and the compact public lifecycle suite:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tests python3 -m pytest \
-  tests/test_model_evolution_documents.py \
-  tests/test_model_evolution_state.py \
-  tests/test_model_evolution_materialization.py \
-  tests/test_model_evolution_host.py \
-  tests/test_model_evolution_cli.py \
-  tests/test_model_evolution_sentinels.py \
-  tests/test_extended_model_calibration.py -q
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/build_model_evolution_sentinels.py --check
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/evaluate_static_contracts.py --check
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
+  tests/test_extended_skill_evaluator.py \
+  tests/test_extended_release.py -v
 ```
 
-The release verification then adds the registered Quick and Extended profiles, bundle and static checks, schema meta-validation, Ruff, archive inspection, and fresh-process plugin discovery.
+Model-evolution code is evaluation apparatus, so it does not own a second unit-test framework. A release campaign verifies it through the real preflight, one fake compile-run-analyze chain, registered profiles, archive inspection, and fresh-process plugin discovery.

@@ -240,13 +240,24 @@ def run_model_free_command(
 def _materialize_evaluator_fixture(
     repository_root: Path, target: Path
 ) -> dict[str, Path]:
-    code = (
-        "import sys; from pathlib import Path; "
-        f"sys.path.insert(0, {str(repository_root / 'tests')!r}); "
-        "from skill_evaluator_test_support import materialize_epoch6_contract_fixture; "
-        "materialize_epoch6_contract_fixture(Path(sys.argv[1]))"
+    source = repository_root / "evaluation/fixtures/skill-evaluator"
+    names = (
+        "grader-output.schema.json",
+        "host-manifest-v2.json",
+        "scenarios-v1.jsonl",
+        "spec-v6.json",
+        "suite-quality-proof.json",
+        "suite-quality-v2.json",
+        "synthetic-host.py",
     )
-    _run([sys.executable, "-c", code, str(target)], cwd=repository_root, timeout=60)
+    if target.exists() and any(target.iterdir()):
+        raise OperationError("evaluator fixture target is not empty")
+    target.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        path = source / name
+        if not path.is_file() or path.is_symlink():
+            raise OperationError(f"evaluator fixture is missing or unsafe: {name}")
+        shutil.copy2(path, target / name)
     return {
         "spec": target / "spec-v6.json",
         "scenarios": target / "scenarios-v1.jsonl",
@@ -859,7 +870,7 @@ def preflight_operations(
             )
         )
     operations.extend(fake_full_chain(repository_root))
-    qualification = project_qualification(
+    project_qualification(
         campaign,
         repository_root=repository_root,
         campaign_root=campaign_root,
@@ -1019,7 +1030,7 @@ def canonical_profile_commands(
         environment: list[str] = []
         while words and "=" in words[0] and not words[0].startswith("-"):
             environment.append(words.pop(0))
-        if set(environment) - {"PYTHONDONTWRITEBYTECODE=1", "PYTHONPATH=tests"}:
+        if set(environment) - {"PYTHONDONTWRITEBYTECODE=1"}:
             raise OperationError(
                 "canonical profile command has an unapproved environment override"
             )
