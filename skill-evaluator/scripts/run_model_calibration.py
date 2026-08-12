@@ -24,9 +24,9 @@ from evidence_io import (
 )
 import model_grade_transport as transport
 from validate_eval_suite import (
-    load_epoch6_schema_registry,
+    load_epoch7_schema_registry,
     validate_host_protocol_record,
-    validate_epoch6_schema,
+    validate_epoch7_schema,
 )
 
 
@@ -498,11 +498,11 @@ def run(args: argparse.Namespace) -> None:
     spec = load_json(spec_path)
     host = load_json(host_path)
     labels = [row for _, row in load_jsonl_objects(labels_path)]
-    registry = load_epoch6_schema_registry()
-    diagnostics = validate_epoch6_schema(spec, "eval-spec-v6.schema.json", registry)
+    registry = load_epoch7_schema_registry()
+    diagnostics = validate_epoch7_schema(spec, "eval-spec-v7.schema.json", registry)
     if diagnostics:
         raise CalibrationFailure(_first_diagnostic(diagnostics))
-    diagnostics = validate_epoch6_schema(host, "host-manifest-v2.schema.json", registry)
+    diagnostics = validate_epoch7_schema(host, "host-manifest-v2.schema.json", registry)
     if diagnostics:
         raise CalibrationFailure(_first_diagnostic(diagnostics))
     graders = [item for item in spec["graders"] if item["type"] == "model"]

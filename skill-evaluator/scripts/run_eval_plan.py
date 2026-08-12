@@ -41,9 +41,9 @@ from evidence_io import (
     verify_artifact_records,
 )
 from validate_eval_suite import (
-    load_epoch6_schema_registry,
+    load_epoch7_schema_registry,
     validate_host_protocol_record,
-    validate_epoch6_schema,
+    validate_epoch7_schema,
 )
 
 
@@ -193,8 +193,8 @@ def _load_plan(
     registry: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     plan = load_json(plan_path)
-    diagnostics = validate_epoch6_schema(
-        plan, "execution-plan-v2.schema.json", registry,
+    diagnostics = validate_epoch7_schema(
+        plan, "execution-plan-v3.schema.json", registry,
     )
     if diagnostics:
         raise RunnerFailure(_first_diagnostic(diagnostics))
@@ -215,7 +215,7 @@ def _find_bound_spec(
             continue
         if (
             isinstance(value, dict)
-            and value.get("schema_version") == 6
+            and value.get("schema_version") == 7
             and value.get("evaluation_id") == plan["evaluation_id"]
             and value.get("subject", {}).get("package", {}).get(
                 "source_revision"
@@ -224,7 +224,7 @@ def _find_bound_spec(
             matches.append(candidate)
     if len(matches) != 1:
         raise RunnerFailure(
-            "plan parent must contain exactly one matching epoch-6 spec",
+            "plan parent must contain exactly one matching epoch-7 spec",
         )
     return matches[0]
 
@@ -1944,7 +1944,7 @@ def _validate_receipt(
     attempt: int,
     registry: dict[str, dict[str, Any]],
 ) -> None:
-    diagnostics = validate_epoch6_schema(
+    diagnostics = validate_epoch7_schema(
         receipt, "receipt-v5.schema.json", registry,
     )
     if diagnostics:
@@ -2033,7 +2033,7 @@ def _row_from_receipt(
             "digest": file_sha256(receipt_path),
         },
     }
-    diagnostics = validate_epoch6_schema(
+    diagnostics = validate_epoch7_schema(
         row, "run-index-v3.schema.json", registry,
     )
     if diagnostics:
@@ -2085,7 +2085,7 @@ def _load_index(
         entry["entry_id"]: entry["entry_ordinal"] for entry in plan["entries"]
     }
     for position, row in enumerate(records):
-        diagnostics = validate_epoch6_schema(
+        diagnostics = validate_epoch7_schema(
             row, "run-index-v3.schema.json", registry,
         )
         if diagnostics:
@@ -2958,7 +2958,7 @@ def _runner_status(
         recoverable_attempts=recoverable,
         invalid_attempts=invalid_attempts,
     )
-    diagnostics = validate_epoch6_schema(
+    diagnostics = validate_epoch7_schema(
         status, "runner-status-v2.schema.json", registry,
     )
     if diagnostics:
@@ -3143,7 +3143,7 @@ def _selected_entries(
 def _run_command(args: argparse.Namespace) -> int:
     plan_path = Path(args.plan).resolve()
     try:
-        registry = load_epoch6_schema_registry()
+        registry = load_epoch7_schema_registry()
         plan = _load_plan(plan_path, registry)
         plan_digest = file_sha256(plan_path)
         spec, _, host, registry, spec_path = _load_bound_contract(

@@ -2,7 +2,7 @@
 name: skill-evaluator
 description: "Evaluate, benchmark, compare, regression-test, or security-audit an Agent Skill package. Use when deciding whether a skill triggers correctly, improves task outcomes over a no-skill or prior-version baseline, follows its intended process, remains efficient and safe, generalizes beyond development examples, or is ready to install, publish, or deploy."
 metadata:
-  version: 4.0.0
+  version: 5.0.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -54,7 +54,7 @@ L4 library-scale orchestration claims require selection, order, and composition 
 
 ## Decision invariants
 
-- The epoch-6 runtime decision path is spec v6, scenario v1 `requirements[]`, host manifest v2, one compiled plan v2, one run index v3, and receipts v5. The index binds plan bytes once and each receipt once; receipts bind independently consumed raw artifacts.
+- The epoch-7 runtime decision path is spec v7, scenario v1 `requirements[]`, host manifest v2, one compiled plan v3, one run index v3, and receipts v5. The index binds plan bytes once and each receipt once; receipts bind independently consumed raw artifacts.
 - L2+ contribution requires the same scenarios and controls for a no-Skill baseline and a candidate treatment: natural routing for a routing claim, or forced loading for explicit-invocation value. When both are declared, natural routing is the default comparison unless the analyzer caller selects the forced treatment; a prior comparator matches that mode.
 - Repeats diagnose run variability; inference resamples distinct case means. Point lift or absolute pass rate cannot replace the declared positive lower-bound benefit gate.
 - Metric denominators include complete valid evidence. Missing, duplicate, or tampered inputs produce an inconclusive usefulness state; treatment-attributable failures with complete Host evidence remain valid outcome failures.

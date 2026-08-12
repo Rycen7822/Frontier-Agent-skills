@@ -6,7 +6,7 @@ This file owns deterministic plan compilation, bounded runner behavior, host pro
 
 Before execution:
 
-1. audit the complete package and validate the frozen spec v6, scenario corpus, host manifest, and required preparation artifacts;
+1. audit the complete package and validate the frozen spec v7, scenario corpus, host manifest, and required preparation artifacts;
 2. prove required host capabilities with bound `pass|unsupported|unknown` probes;
 3. freeze execution identity, treatment intervention axes, catalogs, tools, permissions, fixtures, graders, reset, retry, clocks, and artifact root;
 4. compile one plan v2 and verify its schema, readable execution profile, compiler identity, dispositions, counts, authority, and output paths;

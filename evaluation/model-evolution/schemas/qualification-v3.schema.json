@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://frontier.local/model-evolution/qualification-v2.schema.json",
-  "title": "Frontier model qualification v2",
+  "$id": "https://frontier.local/model-evolution/qualification-v3.schema.json",
+  "title": "Frontier model qualification v3",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -22,7 +22,7 @@
     "evidence_refs"
   ],
   "properties": {
-    "schema_version": {"const": "model-qualification/2"},
+    "schema_version": {"const": "model-qualification/3"},
     "qualification_id": {"$ref": "#/$defs/safe_id"},
     "campaign_id": {"$ref": "#/$defs/safe_id"},
     "terminal_state_revision": {"type": "integer", "minimum": 0},
@@ -34,15 +34,23 @@
       "required": [
         "static_product",
         "host_integration",
+        "manual_authority",
         "task_behavior",
-        "context_cost",
+        "protected_safety",
+        "routing",
+        "operational_cost",
+        "loop_pathology",
         "longitudinal"
       ],
       "properties": {
         "static_product": {"$ref": "#/$defs/lane"},
         "host_integration": {"$ref": "#/$defs/lane"},
-        "task_behavior": {"$ref": "#/$defs/lane"},
-        "context_cost": {"$ref": "#/$defs/lane"},
+        "manual_authority": {"$ref": "#/$defs/lane"},
+        "task_behavior": {"$ref": "#/$defs/task_lane"},
+        "protected_safety": {"$ref": "#/$defs/lane"},
+        "routing": {"$ref": "#/$defs/lane"},
+        "operational_cost": {"$ref": "#/$defs/lane"},
+        "loop_pathology": {"$ref": "#/$defs/lane"},
         "longitudinal": {"$ref": "#/$defs/lane"}
       }
     },
@@ -64,8 +72,8 @@
     },
     "gates": {
       "type": "array",
-      "minItems": 9,
-      "maxItems": 9,
+      "minItems": 12,
+      "maxItems": 12,
       "items": {"$ref": "#/$defs/gate"}
     },
     "budget": {"$ref": "#/$defs/budget"},
@@ -154,10 +162,11 @@
     "skill_identity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "root_hash"],
+      "required": ["version", "root_hash", "allow_implicit_invocation"],
       "properties": {
         "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
-        "root_hash": {"$ref": "#/$defs/hash"}
+        "root_hash": {"$ref": "#/$defs/hash"},
+        "allow_implicit_invocation": {"type": "boolean"}
       }
     },
     "skill_identities": {
@@ -180,23 +189,23 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "source_commit",
-        "source_tree",
-        "plugin_tree",
         "bundle_id",
         "bundle_version",
+        "source_revision",
+        "source_tree_hash",
+        "plugin_tree_hash",
         "skills",
         "target_observed_host"
       ],
       "properties": {
-        "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-        "source_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-        "plugin_tree": {"$ref": "#/$defs/hash"},
         "bundle_id": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$"
         },
         "bundle_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "source_tree_hash": {"$ref": "#/$defs/hash"},
+        "plugin_tree_hash": {"$ref": "#/$defs/hash"},
         "skills": {"$ref": "#/$defs/skill_identities"},
         "target_observed_host": {
           "anyOf": [{"$ref": "#/$defs/binding"}, {"type": "null"}]
@@ -243,7 +252,16 @@
       "additionalProperties": false,
       "required": ["status", "evidence"],
       "properties": {
-        "status": {"enum": ["pass", "limited", "blocked", "unobserved"]},
+        "status": {"enum": ["pass", "blocked", "unobserved", "not_applicable"]},
+        "evidence": {"anyOf": [{"$ref": "#/$defs/binding"}, {"type": "null"}]}
+      }
+    },
+    "task_lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidence"],
+      "properties": {
+        "status": {"enum": ["pass", "blocked", "unobserved", "not_applicable", "limited_native_absorption"]},
         "evidence": {"anyOf": [{"$ref": "#/$defs/binding"}, {"type": "null"}]}
       }
     },
@@ -251,19 +269,25 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "current_usefulness",
-        "critical_protected_safety",
+        "task_behavior",
+        "protected_safety",
+        "routing",
+        "operational_cost",
+        "loop_pathology",
         "transition",
         "revision",
         "holdout",
         "blocker"
       ],
       "properties": {
-        "current_usefulness": {"enum": ["pass", "limited", "blocked", "unobserved"]},
-        "critical_protected_safety": {"enum": ["pass", "limited", "blocked", "unobserved"]},
-        "transition": {"enum": ["pass", "limited", "blocked", "unobserved"]},
-        "revision": {"enum": ["pass", "limited", "blocked", "unobserved"]},
-        "holdout": {"enum": ["pass", "limited", "blocked", "unobserved"]},
+        "task_behavior": {"enum": ["pass", "blocked", "unobserved", "not_applicable", "limited_native_absorption"]},
+        "protected_safety": {"enum": ["pass", "blocked", "unobserved", "not_applicable"]},
+        "routing": {"enum": ["pass", "blocked", "unobserved", "not_applicable"]},
+        "operational_cost": {"enum": ["pass", "blocked", "unobserved", "not_applicable"]},
+        "loop_pathology": {"enum": ["pass", "blocked", "unobserved", "not_applicable"]},
+        "transition": {"enum": ["pass", "blocked", "unobserved", "not_applicable"]},
+        "revision": {"enum": ["pass", "blocked", "unobserved", "not_applicable"]},
+        "holdout": {"enum": ["pass", "blocked", "unobserved", "not_applicable"]},
         "blocker": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]}
       }
     },
@@ -276,16 +300,19 @@
           "enum": [
             "apparatus",
             "identity_comparability",
+            "manual_authority",
             "critical_function",
             "safety_protected",
+            "routing",
+            "operational_cost",
+            "loop_pathology",
             "incremental_value",
             "revision",
-            "context_cost",
             "statistical_support",
             "release_identity"
           ]
         },
-        "status": {"enum": ["pass", "limited", "blocked", "unobserved"]},
+        "status": {"enum": ["pass", "blocked", "unobserved", "not_applicable", "limited_native_absorption"]},
         "evidence": {"anyOf": [{"$ref": "#/$defs/binding"}, {"type": "null"}]},
         "reason_code": {"anyOf": [{"$ref": "#/$defs/safe_id"}, {"type": "null"}]}
       }
@@ -348,8 +375,8 @@
           "uniqueItems": true,
           "items": {
             "enum": [
-              "source_commit",
-              "plugin_tree",
+              "source_revision",
+              "plugin_tree_hash",
               "host_identity",
               "model_revision",
               "tool_policy",

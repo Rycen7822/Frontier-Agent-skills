@@ -324,23 +324,23 @@ def _gate_diagnostics(
     blocking: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
     declared = {
-        kind: [
+        axis: [
             gate["gate_id"]
             for gate in candidate.spec["hard_gates"]
-            if gate["required"] is True and gate["kind"] == kind
+            if gate["required"] is True and gate["decision_axis"] == axis
         ]
-        for kind in policy["required_gates"]
+        for axis in policy["required_axes"]
     }
-    missing_kinds = [kind for kind, gate_ids in declared.items() if not gate_ids]
-    if missing_kinds:
+    missing_axes = [axis for axis, gate_ids in declared.items() if not gate_ids]
+    if missing_axes:
         blocking.append(capsule_diagnostic(
             plan,
             candidate,
             "spec",
             fact_type="evidence_gap",
             reason_key="revision_required_gate_undeclared",
-            expected=policy["required_gates"],
-            observed=missing_kinds,
+            expected=policy["required_axes"],
+            observed=missing_axes,
             json_pointer="/hard_gates",
         ))
         return blocking, failures
@@ -373,7 +373,7 @@ def _gate_diagnostics(
             fact_type="gate",
             reason_key="revision_required_gate_failed",
             roles=["candidate"],
-            expected="every frozen safety, protected, and context gate passes",
+            expected="every frozen gate on each required decision axis passes",
             observed=[item["failure_id"] for item in failed_items],
             locator_artifact=path,
             json_pointer="/failures",

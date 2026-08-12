@@ -10,7 +10,7 @@ L4 may establish only what its frozen version/cycle matrix supports: change in t
 
 ## Offline comparison owner
 
-`compare_cycles.py` consumes one readable comparison plan v2 and two or three immutable cycle capsules. The plan binds each imported capsule once with `{path,digest,schema_version}`. A `revision` plan binds one failure class, one change set, a prior and candidate, target closure, margins, protected metrics, and gates; its only terminal states are `closed`, `open`, and `not_evaluable`.
+`compare_cycles.py` consumes one readable comparison plan v3 and two or three immutable cycle capsules. The plan binds each imported capsule once with `{path,digest,schema_version}`. A `revision` plan binds one failure class, one change set, a prior and candidate, target closure, margins, protected metrics, and decision axes; its only terminal states are `closed`, `open`, and `not_evaluable`.
 
 First emit observations while analyzing every bound cycle, then run the comparator with the frozen plan:
 
@@ -46,7 +46,7 @@ Store a new cycle. Never overwrite prior evidence or compare metrics across chan
 
 ## Comparable version matrix
 
-Use the same spec v6, execution plan v2, run index v3, receipt v5, summary v5, and failure-index v2 runtime contract as L1–L3. Export each cycle as one capsule v2 and bind that capsule once through comparison plan v2; model transitions also require comparison observations v2. Inside each cycle, preserve readable candidate revision/source/plugin, package, catalog, treatment, host, compiler, fixture, grader, calibration/quality, module/stage, routing, principal/handoff/action/state/fault, usage, context, and cleanup evidence. The capsule remains the custody owner for its internal artifacts.
+Use the same spec v7, execution plan v3, run index v3, receipt v5, summary v6, and failure-index v2 runtime contract as L1–L3. Export each cycle as one capsule v3 and bind that capsule once through comparison plan v3; model transitions also require comparison observations v2. Inside each cycle, preserve readable candidate revision/source/plugin, package, catalog, treatment, host, compiler, fixture, grader, calibration/quality, module/stage, routing, principal/handoff/action/state/fault, usage, context, and cleanup evidence. The capsule remains the custody owner for its internal artifacts.
 
 The comparison is evaluable only when:
 

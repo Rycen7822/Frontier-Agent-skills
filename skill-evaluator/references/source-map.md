@@ -7,7 +7,7 @@ This Skill combines three public sources, the evidence synthesis from Pattern so
 - URL: https://developers.openai.com/blog/eval-skills
 - Contribution: define measurable success, exercise explicit/implicit/contextual/negative cases, capture traces and artifacts, prefer deterministic checks, constrain rubric graders, and measure outcome/process/quality/efficiency separately.
 
-Local adaptation: spec v6 and scenario v1 bind requirements, readable execution profiles, preparation, receipts, artifacts, and grader evidence instead of trusting host self-report. Codex event names remain examples rather than portable requirements.
+Local adaptation: spec v7 and scenario v1 bind requirements, readable execution profiles, preparation, receipts, artifacts, and grader evidence instead of trusting host self-report. Codex event names remain examples rather than portable requirements.
 
 ## 2. Anthropic: Equipping agents for the real world with Agent Skills
 
@@ -29,17 +29,17 @@ Each `Owner heading` is the normative product section. `Source basis` identifies
 
 | ID | Method | Source basis | Relation | Owner heading | Concrete field/function |
 |---|---|---|---|---|---|
-| M-01 | Freeze decision, applicability, estimands, gates, authority, and preparation before execution | OpenAI measurable-success guidance; Pattern plan-before-action lifecycle | Direct + adaptation | `evaluation-contract.md` → `Decision and claim ceiling`; `evaluation-contract.md` → `Spec v6 owner` | `schema_version=6`; `execution.ready`; `analysis.estimands[]`; `hard_gates[]`; `validate_eval_suite.py::validate_v6_contract_semantics` |
+| M-01 | Freeze decision, applicability, estimands, gates, authority, and preparation before execution | OpenAI measurable-success guidance; Pattern plan-before-action lifecycle | Direct + adaptation | `evaluation-contract.md` → `Decision and claim ceiling`; `evaluation-contract.md` → `Spec v7 owner` | `schema_version=7`; `execution.ready`; `analysis.estimands[]`; `hard_gates[]`; `validate_eval_suite.py::validate_epoch7_contract_semantics` |
 | M-02 | Separate exact routing stages, no-match, catalog order, and declared composition | OpenAI activation coverage; Anthropic progressive disclosure; Pattern crowded-catalog routing | Direct + adaptation | `task-suite-design.md` → `Routing, composition, and coordination`; `execution-and-grading.md` → `Routing, composition, and usage` | scenario `routing_contract`; receipt v5 routing; `run_eval_plan.py::_validate_routing_contract` |
 | M-03 | Bind scenario v1 requirements to deterministic and blinded model graders | OpenAI deterministic checks and constrained rubric grading; Pattern verification boundaries | Direct + adaptation | `task-suite-design.md` → `Scenario v1 and requirements`; `execution-and-grading.md` → `Deterministic grader receipt`; `execution-and-grading.md` → `Grader semantic owner` | scenario v1 `requirements[]`; `grader_semantics.py::semantic_payload`; calibration v3 `check_metrics[]`; receipt v5 grader outputs; `analyze_runs.py::validate_grader_output` |
 | M-04 | Audit complete package anatomy, progressive disclosure, schemas, and reachability | Anthropic package anatomy and progressive loading | Direct + adaptation | `security-and-package-audit.md` → `2. Establish provenance and trust`; `security-and-package-audit.md` → `3. Audit the package boundary` | `audit_skill_package.py::audit`; reachable formal-support graph; `text_scan_complete` |
 | M-05 | Treat instructions, code, dependencies, permissions, tools, and side effects as security surfaces | Anthropic package security; Ding et al. safety; Pattern authority/action stages | Direct + adaptation | `security-and-package-audit.md` → `Evidence ladder`; `security-and-package-audit.md` → `8. Controlled runtime probes` | S0–S5; receipt v5 actions/observations/cleanup; `run_eval_plan.py::_validate_action_lifecycle` |
-| M-06 | Freeze execution identity and one intervention axis before causal attribution | Ding et al. relevance/execution/reuse; Pattern scope/control/authority freezing | Direct + adaptation | `evaluation-contract.md` → `Treatment registry`; `evaluation-contract.md` → `Isolation and provenance`; `execution-and-grading.md` → `Compiler and dispositions` | `treatment_id`; `intervention_axes`; execution plan v2; `compile_eval_plan.py::compile_plan` |
+| M-06 | Freeze execution identity and one intervention axis before causal attribution | Ding et al. relevance/execution/reuse; Pattern scope/control/authority freezing | Direct + adaptation | `evaluation-contract.md` → `Treatment registry`; `evaluation-contract.md` → `Isolation and provenance`; `execution-and-grading.md` → `Compiler and dispositions` | `treatment_id`; `intervention_axes`; execution plan v3; `compile_eval_plan.py::compile_plan` |
 | M-07 | Select non-generic frontier-model scenarios and prove suite quality before scoring | Ding et al. task construction; OpenAI eval criteria; Pattern boundary/failure coverage | Direct + adaptation | `task-suite-design.md` → `Frontier-model case filter`; `task-suite-design.md` → `Suite-quality preparation`; `task-suite-design.md` → `Suite review` | split/tags/modules; suite-quality v2; `validate_eval_suite.py::_derive_quality_coverage` |
 | M-08 | Compare immutable versions while protecting holdout, regression, host, and rollback boundaries | Ding et al. evolution/robustness; Pattern durable-state recovery | Direct + adaptation | `longitudinal-evaluation.md` → `Freeze each cycle`; `longitudinal-evaluation.md` → `Protected behavior`; `longitudinal-evaluation.md` → `Monitoring and rollback` | holdout `payload_sha256`; plan/host/module identity; `analyze_runs.py::derive_protected_outcome_failures` |
 | M-09 | Separate attempted, authorized, blocked, executed, delivered, rendered, and confirmed effects | Ding et al. safety; Anthropic security; Pattern tool/action lifecycle | Direct + adaptation | `execution-and-grading.md` → `Actions, authorization, observations, and faults`; `security-and-package-audit.md` → `Evidence ladder` | receipt v5 actions; authorization fusion; `action_summary`; `run_eval_plan.py::_validate_action_lifecycle` |
-| M-10 | Infer over case clusters and keep five axes, context burden, independence, critique, and grounding non-compensating | Combined M-01–M-09 plus Pattern evidence/authority separation | Local synthesis | `rubric-and-metrics.md` → `Five independent axes`; `rubric-and-metrics.md` → `Independent-case intervals`; `reporting-and-decisions.md` → `Status model` | `analyze_runs.py::summarize_case_differences`; `analyze_runs.py::summarize_skill_context`; `analyze_runs.py::derive_usefulness_status`; `independence_summary`; `grounding_summary` |
-| M-11 | Close one controlled revision hypothesis or classify direct/bridge/combined model drift without granting release authority | Ding et al. evolution/robustness; Pattern frozen scope and evidence/authority separation | Direct + local synthesis | `longitudinal-evaluation.md` → `Offline comparison owner`; `reporting-and-decisions.md` → `Offline comparison report v2` | comparison plan/observations/report/index v2 and cycle capsule v2; `compare_cycles.py`; `comparison_revision.py`; `comparison_transition.py` |
+| M-10 | Infer over case clusters and keep reporting statuses, decision axes, context burden, independence, critique, and grounding non-compensating | Combined M-01–M-09 plus Pattern evidence/authority separation | Local synthesis | `rubric-and-metrics.md` → `Five analyzer status axes`; `rubric-and-metrics.md` → `Independent-case intervals`; `reporting-and-decisions.md` → `Status model` | `analyze_runs.py::_v6_metric_analysis`; summary v6 `gate_results`; `independence_summary`; `grounding_summary` |
+| M-11 | Close one controlled revision hypothesis or classify direct/bridge/combined model drift without granting release authority | Ding et al. evolution/robustness; Pattern frozen scope and evidence/authority separation | Direct + local synthesis | `longitudinal-evaluation.md` → `Offline comparison owner`; `reporting-and-decisions.md` → `Offline comparison report v3` | comparison plan/report and cycle capsule v3 with observations/index v2; `compare_cycles.py`; `comparison_revision.py`; `comparison_transition.py` |
 
 M-11 implementation owners are the [capsule contract](../scripts/comparison_contract.py), [revision contract](../scripts/comparison_revision_contract.py), [revision evaluator](../scripts/comparison_revision.py), [transition evaluator](../scripts/comparison_transition.py), and [transition metrics](../scripts/comparison_transition_metrics.py).
 
@@ -47,7 +47,7 @@ M-11 implementation owners are the [capsule contract](../scripts/comparison_cont
 
 | Local field / function / heading | Method IDs | Source basis |
 |---|---|---|
-| `schema_version=6`, `execution.ready`, `analysis.estimands[]`, `hard_gates[]` | M-01 | OpenAI measurable success; Pattern plan-before-action |
+| `schema_version=7`, `execution.ready`, `analysis.estimands[]`, `hard_gates[]` | M-01 | OpenAI measurable success; Pattern plan-before-action |
 | scenario `routing_contract`, receipt routing, stage summaries | M-02 | OpenAI activation; Anthropic progressive loading; Pattern catalog routing |
 | scenario v1 `requirements[]`, exact graders, receipt v5 grader outputs | M-03 | OpenAI deterministic and qualitative grading |
 | `audit_skill_package.py::audit`, reachable schemas/support, scan completeness | M-04, M-05 | Anthropic package anatomy/security |
@@ -58,7 +58,7 @@ M-11 implementation owners are the [capsule contract](../scripts/comparison_cont
 | `summarize_case_differences`, `resampling_unit=case`, keyed `case_count` | M-01, M-10 | Local experimental discipline |
 | `summarize_skill_context`, attribution, controlled/core bytes, per-call cost | M-02, M-04, M-10 | Progressive-disclosure cost adaptation |
 | `independence_summary`, critique uptake, `grounding_summary` | M-03, M-10 | Pattern judge dependence, repair uptake, and source support |
-| `derive_usefulness_status`, five axes, failure index, manual-review receipt | M-03, M-09, M-10 | Local synthesis over all source methods |
+| ordered `gate_results`, explicit decision axes, failure index, manual-review receipt | M-03, M-09, M-10 | Local synthesis over all source methods |
 | revision closure and model-transition classification with authority ceiling | M-08, M-11 | Ding et al. evolution/robustness; Pattern frozen scope and authority separation |
 
 ## 5. Pattern evidence traceability
@@ -83,7 +83,7 @@ Pattern was analyzed as a whole-project corpus, not as one universal workflow: 1
 | Safety needs static review plus contained runtime evidence, per host | M-14, M-15, M-17 | S0–S4; action/observation/cleanup receipts | audit CLI and formal campaign |
 | Correct bytes may be stale; an existing source may not support a claim | C-17 | observation contracts; `grounding_summary` | analyzer projection and formal campaign |
 | Wall time, token classes, cache, retries, rework, and residue need distinct denominators | R-20, A-19 | receipt usage; summary `context_cost` | analyzer projection and formal campaign |
-| Default views must be compact while drill-down stays exact; external authority stays separate | A-01–A-17 | summary v5, failure index v2, output manifest, manual authority | public compile-run-analyze lifecycle |
+| Default views must be compact while drill-down stays exact; external authority stays separate | A-01–A-17 | summary v6, failure index v2, output manifest, manual authority | public compile-run-analyze lifecycle |
 
 ### Pattern reverse coverage: local surface to evidence fact
 
@@ -104,8 +104,8 @@ Pattern was analyzed as a whole-project corpus, not as one universal workflow: 1
 The following are explicit product choices, not universal standards:
 
 - L0–L4 levels and their claim ceilings;
-- spec v6, scenario v1 `requirements[]`, and applicability registry;
-- execution plan v2, run index v3, and receipt v5 as the only runtime evidence path;
+- spec v7, scenario v1 `requirements[]`, and applicability registry;
+- execution plan v3, run index v3, and receipt v5 as the only runtime evidence path;
 - exact semantic identity plus minimal path/digest custody binding before result derivation;
 - independent-case bootstrap intervals with repeat-level descriptive diagnostics;
 - benefit, noninferiority, safety, protected-outcome, and context gates;

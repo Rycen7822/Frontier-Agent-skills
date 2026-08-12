@@ -36,7 +36,7 @@
       "required": ["name", "version", "source_revision"],
       "properties": {
         "name": {"const": "analyze_runs.py"},
-        "version": {"const": "4.0.0"},
+        "version": {"const": "5.0.0"},
         "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
       },
       "additionalProperties": false
