@@ -1,6 +1,6 @@
 # Evaluation Contract
 
-This file owns eval-spec v6 semantics, evaluation levels, applicability, treatments, preparation, fairness, and claim ceilings. JSON Schema owns shape; `validate_eval_suite.py` owns cross-field and cross-file semantics. Freeze both before compiling a plan.
+This file owns eval-spec v7 semantics, evaluation levels, applicability, treatments, preparation, fairness, and claim ceilings. JSON Schema owns shape; `validate_eval_suite.py` owns cross-field and cross-file semantics. Freeze both before compiling a plan.
 
 ## Decision and claim ceiling
 
@@ -8,9 +8,9 @@ Record one decision: static audit, diagnosis, scoped incremental usefulness, rel
 
 Evaluation permission never grants permission to install dependencies, expose secrets, use networks, mutate persistent state, publish, deploy, or perform destructive, privileged, financial, or sensitive actions. Freeze those permissions separately.
 
-## Spec v6 owner
+## Spec v7 owner
 
-`schema_version=6` binds:
+`schema_version=7` binds:
 
 - immutable evaluation, decision, subject, risk, claim, package, source, plugin, model, harness, host, catalog, policy, and authority identities;
 - one decision for every applicability module, with evidence and approver;
@@ -70,7 +70,7 @@ Repeats never increase `case_count`. Fewer than two complete independent cases c
 
 ## Isolation and provenance
 
-The compiler consumes the exact spec v6 execution scenario corpus, host manifest v2, and any bound calibration/quality artifacts and emits one deterministic execution plan v2. For an exposed L3/L4 decision, the execution corpus is the validated ordered union of the separate public and heldout bindings; the public file itself remains free of heldout rows. Each plan entry fixes its disposition (`execute`, `unsupported`, or `not_evaluable`) from verified capability probes. Unsupported or unknown capability evidence is feasibility evidence and produces no attempt.
+The compiler consumes the exact spec v7 execution scenario corpus, host manifest v2, and any bound calibration/quality artifacts and emits one deterministic execution plan v3. For an exposed L3/L4 decision, the execution corpus is the validated ordered union of the separate public and heldout bindings; the public file itself remains free of heldout rows. Each plan entry fixes its disposition (`execute`, `unsupported`, or `not_evaluable`) from verified capability probes. Unsupported or unknown capability evidence is feasibility evidence and produces no attempt.
 
 Run index v3 binds the plan bytes once in its header. Every attempt row then joins one execute attempt to readable entry/run/attempt IDs and one receipt v5 binding under `spec.artifacts.root`. The analyzer recompiles the plan, verifies the index header, receipt bindings, readable semantic facts, and independently consumed raw artifacts before deriving a result. Attempt rows contain no pass, score, routing, usage, grader, or provenance claims.
 

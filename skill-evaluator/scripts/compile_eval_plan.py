@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile validated Skill Evaluator v6 inputs into execution plan v2."""
+"""Compile validated Skill Evaluator v7 inputs into execution plan v3."""
 
 from __future__ import annotations
 
@@ -20,12 +20,12 @@ from evidence_io import (
     normalize_relative_path,
 )
 from validate_eval_suite import (
-    EPOCH6_MODULE_CAPABILITIES,
+    EPOCH7_MODULE_CAPABILITIES,
     derive_entry_disposition,
-    load_epoch6_schema_registry,
-    required_epoch6_modules,
-    validate_epoch6_contract_semantics,
-    validate_epoch6_schema,
+    load_epoch7_schema_registry,
+    required_epoch7_modules,
+    validate_epoch7_contract_semantics,
+    validate_epoch7_schema,
 )
 
 
@@ -154,19 +154,19 @@ def _load_ready_contract(
         row for _, row in load_jsonl_objects(scenarios_path)
     ]
     host = load_json(host_path)
-    registry = load_epoch6_schema_registry()
-    diagnostics = validate_epoch6_schema(
-        spec, "eval-spec-v6.schema.json", registry,
+    registry = load_epoch7_schema_registry()
+    diagnostics = validate_epoch7_schema(
+        spec, "eval-spec-v7.schema.json", registry,
     )
     for index, scenario in enumerate(scenarios):
-        for diagnostic in validate_epoch6_schema(
+        for diagnostic in validate_epoch7_schema(
             scenario, "scenario-v1.schema.json", registry,
         ):
             diagnostics.append({
                 **diagnostic,
                 "path": f"/scenarios/{index}{diagnostic['path']}",
             })
-    for diagnostic in validate_epoch6_schema(
+    for diagnostic in validate_epoch7_schema(
         host, "host-manifest-v2.schema.json", registry,
     ):
         diagnostics.append({
@@ -180,7 +180,7 @@ def _load_ready_contract(
             "compiler.not_ready",
             "compiler requires an execution-ready L1+ contract",
         )
-    semantic_errors, warnings = validate_epoch6_contract_semantics(
+    semantic_errors, warnings = validate_epoch7_contract_semantics(
         spec,
         scenarios,
         host,
@@ -355,8 +355,8 @@ def _required_capabilities(
 ) -> list[str]:
     capabilities = set(spec["host"]["required_capabilities"])
     capabilities.update(treatment["expected_capabilities"])
-    for module in required_epoch6_modules(spec):
-        capabilities.update(EPOCH6_MODULE_CAPABILITIES.get(module, set()))
+    for module in required_epoch7_modules(spec):
+        capabilities.update(EPOCH7_MODULE_CAPABILITIES.get(module, set()))
     graders = {
         grader["grader_id"]: grader for grader in spec["graders"]
     }
@@ -761,7 +761,7 @@ def compile_plan(
         for requirement in scenario["requirements"]
     })
     plan: dict[str, Any] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "plan_id": plan_id,
         "evaluation_id": normalized_spec["evaluation_id"],
         "source_revision": source_revision,
@@ -844,8 +844,8 @@ def validate_compiled_plan(
     runtime_override: dict[str, str] | None = None,
     digest_fn: Callable[[Any], bytes] = _projection_digest,
 ) -> None:
-    diagnostics = validate_epoch6_schema(
-        plan, "execution-plan-v2.schema.json", registry,
+    diagnostics = validate_epoch7_schema(
+        plan, "execution-plan-v3.schema.json", registry,
     )
     if diagnostics:
         code, message = _first_diagnostic(diagnostics)

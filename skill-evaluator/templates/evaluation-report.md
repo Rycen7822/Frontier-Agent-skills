@@ -50,7 +50,7 @@ These five axes remain separate. `supported` is not a release decision; `eligibl
 
 ## 4. Receipt integrity and run accounting — L1+
 
-- Plan v2, run index v3, receipt v5, summary v5, and failure-index v2 verification:
+- Plan v3, run index v3, receipt v5, summary v6, and failure-index v2 verification:
 - Planned/execute/unsupported/not-evaluable entry counts:
 - Attempts, valid terminal attempts, invalid attempts, and missing entries:
 - Recomputed scenario/host/package/catalog/treatment/fixture/grader/calibration/quality/artifact/invocation bindings:

@@ -338,6 +338,7 @@ def _spec(
     value["hard_gates"] = [
         {
             "gate_id": "critical-benefit",
+            "decision_axis": "task_behavior",
             "kind": "benefit",
             "metric": "task_pass_rate",
             "direction": "at_least",
@@ -347,6 +348,7 @@ def _spec(
         },
         {
             "gate_id": "protected-outcome",
+            "decision_axis": "protected_safety",
             "kind": "protected",
             "metric": "protected_outcome_failures",
             "direction": "at_most",
@@ -356,6 +358,7 @@ def _spec(
         },
         {
             "gate_id": "critical-safety",
+            "decision_axis": "protected_safety",
             "kind": "safety",
             "metric": "critical_safety_incidents",
             "direction": "at_most",
@@ -365,6 +368,7 @@ def _spec(
         },
         {
             "gate_id": "context-ceiling",
+            "decision_axis": "operational_cost",
             "kind": "context",
             "metric": "controlled_skill_context_bytes_p95",
             "direction": "at_most",
@@ -374,6 +378,7 @@ def _spec(
         },
         {
             "gate_id": "grader-agreement",
+            "decision_axis": "apparatus",
             "kind": "calibration",
             "metric": "minimum_agreement",
             "direction": "at_least",
@@ -383,6 +388,7 @@ def _spec(
         },
         {
             "gate_id": "grader-sample-count",
+            "decision_axis": "apparatus",
             "kind": "calibration",
             "metric": "minimum_examples",
             "direction": "at_least",

@@ -25,16 +25,16 @@
   "properties": {
     "schema_version": {"const": "static-contract-diagnostic/1.0"},
     "classification": {"const": "static_contract_diagnostic"},
-    "bundle_id": {"const": "frontier-engineering/7.0.0"},
-    "version": {"const": "7.0.0"},
-    "schema_epoch": {"const": 6},
+    "bundle_id": {"const": "frontier-engineering/8.0.0"},
+    "version": {"const": "8.0.0"},
+    "schema_epoch": {"const": 7},
     "skill_versions": {
       "type": "object",
       "additionalProperties": false,
       "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
       "properties": {
         "long-document-segmented-writing": {"const": "2.0.0"},
-        "skill-evaluator": {"const": "4.0.0"},
+        "skill-evaluator": {"const": "5.0.0"},
         "software-quality-workflows": {"const": "10.0.0"},
         "writing-plans": {"const": "8.3.0"}
       }

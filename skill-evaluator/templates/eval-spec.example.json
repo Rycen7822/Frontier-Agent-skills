@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "evaluation_id": "public-l2-template",
   "level": "L2",
   "risk_tier": "standard",
@@ -15,7 +15,7 @@
   "subject": {
     "skill_id": "skill-evaluator",
     "name": "Skill Evaluator",
-    "version": "4.0.0",
+    "version": "5.0.0",
     "shape": "single_skill",
     "mechanisms": [
       "procedure_workflow",
@@ -350,6 +350,7 @@
   "hard_gates": [
     {
       "gate_id": "task-gate",
+      "decision_axis": "task_behavior",
       "kind": "benefit",
       "metric": "task_pass_rate",
       "direction": "at_least",

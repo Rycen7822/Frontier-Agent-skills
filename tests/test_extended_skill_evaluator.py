@@ -17,7 +17,7 @@ READY_FIXTURES = (
     "grader-output.schema.json",
     "host-manifest-v2.json",
     "scenarios-v1.jsonl",
-    "spec-v6.json",
+    "spec-v7.json",
     "suite-quality-proof.json",
     "suite-quality-v2.json",
     "synthetic-host.py",
@@ -37,29 +37,38 @@ def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[st
 
 
 class ExtendedSkillEvaluator(unittest.TestCase):
+    def test_qualification_axes_are_non_compensating(self) -> None:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from _model_evolution_qualification import GATE_IDS, derive_decision
+
+        for failed_gate in ("operational_cost", "loop_pathology"):
+            gates = [
+                {"status": "blocked" if gate_id == failed_gate else "pass"}
+                for gate_id in GATE_IDS
+            ]
+            self.assertEqual("blocked", derive_decision(gates, [], []))
+
     def test_invalid_contract_is_rejected(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            spec_path = Path(directory) / "spec.json"
-            spec = json.loads(
-                (SKILL / "templates" / "eval-spec.example.json").read_text(encoding="utf-8")
-            )
-            spec["unexpected"] = True
-            spec_path.write_text(json.dumps(spec), encoding="utf-8")
-            result = run_script(
-                "skill-evaluator/scripts/validate_eval_suite.py",
-                "contract",
-                str(spec_path),
-                str(SKILL / "templates" / "scenarios.example.jsonl"),
-                str(SKILL / "templates" / "host-manifest.example.json"),
-                "--json",
-                "-",
-            )
-        self.assertEqual(1, result.returncode)
-        report = json.loads(result.stdout)
-        self.assertEqual(
-            {"schema.additionalProperties"},
-            {error["code"] for error in report["errors"]},
+        base = json.loads(
+            (SKILL / "templates" / "eval-spec.example.json").read_text(encoding="utf-8")
         )
+        for label, mutate, expected in (
+            ("extra-field", lambda spec: spec.__setitem__("unexpected", True), "schema.additionalProperties"),
+            ("missing-axis", lambda spec: spec["hard_gates"][0].pop("decision_axis"), "schema.required"),
+            ("old-epoch", lambda spec: spec.__setitem__("schema_version", 6), "schema.const"),
+        ):
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                spec = json.loads(json.dumps(base))
+                mutate(spec)
+                spec_path = Path(directory) / "spec.json"
+                spec_path.write_text(json.dumps(spec), encoding="utf-8")
+                result = run_script(
+                    "skill-evaluator/scripts/validate_eval_suite.py", "contract",
+                    str(spec_path), str(SKILL / "templates" / "scenarios.example.jsonl"),
+                    str(SKILL / "templates" / "host-manifest.example.json"), "--json", "-",
+                )
+                self.assertEqual(1, result.returncode)
+                self.assertIn(expected, {error["code"] for error in json.loads(result.stdout)["errors"]})
 
     def test_compile_run_and_analyze_public_lifecycle(self) -> None:
         fixture_root = ROOT / "evaluation" / "fixtures" / "skill-evaluator"
@@ -71,7 +80,7 @@ class ExtendedSkillEvaluator(unittest.TestCase):
             plan = work / "plan.json"
             compiled = run_script(
                 "skill-evaluator/scripts/compile_eval_plan.py",
-                str(work / "spec-v6.json"),
+                str(work / "spec-v7.json"),
                 str(work / "scenarios-v1.jsonl"),
                 str(work / "host-manifest-v2.json"),
                 "--output",
@@ -79,9 +88,25 @@ class ExtendedSkillEvaluator(unittest.TestCase):
             )
             self.assertEqual(0, compiled.returncode, compiled.stdout + compiled.stderr)
             plan_value = json.loads(plan.read_text(encoding="utf-8"))
+            self.assertEqual(3, plan_value["schema_version"])
             self.assertEqual(
                 {"execute": 2, "not_evaluable": 0, "total": 2, "unsupported": 0},
                 plan_value["expected_counts"],
+            )
+            old_plan = work / "old-plan.json"
+            old_plan_value = {**plan_value, "schema_version": 2}
+            old_plan.write_text(json.dumps(old_plan_value), encoding="utf-8")
+            rejected_plan = run_script(
+                "skill-evaluator/scripts/run_eval_plan.py",
+                str(old_plan),
+                "--index",
+                str(work / "old-index.jsonl"),
+                "--status",
+            )
+            self.assertNotEqual(0, rejected_plan.returncode)
+            self.assertIn(
+                "schema",
+                (rejected_plan.stdout + rejected_plan.stderr).lower(),
             )
 
             index = work / "artifacts" / "index.jsonl"
@@ -121,7 +146,7 @@ class ExtendedSkillEvaluator(unittest.TestCase):
                 "skill-evaluator/scripts/analyze_runs.py",
                 str(index),
                 "--spec",
-                str(work / "spec-v6.json"),
+                str(work / "spec-v7.json"),
                 "--json",
                 str(summary),
                 "--failure-index",
@@ -129,8 +154,56 @@ class ExtendedSkillEvaluator(unittest.TestCase):
             )
             self.assertEqual(3, analyzed.returncode, analyzed.stdout + analyzed.stderr)
             summary_value = json.loads(summary.read_text())
+            self.assertEqual(6, summary_value["schema_version"])
             self.assertEqual("complete", summary_value["evidence_status"])
             self.assertEqual("inconclusive_ceiling", summary_value["usefulness_status"])
+            self.assertTrue(summary_value["baseline_ceiling"])
+            self.assertEqual(
+                [("task-gate", "task_behavior", "not_evaluable")],
+                [
+                    (item["gate_id"], item["decision_axis"], item["status"])
+                    for item in summary_value["gate_results"]
+                ],
+            )
+            sys.path.insert(0, str(ROOT / "scripts"))
+            from _model_evolution_contract import ContractError, evaluator_summary_axes
+
+            expected_gates = json.loads((work / "spec-v7.json").read_text())["hard_gates"]
+            for label, field, value in (
+                ("forged-status", "status", "pass"),
+                ("cross-axis-alias", "decision_axis", "operational_cost"),
+                ("old-summary", "schema_version", 5),
+            ):
+                forged = json.loads(json.dumps(summary_value))
+                if field == "schema_version":
+                    forged[field] = value
+                else:
+                    forged["gate_results"][0][field] = value
+                forged_path = work / f"{label}.json"
+                forged_path.write_text(json.dumps(forged), encoding="utf-8")
+                with self.subTest(label=label), self.assertRaises(ContractError):
+                    evaluator_summary_axes(
+                        forged_path,
+                        kind="current_summary",
+                        expected_gates=expected_gates,
+                    )
+            mixed = json.loads(json.dumps(summary_value))
+            failed_result = {**mixed["gate_results"][0]}
+            failed_result.update(
+                gate_id="task-failure", observed=-1.0, status="fail"
+            )
+            mixed["gate_results"].append(failed_result)
+            mixed_path = work / "mixed-gates.json"
+            mixed_path.write_text(json.dumps(mixed), encoding="utf-8")
+            failed_gate = {**expected_gates[0], "gate_id": "task-failure"}
+            self.assertEqual(
+                "blocked",
+                evaluator_summary_axes(
+                    mixed_path,
+                    kind="current_summary",
+                    expected_gates=[*expected_gates, failed_gate],
+                )["task_behavior"],
+            )
             self.assertEqual(2, len(list(work.glob("artifacts/entries/*/attempt-0001/receipt.json"))))
             self.assertEqual([], list(work.glob("artifacts/entries/*/attempt-0002")))
 

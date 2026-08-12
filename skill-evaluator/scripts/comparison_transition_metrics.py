@@ -496,20 +496,20 @@ def gate_diagnostics(
     plan: dict[str, Any],
     candidate: CycleCapsule,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    required_kinds = plan["decision_policy"]["required_gates"]
+    required_axes = plan["decision_policy"]["required_axes"]
     gate_ids = {
         gate["gate_id"]
         for gate in candidate.spec["hard_gates"]
-        if gate["required"] is True and gate["kind"] in required_kinds
+        if gate["required"] is True and gate["decision_axis"] in required_axes
     }
-    declared_kinds = {
-        gate["kind"]
+    declared_axes = {
+        gate["decision_axis"]
         for gate in candidate.spec["hard_gates"]
-        if gate["required"] is True and gate["kind"] in required_kinds
+        if gate["required"] is True and gate["decision_axis"] in required_axes
     }
     blocking: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
-    if declared_kinds != set(required_kinds) or not failure_index_complete(
+    if declared_axes != set(required_axes) or not failure_index_complete(
         candidate,
     ):
         blocking.append(capsule_diagnostic(
@@ -520,11 +520,11 @@ def gate_diagnostics(
             reason_key="transition_gate_evidence_incomplete",
             roles=[candidate.role],
             expected={
-                "required_kinds": required_kinds,
+                "required_axes": required_axes,
                 "complete_failure_index": True,
             },
             observed={
-                "declared_kinds": sorted(declared_kinds),
+                "declared_axes": sorted(declared_axes),
                 "complete_failure_index": failure_index_complete(candidate),
             },
             json_pointer="/representative_failure_ids",

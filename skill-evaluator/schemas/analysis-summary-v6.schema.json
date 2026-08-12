@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/skill-evaluator/schemas/analysis-summary-v5.schema.json",
-  "title": "Skill Evaluator analysis summary v5",
+  "$id": "https://example.invalid/skill-evaluator/schemas/analysis-summary-v6.schema.json",
+  "title": "Skill Evaluator analysis summary v6",
   "type": "object",
   "required": [
     "schema_version",
@@ -15,6 +15,8 @@
     "feasibility_status",
     "evidence_status",
     "usefulness_status",
+    "gate_results",
+    "baseline_ceiling",
     "final_authority_status",
     "counts",
     "primary_benefit",
@@ -37,7 +39,7 @@
     "representative_failure_ids"
   ],
   "properties": {
-    "schema_version": {"const": 5},
+    "schema_version": {"const": 6},
     "evaluation_id": {"$ref": "#/$defs/safe_id"},
     "plan_id": {"$ref": "#/$defs/safe_id"},
     "analysis_ready": {"type": "boolean"},
@@ -56,17 +58,23 @@
       "type": "array",
       "minItems": 10,
       "maxItems": 10,
-      "items": {"$ref": "eval-spec-v6.schema.json#/$defs/module_decision"}
+      "items": {"$ref": "eval-spec-v7.schema.json#/$defs/module_decision"}
     },
     "treatments": {
       "type": "array",
       "minItems": 1,
-      "items": {"$ref": "eval-spec-v6.schema.json#/$defs/treatment"}
+      "items": {"$ref": "eval-spec-v7.schema.json#/$defs/treatment"}
     },
     "applicability_status": {"enum": ["applicable", "not_applicable", "not_evaluable"]},
     "feasibility_status": {"enum": ["feasible", "unsupported", "not_evaluable"]},
     "evidence_status": {"enum": ["complete", "incomplete", "invalid"]},
     "usefulness_status": {"enum": ["supported", "not_supported", "inconclusive_ceiling", "not_evaluable", "not_applicable"]},
+    "gate_results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/gate_result"}
+    },
+    "baseline_ceiling": {"type": "boolean"},
     "final_authority_status": {"enum": ["eligible", "blocked"]},
     "counts": {"$ref": "#/$defs/counts"},
     "primary_benefit": {
@@ -160,11 +168,27 @@
       },
       "additionalProperties": false
     },
+    "gate_result": {
+      "type": "object",
+      "required": ["gate_id", "decision_axis", "kind", "metric", "direction", "threshold", "required", "status", "observed"],
+      "properties": {
+        "gate_id": {"$ref": "#/$defs/safe_id"},
+        "decision_axis": {"enum": ["task_behavior", "protected_safety", "routing", "operational_cost", "loop_pathology", "apparatus", "manual_authority"]},
+        "kind": {"enum": ["benefit", "noninferiority", "safety", "protected", "context", "quality", "calibration", "host", "module", "manual"]},
+        "metric": {"$ref": "#/$defs/safe_id"},
+        "direction": {"enum": ["at_least", "at_most", "equal", "present"]},
+        "threshold": {"anyOf": [{"type": "number"}, {"type": "string", "minLength": 1}, {"type": "boolean"}]},
+        "required": {"type": "boolean"},
+        "status": {"enum": ["pass", "fail", "not_evaluable"]},
+        "observed": {"type": ["number", "string", "boolean", "null"]}
+      },
+      "additionalProperties": false
+    },
     "module_summary": {
       "type": "object",
       "required": ["module", "eligible", "planned", "present", "valid", "invalid", "missing", "pass_rate", "lower", "upper", "repeat_consistency", "worst_slice", "failure_mechanisms", "hard_requirement_ids", "status"],
       "properties": {
-        "module": {"$ref": "eval-spec-v6.schema.json#/$defs/module_name"},
+        "module": {"$ref": "eval-spec-v7.schema.json#/$defs/module_name"},
         "eligible": {"type": "integer", "minimum": 0},
         "planned": {"type": "integer", "minimum": 0},
         "present": {"type": "integer", "minimum": 0},

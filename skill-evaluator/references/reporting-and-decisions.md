@@ -1,6 +1,6 @@
 # Reporting and Decisions
 
-Use this owner after `analyze_runs.py` has atomically produced summary v5 and explicitly requested failure index v2, full details, Markdown, or observations, or after `compare_cycles.py` has produced comparison report/index v2. These outputs are separate immutable transactions. Human prose may explain them but cannot replace fields, repair evidence, or change authority.
+Use this owner after `analyze_runs.py` has atomically produced summary v6 and explicitly requested failure index v2, full details, Markdown, or observations, or after `compare_cycles.py` has produced comparison report v3 and diagnostic index v2. These outputs are separate immutable transactions. Human prose may explain them but cannot replace fields, repair evidence, or change authority.
 
 ## Status model
 
@@ -11,6 +11,8 @@ Keep all five analyzer axes separate:
 - `evidence_status`: whether every disposition and required execute attempt is complete and valid;
 - `usefulness_status`: whether complete feasible comparative evidence crosses benefit and guardrail gates;
 - `final_authority_status`: whether the evidence is eligible for the declared external authority path.
+
+`usefulness_status` is explanatory output only. Machine qualification replays ordered `gate_results` and aggregates their explicit decision axes; it never aliases usefulness across safety, routing, cost, pathology, apparatus, or manual authority.
 
 Use exact values. `supported` is not promotion, and `eligible` is not approval. Unsupported/non-evaluable feasibility, incomplete/invalid evidence, any blocking gate or observation, a required hard failure, or an unmet manual gate keeps final authority blocked.
 
@@ -28,20 +30,20 @@ Delete sections that do not apply. Put missing required evidence in **Known gaps
 
 Read:
 
-1. summary v5 for identity, five axes, counts, modules/stages, gates, cost, trust boundaries, and claim-to-receipt/raw-evidence references;
+1. summary v6 for identity, decision axes, counts, modules/stages, gates, cost, trust boundaries, and claim-to-receipt/raw-evidence references;
 2. failure index v2 for bounded stable failures and locators when explicitly requested;
 3. full details only when the index says `truncated=true` or a named omitted failure is required;
 4. the representative receipt named by a failure ID;
 5. a raw receipt artifact only through that receipt's verified path and locator.
 
-For an L4 comparison, read comparison report v2 first, then its diagnostic index, then the bound cycle artifact named by a diagnostic locator. This canonical path keeps review bounded and evidence-complete.
+For an L4 comparison, read comparison report v3 first, then its diagnostic index v2, then the bound cycle artifact named by a diagnostic locator. This canonical path keeps review bounded and evidence-complete.
 
-## Compact summary v5
+## Compact summary v6
 
 The summary's required top-level facts are:
 
 ```yaml
-schema_version: 5
+schema_version: 6
 evaluation_id: {{immutable evaluation ID}}
 plan_id: {{compiled plan ID}}
 analysis_ready: {{true|false}}
@@ -49,6 +51,8 @@ applicability_status: {{applicable|not_applicable}}
 feasibility_status: {{feasible|unsupported|not_evaluable}}
 evidence_status: {{complete|incomplete|invalid}}
 usefulness_status: {{supported|not_supported|inconclusive_ceiling|not_evaluable}}
+gate_results: {{ordered independent gate outcomes}}
+baseline_ceiling: {{true|false}}
 final_authority_status: {{eligible|blocked}}
 subject: {{skill ID/version/shape/source revision}}
 counts: {{plan/execute/unsupported/not-evaluable/attempt/valid/invalid/missing counts}}
@@ -67,9 +71,9 @@ For holdout evidence, report the public manifest hash, payload hash, custody sta
 
 Each failure has one stable ID derived from its factual projection, family/code/severity/reason, evidence state, expected/observed fact, impact/retest, typed optional joins, exact locator, and occurrence count. Prose and ordering do not change identity. An index may truncate to the spec budget; counts and representative IDs still bind the full failure set.
 
-The default analyzer transaction writes summary v5. When a sibling is explicitly requested, the analyzer preflights the complete immutable transaction and writes details → failure index → Markdown → summary. `output_manifest` records paths, view/schema versions, counts, and truncation; the transaction owner verifies existing bytes before reuse.
+The default analyzer transaction writes summary v6. When a sibling is explicitly requested, the analyzer preflights the complete immutable transaction and writes details → failure index → Markdown → summary. `output_manifest` records paths, view/schema versions, counts, and truncation; the transaction owner verifies existing bytes before reuse.
 
-## Offline comparison report v2
+## Offline comparison report v3
 
 The comparison plan binds each independently imported cycle through one capsule digest. The report records cycle IDs, capsule digests, readable execution profiles, registration status, comparability checks, metric/stage results, one revision state or transition classification, authority eligibility, claim ceiling, and the diagnostic-index path. The diagnostic index owns stable bounded facts and exact source locators; the capsule remains the custody owner for its internal artifacts.
 

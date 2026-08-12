@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/skill-evaluator/schemas/comparison-plan-v2.schema.json",
-  "title": "Skill Evaluator comparison plan v2",
+  "$id": "https://example.invalid/skill-evaluator/schemas/comparison-plan-v3.schema.json",
+  "title": "Skill Evaluator comparison plan v3",
   "type": "object",
   "required": [
     "schema_version",
@@ -15,7 +15,7 @@
     "output"
   ],
   "properties": {
-    "schema_version": {"const": 2},
+    "schema_version": {"const": 3},
     "comparison_id": {"$ref": "#/$defs/safe_id"},
     "kind": {"enum": ["revision", "model_transition"]},
     "claim_scope": {
@@ -139,7 +139,7 @@
         "evaluation_id": {"$ref": "#/$defs/safe_id"},
         "plan_id": {"$ref": "#/$defs/safe_id"},
         "execution_profile": {
-          "$ref": "execution-plan-v2.schema.json#/$defs/execution_profile"
+          "$ref": "execution-plan-v3.schema.json#/$defs/execution_profile"
         }
       },
       "additionalProperties": false
@@ -153,7 +153,7 @@
         "capsule": {
           "allOf": [
             {"$ref": "#/$defs/bound_artifact"},
-            {"properties": {"schema": {"const": "comparison-cycle-capsule/2"}}}
+            {"properties": {"schema": {"const": "comparison-cycle-capsule/3"}}}
           ]
         }
       },
@@ -268,7 +268,7 @@
         "change_set",
         "metric_rules",
         "minimum_distinct_cases",
-        "required_gates",
+        "required_axes",
         "require_candidate_failure_index"
       ],
       "properties": {
@@ -281,11 +281,11 @@
           "items": {"$ref": "#/$defs/revision_metric_rule"}
         },
         "minimum_distinct_cases": {"type": "integer", "minimum": 2},
-        "required_gates": {
+        "required_axes": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": {"enum": ["safety", "protected", "context"]}
+          "items": {"enum": ["task_behavior", "protected_safety", "routing", "operational_cost", "loop_pathology", "apparatus", "manual_authority"]}
         },
         "require_candidate_failure_index": {"type": "boolean"}
       },
@@ -349,7 +349,7 @@
         "metric_rules",
         "stage_rules",
         "minimum_distinct_cases",
-        "required_gates",
+        "required_axes",
         "token_policy",
         "judge_policy",
         "apparatus_change_fields"
@@ -369,11 +369,11 @@
           "items": {"$ref": "#/$defs/stage_rule"}
         },
         "minimum_distinct_cases": {"type": "integer", "minimum": 2},
-        "required_gates": {
+        "required_axes": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": {"enum": ["safety", "protected", "context"]}
+          "items": {"enum": ["task_behavior", "protected_safety", "routing", "operational_cost", "loop_pathology", "apparatus", "manual_authority"]}
         },
         "token_policy": {
           "enum": ["require_same_tokenizer", "bytes_only_if_changed"]

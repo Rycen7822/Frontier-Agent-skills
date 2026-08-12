@@ -462,7 +462,7 @@ def _preflight(args: argparse.Namespace) -> None:
         campaign_root=campaign_root,
     )
     if args.systemd_argv_only:
-        argv = systemd_probe_argv(
+        systemd_probe_argv(
             f"frontier-{campaign['campaign_id']}-preflight",
             campaign_root / "systemd-preflight.closed",
         )
@@ -984,7 +984,28 @@ def _record(args: argparse.Namespace) -> None:
         "revision_report",
         "holdout_summary",
     }:
-        evidence_status = evaluator_evidence_status(path, kind=args.role)
+        expected_gates = None
+        if args.role in {"current_summary", "candidate_summary", "holdout_summary"}:
+            if args.skill_id is None:
+                raise CliError(f"{args.role} requires skill-id")
+            sentinel = _load_bound_document(
+                campaign["sentinel_index"],
+                repository_root=repository_root,
+                campaign_root=campaign_root,
+                label="sentinel index",
+            )
+            spec = _load_bound_document(
+                sentinel["skills"][args.skill_id]["spec_template"],
+                repository_root=repository_root,
+                campaign_root=campaign_root,
+                label=f"{args.skill_id} sentinel spec",
+            )
+            expected_gates = spec["hard_gates"]
+        evidence_status = evaluator_evidence_status(
+            path,
+            kind=args.role,
+            expected_gates=expected_gates,
+        )
         if evidence_status == "blocked":
             raise CliError(f"{args.role} is not valid closure evidence")
         if args.skill_id is not None:

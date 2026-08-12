@@ -27,7 +27,7 @@ SCHEMA_FILES = {
     "failure_receipt": "failure-receipt-v2.schema.json",
     "interaction_probes": "interaction-probes-v2.schema.json",
     "sentinel_index": "sentinel-index-v2.schema.json",
-    "qualification": "qualification-v2.schema.json",
+    "qualification": "qualification-v3.schema.json",
 }
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -36,6 +36,19 @@ SKILL_IDS = (
     "skill-evaluator",
     "software-quality-workflows",
     "writing-plans",
+)
+DECISION_AXES = (
+    "task_behavior",
+    "protected_safety",
+    "routing",
+    "operational_cost",
+    "loop_pathology",
+    "apparatus",
+    "manual_authority",
+)
+GATE_RESULT_FIELDS = (
+    "gate_id", "decision_axis", "kind", "metric", "direction", "threshold",
+    "required",
 )
 BUDGET_FIELDS = (
     "provider_requests",
@@ -494,27 +507,129 @@ def _validate_external_schema(
         ) from exc
 
 
-def evaluator_evidence_status(path: Path, *, kind: str) -> str:
+_CATEGORICAL_GATE_STATUSES = {
+    "manual": {"approve": "pass", "hold": "fail", "reject": "fail"},
+    "quality": {"pass": "pass", "fail": "fail"},
+    "calibration": {"pass": "pass", "fail": "fail", "expired": "fail"},
+    "host": {"feasible": "pass", "unsupported": "fail"},
+}
+
+
+def _replay_gate_status(gate: dict[str, Any]) -> str:
+    observed = gate["observed"]
+    if observed is None:
+        return "not_evaluable"
+    kind = gate["kind"]
+    if kind in _CATEGORICAL_GATE_STATUSES:
+        return _CATEGORICAL_GATE_STATUSES[kind].get(observed, "not_evaluable")
+    direction = gate["direction"]
+    threshold = gate["threshold"]
+    if direction == "present":
+        return "pass"
+    if direction == "equal":
+        return "pass" if observed == threshold else "fail"
+    if (
+        not isinstance(observed, (int, float))
+        or isinstance(observed, bool)
+        or not isinstance(threshold, (int, float))
+        or isinstance(threshold, bool)
+    ):
+        return "not_evaluable"
+    if direction == "at_least":
+        return "pass" if observed >= threshold else "fail"
+    if direction == "at_most":
+        return "pass" if observed <= threshold else "fail"
+    return "not_evaluable"
+
+
+def _summary_axes(
+    value: dict[str, Any],
+    *,
+    kind: str,
+    expected_gates: list[dict[str, Any]] | None = None,
+) -> dict[str, str]:
+    _validate_external_schema(
+        value,
+        REPOSITORY_ROOT / "skill-evaluator/schemas/analysis-summary-v6.schema.json",
+        kind,
+    )
+    gate_results = value["gate_results"]
+    gate_ids = [item["gate_id"] for item in gate_results]
+    if len(gate_ids) != len(set(gate_ids)):
+        raise ContractError(f"{kind} gate results contain duplicate IDs")
+    if expected_gates is not None and [
+        {field: item[field] for field in GATE_RESULT_FIELDS}
+        for item in gate_results
+    ] != [
+        {field: item[field] for field in GATE_RESULT_FIELDS}
+        for item in expected_gates
+    ]:
+        raise ContractError(f"{kind} gate results differ from the frozen spec")
+    for item in gate_results:
+        if item["status"] != _replay_gate_status(item):
+            raise ContractError(f"{kind} gate {item['gate_id']} status replay differs")
+    evidence_observed = (
+        value["evidence_status"] == "complete"
+        and value["feasibility_status"] == "feasible"
+    )
+    axes: dict[str, str] = {}
+    for axis in DECISION_AXES:
+        required = [
+            item for item in gate_results
+            if item["required"] is True and item["decision_axis"] == axis
+        ]
+        if not required:
+            axes[axis] = "not_applicable"
+        elif not evidence_observed:
+            axes[axis] = "unobserved"
+        elif any(item["status"] == "fail" for item in required):
+            axes[axis] = "blocked"
+        elif any(item["status"] == "not_evaluable" for item in required):
+            axes[axis] = "unobserved"
+        else:
+            axes[axis] = "pass"
+    if axes["task_behavior"] == "pass" and value["baseline_ceiling"] is True:
+        axes["task_behavior"] = "limited_native_absorption"
+    return axes
+
+
+def evaluator_summary_axes(
+    path: Path,
+    *,
+    kind: str,
+    expected_gates: list[dict[str, Any]] | None = None,
+) -> dict[str, str]:
+    value = load_json(path, label=f"{kind} evidence")
+    if not isinstance(value, dict):
+        raise ContractError(f"{kind} evidence must be an object")
+    return _summary_axes(value, kind=kind, expected_gates=expected_gates)
+
+
+def evaluator_evidence_status(
+    path: Path,
+    *,
+    kind: str,
+    expected_gates: list[dict[str, Any]] | None = None,
+) -> str:
     value = load_json(path, label=f"{kind} evidence")
     if not isinstance(value, dict):
         raise ContractError(f"{kind} evidence must be an object")
     if kind in {"current_summary", "candidate_summary", "holdout_summary"}:
-        _validate_external_schema(
-            value,
-            REPOSITORY_ROOT / "skill-evaluator/schemas/analysis-summary-v5.schema.json",
-            kind,
+        statuses = set(
+            _summary_axes(value, kind=kind, expected_gates=expected_gates).values()
         )
-        if (
-            value["evidence_status"] != "complete"
-            or value["final_authority_status"] != "eligible"
-        ):
+        if "blocked" in statuses:
             return "blocked"
-        return "pass" if value["usefulness_status"] == "supported" else "limited"
+        if "unobserved" in statuses:
+            return "unobserved"
+        if "limited_native_absorption" in statuses:
+            return "limited_native_absorption"
+        return "pass"
     if kind in {"transition_report", "revision_report"}:
         _validate_external_schema(
             value,
             REPOSITORY_ROOT
-            / "skill-evaluator/schemas/comparison-report-v2.schema.json",
+            / "skill-evaluator/schemas/comparison-report-v3.schema.json",
             kind,
         )
         if value["authority_eligibility"] != "eligible":
@@ -528,11 +643,7 @@ def evaluator_evidence_status(path: Path, *, kind: str) -> str:
             )
         if result.get("kind") != "model_transition":
             return "blocked"
-        return (
-            "pass"
-            if result.get("classification") == "retained_specialized_value"
-            else "limited"
-        )
+        return "pass" if result.get("classification") == "retained_specialized_value" else "blocked"
     if kind == "grader_calibration":
         _validate_external_schema(
             value,

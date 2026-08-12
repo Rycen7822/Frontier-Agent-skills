@@ -25,7 +25,6 @@ import model_grade_transport as model_transport
 from evidence_io import (
     atomic_write_bytes,
     canonical_json_bytes,
-    canonical_sha256,
     file_sha256,
     load_json,
     load_jsonl_objects,
@@ -36,9 +35,10 @@ from evidence_io import (
 )
 from validate_eval_suite import (
     PAIRED_METRIC_DIRECTIONS,
-    load_epoch6_schema_registry,
+    evaluate_gate_status,
+    load_epoch7_schema_registry,
     validate_host_protocol_record,
-    validate_epoch6_schema,
+    validate_epoch7_schema,
 )
 
 Z_95 = 1.959963984540054
@@ -1288,45 +1288,6 @@ def summarize_prior_skill_context(
     return result
 
 
-def derive_usefulness_status(
-    *,
-    level: str,
-    evidence_status: str,
-    primary_benefit_status: str,
-    guardrail_statuses: list[str],
-    protected_outcome_failures: int,
-    material_harm: bool,
-    candidate_hard_failures: int,
-) -> str:
-    if level in {"L0", "L1"}:
-        return "not_evaluable"
-    if evidence_status != "complete":
-        return "not_evaluable"
-    if (
-        candidate_hard_failures > 0
-        or material_harm
-        or protected_outcome_failures > 0
-        or "fail" in guardrail_statuses
-    ):
-        return "not_supported"
-    if primary_benefit_status == "fail":
-        return "not_supported"
-    if primary_benefit_status == "pass" and all(status == "pass" for status in guardrail_statuses):
-        return "supported"
-    return "not_evaluable"
-
-
-def derive_evidence_status(
-    *, current_status: str, incomplete_matrix: bool,
-    duplicate_pairs: bool, identity_invalid: bool,
-) -> str:
-    if current_status == "invalid" or duplicate_pairs or identity_invalid:
-        return "invalid"
-    if current_status == "incomplete" or incomplete_matrix:
-        return "incomplete"
-    return "complete"
-
-
 def resolve_gate_metric(
     metric: str,
     spec: dict[str, Any],
@@ -1428,13 +1389,13 @@ def resolve_gate_metric(
     return None
 
 
-def _first_v5_diagnostic(diagnostics: list[dict[str, str]]) -> str:
+def _first_v6_diagnostic(diagnostics: list[dict[str, str]]) -> str:
     diagnostic = diagnostics[0]
     path = diagnostic.get("path") or "/"
     return f"{diagnostic['code']} {path}: {diagnostic['message']}"
 
 
-def _find_v5_plan(
+def _find_v6_plan(
     spec_path: Path,
     index_path: Path,
     registry: dict[str, dict[str, Any]],
@@ -1455,14 +1416,14 @@ def _find_v5_plan(
             continue
         if (
             not isinstance(value, dict)
-            or value.get("schema_version") != 2
+            or value.get("schema_version") != 3
             or value.get("evaluation_id") != spec["evaluation_id"]
             or value.get("source_revision") != source_revision
             or not isinstance(value.get("entries"), list)
         ):
             continue
-        diagnostics = validate_epoch6_schema(
-            value, "execution-plan-v2.schema.json", registry,
+        diagnostics = validate_epoch7_schema(
+            value, "execution-plan-v3.schema.json", registry,
         )
         if diagnostics:
             continue
@@ -1486,7 +1447,7 @@ def _find_v5_plan(
     return matches[0]
 
 
-def _load_v5_analysis_inputs(
+def _load_v6_analysis_inputs(
     spec_path: Path,
     index_path: Path,
 ) -> tuple[
@@ -1497,8 +1458,8 @@ def _load_v5_analysis_inputs(
     dict[str, Any],
     dict[str, dict[str, Any]],
 ]:
-    registry = load_epoch6_schema_registry()
-    plan_path, plan = _find_v5_plan(spec_path, index_path, registry)
+    registry = load_epoch7_schema_registry()
+    plan_path, plan = _find_v6_plan(spec_path, index_path, registry)
     spec_value = load_json(spec_path)
     _, scenarios_path = resolve_contained_path(
         spec_path.parent,
@@ -1526,7 +1487,7 @@ def _load_v5_analysis_inputs(
     return spec, scenarios, host, plan_path, plan, registry
 
 
-def _load_v5_bound_artifact(
+def _load_v6_bound_artifact(
     spec: dict[str, Any],
     spec_path: Path,
     *,
@@ -1546,25 +1507,25 @@ def _load_v5_bound_artifact(
     if file_sha256(path) != binding["digest"]:
         raise ValueError(f"suite {field} bytes differ from the spec binding")
     artifact = load_json(path)
-    diagnostics = validate_epoch6_schema(artifact, schema_name, registry)
+    diagnostics = validate_epoch7_schema(artifact, schema_name, registry)
     if diagnostics:
-        raise ValueError(_first_v5_diagnostic(diagnostics))
+        raise ValueError(_first_v6_diagnostic(diagnostics))
     return artifact
 
 
-def _load_v5_bound_evidence(
+def _load_v6_bound_evidence(
     spec: dict[str, Any],
     spec_path: Path,
     registry: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    quality = _load_v5_bound_artifact(
+    quality = _load_v6_bound_artifact(
         spec,
         spec_path,
         field="quality",
         schema_name="suite-quality-v2.schema.json",
         registry=registry,
     )
-    calibration = _load_v5_bound_artifact(
+    calibration = _load_v6_bound_artifact(
         spec,
         spec_path,
         field="calibration",
@@ -1591,7 +1552,7 @@ def _load_v5_bound_evidence(
     }
 
 
-def _load_v5_index(
+def _load_v6_index(
     index_path: Path,
     plan_path: Path,
     plan: dict[str, Any],
@@ -1606,12 +1567,12 @@ def _load_v5_index(
     if not records:
         raise ValueError("run index is missing its header")
     header_line, header = records[0]
-    diagnostics = validate_epoch6_schema(
+    diagnostics = validate_epoch7_schema(
         header, "run-index-v3.schema.json", registry,
     )
     if diagnostics:
         raise ValueError(
-            f"index line {header_line}: {_first_v5_diagnostic(diagnostics)}",
+            f"index line {header_line}: {_first_v6_diagnostic(diagnostics)}",
         )
     if header != {
         "record_type": "index_header",
@@ -1623,12 +1584,12 @@ def _load_v5_index(
     previous_key: tuple[int, int] | None = None
     attempts: dict[str, int] = defaultdict(int)
     for line_no, row in records[1:]:
-        diagnostics = validate_epoch6_schema(
+        diagnostics = validate_epoch7_schema(
             row, "run-index-v3.schema.json", registry,
         )
         if diagnostics:
             raise ValueError(
-                f"index line {line_no}: {_first_v5_diagnostic(diagnostics)}",
+                f"index line {line_no}: {_first_v6_diagnostic(diagnostics)}",
             )
         if row["record_type"] != "attempt":
             raise ValueError(f"index line {line_no} contains a non-leading header")
@@ -1704,11 +1665,11 @@ def _load_v4_receipt(
     if file_sha256(receipt_path) != row["receipt"]["digest"]:
         raise ValueError("indexed receipt bytes do not match receipt digest")
     receipt = load_json(receipt_path)
-    diagnostics = validate_epoch6_schema(
+    diagnostics = validate_epoch7_schema(
         receipt, "receipt-v5.schema.json", registry,
     )
     if diagnostics:
-        raise ValueError(_first_v5_diagnostic(diagnostics))
+        raise ValueError(_first_v6_diagnostic(diagnostics))
     run = receipt["run"]
     expected_run = {
         "plan_id": plan["plan_id"],
@@ -1904,7 +1865,7 @@ def _model_v4_output(
             schema_name, record, registry,
         )
         if diagnostics:
-            raise ValueError(_first_v5_diagnostic(diagnostics))
+            raise ValueError(_first_v6_diagnostic(diagnostics))
         records.append(record)
     results = [
         item for item in records
@@ -2183,7 +2144,7 @@ def _v4_context_projection(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _v5_utc(value: str) -> datetime:
+def _v6_utc(value: str) -> datetime:
     return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
         tzinfo=timezone.utc,
     )
@@ -2246,10 +2207,10 @@ def _record_from_v4_receipt(
         calibration = bound_evidence["calibration"]
         if calibration is None:
             raise ValueError("model grader receipt lacks bound calibration")
-        created = _v5_utc(calibration["created"])
-        started = _v5_utc(run["started_at"])
-        ended = _v5_utc(run["ended_at"])
-        expires = _v5_utc(calibration["expires"])
+        created = _v6_utc(calibration["created"])
+        started = _v6_utc(run["started_at"])
+        ended = _v6_utc(run["ended_at"])
+        expires = _v6_utc(calibration["expires"])
         if not created <= started <= ended < expires:
             raise ValueError(
                 "model grader attempt is outside the calibration window",
@@ -2362,7 +2323,7 @@ def _record_from_v4_receipt(
     }
 
 
-def _collect_v5_evidence(
+def _collect_v6_evidence(
     index_rows: list[dict[str, Any]],
     *,
     artifacts_root: Path,
@@ -2516,7 +2477,7 @@ def _empty_metric_summary(
     }
 
 
-def _v5_estimand_metric(
+def _v6_estimand_metric(
     spec: dict[str, Any],
     plan: dict[str, Any],
     records: list[dict[str, Any]],
@@ -2580,30 +2541,7 @@ def _v5_estimand_metric(
     return {**public, "_comparison_observation": observation}
 
 
-def _v5_gate_status(gate: dict[str, Any], observed: Any) -> str:
-    if observed is None:
-        return "not_evaluable"
-    direction = gate["direction"]
-    threshold = gate["threshold"]
-    if direction == "present":
-        return "pass"
-    if direction == "equal":
-        return "pass" if observed == threshold else "fail"
-    if (
-        not isinstance(observed, (int, float))
-        or isinstance(observed, bool)
-        or not isinstance(threshold, (int, float))
-        or isinstance(threshold, bool)
-    ):
-        return "not_evaluable"
-    if direction == "at_least":
-        return "pass" if observed >= threshold else "fail"
-    if direction == "at_most":
-        return "pass" if observed <= threshold else "fail"
-    return "not_evaluable"
-
-
-def _v5_protected_outcome_failures(
+def _v6_protected_outcome_failures(
     plan: dict[str, Any],
     records: list[dict[str, Any]],
     *,
@@ -2637,7 +2575,7 @@ def _v5_protected_outcome_failures(
     return failures
 
 
-def _v5_metric_analysis(
+def _v6_metric_analysis(
     spec: dict[str, Any],
     plan: dict[str, Any],
     records: list[dict[str, Any]],
@@ -2652,7 +2590,7 @@ def _v5_metric_analysis(
 ) -> dict[str, Any]:
     estimands = spec["analysis"]["estimands"]
     metric_results = [
-        _v5_estimand_metric(
+        _v6_estimand_metric(
             spec, plan, records, estimand,
         )
         for estimand in estimands
@@ -2744,7 +2682,7 @@ def _v5_metric_analysis(
             record.get("unauthorized_side_effects", 0)
             for record in candidate_records
         ),
-        "protected_outcome_failures": _v5_protected_outcome_failures(
+        "protected_outcome_failures": _v6_protected_outcome_failures(
             plan, records, candidate_id=candidate_id,
         ),
         "controlled_skill_context_bytes_p95": (
@@ -2831,7 +2769,7 @@ def _v5_metric_analysis(
             )
         elif gate["kind"] in {"safety", "protected"}:
             observed = absolute_metrics.get(gate["metric"])
-            status = _v5_gate_status(gate, observed)
+            status = evaluate_gate_status(gate, observed)
         elif gate["kind"] == "module":
             module_metric = module_metrics.get(gate["metric"])
             if module_metric is not None:
@@ -2843,25 +2781,25 @@ def _v5_metric_analysis(
                     observed = module_metric["status"]
                 else:
                     observed = module_metric["point"]
-                status = _v5_gate_status(gate, observed)
+                status = evaluate_gate_status(gate, observed)
         elif gate["kind"] == "context" and metric is None:
             observed = absolute_metrics.get(gate["metric"])
-            status = _v5_gate_status(gate, observed)
+            status = evaluate_gate_status(gate, observed)
         elif metric is not None and metric["point"] is not None:
             if gate["direction"] == "at_least":
                 observed = metric["lower"]
-                status = _v5_gate_status(gate, observed)
+                status = evaluate_gate_status(gate, observed)
             elif gate["direction"] == "at_most":
                 observed = metric["upper"]
-                status = _v5_gate_status(gate, observed)
+                status = evaluate_gate_status(gate, observed)
             elif gate["direction"] == "equal":
                 observed = metric["point"]
-                status = _v5_gate_status(gate, observed)
+                status = evaluate_gate_status(gate, observed)
             elif gate["direction"] == "present":
                 observed = metric["point"]
-                status = _v5_gate_status(gate, observed)
+                status = evaluate_gate_status(gate, observed)
         gate_results.append({
-            "gate": gate,
+            "gate": dict(gate),
             "status": status,
             "observed": observed,
         })
@@ -2999,7 +2937,7 @@ def _module_entry_pass(
     return True
 
 
-def _v5_module_summaries(
+def _v6_module_summaries(
     spec: dict[str, Any],
     plan: dict[str, Any],
     evidence: dict[str, Any],
@@ -3097,7 +3035,7 @@ def _v5_module_summaries(
     return summaries
 
 
-def _v5_context_cost(
+def _v6_context_cost(
     spec: dict[str, Any],
     plan: dict[str, Any],
     records: list[dict[str, Any]],
@@ -3331,7 +3269,7 @@ def _stage_result(
     }
 
 
-def _v5_stage_summaries(
+def _v6_stage_summaries(
     spec: dict[str, Any],
     plan: dict[str, Any],
     evidence: dict[str, Any],
@@ -3601,7 +3539,7 @@ def _nullable_summary(
     return {"status": status, "metrics": metrics, "reason": reason}
 
 
-def _v5_special_summaries(
+def _v6_special_summaries(
     spec: dict[str, Any],
     plan: dict[str, Any],
     evidence: dict[str, Any],
@@ -3816,7 +3754,7 @@ def _failure_id(projection: dict[str, Any]) -> str:
     return "sf-" + digest[:24]
 
 
-def _finalize_v5_failures(
+def _finalize_v6_failures(
     failures: list[dict[str, Any]],
     artifacts: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -3881,7 +3819,7 @@ def _local_artifact(path: Path, *, encoding: str) -> dict[str, Any]:
     return record
 
 
-def _v5_failure_artifacts(
+def _v6_failure_artifacts(
     plan_path: Path,
     evidence: dict[str, Any],
 ) -> dict[str, dict[str, Any]]:
@@ -4058,13 +3996,13 @@ def _manual_review_input_binding(
         "execution_plan": {
             "path": plan_relative,
             "digest": file_sha256(plan_path),
-            "schema_version": "execution-plan/2",
+            "schema_version": "execution-plan/3",
         },
         "release_gate_contract": release_gate_reference,
     }
 
 
-def _verify_v5_manual_review(
+def _verify_v6_manual_review(
     reference: Path | None,
     spec: dict[str, Any],
     spec_path: Path,
@@ -4220,13 +4158,13 @@ def _grader_failure_locator(
     }
 
 
-def _derive_v5_failures(
+def _derive_v6_failures(
     spec: dict[str, Any],
     plan: dict[str, Any],
     plan_path: Path,
     evidence: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
-    artifacts = _v5_failure_artifacts(plan_path, evidence)
+    artifacts = _v6_failure_artifacts(plan_path, evidence)
     raw: list[dict[str, Any]] = []
     candidate_treatment_id = spec["analysis"]["estimands"][0][
         "candidate_treatment_id"
@@ -4409,10 +4347,10 @@ def _derive_v5_failures(
             failure["dimension"] = requirement["dimension"]
             failure["requirement_id"] = requirement_id
             raw.append(failure)
-    return _finalize_v5_failures(raw, artifacts), artifacts
+    return _finalize_v6_failures(raw, artifacts), artifacts
 
 
-def _derive_v5_gate_failures(
+def _derive_v6_gate_failures(
     spec: dict[str, Any],
     plan: dict[str, Any],
     spec_path: Path,
@@ -4502,7 +4440,7 @@ def _derive_v5_gate_failures(
     return failures
 
 
-def _derive_v5_manual_failure(
+def _derive_v6_manual_failure(
     spec: dict[str, Any],
     plan: dict[str, Any],
     spec_path: Path,
@@ -4556,7 +4494,7 @@ def _derive_v5_manual_failure(
     return [failure]
 
 
-def _v5_failure_index(
+def _v6_failure_index(
     spec: dict[str, Any],
     plan: dict[str, Any],
     failures: list[dict[str, Any]],
@@ -4608,7 +4546,7 @@ def _summary_evidence_refs(evidence: dict[str, Any]) -> list[dict[str, Any]]:
     return refs
 
 
-def _v5_summary_base(
+def _v6_summary_base(
     spec: dict[str, Any],
     plan: dict[str, Any],
     evidence: dict[str, Any],
@@ -4649,11 +4587,11 @@ def _v5_summary_base(
     )
     manual_required = manual["required"]
     records = evidence["records"]
-    module_summaries = _v5_module_summaries(
+    module_summaries = _v6_module_summaries(
         spec, plan, evidence, evidence_complete,
     )
-    context_cost = _v5_context_cost(spec, plan, records)
-    metric_analysis = _v5_metric_analysis(
+    context_cost = _v6_context_cost(spec, plan, records)
+    metric_analysis = _v6_metric_analysis(
         spec,
         plan,
         records,
@@ -4693,11 +4631,11 @@ def _v5_summary_base(
         )
         else "blocked"
     )
-    special_summaries = _v5_special_summaries(
+    special_summaries = _v6_special_summaries(
         spec, plan, evidence, bound_evidence,
     )
     summary = {
-        "schema_version": 5,
+        "schema_version": 6,
         "evaluation_id": spec["evaluation_id"],
         "plan_id": plan["plan_id"],
         "analysis_ready": evidence_complete,
@@ -4720,6 +4658,21 @@ def _v5_summary_base(
         "feasibility_status": feasibility,
         "evidence_status": evidence_status,
         "usefulness_status": usefulness,
+        "gate_results": [
+            {
+                **{
+                    field: item["gate"][field]
+                    for field in (
+                        "gate_id", "decision_axis", "kind", "metric",
+                        "direction", "threshold", "required",
+                    )
+                },
+                "status": item["status"],
+                "observed": item["observed"],
+            }
+            for item in metric_analysis["gate_results"]
+        ],
+        "baseline_ceiling": metric_analysis["baseline_ceiling"],
         "final_authority_status": final_authority,
         "counts": {
             "plan_entries": len(plan["entries"]),
@@ -4734,7 +4687,7 @@ def _v5_summary_base(
         "primary_benefit": metric_analysis["primary_benefit"],
         "paired_metrics": metric_analysis["paired_metrics"],
         "module_summaries": module_summaries,
-        "stage_summaries": _v5_stage_summaries(
+        "stage_summaries": _v6_stage_summaries(
             spec, plan, evidence,
         ),
         **special_summaries,
@@ -4778,7 +4731,7 @@ def _comparison_observations(
         "schema_version": 2,
         "generator": {
             "name": "analyze_runs.py",
-            "version": "4.0.0",
+            "version": "5.0.0",
             "source_revision": summary["subject"]["source_revision"],
         },
         "cycle_id": summary["evaluation_id"],
@@ -4823,7 +4776,7 @@ def _output_view(
     }
 
 
-def _render_v5_markdown(
+def _render_v6_markdown(
     summary: dict[str, Any],
     failure_index: dict[str, Any],
 ) -> bytes:
@@ -4863,7 +4816,7 @@ def _write_immutable(path: Path, payload: bytes) -> None:
     atomic_write_bytes(path, payload)
 
 
-def _commit_v5_outputs(
+def _commit_v6_outputs(
     summary: dict[str, Any],
     failure_index: dict[str, Any],
     *,
@@ -4893,7 +4846,7 @@ def _commit_v5_outputs(
             "comparison observations path and payload must be provided together",
         )
     markdown_payload = (
-        _render_v5_markdown(summary, failure_index)
+        _render_v6_markdown(summary, failure_index)
         if markdown_path is not None
         else None
     )
@@ -4954,27 +4907,27 @@ def _commit_v5_outputs(
         ),
     }
     summary_payload = canonical_json_bytes(summary)
-    diagnostics = validate_epoch6_schema(
-        summary, "analysis-summary-v5.schema.json", registry,
+    diagnostics = validate_epoch7_schema(
+        summary, "analysis-summary-v6.schema.json", registry,
     )
     if diagnostics:
-        raise ValueError(_first_v5_diagnostic(diagnostics))
+        raise ValueError(_first_v6_diagnostic(diagnostics))
     for value in (failure_index, failure_details):
         if value is None:
             continue
-        diagnostics = validate_epoch6_schema(
+        diagnostics = validate_epoch7_schema(
             value, "failure-index-v2.schema.json", registry,
         )
         if diagnostics:
-            raise ValueError(_first_v5_diagnostic(diagnostics))
+            raise ValueError(_first_v6_diagnostic(diagnostics))
     if comparison_observations is not None:
-        diagnostics = validate_epoch6_schema(
+        diagnostics = validate_epoch7_schema(
             comparison_observations,
             "comparison-observations-v2.schema.json",
             registry,
         )
         if diagnostics:
-            raise ValueError(_first_v5_diagnostic(diagnostics))
+            raise ValueError(_first_v6_diagnostic(diagnostics))
 
     outputs = [
         pair for pair in (
@@ -5116,16 +5069,16 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
         )
     }
     spec, _, _, discovered_plan_path, plan, registry = (
-        _load_v5_analysis_inputs(paths["spec"], paths["index"])
+        _load_v6_analysis_inputs(paths["spec"], paths["index"])
     )
     if discovered_plan_path != paths["plan"]:
         raise ValueError("release plan binding is not the canonical index owner")
-    bound_evidence = _load_v5_bound_evidence(
+    bound_evidence = _load_v6_bound_evidence(
         spec,
         paths["spec"],
         registry,
     )
-    index_rows = _load_v5_index(
+    index_rows = _load_v6_index(
         paths["index"], paths["plan"], plan, registry,
     )
     _, artifacts_root = resolve_contained_path(
@@ -5133,7 +5086,7 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
         plan["artifacts"]["root"],
         "plan artifacts root",
     )
-    evidence = _collect_v5_evidence(
+    evidence = _collect_v6_evidence(
         index_rows,
         artifacts_root=artifacts_root,
         plan=plan,
@@ -5141,7 +5094,7 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
         registry=registry,
         bound_evidence=bound_evidence,
     )
-    manual, _ = _verify_v5_manual_review(
+    manual, _ = _verify_v6_manual_review(
         Path(locator) if locator is not None else None,
         spec,
         paths["spec"],
@@ -5153,7 +5106,7 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
     for document, schema_name, path in (
         (
             summary,
-            "analysis-summary-v5.schema.json",
+            "analysis-summary-v6.schema.json",
             paths["summary"],
         ),
         (
@@ -5162,7 +5115,7 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
             paths["failure_index"],
         ),
     ):
-        diagnostics = validate_epoch6_schema(document, schema_name, registry)
+        diagnostics = validate_epoch7_schema(document, schema_name, registry)
         if diagnostics:
             raise ValueError(f"{schema_name} release artifact is invalid")
         if path.read_bytes() != canonical_json_bytes(document):
@@ -5188,7 +5141,7 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
     ):
         raise ValueError("summary does not bind the canonical failure index")
 
-    expected_context_cost = _v5_context_cost(
+    expected_context_cost = _v6_context_cost(
         spec,
         plan,
         evidence["records"],
@@ -6109,7 +6062,7 @@ def project_release_estimands(
     }
 
 
-def _v5_base_exit(level: str, summary: dict[str, Any]) -> int:
+def _v6_base_exit(level: str, summary: dict[str, Any]) -> int:
     manual = summary["manual_authority"]
     if (
         summary["analysis_ready"] is not True
@@ -6142,17 +6095,17 @@ def _v5_base_exit(level: str, summary: dict[str, Any]) -> int:
     return 3
 
 
-def _v5_exit_code(
+def _v6_exit_code(
     level: str,
     summary: dict[str, Any],
     *,
     report_only: bool,
 ) -> int:
-    base = _v5_base_exit(level, summary)
+    base = _v6_base_exit(level, summary)
     return 0 if report_only and base == 1 else base
 
 
-def _main_v5() -> int:
+def _main_v6() -> int:
     parser = argparse.ArgumentParser(
         description="Analyze an execution plan from index/receipt v5 evidence.",
     )
@@ -6206,13 +6159,13 @@ def _main_v5() -> int:
     try:
         spec_path = args.spec.resolve()
         index_path = args.index.resolve()
-        spec, _, _, plan_path, plan, registry = _load_v5_analysis_inputs(
+        spec, _, _, plan_path, plan, registry = _load_v6_analysis_inputs(
             spec_path, index_path,
         )
-        bound_evidence = _load_v5_bound_evidence(
+        bound_evidence = _load_v6_bound_evidence(
             spec, spec_path, registry,
         )
-        index_rows = _load_v5_index(
+        index_rows = _load_v6_index(
             index_path, plan_path, plan, registry,
         )
         _, artifacts_root = resolve_contained_path(
@@ -6220,7 +6173,7 @@ def _main_v5() -> int:
             plan["artifacts"]["root"],
             "plan artifacts root",
         )
-        evidence = _collect_v5_evidence(
+        evidence = _collect_v6_evidence(
             index_rows,
             artifacts_root=artifacts_root,
             plan=plan,
@@ -6228,16 +6181,16 @@ def _main_v5() -> int:
             registry=registry,
             bound_evidence=bound_evidence,
         )
-        failure_items, failure_artifacts = _derive_v5_failures(
+        failure_items, failure_artifacts = _derive_v6_failures(
             spec, plan, plan_path, evidence,
         )
-        manual, manual_issue = _verify_v5_manual_review(
+        manual, manual_issue = _verify_v6_manual_review(
             args.manual_review_receipt,
             spec,
             spec_path,
             plan_path,
         )
-        summary, metric_analysis = _v5_summary_base(
+        summary, metric_analysis = _v6_summary_base(
             spec, plan, evidence, failure_items, manual, bound_evidence,
         )
         if spec_path.name in failure_artifacts:
@@ -6245,13 +6198,13 @@ def _main_v5() -> int:
         failure_artifacts[spec_path.name] = _local_artifact(
             spec_path, encoding="utf-8",
         )
-        failure_items = _finalize_v5_failures(
+        failure_items = _finalize_v6_failures(
             [
                 *failure_items,
-                *_derive_v5_gate_failures(
+                *_derive_v6_gate_failures(
                     spec, plan, spec_path, metric_analysis,
                 ),
-                *_derive_v5_manual_failure(
+                *_derive_v6_manual_failure(
                     spec,
                     plan,
                     spec_path,
@@ -6268,11 +6221,11 @@ def _main_v5() -> int:
         summary["representative_failure_ids"] = [
             item["failure_id"] for item in failure_items[:10]
         ]
-        failures = _v5_failure_index(
+        failures = _v6_failure_index(
             spec, plan, failure_items, view="index",
         )
         details = (
-            _v5_failure_index(spec, plan, failure_items, view="full")
+            _v6_failure_index(spec, plan, failure_items, view="full")
             if details_path is not None
             else None
         )
@@ -6281,7 +6234,7 @@ def _main_v5() -> int:
             if observations_path is not None
             else None
         )
-        _commit_v5_outputs(
+        _commit_v6_outputs(
             summary,
             failures,
             failure_details=details,
@@ -6300,13 +6253,13 @@ def _main_v5() -> int:
     print(
         f"Analyzed {len(index_rows)} attempts for {len(plan['entries'])} plan entries.",
     )
-    return _v5_exit_code(
+    return _v6_exit_code(
         spec["level"], summary, report_only=args.report_only,
     )
 
 
 def main() -> int:
-    return _main_v5()
+    return _main_v6()
 
 
 if __name__ == "__main__":

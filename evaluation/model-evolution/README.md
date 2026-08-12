@@ -7,7 +7,7 @@ This directory owns the bounded qualification campaign used when a Codex Host or
 - `schemas/campaign-v3.schema.json` defines campaign state and revision-based mutation.
 - `schemas/interaction-probes-v2.schema.json` defines the bounded Host probe set.
 - `schemas/sentinel-index-v2.schema.json` indexes the four Skill sentinel suites.
-- `schemas/qualification-v2.schema.json` defines the deterministic qualification projection.
+- `schemas/qualification-v3.schema.json` defines the decision-axis qualification projection.
 - `codex-interaction-probes-v2.json` contains six model-independent Host probes.
 - `sentinel-index-v2.json` binds the four generated public suites under `sentinels/`.
 - `evaluation/fixtures/skill-evaluator/` is the single model-free compile-run-analyze fixture used by controller preflight and the public lifecycle test.

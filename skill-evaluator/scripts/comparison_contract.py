@@ -16,8 +16,9 @@ from evidence_io import (
     resolve_contained_path,
 )
 from validate_eval_suite import (
-    load_epoch6_schema_registry,
-    validate_epoch6_schema,
+    evaluate_gate_status,
+    load_epoch7_schema_registry,
+    validate_epoch7_schema,
 )
 
 
@@ -29,10 +30,10 @@ ROLE_ORDER = {
     "C": 4,
 }
 ARTIFACT_CONTRACTS = {
-    "spec": ("eval-spec-v6", "eval-spec-v6.schema.json"),
-    "execution_plan": ("execution-plan-v2", "execution-plan-v2.schema.json"),
+    "spec": ("eval-spec-v7", "eval-spec-v7.schema.json"),
+    "execution_plan": ("execution-plan-v3", "execution-plan-v3.schema.json"),
     "host_manifest": ("host-manifest-v2", "host-manifest-v2.schema.json"),
-    "summary": ("analysis-summary-v5", "analysis-summary-v5.schema.json"),
+    "summary": ("analysis-summary-v6", "analysis-summary-v6.schema.json"),
     "failure_index": ("failure-index-v2", "failure-index-v2.schema.json"),
     "observations": (
         "comparison-observations-v2", "comparison-observations-v2.schema.json",
@@ -108,12 +109,12 @@ def load_comparison_plan(
     resolved = plan_path.resolve()
     try:
         plan = load_json(resolved)
-        registry = load_epoch6_schema_registry()
+        registry = load_epoch7_schema_registry()
     except (OSError, ValueError, TypeError) as exc:
         _raise("plan.load", exc)
-    diagnostics = validate_epoch6_schema(
+    diagnostics = validate_epoch7_schema(
         plan,
-        "comparison-plan-v2.schema.json",
+        "comparison-plan-v3.schema.json",
         registry,
     )
     if diagnostics:
@@ -149,7 +150,7 @@ def _load_artifact(
         raise
     except (OSError, ValueError, TypeError) as exc:
         _raise("input.path", f"{label}: {exc}")
-    diagnostics = validate_epoch6_schema(document, schema_name, registry)
+    diagnostics = validate_epoch7_schema(document, schema_name, registry)
     if diagnostics:
         _schema_error(label, diagnostics)
     actual_digest = file_sha256(path)
@@ -170,7 +171,7 @@ def _load_cycle(
     registry: dict[str, dict[str, Any]],
 ) -> CycleCapsule:
     capsule_binding = binding["capsule"]
-    if capsule_binding["schema"] != "comparison-cycle-capsule/2":
+    if capsule_binding["schema"] != "comparison-cycle-capsule/3":
         _raise("input.schema_binding", f"{role}.capsule schema is invalid")
     try:
         capsule_relative = normalize_relative_path(
@@ -187,8 +188,8 @@ def _load_cycle(
         raise
     except (OSError, ValueError, TypeError) as exc:
         _raise("input.path", f"{role}.capsule: {exc}")
-    diagnostics = validate_epoch6_schema(
-        capsule, "comparison-cycle-capsule-v2.schema.json", registry,
+    diagnostics = validate_epoch7_schema(
+        capsule, "comparison-cycle-capsule-v3.schema.json", registry,
     )
     if diagnostics:
         _schema_error(f"{role}.capsule", diagnostics)
@@ -271,6 +272,27 @@ def _load_cycle(
         "source_revision": plan["source_revision"],
     }
     _expect_equal(summary["subject"], expected_subject, f"{role}.summary subject")
+    gate_fields = (
+        "gate_id", "decision_axis", "kind", "metric", "direction",
+        "threshold", "required",
+    )
+    _expect_equal(
+        [
+            {field: result[field] for field in gate_fields}
+            for result in summary["gate_results"]
+        ],
+        [
+            {field: gate[field] for field in gate_fields}
+            for gate in spec["hard_gates"]
+        ],
+        f"{role}.summary gate projection",
+    )
+    for result in summary["gate_results"]:
+        _expect_equal(
+            result["status"],
+            evaluate_gate_status(result, result["observed"]),
+            f"{role}.summary gate {result['gate_id']} status replay",
+        )
 
     if failure_index is not None:
         assert isinstance(failure_index, dict)
@@ -446,9 +468,9 @@ def commit_outputs(
             "comparison-diagnostic-index-v2.schema.json",
             "comparison diagnostic index",
         ),
-        (report, "comparison-report-v2.schema.json", "comparison report"),
+        (report, "comparison-report-v3.schema.json", "comparison report"),
     ):
-        schema_diagnostics = validate_epoch6_schema(
+        schema_diagnostics = validate_epoch7_schema(
             value,
             schema_name,
             registry,

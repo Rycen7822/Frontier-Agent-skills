@@ -64,16 +64,16 @@ GLOBAL_GATE_METRICS = {
     "unattributed_model_body_read_count_max", "protocol_output_bytes_max",
     "failed_command_output_bytes_max",
 }
-EPOCH6_SCHEMA_DIR = Path(__file__).resolve().parents[1] / "schemas"
-EPOCH6_SCHEMA_NAMES = {
-    "analysis-summary-v5.schema.json",
-    "comparison-cycle-capsule-v2.schema.json",
+EPOCH7_SCHEMA_DIR = Path(__file__).resolve().parents[1] / "schemas"
+EPOCH7_SCHEMA_NAMES = {
+    "analysis-summary-v6.schema.json",
+    "comparison-cycle-capsule-v3.schema.json",
     "comparison-diagnostic-index-v2.schema.json",
     "comparison-observations-v2.schema.json",
-    "comparison-plan-v2.schema.json",
-    "comparison-report-v2.schema.json",
-    "eval-spec-v6.schema.json",
-    "execution-plan-v2.schema.json",
+    "comparison-plan-v3.schema.json",
+    "comparison-report-v3.schema.json",
+    "eval-spec-v7.schema.json",
+    "execution-plan-v3.schema.json",
     "failure-index-v2.schema.json",
     "grader-calibration-v3.schema.json",
     "host-manifest-v2.schema.json",
@@ -134,10 +134,10 @@ def _schema_type_matches(value: Any, expected: str) -> bool:
     raise ValueError(f"unsupported schema type: {expected}")
 
 
-def load_epoch6_schema_registry() -> dict[str, dict[str, Any]]:
+def load_epoch7_schema_registry() -> dict[str, dict[str, Any]]:
     registry: dict[str, dict[str, Any]] = {}
-    for name in sorted(EPOCH6_SCHEMA_NAMES):
-        schema = load_json(EPOCH6_SCHEMA_DIR / name)
+    for name in sorted(EPOCH7_SCHEMA_NAMES):
+        schema = load_json(EPOCH7_SCHEMA_DIR / name)
         if not isinstance(schema, dict):
             raise ValueError(f"schema is not an object: {name}")
         expected_id = f"https://example.invalid/skill-evaluator/schemas/{name}"
@@ -327,7 +327,7 @@ def _validate_schema_node(
                 _schema_error(errors, keyword, path, f"number violates {keyword}")
 
 
-def validate_epoch6_schema(
+def validate_epoch7_schema(
     value: Any,
     schema_name: str,
     registry: dict[str, dict[str, Any]],
@@ -377,7 +377,7 @@ def validate_host_protocol_record(
 ) -> list[dict[str, str]]:
     if owner not in HOST_PROTOCOL_OWNERS:
         raise ValueError(f"unknown host protocol owner: {owner}")
-    active_registry = registry or load_epoch6_schema_registry()
+    active_registry = registry or load_epoch7_schema_registry()
     errors: list[dict[str, str]] = []
     schema = active_registry["host-manifest-v2.schema.json"]["$defs"][owner]
     _validate_schema_node(
@@ -533,7 +533,7 @@ def validate_host_protocol_record(
     return errors
 
 
-EPOCH6_MODULES = {
+EPOCH7_MODULES = {
     "core_outcome",
     "natural_routing",
     "catalog_routing",
@@ -545,7 +545,7 @@ EPOCH6_MODULES = {
     "dynamic_security",
     "longitudinal",
 }
-EPOCH6_MODULE_CAPABILITIES = {
+EPOCH7_MODULE_CAPABILITIES = {
     "natural_routing": {"discovery", "natural_routing"},
     "catalog_routing": {"catalog_snapshot"},
     "declared_composition": {"composition"},
@@ -559,7 +559,7 @@ EPOCH6_MODULE_CAPABILITIES = {
     },
     "longitudinal": {"clock_capture"},
 }
-EPOCH6_READINESS_WARNING_CODES = {
+EPOCH7_READINESS_WARNING_CODES = {
     "non_ready.execution",
     "non_ready.calibration",
     "non_ready.quality",
@@ -583,7 +583,7 @@ def _add_readiness_warning(
     path: str,
     message: str,
 ) -> None:
-    if code not in EPOCH6_READINESS_WARNING_CODES:
+    if code not in EPOCH7_READINESS_WARNING_CODES:
         raise ValueError(f"unknown readiness warning code: {code}")
     warnings.append(_contract_diagnostic("readiness", code, path, message))
 
@@ -657,14 +657,14 @@ def _validate_typed_artifact(
     registry: dict[str, dict[str, Any]],
     errors: list[dict[str, str]],
 ) -> None:
-    for diagnostic in validate_epoch6_schema(value, schema_name, registry):
+    for diagnostic in validate_epoch7_schema(value, schema_name, registry):
         errors.append({
             **diagnostic,
             "path": path + diagnostic["path"],
         })
 
 
-def required_epoch6_modules(spec: dict[str, Any]) -> set[str]:
+def required_epoch7_modules(spec: dict[str, Any]) -> set[str]:
     required: set[str] = set()
     level = spec.get("level")
     subject = spec.get("subject", {})
@@ -711,13 +711,13 @@ def _validate_applicability(
             errors, "applicability.duplicate", "/applicability",
             "each module must be declared exactly once",
         )
-    if set(names) != EPOCH6_MODULES:
+    if set(names) != EPOCH7_MODULES:
         _add_contract_error(
             errors, "applicability.registry", "/applicability",
             "applicability must cover the exact module registry",
         )
         return
-    required = required_epoch6_modules(spec)
+    required = required_epoch7_modules(spec)
     for index, decision in enumerate(decisions):
         module = decision["module"]
         expected = "required" if module in required else "not_applicable"
@@ -728,6 +728,54 @@ def _validate_applicability(
                 f"/applicability/{index}/status",
                 f"{module} must be {expected} for the declared level/subject",
             )
+
+
+def _validate_hard_gates(
+    spec: dict[str, Any], errors: list[dict[str, str]],
+) -> None:
+    gate_ids = [gate["gate_id"] for gate in spec.get("hard_gates", [])]
+    if len(gate_ids) != len(set(gate_ids)):
+        _add_contract_error(
+            errors,
+            "hard_gates.gate_id_unique",
+            "/hard_gates",
+            "hard-gate IDs must be unique",
+        )
+
+
+_CATEGORICAL_GATE_STATUSES = {
+    "manual": {"approve": "pass", "hold": "fail", "reject": "fail"},
+    "quality": {"pass": "pass", "fail": "fail"},
+    "calibration": {"pass": "pass", "fail": "fail", "expired": "fail"},
+    "host": {"feasible": "pass", "unsupported": "fail"},
+}
+
+
+def evaluate_gate_status(gate: dict[str, Any], observed: Any) -> str:
+    """Replay a hard-gate decision from its declared comparison contract."""
+    if observed is None:
+        return "not_evaluable"
+    kind = gate["kind"]
+    if kind in _CATEGORICAL_GATE_STATUSES:
+        return _CATEGORICAL_GATE_STATUSES[kind].get(observed, "not_evaluable")
+    direction = gate["direction"]
+    threshold = gate["threshold"]
+    if direction == "present":
+        return "pass"
+    if direction == "equal":
+        return "pass" if observed == threshold else "fail"
+    if (
+        not isinstance(observed, (int, float))
+        or isinstance(observed, bool)
+        or not isinstance(threshold, (int, float))
+        or isinstance(threshold, bool)
+    ):
+        return "not_evaluable"
+    if direction == "at_least":
+        return "pass" if observed >= threshold else "fail"
+    if direction == "at_most":
+        return "pass" if observed <= threshold else "fail"
+    return "not_evaluable"
 
 
 def derive_entry_disposition(
@@ -870,7 +918,7 @@ def _validate_routing_contract(
     path: str,
     errors: list[dict[str, str]],
 ) -> None:
-    modules = required_epoch6_modules(spec)
+    modules = required_epoch7_modules(spec)
     required = bool(
         modules & {"natural_routing", "catalog_routing"}
         or spec.get("subject", {}).get("shape") == "ordered_pipeline"
@@ -1008,9 +1056,9 @@ def _validate_scenarios(
         if isinstance(treatment, dict)
     }
     coordination_required = (
-        "multi_principal_coordination" in required_epoch6_modules(spec)
+        "multi_principal_coordination" in required_epoch7_modules(spec)
     )
-    multi_turn_required = "multi_turn_state" in required_epoch6_modules(spec)
+    multi_turn_required = "multi_turn_state" in required_epoch7_modules(spec)
     for index, scenario in enumerate(scenarios):
         prefix = f"/scenarios/{index}"
         if multi_turn_required and len(scenario.get("turns", [])) < 2:
@@ -1334,7 +1382,7 @@ def _validate_treatments(
                     f"{profile} requires causal_role={expected_role}",
                 )
         if profile == "candidate/natural_routing":
-            if "natural_routing" not in required_epoch6_modules(spec):
+            if "natural_routing" not in required_epoch7_modules(spec):
                 _add_contract_error(
                     errors, "treatment.routing_module", prefix + "/profile",
                     "natural-routing treatment requires natural_routing module",
@@ -1542,8 +1590,8 @@ def _validate_host_manifest(
     required = set(spec.get("host", {}).get("required_capabilities", []))
     module_capabilities = {
         capability
-        for module in required_epoch6_modules(spec)
-        for capability in EPOCH6_MODULE_CAPABILITIES.get(module, set())
+        for module in required_epoch7_modules(spec)
+        for capability in EPOCH7_MODULE_CAPABILITIES.get(module, set())
     }
     missing_declarations = module_capabilities - required
     if missing_declarations:
@@ -1819,7 +1867,7 @@ def _validate_quality_binding(
     module_coverage = quality.get("coverage", {}).get("modules", {})
     uncovered_modules = [
         module
-        for module in sorted(required_epoch6_modules(spec))
+        for module in sorted(required_epoch7_modules(spec))
         if module not in module_coverage
         or module_coverage[module].get("positive", 0) < 1
         or module_coverage[module].get("boundary_or_failure", 0) < 1
@@ -2118,7 +2166,7 @@ def _validate_execution_scenario_partition(
         )
 
 
-def validate_epoch6_contract_semantics(
+def validate_epoch7_contract_semantics(
     spec: dict[str, Any],
     scenarios: list[dict[str, Any]],
     host: dict[str, Any] | None,
@@ -2133,6 +2181,7 @@ def validate_epoch6_contract_semantics(
     level = spec["level"]
     ready = spec["execution"]["ready"] is True
     _validate_applicability(spec, errors)
+    _validate_hard_gates(spec, errors)
     if level == "L0":
         return errors, warnings
     if scenarios_path is None or host_path is None or host is None:
@@ -2373,16 +2422,16 @@ def _contract_command(args: argparse.Namespace) -> int:
                 row for _, row in load_jsonl_objects(scenarios_path)
             ]
             host = load_json(host_path)
-        registry = load_epoch6_schema_registry()
+        registry = load_epoch7_schema_registry()
     except (OSError, ValueError) as exc:
         print(f"contract input error: {exc}", file=sys.stderr)
         return 2
 
-    errors = validate_epoch6_schema(
-        spec, "eval-spec-v6.schema.json", registry,
+    errors = validate_epoch7_schema(
+        spec, "eval-spec-v7.schema.json", registry,
     )
     for index, row in enumerate(scenario_rows):
-        for diagnostic in validate_epoch6_schema(
+        for diagnostic in validate_epoch7_schema(
             row, "scenario-v1.schema.json", registry,
         ):
             errors.append({
@@ -2390,7 +2439,7 @@ def _contract_command(args: argparse.Namespace) -> int:
                 "path": f"/scenarios/{index}{diagnostic['path']}",
             })
     if host is not None:
-        for diagnostic in validate_epoch6_schema(
+        for diagnostic in validate_epoch7_schema(
             host, "host-manifest-v2.schema.json", registry,
         ):
             errors.append({
@@ -2401,7 +2450,7 @@ def _contract_command(args: argparse.Namespace) -> int:
     warnings: list[dict[str, str]] = []
     if not errors:
         try:
-            semantic_errors, warnings = validate_epoch6_contract_semantics(
+            semantic_errors, warnings = validate_epoch7_contract_semantics(
                 spec,
                 scenario_rows,
                 host,
@@ -3467,13 +3516,13 @@ def _calibration_command(args: argparse.Namespace) -> int:
         label_rows = _jsonl_objects_from_bytes(
             labels_raw, "calibration labels",
         )
-        registry = load_epoch6_schema_registry()
+        registry = load_epoch7_schema_registry()
     except (OSError, ReviewerPairError, ValueError) as exc:
         print(f"calibration input error: {exc}", file=sys.stderr)
         return 2
 
-    schema_errors = validate_epoch6_schema(
-        spec, "eval-spec-v6.schema.json", registry,
+    schema_errors = validate_epoch7_schema(
+        spec, "eval-spec-v7.schema.json", registry,
     )
     if schema_errors:
         diagnostic = schema_errors[0]
@@ -3588,7 +3637,7 @@ def _calibration_command(args: argparse.Namespace) -> int:
         "labeled_examples": labeled_binding,
         "raw_ratings": ratings_binding,
     }
-    output_errors = validate_epoch6_schema(
+    output_errors = validate_epoch7_schema(
         artifact, "grader-calibration-v3.schema.json", registry,
     )
     if output_errors:
@@ -3746,7 +3795,7 @@ def _required_quality_boundaries(
         for scenario in scenarios
     ):
         required["scenario-oracle"] = {"boundary_or_failure"}
-    modules = required_epoch6_modules(spec)
+    modules = required_epoch7_modules(spec)
     if "multi_principal_coordination" in modules:
         required["coordination"] = {
             "single-principal-equal-budget",
@@ -4324,12 +4373,12 @@ def _suite_quality_command(args: argparse.Namespace) -> int:
     try:
         spec = load_json(spec_path)
         proof = load_json(proof_path)
-        registry = load_epoch6_schema_registry()
+        registry = load_epoch7_schema_registry()
     except (OSError, ValueError) as exc:
         print(f"suite-quality input error: {exc}", file=sys.stderr)
         return 2
-    schema_errors = validate_epoch6_schema(
-        spec, "eval-spec-v6.schema.json", registry,
+    schema_errors = validate_epoch7_schema(
+        spec, "eval-spec-v7.schema.json", registry,
     )
     if schema_errors:
         diagnostic = schema_errors[0]
@@ -4356,7 +4405,7 @@ def _suite_quality_command(args: argparse.Namespace) -> int:
         print(f"suite-quality input error: {exc}", file=sys.stderr)
         return 2
     for index, scenario in enumerate(scenarios):
-        scenario_errors = validate_epoch6_schema(
+        scenario_errors = validate_epoch7_schema(
             scenario, "scenario-v1.schema.json", registry,
         )
         if scenario_errors:
@@ -4392,7 +4441,7 @@ def _suite_quality_command(args: argparse.Namespace) -> int:
         },
         **normalized,
     }
-    output_errors = validate_epoch6_schema(
+    output_errors = validate_epoch7_schema(
         artifact, "suite-quality-v2.schema.json", registry,
     )
     if output_errors:

@@ -245,7 +245,7 @@ def _materialize_evaluator_fixture(
         "grader-output.schema.json",
         "host-manifest-v2.json",
         "scenarios-v1.jsonl",
-        "spec-v6.json",
+        "spec-v7.json",
         "suite-quality-proof.json",
         "suite-quality-v2.json",
         "synthetic-host.py",
@@ -259,7 +259,7 @@ def _materialize_evaluator_fixture(
             raise OperationError(f"evaluator fixture is missing or unsafe: {name}")
         shutil.copy2(path, target / name)
     return {
-        "spec": target / "spec-v6.json",
+        "spec": target / "spec-v7.json",
         "scenarios": target / "scenarios-v1.jsonl",
         "host": target / "host-manifest-v2.json",
     }

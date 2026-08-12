@@ -83,7 +83,7 @@
         "description": "Fixture skill",
         "scope": "fixture",
         "source": "local",
-        "version": "4.0.0",
+        "version": "5.0.0",
         "root_digest": "sha256:d8a26e69b3928afa0ced5f83deb8319af4cc828139264edc11e43268c661e0c6"
       }
     ],

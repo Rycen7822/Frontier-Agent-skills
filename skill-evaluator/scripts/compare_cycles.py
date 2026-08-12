@@ -25,13 +25,13 @@ def _report(
 ) -> dict[str, Any]:
     roles = sorted(capsules, key=ROLE_ORDER.__getitem__)
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "comparison_id": plan["comparison_id"],
         "kind": plan["kind"],
         "claim_scope": plan["claim_scope"],
         "generator": {
             "name": "compare_cycles.py",
-            "version": "4.0.0",
+            "version": "5.0.0",
             "source_revision": capsules[roles[-1]].execution_plan[
                 "source_revision"
             ],

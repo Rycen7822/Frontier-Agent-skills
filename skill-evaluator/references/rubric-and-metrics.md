@@ -1,8 +1,8 @@
 # Rubric and Metrics
 
-This file owns the five independent status axes, module/stage summaries, case-cluster inference, non-compensating gates, context/cost semantics, independence/critique/grounding summaries, and empirical usefulness.
+This file owns the five analyzer status axes, seven hard-gate decision axes, module/stage summaries, case-cluster inference, non-compensating gates, context/cost semantics, independence/critique/grounding summaries, and empirical usefulness.
 
-## Five independent axes
+## Five analyzer status axes
 
 The analyzer derives these axes without allowing one to rewrite another:
 
@@ -13,6 +13,8 @@ The analyzer derives these axes without allowing one to rewrite another:
 | `evidence_status` | `complete|incomplete|invalid` | Are every required plan disposition and execute attempt verified? |
 | `usefulness_status` | `supported|not_supported|inconclusive_ceiling|not_evaluable` | Does complete feasible comparative evidence cross the frozen gates? |
 | `final_authority_status` | `eligible|blocked` | May this evidence proceed to its declared external authority? |
+
+These reporting axes do not replace `hard_gates[].decision_axis`. Summary v6 publishes every hard gate in frozen order through `gate_results`; qualification aggregates those explicit results by `task_behavior`, `protected_safety`, `routing`, `operational_cost`, `loop_pathology`, `apparatus`, and `manual_authority`. `usefulness_status` remains a reader-facing synthesis and is never a machine qualification input.
 
 An unsupported capability is not a candidate failure. Complete evidence for an unsupported/non-evaluable plan still blocks usefulness and final authority. A treatment failure on a supported path remains valid outcome evidence.
 
@@ -59,7 +61,7 @@ Relative effects are allowed only for input/output tokens and Skill-context byte
 
 Absolute candidate pass rate and point benefit are guardrail/description only. They cannot substitute for the interval.
 
-Any non-task primary benefit requires a task-pass noninferiority gate against the same comparator. A cost primary additionally requires quality and safety noninferiority plus zero unauthorized effects. Hard gates have one declared kind, metric, direction, threshold, authority, and required flag. Protected, safety, invalid-evidence, module, context, host, calibration, quality, or task-regression failures cannot be offset by aggregate utility.
+Any non-task primary benefit requires a task-pass noninferiority gate against the same comparator. A cost primary additionally requires quality and safety noninferiority plus zero unauthorized effects. Hard gates have one explicit decision axis, kind, metric, direction, threshold, authority, and required flag. Protected, safety, invalid-evidence, module, context, host, calibration, quality, or task-regression failures cannot be offset by aggregate utility.
 
 Calibration v3 evaluates `minimum_examples` and `minimum_agreement` independently for every selected model check. The artifact records exact per-check sample and agreement metrics; one failing check closes the gate regardless of aggregate or dimension-level values. Optional reviewer-pair v3 corroboration uses readable semantic packets and ordered value-only responses and does not lower the judge-to-gold or manual-authority requirements.
 
@@ -99,7 +101,7 @@ Predeclare meaningful routing, domain, difficulty, state, safety, environment, m
 
 ## Empirical usefulness status
 
-`analyze_runs.py::derive_usefulness_status` is the sole empirical status owner:
+Summary v6 derives this reader-facing status from the same frozen analysis inputs that produce `gate_results`:
 
 | Evidence and gates | `usefulness_status` |
 |---|---|

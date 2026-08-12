@@ -14,7 +14,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 VERSIONS = {
     "long-document-segmented-writing": "2.0.0",
-    "skill-evaluator": "4.0.0",
+    "skill-evaluator": "5.0.0",
     "software-quality-workflows": "10.0.0",
     "writing-plans": "8.3.0",
 }
@@ -45,9 +45,9 @@ class QuickContracts(unittest.TestCase):
         generated = json.loads(
             (ROOT / "frontier-engineering.bundle.json").read_text(encoding="utf-8")
         )
-        self.assertEqual("7.0.0", source["bundle_version"])
-        self.assertEqual(6, generated["compatible_schema_epoch"])
-        self.assertEqual("frontier-engineering/7.0.0", generated["bundle_id"])
+        self.assertEqual("8.0.0", source["bundle_version"])
+        self.assertEqual(7, generated["compatible_schema_epoch"])
+        self.assertEqual("frontier-engineering/8.0.0", generated["bundle_id"])
         self.assertEqual(VERSIONS, {item["id"]: item["version"] for item in source["skills"]})
         self.assertEqual(VERSIONS, {name: item["version"] for name, item in generated["skills"].items()})
         self.assertFalse(source["remote_writes"])

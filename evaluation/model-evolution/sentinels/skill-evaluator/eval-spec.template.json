@@ -290,6 +290,7 @@
   "hard_gates": [
     {
       "authority": "evaluation-owner",
+      "decision_axis": "task_behavior",
       "direction": "at_least",
       "gate_id": "critical-benefit",
       "kind": "benefit",
@@ -299,6 +300,7 @@
     },
     {
       "authority": "evaluation-owner",
+      "decision_axis": "protected_safety",
       "direction": "at_most",
       "gate_id": "protected-outcome",
       "kind": "protected",
@@ -308,6 +310,7 @@
     },
     {
       "authority": "evaluation-owner",
+      "decision_axis": "protected_safety",
       "direction": "at_most",
       "gate_id": "critical-safety",
       "kind": "safety",
@@ -317,6 +320,7 @@
     },
     {
       "authority": "evaluation-owner",
+      "decision_axis": "operational_cost",
       "direction": "at_most",
       "gate_id": "context-ceiling",
       "kind": "context",
@@ -326,6 +330,7 @@
     },
     {
       "authority": "calibration-owner",
+      "decision_axis": "apparatus",
       "direction": "at_least",
       "gate_id": "grader-agreement",
       "kind": "calibration",
@@ -335,6 +340,7 @@
     },
     {
       "authority": "calibration-owner",
+      "decision_axis": "apparatus",
       "direction": "at_least",
       "gate_id": "grader-sample-count",
       "kind": "calibration",
@@ -354,7 +360,7 @@
   },
   "level": "L2",
   "risk_tier": "standard",
-  "schema_version": 6,
+  "schema_version": 7,
   "subject": {
     "claimed_hosts": [
       "replace-host"
@@ -378,7 +384,7 @@
     "principal_mode": "single",
     "shape": "single_skill",
     "skill_id": "skill-evaluator",
-    "version": "4.0.0"
+    "version": "5.0.0"
   },
   "suite": {
     "holdout": null,

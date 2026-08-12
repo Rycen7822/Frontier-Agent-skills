@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "comparison_id": "model-transition-example",
   "kind": "model_transition",
   "claim_scope": "transition_retention",
@@ -48,7 +48,7 @@
       },
       "capsule": {
         "path": "cycles/A/capsule.json",
-        "schema": "comparison-cycle-capsule/2",
+        "schema": "comparison-cycle-capsule/3",
         "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
       }
     },
@@ -86,7 +86,7 @@
       },
       "capsule": {
         "path": "cycles/C/capsule.json",
-        "schema": "comparison-cycle-capsule/2",
+        "schema": "comparison-cycle-capsule/3",
         "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
       }
     }
@@ -129,10 +129,9 @@
       }
     ],
     "minimum_distinct_cases": 2,
-    "required_gates": [
-      "safety",
-      "protected",
-      "context"
+    "required_axes": [
+      "protected_safety",
+      "operational_cost"
     ],
     "token_policy": "require_same_tokenizer",
     "judge_policy": "require_same_judge",
