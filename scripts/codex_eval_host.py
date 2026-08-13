@@ -1548,6 +1548,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--sandbox", choices=("read-only", "workspace-write"), required=True
     )
+    parser.add_argument(
+        "--probe-sandbox", choices=("read-only", "workspace-write")
+    )
     parser.add_argument("--timeout", type=float, required=True)
     return parser
 
@@ -1572,11 +1575,14 @@ def main(argv: list[str] | None = None) -> int:
         workspace = Path.cwd().resolve(strict=True)
         manifest = _validate_manifest(args.host_manifest.resolve(strict=True), args)
         args.source_root = _manifest_source_root(manifest)
-        return (
-            _run_probe_mode(args, workspace)
-            if args.mode == "probe"
-            else _run_host_mode(args, manifest, workspace)
-        )
+        if args.mode == "probe":
+            if args.probe_sandbox is None:
+                raise AdapterError("probe mode requires its frozen sandbox")
+            args.sandbox = args.probe_sandbox
+            return _run_probe_mode(args, workspace)
+        if args.probe_sandbox is not None:
+            raise AdapterError("host mode cannot override the manifest sandbox")
+        return _run_host_mode(args, manifest, workspace)
     except (
         AdapterError,
         ArtifactError,

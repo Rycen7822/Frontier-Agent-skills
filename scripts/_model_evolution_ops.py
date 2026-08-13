@@ -311,6 +311,55 @@ def _probe_process_timeout(argv: list[str]) -> float:
     return host_timeout + HOST_CLEANUP_GRACE_SECONDS
 
 
+def _probe_process_argv(argv: list[str], row: dict[str, Any]) -> list[str]:
+    probe_argv = list(argv)
+    if (
+        "--probe-sandbox" in probe_argv
+        or row.get("sandbox") not in {"read-only", "workspace-write"}
+    ):
+        raise OperationError("interaction probe sandbox is invalid")
+    probe_argv.extend(["--probe-sandbox", row["sandbox"]])
+    return probe_argv
+
+
+def _validate_probe_entrypoints(
+    host: dict[str, Any],
+    probe_set: dict[str, Any],
+    repository_root: Path,
+) -> None:
+    base_argv = _probe_argv(host, repository_root)
+    environment = project_command_environment(
+        host["command"], dict(os.environ), require_model_evolution=True
+    )
+    seen: set[str] = set()
+    for row in probe_set["probes"]:
+        if row["sandbox"] in seen:
+            continue
+        seen.add(row["sandbox"])
+        with tempfile.TemporaryDirectory(
+            prefix="frontier-probe-preflight-"
+        ) as temp_dir:
+            result = subprocess.run(
+                _probe_process_argv(base_argv, row),
+                cwd=temp_dir,
+                env=environment,
+                input="{}\n",
+                text=True,
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        if (
+            result.returncode != 2
+            or result.stdout
+            or result.stderr.strip()
+            != "codex_eval_host: interaction probe row is invalid"
+        ):
+            raise OperationError(
+                "interaction probe sandbox entrypoint failed local preflight"
+            )
+
+
 def _run_probe_process(
     argv: list[str],
     row: dict[str, Any],
@@ -319,17 +368,7 @@ def _run_probe_process(
     workspace: Path,
     timeout: float,
 ) -> tuple[dict[str, Any], str]:
-    probe_argv = list(argv)
-    positions = [
-        index for index, item in enumerate(probe_argv) if item == "--sandbox"
-    ]
-    if (
-        len(positions) != 1
-        or positions[0] + 1 >= len(probe_argv)
-        or row.get("sandbox") not in {"read-only", "workspace-write"}
-    ):
-        raise OperationError("interaction probe sandbox is invalid")
-    probe_argv[positions[0] + 1] = row["sandbox"]
+    probe_argv = _probe_process_argv(argv, row)
     request = {
         "schema_version": "codex-interaction-probe/1.0",
         "probe_id": row["probe_id"],
@@ -790,6 +829,15 @@ def preflight_operations(
         expected_commit=campaign["product"]["source_commit"],
         expected_tree=campaign["product"]["source_tree"],
     )
+    probe_set = load_json(
+        resolve_binding(
+            campaign["interaction_probes"]["probe_set"],
+            repository_root,
+            campaign_root,
+        ),
+        label="interaction probe set",
+    )
+    _validate_probe_entrypoints(validated_host, probe_set, repository_root)
     operations.append(
         _operation_fact(
             "host-plugin-binding",
