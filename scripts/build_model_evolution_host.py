@@ -162,6 +162,7 @@ def build_host(
     repository_root: Path,
     codex_entrypoint: Path,
     template_path: Path,
+    probe_set_path: Path,
     plugin_root: Path,
     plugin_build_path: Path,
     output_path: Path,
@@ -173,7 +174,11 @@ def build_host(
     template_path = template_path.resolve(strict=True)
     if not template_path.is_relative_to(repository_root):
         raise HostBuildError("template Host escapes the selected source")
+    probe_set_path = probe_set_path.resolve(strict=True)
+    if not probe_set_path.is_relative_to(repository_root):
+        raise HostBuildError("interaction probe set escapes the selected source")
     template = _load(template_path)
+    probe_set = _load(probe_set_path)
     evidence = _load(plugin_build_path.resolve(strict=True))
     value = copy.deepcopy(template)
     command = value.get("command")
@@ -181,15 +186,43 @@ def build_host(
     if argv != ["python3", "replace-with-host-adapter.py"]:
         raise HostBuildError("template Host command is not the canonical fixture")
     capabilities = value.get("capabilities")
-    if not isinstance(capabilities, list) or sum(
-        isinstance(item, dict) and item.get("capability") == "model_grading"
-        for item in capabilities
-    ) != 1:
-        raise HostBuildError("template must contain one model-grading fixture")
+    by_capability = {
+        item.get("capability"): item
+        for item in capabilities or []
+        if isinstance(item, dict) and isinstance(item.get("capability"), str)
+    }
+    if (
+        not isinstance(capabilities, list)
+        or len(by_capability) != len(capabilities)
+        or set(by_capability) != {"force_load", "model_grading"}
+    ):
+        raise HostBuildError("template capability fixtures are invalid")
+    probe_rows = probe_set.get("probes")
+    probe_capabilities = [
+        row.get("capability")
+        for row in probe_rows or []
+        if isinstance(row, dict)
+    ]
+    if (
+        probe_set.get("schema_version") != "model-evolution-interaction-probes/2"
+        or probe_set.get("probe_set_id") != "frontier-codex-interaction-probes-v2"
+        or not isinstance(probe_rows, list)
+        or len(probe_capabilities) != len(probe_rows)
+        or any(not isinstance(item, str) or not item for item in probe_capabilities)
+        or len(set(probe_capabilities)) != len(probe_capabilities)
+        or "force_load" not in probe_capabilities
+    ):
+        raise HostBuildError("interaction probe capabilities are invalid")
+    probe_fixture = by_capability["force_load"].get("probe")
+    if not isinstance(probe_fixture, dict):
+        raise HostBuildError("template capability probe fixture is invalid")
     value["capabilities"] = [
-        item
-        for item in capabilities
-        if not isinstance(item, dict) or item.get("capability") != "model_grading"
+        {
+            "capability": capability,
+            "declared": True,
+            "probe": copy.deepcopy(probe_fixture),
+        }
+        for capability in probe_capabilities
     ]
 
     executable = Path(sys.executable).resolve(strict=True)
@@ -352,6 +385,7 @@ def main() -> int:
     parser.add_argument("--repository-root", type=Path, required=True)
     parser.add_argument("--codex-entrypoint", type=Path, required=True)
     parser.add_argument("--template", type=Path, required=True)
+    parser.add_argument("--probe-set", type=Path, required=True)
     parser.add_argument("--plugin-root", type=Path, required=True)
     parser.add_argument("--plugin-build-evidence", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -363,6 +397,7 @@ def main() -> int:
             repository_root=args.repository_root,
             codex_entrypoint=args.codex_entrypoint,
             template_path=args.template,
+            probe_set_path=args.probe_set,
             plugin_root=args.plugin_root,
             plugin_build_path=args.plugin_build_evidence,
             output_path=args.output,
