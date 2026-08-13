@@ -48,6 +48,8 @@ Store a new cycle. Never overwrite prior evidence or compare metrics across chan
 
 Use the same spec v7, execution plan v3, run index v3, receipt v5, summary v6, and failure-index v2 runtime contract as L1–L3. Export each cycle as one capsule v3 and bind that capsule once through comparison plan v3; model transitions also require comparison observations v2. Inside each cycle, preserve readable candidate revision/source/plugin, package, catalog, treatment, host, compiler, fixture, grader, calibration/quality, module/stage, routing, principal/handoff/action/state/fault, usage, context, and cleanup evidence. The capsule remains the custody owner for its internal artifacts.
 
+The subject package revision and apparatus revision are independent identities. A historical package cycle retains the current frozen Host, compiler, fixture, and deterministic verifier revision; the plan records the subject revision in `source_revision` and the apparatus revision in `compiler.source_revision`.
+
 The comparison is evaluable only when:
 
 - version identities are immutable and distinct where the treatment changed;

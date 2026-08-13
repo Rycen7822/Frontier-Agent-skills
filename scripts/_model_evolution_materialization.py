@@ -159,6 +159,7 @@ def _validate_selected_plugin(
     role: str,
     plugin_root: Path,
     evidence_path: Path,
+    product: tuple[dict[str, Any], str, str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if plugin_root.is_symlink() or evidence_path.is_symlink():
         raise MaterializationError("selected plugin staging must not be a symlink")
@@ -172,7 +173,7 @@ def _validate_selected_plugin(
     ):
         raise MaterializationError("selected plugin staging must be campaign-local")
     evidence = load_json(evidence_path, label="selected plugin build")
-    skills, source_commit, _ = _selected_product(campaign, role)
+    skills, source_commit, _ = product or _selected_product(campaign, role)
     if (
         evidence.get("source_revision") != source_commit
         or evidence.get("plugin_tree_hash") != _tree_hash(plugin_root)
@@ -264,6 +265,7 @@ def promoted_model_grading_host(
     repository_root: Path | None = None,
     source_commit: str | None = None,
     source_tree: str | None = None,
+    preserve_repository_identity: bool = False,
 ) -> dict[str, Any]:
     """Derive the exact ready Host from observed probes plus calibration evidence."""
     host = copy.deepcopy(base_host)
@@ -346,12 +348,13 @@ def promoted_model_grading_host(
         host["catalog"] = {"entries": refreshed, "catalog_id": catalog_id}
         execution = host["identity"]["execution"]
         execution["catalog_id"] = catalog_id
-        host["identity"]["repository"] = {
-            "dirty": False,
-            "revision": source_commit,
-            "tree": source_tree,
-            "worktree": str(repository_root.resolve(strict=True)),
-        }
+        if not preserve_repository_identity:
+            host["identity"]["repository"] = {
+                "dirty": False,
+                "revision": source_commit,
+                "tree": source_tree,
+                "worktree": str(repository_root.resolve(strict=True)),
+            }
     return host
 
 
@@ -613,6 +616,10 @@ def _build_public_plan(
     role: str,
     plugin_root: Path,
     plugin_evidence: Path,
+    product: tuple[dict[str, Any], str, str] | None = None,
+    source_repository_root: Path | None = None,
+    verifier_source_commit: str | None = None,
+    preserve_host_repository: bool = False,
 ) -> dict[str, Any]:
     sentinel = load_json(
         resolve_binding(campaign["sentinel_index"], repository_root, campaign_root),
@@ -662,9 +669,10 @@ def _build_public_plan(
         role=role,
         plugin_root=plugin_root,
         evidence_path=plugin_evidence,
+        product=product,
     )
     _copy_file(plugin_evidence, root / "selected-plugin-build.json")
-    _, source_commit, source_tree = _selected_product(campaign, role)
+    _, source_commit, source_tree = product or _selected_product(campaign, role)
 
     base_host = load_json(
         resolve_binding(
@@ -679,7 +687,8 @@ def _build_public_plan(
         target_root=root,
     )
     host_path = root / "host.json"
-    retarget = role == "target_candidate"
+    retarget = role in {"target_candidate", "target_prior"}
+    selected_repository_root = source_repository_root or repository_root
     if not retarget and _plugin_argument(base_host) != plugin_root.resolve(strict=True):
         raise MaterializationError("observed Host plugin differs from selected staging")
     host = promoted_model_grading_host(
@@ -688,9 +697,10 @@ def _build_public_plan(
         calibration_file_hash=_file_hash(calibration_path),
         plugin_root=plugin_root if retarget else None,
         selected_skills=selected_skills if retarget else None,
-        repository_root=repository_root if retarget else None,
+        repository_root=selected_repository_root if retarget else None,
         source_commit=source_commit if retarget else None,
         source_tree=source_tree if retarget else None,
+        preserve_repository_identity=preserve_host_repository,
     )
     _write_exact(host_path, canonical_bytes(host))
 
@@ -709,6 +719,10 @@ def _build_public_plan(
         calibration_file_hash=_file_hash(calibration_path),
         scenarios=scenarios,
     )
+    if verifier_source_commit is not None:
+        for grader in spec["graders"]:
+            if grader["type"] == "deterministic":
+                grader["verifier"]["source_revision"] = verifier_source_commit
     try:
         validate_formal_timeout_inputs(host, spec, scenarios)
     except ContractError as exc:

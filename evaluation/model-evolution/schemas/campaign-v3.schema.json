@@ -282,7 +282,14 @@
         "runner_status"
       ],
       "properties": {
-        "role": {"enum": ["target_current", "target_candidate", "target_holdout"]},
+        "role": {
+          "enum": [
+            "target_current",
+            "target_candidate",
+            "target_prior",
+            "target_holdout"
+          ]
+        },
         "skill_id": {"$ref": "#/$defs/skill_id"},
         "plan": {"$ref": "#/$defs/campaign_ref"},
         "plan_digest": {"$ref": "#/$defs/hash"},

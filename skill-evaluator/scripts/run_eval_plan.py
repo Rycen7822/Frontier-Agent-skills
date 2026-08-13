@@ -1461,7 +1461,7 @@ def _run_deterministic_graders(
             f"grader {grader_id} verifier",
             kind="file",
         )
-        if verifier["source_revision"] != plan["source_revision"]:
+        if verifier["source_revision"] != plan["compiler"]["source_revision"]:
             raise RunnerFailure(
                 f"grader {grader_id} verifier revision differs from the plan",
             )
