@@ -506,13 +506,25 @@ def _load_probe_terminal(
 
 
 def _probe_is_official_transient(value: dict[str, Any]) -> bool:
-    return value.get("status") == "unknown" and value.get("diagnostics") == [
-        {
-            "kind": "official_transient",
-            "index": None,
-            "message": "Codex model capacity response",
-        }
-    ]
+    diagnostics = value.get("diagnostics")
+    return (
+        value.get("status") == "unknown"
+        and isinstance(diagnostics, list)
+        and len(diagnostics) == 1
+        and diagnostics[0]
+        in (
+            {
+                "kind": "official_transient",
+                "index": None,
+                "message": "Codex model capacity response",
+            },
+            {
+                "kind": "official_transient",
+                "index": None,
+                "message": "Codex transport interrupted before turn completion",
+            },
+        )
+    )
 
 
 def run_interaction_probes(
