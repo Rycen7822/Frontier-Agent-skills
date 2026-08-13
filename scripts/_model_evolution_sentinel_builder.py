@@ -330,7 +330,10 @@ def _spec(
     )
     value["execution"]["retry_policy"] = {
         "max_attempts": 2,
-        "retryable_apparatus_classes": ["official_transient"],
+        "retryable_apparatus_classes": [
+            "model_task_timeout",
+            "official_transient",
+        ],
         "backoff_seconds": 0,
     }
     for module in value["applicability"]:

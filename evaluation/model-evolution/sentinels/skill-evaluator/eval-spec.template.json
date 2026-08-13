@@ -217,6 +217,7 @@
       "backoff_seconds": 0,
       "max_attempts": 2,
       "retryable_apparatus_classes": [
+        "model_task_timeout",
         "official_transient"
       ]
     },
