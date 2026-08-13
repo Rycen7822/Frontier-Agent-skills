@@ -61,7 +61,10 @@ def qualification_request_ceilings(
     repeat_counts: set[int] = set()
     expected_retry_policy = {
         "max_attempts": 2,
-        "retryable_apparatus_classes": ["official_transient"],
+        "retryable_apparatus_classes": [
+            "model_task_timeout",
+            "official_transient",
+        ],
         "backoff_seconds": 0,
     }
     for skill_id in SKILL_IDS:

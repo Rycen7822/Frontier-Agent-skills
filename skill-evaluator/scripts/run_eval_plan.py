@@ -2231,6 +2231,58 @@ def _reserved_request(
     return request
 
 
+def _model_interruption_class(
+    plan: dict[str, Any],
+    entry: dict[str, Any],
+    marker: dict[str, Any],
+    attempt: int,
+    attempt_dir: Path,
+    registry: dict[str, dict[str, Any]],
+) -> str | None:
+    """Preserve a fully recorded model-grade infrastructure failure."""
+    observed: set[str] = set()
+    for model_spec in entry["model_grade_specs"]:
+        if model_spec["batch_owner_entry_id"] != entry["entry_id"]:
+            continue
+        root = attempt_dir / "model-graders" / model_spec["batch_id"]
+        request_path = root / "host-request.json"
+        stdout_path = root / "host-stdout.jsonl"
+        if not request_path.is_file() or not stdout_path.is_file():
+            continue
+        request = load_json(request_path)
+        diagnostics = validate_host_protocol_record(
+            "host_request", request, registry,
+        )
+        expected = _host_request(
+            plan,
+            entry,
+            marker["run_id"],
+            attempt,
+            request_kind="model_grade",
+            payload=request.get("payload"),
+        )
+        payload = request.get("payload")
+        if (
+            diagnostics
+            or request != expected
+            or not isinstance(payload, dict)
+            or payload.get("grader_id") != model_spec["grader_id"]
+            or payload.get("blinded_input", {}).get("batch_id")
+            != model_spec["batch_id"]
+        ):
+            continue
+        try:
+            _, result, _ = _parse_host_protocol(
+                stdout_path.read_bytes(), request=request, registry=registry,
+            )
+            _raise_for_host_infrastructure_failure(result, "model grader")
+        except ApparatusFailure:
+            failure_class = result.get("failure_class")
+            if failure_class in {"model_task_timeout", "official_transient"}:
+                observed.add(failure_class)
+    return next(iter(observed)) if len(observed) == 1 else None
+
+
 def _resume_seal(
     *,
     plan: dict[str, Any],
@@ -2287,6 +2339,11 @@ def _resume_seal(
                 or lifecycle_gap
             ):
                 interruption_class = "official_transient"
+    model_interruption = _model_interruption_class(
+        plan, entry, marker, attempt, attempt_dir, registry,
+    )
+    if interruption_class == "interrupted" and model_interruption is not None:
+        interruption_class = model_interruption
 
     artifact_paths: list[Path] = []
     for path in sorted(attempt_dir.rglob("*")):
