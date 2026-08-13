@@ -15,6 +15,7 @@ DEFINITION = {
     ],
     "grader_rules": [
         "Apply a case-specific rule only when task_evidence.case_id exactly equals its full named ID.",
+        "For skill-evaluator-deterministic-first, quality and process pass when the final artifact closes schema, path, and lifecycle as already verified deterministic facts and states that those facts need no model grader.",
         "For skill-evaluator-cli-schema-diagnosis, quality and process pass when the final artifact gives one command using the evaluator directory variable, its contract validator, the contract subcommand, and fixtures/l0-spec.json as the sole spec input, then names the validator and input owners. The task requests the bound command and ownership diagnosis, not execution evidence.",
         "For skill-evaluator-transition-vs-revision, the final artifact supplies both correct classifications and the complete frozen-control list.",
         "For skill-evaluator-analyzer-exit-contract, the final artifact reports exit 3, the same exit under --report-only, and inconclusive_ceiling as the maximum claim. A statement that --report-only generally remaps only exit 1 is compatible. Judge this item from its own evidence.",
