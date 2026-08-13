@@ -16,6 +16,8 @@ import subprocess
 import sys
 from typing import Any
 
+import yaml
+
 sys.dont_write_bytecode = True
 
 from _bundle_hash import inventory, tree_hash  # noqa: E402
@@ -32,6 +34,9 @@ class HostBuildError(ValueError):
 
 
 CODEX_VERSION = re.compile(r"codex-cli ([0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?)")
+TARGET_MODEL = "gpt-5.6-luna"
+TARGET_EFFORT = "high"
+TARGET_TIMEOUT_SECONDS = 600
 
 
 def _hash_bytes(value: bytes) -> str:
@@ -51,19 +56,23 @@ def _load(path: Path) -> dict[str, Any]:
     return value
 
 
-def _replace(argv: list[str], option: str, value: str) -> None:
-    positions = [index for index, item in enumerate(argv) if item == option]
-    if len(positions) != 1 or positions[0] + 1 >= len(argv):
-        raise HostBuildError(f"template must bind {option} exactly once")
-    argv[positions[0] + 1] = value
-
-
-def _bind(argv: list[str], option: str, value: str) -> None:
-    if option in argv:
-        _replace(argv, option, value)
-        return
-    position = argv.index("--host-manifest")
-    argv[position:position] = [option, value]
+def _skill_metadata(skill_root: Path) -> tuple[str, str]:
+    text = (skill_root / "SKILL.md").read_text(encoding="utf-8")
+    if not text.startswith("---\n") or "\n---\n" not in text[4:]:
+        raise HostBuildError(f"Skill frontmatter is invalid: {skill_root.name}")
+    value = yaml.safe_load(text.split("---\n", 2)[1])
+    if not isinstance(value, dict):
+        raise HostBuildError(f"Skill frontmatter is invalid: {skill_root.name}")
+    name = value.get("name")
+    description = value.get("description")
+    if (
+        not isinstance(name, str)
+        or not name
+        or not isinstance(description, str)
+        or not description
+    ):
+        raise HostBuildError(f"Skill catalog metadata is invalid: {skill_root.name}")
+    return name, description
 
 
 def _git(repository_root: Path, *args: str) -> str:
@@ -151,6 +160,7 @@ def _tree_hash(root: Path) -> str:
 def build_host(
     *,
     repository_root: Path,
+    codex_entrypoint: Path,
     template_path: Path,
     plugin_root: Path,
     plugin_build_path: Path,
@@ -160,13 +170,16 @@ def build_host(
 ) -> dict[str, Any]:
     repository_root = repository_root.resolve(strict=True)
     plugin_root = plugin_root.resolve(strict=True)
-    template = _load(template_path.resolve(strict=True))
+    template_path = template_path.resolve(strict=True)
+    if not template_path.is_relative_to(repository_root):
+        raise HostBuildError("template Host escapes the selected source")
+    template = _load(template_path)
     evidence = _load(plugin_build_path.resolve(strict=True))
     value = copy.deepcopy(template)
     command = value.get("command")
     argv = command.get("argv") if isinstance(command, dict) else None
-    if not isinstance(argv, list) or len(argv) < 2:
-        raise HostBuildError("template Host command is invalid")
+    if argv != ["python3", "replace-with-host-adapter.py"]:
+        raise HostBuildError("template Host command is not the canonical fixture")
     capabilities = value.get("capabilities")
     if not isinstance(capabilities, list) or sum(
         isinstance(item, dict) and item.get("capability") == "model_grading"
@@ -182,9 +195,7 @@ def build_host(
     executable = Path(sys.executable).resolve(strict=True)
     adapter = (repository_root / "scripts/codex_eval_host.py").resolve(strict=True)
     argv[0:2] = [str(executable), str(adapter)]
-    codex_path, codex_version = _codex_runtime(
-        Path(argv[argv.index("--codex") + 1])
-    )
+    codex_path, codex_version = _codex_runtime(codex_entrypoint)
     codex_hash = _hash_bytes(codex_path.read_bytes())
     code_mode_host_input = codex_path.with_name("codex-code-mode-host")
     if code_mode_host_input.is_symlink() or not code_mode_host_input.is_file():
@@ -198,16 +209,40 @@ def build_host(
         raise HostBuildError("bubblewrap isolation executable is unavailable")
     isolation_tool = Path(isolation_name).resolve(strict=True)
     isolation_hash = _hash_bytes(isolation_tool.read_bytes())
-    _replace(argv, "--mode", "host")
-    _replace(argv, "--codex", str(codex_path))
-    _replace(argv, "--codex-sha256", codex_hash)
-    _bind(argv, "--codex-version", codex_version)
-    _bind(argv, "--isolation-tool", str(isolation_tool))
-    _bind(argv, "--isolation-tool-sha256", isolation_hash)
-    _bind(argv, "--code-mode-host", str(code_mode_host))
-    _bind(argv, "--code-mode-host-sha256", code_mode_host_hash)
-    _replace(argv, "--host-manifest", str(output_path.resolve()))
-    _replace(argv, "--plugin-root", str(plugin_root))
+    argv = [
+        str(executable),
+        str(adapter),
+        "--mode",
+        "host",
+        "--codex",
+        str(codex_path),
+        "--codex-sha256",
+        codex_hash,
+        "--codex-version",
+        codex_version,
+        "--isolation-tool",
+        str(isolation_tool),
+        "--isolation-tool-sha256",
+        isolation_hash,
+        "--code-mode-host",
+        str(code_mode_host),
+        "--code-mode-host-sha256",
+        code_mode_host_hash,
+        "--host-manifest",
+        str(output_path.resolve()),
+        "--model",
+        TARGET_MODEL,
+        "--effort",
+        TARGET_EFFORT,
+        "--profile",
+        "none",
+        "--plugin-root",
+        str(plugin_root),
+        "--sandbox",
+        "read-only",
+        "--timeout",
+        str(TARGET_TIMEOUT_SECONDS),
+    ]
     command.update({
         "argv": argv,
         "resolved_executable": str(executable),
@@ -215,22 +250,26 @@ def build_host(
         "env_allowlist": list(MODEL_EVOLUTION_ENV_ALLOWLIST),
     })
 
-    entries = value.get("catalog", {}).get("entries")
-    if not isinstance(entries, list):
-        raise HostBuildError("template Host catalog is invalid")
     versions = evidence.get("skill_versions")
-    roots = {path.name: path for path in (plugin_root / "skills").iterdir() if path.is_dir()}
+    roots = {
+        path.name: path
+        for path in (plugin_root / "skills").iterdir()
+        if path.is_dir()
+    }
     if not isinstance(versions, dict) or set(versions) != set(roots):
         raise HostBuildError("plugin build Skill versions differ from staging")
-    by_id = {entry.get("id"): entry for entry in entries if isinstance(entry, dict)}
-    if set(by_id) != set(roots) or len(by_id) != len(entries):
-        raise HostBuildError("template Host catalog differs from staged Skills")
     refreshed = []
     for skill_id in sorted(roots):
-        entry = copy.deepcopy(by_id[skill_id])
-        entry["version"] = versions[skill_id]
-        entry["root_digest"] = _tree_hash(roots[skill_id])
-        refreshed.append(entry)
+        name, description = _skill_metadata(roots[skill_id])
+        refreshed.append({
+            "description": description,
+            "id": skill_id,
+            "name": name,
+            "root_digest": _tree_hash(roots[skill_id]),
+            "scope": "frontier-engineering-plugin",
+            "source": "campaign-staging",
+            "version": versions[skill_id],
+        })
     bundle_version = evidence.get("bundle_version")
     if not isinstance(bundle_version, str):
         raise HostBuildError("plugin build bundle version is invalid")
@@ -238,18 +277,26 @@ def build_host(
     value["catalog"] = {"catalog_id": catalog_id, "entries": refreshed}
 
     identity = value["identity"]
-    execution = identity["execution"]
-    execution["catalog_id"] = catalog_id
-    execution["tool_schema_id"] = isolated_tool_schema_id(
-        codex_hash,
-        isolation_hash,
-        code_mode_host_hash,
-    )
-    if execution.get("model") != argv[argv.index("--model") + 1]:
-        raise HostBuildError("template model identity differs from its command")
-    execution["model_revision"] = _model_revision(execution["model"], codex_version)
-    execution["harness"] = "codex-cli"
-    execution["harness_version"] = codex_version
+    identity["execution"] = {
+        "catalog_id": catalog_id,
+        "harness": "codex-cli",
+        "harness_version": codex_version,
+        "model": TARGET_MODEL,
+        "model_revision": _model_revision(TARGET_MODEL, codex_version),
+        "monotonic_clock_id": "python-time-monotonic",
+        "policy_id": "frontier-read-only-v1",
+        "pricing_id": "provider-account-not-recorded",
+        "prompt_id": "model-evolution-sentinel-v2",
+        "provider": "openai-via-codex-cli",
+        "skill_id": "frontier-engineering-plugin",
+        "tokenizer_id": "codex-cli-provider-accounted",
+        "tool_schema_id": isolated_tool_schema_id(
+            codex_hash,
+            isolation_hash,
+            code_mode_host_hash,
+        ),
+        "utc_clock_id": "python-datetime-utc",
+    }
     identity["adapter"].update(
         {
             "id": "codex-eval-host",
@@ -275,9 +322,10 @@ def build_host(
         artifact = probe.get("artifact") if isinstance(probe, dict) else None
         if not isinstance(artifact, dict) or not isinstance(artifact.get("path"), str):
             raise HostBuildError("template probe artifact binding is invalid")
-        path = (repository_root / artifact["path"]).resolve(strict=True)
+        path = (template_path.parent / artifact["path"]).resolve(strict=True)
         if not path.is_relative_to(repository_root) or path.is_symlink() or not path.is_file():
             raise HostBuildError("template probe artifact escapes the repository")
+        artifact["path"] = path.relative_to(repository_root).as_posix()
         artifact["digest"] = _hash_bytes(path.read_bytes())
 
     validate_plugin_catalog(plugin_root, value)
@@ -302,6 +350,7 @@ def build_host(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository-root", type=Path, required=True)
+    parser.add_argument("--codex-entrypoint", type=Path, required=True)
     parser.add_argument("--template", type=Path, required=True)
     parser.add_argument("--plugin-root", type=Path, required=True)
     parser.add_argument("--plugin-build-evidence", type=Path, required=True)
@@ -312,6 +361,7 @@ def main() -> int:
     try:
         value = build_host(
             repository_root=args.repository_root,
+            codex_entrypoint=args.codex_entrypoint,
             template_path=args.template,
             plugin_root=args.plugin_root,
             plugin_build_path=args.plugin_build_evidence,
@@ -319,7 +369,13 @@ def main() -> int:
             manifest_id=args.manifest_id,
             session_id=args.session_id,
         )
-    except (HostBuildError, OSError, ValueError, json.JSONDecodeError) as exc:
+    except (
+        HostBuildError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+        yaml.YAMLError,
+    ) as exc:
         print(f"build_model_evolution_host: {exc}", file=sys.stderr)
         return 2
     print(json.dumps({"manifest_id": value["manifest_id"]}, sort_keys=True))
