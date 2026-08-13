@@ -326,6 +326,11 @@ def _spec(
     value["execution"]["timeout_seconds"] = max(
         row["timeout_seconds"] for row in scenarios
     )
+    value["execution"]["retry_policy"] = {
+        "max_attempts": 2,
+        "retryable_apparatus_classes": ["official_transient"],
+        "backoff_seconds": 0,
+    }
     for module in value["applicability"]:
         module["evidence"] = [
             {
