@@ -30,6 +30,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from _bundle_hash import bundle_inventory, inventory, tree_hash  # noqa: E402
+import _release_authorization as release_contract  # noqa: E402
 import evaluate_static_contracts as static_contracts  # noqa: E402
 from _deterministic_zip import (  # noqa: E402
     ZipMember,
@@ -60,12 +61,8 @@ EXPECTED_ACTIVATION = {
     "software-quality-workflows": False,
     "writing-plans": True,
 }
-EXPECTED_APPROVED_ACTIVATION = {
-    skill_id: "implicit" if enabled else "explicit_only"
-    for skill_id, enabled in EXPECTED_ACTIVATION.items()
-}
 CANONICAL_MARKETPLACE = {
-    "name": "frontier-engineering-v6-release",
+    "name": "frontier-engineering-v8-release",
     "plugins": [{
         "name": "frontier-engineering-plugin",
         "source": {
@@ -292,6 +289,7 @@ def _git_release_source_ok(source_root: Path, revision: str) -> bool:
 
 def _validate_release_authorization(
     authorization: dict[str, Any],
+    qualification: dict[str, Any],
     *,
     source_root: Path,
     manifest: dict[str, Any],
@@ -300,9 +298,13 @@ def _validate_release_authorization(
 ) -> dict[str, Any]:
     _validate_schema(
         source_root,
-        "release-authorization-v2.schema.json",
+        "release-authorization-v3.schema.json",
         authorization,
         "release authorization",
+    )
+    release_contract.validate_authorization_binding(
+        authorization,
+        qualification,
     )
     bundle = _strict_json(source_root / "frontier-engineering.bundle.json")
     revision = authorization.get("source_revision")
@@ -311,8 +313,7 @@ def _validate_release_authorization(
         authorization.get("bundle_id") != bundle.get("bundle_id")
         or authorization.get("bundle_version") != manifest.get("bundle_version")
         or authorization.get("source_tree_hash") != source_tree_hash
-        or authorization.get("approved_skill_activation")
-        != EXPECTED_APPROVED_ACTIVATION
+        or authorization.get("skills") != bundle.get("skills")
         or authorization.get("remote_writes") is not False
         or not isinstance(authority, dict)
         or any(
@@ -355,17 +356,22 @@ def _validate_release_authorization(
 
 def validate_release_authorization(
     path: Path | None,
+    qualification_path: Path | None,
     *,
     source_root: Path,
     manifest: dict[str, Any],
     source_tree_hash: str,
     plugin_tree_hash: str | None = None,
 ) -> dict[str, Any]:
-    if path is None:
-        raise ValueError("dist output requires matching release authorization")
+    if path is None or qualification_path is None:
+        raise ValueError(
+            "dist output requires matching qualification and release authorization"
+        )
     _reject_symlink_components(path)
+    _reject_symlink_components(qualification_path)
     return _validate_release_authorization(
         _strict_json(path),
+        _strict_json(qualification_path),
         source_root=source_root,
         manifest=manifest,
         source_tree_hash=source_tree_hash,
@@ -415,6 +421,7 @@ def validate_plugin_build(
     *,
     source_root: Path,
     release_authorization: Path | None,
+    qualification: Path | None = None,
 ) -> dict[str, Any]:
     source_root = source_root.resolve(strict=True)
     _reject_symlink_components(plugin_root)
@@ -452,10 +459,14 @@ def validate_plugin_build(
 
     output_class = evidence["output_class"]
     if output_class == "staging":
-        if release_authorization is not None:
-            raise ValueError("staging validation forbids release authorization")
-    elif release_authorization is None:
-        raise ValueError("release validation requires release authorization")
+        if release_authorization is not None or qualification is not None:
+            raise ValueError(
+                "staging validation forbids qualification and release authorization"
+            )
+    elif release_authorization is None or qualification is None:
+        raise ValueError(
+            "release validation requires qualification and release authorization"
+        )
     else:
         _reject_symlink_components(release_authorization)
         if evidence.get("release_authorization_digest") != _content_hash(
@@ -466,6 +477,7 @@ def validate_plugin_build(
             )
         validate_release_authorization(
             release_authorization,
+            qualification,
             source_root=source_root,
             manifest=manifest,
             source_tree_hash=evidence["source_tree_hash"],
@@ -623,6 +635,7 @@ def build(
     evidence_output: Path,
     marketplace_root: Path | None = None,
     marketplace_archive_output: Path | None = None,
+    qualification: Path | None = None,
 ) -> dict[str, Any]:
     source_root = source_root.resolve(strict=True)
     output = output.absolute()
@@ -643,6 +656,10 @@ def build(
     )
     if output.name != template["name"]:
         raise ValueError(f"plugin output folder must match manifest name: {template['name']}")
+    if (release_authorization is None) != (qualification is None):
+        raise ValueError(
+            "release build requires qualification and authorization together"
+        )
     is_release = release_authorization is not None
     if is_release:
         if marketplace_root is None or marketplace_archive_output is None:
@@ -672,6 +689,7 @@ def build(
             raise ValueError("marketplace archive must be outside the canonical marketplace")
         validate_release_authorization(
             release_authorization,
+            qualification,
             source_root=source_root,
             manifest=manifest,
             source_tree_hash=source_tree_hash,
@@ -764,6 +782,7 @@ def build(
         if is_release:
             validate_release_authorization(
                 release_authorization,
+                qualification,
                 source_root=source_root,
                 manifest=manifest,
                 source_tree_hash=source_tree_hash,
@@ -978,6 +997,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--evidence-output", type=Path)
     parser.add_argument("--release-authorization", type=Path)
+    parser.add_argument("--qualification", type=Path)
     parser.add_argument("--marketplace-root", type=Path)
     parser.add_argument("--marketplace-archive-output", type=Path)
     parser.add_argument("--validate-plugin-root", type=Path)
@@ -1004,6 +1024,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.build_evidence,
                 source_root=args.source_root,
                 release_authorization=args.release_authorization,
+                qualification=args.qualification,
             )
         except (
             OSError,
@@ -1028,6 +1049,7 @@ def main(argv: list[str] | None = None) -> int:
             args.evidence_output,
             args.marketplace_root,
             args.marketplace_archive_output,
+            args.qualification,
         )
     except (OSError, ValueError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))

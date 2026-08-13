@@ -16,9 +16,9 @@
   ],
   "properties": {
     "schema_version": {"const": "cli-install-smoke/4.0"},
-    "bundle_id": {"const": "frontier-engineering/7.0.0"},
+    "bundle_id": {"const": "frontier-engineering/8.0.0"},
     "plugin_name": {"const": "frontier-engineering-plugin"},
-    "bundle_version": {"const": "7.0.0"},
+    "bundle_version": {"const": "8.0.0"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "activation_ceiling": {"const": "implicit_local_pilot"},
     "release_gate": {"enum": ["blocked_prerequisites", "passed"]},
@@ -82,7 +82,7 @@
       "then": {
         "properties": {
           "release_gate": {"const": "blocked_prerequisites"},
-          "blocking_prerequisites": {"const": ["release_authorization", "signed_clean_source_revision"]},
+          "blocking_prerequisites": {"const": ["model_qualification", "release_authorization", "signed_clean_source_revision"]},
           "release_eligible": {"const": false},
           "source_revision_verified": {"const": false}
         }

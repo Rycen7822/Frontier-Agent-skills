@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build or verify the exact four-skill Frontier 7.0 bundle manifest."""
+"""Build or verify the exact four-skill Frontier 8.0 bundle manifest."""
 
 from __future__ import annotations
 

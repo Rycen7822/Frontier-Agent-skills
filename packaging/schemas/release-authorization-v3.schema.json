@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/frontier-engineering/release-authorization-v3.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "qualification", "bundle_id", "bundle_version",
+    "source_revision", "source_tree_hash", "plugin_tree_hash", "skills",
+    "target_observed_host", "claim", "validity", "limits", "static_gate",
+    "remote_writes", "authority"
+  ],
+  "properties": {
+    "schema_version": {"const": "release-authorization/3"},
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "qualification_id", "digest", "decision"],
+      "properties": {
+        "schema_version": {"const": "model-qualification/3"},
+        "qualification_id": {"$ref": "#/$defs/safe_id"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "decision": {"enum": ["qualified", "qualified_with_limits"]}
+      }
+    },
+    "bundle_id": {"const": "frontier-engineering/8.0.0"},
+    "bundle_version": {"const": "8.0.0"},
+    "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "source_tree_hash": {"$ref": "#/$defs/digest"},
+    "plugin_tree_hash": {"$ref": "#/$defs/digest"},
+    "skills": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "long-document-segmented-writing", "skill-evaluator",
+        "software-quality-workflows", "writing-plans"
+      ],
+      "properties": {
+        "long-document-segmented-writing": {
+          "$ref": "#/$defs/long_document_segmented_writing"
+        },
+        "skill-evaluator": {"$ref": "#/$defs/skill_evaluator"},
+        "software-quality-workflows": {
+          "$ref": "#/$defs/software_quality_workflows"
+        },
+        "writing-plans": {"$ref": "#/$defs/writing_plans"}
+      }
+    },
+    "target_observed_host": {"type": "object"},
+    "claim": {"type": "object"},
+    "validity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed_as_of", "valid_until"],
+      "properties": {
+        "observed_as_of": {"$ref": "#/$defs/timestamp"},
+        "valid_until": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "limits": {
+      "type": "array",
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "scope"],
+        "properties": {
+          "code": {"const": "native-capability-absorption"},
+          "scope": {"const": "software-quality-workflows"}
+        }
+      }
+    },
+    "static_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "status"],
+      "properties": {
+        "schema_version": {"const": "static-contract-diagnostic/1.0"},
+        "status": {"const": "pass"}
+      }
+    },
+    "remote_writes": {"const": false},
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority_id", "role", "decision", "signature_attestation"],
+      "properties": {
+        "authority_id": {"type": "string", "minLength": 1},
+        "role": {"const": "release_owner"},
+        "decision": {"const": "approve"},
+        "signature_attestation": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "$defs": {
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "skill_base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "root_hash", "allow_implicit_invocation"],
+      "properties": {
+        "version": {"type": "string"},
+        "root_hash": {"$ref": "#/$defs/digest"},
+        "allow_implicit_invocation": {"type": "boolean"}
+      }
+    },
+    "long_document_segmented_writing": {
+      "allOf": [
+        {"$ref": "#/$defs/skill_base"},
+        {"properties": {
+          "version": {"const": "2.0.0"},
+          "allow_implicit_invocation": {"const": true}
+        }}
+      ]
+    },
+    "skill_evaluator": {
+      "allOf": [
+        {"$ref": "#/$defs/skill_base"},
+        {"properties": {
+          "version": {"const": "5.0.0"},
+          "allow_implicit_invocation": {"const": false}
+        }}
+      ]
+    },
+    "software_quality_workflows": {
+      "allOf": [
+        {"$ref": "#/$defs/skill_base"},
+        {"properties": {
+          "version": {"const": "11.0.0"},
+          "allow_implicit_invocation": {"const": false}
+        }}
+      ]
+    },
+    "writing_plans": {
+      "allOf": [
+        {"$ref": "#/$defs/skill_base"},
+        {"properties": {
+          "version": {"const": "8.4.0"},
+          "allow_implicit_invocation": {"const": true}
+        }}
+      ]
+    }
+  }
+}
