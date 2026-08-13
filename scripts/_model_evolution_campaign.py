@@ -110,8 +110,9 @@ def qualification_request_ceilings(
         )
         for owner in SKILL_IDS
     )
+    revision_execute = max(current_execute, candidate_cases * 2)
     execute = (
-        (current_execute + candidate_cases * 2 + holdout_cases * 2)
+        (current_execute + revision_execute + holdout_cases * 2)
         * repeats
         * expected_retry_policy["max_attempts"]
     )
