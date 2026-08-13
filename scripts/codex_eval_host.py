@@ -61,7 +61,7 @@ from _codex_eval_isolation import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
-ADAPTER_VERSION = "1.11"
+ADAPTER_VERSION = "1.12"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_artifacts.py",
@@ -742,6 +742,13 @@ def _output_message(path: Path, normalized: dict[str, Any]) -> str | None:
     return event_message if event_message is not None else file_message
 
 
+def _required_final_output(path: Path) -> str:
+    """Read Codex's authoritative final output for schema-bound grading."""
+    if path.is_symlink() or not path.is_file():
+        raise AdapterError("Codex output-last-message is missing or unsafe")
+    return path.read_text(encoding="utf-8")
+
+
 def _snapshot_workspace(workspace: Path) -> dict[str, str]:
     result: dict[str, str] = {}
     for path in sorted(workspace.rglob("*")):
@@ -1031,7 +1038,7 @@ def _run_model_grade(
             result["terminal_status"] = "protocol_error"
             result["protocol_error"] = host_protocol_error(normalized["diagnostics"])
             return result
-        message = _output_message(last_message, normalized)
+        message = _required_final_output(last_message)
     try:
         output = json.loads(message) if message is not None else None
     except json.JSONDecodeError as exc:
