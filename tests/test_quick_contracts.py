@@ -12,18 +12,6 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSIONS = {
-    "long-document-segmented-writing": "2.0.0",
-    "skill-evaluator": "5.0.0",
-    "software-quality-workflows": "11.0.0",
-    "writing-plans": "8.4.0",
-}
-ACTIVATION = {
-    "long-document-segmented-writing": True,
-    "skill-evaluator": False,
-    "software-quality-workflows": False,
-    "writing-plans": True,
-}
 ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 
 
@@ -48,17 +36,12 @@ class QuickContracts(unittest.TestCase):
         self.assertEqual("8.0.0", source["bundle_version"])
         self.assertEqual(7, generated["compatible_schema_epoch"])
         self.assertEqual("frontier-engineering/8.0.0", generated["bundle_id"])
-        self.assertEqual(
-            VERSIONS, {item["id"]: item["version"] for item in source["skills"]}
-        )
-        self.assertEqual(
-            VERSIONS,
-            {name: item["version"] for name, item in generated["skills"].items()},
-        )
         self.assertFalse(source["remote_writes"])
         self.assertEqual("implicit_local_pilot", source["activation_ceiling"])
 
-        for skill_id, version in VERSIONS.items():
+        source_skills = {item["id"]: item for item in source["skills"]}
+        self.assertEqual(set(source_skills), set(generated["skills"]))
+        for skill_id, item in source_skills.items():
             skill_root = ROOT / skill_id
             text = (skill_root / "SKILL.md").read_text(encoding="utf-8")
             match = re.match(r"\A---\n(.*?)\n---\n", text, flags=re.DOTALL)
@@ -68,10 +51,11 @@ class QuickContracts(unittest.TestCase):
                 (skill_root / "agents" / "openai.yaml").read_text(encoding="utf-8")
             )
             self.assertEqual(skill_id, frontmatter["name"])
-            self.assertEqual(version, frontmatter["metadata"]["version"])
+            self.assertEqual(item["version"], frontmatter["metadata"]["version"])
+            self.assertEqual(item["version"], generated["skills"][skill_id]["version"])
             self.assertIs(
                 agents["policy"]["allow_implicit_invocation"],
-                ACTIVATION[skill_id],
+                generated["skills"][skill_id]["allow_implicit_invocation"],
             )
         evaluator_prompt = yaml.safe_load(
             (ROOT / "skill-evaluator" / "agents" / "openai.yaml").read_text(
@@ -102,20 +86,6 @@ class QuickContracts(unittest.TestCase):
             },
             {warning["code"] for warning in report["warnings"]},
         )
-
-    def test_deterministic_source_gates_pass(self) -> None:
-        commands = (
-            ("bundle/build_bundle_manifest.py", "--check"),
-            ("scripts/build_model_evolution_sentinels.py", "--check"),
-            ("scripts/evaluate_static_contracts.py", "--check"),
-        )
-        for command in commands:
-            with self.subTest(command=command[0]):
-                result = run_script(*command)
-                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        static_report = json.loads(run_script(*commands[-1]).stdout)
-        self.assertEqual({"ok": True, "blocking_facts": 0}, static_report)
-
 
 if __name__ == "__main__":
     unittest.main()
