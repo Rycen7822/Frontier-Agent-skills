@@ -118,7 +118,7 @@ def qualification_request_ceilings(
     )
     model_grade = calibration_requests + execute
     return {
-        "provider_requests": probe_count + execute + model_grade,
+        "provider_requests": 2 * probe_count + execute + model_grade,
         "execute": execute,
         "model_grade": model_grade,
         "calibration": calibration_requests,

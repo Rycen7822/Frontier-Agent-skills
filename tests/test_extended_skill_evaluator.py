@@ -55,20 +55,14 @@ class ExtendedSkillEvaluator(unittest.TestCase):
             build_command_trace,
         )
         from _codex_eval_delivery import is_workspace_infrastructure
-        from codex_eval_host import _provider_failure_identity
+        from codex_eval_host import _is_model_capacity_failure
 
         capacity = {
             "kind": "codex_error",
             "message": "Selected model is at capacity. Please try a different model.",
         }
-        self.assertEqual(
-            ("official_transient", "model_at_capacity"),
-            _provider_failure_identity(capacity, 1),
-        )
-        self.assertEqual(
-            ("provider_nonretryable", "codex_exit_1"),
-            _provider_failure_identity({**capacity, "message": "other"}, 1),
-        )
+        self.assertTrue(_is_model_capacity_failure(capacity))
+        self.assertFalse(_is_model_capacity_failure({**capacity, "message": "other"}))
 
         captures = []
         for _ in range(2):

@@ -61,7 +61,7 @@ from _codex_eval_isolation import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
-ADAPTER_VERSION = "1.9"
+ADAPTER_VERSION = "1.10"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_artifacts.py",
@@ -511,6 +511,19 @@ def _child_failure_diagnostics(child: dict[str, Any]) -> list[dict[str, Any]]:
             nested.get("message") if isinstance(nested, dict) else None,
         ]
         if any(
+            _is_model_capacity_failure(
+                {"kind": "codex_error", "message": message}
+            )
+            for message in messages
+        ):
+            return [
+                {
+                    "kind": "official_transient",
+                    "index": None,
+                    "message": "Codex model capacity response",
+                }
+            ]
+        if any(
             isinstance(message, str) and "usage limit" in message.casefold()
             for message in messages
         ):
@@ -894,11 +907,7 @@ def _provider_failure_identity(
     returncode: int,
 ) -> tuple[str, str]:
     """Classify only an observed, explicit Codex capacity response as transient."""
-    if (
-        isinstance(failure, dict)
-        and failure.get("kind") == "codex_error"
-        and failure.get("message") == MODEL_CAPACITY_MESSAGE
-    ):
+    if _is_model_capacity_failure(failure):
         return "official_transient", "model_at_capacity"
     code = (
         f"codex_signal_{-returncode}"
@@ -906,6 +915,14 @@ def _provider_failure_identity(
         else f"codex_exit_{returncode}"
     )
     return "provider_nonretryable", code
+
+
+def _is_model_capacity_failure(failure: Any) -> bool:
+    return (
+        isinstance(failure, dict)
+        and failure.get("kind") == "codex_error"
+        and failure.get("message") == MODEL_CAPACITY_MESSAGE
+    )
 
 
 def _run_model_grade(

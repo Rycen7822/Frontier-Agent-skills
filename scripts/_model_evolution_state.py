@@ -133,7 +133,7 @@ def reserve_probes(state: dict[str, Any], probe_ids: list[str]) -> None:
         raise StateError("probe requests are already frozen")
     if not probe_ids or len(probe_ids) > 6 or len(set(probe_ids)) != len(probe_ids):
         raise StateError("probe request set is empty, duplicated, or exceeds six")
-    reserve_budget(state, {"provider_requests": len(probe_ids)})
+    reserve_budget(state, {"provider_requests": 2 * len(probe_ids)})
     prefix = f"{state['campaign_id']}.{state['state_revision']}"
     if len(prefix) > 116:
         raise StateError("campaign ID is too long for probe request IDs")
@@ -156,6 +156,7 @@ def close_probes(
     statuses: dict[str, str],
     results_binding: dict[str, Any],
     observed_host_binding: dict[str, Any],
+    provider_requests: int,
     blocker: str | None = None,
 ) -> None:
     requests = state["interaction_probes"]["requests"]
@@ -165,6 +166,12 @@ def close_probes(
         raise StateError("probe reservation is not uniformly open")
     if blocker is not None and not blocker.strip():
         raise StateError("probe blocker is empty")
+    if (
+        isinstance(provider_requests, bool)
+        or not isinstance(provider_requests, int)
+        or not len(requests) <= provider_requests <= 2 * len(requests)
+    ):
+        raise StateError("probe provider request count is invalid")
     request_ids = {item["request_id"] for item in requests}
     if set(artifacts) != request_ids or set(statuses) != request_ids:
         raise StateError("probe terminal set differs from reservation")
@@ -184,7 +191,7 @@ def close_probes(
     state["profiles"]["target_observed"] = observed_host_binding
     previous_requests = state["budgets"]["observed"]["provider_requests"]
     state["budgets"]["observed"]["provider_requests"] = (
-        None if previous_requests is None else previous_requests + len(requests)
+        None if previous_requests is None else previous_requests + provider_requests
     )
     state["phase"] = "apparatus_ready" if blocker is not None else "target_profile_ready"
 

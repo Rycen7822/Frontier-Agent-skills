@@ -711,6 +711,7 @@ def _probe_exclusive(
             statuses=outcome["statuses"],
             results_binding=outcome["results_binding"],
             observed_host_binding=outcome["observed_host_binding"],
+            provider_requests=outcome["provider_requests"],
             blocker=blocker,
         ),
     )
