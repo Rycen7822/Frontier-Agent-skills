@@ -398,7 +398,7 @@
       "path": "suite-quality.json",
       "schema_version": "suite-quality/2"
     },
-    "repeats": 1,
+    "repeats": 3,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
