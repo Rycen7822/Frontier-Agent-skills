@@ -41,7 +41,10 @@ from _model_evolution_calibration import (
     close_calibration_failure,
     prepare_calibrations,
 )
-from _model_evolution_calibration_receipt import close_calibration_rejection
+from _model_evolution_calibration_receipt import (
+    calibration_attempt_count,
+    close_calibration_rejection,
+)
 from _model_evolution_materialization import (
     MaterializationError,
     prepare_candidate_plan,
@@ -503,7 +506,7 @@ def _init(args: argparse.Namespace) -> None:
         )
     calibration_delta = max(
         0,
-        request_ceilings["calibration"]
+        request_ceilings["calibration_attempts"]
         - campaign["budgets"]["reserved"]["model_grade"],
     )
     if calibration_delta:
@@ -1274,11 +1277,16 @@ def _record(args: argparse.Namespace) -> None:
         calibration = sentinel["skills"][args.skill_id][
             "calibration_request_ceiling"
         ]
+        attempts = calibration_attempt_count(
+            campaign_root,
+            args.skill_id,
+            calibration,
+        )
         observed = {
             "provider_requests": None
             if current["provider_requests"] is None
-            else current["provider_requests"] + calibration,
-            "model_grade": (current["model_grade"] or 0) + calibration,
+            else current["provider_requests"] + attempts,
+            "model_grade": (current["model_grade"] or 0) + attempts,
         }
     elif args.role in {"current_summary", "candidate_summary", "holdout_summary"}:
         summary = load_json(path, label=args.role)

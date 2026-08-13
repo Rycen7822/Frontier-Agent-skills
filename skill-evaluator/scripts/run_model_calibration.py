@@ -178,6 +178,17 @@ def _host_result(
     request: dict[str, Any],
     registry: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
+    result = _validated_host_result(raw, request, registry)
+    if result.get("terminal_status") != "completed":
+        raise CalibrationFailure("model-grade Host did not complete the bound request")
+    return result
+
+
+def _validated_host_result(
+    raw: bytes,
+    request: dict[str, Any],
+    registry: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
     rows = []
     try:
         for line in raw.decode("utf-8").splitlines():
@@ -194,10 +205,42 @@ def _host_result(
     if (
         result.get("envelope") != request["envelope"]
         or result.get("terminal") is not True
-        or result.get("terminal_status") != "completed"
     ):
-        raise CalibrationFailure("model-grade Host did not complete the bound request")
+        raise CalibrationFailure("model-grade Host terminal identity differs")
     return result
+
+
+def _is_capacity_transient(result: dict[str, Any]) -> bool:
+    return (
+        result.get("terminal_status") == "failed"
+        and result.get("failure_class") == "official_transient"
+        and result.get("provider_error_code") == "model_at_capacity"
+        and result.get("timeout") is False
+        and result.get("artifacts") == []
+        and result.get("actions") == []
+        and result.get("state") == []
+    )
+
+
+def _invoke_attempt(
+    *,
+    argv: list[str],
+    environment: dict[str, str],
+    request: dict[str, Any],
+    root: Path,
+    timeout: float,
+    registry: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    stdout_path = root / "host-stdout.jsonl"
+    stderr_path = root / "host-stderr.txt"
+    if stdout_path.exists() or stderr_path.exists():
+        raise CalibrationFailure("calibration attempt evidence already exists")
+    code, stdout, stderr = _invoke(argv, environment, request, root, timeout)
+    stdout_path.write_bytes(stdout)
+    stderr_path.write_bytes(stderr)
+    if code:
+        raise CalibrationFailure(f"model-grade Host exited {code}")
+    return _validated_host_result(stdout, request, registry)
 
 
 def _judgment(result: dict[str, Any], workspace: Path) -> dict[str, Any]:
@@ -224,6 +267,7 @@ def _request(
     label: dict[str, Any],
     position: int,
     prompt_bytes: bytes,
+    attempt: int = 1,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     item = transport.calibration_item(label)
     batch_id = f"batch.calibration.{position}"
@@ -237,7 +281,7 @@ def _request(
         schema_id=grader["schema_id"],
     )
     run_id = label["example_id"]
-    attempt_id = f"attempt.{position}"
+    attempt_id = f"attempt.{position}.{attempt}"
     request = {
         "record_type": "skill-evaluator-host-request/2",
         "envelope": {
@@ -246,8 +290,8 @@ def _request(
             "entry_id": label["example_id"],
             "run_id": run_id,
             "attempt_id": attempt_id,
-            "attempt": 1,
-            "request_id": f"request.{position}.model-grade",
+            "attempt": attempt,
+            "request_id": f"request.{position}.{attempt}.model-grade",
             "request_kind": "model_grade",
         },
         "payload": payload,
@@ -263,6 +307,7 @@ def _project_terminal(
     position: int,
     result: dict[str, Any],
     terminal_root: Path,
+    attempts: int,
 ) -> dict[str, Any]:
     judgment = _judgment(result, terminal_root)
     transport.normalize_judgment(
@@ -274,7 +319,8 @@ def _project_terminal(
     check = judgment["items"][0]["checks"][0]
     projected_label, severity = transport.calibration_projection(check)
     return {
-        "schema_version": "model-calibration-terminal/2",
+        "schema_version": "model-calibration-terminal/3",
+        "attempts": attempts,
         "position": position,
         "example_id": label["example_id"],
         "check_id": label["check_id"],
@@ -301,6 +347,74 @@ def _terminal(
 ) -> dict[str, Any]:
     terminal_root = output_root / "terminals" / f"{position:03d}"
     terminal_path = terminal_root / "terminal.json"
+    if terminal_root.is_symlink() or terminal_path.is_symlink():
+        raise CalibrationFailure(f"terminal {position} evidence is symlinked")
+    if terminal_path.is_file():
+        terminal = load_json(terminal_path)
+        attempts = terminal.get("attempts") if isinstance(terminal, dict) else None
+        if attempts not in {1, 2}:
+            raise CalibrationFailure(f"terminal {position} attempt count differs")
+        request, batch = _request(
+            spec=spec,
+            grader=grader,
+            label=label,
+            position=position,
+            prompt_bytes=prompt_bytes,
+            attempt=attempts,
+        )
+        stdout_path = terminal_root / "host-stdout.jsonl"
+        stderr_path = terminal_root / "host-stderr.txt"
+        if (
+            stdout_path.is_symlink()
+            or stderr_path.is_symlink()
+            or not stdout_path.is_file()
+            or not stderr_path.is_file()
+        ):
+            raise CalibrationFailure(f"terminal {position} raw evidence is partial")
+        result = _host_result(stdout_path.read_bytes(), request, registry)
+        if attempts == 2:
+            retry_root = terminal_root / "attempt-0001"
+            retry_stdout = retry_root / "host-stdout.jsonl"
+            retry_stderr = retry_root / "host-stderr.txt"
+            if (
+                retry_root.is_symlink()
+                or retry_stdout.is_symlink()
+                or retry_stderr.is_symlink()
+                or not retry_stdout.is_file()
+                or not retry_stderr.is_file()
+            ):
+                raise CalibrationFailure(f"terminal {position} retry evidence is partial")
+            first_request, _ = _request(
+                spec=spec,
+                grader=grader,
+                label=label,
+                position=position,
+                prompt_bytes=prompt_bytes,
+            )
+            first = _validated_host_result(
+                retry_stdout.read_bytes(), first_request, registry
+            )
+            if not _is_capacity_transient(first):
+                raise CalibrationFailure(
+                    f"terminal {position} retry lacks capacity evidence"
+                )
+        expected = _project_terminal(
+            request=request,
+            batch=batch,
+            label=label,
+            position=position,
+            result=result,
+            terminal_root=terminal_root,
+            attempts=attempts,
+        )
+        if terminal != expected:
+            raise CalibrationFailure(f"terminal {position} projection differs")
+        return terminal
+    if terminal_root.exists():
+        raise CalibrationFailure(
+            f"terminal {position} is partial; refusing an unprovable replay",
+    )
+    terminal_root.mkdir(parents=True)
     request, batch = _request(
         spec=spec,
         grader=grader,
@@ -311,37 +425,47 @@ def _terminal(
     diagnostics = validate_host_protocol_record("host_request", request, registry)
     if diagnostics:
         raise CalibrationFailure(_first_diagnostic(diagnostics))
-    if terminal_path.is_file():
-        terminal = load_json(terminal_path)
-        stdout_path = terminal_root / "host-stdout.jsonl"
-        stderr_path = terminal_root / "host-stderr.txt"
-        if not stdout_path.is_file() or not stderr_path.is_file():
-            raise CalibrationFailure(f"terminal {position} raw evidence is partial")
-        result = _host_result(stdout_path.read_bytes(), request, registry)
-        expected = _project_terminal(
-            request=request,
-            batch=batch,
+    result = _invoke_attempt(
+        argv=argv,
+        environment=environment,
+        request=request,
+        root=terminal_root,
+        timeout=timeout,
+        registry=registry,
+    )
+    attempts = 1
+    if _is_capacity_transient(result):
+        if {path.name for path in terminal_root.iterdir()} != {
+            "host-stdout.jsonl",
+            "host-stderr.txt",
+        }:
+            raise CalibrationFailure("capacity attempt produced unexpected artifacts")
+        retry_root = terminal_root / "attempt-0001"
+        retry_root.mkdir()
+        for name in ("host-stdout.jsonl", "host-stderr.txt"):
+            (terminal_root / name).replace(retry_root / name)
+        attempts = 2
+        request, batch = _request(
+            spec=spec,
+            grader=grader,
             label=label,
             position=position,
-            result=result,
-            terminal_root=terminal_root,
+            prompt_bytes=prompt_bytes,
+            attempt=attempts,
         )
-        if terminal != expected:
-            raise CalibrationFailure(f"terminal {position} projection differs")
-        return terminal
-    if terminal_root.exists():
-        raise CalibrationFailure(
-            f"terminal {position} is partial; refusing an unprovable replay",
-    )
-    terminal_root.mkdir(parents=True)
-    code, stdout, stderr = _invoke(
-        argv, environment, request, terminal_root, timeout,
-    )
-    (terminal_root / "host-stdout.jsonl").write_bytes(stdout)
-    (terminal_root / "host-stderr.txt").write_bytes(stderr)
-    if code:
-        raise CalibrationFailure(f"model-grade Host exited {code}")
-    result = _host_result(stdout, request, registry)
+        diagnostics = validate_host_protocol_record("host_request", request, registry)
+        if diagnostics:
+            raise CalibrationFailure(_first_diagnostic(diagnostics))
+        result = _invoke_attempt(
+            argv=argv,
+            environment=environment,
+            request=request,
+            root=terminal_root,
+            timeout=timeout,
+            registry=registry,
+        )
+    if result.get("terminal_status") != "completed":
+        raise CalibrationFailure("model-grade Host did not complete the bound request")
     terminal = _project_terminal(
         request=request,
         batch=batch,
@@ -349,6 +473,7 @@ def _terminal(
         position=position,
         result=result,
         terminal_root=terminal_root,
+        attempts=attempts,
     )
     atomic_write_json(terminal_path, terminal)
     return terminal
@@ -366,13 +491,20 @@ def _preflight_terminal_roots(
         root = output_root / "terminals" / f"{position:03d}"
         if not root.exists():
             continue
+        if root.is_symlink() or not root.is_dir():
+            raise CalibrationFailure(f"terminal {position} root is unsafe")
         terminal_path = root / "terminal.json"
-        if not terminal_path.is_file():
+        if terminal_path.is_symlink() or not terminal_path.is_file():
             raise CalibrationFailure(
                 f"terminal {position} is partial; refusing an unprovable replay",
             )
         terminal = load_json(terminal_path)
-        if not isinstance(terminal, dict):
+        attempts = terminal.get("attempts") if isinstance(terminal, dict) else None
+        if (
+            not isinstance(terminal, dict)
+            or terminal.get("schema_version") != "model-calibration-terminal/3"
+            or attempts not in {1, 2}
+        ):
             raise CalibrationFailure(f"terminal {position} is not an object")
         request, _ = _request(
             spec=spec,
@@ -380,8 +512,10 @@ def _preflight_terminal_roots(
             label=label,
             position=position,
             prompt_bytes=prompt_bytes,
+            attempt=attempts,
         )
         expected = {
+            "attempts": attempts,
             "position": position,
             "example_id": label["example_id"],
             "check_id": label["check_id"],

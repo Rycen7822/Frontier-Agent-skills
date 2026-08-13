@@ -116,12 +116,14 @@ def qualification_request_ceilings(
         * repeats
         * expected_retry_policy["max_attempts"]
     )
-    model_grade = calibration_requests + execute
+    calibration_attempts = 2 * calibration_requests
+    model_grade = calibration_attempts + execute
     return {
         "provider_requests": 2 * probe_count + execute + model_grade,
         "execute": execute,
         "model_grade": model_grade,
         "calibration": calibration_requests,
+        "calibration_attempts": calibration_attempts,
     }
 
 
