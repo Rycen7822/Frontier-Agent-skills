@@ -58,8 +58,19 @@ def qualification_request_ceilings(
     public_cases: dict[str, int] = {}
     calibration_requests = 0
     holdout_cases = 0
+    repeat_counts: set[int] = set()
     for skill_id in SKILL_IDS:
         record = sentinel["skills"][skill_id]
+        spec = load_json(
+            resolve_binding(
+                record["spec_template"], repository_root, campaign_root
+            ),
+            label=f"{skill_id} sentinel spec",
+        )
+        repeats = spec.get("suite", {}).get("repeats")
+        if isinstance(repeats, bool) or not isinstance(repeats, int):
+            raise ContractError(f"{skill_id} sentinel repeats are invalid")
+        repeat_counts.add(repeats)
         scenarios = resolve_binding(
             record["public_scenarios"], repository_root, campaign_root
         ).read_bytes().splitlines()
@@ -78,6 +89,10 @@ def qualification_request_ceilings(
         calibration_requests += len(calibration)
         holdout_cases += record["holdout_case_ceiling"]
 
+    if repeat_counts != {3}:
+        raise ContractError("fresh campaign requires exactly three repeats per Skill")
+    repeats = next(iter(repeat_counts))
+
     current_execute = sum(public_cases.values()) * 2
     candidate_cases = max(
         public_cases[owner]
@@ -88,7 +103,7 @@ def qualification_request_ceilings(
         )
         for owner in SKILL_IDS
     )
-    execute = current_execute + candidate_cases * 2 + holdout_cases * 2
+    execute = (current_execute + candidate_cases * 2 + holdout_cases * 2) * repeats
     model_grade = calibration_requests + execute
     return {
         "provider_requests": probe_count + execute + model_grade,

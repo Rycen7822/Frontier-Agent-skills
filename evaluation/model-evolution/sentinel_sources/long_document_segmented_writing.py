@@ -3,6 +3,7 @@
 DEFINITION = {
     "name": "Long Document Segmented Writing",
     "version": "2.0.0",
+    "repeats": 3,
     "context_ceiling": 32768,
     "minimum_baseline_failure_cases": 2,
     "process_required": False,
