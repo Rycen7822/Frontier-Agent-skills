@@ -60,6 +60,13 @@ class BudgetExhausted(ApparatusFailure):
 
 
 ATTEMPT_CUSTODY_NAME = "attempt-custody.lock"
+DETERMINISTIC_INPUT_PATHS = {
+    "result.json",
+    "workspace/final-answer.md",
+    "workspace/command-trace.json",
+    "workspace/workspace-evidence.json",
+    "workspace/host-observation.json",
+}
 
 
 def _owned_lock_stat(fd: int, path: Path) -> os.stat_result:
@@ -1433,6 +1440,7 @@ def _run_deterministic_graders(
     spec_path: Path,
     attempt_dir: Path,
     result_path: Path,
+    host_artifacts: dict[str, Path],
     custody_fd: int,
 ) -> tuple[list[dict[str, Any]], list[Path]]:
     declarations = {
@@ -1473,13 +1481,22 @@ def _run_deterministic_graders(
             normalized = normalize_relative_path(
                 input_name, f"grader {grader_id} input",
             )
-            destination = grader_cwd / normalized
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            if normalized != "result.json":
+            if normalized not in DETERMINISTIC_INPUT_PATHS:
+                raise RunnerFailure(
+                    f"grader {grader_id} declares an unsupported input {normalized}",
+                )
+            source = (
+                result_path
+                if normalized == "result.json"
+                else host_artifacts.get(normalized)
+            )
+            if source is None:
                 raise RunnerFailure(
                     f"grader {grader_id} declares an unavailable input {normalized}",
                 )
-            shutil.copy2(result_path, destination)
+            destination = grader_cwd / normalized
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
             input_paths.append(destination)
 
         executable_name = verifier["argv"][0]
@@ -2644,6 +2661,10 @@ def _execute_entry(
     _validate_state_contract(entry, events, result, checkpoints)
     _validate_runtime_records(entry, result, host, registry)
     host_artifacts = _host_artifact_paths(result, attempt_dir)
+    host_artifact_inputs = {
+        path.relative_to(attempt_dir).as_posix(): path
+        for path in host_artifacts
+    }
     _validate_action_lifecycle(result, attempt_dir)
     observations = _capture_observations(
         entry, attempt_dir, len(events),
@@ -2655,7 +2676,14 @@ def _execute_entry(
     atomic_write_bytes(result_path, canonical_json_bytes(result) + b"\n")
 
     grader_outputs, grader_artifacts = _run_deterministic_graders(
-        entry, plan, spec, spec_path, attempt_dir, result_path, custody_fd,
+        entry,
+        plan,
+        spec,
+        spec_path,
+        attempt_dir,
+        result_path,
+        host_artifact_inputs,
+        custody_fd,
     )
     (
         model_outputs,

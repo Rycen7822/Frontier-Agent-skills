@@ -19,6 +19,12 @@ import tempfile
 import time
 from typing import Any
 
+from _codex_eval_artifacts import (
+    ArtifactError,
+    WorkspaceEvidence,
+    build_command_trace,
+    build_host_observation,
+)
 from _codex_eval_delivery import (
     DeliveryError,
     ensure_trusted_workspace,
@@ -55,9 +61,10 @@ from _codex_eval_isolation import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
-ADAPTER_VERSION = "1.7"
+ADAPTER_VERSION = "1.8"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
+    "_codex_eval_artifacts.py",
     "_codex_eval_delivery.py",
     "_codex_eval_events.py",
     "_codex_eval_isolation.py",
@@ -373,10 +380,19 @@ def _utc_now() -> str:
 
 
 def _redact_text(text: str, workspace: Path) -> str:
-    redacted = text.replace(str(workspace), "<workspace>")
-    for name, value in os.environ.items():
-        if SECRET_NAME.search(name) and len(value) >= 4:
-            redacted = redacted.replace(value, "<redacted>")
+    redacted = text.replace(str(workspace), "<workspace>").replace(
+        ISOLATED_WORKSPACE, "<workspace>"
+    )
+    secrets = sorted(
+        (
+            (name, value)
+            for name, value in os.environ.items()
+            if SECRET_NAME.search(name) and len(value) >= 4
+        ),
+        key=lambda item: (-len(item[1]), item[0]),
+    )
+    for _, value in secrets:
+        redacted = redacted.replace(value, "<redacted>")
     redacted = re.sub(r"\bsk-[A-Za-z0-9_-]{8,}\b", "<redacted>", redacted)
     return redacted
 
@@ -698,45 +714,6 @@ def _snapshot_workspace(workspace: Path) -> dict[str, str]:
     return result
 
 
-def _fixture_text_evidence(
-    payload: dict[str, Any],
-    workspace: Path,
-) -> dict[str, str]:
-    """Read hash-bound text fixtures for semantic model grading."""
-    case = payload.get("case")
-    fixture = case.get("fixture") if isinstance(case, dict) else None
-    initial_files = (
-        fixture.get("initial_files") if isinstance(fixture, dict) else None
-    )
-    if not isinstance(initial_files, list):
-        raise AdapterError("model-graded fixture manifest is missing")
-    evidence: dict[str, str] = {}
-    for item in initial_files:
-        relative = item.get("path") if isinstance(item, dict) else None
-        expected_hash = item.get("sha256") if isinstance(item, dict) else None
-        if (
-            not isinstance(relative, str)
-            or not relative
-            or Path(relative).is_absolute()
-            or "\\" in relative
-            or re.match(r"^[A-Za-z]:", relative) is not None
-            or any(part in {"", ".", ".."} for part in Path(relative).parts)
-            or not isinstance(expected_hash, str)
-            or not HASH.fullmatch(expected_hash)
-        ):
-            raise AdapterError("model-graded fixture binding is invalid")
-        path = workspace / relative
-        if path.is_symlink() or not path.is_file():
-            raise AdapterError("model-graded fixture file is unavailable")
-        if _file_sha256(path) != expected_hash:
-            raise AdapterError("model-graded fixture hash differs")
-        try:
-            evidence[relative] = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError as exc:
-            raise AdapterError("model-graded fixture is not UTF-8") from exc
-    return evidence
-
-
 def _manifest_source_root(manifest: dict[str, Any]) -> Path:
     identity = manifest.get("identity")
     repository = identity.get("repository") if isinstance(identity, dict) else None
@@ -841,10 +818,9 @@ def _reset_probe(
     manifest: dict[str, Any],
 ) -> dict[str, Any]:
     proof = _artifact_json(
-        f"reset-proof-{request['envelope']['request_id']}.json",
+        "reset-proof.json",
         {
             "capability": request["payload"].get("capability"),
-            "request_id": request["envelope"]["request_id"],
             "workspace": "contained",
         },
     )
@@ -1053,15 +1029,11 @@ def _run_execute_in_workspace(
             args.plugin_root,
             exclude_skill_id=excluded,
         )
-    initial_files = _snapshot_workspace(workspace)
-    model_fixture_evidence = (
-        _fixture_text_evidence(payload, workspace)
-        if any(
-            item.get("owner") == "model"
-            for item in payload["case"]["requirements"]
-        )
-        else None
+    workspace_timeline = WorkspaceEvidence(
+        workspace,
+        ignored=is_workspace_infrastructure,
     )
+    workspace_timeline.capture_initial()
     started_at = _utc_now()
     normalized_turns: list[dict[str, Any]] = []
     session_id: str | None = None
@@ -1145,6 +1117,7 @@ def _run_execute_in_workspace(
                 normalized["final_message"] = _output_message(last_message, normalized)
             except (OSError, UnicodeDecodeError) as exc:
                 raise AdapterError("Codex output-last-message is unreadable") from exc
+            workspace_timeline.capture_turn(turn["turn_id"])
             if normalized["status"] == "protocol_error":
                 normalized_turns.append(normalized)
                 break
@@ -1179,13 +1152,50 @@ def _run_execute_in_workspace(
         result["protocol_error"] = host_protocol_error(protocol_diagnostics)
         return [], result
 
+    turn_ids = [
+        turn["turn_id"]
+        for turn in payload["turns"][: len(normalized_turns)]
+    ]
+    command_trace = build_command_trace(
+        normalized_turns,
+        turn_ids,
+        workspace=workspace,
+        workspace_alias=ISOLATED_WORKSPACE,
+        normalize_text=lambda value: _redact_text(value, workspace),
+    )
+    workspace_evidence, changed_paths = workspace_timeline.finish()
+    terminal_status = (
+        "completed"
+        if len(normalized_turns) == len(payload["turns"])
+        and all(turn["status"] == "completed" for turn in normalized_turns)
+        else "failed"
+    )
+    host_observation = build_host_observation(
+        terminal_status=terminal_status,
+        codex_status=normalized_turns[-1]["status"],
+        turn_ids=turn_ids,
+        changed_paths=changed_paths,
+        command_trace=command_trace,
+        workspace_evidence=workspace_evidence,
+    )
     final_message = normalized_turns[-1]["final_message"] or ""
-    suffix = request["envelope"]["request_id"]
     final_artifact = _artifact_bytes(
-        f"final-answer-{suffix}.md",
+        "final-answer.md",
         _redact_text(final_message, workspace).encode("utf-8"),
     )
-    artifacts = [final_artifact]
+    command_artifact = _artifact_json("command-trace.json", command_trace)
+    workspace_artifact = _artifact_json(
+        "workspace-evidence.json", workspace_evidence
+    )
+    observation_artifact = _artifact_json(
+        "host-observation.json", host_observation
+    )
+    artifacts = [
+        final_artifact,
+        command_artifact,
+        workspace_artifact,
+        observation_artifact,
+    ]
     assertions = [
         {
             "claim": "captured final Codex message",
@@ -1193,46 +1203,6 @@ def _run_execute_in_workspace(
             "locally_verifiable": True,
         }
     ]
-    if any(item.get("owner") == "model" for item in payload["case"]["requirements"]):
-        assert model_fixture_evidence is not None
-        final_files = _snapshot_workspace(workspace)
-        changed_paths = sorted(
-            {
-                *{
-                    path
-                    for path in initial_files
-                    if initial_files.get(path) != final_files.get(path)
-                },
-                *{
-                    path
-                    for path in final_files
-                    if initial_files.get(path) != final_files.get(path)
-                },
-            }
-        )
-        verification = {"codex_status": normalized_turns[-1]["status"]}
-        observation = {
-            "allowed_change_paths": [],
-            "changed_paths": changed_paths,
-            "protected_paths": sorted(model_fixture_evidence),
-            "verification": verification,
-        }
-        host_observation = _artifact_json(
-            f"host-observation-{suffix}.json",
-            observation,
-        )
-        workspace_evidence = _artifact_json(
-            f"workspace-evidence-{suffix}.json",
-            {
-                "initial_files": model_fixture_evidence,
-                "final_files": {},
-                "changed_paths": changed_paths,
-                "diff": "",
-                "verification": verification,
-            },
-        )
-        artifacts.extend([host_observation, workspace_evidence])
-
     context, context_artifacts = _captured_context(
         delivery,
         request["envelope"]["request_id"],
@@ -1531,6 +1501,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     except (
         AdapterError,
+        ArtifactError,
         DeliveryError,
         IsolationError,
         OSError,

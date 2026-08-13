@@ -11,14 +11,18 @@ def _artifact_check(result: dict[str, Any]) -> tuple[bool, str]:
     artifacts = result.get("artifacts")
     if not isinstance(artifacts, list):
         return False, "artifact inventory is missing"
-    final_paths = [
+    required_paths = {
+        "workspace/final-answer.md",
+        "workspace/command-trace.json",
+        "workspace/workspace-evidence.json",
+        "workspace/host-observation.json",
+    }
+    paths = [
         item.get("path")
         for item in artifacts
-        if isinstance(item, dict)
-        and isinstance(item.get("path"), str)
-        and item["path"].startswith("workspace/final-answer-")
-        and item["path"].endswith(".md")
+        if isinstance(item, dict) and isinstance(item.get("path"), str)
     ]
+    complete_inventory = all(paths.count(path) == 1 for path in required_paths)
     assertions = result.get("assertions")
     captured = bool(
         isinstance(assertions, list)
@@ -27,12 +31,14 @@ def _artifact_check(result: dict[str, Any]) -> tuple[bool, str]:
             and item.get("claim") == "captured final Codex message"
             and item.get("locally_verifiable") is True
             and isinstance(item.get("artifact"), dict)
-            and item["artifact"].get("path") in final_paths
+            and item["artifact"].get("path") == "workspace/final-answer.md"
             for item in assertions
         )
     )
     passed = (
-        result.get("terminal_status") == "completed" and bool(final_paths) and captured
+        result.get("terminal_status") == "completed"
+        and complete_inventory
+        and captured
     )
     return (
         passed,

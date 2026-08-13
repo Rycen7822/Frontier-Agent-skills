@@ -48,6 +48,104 @@ class ExtendedSkillEvaluator(unittest.TestCase):
             ]
             self.assertEqual("blocked", derive_decision(gates, [], []))
 
+    def test_host_artifacts_are_fixed_bounded_and_replayable(self) -> None:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from _codex_eval_artifacts import (
+            WorkspaceEvidence,
+            build_command_trace,
+        )
+        from _codex_eval_delivery import is_workspace_infrastructure
+
+        captures = []
+        for _ in range(2):
+            with tempfile.TemporaryDirectory() as directory:
+                workspace = Path(directory)
+                target = workspace / "src.txt"
+                target.write_bytes(b"before\r\n")
+                timeline = WorkspaceEvidence(
+                    workspace,
+                    ignored=is_workspace_infrastructure,
+                )
+                timeline.capture_initial()
+                target.write_bytes(b"after\n")
+                timeline.capture_turn("turn-1")
+                turn = {
+                    "items": [
+                        {
+                            "phase": "completed",
+                            "type": "command_execution",
+                            "status": "completed",
+                            "exit_code": 0,
+                            "command": f"python {target}\r\n",
+                            "aggregated_output": f"updated {target}\r\n",
+                        },
+                        {
+                            "phase": "completed",
+                            "type": "file_change",
+                            "changes": [{"path": str(target), "kind": "update"}],
+                        },
+                    ]
+                }
+                trace = build_command_trace(
+                    [turn],
+                    ["turn-1"],
+                    workspace=workspace,
+                    workspace_alias="/tmp/frontier-workspace",
+                    normalize_text=lambda value: value.replace(
+                        str(workspace), "<workspace>"
+                    ),
+                )
+                evidence, changed = timeline.finish()
+                captures.append((trace, evidence, changed))
+
+        self.assertEqual(captures[0], captures[1])
+        trace, evidence, changed = captures[0]
+        self.assertTrue(trace["complete"])
+        self.assertFalse(trace["overflow"])
+        self.assertEqual(
+            "python <workspace>/src.txt\n",
+            trace["items"][0]["command_preview"],
+        )
+        self.assertEqual(
+            [{"path": "src.txt", "action": "modify"}],
+            trace["items"][1]["changes"],
+        )
+        self.assertEqual(["src.txt"], changed)
+        self.assertTrue(evidence["complete"])
+        self.assertIn("--- a/src.txt", evidence["diff"])
+
+        escaped = build_command_trace(
+            [{"items": [{
+                "phase": "completed",
+                "type": "file_change",
+                "changes": [{"path": "/outside.txt", "kind": "update"}],
+            }]}],
+            ["turn-1"],
+            workspace=ROOT,
+            workspace_alias="/tmp/frontier-workspace",
+            normalize_text=lambda value: value,
+        )
+        self.assertFalse(escaped["complete"])
+
+        command = {
+            "phase": "completed",
+            "type": "command_execution",
+            "status": "failed",
+            "exit_code": 1,
+            "command": "false",
+            "aggregated_output": "failed",
+        }
+        overflow = build_command_trace(
+            [{"items": [dict(command) for _ in range(257)]}],
+            ["turn-1"],
+            workspace=ROOT,
+            workspace_alias="/tmp/frontier-workspace",
+            normalize_text=lambda value: value,
+        )
+        self.assertEqual(256, len(overflow["items"]))
+        self.assertTrue(overflow["overflow"])
+        self.assertFalse(overflow["complete"])
+
     def test_invalid_contract_is_rejected(self) -> None:
         base = json.loads(
             (SKILL / "templates" / "eval-spec.example.json").read_text(encoding="utf-8")
@@ -56,6 +154,11 @@ class ExtendedSkillEvaluator(unittest.TestCase):
             ("extra-field", lambda spec: spec.__setitem__("unexpected", True), "schema.additionalProperties"),
             ("missing-axis", lambda spec: spec["hard_gates"][0].pop("decision_axis"), "schema.required"),
             ("old-epoch", lambda spec: spec.__setitem__("schema_version", 6), "schema.const"),
+            (
+                "undeclared-grader-input",
+                lambda spec: spec["graders"][0]["verifier"]["input_allowlist"].append("workspace/other.json"),
+                "schema.oneOf",
+            ),
         ):
             with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
                 spec = json.loads(json.dumps(base))

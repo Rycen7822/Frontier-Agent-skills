@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from hashlib import sha256
 import json
 import re
 from typing import Any, Callable
@@ -16,18 +17,13 @@ BLINDED_FIELDS = {
 }
 UNCERTAINTY = {"none", "low", "medium", "high"}
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
 CONTEXT_FIELDS = {
     "controlled_bytes": "controlled_bytes",
     "controlled_core_bytes": "controlled_core_bytes",
     "total_bytes": "bytes",
     "unique_reference_bytes": "unique_reference_bytes",
 }
-PATH_FIELDS = (
-    "allowed_change_paths",
-    "changed_paths",
-    "expected_change_paths",
-    "protected_paths",
-)
 LOCAL_PATH_PLACEHOLDER = "local-path-redacted"
 UNBOUND_LOCAL_PATH = re.compile(
     r"(?<![:/\\A-Za-z0-9])"
@@ -37,13 +33,33 @@ UNBOUND_LOCAL_PATH = re.compile(
     r"(?=$|[\s`'\"<>()\[\]{},;.!?，。；！？])"
 )
 MAX_BATCH_ITEMS = 6
-MAX_WORKSPACE_EVIDENCE_BYTES = 32_768
+MAX_WORKSPACE_EVIDENCE_BYTES = 6 * 1024 * 1024
+MAX_COMMAND_TRACE_BYTES = 4 * 1024 * 1024
 WORKSPACE_EVIDENCE_FIELDS = {
-    "initial_files",
-    "final_files",
-    "changed_paths",
+    "schema_version",
+    "complete",
+    "overflow",
+    "initial",
+    "turn_snapshots",
+    "final",
     "diff",
-    "verification",
+}
+HOST_OBSERVATION_FIELDS = {
+    "schema_version",
+    "terminal_status",
+    "codex_status",
+    "turn_ids",
+    "changed_paths",
+    "command_trace_complete",
+    "command_trace_overflow",
+    "workspace_evidence_complete",
+    "workspace_evidence_overflow",
+}
+EVIDENCE_PATHS = {
+    "host-observation": "workspace/host-observation.json",
+    "command-trace": "workspace/command-trace.json",
+    "workspace-evidence": "workspace/workspace-evidence.json",
+    "final-answer": "workspace/final-answer.md",
 }
 
 
@@ -53,7 +69,8 @@ def _valid_relative_path(value: Any) -> bool:
         and bool(value)
         and not value.startswith("/")
         and "\\" not in value
-        and re.match(r"^[A-Za-z]:[\\/]", value) is None
+        and all(ord(character) >= 32 and ord(character) != 127 for character in value)
+        and re.match(r"^[A-Za-z]:", value) is None
         and all(part not in {"", ".", ".."} for part in value.split("/"))
     )
 
@@ -234,14 +251,10 @@ def _relative_evidence_paths(
     paths = set(fixture_paths or [])
     if any(not _valid_relative_path(path) for path in paths):
         raise ValueError("model grader fixture path is invalid")
-    for field in PATH_FIELDS:
-        values = assessment.get(field, [])
-        if not isinstance(values, list):
-            raise ValueError(f"model grader {field} is invalid")
-        for value in values:
-            if not _valid_relative_path(value):
-                raise ValueError(f"model grader {field} path is invalid")
-            paths.add(value)
+    for value in assessment.get("changed_paths", []):
+        if not _valid_relative_path(value):
+            raise ValueError("model grader changed path is invalid")
+        paths.add(value)
     return sorted(paths, key=len, reverse=True)
 
 
@@ -299,6 +312,98 @@ def _redact_workspace_paths(
     return _blind_unbound_local_paths(redacted)
 
 
+def _canonical_payload(value: dict[str, Any], payload: str) -> bool:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+        allow_nan=False,
+    ) == payload
+
+
+def _host_observation(payload: str) -> dict[str, Any]:
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ValueError("model grader host assessment is invalid JSON") from exc
+    changed = value.get("changed_paths") if isinstance(value, dict) else None
+    turns = value.get("turn_ids") if isinstance(value, dict) else None
+    if (
+        not isinstance(value, dict)
+        or set(value) != HOST_OBSERVATION_FIELDS
+        or value.get("schema_version") != "codex-host-observation/1"
+        or value.get("terminal_status") not in {"completed", "failed"}
+        or value.get("codex_status") not in {"completed", "failed", "protocol_error"}
+        or not isinstance(turns, list)
+        or not turns
+        or any(not isinstance(turn, str) or not turn for turn in turns)
+        or len(turns) != len(set(turns))
+        or not isinstance(changed, list)
+        or any(not isinstance(path, str) for path in changed)
+        or changed != sorted(set(changed))
+        or any(not _valid_relative_path(path) for path in changed)
+        or any(
+            not isinstance(value[field], bool)
+            for field in (
+                "command_trace_complete",
+                "command_trace_overflow",
+                "workspace_evidence_complete",
+                "workspace_evidence_overflow",
+            )
+        )
+        or not _canonical_payload(value, payload)
+    ):
+        raise ValueError("model grader host assessment differs")
+    return value
+
+
+def _file_records(value: Any) -> tuple[dict[str, dict[str, Any]], int]:
+    if not isinstance(value, list) or len(value) > 128:
+        raise ValueError("model grader workspace snapshot is invalid")
+    records: dict[str, dict[str, Any]] = {}
+    content_bytes = 0
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {
+            "path", "sha256", "bytes", "encoding", "content", "truncated",
+        }:
+            raise ValueError("model grader workspace file record differs")
+        path = item["path"]
+        raw = item["content"].encode("utf-8") if isinstance(item["content"], str) else None
+        if (
+            not _valid_relative_path(path)
+            or path in records
+            or not isinstance(item["sha256"], str)
+            or not HASH.fullmatch(item["sha256"])
+            or isinstance(item["bytes"], bool)
+            or not isinstance(item["bytes"], int)
+            or item["bytes"] < 0
+            or item["encoding"] not in {"utf-8", "binary"}
+            or not isinstance(item["truncated"], bool)
+            or (
+                raw is None
+                and (item["content"] is not None or not item["truncated"])
+            )
+            or (
+                raw is not None
+                and (
+                    item["encoding"] != "utf-8"
+                    or item["truncated"]
+                    or len(raw) > 64 * 1024
+                    or item["bytes"] != len(raw)
+                    or item["sha256"] != "sha256:" + sha256(raw).hexdigest()
+                )
+            )
+            or (item["encoding"] == "binary" and raw is not None)
+        ):
+            raise ValueError("model grader workspace file record is invalid")
+        records[path] = item
+        content_bytes += 0 if raw is None else len(raw)
+    if list(records) != sorted(records):
+        raise ValueError("model grader workspace files are not ordered")
+    return records, content_bytes
+
+
 def _workspace_evidence(
     payload: str,
     assessment: dict[str, Any],
@@ -312,43 +417,157 @@ def _workspace_evidence(
     if (
         not isinstance(value, dict)
         or set(value) != WORKSPACE_EVIDENCE_FIELDS
-        or any(
-            not isinstance(value[field], dict)
-            or any(
-                not isinstance(path, str)
-                or not isinstance(content, str)
-                for path, content in value[field].items()
-            )
-            for field in ("initial_files", "final_files")
-        )
-        or not isinstance(value["changed_paths"], list)
-        or any(not isinstance(path, str) for path in value["changed_paths"])
-        or not isinstance(value["diff"], str)
-        or not isinstance(value["verification"], dict)
+        or value.get("schema_version") != "codex-workspace-evidence/1"
+        or not isinstance(value.get("complete"), bool)
+        or not isinstance(value.get("overflow"), bool)
+        or not isinstance(value.get("turn_snapshots"), list)
+        or not isinstance(value.get("diff"), str)
+        or len(value["diff"].encode("utf-8")) > 256 * 1024
     ):
         raise ValueError("model grader workspace evidence differs")
-    file_paths = {
-        *value["initial_files"],
-        *value["final_files"],
-    }
-    if (
-        any(not _valid_relative_path(path) for path in file_paths)
-        or any(not _valid_relative_path(path) for path in value["changed_paths"])
-        or value["changed_paths"] != assessment.get("changed_paths")
-        or value["verification"] != assessment.get("verification")
-        or not file_paths <= (
-            set(assessment.get("allowed_change_paths", []))
-            | set(assessment.get("protected_paths", []))
+    initial, content_bytes = _file_records(value["initial"])
+    final, final_bytes = _file_records(value["final"])
+    content_bytes += final_bytes
+    snapshot_turns: list[str] = []
+    snapshots: list[dict[str, dict[str, Any]]] = []
+    for snapshot in value["turn_snapshots"]:
+        if not isinstance(snapshot, dict) or set(snapshot) != {"turn_id", "files"}:
+            raise ValueError("model grader workspace turn snapshot differs")
+        snapshot_turns.append(snapshot["turn_id"])
+        records, snapshot_bytes = _file_records(snapshot["files"])
+        snapshots.append(records)
+        content_bytes += snapshot_bytes
+    changed_set: set[str] = set()
+    truncated_change = False
+    timeline = [initial, *snapshots, final]
+    for before, after in zip(timeline, timeline[1:]):
+        transition = {
+            path
+            for path in before.keys() | after.keys()
+            if before.get(path, {}).get("sha256")
+            != after.get(path, {}).get("sha256")
+        }
+        changed_set.update(transition)
+        truncated_change = truncated_change or any(
+            record is not None and record["truncated"]
+            for path in transition
+            for record in (before.get(path), after.get(path))
         )
-        or json.dumps(
-            value,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-            allow_nan=False,
-        ) != payload
+    changed = sorted(changed_set)
+    if (
+        content_bytes > 512 * 1024
+        or snapshot_turns != assessment["turn_ids"]
+        or changed != assessment["changed_paths"]
+        or value["complete"] != assessment["workspace_evidence_complete"]
+        or value["overflow"] != assessment["workspace_evidence_overflow"]
+        or value["complete"] and (value["overflow"] or truncated_change)
+        or not _canonical_payload(value, payload)
     ):
         raise ValueError("model grader workspace evidence binding differs")
+    return value
+
+
+def _command_trace(payload: str, assessment: dict[str, Any]) -> dict[str, Any]:
+    if len(payload.encode("utf-8")) > MAX_COMMAND_TRACE_BYTES:
+        raise ValueError("model grader command trace exceeds its bound")
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ValueError("model grader command trace is invalid JSON") from exc
+    items = value.get("items") if isinstance(value, dict) else None
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"schema_version", "complete", "overflow", "items"}
+        or value.get("schema_version") != "codex-command-trace/1"
+        or not isinstance(value.get("complete"), bool)
+        or not isinstance(value.get("overflow"), bool)
+        or not isinstance(items, list)
+        or len(items) > 256
+        or value["complete"] != assessment["command_trace_complete"]
+        or value["overflow"] != assessment["command_trace_overflow"]
+        or value["complete"] and value["overflow"]
+    ):
+        raise ValueError("model grader command trace differs")
+    for ordinal, item in enumerate(items, 1):
+        base = {"ordinal", "turn_id", "type"}
+        if (
+            not isinstance(item, dict)
+            or item.get("ordinal") != ordinal
+            or item.get("turn_id") not in assessment["turn_ids"]
+            or item.get("type") not in {"command_execution", "file_change"}
+        ):
+            raise ValueError("model grader command trace item is invalid")
+        if item["type"] == "command_execution":
+            full = base | {
+                "status", "exit_code", "command_sha256", "command_preview",
+                "output_sha256", "output_preview", "output_bytes",
+            }
+            partial = base | {"status", "exit_code"}
+            fields = frozenset(item)
+            if fields not in {frozenset(full), frozenset(partial)}:
+                raise ValueError("model grader command item fields differ")
+            if fields == full:
+                if (
+                    not isinstance(item["status"], str)
+                    or isinstance(item["exit_code"], bool)
+                    or not isinstance(item["exit_code"], int)
+                    or not isinstance(item["command_sha256"], str)
+                    or not HASH.fullmatch(item["command_sha256"])
+                    or not isinstance(item["output_sha256"], str)
+                    or not HASH.fullmatch(item["output_sha256"])
+                    or not isinstance(item["command_preview"], str)
+                    or len(item["command_preview"].encode("utf-8")) > 1024
+                    or not isinstance(item["output_preview"], str)
+                    or len(item["output_preview"].encode("utf-8")) > 1024
+                    or isinstance(item["output_bytes"], bool)
+                    or not isinstance(item["output_bytes"], int)
+                    or item["output_bytes"] < 0
+                ):
+                    raise ValueError("model grader command item is invalid")
+            else:
+                if (
+                    (
+                        item["status"] is not None
+                        and not isinstance(item["status"], str)
+                    )
+                    or (
+                        item["exit_code"] is not None
+                        and (
+                            isinstance(item["exit_code"], bool)
+                            or not isinstance(item["exit_code"], int)
+                        )
+                    )
+                ):
+                    raise ValueError("partial command evidence is invalid")
+                if value["complete"]:
+                    raise ValueError("complete command trace contains partial evidence")
+        else:
+            if (
+                set(item) != base | {"changes"}
+                or not isinstance(item["changes"], list)
+                or value["complete"] and not item["changes"]
+            ):
+                raise ValueError("model grader file-change item differs")
+            for change in item["changes"]:
+                if not isinstance(change, dict):
+                    raise ValueError("model grader file change is invalid")
+                expected = (
+                    {"path", "action", "destination"}
+                    if change.get("action") == "rename"
+                    else {"path", "action"}
+                )
+                if (
+                    set(change) != expected
+                    or change.get("action") not in {"create", "modify", "delete", "rename"}
+                    or not _valid_relative_path(change.get("path"))
+                    or (
+                        change.get("action") == "rename"
+                        and not _valid_relative_path(change.get("destination"))
+                    )
+                ):
+                    raise ValueError("model grader file change is invalid")
+    if not _canonical_payload(value, payload):
+        raise ValueError("model grader command trace is not canonical")
     return value
 
 
@@ -393,24 +612,25 @@ def execution_item(
     ):
         raise ValueError("model grader check declarations are invalid")
     evidence = {}
-    for label in ("host-observation", "workspace-evidence", "final-answer"):
+    for label, path in EVIDENCE_PATHS.items():
         matches = [
             item for item in blinded["artifacts"]
             if (
                 isinstance(item, dict)
-                and item.get("path", "").startswith(f"workspace/{label}-")
+                and item.get("path") == path
                 and item.get("encoding") == "utf-8"
             )
         ]
         if len(matches) != 1:
             raise ValueError(f"model grader {label} evidence is invalid")
         evidence[label] = read_artifact(matches[0])
-    try:
-        assessment = json.loads(evidence["host-observation"])
-    except json.JSONDecodeError as exc:
-        raise ValueError("model grader host assessment is invalid JSON") from exc
-    if not isinstance(assessment, dict):
-        raise ValueError("model grader host assessment is not an object")
+    assessment = _host_observation(evidence["host-observation"])
+    captured_output = blinded["captured_output"]
+    if (
+        not isinstance(captured_output, dict)
+        or assessment["terminal_status"] != captured_output.get("terminal_status")
+    ):
+        raise ValueError("model grader host terminal binding differs")
     observations = blinded["observations"]
     if (
         not isinstance(observations, list)
@@ -424,9 +644,10 @@ def execution_item(
     ):
         raise ValueError("model grader typed evidence is invalid")
     grader_view = {
-        "captured_output": blinded["captured_output"],
+        "captured_output": captured_output,
         **copy.deepcopy(observations[0]),
         "host_assessment": assessment,
+        "command_trace": _command_trace(evidence["command-trace"], assessment),
         "workspace_evidence": _workspace_evidence(
             evidence["workspace-evidence"],
             assessment,
