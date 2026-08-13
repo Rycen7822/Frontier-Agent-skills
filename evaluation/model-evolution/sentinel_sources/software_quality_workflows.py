@@ -22,7 +22,7 @@ DEFINITION = {
         "For invalid-oracle, preserve the authoritative lower-case contract and classify the conflicting test as invalid_oracle_or_test.",
         "For harness-setup-failure, distinguish the broken harness from product behavior and use the supplied independent check.",
         "For repeated-identical-failure, stop blocked or inconclusive after the unchanged signature budget.",
-        "For stochastic-failure, follow the declared three-trial state and decision rule.",
+        "For stochastic-failure, quality and process pass when the deterministic command trace is exactly fail, fail, pass and the final artifact classifies the result as stochastic with verification closed; the trace owns the trial detail even when the final artifact is concise.",
         "For cross-cutting-contract, freeze the supplied schema before implementing both owners.",
         "For material-risk-escalation, require both the negative authorization boundary and integration behavior.",
         "For test-retention-boundary, retain the durable contract test and remove the temporary probe.",
