@@ -69,8 +69,13 @@ def _completed_identity(
     terminal_path: Path,
     ordinal: int,
 ) -> dict[str, Any]:
-    if host_result_path.is_symlink() or not host_result_path.is_file():
-        raise ContractError("Host result must be a regular non-symlink file")
+    if (
+        host_result_path.is_symlink()
+        or terminal_path.is_symlink()
+        or not host_result_path.is_file()
+        or not terminal_path.is_file()
+    ):
+        raise ContractError("calibration result must use regular non-symlink files")
     lines = [line for line in host_result_path.read_bytes().splitlines() if line.strip()]
     if len(lines) != 1:
         raise ContractError("Host result must contain one record")
@@ -78,6 +83,8 @@ def _completed_identity(
     terminal = load_json(terminal_path, label="calibration terminal")
     envelope = result.get("envelope") if isinstance(result, dict) else None
     cleanup = result.get("cleanup") if isinstance(result, dict) else None
+    attempts = terminal.get("attempts") if isinstance(terminal, dict) else None
+    expected_request = f"request.{ordinal + 1}.{attempts}.model-grade"
     if (
         not isinstance(result, dict)
         or result.get("record_type") != "skill-evaluator-host-result/2"
@@ -93,7 +100,11 @@ def _completed_identity(
         or not isinstance(cleanup, dict)
         or cleanup.get("status") != "clean"
         or not isinstance(terminal, dict)
-        or terminal.get("schema_version") != "model-calibration-terminal/2"
+        or terminal.get("schema_version") != "model-calibration-terminal/3"
+        or attempts not in {1, 2}
+        or envelope.get("attempt") != attempts
+        or envelope.get("attempt_id") != f"attempt.{ordinal + 1}.{attempts}"
+        or envelope.get("request_id") != expected_request
     ):
         raise ContractError("Host result is not a clean completed model-grade turn")
     identity = {
@@ -114,6 +125,76 @@ def _completed_identity(
     ):
         raise ContractError("completed model-grade identity differs")
     return identity
+
+
+def _capacity_retry_identity(path: Path, ordinal: int) -> None:
+    if path.is_symlink() or not path.is_file():
+        raise ContractError("calibration retry Host result is missing")
+    lines = [line for line in path.read_bytes().splitlines() if line.strip()]
+    result = (
+        strict_json_bytes(lines[0], label="calibration retry Host result")
+        if len(lines) == 1
+        else None
+    )
+    envelope = result.get("envelope") if isinstance(result, dict) else None
+    if (
+        not isinstance(result, dict)
+        or result.get("record_type") != "skill-evaluator-host-result/2"
+        or result.get("terminal") is not True
+        or not isinstance(envelope, dict)
+        or envelope.get("entry_ordinal") != ordinal
+        or envelope.get("request_kind") != "model_grade"
+        or envelope.get("attempt") != 1
+        or envelope.get("attempt_id") != f"attempt.{ordinal + 1}.1"
+        or envelope.get("request_id") != f"request.{ordinal + 1}.1.model-grade"
+        or result.get("terminal_status") != "failed"
+        or result.get("failure_class") != "official_transient"
+        or result.get("provider_error_code") != "model_at_capacity"
+        or result.get("timeout") is not False
+        or result.get("artifacts") != []
+        or result.get("actions") != []
+        or result.get("state") != []
+    ):
+        raise ContractError("calibration retry is not capacity-bound")
+
+
+def calibration_attempt_count(
+    campaign_root: Path,
+    skill_id: str,
+    request_count: int,
+) -> int:
+    """Count completed calibration calls through receipt-owned evidence."""
+    terminal_root = campaign_root / f"calibration/{skill_id}/run/terminals"
+    expected_names = {f"{index:03d}" for index in range(1, request_count + 1)}
+    children = list(terminal_root.iterdir()) if terminal_root.is_dir() else []
+    if (
+        terminal_root.is_symlink()
+        or {path.name for path in children} != expected_names
+        or any(path.is_symlink() or not path.is_dir() for path in children)
+    ):
+        raise CalibrationReceiptError("calibration terminal set is incomplete")
+    attempts = 0
+    for ordinal in range(request_count):
+        root = terminal_root / f"{ordinal + 1:03d}"
+        terminal_path = root / "terminal.json"
+        _completed_identity(root / "host-stdout.jsonl", terminal_path, ordinal)
+        terminal = load_json(terminal_path, label="calibration terminal")
+        attempt_count = terminal["attempts"]
+        if attempt_count == 2:
+            retry = root / "attempt-0001"
+            stderr = retry / "host-stderr.txt"
+            if (
+                retry.is_symlink()
+                or not retry.is_dir()
+                or {path.name for path in retry.iterdir()}
+                != {"host-stdout.jsonl", "host-stderr.txt"}
+                or stderr.is_symlink()
+                or not stderr.is_file()
+            ):
+                raise CalibrationReceiptError("calibration retry evidence differs")
+            _capacity_retry_identity(retry / "host-stdout.jsonl", ordinal)
+        attempts += attempt_count
+    return attempts
 
 
 def _projection(
