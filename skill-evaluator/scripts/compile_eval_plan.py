@@ -207,7 +207,10 @@ def _compiler_identity(
             "python_version": platform.python_version(),
         }
     else:
-        runtime = copy.deepcopy(runtime_override)
+        runtime = {
+            field: runtime_override[field]
+            for field in ("python_executable", "python_version")
+        }
     return {
         "algorithm": COMPILER_ALGORITHM,
         "version": COMPILER_VERSION,
@@ -721,7 +724,18 @@ def compile_plan(
     source_revision = normalized_spec["subject"]["package"][
         "source_revision"
     ]
-    compiler = _compiler_identity(source_revision, runtime_override)
+    verifier_revisions = {
+        grader["verifier"]["source_revision"]
+        for grader in normalized_spec["graders"]
+        if grader["type"] == "deterministic"
+    }
+    if len(verifier_revisions) > 1:
+        raise ContractFailure(
+            "compiler.verifier_identity",
+            "deterministic verifiers must share one apparatus revision",
+        )
+    compiler_revision = next(iter(verifier_revisions), source_revision)
+    compiler = _compiler_identity(compiler_revision, runtime_override)
 
     seen_entry_ids: set[str] = set()
     entries: list[dict[str, Any]] = []

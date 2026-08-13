@@ -49,6 +49,7 @@ from _model_evolution_materialization import (
     validate_candidate_plan,
     validate_current_plan,
 )
+from _model_evolution_prior import prepare_prior_plan, validate_prior_plan
 from _model_evolution_holdout import prepare_holdout_plan, validate_holdout_plan
 from _model_evolution_jobs import (
     render_probe_command,
@@ -253,6 +254,13 @@ def _validate_evidence_join(
             current_plan_path,
             label="bootstrap current plan",
         )
+        prior_registered = _registered_plan(campaign, "target_prior", skill_id)
+        prior_plan_path = resolve_binding(
+            prior_registered["plan"], repository_root, campaign_root
+        )
+        if content_hash(prior_plan_path.read_bytes()) != prior_registered["plan_digest"]:
+            raise CliError("bootstrap prior plan bytes changed")
+        prior_plan = load_json(prior_plan_path, label="bootstrap prior plan")
         inputs = value.get("inputs", [])
         candidate_inputs = [row for row in inputs if row.get("role") == "candidate"]
         prior_inputs = [row for row in inputs if row.get("role") == "prior"]
@@ -267,9 +275,14 @@ def _validate_evidence_join(
             or len(prior_inputs) != 1
             or candidate_inputs[0].get("plan_id") != current.get("plan_id")
             or candidate_inputs[0].get("evaluation_id") != current.get("evaluation_id")
+            or prior_inputs[0].get("plan_id") != prior_plan.get("plan_id")
+            or prior_inputs[0].get("evaluation_id")
+            != prior_plan.get("evaluation_id")
             or prior_inputs[0].get("evaluation_id") != current.get("evaluation_id")
             or candidate_inputs[0].get("execution_profile")
             != current_plan.get("execution_profile")
+            or prior_inputs[0].get("execution_profile")
+            != prior_plan.get("execution_profile")
             or candidate_inputs[0].get("execution_profile", {}).get("source_revision")
             != campaign["product"]["source_commit"]
             or not isinstance(prior_revision, str)
@@ -728,6 +741,7 @@ def _register_plan(args: argparse.Namespace) -> None:
     validator = {
         "target_current": validate_current_plan,
         "target_candidate": validate_candidate_plan,
+        "target_prior": validate_prior_plan,
         "target_holdout": validate_holdout_plan,
     }[args.role]
     host = validator(
@@ -751,6 +765,17 @@ def _register_plan(args: argparse.Namespace) -> None:
             campaign["candidate"]["candidate_commit"],
             args.skill_id,
         )["root_hash"]
+    elif args.role == "target_prior":
+        catalog_entries = host.get("catalog", {}).get("entries", [])
+        selected = [
+            item for item in catalog_entries
+            if isinstance(item, dict) and item.get("id") == args.skill_id
+        ]
+        if len(selected) != 1 or not isinstance(
+            selected[0].get("root_digest"), str
+        ):
+            raise CliError("target_prior Host lacks the selected Skill identity")
+        expected_package_hash = selected[0]["root_digest"]
     else:
         plugin_binding = campaign["skill_evidence"]["plugin_build"]
         if plugin_binding is None:
@@ -880,6 +905,30 @@ def _prepare_candidate(args: argparse.Namespace) -> None:
     })
 
 
+def _prepare_prior(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    campaign = _campaign_store(repository_root, campaign_root).read()
+    if campaign["state_revision"] != args.expected_revision:
+        raise CliError("prepare-prior expected revision is stale")
+    result = prepare_prior_plan(
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        campaign=campaign,
+        skill_id=args.skill_id,
+        prior_source_root=args.prior_source_root,
+        plugin_root=args.plugin_root,
+        plugin_evidence=args.plugin_build_evidence,
+    )
+    _emit({
+        "skill_id": args.skill_id,
+        "plan_id": result["plan_id"],
+        "plan_digest": result["plan_digest"],
+        "plan": str(result["plan"]),
+        "execute_ceiling": result["execute_ceiling"],
+        "provider_requests": 0,
+    })
+
+
 def _prepare_holdout(args: argparse.Namespace) -> None:
     repository_root, campaign_root = _roots(args)
     campaign = _campaign_store(repository_root, campaign_root).read()
@@ -909,6 +958,7 @@ def _verify_plan(args: argparse.Namespace) -> None:
     validator = {
         "target_current": validate_current_plan,
         "target_candidate": validate_candidate_plan,
+        "target_prior": validate_prior_plan,
         "target_holdout": validate_holdout_plan,
     }[args.role]
     host = validator(
@@ -1518,6 +1568,13 @@ def _parser() -> argparse.ArgumentParser:
     candidate.add_argument("--plugin-root", type=Path, required=True)
     candidate.add_argument("--plugin-build-evidence", type=Path, required=True)
 
+    prior = commands.add_parser("prepare-prior")
+    prior.add_argument("--expected-revision", type=int, required=True)
+    prior.add_argument("--skill-id", choices=SKILL_IDS, required=True)
+    prior.add_argument("--prior-source-root", type=Path, required=True)
+    prior.add_argument("--plugin-root", type=Path, required=True)
+    prior.add_argument("--plugin-build-evidence", type=Path, required=True)
+
     holdout = commands.add_parser("prepare-holdout")
     holdout.add_argument("--expected-revision", type=int, required=True)
     holdout.add_argument("--skill-id", choices=SKILL_IDS, required=True)
@@ -1527,7 +1584,9 @@ def _parser() -> argparse.ArgumentParser:
     verify_plan = commands.add_parser("verify-plan")
     verify_plan.add_argument(
         "--role",
-        choices=("target_current", "target_candidate", "target_holdout"),
+        choices=(
+            "target_current", "target_candidate", "target_prior", "target_holdout",
+        ),
         required=True,
     )
     verify_plan.add_argument("--skill-id", choices=SKILL_IDS, required=True)
@@ -1545,7 +1604,9 @@ def _parser() -> argparse.ArgumentParser:
     register.add_argument("--expected-revision", type=int, required=True)
     register.add_argument(
         "--role",
-        choices=("target_current", "target_candidate", "target_holdout"),
+        choices=(
+            "target_current", "target_candidate", "target_prior", "target_holdout",
+        ),
         required=True,
     )
     register.add_argument("--skill-id", choices=SKILL_IDS, required=True)
@@ -1618,6 +1679,7 @@ def main(argv: list[str] | None = None) -> int:
             "prepare-calibration": _prepare_calibration,
             "prepare-current": _prepare_current,
             "prepare-candidate": _prepare_candidate,
+            "prepare-prior": _prepare_prior,
             "prepare-holdout": _prepare_holdout,
             "verify-plan": _verify_plan,
             "close-calibration-failure": _close_calibration_failure,

@@ -47,7 +47,10 @@ NEXT_EVENT = {
     "target_profile_ready": "record grader_calibration or register-plan target_current",
     "calibration_ready": "register-plan target_current",
     "current_evidence_ready": "record transition_report",
-    "decision_ready": "record revision_report, candidate_source, or plugin_build",
+    "decision_ready": (
+        "register-plan target_prior, record revision_report, candidate_source, "
+        "or plugin_build"
+    ),
     "candidate_registered": "register-plan target_candidate",
     "candidate_evidence_ready": "record plugin_build",
     "final_plugin_ready": "register-plan target_holdout",
@@ -204,6 +207,7 @@ def register_plan(
     required_phase = {
         "target_current": {"target_profile_ready", "calibration_ready"},
         "target_candidate": {"candidate_registered"},
+        "target_prior": {"decision_ready"},
         "target_holdout": {"final_plugin_ready"},
     }[role]
     if state["phase"] not in required_phase:
@@ -213,6 +217,11 @@ def register_plan(
         for item in state["plans"]
     ):
         raise StateError("plan role and Skill are already registered")
+    if role == "target_prior" and (
+        state["candidate"] is not None
+        or state["profiles"]["predecessor"] is not None
+    ):
+        raise StateError("target_prior is only legal for candidate-null bootstrap")
     if role == "target_current" and plan_record["model_grade_ceiling"]:
         if state["phase"] != "calibration_ready":
             raise StateError("model-graded current plan requires all calibrations")

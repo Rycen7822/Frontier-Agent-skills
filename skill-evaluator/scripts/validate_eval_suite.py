@@ -2274,14 +2274,14 @@ def validate_epoch7_contract_semantics(
                     f"/graders/{grader_index}/verifier",
                     "deterministic verifier invocation is still a template",
                 )
-        if (
+        if ready and (
             verifier.get("source_revision")
-            != spec["subject"]["package"]["source_revision"]
+            != host["identity"]["repository"]["revision"]
         ):
             _add_contract_error(
                 errors, "grader.source_revision",
                 f"/graders/{grader_index}/verifier/source_revision",
-                "repository verifier must use the subject source revision",
+                "repository verifier must use the Host apparatus source revision",
             )
         _check_bound_file(
             {"path": verifier["path"]},
