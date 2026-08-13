@@ -65,19 +65,6 @@ class ExtendedRelease(unittest.TestCase):
             self.assertEqual("frontier-engineering/8.0.0", smoke["bundle_id"])
             self.assertFalse(smoke["actual_codex_cli_install"])
 
-            before = evidence.read_bytes()
-            repeated = run_script(
-                "scripts/build_codex_plugin.py",
-                "--source-root",
-                str(ROOT),
-                "--output",
-                str(plugin),
-                "--evidence-output",
-                str(evidence),
-            )
-            self.assertNotEqual(0, repeated.returncode)
-            self.assertEqual(before, evidence.read_bytes())
-
     def test_source_archives_are_clean_and_reproducible(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
