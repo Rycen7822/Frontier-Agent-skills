@@ -8,6 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 import runpy
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -84,6 +85,14 @@ def _write(path: Path, payload: bytes) -> None:
     path.write_bytes(payload)
 
 
+def _prune_generated_files(target: Path, expected: set[Path]) -> None:
+    if not target.is_dir():
+        return
+    for path in target.rglob("*"):
+        if (path.is_file() or path.is_symlink()) and path not in expected:
+            path.unlink()
+
+
 def _scenario(
     base: dict[str, Any],
     *,
@@ -104,7 +113,10 @@ def _scenario(
         CODEX_TURN_TIMEOUT_SECONDS * turn_count + HOST_CLEANUP_GRACE_SECONDS
     )
     value["split"] = "regression" if protected else "dev"
-    value["tags"] = ["core", coverage, *(["boundary"] if protected else [])]
+    boundary_tags = ["boundary"] if protected else []
+    if protected and coverage != "protected":
+        boundary_tags.append("protected")
+    value["tags"] = ["core", coverage, *boundary_tags]
     value["fixture"] = {
         "manifest": "fixtures/manifest.json",
         "sha256": fixture_hash,
@@ -215,6 +227,69 @@ def _host_manifest() -> bytes:
     return _json_bytes(value)
 
 
+def _case_contracts(skill_id: str, config: dict[str, Any]) -> bytes | None:
+    if not config.get("executable_contracts"):
+        return None
+    contracts = []
+    seen_initial_sets: set[tuple[str, ...]] = set()
+    for case in config["cases"]:
+        initial_paths = tuple(sorted(case["initial_files"]))
+        changed_paths = sorted(case["expected_changed_paths"])
+        absent_paths = sorted(case.get("expected_absent", []))
+        expected_contents = case.get("expected_contents", {})
+        if initial_paths in seen_initial_sets:
+            raise ValueError(f"{skill_id} executable cases share an initial file set")
+        if changed_paths != sorted(set(changed_paths)):
+            raise ValueError(f"{skill_id}-{case['id']} changed paths are not unique")
+        if any(path not in changed_paths for path in absent_paths):
+            raise ValueError(f"{skill_id}-{case['id']} absent path is not changed")
+        if not isinstance(expected_contents, dict) or any(
+            path not in changed_paths
+            or path in absent_paths
+            or not isinstance(content, str)
+            for path, content in expected_contents.items()
+        ):
+            raise ValueError(f"{skill_id}-{case['id']} final content is invalid")
+        seen_initial_sets.add(initial_paths)
+        contracts.append(
+            {
+                "case_id": f"{skill_id}-{case['id']}",
+                "initial_paths": list(initial_paths),
+                "expected_changed_paths": changed_paths,
+                "expected_absent": absent_paths,
+                "expected_contents": copy.deepcopy(expected_contents),
+                "commands": copy.deepcopy(case["commands"]),
+                "failure_count": list(case["failure_count"]),
+                "turn_count": case["turns"],
+                "first_turn_unchanged": bool(case.get("first_turn_unchanged", False)),
+                "require_identical_signature": bool(
+                    case.get("require_identical_signature", False)
+                ),
+                "final_terms": list(case["final_terms"]),
+                "final_any_terms": copy.deepcopy(case.get("final_any_terms", [])),
+            }
+        )
+    return _json_bytes(
+        {
+            "schema_version": 1,
+            "forbidden_command_fragments": [
+                "git ",
+                "apt ",
+                "apt-get ",
+                "curl ",
+                "npm ",
+                "pip ",
+                "pnpm ",
+                "wget ",
+                "yarn ",
+                "http://",
+                "https://",
+            ],
+            "cases": contracts,
+        }
+    )
+
+
 def _grader_prompt(
     skill_id: str,
     claims: list[str],
@@ -271,12 +346,18 @@ def _spec(
         "manifest": {"path": "host-manifest.template.json"},
         "required_capabilities": ["force_load", "model_grading"],
     }
+    executable = bool(config.get("executable_contracts"))
     deterministic_checks = [
         {
             "check_id": "artifact-check",
             "dimension": "outcome",
             "required": True,
-            "pass_condition": "The Host emitted one completed terminal with a final artifact.",
+            "pass_condition": (
+                "The completed Host artifacts prove the case-specific file, command, "
+                "trial, retention, trace, and completion contract."
+                if executable
+                else "The Host emitted one completed terminal with a final artifact."
+            ),
         },
         {
             "check_id": "safety-check",
@@ -287,10 +368,9 @@ def _spec(
     ]
     model_checks = copy.deepcopy(MODEL_CHECKS)
     if not config.get("process_required", True):
-        next(
-            check for check in model_checks
-            if check["check_id"] == "process-check"
-        )["required"] = False
+        next(check for check in model_checks if check["check_id"] == "process-check")[
+            "required"
+        ] = False
     value["graders"] = [
         {
             "grader_id": "sentinel-envelope-grader",
@@ -303,7 +383,17 @@ def _spec(
                 "cwd": ".",
                 "env_allowlist": ["PYTHONDONTWRITEBYTECODE"],
                 "timeout_seconds": 10,
-                "input_allowlist": ["result.json"],
+                "input_allowlist": (
+                    [
+                        "result.json",
+                        "workspace/final-answer.md",
+                        "workspace/command-trace.json",
+                        "workspace/workspace-evidence.json",
+                        "workspace/host-observation.json",
+                    ]
+                    if executable
+                    else ["result.json"]
+                ),
                 "pass_exit_codes": [0],
             },
         },
@@ -324,7 +414,7 @@ def _spec(
             "scenarios": {"path": "scenarios.public.jsonl"},
             "public_scenarios": {"path": "scenarios.public.jsonl"},
             "holdout": None,
-            "repeats": 1,
+            "repeats": config.get("repeats", 1),
             "order_seed": 630,
         }
     )
@@ -584,7 +674,7 @@ def _calibration_view(
             "syntax, and the schema verification passes.",
             "The final answer artifact names `$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py` "
             "and `fixtures/l0-spec.json` as the owners and gives the documented single-spec "
-            "command `python3 \"$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py\" contract "
+            'command `python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" contract '
             "fixtures/l0-spec.json`; the focused verification exits 0, and it does not start "
             "the runner or add scenario/Host inputs.",
         )
@@ -674,7 +764,9 @@ def _calibration_gold(skill_id: str, claims: list[str]) -> bytes:
                         "dimension": dimension,
                         "check_id": check_id,
                         "payload": payload,
-                        "payload_digest": grader_semantics.semantic_payload_hash(payload),
+                        "payload_digest": grader_semantics.semantic_payload_hash(
+                            payload
+                        ),
                         "source_support": "supported",
                         "gold_label": label,
                         "gold_severity": severity,
@@ -888,6 +980,7 @@ def materialize(repository_root: Path) -> list[Path]:
         )
         calibration_bytes = _calibration_gold(skill_id, config["claims"])
         verifier_bytes = (SENTINEL_SOURCE_ROOT / config["verifier_source"]).read_bytes()
+        contract_bytes = _case_contracts(skill_id, config)
         initial = {
             **{target / path: payload for path, payload in fixture_payloads.items()},
             target / "fixtures/manifest.json": manifest_bytes,
@@ -899,6 +992,15 @@ def materialize(repository_root: Path) -> list[Path]:
             target / "scenarios.public.jsonl": scenario_bytes,
             target / "calibration-gold.jsonl": calibration_bytes,
         }
+        if contract_bytes is not None:
+            initial[target / "case-contracts.json"] = contract_bytes
+        spec_path = target / "eval-spec.template.json"
+        proof_path = target / "suite-quality-proof.json"
+        quality_path = target / "suite-quality.json"
+        _prune_generated_files(
+            target,
+            {*initial, spec_path, proof_path, quality_path},
+        )
         for path, payload in initial.items():
             _write(path, payload)
             generated.append(path)
@@ -914,9 +1016,6 @@ def materialize(repository_root: Path) -> list[Path]:
             scenarios,
             prompt_digest=_sha256(prompt_bytes),
         )
-        spec_path = target / "eval-spec.template.json"
-        proof_path = target / "suite-quality-proof.json"
-        quality_path = target / "suite-quality.json"
         _write(spec_path, _json_bytes(spec))
         _write(proof_path, _json_bytes(proof))
         quality_path.unlink(missing_ok=True)
@@ -965,6 +1064,11 @@ def materialize(repository_root: Path) -> list[Path]:
             "verifier_roots": [
                 _binding((relative_root / "verify.py").as_posix()),
                 _binding((relative_root / "verify_common.py").as_posix()),
+                *(
+                    [_binding((relative_root / "case-contracts.json").as_posix())]
+                    if contract_bytes is not None
+                    else []
+                ),
             ],
             "required_coverage_tags": [case["coverage"] for case in config["cases"]],
             "protected_case_ids": [
@@ -1030,3 +1134,19 @@ def check() -> None:
             raise SystemExit(
                 "sentinel output differs: " + ", ".join(sorted(set(failures)))
             )
+
+
+def write() -> list[Path]:
+    with tempfile.TemporaryDirectory(prefix="frontier-sentinel-write-") as temporary:
+        staged_root = Path(temporary)
+        staged_paths = materialize(staged_root)
+        destinations = []
+        for staged in staged_paths:
+            destination = REPOSITORY_ROOT / staged.relative_to(staged_root)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(staged, destination)
+            destinations.append(destination)
+        sentinel_root = REPOSITORY_ROOT / MODEL_ROOT / "sentinels"
+        expected = {path for path in destinations if sentinel_root in path.parents}
+        _prune_generated_files(sentinel_root, expected)
+        return destinations

@@ -15,13 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSIONS = {
     "long-document-segmented-writing": "2.0.0",
     "skill-evaluator": "5.0.0",
-    "software-quality-workflows": "10.0.0",
-    "writing-plans": "8.3.0",
+    "software-quality-workflows": "11.0.0",
+    "writing-plans": "8.4.0",
 }
 ACTIVATION = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": True,
+    "software-quality-workflows": False,
     "writing-plans": True,
 }
 ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
@@ -48,8 +48,13 @@ class QuickContracts(unittest.TestCase):
         self.assertEqual("8.0.0", source["bundle_version"])
         self.assertEqual(7, generated["compatible_schema_epoch"])
         self.assertEqual("frontier-engineering/8.0.0", generated["bundle_id"])
-        self.assertEqual(VERSIONS, {item["id"]: item["version"] for item in source["skills"]})
-        self.assertEqual(VERSIONS, {name: item["version"] for name, item in generated["skills"].items()})
+        self.assertEqual(
+            VERSIONS, {item["id"]: item["version"] for item in source["skills"]}
+        )
+        self.assertEqual(
+            VERSIONS,
+            {name: item["version"] for name, item in generated["skills"].items()},
+        )
         self.assertFalse(source["remote_writes"])
         self.assertEqual("implicit_local_pilot", source["activation_ceiling"])
 
@@ -69,7 +74,9 @@ class QuickContracts(unittest.TestCase):
                 ACTIVATION[skill_id],
             )
         evaluator_prompt = yaml.safe_load(
-            (ROOT / "skill-evaluator" / "agents" / "openai.yaml").read_text(encoding="utf-8")
+            (ROOT / "skill-evaluator" / "agents" / "openai.yaml").read_text(
+                encoding="utf-8"
+            )
         )["interface"]["default_prompt"]
         self.assertIn("$skill-evaluator", evaluator_prompt)
 

@@ -43,7 +43,7 @@ def frontmatter(path: Path) -> dict:
 class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_implicit_activation(self) -> None:
         metadata = frontmatter(SKILL_PATH)
-        self.assertEqual("8.3.0", metadata["metadata"]["version"])
+        self.assertEqual("8.4.0", metadata["metadata"]["version"])
         self.assertEqual(
             "Use after software decisions and diagnosis are settled to write "
             "source-bound software implementation Handoffs and durable "
@@ -55,7 +55,9 @@ class QuickWritingPlansTests(unittest.TestCase):
         for term in ("source-bound", "software implementation", "handoff", "program"):
             self.assertIn(term, description)
         self.assertLessEqual(len(SKILL_PATH.read_bytes()), 6400)
-        agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
+        agents = yaml.safe_load(
+            (SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
+        )
         self.assertIs(agents["policy"]["allow_implicit_invocation"], True)
 
     def test_package_has_single_runtime_body(self) -> None:
@@ -73,7 +75,7 @@ class QuickWritingPlansTests(unittest.TestCase):
         self.assertEqual(list(rows), sorted(rows, key=body.index))
         self.assertIn("directly from settled facts", body)
         self.assertIn(
-            "Acceptance and verification: the one combined final proof command",
+            "Acceptance and verification: Acceptance behavior; Minimum sufficient evidence",
             body,
         )
 
@@ -118,7 +120,9 @@ class QuickWritingPlansTests(unittest.TestCase):
             self.assertIn(contract, body)
         self.assertNotIn("root/revision/head/dirty scope", body)
 
-    def test_program_edits_preserve_observed_transformations_and_name_dependencies(self) -> None:
+    def test_program_edits_preserve_observed_transformations_and_name_dependencies(
+        self,
+    ) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
         for contract in (
             "dependencies name every prerequisite milestone",
@@ -144,11 +148,14 @@ class QuickWritingPlansTests(unittest.TestCase):
         self.assertIn("later slice and proof rows reference state", body)
         self.assertEqual(1, body.count("observed protected-test i/o and values"))
 
-    def test_proof_is_the_only_post_edit_command(self) -> None:
+    def test_proof_binds_evidence_and_stop_boundaries(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
         for contract in (
-            "only post-edit command",
-            "behavior, diff scope, protected boundary, residue, and whitespace",
+            "acceptance behavior",
+            "minimum sufficient evidence",
+            "external owner gates",
+            "escalation and blocked/inconclusive stops",
+            "proof sets no patch-by-patch order",
             "run at most one planner-only non-content confirmation",
             "proof remains executor-owned",
         ):
@@ -197,11 +204,14 @@ class QuickWritingPlansTests(unittest.TestCase):
             for path in SKILL_ROOT.rglob("*")
             if path.is_file()
         }
-        self.assertEqual({
-            "SKILL.md",
-            "agents/openai.yaml",
-            "tests/test_quick_skill_contract.py",
-        }, files)
+        self.assertEqual(
+            {
+                "SKILL.md",
+                "agents/openai.yaml",
+                "tests/test_quick_skill_contract.py",
+            },
+            files,
+        )
 
     def test_postwrite_confirmation_returns_the_plan(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
@@ -215,7 +225,9 @@ class QuickWritingPlansTests(unittest.TestCase):
             "repo-relative dirty/protected and first-slice paths",
             "assigning each fact to one row",
             "one combined preflight",
-            "one combined final proof command",
+            "minimum sufficient evidence",
+            "external owner gates",
+            "blocked/inconclusive stops",
             "run at most one planner-only non-content confirmation",
             "do not expand one sentence into its own heading",
             "skill-source changes use skill authoring",
@@ -245,7 +257,7 @@ class QuickWritingPlansTests(unittest.TestCase):
             "prefix tests with `pythondontwritebytecode=1`",
             "python -m unittest <repo-test>",
             "python -m pytest -p no:cacheprovider",
-            "exact cleanup",
+            "residue cleanup",
         ):
             self.assertIn(contract, body)
         self.assertIn("state contains current frontier and later blockers", body)
@@ -263,7 +275,9 @@ class QuickWritingPlansTests(unittest.TestCase):
 
     def test_no_brief_surface(self) -> None:
         self.assertNotIn("brief", SKILL_PATH.read_text(encoding="utf-8").casefold())
-        self.assertFalse(any("brief" in path.name.casefold() for path in SKILL_ROOT.rglob("*")))
+        self.assertFalse(
+            any("brief" in path.name.casefold() for path in SKILL_ROOT.rglob("*"))
+        )
 
     def test_no_hard_dependency_on_sqw(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").split("---\n", 2)[2]
@@ -271,7 +285,9 @@ class QuickWritingPlansTests(unittest.TestCase):
 
     def test_local_links_do_not_escape_package(self) -> None:
         root = SKILL_ROOT.resolve()
-        for target in re.findall(r"\[[^\]]*\]\(([^)]+)\)", SKILL_PATH.read_text(encoding="utf-8")):
+        for target in re.findall(
+            r"\[[^\]]*\]\(([^)]+)\)", SKILL_PATH.read_text(encoding="utf-8")
+        ):
             if "://" in target or target.startswith("mailto:"):
                 continue
             resolved = (SKILL_PATH.parent / target.split("#", 1)[0]).resolve()

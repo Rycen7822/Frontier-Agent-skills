@@ -47,25 +47,29 @@ def linked_markdown(path: Path) -> set[Path]:
 
 
 class QuickSkillContractTests(unittest.TestCase):
-    def test_metadata_budget_and_implicit_activation(self) -> None:
-        self.assertEqual("10.0.0", frontmatter(SKILL_PATH)["metadata"]["version"])
+    def test_metadata_budget_and_explicit_activation(self) -> None:
+        self.assertEqual("11.0.0", frontmatter(SKILL_PATH)["metadata"]["version"])
         skill_text = SKILL_PATH.read_text(encoding="utf-8")
         self.assertLessEqual(len(skill_text.encode()), 3712)
-        self.assertIn(
-            "Behavior proof covers the intended change and its nearest protected "
-            "control; for filtering, verify retained values and order. A one-sided "
-            "check cannot support a two-sided claim.",
-            skill_text,
+        for contract in (
+            "Complete coherent edits before proof.",
+            "If no conclusion-changing risk or gate remains, close.",
+            "(command_sha256, exit_code, output_sha256)",
+            "run an identical failure at most twice",
+            "implementation: complete | partial | blocked",
+            "verification: verified | partial | blocked | inconclusive",
+        ):
+            self.assertIn(contract, skill_text)
+        agents = yaml.safe_load(
+            (SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
         )
-        self.assertIn("Bound bytes establish integrity", skill_text)
-        self.assertIn("compute a digest, only for a named cross-boundary consumer", skill_text)
-        agents = yaml.safe_load((SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8"))
-        self.assertIs(agents["policy"]["allow_implicit_invocation"], True)
+        self.assertIs(agents["policy"]["allow_implicit_invocation"], False)
 
     def test_local_links_and_legacy_runtime_absence(self) -> None:
         checker = load_static_checker()
         link_errors = [
-            item for item in checker.markdown_link_errors(REPO_ROOT)
+            item
+            for item in checker.markdown_link_errors(REPO_ROOT)
             if item["path"].startswith("software-quality-workflows/")
         ]
         legacy = checker.collect_legacy_contract(REPO_ROOT)
@@ -74,7 +78,9 @@ class QuickSkillContractTests(unittest.TestCase):
 
     def test_reference_inventory_is_reachable_and_package_local(self) -> None:
         package_root = SKILL_ROOT.resolve()
-        expected = {path.resolve() for path in (SKILL_ROOT / "references").rglob("*.md")}
+        expected = {
+            path.resolve() for path in (SKILL_ROOT / "references").rglob("*.md")
+        }
         visited = set()
         pending = [SKILL_PATH.resolve()]
         while pending:
@@ -92,11 +98,13 @@ class QuickSkillContractTests(unittest.TestCase):
         checker = load_static_checker()
         legacy = checker.collect_legacy_contract(REPO_ROOT)
         protocol_matches = [
-            item for item in legacy["legacy_protocol_matches"]
+            item
+            for item in legacy["legacy_protocol_matches"]
             if item["path"].startswith("software-quality-workflows/")
         ]
         machine_artifacts = [
-            path for root in ("references", "templates")
+            path
+            for root in ("references", "templates")
             for path in (SKILL_ROOT / root).rglob("*")
             if path.is_file() and path.suffix in {".json", ".jsonl", ".yaml", ".yml"}
         ]

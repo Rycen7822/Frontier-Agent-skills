@@ -2,7 +2,7 @@
 
 DEFINITION = {
     "name": "Writing Plans",
-    "version": "8.3.0",
+    "version": "8.4.0",
     "context_ceiling": 24576,
     "regression_origin": "writing-plans-description-semantic-collapse",
     "verifier_source": "writing_plans_verifier.py",

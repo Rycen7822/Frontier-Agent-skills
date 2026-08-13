@@ -385,7 +385,7 @@
     "principal_mode": "single",
     "shape": "single_skill",
     "skill_id": "writing-plans",
-    "version": "8.3.0"
+    "version": "8.4.0"
   },
   "suite": {
     "holdout": null,

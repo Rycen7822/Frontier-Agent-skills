@@ -24,8 +24,8 @@
       "properties": {
         "long-document-segmented-writing": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "2.0.0"}, "implicit_eligible": {"const": true}}}]},
         "skill-evaluator": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "5.0.0"}, "implicit_eligible": {"const": false}}}]},
-        "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "10.0.0"}, "implicit_eligible": {"const": true}}}]},
-        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.3.0"}, "implicit_eligible": {"const": true}}}]}
+        "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "11.0.0"}, "implicit_eligible": {"const": false}}}]},
+        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.4.0"}, "implicit_eligible": {"const": true}}}]}
       }
     },
     "isolated_install_discovery": {"const": true},

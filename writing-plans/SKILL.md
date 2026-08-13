@@ -2,7 +2,7 @@
 name: writing-plans
 description: "Use after software decisions and diagnosis are settled to write source-bound software implementation Handoffs and durable multi-session Programs."
 metadata:
-  version: 8.3.0
+  version: 8.4.0
 ---
 
 Handoff crosses contexts; Program tracks a changing frontier; otherwise stay native. Skill-source changes use skill authoring. Planning begins after decisions and diagnosis are settled; execution, verification, and completion claims remain with their owners.
@@ -26,7 +26,7 @@ For a Handoff or Program, write a title and either one contract table or a three
 - State — Bound source identity; Protected work and allowed effects; Settled decisions; Exact first-slice inputs, outputs, values, invariants; observed protected-test I/O and values, once; Later blockers and dependencies.
 - Resume — For a later source-changing slice that crosses contexts, consume a matching freshness-bound host attestation when resolved root, bound source identity, freshness, and dirty scope match; transfer it unchanged and do not rerun it; if missing or mismatched, run one combined preflight. Omit this row for an immutable artifact handoff whose next action is verification only.
 - Slice — Goal / non-goals; First source-changing slice and files/symbols; Exact next source-changing action.
-- Proof — Acceptance and verification: the one combined final proof command is the only post-edit command and covers behavior, diff scope, protected boundary, residue, and whitespace; Rollback/cleanup when material.
+- Proof — Acceptance and verification: Acceptance behavior; Minimum sufficient evidence; External owner gates; Escalation and blocked/inconclusive stops; Rollback/cleanup when material.
 
 Fill rows directly from settled facts, assigning each fact to one row. State behavior, not just a symbol/test. Later Slice and Proof rows reference State instead of repeating protected behavior. No format comparison or planning rationale.
 
@@ -34,7 +34,7 @@ Program uses those rows: State contains Current frontier and later blockers; Sli
 
 The Resume row resolves root anew; exclude the named plan deliverable itself (including untracked `PLAN.md`) from dirty scope; reject other dirt. Never compare against the original absolute root or require globally clean status.
 
-Next action: first edit/result/check; inspect only if blocked. Use the prompt-bound verification command. When the prompt binds exact files and required checks but omits a repository-wide runner, state the narrow checks implied by those bindings and leave only the broader runner as a later blocker; do not block the plan or invent a full-suite command. The repository's test owner supplies any broader Proof. Prefix tests with `PYTHONDONTWRITEBYTECODE=1`; use `python -m unittest <repo-test>`, or `python -m pytest -p no:cacheprovider`; other owners disable residue in-command or include exact cleanup. Split Proof only on failure or an independent long check.
+Next action: first edit/result/check; inspect only if blocked. Use the prompt-bound verification command. When the prompt binds exact files and required checks but omits a repository-wide runner, state the narrow checks implied by those bindings and leave only the broader runner as a blocker; do not block the plan or invent a full-suite command. The repository's test owner supplies any broader Proof. Prefix tests with `PYTHONDONTWRITEBYTECODE=1`; use `python -m unittest <repo-test>`, or `python -m pytest -p no:cacheprovider`; other owners bind residue cleanup. The executor completes coherent edits, then selects the lowest-cost evidence for risk/gate; Proof sets no patch-by-patch order.
 
 Before return, require attestation acceptance or one-preflight fallback for Resume, name every dependency, and carry every promised transformation or invariant into its exact edit. After writing, run at most one planner-only non-content confirmation using `git diff --check` or the owner-supplied check, then return the plan; Proof remains executor-owned.
 

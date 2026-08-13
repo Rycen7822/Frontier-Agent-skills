@@ -25,8 +25,8 @@
       "properties": {
         "long-document-segmented-writing": {"const": "2.0.0"},
         "skill-evaluator": {"const": "5.0.0"},
-        "software-quality-workflows": {"const": "10.0.0"},
-        "writing-plans": {"const": "8.3.0"}
+        "software-quality-workflows": {"const": "11.0.0"},
+        "writing-plans": {"const": "8.4.0"}
       }
     },
     "source_tree_hash": {"$ref": "#/$defs/hash"},

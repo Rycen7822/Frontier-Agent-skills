@@ -51,13 +51,13 @@ PLACEHOLDER_PATTERN = re.compile(re.escape(chr(91)) + "TODO:")
 EXPECTED_SKILLS = {
     "long-document-segmented-writing": "2.0.0",
     "skill-evaluator": "5.0.0",
-    "software-quality-workflows": "10.0.0",
-    "writing-plans": "8.3.0",
+    "software-quality-workflows": "11.0.0",
+    "writing-plans": "8.4.0",
 }
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": True,
+    "software-quality-workflows": False,
     "writing-plans": True,
 }
 EXPECTED_APPROVED_ACTIVATION = {

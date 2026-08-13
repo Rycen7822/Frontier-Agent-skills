@@ -11,27 +11,39 @@
   ],
   "case_classes": [
     {
-      "case_id": "software-quality-workflows-durable-resume-boundary",
+      "case_id": "software-quality-workflows-routine-local-edit",
       "class": "positive"
     },
     {
-      "case_id": "software-quality-workflows-single-specialist-risk",
+      "case_id": "software-quality-workflows-preexisting-unrelated-red",
       "class": "positive"
     },
     {
-      "case_id": "software-quality-workflows-two-independent-risks",
+      "case_id": "software-quality-workflows-invalid-oracle",
       "class": "positive"
     },
     {
-      "case_id": "software-quality-workflows-proportionate-validation",
+      "case_id": "software-quality-workflows-harness-setup-failure",
       "class": "positive"
     },
     {
-      "case_id": "software-quality-workflows-retire-dead-code",
+      "case_id": "software-quality-workflows-repeated-identical-failure",
       "class": "positive"
     },
     {
-      "case_id": "software-quality-workflows-protected-no-state",
+      "case_id": "software-quality-workflows-stochastic-failure",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-cross-cutting-contract",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-material-risk-escalation",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-test-retention-boundary",
       "class": "boundary_or_failure"
     }
   ],
@@ -58,20 +70,26 @@
   "evaluation_id": "frontier-software-quality-workflows-sentinel-v1",
   "golden": {
     "case_ids": [
-      "software-quality-workflows-durable-resume-boundary",
-      "software-quality-workflows-single-specialist-risk",
-      "software-quality-workflows-two-independent-risks",
-      "software-quality-workflows-proportionate-validation",
-      "software-quality-workflows-retire-dead-code",
-      "software-quality-workflows-protected-no-state"
+      "software-quality-workflows-routine-local-edit",
+      "software-quality-workflows-preexisting-unrelated-red",
+      "software-quality-workflows-invalid-oracle",
+      "software-quality-workflows-harness-setup-failure",
+      "software-quality-workflows-repeated-identical-failure",
+      "software-quality-workflows-stochastic-failure",
+      "software-quality-workflows-cross-cutting-contract",
+      "software-quality-workflows-material-risk-escalation",
+      "software-quality-workflows-test-retention-boundary"
     ],
     "passed_ids": [
-      "software-quality-workflows-durable-resume-boundary",
-      "software-quality-workflows-single-specialist-risk",
-      "software-quality-workflows-two-independent-risks",
-      "software-quality-workflows-proportionate-validation",
-      "software-quality-workflows-retire-dead-code",
-      "software-quality-workflows-protected-no-state"
+      "software-quality-workflows-routine-local-edit",
+      "software-quality-workflows-preexisting-unrelated-red",
+      "software-quality-workflows-invalid-oracle",
+      "software-quality-workflows-harness-setup-failure",
+      "software-quality-workflows-repeated-identical-failure",
+      "software-quality-workflows-stochastic-failure",
+      "software-quality-workflows-cross-cutting-contract",
+      "software-quality-workflows-material-risk-escalation",
+      "software-quality-workflows-test-retention-boundary"
     ]
   },
   "known_bad": {
@@ -85,7 +103,7 @@
   "leakage_probes": [
     {
       "artifact": {
-        "digest": "sha256:1dd4c0701b6255fefac6a7076e733735cd9840af0cd3bc440b8ef827dcbfe1ed",
+        "digest": "sha256:e75d29425e1f4f877d93face576da2744269539b7109678fd6840e55131584c0",
         "path": "grader-prompt.md"
       },
       "locator": {
@@ -110,12 +128,15 @@
   "provenance_clusters": [
     {
       "case_ids": [
-        "software-quality-workflows-durable-resume-boundary",
-        "software-quality-workflows-single-specialist-risk",
-        "software-quality-workflows-two-independent-risks",
-        "software-quality-workflows-proportionate-validation",
-        "software-quality-workflows-retire-dead-code",
-        "software-quality-workflows-protected-no-state"
+        "software-quality-workflows-routine-local-edit",
+        "software-quality-workflows-preexisting-unrelated-red",
+        "software-quality-workflows-invalid-oracle",
+        "software-quality-workflows-harness-setup-failure",
+        "software-quality-workflows-repeated-identical-failure",
+        "software-quality-workflows-stochastic-failure",
+        "software-quality-workflows-cross-cutting-contract",
+        "software-quality-workflows-material-risk-escalation",
+        "software-quality-workflows-test-retention-boundary"
       ],
       "cluster_id": "frontier-model-evolution-analysis",
       "review_locator": {
