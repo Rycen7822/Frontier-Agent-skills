@@ -55,6 +55,7 @@ from _model_evolution_residual import (
 
 
 MAX_DIAGNOSTIC_BYTES = 64 * 1024
+PROBE_MAX_ATTEMPTS = 2
 PLUGIN_BUILD_GATE_SCRIPT = "scripts/build_codex_plugin.py"
 ALLOWED_GATE_SCRIPTS = {
     "bundle/build_bundle_manifest.py",
@@ -418,18 +419,50 @@ def _load_probe_terminal(
         "probe_id",
         "result",
         "stderr",
+        "attempts",
     }
+    attempts = terminal.get("attempts") if isinstance(terminal, dict) else None
     if (
         not isinstance(terminal, dict)
         or set(terminal) != required
-        or terminal["schema_version"] != "model-evolution-probe-terminal/2"
+        or terminal["schema_version"] != "model-evolution-probe-terminal/3"
         or terminal["request_id"] != request["request_id"]
         or terminal["probe_id"] != row["probe_id"]
         or not isinstance(terminal["stderr"], str)
+        or not isinstance(attempts, list)
+        or not 1 <= len(attempts) <= PROBE_MAX_ATTEMPTS
     ):
         raise OperationError("interaction probe terminal shape or identity is invalid")
     _validate_probe_result(terminal["result"], row)
+    for index, attempt in enumerate(attempts, 1):
+        if (
+            not isinstance(attempt, dict)
+            or set(attempt) != {"attempt", "status", "diagnostics", "stderr"}
+            or attempt["attempt"] != index
+            or attempt["status"] not in {"pass", "unknown"}
+            or not isinstance(attempt["diagnostics"], list)
+            or not isinstance(attempt["stderr"], str)
+        ):
+            raise OperationError("interaction probe attempt evidence is invalid")
+    if len(attempts) == 2 and not _probe_is_official_transient(attempts[0]):
+        raise OperationError("interaction probe retry lacks transient evidence")
+    if (
+        attempts[-1]["status"] != terminal["result"]["status"]
+        or attempts[-1]["diagnostics"] != terminal["result"]["diagnostics"]
+        or attempts[-1]["stderr"] != terminal["stderr"]
+    ):
+        raise OperationError("interaction probe final attempt differs from result")
     return terminal
+
+
+def _probe_is_official_transient(value: dict[str, Any]) -> bool:
+    return value.get("status") == "unknown" and value.get("diagnostics") == [
+        {
+            "kind": "official_transient",
+            "index": None,
+            "message": "Codex model capacity response",
+        }
+    ]
 
 
 def run_interaction_probes(
@@ -478,6 +511,7 @@ def run_interaction_probes(
     artifacts: dict[str, dict[str, Any]] = {}
     statuses: dict[str, str] = {}
     result_rows: list[dict[str, Any]] = []
+    provider_requests = 0
     by_probe_id = {row["probe_id"]: row for row in probe_set["probes"]}
     for request in campaign["interaction_probes"]["requests"]:
         row = by_probe_id[request["probe_id"]]
@@ -489,32 +523,47 @@ def run_interaction_probes(
                 row=row,
             )
             value = terminal["result"]
+            attempts = terminal["attempts"]
         else:
-            with tempfile.TemporaryDirectory(
-                prefix="frontier-interaction-probe-"
-            ) as tmp:
-                workspace = Path(tmp)
-                fixture = resolve_binding(
-                    row["fixture"], repository_root, campaign_root
+            attempts = []
+            for attempt in range(1, PROBE_MAX_ATTEMPTS + 1):
+                with tempfile.TemporaryDirectory(
+                    prefix="frontier-interaction-probe-"
+                ) as tmp:
+                    workspace = Path(tmp)
+                    fixture = resolve_binding(
+                        row["fixture"], repository_root, campaign_root
+                    )
+                    if fixture.is_symlink() or not fixture.is_file():
+                        raise OperationError("interaction probe fixture is invalid")
+                    shutil.copy2(fixture, workspace / fixture.name)
+                    value, stderr = _run_probe_process(
+                        argv,
+                        row,
+                        environment=environment,
+                        workspace=workspace,
+                        timeout=process_timeout,
+                    )
+                attempts.append(
+                    {
+                        "attempt": attempt,
+                        "status": value["status"],
+                        "diagnostics": value["diagnostics"],
+                        "stderr": stderr,
+                    }
                 )
-                if fixture.is_symlink() or not fixture.is_file():
-                    raise OperationError("interaction probe fixture is invalid")
-                shutil.copy2(fixture, workspace / fixture.name)
-                value, stderr = _run_probe_process(
-                    argv,
-                    row,
-                    environment=environment,
-                    workspace=workspace,
-                    timeout=process_timeout,
-                )
+                if not _probe_is_official_transient(value):
+                    break
             terminal = {
-                "schema_version": "model-evolution-probe-terminal/2",
+                "schema_version": "model-evolution-probe-terminal/3",
                 "request_id": request["request_id"],
                 "probe_id": row["probe_id"],
                 "result": value,
                 "stderr": stderr,
+                "attempts": attempts,
             }
             _write_json_exclusive(terminal_path, terminal)
+        provider_requests += len(attempts)
         binding = make_binding(
             terminal_path,
             root="external",
@@ -529,6 +578,7 @@ def run_interaction_probes(
                 "probe_id": row["probe_id"],
                 "status": value["status"],
                 "terminal": binding,
+                "provider_requests": len(attempts),
             }
         )
         if value["diagnostics"]:
@@ -584,6 +634,7 @@ def run_interaction_probes(
         "statuses": statuses,
         "results_binding": results_binding,
         "observed_host_binding": observed_binding,
+        "provider_requests": provider_requests,
     }
 
 
