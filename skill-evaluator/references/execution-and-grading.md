@@ -24,7 +24,7 @@ Every entry is exactly `execute`, `unsupported`, or `not_evaluable`. Unknown req
 
 ## Runner and host protocol
 
-`run_eval_plan.py` revalidates the plan and every current bound byte before action. For an execute entry it restores the fixture, proves reset, sends one canonical `execute_case` request to the manifest argv with `shell=False`, captures ordered host events and one terminal result, runs selected deterministic graders, sends only blinded bound `model_grade` requests, performs cleanup, validates receipt v5, then appends an attempt row to index v3.
+`run_eval_plan.py` revalidates the plan and every current bound byte before action. For an execute entry it restores the fixture, proves reset, sends one canonical `execute_case` request to the manifest argv with `shell=False`, captures ordered host events and one terminal result, runs selected deterministic graders, sends only blinded bound `model_grade` requests, performs cleanup, validates receipt v5, then appends an attempt row to index v3. Raw command/workspace evidence remains receipt-bound and is revalidated locally; model grading receives ordered turn answers, each relevant fixture once, changed final files, and bound deterministic findings instead of duplicate mechanical traces.
 
 Host stdout is protocol JSONL; stderr is an artifact. Non-UTF-8 output, event-sequence gaps, duplicate/missing terminal results, events after terminal, or request, semantic identity, or bound-byte mismatch are apparatus failures. The runner never chooses a treatment, scenario, grader, module, or usefulness result.
 

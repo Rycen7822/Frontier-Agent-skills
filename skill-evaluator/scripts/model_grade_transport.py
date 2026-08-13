@@ -60,6 +60,7 @@ EVIDENCE_PATHS = {
     "command-trace": "workspace/command-trace.json",
     "workspace-evidence": "workspace/workspace-evidence.json",
     "final-answer": "workspace/final-answer.md",
+    "turn-answers": "workspace/turn-answers.json",
 }
 
 
@@ -571,11 +572,123 @@ def _command_trace(payload: str, assessment: dict[str, Any]) -> dict[str, Any]:
     return value
 
 
+def _turn_answers(
+    payload: str,
+    assessment: dict[str, Any],
+    fixture_paths: list[str],
+) -> list[dict[str, str]]:
+    """Validate and blind the ordered semantic output from every turn."""
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ValueError("model grader turn answers are invalid JSON") from exc
+    items = value.get("items") if isinstance(value, dict) else None
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"schema_version", "items"}
+        or value.get("schema_version") != "codex-turn-answers/1"
+        or not isinstance(items, list)
+        or len(items) != len(assessment["turn_ids"])
+    ):
+        raise ValueError("model grader turn answers differ")
+    answers = []
+    for turn_id, item in zip(assessment["turn_ids"], items, strict=True):
+        if (
+            not isinstance(item, dict)
+            or set(item) != {"turn_id", "content"}
+            or item.get("turn_id") != turn_id
+            or not isinstance(item.get("content"), str)
+            or len(item["content"].encode("utf-8")) > 64 * 1024
+        ):
+            raise ValueError("model grader turn answer is invalid")
+        answers.append({
+            "turn_id": turn_id,
+            "content": _redact_workspace_paths(
+                item["content"], assessment, fixture_paths,
+            ),
+        })
+    if not _canonical_payload(value, payload):
+        raise ValueError("model grader turn answers are not canonical")
+    return answers
+
+
+def _semantic_files(
+    workspace: dict[str, Any],
+    assessment: dict[str, Any],
+    fixture_paths: list[str],
+) -> list[dict[str, str]]:
+    """Expose each readable source/final file once, without trace duplication."""
+    initial = {item["path"]: item for item in workspace["initial"]}
+    final = {item["path"]: item for item in workspace["final"]}
+    selected: list[tuple[str, str, dict[str, Any]]] = []
+    selected.extend(
+        ("task_fixture", path, initial[path])
+        for path in fixture_paths
+        if path in initial
+    )
+    selected.extend(
+        ("final_workspace", path, final[path])
+        for path in assessment["changed_paths"]
+        if path in final
+    )
+    result = []
+    for role, path, record in selected:
+        if record["encoding"] != "utf-8" or record["truncated"]:
+            continue
+        result.append({
+            "role": role,
+            "path": path,
+            "content": _redact_workspace_paths(
+                record["content"], assessment, fixture_paths,
+            ),
+        })
+    return result
+
+
+def deterministic_findings(outputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Project locally bound deterministic results into semantic facts."""
+    findings = []
+    for output in outputs:
+        checks = output.get("checks") if isinstance(output, dict) else None
+        if (
+            not isinstance(output, dict)
+            or set(output) != {
+                "overall_pass", "score", "checks", "missing_evidence",
+                "grader_failure", "grader_failure_reason",
+            }
+            or output.get("grader_failure") is not False
+            or output.get("grader_failure_reason") is not None
+            or not isinstance(checks, list)
+        ):
+            raise ValueError("model grader deterministic output is invalid")
+        for check in checks:
+            evidence = check.get("evidence") if isinstance(check, dict) else None
+            if (
+                not isinstance(check, dict)
+                or not isinstance(check.get("check_id"), str)
+                or not isinstance(check.get("pass"), bool)
+                or not isinstance(evidence, list)
+            ):
+                raise ValueError("model grader deterministic check is invalid")
+            observations = []
+            for item in evidence:
+                observation = item.get("observation") if isinstance(item, dict) else None
+                if isinstance(observation, str) and observation:
+                    observations.append(_blind_unbound_local_paths(observation))
+            findings.append({
+                "check_id": check["check_id"],
+                "pass": check["pass"],
+                "observations": observations,
+            })
+    return findings
+
+
 def execution_item(
     blinded: dict[str, Any],
     *,
     grader_id: str,
     grader_checks: list[dict[str, Any]],
+    deterministic_findings: list[dict[str, Any]],
     entry_id: str,
     read_artifact: Callable[[dict[str, Any]], str],
 ) -> dict[str, Any]:
@@ -643,19 +756,29 @@ def execution_item(
         }
     ):
         raise ValueError("model grader typed evidence is invalid")
+    workspace = _workspace_evidence(
+        evidence["workspace-evidence"], assessment,
+    )
+    command_trace = _command_trace(evidence["command-trace"], assessment)
+    task_evidence = observations[0]["task_evidence"]
+    fixture_paths = task_evidence.get("fixture_paths", [])
+    turn_answers = _turn_answers(
+        evidence["turn-answers"], assessment, fixture_paths,
+    )
+    final_answer = _redact_workspace_paths(
+        evidence["final-answer"], assessment, fixture_paths,
+    )
+    if not command_trace["complete"] or not workspace["complete"]:
+        raise ValueError("model grader deterministic evidence is incomplete")
+    if not turn_answers or turn_answers[-1]["content"].strip() != final_answer.strip():
+        raise ValueError("model grader final answer differs from its last turn")
     grader_view = {
         "captured_output": captured_output,
         **copy.deepcopy(observations[0]),
-        "host_assessment": assessment,
-        "command_trace": _command_trace(evidence["command-trace"], assessment),
-        "workspace_evidence": _workspace_evidence(
-            evidence["workspace-evidence"],
-            assessment,
-        ),
-        "final_answer": _redact_workspace_paths(
-            evidence["final-answer"],
-            assessment,
-            observations[0]["task_evidence"].get("fixture_paths"),
+        "deterministic_findings": copy.deepcopy(deterministic_findings),
+        "turn_answers": turn_answers,
+        "semantic_files": _semantic_files(
+            workspace, assessment, fixture_paths,
         ),
     }
     checks = []

@@ -1582,7 +1582,7 @@ def _batch_member(
     plan_path: Path,
     plan: dict[str, Any],
     prior_rows: list[dict[str, Any]],
-) -> tuple[dict[str, Any], dict[str, Any], Path]:
+) -> tuple[dict[str, Any], dict[str, Any], Path, dict[str, Any]]:
     entries = {item["entry_id"]: item for item in plan["entries"]}
     entry = entries.get(entry_id)
     if entry is None:
@@ -1612,7 +1612,30 @@ def _batch_member(
         result = model_transport.execution_result(receipt)
     except ValueError as exc:
         raise RunnerFailure(str(exc)) from None
-    return entry, result, attempt_dir
+    return entry, result, attempt_dir, receipt
+
+
+def _deterministic_findings(
+    grader_outputs: list[dict[str, Any]],
+    attempt_dir: Path,
+) -> list[dict[str, Any]]:
+    outputs = []
+    for grader_output in grader_outputs:
+        if grader_output.get("kind") != "deterministic":
+            continue
+        _, path = resolve_contained_path(
+            attempt_dir,
+            grader_output["output"]["path"],
+            "deterministic grader output",
+            kind="file",
+        )
+        if artifact_record(path, attempt_dir, encoding="utf-8") != grader_output["output"]:
+            raise RunnerFailure("deterministic grader output binding differs")
+        outputs.append(load_json(path))
+    try:
+        return model_transport.deterministic_findings(outputs)
+    except ValueError as exc:
+        raise RunnerFailure(str(exc)) from None
 
 
 def _run_model_graders(
@@ -1627,6 +1650,7 @@ def _run_model_graders(
     attempt_dir: Path,
     workspace: Path,
     execution_result: dict[str, Any],
+    deterministic_outputs: list[dict[str, Any]],
     run_id: str,
     attempt: int,
     credential_policy: str,
@@ -1654,6 +1678,9 @@ def _run_model_graders(
         if grader["type"] == "model"
     }
     argv, environment = _validate_host_command(host, spec_path.parent)
+    current_findings = _deterministic_findings(
+        deterministic_outputs, attempt_dir,
+    )
     for model_spec in entry["model_grade_specs"]:
         if model_spec["batch_owner_entry_id"] != entry["entry_id"]:
             continue
@@ -1668,12 +1695,16 @@ def _run_model_graders(
                 member_entry = entry
                 member_result = execution_result
                 member_root = attempt_dir
+                member_findings = current_findings
             else:
-                member_entry, member_result, member_root = _batch_member(
+                member_entry, member_result, member_root, member_receipt = _batch_member(
                     entry_id=member_id,
                     plan_path=plan_path,
                     plan=plan,
                     prior_rows=prior_rows,
+                )
+                member_findings = _deterministic_findings(
+                    member_receipt["grader_outputs"], member_root,
                 )
             blinded = model_transport.blinded_execution(
                 member_entry,
@@ -1707,6 +1738,7 @@ def _run_model_graders(
                 blinded,
                 grader_id=grader_id,
                 grader_checks=declarations[grader_id]["checks"],
+                deterministic_findings=member_findings,
                 entry_id=member_id,
                 read_artifact=read_evidence,
             ))
@@ -2758,6 +2790,7 @@ def _execute_entry(
         attempt_dir=attempt_dir,
         workspace=workspace,
         execution_result=result,
+        deterministic_outputs=grader_outputs,
         run_id=run_id,
         attempt=attempt,
         credential_policy=spec["execution"]["credential_policy"],

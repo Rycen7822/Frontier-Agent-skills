@@ -13,6 +13,7 @@ def _artifact_check(result: dict[str, Any]) -> tuple[bool, str]:
         return False, "artifact inventory is missing"
     required_paths = {
         "workspace/final-answer.md",
+        "workspace/turn-answers.json",
         "workspace/command-trace.json",
         "workspace/workspace-evidence.json",
         "workspace/host-observation.json",

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shlex
 import sys
 from typing import Any
 
@@ -63,6 +64,15 @@ def _case_initial_paths(initial: dict[str, str]) -> list[str]:
     return sorted(path for path in initial if path not in HOST_INITIAL_PATHS)
 
 
+def _command_body(preview: str) -> str:
+    """Remove only the Host-observed exact zsh command wrapper."""
+    try:
+        argv = shlex.split(preview)
+    except ValueError:
+        return preview
+    return argv[2] if argv[:2] == ["/usr/bin/zsh", "-lc"] and len(argv) == 3 else preview
+
+
 def _command_errors(
     trace: dict[str, Any],
     contract: dict[str, Any],
@@ -85,13 +95,14 @@ def _command_errors(
         if not isinstance(preview, str):
             errors.append("command preview is missing")
             continue
-        padded = f" {preview.casefold()} "
+        command = _command_body(preview)
+        padded = f" {command.casefold()} "
         if any(fragment in padded for fragment in forbidden):
             errors.append("command escaped the local fixture boundary")
         if (
             "python" in padded
             and "fixtures/" in padded
-            and preview not in required_previews
+            and command not in required_previews
         ):
             errors.append("undeclared fixture command ran")
 
@@ -99,7 +110,8 @@ def _command_errors(
     prior_ordinal = -1
     for rule in contract["commands"]:
         matches = [
-            item for item in commands if item.get("command_preview") == rule["preview"]
+            item for item in commands
+            if _command_body(item.get("command_preview", "")) == rule["preview"]
         ]
         if "runs" in rule:
             expected_runs = rule["runs"]

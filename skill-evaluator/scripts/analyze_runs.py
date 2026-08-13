@@ -1805,6 +1805,15 @@ def _model_v4_output(
             member_blinded,
             grader_id=grader_id,
             grader_checks=grader_checks,
+            deterministic_findings=model_transport.deterministic_findings([
+                json.loads(_verified_v4_artifact(
+                    output["output"],
+                    member["artifacts"],
+                    "deterministic grader output",
+                )["text"])
+                for output in member["receipt"]["grader_outputs"]
+                if output["kind"] == "deterministic"
+            ]),
             entry_id=member_id,
             read_artifact=lambda item, bound=member: _verified_v4_artifact(
                 item,
