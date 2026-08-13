@@ -61,7 +61,7 @@ from _codex_eval_isolation import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
-ADAPTER_VERSION = "1.10"
+ADAPTER_VERSION = "1.11"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_artifacts.py",
@@ -487,7 +487,9 @@ def _run_child(
     }
 
 
-def _child_failure_diagnostics(child: dict[str, Any]) -> list[dict[str, Any]]:
+def _child_failure_diagnostics(
+    child: dict[str, Any], workspace: Path
+) -> list[dict[str, Any]]:
     if child["timed_out"]:
         return [
             {
@@ -496,6 +498,7 @@ def _child_failure_diagnostics(child: dict[str, Any]) -> list[dict[str, Any]]:
                 "message": "Codex child timed out",
             }
         ]
+    provider_diagnostic = None
     for raw in child["stdout"][:MAX_JSONL_BYTES].splitlines()[:MAX_RECORDS]:
         try:
             event = json.loads(raw)
@@ -534,6 +537,28 @@ def _child_failure_diagnostics(child: dict[str, Any]) -> list[dict[str, Any]]:
                     "message": "Codex provider usage limit reached",
                 }
             ]
+        if provider_diagnostic is None:
+            facts = nested if isinstance(nested, dict) else event
+            values = [
+                f"{field}={facts[field]}"
+                for field in ("kind", "code", "message")
+                if isinstance(facts.get(field), str) and facts[field]
+            ]
+            if (
+                not isinstance(facts.get("message"), str)
+                and isinstance(event.get("message"), str)
+            ):
+                values.append(f"message={event['message']}")
+            if values:
+                provider_diagnostic = {
+                    "kind": "provider_error",
+                    "index": None,
+                    "message": _redact_text("; ".join(values), workspace)[
+                        :MAX_FAILURE_DETAIL_CHARS
+                    ],
+                }
+    if provider_diagnostic is not None:
+        return [provider_diagnostic]
     return [
         {
             "kind": "child_process",
@@ -1414,7 +1439,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
                     }
     child_diagnostics = []
     if normalized is None:
-        child_diagnostics = _child_failure_diagnostics(child)
+        child_diagnostics = _child_failure_diagnostics(child, workspace)
     elif forced is not None and normalized["status"] == "completed":
         normalized["routing"] = {
             "selected": [forced[0]],
