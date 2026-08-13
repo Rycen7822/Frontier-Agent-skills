@@ -46,7 +46,25 @@ def _materialize(repository_root: Path, target: Path) -> dict[str, Path]:
         if not path.is_file() or path.is_symlink():
             raise OperationError(f"evaluator fixture is missing or unsafe: {name}")
         shutil.copy2(path, target / name)
+    deletion_probe = target / "deletion-probe.txt"
+    deletion_probe.write_text("temporary diagnosis probe\n", encoding="utf-8")
+    host_program = target / "synthetic-host.py"
+    host_body = host_program.read_text(encoding="utf-8")
+    deletion_anchor = '    turn = payload["turns"][0]\n'
+    if host_body.count(deletion_anchor) != 1:
+        raise OperationError("fake Host deletion anchor differs")
+    host_program.write_text(
+        host_body.replace(
+            deletion_anchor,
+            '    if payload["case"]["case_id"] == "case-secondary":\n'
+            '        Path("deletion-probe.txt").unlink()\n'
+            '    turn = payload["turns"][0]\n',
+        ),
+        encoding="utf-8",
+    )
     return {
+        "deletion_probe": deletion_probe,
+        "host_program": host_program,
         "spec": target / "spec-v7.json",
         "scenarios": target / "scenarios-v1.jsonl",
         "host": target / "host-manifest-v2.json",
@@ -76,10 +94,19 @@ def _bind_identity(
         version=skill_version,
         root_digest=package_digest,
     )
+    host_program_digest = content_hash(paths["host_program"].read_bytes())
+    for probe in (host["capabilities"][0]["probe"], host["reset"]["probe"]):
+        if probe["artifact"]["path"] != paths["host_program"].name:
+            raise OperationError("fake Host probe artifact path differs")
+        probe["artifact"]["digest"] = host_program_digest
     paths["host"].write_bytes(canonical_bytes(host))
     scenarios = load_jsonl(paths["scenarios"], label="fake identity scenarios")
     for scenario in scenarios:
         scenario["fixture"]["sha256"] = content_hash(paths["host"].read_bytes())
+        scenario["fixture"]["initial_files"] = [{
+            "path": paths["deletion_probe"].name,
+            "sha256": content_hash(paths["deletion_probe"].read_bytes()),
+        }]
     paths["scenarios"].write_bytes(
         b"".join(canonical_bytes(row) + b"\n" for row in scenarios)
     )
