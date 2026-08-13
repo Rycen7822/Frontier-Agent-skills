@@ -498,6 +498,27 @@ def _child_failure_diagnostics(
     child: dict[str, Any], workspace: Path
 ) -> list[dict[str, Any]]:
     if child["timed_out"]:
+        transport_marker = (
+            b"responses_websocket: failed to connect to websocket: "
+            b"IO error: tls handshake eof"
+        )
+        completed_turn = False
+        for raw in child["stdout"][:MAX_JSONL_BYTES].splitlines()[:MAX_RECORDS]:
+            try:
+                event = json.loads(raw)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if isinstance(event, dict) and event.get("type") == "turn.completed":
+                completed_turn = True
+                break
+        if transport_marker in child["stderr"] and not completed_turn:
+            return [
+                {
+                    "kind": "official_transient",
+                    "index": None,
+                    "message": "Codex transport interrupted before turn completion",
+                }
+            ]
         return [
             {
                 "kind": "child_process",
