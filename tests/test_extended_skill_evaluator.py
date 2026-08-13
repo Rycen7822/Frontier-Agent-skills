@@ -48,13 +48,27 @@ class ExtendedSkillEvaluator(unittest.TestCase):
             ]
             self.assertEqual("blocked", derive_decision(gates, [], []))
 
-    def test_host_artifacts_are_fixed_bounded_and_replayable(self) -> None:
+    def test_host_evidence_and_failure_boundaries(self) -> None:
         sys.path.insert(0, str(ROOT / "scripts"))
         from _codex_eval_artifacts import (
             WorkspaceEvidence,
             build_command_trace,
         )
         from _codex_eval_delivery import is_workspace_infrastructure
+        from codex_eval_host import _provider_failure_identity
+
+        capacity = {
+            "kind": "codex_error",
+            "message": "Selected model is at capacity. Please try a different model.",
+        }
+        self.assertEqual(
+            ("official_transient", "model_at_capacity"),
+            _provider_failure_identity(capacity, 1),
+        )
+        self.assertEqual(
+            ("provider_nonretryable", "codex_exit_1"),
+            _provider_failure_identity({**capacity, "message": "other"}, 1),
+        )
 
         captures = []
         for _ in range(2):

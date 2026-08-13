@@ -61,7 +61,7 @@ from _codex_eval_isolation import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
-ADAPTER_VERSION = "1.8"
+ADAPTER_VERSION = "1.9"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_artifacts.py",
@@ -82,6 +82,9 @@ PROBE_CAPABILITIES = {
     "usage_capture",
     "action_authorization_trace",
 }
+MODEL_CAPACITY_MESSAGE = (
+    "Selected model is at capacity. Please try a different model."
+)
 
 
 class AdapterError(ValueError):
@@ -858,6 +861,7 @@ def _child_failure_result(
         normalized = normalize_jsonl(child["stdout"])
         failures = normalized.get("failures")
         detail = None
+        failure = None
         if isinstance(failures, list) and failures:
             failure = failures[0]
             if isinstance(failure, dict):
@@ -870,6 +874,7 @@ def _child_failure_result(
                     detail = _redact_text("; ".join(values), workspace)[
                         :MAX_FAILURE_DETAIL_CHARS
                     ]
+        failure_class, provider_error_code = _provider_failure_identity(failure, code)
         result.update(
             {
                 "terminal_status": "failed",
@@ -877,13 +882,30 @@ def _child_failure_result(
                     "Codex child exited without a completed turn"
                     + (f": {detail}" if detail else "")
                 ),
-                "provider_error_code": f"codex_signal_{-code}"
-                if code < 0
-                else f"codex_exit_{code}",
-                "failure_class": "provider_nonretryable",
+                "provider_error_code": provider_error_code,
+                "failure_class": failure_class,
             }
         )
     return result
+
+
+def _provider_failure_identity(
+    failure: dict[str, Any] | None,
+    returncode: int,
+) -> tuple[str, str]:
+    """Classify only an observed, explicit Codex capacity response as transient."""
+    if (
+        isinstance(failure, dict)
+        and failure.get("kind") == "codex_error"
+        and failure.get("message") == MODEL_CAPACITY_MESSAGE
+    ):
+        return "official_transient", "model_at_capacity"
+    code = (
+        f"codex_signal_{-returncode}"
+        if returncode < 0
+        else f"codex_exit_{returncode}"
+    )
+    return "provider_nonretryable", code
 
 
 def _run_model_grade(
