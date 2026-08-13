@@ -277,8 +277,6 @@
       "required_coverage_tags": [
         "routine",
         "failure-ownership",
-        "failure-ownership",
-        "failure-ownership",
         "circuit-breaker",
         "stochastic",
         "cross-cutting",

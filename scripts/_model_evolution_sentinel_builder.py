@@ -1070,7 +1070,9 @@ def materialize(repository_root: Path) -> list[Path]:
                     else []
                 ),
             ],
-            "required_coverage_tags": [case["coverage"] for case in config["cases"]],
+            "required_coverage_tags": list(dict.fromkeys(
+                case["coverage"] for case in config["cases"]
+            )),
             "protected_case_ids": [
                 f"{skill_id}-{case['id']}"
                 for case in config["cases"]
