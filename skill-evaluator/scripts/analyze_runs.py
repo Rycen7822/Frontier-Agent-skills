@@ -3889,7 +3889,7 @@ def _failure_base(
     }
 
 
-def _manual_review_input_binding(
+def manual_review_input_binding(
     spec: dict[str, Any],
     spec_path: Path,
     plan_path: Path,
@@ -4002,7 +4002,7 @@ def _manual_review_input_binding(
     }
 
 
-def _verify_v6_manual_review(
+def verify_manual_review_receipt(
     reference: Path | None,
     spec: dict[str, Any],
     spec_path: Path,
@@ -4108,7 +4108,7 @@ def _verify_v6_manual_review(
             or set(release_gate) != {"path", "digest", "schema_version"}
         ):
             raise ValueError("release gate contract binding is invalid")
-        if binding != _manual_review_input_binding(
+        if binding != manual_review_input_binding(
             spec,
             spec_path,
             plan_path,
@@ -5094,7 +5094,7 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
         registry=registry,
         bound_evidence=bound_evidence,
     )
-    manual, _ = _verify_v6_manual_review(
+    manual, _ = verify_manual_review_receipt(
         Path(locator) if locator is not None else None,
         spec,
         paths["spec"],
@@ -6184,7 +6184,7 @@ def _main_v6() -> int:
         failure_items, failure_artifacts = _derive_v6_failures(
             spec, plan, plan_path, evidence,
         )
-        manual, manual_issue = _verify_v6_manual_review(
+        manual, manual_issue = verify_manual_review_receipt(
             args.manual_review_receipt,
             spec,
             spec_path,
