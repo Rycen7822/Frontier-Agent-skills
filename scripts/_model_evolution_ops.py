@@ -64,6 +64,7 @@ ALLOWED_GATE_SCRIPTS = {
     "skill-evaluator/scripts/compile_eval_plan.py",
     "skill-evaluator/scripts/run_eval_plan.py",
     "skill-evaluator/scripts/analyze_runs.py",
+    "skill-evaluator/scripts/compare_cycles.py",
     "skill-evaluator/scripts/validate_eval_suite.py",
 }
 
@@ -256,120 +257,10 @@ def run_model_free_command(
     ), result
 
 
-def _materialize_evaluator_fixture(
-    repository_root: Path, target: Path
-) -> dict[str, Path]:
-    source = repository_root / "evaluation/fixtures/skill-evaluator"
-    names = (
-        "grader-output.schema.json",
-        "host-manifest-v2.json",
-        "scenarios-v1.jsonl",
-        "spec-v7.json",
-        "suite-quality-proof.json",
-        "suite-quality-v2.json",
-        "synthetic-host.py",
-    )
-    if target.exists() and any(target.iterdir()):
-        raise OperationError("evaluator fixture target is not empty")
-    target.mkdir(parents=True, exist_ok=True)
-    for name in names:
-        path = source / name
-        if not path.is_file() or path.is_symlink():
-            raise OperationError(f"evaluator fixture is missing or unsafe: {name}")
-        shutil.copy2(path, target / name)
-    return {
-        "spec": target / "spec-v7.json",
-        "scenarios": target / "scenarios-v1.jsonl",
-        "host": target / "host-manifest-v2.json",
-    }
-
-
 def fake_full_chain(repository_root: Path) -> list[dict[str, Any]]:
-    operations: list[dict[str, Any]] = []
-    with tempfile.TemporaryDirectory(
-        prefix="frontier-model-evolution-preflight-"
-    ) as tmp:
-        root = Path(tmp)
-        paths = _materialize_evaluator_fixture(repository_root, root)
-        plan = root / "execution-plan.json"
-        index = root / "artifacts/index.jsonl"
-        summary = root / "summary.json"
-        failures = root / "failures.json"
-        commands = [
-            (
-                "fake-compile",
-                [
-                    sys.executable,
-                    "skill-evaluator/scripts/compile_eval_plan.py",
-                    str(paths["spec"]),
-                    str(paths["scenarios"]),
-                    str(paths["host"]),
-                    "--output",
-                    str(plan),
-                ],
-                {0},
-            )
-        ]
-        for operation_id, argv, acceptable in commands:
-            fact, _ = run_model_free_command(
-                operation_id,
-                argv,
-                repository_root=repository_root,
-                acceptable=acceptable,
-            )
-            operations.append(fact)
-        status_argv = [
-            sys.executable,
-            "skill-evaluator/scripts/run_eval_plan.py",
-            str(plan),
-            "--index",
-            str(index),
-            "--status",
-        ]
-        status_fact, status_result = run_model_free_command(
-            "fake-runner-status", status_argv, repository_root=repository_root
-        )
-        operations.append(status_fact)
-        status = json.loads(status_result.stdout)
-        run_argv = [
-            sys.executable,
-            "skill-evaluator/scripts/run_eval_plan.py",
-            str(plan),
-            "--index",
-            str(index),
-            "--new-attempt-budget",
-            str(status["next_pass_new_attempts"]),
-        ]
-        run_fact, _ = run_model_free_command(
-            "fake-runner", run_argv, repository_root=repository_root
-        )
-        operations.append(run_fact)
-        analyze_argv = [
-            sys.executable,
-            "skill-evaluator/scripts/analyze_runs.py",
-            str(index),
-            "--spec",
-            str(paths["spec"]),
-            "--json",
-            str(summary),
-            "--failure-index",
-            str(failures),
-        ]
-        analyze_fact, _ = run_model_free_command(
-            "fake-analyze",
-            analyze_argv,
-            repository_root=repository_root,
-            acceptable={0, 3},
-        )
-        operations.append(analyze_fact)
-        evaluator_evidence_status(summary, kind="current_summary")
-        operations.append(
-            _operation_fact(
-                "fake-bootstrap-comparison",
-                0,
-            )
-        )
-    return operations
+    from _model_evolution_preflight_fixture import run_fake_full_chain
+
+    return run_fake_full_chain(repository_root)
 
 
 def _write_json_exclusive(path: Path, value: dict[str, Any]) -> None:

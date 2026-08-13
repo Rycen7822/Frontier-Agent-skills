@@ -28,7 +28,10 @@ def _target_diagnostics(
     list[str],
     list[str],
 ]:
+    if plan["decision_policy"]["mode"] == "bundle_noninferiority":
+        return [], [], [], []
     target = plan["decision_policy"]["target"]
+    assert isinstance(target, dict)
     blocking: list[dict[str, Any]] = []
     residual: list[dict[str, Any]] = []
     if prior.failure_index is None:
@@ -226,7 +229,13 @@ def _metric_result(
             ("prior", prior_metric),
             ("candidate", candidate_metric),
         ):
-            if metric["status"] in {"not_evaluable", "inconclusive_ceiling"}:
+            if (
+                metric["status"] == "not_evaluable"
+                or (
+                    metric["status"] == "inconclusive_ceiling"
+                    and plan["decision_policy"]["mode"] == "failure_closure"
+                )
+            ):
                 problems.append(f"{label} metric is not evaluable")
             if not all(
                 isinstance(metric[field], (int, float))
@@ -255,7 +264,11 @@ def _metric_result(
             or not candidate_cases <= candidate_plan_cases
         ):
             problems.append("metric evidence names a case outside the execution plan")
-        if not set(plan["decision_policy"]["target"]["case_ids"]) <= prior_cases:
+        target = plan["decision_policy"]["target"]
+        if (
+            isinstance(target, dict)
+            and not set(target["case_ids"]) <= prior_cases
+        ):
             problems.append("a target case is absent from metric evidence")
         if len(prior_cases) < plan["decision_policy"]["minimum_distinct_cases"]:
             problems.append("distinct case support is below the frozen minimum")
@@ -357,27 +370,43 @@ def _gate_diagnostics(
         ))
         return blocking, failures
 
-    assert candidate.failure_index is not None
     required_gate_ids = {
         gate_id for gate_ids in declared.values() for gate_id in gate_ids
     }
-    failed_items = [
-        item
-        for item in candidate.failure_index["failures"]
+    results = {
+        item["gate_id"]: item
+        for item in candidate.summary["gate_results"]
         if item["gate_id"] in required_gate_ids
-    ]
-    if failed_items:
-        path = artifact_source(plan, candidate, "failure_index")
-        failures.append(make_diagnostic(
-            severity="critical",
+    }
+    unavailable = sorted(
+        gate_id for gate_id in required_gate_ids
+        if gate_id not in results or results[gate_id]["status"] == "not_evaluable"
+    )
+    failed = sorted(
+        gate_id for gate_id, result in results.items()
+        if result["status"] == "fail"
+    )
+    if unavailable:
+        blocking.append(capsule_diagnostic(
+            plan,
+            candidate,
+            "summary",
+            fact_type="evidence_gap",
+            reason_key="revision_required_gate_not_evaluable",
+            expected="every required gate has a replayable result",
+            observed=unavailable,
+            json_pointer="/gate_results",
+        ))
+    if failed:
+        failures.append(capsule_diagnostic(
+            plan,
+            candidate,
+            "summary",
             fact_type="gate",
             reason_key="revision_required_gate_failed",
-            roles=["candidate"],
             expected="every frozen gate on each required decision axis passes",
-            observed=[item["failure_id"] for item in failed_items],
-            locator_artifact=path,
-            json_pointer="/failures",
-            source_ref=path,
+            observed=failed,
+            json_pointer="/gate_results",
         ))
     return blocking, failures
 
@@ -394,17 +423,23 @@ def _policy_diagnostics(
         rule["purpose"] == "protected_noninferiority" for rule in rules
     )
     metric_ids = [rule["metric_id"] for rule in rules]
-    if (
-        target_count == 1
-        and protected_count >= 1
-        and len(metric_ids) == len(set(metric_ids))
-    ):
+    mode = plan["decision_policy"]["mode"]
+    valid_counts = (
+        target_count == 1 and protected_count >= 1
+        if mode == "failure_closure"
+        else target_count == 0 and protected_count >= 1
+    )
+    if valid_counts and len(metric_ids) == len(set(metric_ids)):
         return []
     return [plan_diagnostic(
         plan_path,
         fact_type="registration",
         reason_key="revision_metric_policy_invalid",
-        expected="one target metric, at least one protected metric, and unique metric IDs",
+        expected=(
+            "one target metric, at least one protected metric, and unique metric IDs"
+            if mode == "failure_closure"
+            else "only protected noninferiority metrics with unique metric IDs"
+        ),
         observed={
             "target_count": target_count,
             "protected_count": protected_count,
@@ -456,7 +491,7 @@ def evaluate_revision(
     prior = capsules["prior"]
     candidate = capsules["candidate"]
     policy_diagnostics = _policy_diagnostics(plan_path, plan)
-    identity_issues = identity_diagnostics(plan, prior, candidate)
+    identity_issues = identity_diagnostics(plan_path, plan, prior, candidate)
     evidence_issues = evidence_diagnostics(plan, (prior, candidate))
     (
         target_blocking,
@@ -494,19 +529,26 @@ def evaluate_revision(
     if blocking:
         status = "not_evaluable"
         closed_target_ids = []
-        remaining_target_ids = plan["decision_policy"]["target"][
-            "diagnostic_ids"
-        ]
+        target = plan["decision_policy"]["target"]
+        remaining_target_ids = (
+            target["diagnostic_ids"] if isinstance(target, dict) else []
+        )
     elif decision_failures:
         status = "open"
     else:
         status = "closed"
 
     pre_registered = plan["registration"]["mode"] == "pre_registered"
+    mode = plan["decision_policy"]["mode"]
+    required_scope = (
+        "revision_closure"
+        if mode == "failure_closure"
+        else "revision_noninferiority"
+    )
     eligible = bool(
         status == "closed"
         and pre_registered
-        and plan["claim_scope"] == "revision_closure"
+        and plan["claim_scope"] == required_scope
     )
     authority_diagnostics: list[dict[str, Any]] = []
     if status == "closed" and not eligible:
@@ -514,7 +556,7 @@ def evaluate_revision(
             plan_path,
             fact_type="authority",
             reason_key="revision_authority_blocked",
-            expected="a pre-registered revision_closure claim after closed gates",
+            expected=f"a pre-registered {required_scope} claim after closed gates",
             observed={
                 "registration": plan["registration"]["mode"],
                 "claim_scope": plan["claim_scope"],
@@ -556,12 +598,14 @@ def evaluate_revision(
         "result": {
             "kind": "revision",
             "status": status,
-            "target_failure_class": plan["decision_policy"]["target"][
-                "failure_class"
-            ],
+            "target_failure_class": (
+                plan["decision_policy"]["target"]["failure_class"]
+                if mode == "failure_closure"
+                else "bundle_noninferiority"
+            ),
             "closed_diagnostic_ids": sorted(closed_target_ids),
             "remaining_diagnostic_ids": sorted(remaining_target_ids),
         },
         "authority_eligibility": "eligible" if eligible else "blocked",
-        "claim_ceiling": "revision_closure" if eligible else "diagnostic_only",
+        "claim_ceiling": required_scope if eligible else "diagnostic_only",
     }, diagnostics

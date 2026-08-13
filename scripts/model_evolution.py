@@ -74,6 +74,11 @@ from _model_evolution_ops import (
     validate_plugin_staging,
     validate_target_host_staging,
 )
+from _model_evolution_reporting import (
+    ANALYSIS_ROLES,
+    prepare_analysis,
+    prepare_revision_report,
+)
 from _model_evolution_state import (
     CampaignStore,
     StateError,
@@ -985,6 +990,47 @@ def _prepare_manual_review(args: argparse.Namespace) -> None:
     })
 
 
+def _prepare_analysis(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    campaign = _campaign_store(repository_root, campaign_root).read()
+    if campaign["state_revision"] != args.expected_revision:
+        raise CliError("prepare-analysis expected revision is stale")
+    result = prepare_analysis(
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        campaign=campaign,
+        role=args.role,
+        skill_id=args.skill_id,
+    )
+    _emit({
+        "skill_id": args.skill_id,
+        "role": args.role,
+        "summary": str(result["summary"]),
+        "failure_index": str(result["failure_index"]),
+        "provider_requests": 0,
+    })
+
+
+def _prepare_revision_report(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    campaign = _campaign_store(repository_root, campaign_root).read()
+    if campaign["state_revision"] != args.expected_revision:
+        raise CliError("prepare-revision expected revision is stale")
+    result = prepare_revision_report(
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        campaign=campaign,
+        skill_id=args.skill_id,
+    )
+    _emit({
+        "skill_id": args.skill_id,
+        "status": result["status"],
+        "report": str(result["report"]),
+        "diagnostic_index": str(result["diagnostic_index"]),
+        "provider_requests": 0,
+    })
+
+
 def _verify_plan(args: argparse.Namespace) -> None:
     repository_root, campaign_root = _roots(args)
     campaign = _campaign_store(repository_root, campaign_root).read()
@@ -1623,6 +1669,15 @@ def _parser() -> argparse.ArgumentParser:
     )
     manual_review.add_argument("--signature", required=True)
 
+    analysis = commands.add_parser("prepare-analysis")
+    analysis.add_argument("--expected-revision", type=int, required=True)
+    analysis.add_argument("--role", choices=sorted(ANALYSIS_ROLES), required=True)
+    analysis.add_argument("--skill-id", choices=SKILL_IDS, required=True)
+
+    revision = commands.add_parser("prepare-revision")
+    revision.add_argument("--expected-revision", type=int, required=True)
+    revision.add_argument("--skill-id", choices=SKILL_IDS, required=True)
+
     verify_plan = commands.add_parser("verify-plan")
     verify_plan.add_argument(
         "--role",
@@ -1724,6 +1779,8 @@ def main(argv: list[str] | None = None) -> int:
             "prepare-prior": _prepare_prior,
             "prepare-holdout": _prepare_holdout,
             "prepare-manual-review": _prepare_manual_review,
+            "prepare-analysis": _prepare_analysis,
+            "prepare-revision": _prepare_revision_report,
             "verify-plan": _verify_plan,
             "close-calibration-failure": _close_calibration_failure,
             "close-calibration-rejection": _close_calibration_rejection,

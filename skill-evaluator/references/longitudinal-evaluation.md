@@ -10,7 +10,9 @@ L4 may establish only what its frozen version/cycle matrix supports: change in t
 
 ## Offline comparison owner
 
-`compare_cycles.py` consumes one readable comparison plan v3 and two or three immutable cycle capsules. The plan binds each imported capsule once with `{path,digest,schema_version}`. A `revision` plan binds one failure class, one change set, a prior and candidate, target closure, margins, protected metrics, and decision axes; its only terminal states are `closed`, `open`, and `not_evaluable`.
+`compare_cycles.py` consumes one readable comparison plan v3 and two or three immutable cycle capsules. The plan binds each imported capsule once with `{path,digest,schema_version}`. A `revision` uses one explicit mode: `failure_closure` binds one failure class and one-package change to target closure plus protected metrics; `bundle_noninferiority` binds two complete Bundle product identities, a signed-source policy digest, only protected noninferiority metrics, and the required axes. Both modes terminate as `closed`, `open`, or `not_evaluable`.
+
+Bundle noninferiority accepts a numerically bounded paired metric when an otherwise passing cycle has a baseline ceiling; the ceiling blocks an incremental-value claim, not comparison of two already bounded effects. Required revision gates are replayed from `summary.gate_results`; diagnostic rows associated with a passing gate do not become gate failures.
 
 First emit observations while analyzing every bound cycle, then run the comparator with the frozen plan:
 

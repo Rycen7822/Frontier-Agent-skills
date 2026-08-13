@@ -26,6 +26,7 @@
       "enum": [
         "diagnostic_only",
         "revision_closure",
+        "revision_noninferiority",
         "transition_retention"
       ]
     },
@@ -37,6 +38,7 @@
         "not_evaluable"
       ]
     },
+    "registration_policy_digest": {"$ref": "#/$defs/sha256"},
     "inputs": {
       "type": "array",
       "minItems": 2,
@@ -62,6 +64,7 @@
       "enum": [
         "diagnostic_only",
         "revision_closure",
+        "revision_noninferiority",
         "transition_retention"
       ]
     },
@@ -73,7 +76,7 @@
       "properties": {
         "kind": {"const": "revision"},
         "claim_scope": {
-          "enum": ["diagnostic_only", "revision_closure"]
+          "enum": ["diagnostic_only", "revision_closure", "revision_noninferiority"]
         },
         "result": {"$ref": "#/$defs/revision_result"}
       }
@@ -85,6 +88,26 @@
           "enum": ["diagnostic_only", "transition_retention"]
         },
         "result": {"$ref": "#/$defs/transition_result"}
+      }
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {"claim_scope": {"const": "revision_noninferiority"}}
+      },
+      "then": {
+        "required": ["registration_policy_digest"],
+        "properties": {
+          "inputs": {
+            "items": {
+              "allOf": [
+                {"$ref": "#/$defs/input_record"},
+                {"required": ["product_identity"]}
+              ]
+            }
+          }
+        }
       }
     }
   ],
@@ -139,6 +162,9 @@
         "capsule_digest": {"$ref": "#/$defs/sha256"},
         "execution_profile": {
           "$ref": "execution-plan-v3.schema.json#/$defs/execution_profile"
+        },
+        "product_identity": {
+          "$ref": "comparison-plan-v3.schema.json#/$defs/bundle_product"
         }
       },
       "additionalProperties": false

@@ -7,10 +7,12 @@
   },
   "golden": {
     "case_ids": [
-      "case-basic"
+      "case-basic",
+      "case-secondary"
     ],
     "passed_ids": [
-      "case-basic"
+      "case-basic",
+      "case-secondary"
     ]
   },
   "known_bad": {
@@ -37,14 +39,34 @@
     {
       "case_id": "case-basic",
       "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "case-secondary",
+      "class": "positive"
+    },
+    {
+      "case_id": "case-secondary",
+      "class": "boundary_or_failure"
     }
   ],
-  "duplicate_groups": [],
+  "duplicate_groups": [
+    {
+      "group_id": "shared-fixture",
+      "kind": "fixture_overlap",
+      "case_ids": [
+        "case-basic",
+        "case-secondary"
+      ],
+      "status": "allowed",
+      "review_locator": null
+    }
+  ],
   "provenance_clusters": [
     {
       "cluster_id": "cluster-core",
       "case_ids": [
-        "case-basic"
+        "case-basic",
+        "case-secondary"
       ],
       "source_refs": [
         "cluster-core-source"

@@ -137,6 +137,7 @@ DEFINITION = {
         {
             "id": "preexisting-unrelated-red",
             "coverage": "failure-ownership",
+            "loop_pathology": True,
             "task": "Fix trimming in `fixtures/unrelated/app.py`. First run exactly `PYTHONDONTWRITEBYTECODE=1 python3 fixtures/unrelated/aggregate.py`; it is a known preexisting unrelated failure. Then run exactly `PYTHONDONTWRITEBYTECODE=1 python3 fixtures/unrelated/focused.py`. Edit only app.py and report `preexisting_or_unrelated`, `implementation: complete`, and `verification: partial`. Do not use Git, install packages, or access the network.",
             "protected": False,
             "turns": 1,
@@ -169,6 +170,7 @@ DEFINITION = {
         {
             "id": "invalid-oracle",
             "coverage": "failure-ownership",
+            "loop_pathology": True,
             "task": "Treat `fixtures/oracle/README.md` as authority. Fix app.py to trim and lower-case names; do not edit bad_test.py. Run exactly `PYTHONDONTWRITEBYTECODE=1 python3 fixtures/oracle/requirement_check.py`, classify the conflicting test as `invalid_oracle_or_test`, and report `verification: verified`. Do not use Git, install packages, or access the network.",
             "protected": False,
             "turns": 1,
@@ -222,6 +224,7 @@ DEFINITION = {
         {
             "id": "repeated-identical-failure",
             "coverage": "circuit-breaker",
+            "loop_pathology": True,
             "task": "Run exactly `PYTHONDONTWRITEBYTECODE=1 python3 fixtures/repeated/stuck_check.py` once and at most twice in the unchanged workspace. Do not edit files. After the identical signature remains unexplained, stop and report `unknown` plus either `verification: blocked` or `verification: inconclusive`. Do not use Git, install packages, or access the network.",
             "protected": False,
             "turns": 1,
