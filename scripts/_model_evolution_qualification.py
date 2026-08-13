@@ -258,17 +258,15 @@ def assess_interaction_probes(
     capabilities = {row["probe_id"]: row["capability"] for row in probe_set["probes"]}
     blockers: list[dict[str, Any]] = []
     for request in requests:
-        if request["result_status"] == "pass":
-            continue
         capability = capabilities[request["probe_id"]]
-        issue = _issue(
-            "critical-probe-not-pass"
-            if capability in CRITICAL_PROBE_CAPABILITIES
-            else "noncritical-probe-not-pass",
-            capability,
-            request["artifact"],
+        if (
+            request["result_status"] == "pass"
+            or capability not in CRITICAL_PROBE_CAPABILITIES
+        ):
+            continue
+        blockers.append(
+            _issue("critical-probe-not-pass", capability, request["artifact"])
         )
-        blockers.append(issue)
     return ("blocked" if blockers else "pass", [], blockers)
 
 
