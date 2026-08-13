@@ -360,6 +360,10 @@ def build_host(
             raise HostBuildError("template probe artifact escapes the repository")
         artifact["path"] = path.relative_to(repository_root).as_posix()
         artifact["digest"] = _hash_bytes(path.read_bytes())
+        locator = probe.get("locator")
+        if not isinstance(locator, dict):
+            raise HostBuildError("template probe locator is invalid")
+        locator["artifact"] = artifact["path"]
 
     validate_plugin_catalog(plugin_root, value)
     output_path.parent.mkdir(parents=True, exist_ok=True)
