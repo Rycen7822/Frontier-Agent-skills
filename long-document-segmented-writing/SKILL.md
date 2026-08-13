@@ -31,7 +31,7 @@ An explicit output-only shape remains authoritative. A compact recovery block co
 
 Completion requires the final file and its named checks; a plan, partial draft, or self-assessment is not completion evidence.
 
-Direct work does not emit a recovery status or invent a scratch anchor.
+Direct work does not emit a recovery status or invent a scratch anchor. When the user explicitly requests a same-session continuation anchor, return that anchor inline without creating durable working files; the requested anchor does not by itself select a segmented profile.
 
 ## Same-session Direct gate
 
@@ -43,6 +43,8 @@ Use Direct, with no scratch root, only when all of these facts are true:
 - no unresolved source conflict requires a durable decision ledger.
 
 Skill activation does not imply a long output. A small source bundle with no requested length remains Direct and the final document stays proportional to the source and requirements.
+
+A bounded two-turn task remains Direct when both turns stay in the same Codex session and every other Direct fact holds. Read the bounded sources needed by both turns before the first response, complete the requested first-turn content, and include only the requested inline anchor with the remaining section, its exact source facts, final order, and any open evidence gap. On continuation, reread the exact bounded sources named by that anchor, write the complete final document once, run the Direct source-style check, and reread the final. Do not create a ledger, draft shard, or assembler workflow for this path.
 
 In Direct, read the bounded sources, define the short section order in working context, preserve every requested deliverable constraint including exact structure, count, and format, write only the requested final document, run the source-style check against that final file, reread the final in one bounded pass, and reopen only exact source anchors needed to repair concrete gaps. Do not create a scratch root, owner allocation, ledger, section drafts, confidence review, `CODEX_STATE.md`, receipt, worknote, or sidecar; do not inspect `agents/openai.yaml` or search for owner-allocation tools; do not run assembler section/output modes. If a Direct fact becomes false before the final write, select compact or full once and do not maintain both paths.
 
