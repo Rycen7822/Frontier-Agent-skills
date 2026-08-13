@@ -62,6 +62,12 @@ def _item_fact(item: dict[str, Any], phase: str) -> dict[str, Any]:
         value = item.get(field)
         if isinstance(value, (str, int)) and not isinstance(value, bool):
             fact[field] = value
+    aggregated_output = item.get("aggregated_output")
+    if isinstance(aggregated_output, str):
+        fact["aggregated_output"] = aggregated_output
+    changes = item.get("changes")
+    if isinstance(changes, list):
+        fact["changes"] = changes
     error = item.get("error")
     if isinstance(error, dict):
         fact["error"] = {
