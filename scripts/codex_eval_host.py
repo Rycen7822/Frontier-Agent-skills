@@ -62,7 +62,7 @@ from _codex_eval_isolation import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
-ADAPTER_VERSION = "1.12"
+ADAPTER_VERSION = "1.13"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_artifacts.py",
@@ -777,6 +777,26 @@ def _required_final_output(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _turn_answers(
+    turns: list[dict[str, Any]],
+    normalized_turns: list[dict[str, Any]],
+    workspace: Path,
+) -> dict[str, Any]:
+    """Retain ordered semantic outputs without duplicating raw Codex events."""
+    items = []
+    total_bytes = 0
+    for turn, normalized in zip(turns, normalized_turns, strict=True):
+        content = _redact_text(normalized["final_message"] or "", workspace)
+        content_bytes = len(content.encode("utf-8"))
+        if content_bytes > 64 * 1024:
+            raise AdapterError("Codex turn answer exceeds the Host bound")
+        total_bytes += content_bytes
+        items.append({"turn_id": turn["turn_id"], "content": content})
+    if total_bytes > 256 * 1024:
+        raise AdapterError("Codex turn answers exceed the Host bound")
+    return {"schema_version": "codex-turn-answers/1", "items": items}
+
+
 def _snapshot_workspace(workspace: Path) -> dict[str, str]:
     result: dict[str, str] = {}
     for path in sorted(workspace.rglob("*")):
@@ -1282,6 +1302,10 @@ def _run_execute_in_workspace(
         "final-answer.md",
         _redact_text(final_message, workspace).encode("utf-8"),
     )
+    turn_answers_artifact = _artifact_json(
+        "turn-answers.json",
+        _turn_answers(payload["turns"], normalized_turns, workspace),
+    )
     command_artifact = _artifact_json("command-trace.json", command_trace)
     workspace_artifact = _artifact_json(
         "workspace-evidence.json", workspace_evidence
@@ -1291,6 +1315,7 @@ def _run_execute_in_workspace(
     )
     artifacts = [
         final_artifact,
+        turn_answers_artifact,
         command_artifact,
         workspace_artifact,
         observation_artifact,
