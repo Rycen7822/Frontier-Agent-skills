@@ -52,6 +52,7 @@ from _codex_eval_events import (
     project_execute_result,
 )
 from _codex_eval_isolation import (
+    ISOLATED_SANDBOX_POLICY_IDS,
     ISOLATED_WORKSPACE,
     IsolationError,
     isolated_child_argv,
@@ -179,6 +180,12 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         args.code_mode_host_sha256,
     ):
         raise AdapterError("tool schema identity differs from the host manifest")
+    if (
+        args.isolation_tool is not None
+        and execution.get("policy_id")
+        != ISOLATED_SANDBOX_POLICY_IDS.get(args.sandbox)
+    ):
+        raise AdapterError("sandbox policy identity differs from the runtime")
     if (
         not isinstance(adapter, dict)
         or adapter.get("id") != "codex-eval-host"

@@ -4194,6 +4194,27 @@ def _grader_failure_locator(
     }
 
 
+def _is_declared_retry_history(
+    attempt: dict[str, Any],
+    selected: dict[str, Any] | None,
+    retryable: set[str],
+) -> bool:
+    """Return whether an invalid attempt was replaced by a declared retry."""
+    if (
+        selected is None
+        or attempt is selected
+        or attempt["analysis_error"] is not None
+    ):
+        return False
+    run = attempt["receipt"]["run"]
+    return (
+        run["valid"] is False
+        and run["completion_origin"] == "resume_seal"
+        and run["error"] in retryable
+        and _index_attempt(attempt["row"]) < _index_attempt(selected["row"])
+    )
+
+
 def _derive_v6_failures(
     spec: dict[str, Any],
     plan: dict[str, Any],
@@ -4205,6 +4226,9 @@ def _derive_v6_failures(
     candidate_treatment_id = spec["analysis"]["estimands"][0][
         "candidate_treatment_id"
     ]
+    retryable = set(
+        spec["execution"]["retry_policy"]["retryable_apparatus_classes"],
+    )
     entries = {
         entry["entry_id"]: (index, entry)
         for index, entry in enumerate(plan["entries"])
@@ -4311,9 +4335,12 @@ def _derive_v6_failures(
         ))
     for entry_id, attempts in evidence["attempts"].items():
         _, entry = entries[entry_id]
+        selected = evidence["selected_attempts"].get(entry_id)
         for attempt in attempts:
             receipt = attempt["receipt"]
-            if receipt["run"]["valid"] is True:
+            if receipt["run"]["valid"] is True or _is_declared_retry_history(
+                attempt, selected, retryable,
+            ):
                 continue
             raw.append(_failure_base(
                 family="apparatus",
@@ -5217,14 +5244,8 @@ def _load_release_study(binding: dict[str, Any]) -> dict[str, Any]:
             retried_entries += 1
         selected = evidence["selected_attempts"].get(entry_id)
         for attempt in attempts:
-            if attempt is selected:
-                continue
-            run = attempt["receipt"]["run"]
-            if (
-                attempt["analysis_error"] is not None
-                or run["valid"] is not False
-                or run["completion_origin"] != "resume_seal"
-                or run["terminal"] not in retryable
+            if attempt is not selected and not _is_declared_retry_history(
+                attempt, selected, retryable,
             ):
                 invalid_history += 1
 

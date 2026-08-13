@@ -14,6 +14,7 @@ DEFINITION = {
         "For long-document-segmented-writing-compact-recovery, quality passes when the sole recovery block has distinct Current recovery anchor, Next action, Final-assembly order, and Confidence gaps/proof fields bound to the supplied facts.",
         "For long-document-segmented-writing-compaction-resume, turn one owns the recovery anchor; quality evaluates the final self-contained two-section report and requires the correct distinction between request retries and fresh attempts.",
         "For long-document-segmented-writing-full-mode-selection, quality passes when 13 sources select full mode and the answer names scope, source inventory, reading ledger, section matrix, recovery packet, ordered section drafts, confidence review, and final document.",
+        "For long-document-segmented-writing-whole-draft-review, quality passes when the answer identifies that zero retries overstates zero request retries, the second retry claim lacks support and cites the wrong source, release readiness conflicts with the no-decision source, and the release citation is therefore broken.",
     ],
     "process_evidence": [
         "the source inventory is mapped to bounded draft sections",
