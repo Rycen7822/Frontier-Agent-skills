@@ -35,8 +35,8 @@
       "properties": {
         "long-document-segmented-writing": {"const": "2.0.0"},
         "skill-evaluator": {"const": "5.0.0"},
-        "software-quality-workflows": {"const": "10.0.0"},
-        "writing-plans": {"const": "8.3.0"}
+        "software-quality-workflows": {"const": "11.0.0"},
+        "writing-plans": {"const": "8.4.0"}
       }
     },
     "skill_activation": {
@@ -46,7 +46,7 @@
       "properties": {
         "long-document-segmented-writing": {"const": true},
         "skill-evaluator": {"const": false},
-        "software-quality-workflows": {"const": true},
+        "software-quality-workflows": {"const": false},
         "writing-plans": {"const": true}
       }
     },

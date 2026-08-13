@@ -1,44 +1,129 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:5fdcbb21409274b4e766bd4ea4034a557bf134b908960e51b31f0e2313b2a9a6",
+      "digest": "sha256:9f6c0f64b9679a943de38b420ca69e1ae0418d1cd017e4a5fe6fc70ffbc7dd5c",
       "encoding": "utf-8",
-      "path": "src/legacy.py"
+      "path": "cross/check.py"
     },
     {
-      "digest": "sha256:5b98d04ebd627c2b50eb9c1c4be9c23c839a8edd1044a9bcb1b5c048b360a28c",
+      "digest": "sha256:e37738cd7ffaaf9e1555a926bbd1e66555675e3553e3a9e6a45488ba35613a33",
       "encoding": "utf-8",
-      "path": "src/logger.py"
+      "path": "cross/consumer.py"
     },
     {
-      "digest": "sha256:9874dd84a800cf6a27724155ac2a414158688251115af07241682b668e0b6502",
+      "digest": "sha256:1c1c377720ad892aa8ea7e6196807d80822fb3c277aa311e34e827ad26f510a2",
       "encoding": "utf-8",
-      "path": "src/parser.py"
+      "path": "cross/producer.py"
     },
     {
-      "digest": "sha256:41082a054c5dafcd9733695cb044ef21b8fb298a6ca1d2eb86836de15d9af0e2",
+      "digest": "sha256:d3410e41e520be190c95bd5d8b61a74983b4b559301e52d96d1ac0164fae96da",
       "encoding": "utf-8",
-      "path": "src/path.py"
+      "path": "harness/app.py"
     },
     {
-      "digest": "sha256:ed36c1487f690876b947030b73516a78005661c93a3f06a8919b29c0f6afae1a",
+      "digest": "sha256:bb29b3756cd8a225baa4ff6b6d98810417e8790a36899248c23dbc7f81b0763f",
       "encoding": "utf-8",
-      "path": "src/payment.py"
+      "path": "harness/broken_harness.py"
     },
     {
-      "digest": "sha256:4c193b5c39daac167808ced4b7d9e852bc6b53828902240095c79409405261f0",
+      "digest": "sha256:f0ceb4bc1c4c2a28efbdaad337c079e599d0bcbc941886a5d0e263fe12ddc6f2",
       "encoding": "utf-8",
-      "path": "src/upload.py"
+      "path": "harness/direct_check.py"
     },
     {
-      "digest": "sha256:6990535854b2bfbf5d213218f80d91840cdc0e22cfb4cc689eba0d2ece5faa6a",
+      "digest": "sha256:e8528dbc4764880e16508d27ecf71c8d3aaab6f660c12d4b8798b0dd1a76e57f",
       "encoding": "utf-8",
-      "path": "tests/test_legacy.py"
+      "path": "material/auth.py"
     },
     {
-      "digest": "sha256:2b899c402fd8ce277f39ff9d2a6cde5cedae970366c35cb8da2ca5155991b278",
+      "digest": "sha256:aff444b02e3802169ff47e2569fb52f5853044ed0e776e5e071f3e9e0c2773a8",
       "encoding": "utf-8",
-      "path": "work-boundary.md"
+      "path": "material/integration_check.py"
+    },
+    {
+      "digest": "sha256:96016a0b5863dccd26812079df7565d166f427b89d53937770e796e97a5e8c8b",
+      "encoding": "utf-8",
+      "path": "material/negative_check.py"
+    },
+    {
+      "digest": "sha256:40b7afed44d7c4d385415474c2d1d622dd0332c760e93107cd7358d83d24f51f",
+      "encoding": "utf-8",
+      "path": "oracle/README.md"
+    },
+    {
+      "digest": "sha256:8587ec34af11c38cb6c10f368615442af5664fd331930c76b34d29d10021b828",
+      "encoding": "utf-8",
+      "path": "oracle/app.py"
+    },
+    {
+      "digest": "sha256:dbd7ead03bf5a3e14993b047e15a9d32e4b33482bb1e746234a2583cf7e7aaa9",
+      "encoding": "utf-8",
+      "path": "oracle/bad_test.py"
+    },
+    {
+      "digest": "sha256:68762ea0b48484940da8b4a20e047cfdf4f33f85c69a2d3828638f1ce04745b1",
+      "encoding": "utf-8",
+      "path": "oracle/requirement_check.py"
+    },
+    {
+      "digest": "sha256:4ae47c2cba0c9d15bf0dd2303340ffc0ecc333d6a1be2b40780464d667b81936",
+      "encoding": "utf-8",
+      "path": "repeated/stuck_check.py"
+    },
+    {
+      "digest": "sha256:02e209b6612c20c9dc027e250623d654fe2a9a3d6eab75faaad1691d33809e2a",
+      "encoding": "utf-8",
+      "path": "retention/check.py"
+    },
+    {
+      "digest": "sha256:a63cdcf2b67893992270bc2df379b29d7c522832c4146b2352b7495f3df74267",
+      "encoding": "utf-8",
+      "path": "retention/durable_test.py"
+    },
+    {
+      "digest": "sha256:a2a2d3e9ba89166dc03f9d97ee683ce353006afb33febb6b4656040d35480ede",
+      "encoding": "utf-8",
+      "path": "retention/parser.py"
+    },
+    {
+      "digest": "sha256:3b0598a037d5988eb35fd9c6d5e27e89cdc38c14b5b3455e9f9052b8c83f5183",
+      "encoding": "utf-8",
+      "path": "retention/temp_probe.py"
+    },
+    {
+      "digest": "sha256:b97974b4a0263fbdaa45a799e4ebc0a85eb6082fc5bee0b50f952c6f091cd8bd",
+      "encoding": "utf-8",
+      "path": "routine/app.py"
+    },
+    {
+      "digest": "sha256:c51e9ef8b83df5d5b536d89fc4547dfcf5ad2ddb3250d0546be9aa759855e6c3",
+      "encoding": "utf-8",
+      "path": "routine/check.py"
+    },
+    {
+      "digest": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "encoding": "utf-8",
+      "path": "stochastic/trial-state.txt"
+    },
+    {
+      "digest": "sha256:84471bd9308847d0446f051b1aca478c344933195e69d7cd251a9b4555be5e26",
+      "encoding": "utf-8",
+      "path": "stochastic/trial.py"
+    },
+    {
+      "digest": "sha256:742277865433c3673846bb2f758a010c1a2fc6553508bce9434f815f9acaac8b",
+      "encoding": "utf-8",
+      "path": "unrelated/aggregate.py"
+    },
+    {
+      "digest": "sha256:b97974b4a0263fbdaa45a799e4ebc0a85eb6082fc5bee0b50f952c6f091cd8bd",
+      "encoding": "utf-8",
+      "path": "unrelated/app.py"
+    },
+    {
+      "digest": "sha256:388d3bee169bbc5ac7c604eae5ddb6a62e99f618fe3787eb45e34241bcc38a61",
+      "encoding": "utf-8",
+      "path": "unrelated/focused.py"
     }
   ],
   "schema_version": 1

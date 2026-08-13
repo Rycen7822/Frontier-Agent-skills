@@ -39,12 +39,12 @@
           "properties": {"version": {"const": "5.0.0"}}
         },
         "software-quality-workflows": {
-          "$ref": "#/$defs/implicit_skill",
-          "properties": {"version": {"const": "10.0.0"}}
+          "$ref": "#/$defs/explicit_skill",
+          "properties": {"version": {"const": "11.0.0"}}
         },
         "writing-plans": {
           "$ref": "#/$defs/implicit_skill",
-          "properties": {"version": {"const": "8.3.0"}}
+          "properties": {"version": {"const": "8.4.0"}}
         }
       }
     }

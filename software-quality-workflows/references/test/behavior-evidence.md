@@ -14,7 +14,7 @@ Derive expected values from a requirement, worked literal, independent reference
 
 ## Implement and prove
 
-Preserve user patches and valid contracts. Change the smallest coherent owner seam and reject fixture constants, bypass wrappers, speculative modes, dependencies, caches, or parallel paths. Run focused proof after each coherent patch and broader affected proof before completion. Never weaken the oracle, skip a required gate, or change expectations merely to obtain GREEN.
+Preserve user patches and valid contracts. Complete the smallest coherent owner set before proof. When an unresolved risk or explicit gate remains, run the lowest-cost independent evidence that decides it; escalate only when that evidence cannot support the claim. Never weaken the oracle, skip a required gate, or change expectations merely to obtain GREEN.
 
 ## Retention classes
 

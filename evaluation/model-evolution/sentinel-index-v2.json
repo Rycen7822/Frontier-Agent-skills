@@ -166,53 +166,124 @@
           "root": "repository"
         },
         {
-          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/src/legacy.py",
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/cross/check.py",
           "root": "repository"
         },
         {
-          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/src/logger.py",
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/cross/consumer.py",
           "root": "repository"
         },
         {
-          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/src/parser.py",
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/cross/producer.py",
           "root": "repository"
         },
         {
-          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/src/path.py",
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/harness/app.py",
           "root": "repository"
         },
         {
-          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/src/payment.py",
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/harness/broken_harness.py",
           "root": "repository"
         },
         {
-          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/src/upload.py",
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/harness/direct_check.py",
           "root": "repository"
         },
         {
-          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/tests/test_legacy.py",
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/material/auth.py",
           "root": "repository"
         },
         {
-          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/work-boundary.md",
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/material/integration_check.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/material/negative_check.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/oracle/README.md",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/oracle/app.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/oracle/bad_test.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/oracle/requirement_check.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/repeated/stuck_check.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/retention/check.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/retention/durable_test.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/retention/parser.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/retention/temp_probe.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/routine/app.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/routine/check.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/stochastic/trial-state.txt",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/stochastic/trial.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/unrelated/aggregate.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/unrelated/app.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/fixtures/unrelated/focused.py",
           "root": "repository"
         }
       ],
       "holdout_case_ceiling": 2,
       "protected_case_ids": [
-        "software-quality-workflows-protected-no-state"
+        "software-quality-workflows-test-retention-boundary"
       ],
       "public_scenarios": {
         "path": "evaluation/model-evolution/sentinels/software-quality-workflows/scenarios.public.jsonl",
         "root": "repository"
       },
       "required_coverage_tags": [
-        "durable-state",
-        "single-risk",
-        "dual-risk",
-        "proportionate-validation",
-        "dead-code-removal",
-        "protected"
+        "routine",
+        "failure-ownership",
+        "failure-ownership",
+        "failure-ownership",
+        "circuit-breaker",
+        "stochastic",
+        "cross-cutting",
+        "material-risk",
+        "test-lifecycle"
       ],
       "spec_template": {
         "path": "evaluation/model-evolution/sentinels/software-quality-workflows/eval-spec.template.json",
@@ -225,6 +296,10 @@
         },
         {
           "path": "evaluation/model-evolution/sentinels/software-quality-workflows/verify_common.py",
+          "root": "repository"
+        },
+        {
+          "path": "evaluation/model-evolution/sentinels/software-quality-workflows/case-contracts.json",
           "root": "repository"
         }
       ]

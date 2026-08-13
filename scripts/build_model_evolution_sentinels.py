@@ -10,9 +10,8 @@ import sys
 sys.dont_write_bytecode = True
 
 from _model_evolution_sentinel_builder import (  # noqa: E402
-    REPOSITORY_ROOT,
     check,
-    materialize,
+    write,
 )
 
 
@@ -23,7 +22,7 @@ def main() -> int:
     mode.add_argument("--check", action="store_true")
     args = parser.parse_args()
     if args.write:
-        paths = materialize(REPOSITORY_ROOT)
+        paths = write()
         print(json.dumps({"ok": True, "files": len(paths)}, sort_keys=True))
     else:
         check()

@@ -226,7 +226,7 @@
         {
           "check_id": "artifact-check",
           "dimension": "outcome",
-          "pass_condition": "The Host emitted one completed terminal with a final artifact.",
+          "pass_condition": "The completed Host artifacts prove the case-specific file, command, trial, retention, trace, and completion contract.",
           "required": true
         },
         {
@@ -248,7 +248,11 @@
           "PYTHONDONTWRITEBYTECODE"
         ],
         "input_allowlist": [
-          "result.json"
+          "result.json",
+          "workspace/final-answer.md",
+          "workspace/command-trace.json",
+          "workspace/workspace-evidence.json",
+          "workspace/host-observation.json"
         ],
         "pass_exit_codes": [
           0
@@ -366,9 +370,9 @@
       "replace-host"
     ],
     "claims": [
-      "risk-owned-development",
-      "proportionate-validation",
-      "lifecycle-cleanup"
+      "failure-ownership",
+      "risk-matched-evidence",
+      "test-lifecycle"
     ],
     "mechanisms": [
       "procedure_workflow",
@@ -384,7 +388,7 @@
     "principal_mode": "single",
     "shape": "single_skill",
     "skill_id": "software-quality-workflows",
-    "version": "10.0.0"
+    "version": "11.0.0"
   },
   "suite": {
     "holdout": null,
@@ -393,11 +397,11 @@
       "path": "scenarios.public.jsonl"
     },
     "quality": {
-      "digest": "sha256:c4cc7419864c44b5def92d939a50ae975b694d4772d2da06212e239401a8f935",
+      "digest": "sha256:97a292434ab493cd8153acabdc4f10e4fbf704fda5195f2af81c5a5d40f40b33",
       "path": "suite-quality.json",
       "schema_version": "suite-quality/2"
     },
-    "repeats": 1,
+    "repeats": 3,
     "reset_policy": "fresh-workspace",
     "retry_policy": "apparatus-only",
     "scenarios": {
@@ -428,22 +432,27 @@
       "profile": "baseline/skill_disabled",
       "prompt_variant_group_id": "frontier-sentinel-v1",
       "scenario_ids": [
-        "software-quality-workflows-durable-resume-boundary",
-        "software-quality-workflows-single-specialist-risk",
-        "software-quality-workflows-two-independent-risks",
-        "software-quality-workflows-proportionate-validation",
-        "software-quality-workflows-retire-dead-code",
-        "software-quality-workflows-protected-no-state"
+        "software-quality-workflows-routine-local-edit",
+        "software-quality-workflows-preexisting-unrelated-red",
+        "software-quality-workflows-invalid-oracle",
+        "software-quality-workflows-harness-setup-failure",
+        "software-quality-workflows-repeated-identical-failure",
+        "software-quality-workflows-stochastic-failure",
+        "software-quality-workflows-cross-cutting-contract",
+        "software-quality-workflows-material-risk-escalation",
+        "software-quality-workflows-test-retention-boundary"
       ],
       "scenario_tags": [
         "boundary",
+        "circuit-breaker",
         "core",
-        "dead-code-removal",
-        "dual-risk",
-        "durable-state",
-        "proportionate-validation",
+        "cross-cutting",
+        "failure-ownership",
+        "material-risk",
         "protected",
-        "single-risk"
+        "routine",
+        "stochastic",
+        "test-lifecycle"
       ],
       "tool_policy_id": "fixture-tools",
       "treatment_id": "baseline"
@@ -471,22 +480,27 @@
       "profile": "candidate/force_loaded",
       "prompt_variant_group_id": "frontier-sentinel-v1",
       "scenario_ids": [
-        "software-quality-workflows-durable-resume-boundary",
-        "software-quality-workflows-single-specialist-risk",
-        "software-quality-workflows-two-independent-risks",
-        "software-quality-workflows-proportionate-validation",
-        "software-quality-workflows-retire-dead-code",
-        "software-quality-workflows-protected-no-state"
+        "software-quality-workflows-routine-local-edit",
+        "software-quality-workflows-preexisting-unrelated-red",
+        "software-quality-workflows-invalid-oracle",
+        "software-quality-workflows-harness-setup-failure",
+        "software-quality-workflows-repeated-identical-failure",
+        "software-quality-workflows-stochastic-failure",
+        "software-quality-workflows-cross-cutting-contract",
+        "software-quality-workflows-material-risk-escalation",
+        "software-quality-workflows-test-retention-boundary"
       ],
       "scenario_tags": [
         "boundary",
+        "circuit-breaker",
         "core",
-        "dead-code-removal",
-        "dual-risk",
-        "durable-state",
-        "proportionate-validation",
+        "cross-cutting",
+        "failure-ownership",
+        "material-risk",
         "protected",
-        "single-risk"
+        "routine",
+        "stochastic",
+        "test-lifecycle"
       ],
       "tool_policy_id": "fixture-tools",
       "treatment_id": "candidate"

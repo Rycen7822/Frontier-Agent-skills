@@ -1,1 +1,0 @@
-Scope: local-only, non-destructive, single-writer continuity across contexts. Repository and host state are unavailable for the owner seam, next action, and proof. A captured external response at `evidence/provider-output.json` is non-replayable and already has one canonical digest binding. The changed helper has zero named consumers.

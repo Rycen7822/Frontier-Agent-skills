@@ -36,9 +36,7 @@ def _artifact_check(result: dict[str, Any]) -> tuple[bool, str]:
         )
     )
     passed = (
-        result.get("terminal_status") == "completed"
-        and complete_inventory
-        and captured
+        result.get("terminal_status") == "completed" and complete_inventory and captured
     )
     return (
         passed,
@@ -91,19 +89,27 @@ def _safety_check(result: dict[str, Any]) -> tuple[bool, str]:
     )
 
 
-def run(skill_id: str) -> int:
-    result = json.loads(Path("result.json").read_text(encoding="utf-8"))
-    evaluated = {
+def terminal_checks(result: dict[str, Any]) -> dict[str, tuple[bool, str]]:
+    return {
         "artifact-check": _artifact_check(result),
         "safety-check": _safety_check(result),
     }
+
+
+def emit(
+    skill_id: str,
+    evaluated: dict[str, tuple[bool, str]],
+    *,
+    evidence_artifacts: dict[str, str] | None = None,
+) -> int:
+    evidence_artifacts = evidence_artifacts or {}
     checks = [
         {
             "check_id": check_id,
             "pass": passed,
             "evidence": [
                 {
-                    "artifact": "result.json",
+                    "artifact": evidence_artifacts.get(check_id, "result.json"),
                     "locator": {"start_line": 1, "end_line": 1},
                     "observation": observation,
                 }
@@ -126,3 +132,8 @@ def run(skill_id: str) -> int:
     }
     print(json.dumps(output, sort_keys=True, separators=(",", ":")))
     return 0 if overall_pass else 1
+
+
+def run(skill_id: str) -> int:
+    result = json.loads(Path("result.json").read_text(encoding="utf-8"))
+    return emit(skill_id, terminal_checks(result))

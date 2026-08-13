@@ -3,7 +3,7 @@ name: software-quality-workflows
 description: Use when software work has a material boundary in evidence, authority, ownership, source, or effects.
 license: MIT
 metadata:
-  version: 10.0.0
+  version: 11.0.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -14,38 +14,34 @@ metadata:
 
 # Software Quality Workflows
 
-## Scope
+## Execute by unresolved risk
 
-At material boundaries preserve work, scope, and authority; never invent intent or equate local with release proof.
+Preserve work, scope, authority, and evidence at material boundaries. Bind claims to their oracle, coverage, freshness, limitations, and raw reference. The owner seam is the smallest code/API/config/test/component controlling behavior.
 
-Preserve readable evidence and its raw authority. Bound bytes establish integrity; semantic content, coverage, freshness, producer, oracle, command/status, limitations, and evidence references establish meaning and claim scope.
+Keep known-seam work Direct and change its smallest coherent owner set. Before cross-cutting/API/data/error/migration work, freeze observable input/output, invariants, errors, compatibility, and non-goals.
 
-## Default execution
+Complete coherent edits before proof. If no conclusion-changing risk or gate remains, close. Otherwise use the lowest deciding evidence, escalating from inspection/direct examples through focused/affected checks to integration or high-cost gates only when needed. Cover changed behavior and its nearest protected control; filtering proof covers retained values and order.
 
-Known-seam work stays Direct and model-native. Create durable state or evidence, and compute a digest, only for a named cross-boundary consumer.
+Load [authority](references/control/scope-authority-and-effects.md) when effects, protected work, source identity, or writers are unresolved.
 
-Owner seam is the smallest code/API/config/test/component controlling behavior, not repository ownership unless provenance is requested.
+## Own failures and progress
 
-For a bound read-only/local-only target with forbidden effects, inspect minimal in-scope evidence; do not inspect Git provenance or widen inventory unless source identity is material.
+Classify a failed check before another edit:
 
-Load [authority](references/control/scope-authority-and-effects.md) only for unresolved write scope; protected/dirty/concurrent work; destructive/external/privileged effects; material source root/revision; multiple owners/writers; or authorization for the proposed effect.
+- `task_regression`: repair the owned seam; rerun deciding evidence.
+- `authorized_contract_change`: synchronize implementation and oracle to named authority.
+- `invalid_oracle_or_test`: preserve product behavior until independent authority establishes the oracle.
+- `harness_setup_environment`: repair within scope, or narrow the claim using independent evidence.
+- `preexisting_or_unrelated`: preserve baseline; implementation may complete with verification partial/blocked.
+- `stochastic`: follow the predeclared seed/state, trial limit, and decision rule.
+- `unknown`: run one cheap discriminator; finish inconclusive if ownership stays unknown.
 
-Otherwise derive behavior from bounded evidence; unknown cause permits diagnosis, not a guessed fix. Change only the owner seam—no parallel abstraction, speculative compatibility, unrelated cleanup, routine owner inventory, or fixed process/RED/report. Match proof to risk. Behavior proof covers the intended change and its nearest protected control; for filtering, verify retained values and order. A one-sided check cannot support a two-sided claim. Ask only for outcome-changing authority, irreversible effects, unavailable facts, or an unsound route.
+Use `(command_sha256, exit_code, output_sha256)` for command failures. In one unchanged workspace/trial state, run an identical failure at most twice. Continue only to change the hypothesis, owner, signature, or independent observation. If one discriminator changes none, stop `verification_blocked` or `verification_inconclusive`. Treat Host/provider timeout as unobserved apparatus.
 
-A settled exact disposition is binding: perform or describe it; no retention, compatibility, or alternative branches.
+## Tests, state, and completion
 
-## Evidence and test retention
+Classify only new or changed tests with unclear disposition. Keep stable contracts, regressions, and material risk boundaries; remove probes, duplicates, and retired-behavior tests. Use strict test-first only when required, oracle and harness are sound, behavior is narrow/fast, and a stop budget is fixed. Load [test lifecycle](references/test/test-suite-lifecycle.md) for material migration risk.
 
-Keep durable-contract, confirmed-regression, or risk-boundary tests. Delete tests that import/call only retired behavior; a replacement does not authorize retargeting. Retarget only for explicit replacement coverage. Load [test lifecycle](references/test/test-suite-lifecycle.md) only for material retention/migration risk.
+Create durable state or a digest only for a cross-context consumer, external effect, staged release, or multiple writers. Prefer host/repo state; otherwise use one [fallback ledger](references/control/durable-work-ledger.md). Route other risks through the [index](references/index.md).
 
-## Durable escalation
-
-Use durable state only across contexts, for destructive/external effects, staged migration/release, or multiple writers. Prefer host/repo state; otherwise use one controller's [fallback ledger](references/control/durable-work-ledger.md). No leases, daemons, event stores, or compatibility readers.
-
-## Optional specialist references
-
-For one material risk load at most one: [tests](references/test/test-suite-lifecycle.md), [recovery](references/recovery/repository-recovery.md), [release/install](references/domain/plugin/package-registration-and-installed-proof.md), or [review](references/review/tier-selection.md). Use the [index](references/index.md) only if none fits; never scan. A second needs a distinct risk.
-
-## Completion truth
-
-Report only completed work and proof run; name blockers, residual risk, and unrun gates. Local completion is not commit, push, merge, release, deploy, or publication.
+Report ordinary success naturally. When states diverge, report `implementation: complete | partial | blocked`, `verification: verified | partial | blocked | inconclusive`, and `release: not_claimed | eligible_only_after_named_gates`. Unrelated red preserves completed implementation; local proof grants no release authority.
