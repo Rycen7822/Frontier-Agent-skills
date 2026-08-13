@@ -2464,7 +2464,6 @@ def _restore_fixture(
     attempt_dir: Path,
 ) -> list[Path]:
     fixture = entry["execute_case_payload"]["fixture"]
-    restored: list[Path] = []
     seen: set[str] = set()
     manifest_rows: list[dict[str, Any]] = []
     for kind in ("initial_files", "initial_state"):
@@ -2486,7 +2485,6 @@ def _restore_fixture(
                 raise RunnerFailure("fixture destination already exists")
             shutil.copy2(source, destination)
             destination.chmod(destination.stat().st_mode | stat.S_IWUSR)
-            restored.append(destination)
             manifest_rows.append({
                 "kind": kind,
                 **artifact_record(
@@ -2506,8 +2504,7 @@ def _restore_fixture(
     }
     manifest_path = attempt_dir / "fixture-initial-manifest.json"
     atomic_write_json(manifest_path, manifest)
-    restored.append(manifest_path)
-    return restored
+    return [manifest_path]
 
 
 def _write_final_manifest(
