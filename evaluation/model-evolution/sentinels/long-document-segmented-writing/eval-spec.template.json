@@ -215,8 +215,10 @@
     "reset_policy": "fresh-workspace",
     "retry_policy": {
       "backoff_seconds": 0,
-      "max_attempts": 1,
-      "retryable_apparatus_classes": []
+      "max_attempts": 2,
+      "retryable_apparatus_classes": [
+        "official_transient"
+      ]
     },
     "timeout_seconds": 1230
   },

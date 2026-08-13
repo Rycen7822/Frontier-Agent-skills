@@ -59,6 +59,11 @@ def qualification_request_ceilings(
     calibration_requests = 0
     holdout_cases = 0
     repeat_counts: set[int] = set()
+    expected_retry_policy = {
+        "max_attempts": 2,
+        "retryable_apparatus_classes": ["official_transient"],
+        "backoff_seconds": 0,
+    }
     for skill_id in SKILL_IDS:
         record = sentinel["skills"][skill_id]
         spec = load_json(
@@ -71,6 +76,8 @@ def qualification_request_ceilings(
         if isinstance(repeats, bool) or not isinstance(repeats, int):
             raise ContractError(f"{skill_id} sentinel repeats are invalid")
         repeat_counts.add(repeats)
+        if spec.get("execution", {}).get("retry_policy") != expected_retry_policy:
+            raise ContractError(f"{skill_id} sentinel retry policy differs")
         scenarios = resolve_binding(
             record["public_scenarios"], repository_root, campaign_root
         ).read_bytes().splitlines()
@@ -103,7 +110,11 @@ def qualification_request_ceilings(
         )
         for owner in SKILL_IDS
     )
-    execute = (current_execute + candidate_cases * 2 + holdout_cases * 2) * repeats
+    execute = (
+        (current_execute + candidate_cases * 2 + holdout_cases * 2)
+        * repeats
+        * expected_retry_policy["max_attempts"]
+    )
     model_grade = calibration_requests + execute
     return {
         "provider_requests": probe_count + execute + model_grade,
