@@ -337,10 +337,25 @@ def _selected_plugin_build(
     )
     if not isinstance(evidence, dict):
         raise ContractError("plugin build evidence must be an object")
+    expected_bundle_id = campaign["product"]["bundle_id"]
+    expected_bundle_version = campaign["product"]["bundle_version"]
+    if final_binding is not None and campaign["candidate"] is not None:
+        try:
+            parts = tuple(int(part) for part in expected_bundle_version.split("."))
+        except ValueError as exc:
+            raise ContractError("campaign Bundle version is invalid") from exc
+        if len(parts) != 3 or not expected_bundle_id.endswith(
+            f"/{expected_bundle_version}"
+        ):
+            raise ContractError("campaign Bundle identity cannot derive candidate minor")
+        expected_bundle_version = f"{parts[0]}.{parts[1] + 1}.0"
+        expected_bundle_id = (
+            expected_bundle_id.rsplit("/", 1)[0] + f"/{expected_bundle_version}"
+        )
     if (
         evidence.get("schema_version") != "plugin-build-evidence/4.0"
-        or evidence.get("bundle_id") != campaign["product"]["bundle_id"]
-        or evidence.get("bundle_version") != campaign["product"]["bundle_version"]
+        or evidence.get("bundle_id") != expected_bundle_id
+        or evidence.get("bundle_version") != expected_bundle_version
         or not isinstance(evidence.get("source_revision"), str)
         or not re.fullmatch(r"[0-9a-f]{40}", evidence["source_revision"])
         or not isinstance(evidence.get("source_tree_hash"), str)

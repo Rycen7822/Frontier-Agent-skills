@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/frontier/model-evolution/residual-clause-map-v1.schema.json",
+  "title": "Residual clause map v1",
+  "type": "object",
+  "required": ["schema_version", "clauses"],
+  "properties": {
+    "schema_version": {"const": "residual-clause-map/1"},
+    "clauses": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": ["clause_id", "source_path", "section_heading", "purpose", "case_ids"],
+        "properties": {
+          "clause_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+          "source_path": {"type": "string", "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"},
+          "section_heading": {"type": "string", "minLength": 1, "maxLength": 128},
+          "purpose": {"type": "string", "minLength": 1, "maxLength": 256},
+          "case_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -8,6 +8,7 @@ This directory owns the bounded qualification campaign used when a Codex Host or
 - `schemas/interaction-probes-v2.schema.json` defines the bounded Host probe set.
 - `schemas/sentinel-index-v2.schema.json` indexes the four Skill sentinel suites.
 - `schemas/qualification-v3.schema.json` defines the decision-axis qualification projection.
+- `residual-clauses/software-quality-workflows.json` binds each evolvable SQW H2 clause to its public cases; section bytes are computed from source when selecting one candidate clause.
 - `codex-interaction-probes-v2.json` contains six model-independent Host probes.
 - `sentinel-index-v2.json` binds the four generated public suites under `sentinels/`.
 - `evaluation/fixtures/skill-evaluator/` is the single model-free compile-run-analyze fixture used by controller preflight and the public lifecycle test.
@@ -30,6 +31,8 @@ Each binding follows its source owner:
 6. `verify-plan` rebuilds a selected plan, while `register-plan` records its plan ID, content digest, Host identity, request ceiling, and initial runner counts.
 7. `record` joins analysis and comparison evidence by readable plan IDs and campaign roles.
 8. `status` projects the next legal event and durable worker state; `qualify` publishes JSON and Markdown; `verify` reprojects that qualification in a fresh process.
+
+Bundle 8.0 bootstrap keeps `candidate=null`, records one closed revision report per Skill against the signed 7.0 source, and admits the final plugin only after all four reports. Later SQW evolution registers at most one prebuilt candidate for one transition classification: native absorption selects the largest eligible clause, routing changes preserve the runtime body, and source candidates advance the owner Skill and Bundle by one minor before holdout freeze.
 
 Every mutation uses `--expected-revision`. Long-running evaluation remains owned by `run_eval_plan.py` and its durable `systemd --user` worker. Raw receipts, Host streams, calibration records, and exposed holdout inputs remain available at their recorded locations.
 

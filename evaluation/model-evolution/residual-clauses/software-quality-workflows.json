@@ -1,0 +1,71 @@
+{
+  "schema_version": "residual-clause-map/1",
+  "clauses": [
+    {
+      "clause_id": "native-default",
+      "source_path": "software-quality-workflows/SKILL.md",
+      "section_heading": "Native default",
+      "purpose": "Keep routine work native and scoped to its smallest owner seam.",
+      "case_ids": ["software-quality-workflows-routine-local-edit"]
+    },
+    {
+      "clause_id": "observable-contract",
+      "source_path": "software-quality-workflows/SKILL.md",
+      "section_heading": "Observable contract",
+      "purpose": "Freeze observable behavior before cross-cutting implementation.",
+      "case_ids": ["software-quality-workflows-cross-cutting-contract"]
+    },
+    {
+      "clause_id": "evidence-selection",
+      "source_path": "software-quality-workflows/SKILL.md",
+      "section_heading": "Evidence selection",
+      "purpose": "Pull the lowest evidence that resolves the remaining risk.",
+      "case_ids": [
+        "software-quality-workflows-routine-local-edit",
+        "software-quality-workflows-harness-setup-failure",
+        "software-quality-workflows-material-risk-escalation"
+      ]
+    },
+    {
+      "clause_id": "failure-ownership",
+      "source_path": "software-quality-workflows/SKILL.md",
+      "section_heading": "Failure ownership",
+      "purpose": "Classify a failure before changing implementation or oracle.",
+      "case_ids": [
+        "software-quality-workflows-preexisting-unrelated-red",
+        "software-quality-workflows-invalid-oracle",
+        "software-quality-workflows-harness-setup-failure"
+      ]
+    },
+    {
+      "clause_id": "progress-stop",
+      "source_path": "software-quality-workflows/SKILL.md",
+      "section_heading": "Progress stop",
+      "purpose": "Stop unchanged failure loops under a fixed observation budget.",
+      "case_ids": [
+        "software-quality-workflows-repeated-identical-failure",
+        "software-quality-workflows-stochastic-failure"
+      ]
+    },
+    {
+      "clause_id": "test-retention",
+      "source_path": "software-quality-workflows/SKILL.md",
+      "section_heading": "Test retention",
+      "purpose": "Retain durable test value and remove temporary or invalid probes.",
+      "case_ids": [
+        "software-quality-workflows-test-retention-boundary",
+        "software-quality-workflows-invalid-oracle"
+      ]
+    },
+    {
+      "clause_id": "completion-truth",
+      "source_path": "software-quality-workflows/SKILL.md",
+      "section_heading": "Completion truth",
+      "purpose": "Report implementation, verification, and release independently.",
+      "case_ids": [
+        "software-quality-workflows-preexisting-unrelated-red",
+        "software-quality-workflows-repeated-identical-failure"
+      ]
+    }
+  ]
+}

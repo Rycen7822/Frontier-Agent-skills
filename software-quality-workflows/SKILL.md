@@ -14,17 +14,23 @@ metadata:
 
 # Software Quality Workflows
 
-## Execute by unresolved risk
+## Native default
 
 Preserve work, scope, authority, and evidence at material boundaries. Bind claims to their oracle, coverage, freshness, limitations, and raw reference. The owner seam is the smallest code/API/config/test/component controlling behavior.
 
-Keep known-seam work Direct and change its smallest coherent owner set. Before cross-cutting/API/data/error/migration work, freeze observable input/output, invariants, errors, compatibility, and non-goals.
+Keep known-seam work Direct and change its smallest coherent owner set.
+
+## Observable contract
+
+Before cross-cutting/API/data/error/migration work, freeze observable input/output, invariants, errors, compatibility, and non-goals.
+
+## Evidence selection
 
 Complete coherent edits before proof. If no conclusion-changing risk or gate remains, close. Otherwise use the lowest deciding evidence, escalating from inspection/direct examples through focused/affected checks to integration or high-cost gates only when needed. Cover changed behavior and its nearest protected control; filtering proof covers retained values and order.
 
 Load [authority](references/control/scope-authority-and-effects.md) when effects, protected work, source identity, or writers are unresolved.
 
-## Own failures and progress
+## Failure ownership
 
 Classify a failed check before another edit:
 
@@ -36,11 +42,15 @@ Classify a failed check before another edit:
 - `stochastic`: follow the predeclared seed/state, trial limit, and decision rule.
 - `unknown`: run one cheap discriminator; finish inconclusive if ownership stays unknown.
 
+## Progress stop
+
 Use `(command_sha256, exit_code, output_sha256)` for command failures. In one unchanged workspace/trial state, run an identical failure at most twice. Continue only to change the hypothesis, owner, signature, or independent observation. If one discriminator changes none, stop `verification_blocked` or `verification_inconclusive`. Treat Host/provider timeout as unobserved apparatus.
 
-## Tests, state, and completion
+## Test retention
 
 Classify only new or changed tests with unclear disposition. Keep stable contracts, regressions, and material risk boundaries; remove probes, duplicates, and retired-behavior tests. Use strict test-first only when required, oracle and harness are sound, behavior is narrow/fast, and a stop budget is fixed. Load [test lifecycle](references/test/test-suite-lifecycle.md) for material migration risk.
+
+## Completion truth
 
 Create durable state or a digest only for a cross-context consumer, external effect, staged release, or multiple writers. Prefer host/repo state; otherwise use one [fallback ledger](references/control/durable-work-ledger.md). Route other risks through the [index](references/index.md).
 

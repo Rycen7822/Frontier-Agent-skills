@@ -28,6 +28,7 @@ SCHEMA_FILES = {
     "interaction_probes": "interaction-probes-v2.schema.json",
     "sentinel_index": "sentinel-index-v2.schema.json",
     "qualification": "qualification-v3.schema.json",
+    "residual_clause_map": "residual-clause-map-v1.schema.json",
 }
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -643,7 +644,17 @@ def evaluator_evidence_status(
             )
         if result.get("kind") != "model_transition":
             return "blocked"
-        return "pass" if result.get("classification") == "retained_specialized_value" else "blocked"
+        actionable = result.get("classification") in {
+            "retained_specialized_value",
+            "native_capability_absorption_candidate",
+            "stable_no_incremental_value",
+            "routing_loss",
+            "loading_loss",
+            "application_loss",
+            "skill_interference",
+            "insufficient_specialization",
+        }
+        return "pass" if actionable else "blocked"
     if kind == "grader_calibration":
         _validate_external_schema(
             value,
