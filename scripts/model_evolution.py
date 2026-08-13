@@ -399,7 +399,7 @@ def _init(args: argparse.Namespace) -> None:
             for skill_id in SKILL_IDS
         },
     )
-    validate_target_host_staging(
+    target_host = validate_target_host_staging(
         fixed["target_host"],
         plugin_root,
         repository_root=repository_root,
@@ -407,6 +407,13 @@ def _init(args: argparse.Namespace) -> None:
         expected_tree=identity["tree"],
     )
     probe_set = load_json(fixed["probe_set"], label="interaction probe set")
+    validate_document(probe_set, "interaction_probes")
+    expected_capabilities = [row["capability"] for row in probe_set["probes"]]
+    actual_capabilities = [
+        row["capability"] for row in target_host["capabilities"]
+    ]
+    if actual_capabilities != expected_capabilities:
+        raise CliError("target Host capabilities differ from the interaction probe set")
     sentinel = load_json(fixed["sentinel"], label="sentinel index")
     request_ceilings = qualification_request_ceilings(
         sentinel,
