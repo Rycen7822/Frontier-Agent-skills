@@ -640,6 +640,9 @@ def status_projection(
         }
         for item in plan_statuses
         if item.get("invalid_attempts", 0)
+        and item.get("remaining_entries", 0)
+        and item.get("next_attempt") is None
+        and not item.get("active_attempts", [])
         and not item.get("recoverable_attempts", [])
     ]
     effective_blockers = [*blockers, *plan_blockers]

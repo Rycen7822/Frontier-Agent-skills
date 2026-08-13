@@ -319,6 +319,17 @@ def _run_probe_process(
     workspace: Path,
     timeout: float,
 ) -> tuple[dict[str, Any], str]:
+    probe_argv = list(argv)
+    positions = [
+        index for index, item in enumerate(probe_argv) if item == "--sandbox"
+    ]
+    if (
+        len(positions) != 1
+        or positions[0] + 1 >= len(probe_argv)
+        or row.get("sandbox") not in {"read-only", "workspace-write"}
+    ):
+        raise OperationError("interaction probe sandbox is invalid")
+    probe_argv[positions[0] + 1] = row["sandbox"]
     request = {
         "schema_version": "codex-interaction-probe/1.0",
         "probe_id": row["probe_id"],
@@ -328,7 +339,7 @@ def _run_probe_process(
     }
     try:
         process = subprocess.Popen(
-            argv,
+            probe_argv,
             cwd=workspace,
             text=True,
             stdin=subprocess.PIPE,

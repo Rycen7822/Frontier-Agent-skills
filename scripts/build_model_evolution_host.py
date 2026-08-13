@@ -26,6 +26,7 @@ from _codex_eval_delivery import (  # noqa: E402
     isolated_tool_schema_id,
     validate_plugin_catalog,
 )
+from _codex_eval_isolation import ISOLATED_SANDBOX_POLICY_IDS  # noqa: E402
 import codex_eval_host  # noqa: E402
 
 
@@ -272,7 +273,7 @@ def build_host(
         "--plugin-root",
         str(plugin_root),
         "--sandbox",
-        "read-only",
+        "workspace-write",
         "--timeout",
         str(TARGET_TIMEOUT_SECONDS),
     ]
@@ -317,7 +318,7 @@ def build_host(
         "model": TARGET_MODEL,
         "model_revision": _model_revision(TARGET_MODEL, codex_version),
         "monotonic_clock_id": "python-time-monotonic",
-        "policy_id": "frontier-read-only-v1",
+        "policy_id": ISOLATED_SANDBOX_POLICY_IDS["workspace-write"],
         "pricing_id": "provider-account-not-recorded",
         "prompt_id": "model-evolution-sentinel-v2",
         "provider": "openai-via-codex-cli",

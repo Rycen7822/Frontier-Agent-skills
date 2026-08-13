@@ -14,6 +14,7 @@ from verify_common import emit, terminal_checks  # noqa: E402
 
 
 WORKSPACE = Path("workspace")
+HOST_INITIAL_PATHS = {"reset-proof.json"}
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -55,6 +56,11 @@ def _select_contract(
     if len(matches) != 1:
         raise ValueError("initial fixture set does not select one case contract")
     return matches[0]
+
+
+def _case_initial_paths(initial: dict[str, str]) -> list[str]:
+    """Return business fixtures without Host-owned reset evidence."""
+    return sorted(path for path in initial if path not in HOST_INITIAL_PATHS)
 
 
 def _command_errors(
@@ -179,7 +185,7 @@ def _workspace_errors(
         }
     )
     errors = []
-    if sorted(initial) != contract["initial_paths"]:
+    if _case_initial_paths(initial) != contract["initial_paths"]:
         errors.append("initial paths differ")
     if host.get("changed_paths") != changed:
         errors.append("Host changed paths differ from workspace evidence")
@@ -202,7 +208,7 @@ def _evaluate() -> dict[str, tuple[bool, str]]:
     host = _load_json(WORKSPACE / "host-observation.json")
     contracts = _load_json(Path(__file__).with_name("case-contracts.json"))
     initial = _records(workspace.get("initial"), "initial snapshot")
-    contract = _select_contract(contracts, sorted(initial))
+    contract = _select_contract(contracts, _case_initial_paths(initial))
     final_answer = (
         (WORKSPACE / "final-answer.md").read_text(encoding="utf-8").casefold()
     )

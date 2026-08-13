@@ -13,6 +13,11 @@ ISOLATED_CODEX_BIN = "/run/frontier-codex-bin"
 ISOLATED_HOME = "/run/frontier-home"
 ISOLATED_OUTPUT = "/tmp/frontier-output"
 ISOLATED_WORKSPACE = "/tmp/frontier-workspace"
+ISOLATED_SANDBOX_POLICY_IDS = {
+    "read-only": "frontier-read-only-v1",
+    "workspace-write": "frontier-isolated-workspace-write-v1",
+}
+PROTECTED_WORKSPACE_ROOTS = (".agents", ".git")
 
 
 class IsolationError(ValueError):
@@ -47,8 +52,8 @@ def isolated_child_argv(
     workspace: Path,
     codex_home: Path,
 ) -> list[str]:
-    if sandbox != "read-only":
-        raise IsolationError("model-evolution isolation requires read-only sandbox")
+    if sandbox not in ISOLATED_SANDBOX_POLICY_IDS:
+        raise IsolationError("model-evolution isolation sandbox is unsupported")
     if source_root.parent.name != ".worktrees":
         raise IsolationError(
             "source worktree is outside the in-repository worktree root"
@@ -89,12 +94,27 @@ def isolated_child_argv(
             )
         rewritten[cwd_position] = ISOLATED_WORKSPACE
 
+    workspace_mount = "--ro-bind" if sandbox == "read-only" else "--bind"
+    workspace_mounts = [workspace_mount, str(workspace), ISOLATED_WORKSPACE]
+    if sandbox == "workspace-write":
+        for name in PROTECTED_WORKSPACE_ROOTS:
+            protected = workspace / name
+            if not protected.exists():
+                continue
+            if protected.is_symlink() or not protected.is_dir():
+                raise IsolationError(f"workspace infrastructure is invalid: {name}")
+            workspace_mounts.extend([
+                "--ro-bind",
+                str(protected),
+                f"{ISOLATED_WORKSPACE}/{name}",
+            ])
+
     return [
         str(isolation_tool),
         "--ro-bind", "/", "/",
         "--tmpfs", "/tmp",
         "--dir", ISOLATED_WORKSPACE,
-        "--ro-bind", str(workspace), ISOLATED_WORKSPACE,
+        *workspace_mounts,
         "--dir", ISOLATED_OUTPUT,
         "--bind", str(output_dir), ISOLATED_OUTPUT,
         "--tmpfs", "/run",
