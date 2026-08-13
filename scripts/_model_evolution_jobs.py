@@ -40,10 +40,11 @@ def verify_systemd_user(
     state = _run(
         ["systemctl", "--user", "is-system-running"],
         cwd=Path.cwd(),
+        acceptable={0, 1},
         timeout=30,
     ).stdout.strip()
-    if state != "running":
-        raise OperationError("systemd user manager is not running")
+    if state not in {"running", "degraded"}:
+        raise OperationError(f"systemd user manager is not usable: {state}")
     manager_lines = _run(
         ["systemctl", "--user", "show-environment"],
         cwd=Path.cwd(),
