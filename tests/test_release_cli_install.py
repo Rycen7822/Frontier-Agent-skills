@@ -45,12 +45,14 @@ class ReleaseCliInstallTests(unittest.TestCase):
         release_authorization_path = required_absolute_path(
             "FRONTIER_RELEASE_AUTHORIZATION"
         )
+        qualification_path = required_absolute_path("FRONTIER_QUALIFICATION")
         work_root = required_absolute_path("FRONTIER_CLI_WORK_ROOT", directory=True)
         codex_bin = required_absolute_path("FRONTIER_CODEX_BIN")
         self.assertEqual(
             run_root / "release-authorization.json",
             release_authorization_path,
         )
+        self.assertEqual(run_root / "qualification.json", qualification_path)
         self.assertTrue(codex_bin.stat().st_mode & stat.S_IXUSR, "Codex binary is not executable")
 
         release_root = run_root / "release"
@@ -86,6 +88,7 @@ class ReleaseCliInstallTests(unittest.TestCase):
             plugin,
             build_path,
             release_authorization_path,
+            qualification_path,
             static_path,
             marketplace,
             work_root,

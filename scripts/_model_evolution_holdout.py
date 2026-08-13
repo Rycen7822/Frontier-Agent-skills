@@ -13,7 +13,6 @@ from _model_evolution_contract import (
     ContractError,
     SKILL_IDS,
     canonical_bytes,
-    content_hash,
     load_json,
     load_jsonl,
     resolve_binding,

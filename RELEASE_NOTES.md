@@ -1,5 +1,15 @@
 # Release Notes
 
+## Bundle 8.0.0 source-complete candidate
+
+Bundle 8.0.0 advances Skill Evaluator to 5.0.0, Software Quality Workflows to 11.0.0, and Writing Plans to 8.4.0 at schema epoch 7; Long Document remains 2.0.0. Long Document and Writing Plans are implicit-eligible, while Skill Evaluator and SQW are explicit-only. The activation ceiling remains `implicit_local_pilot`, and `remote_writes` remains false.
+
+Evaluator evidence now keeps task behavior, protected safety, routing, operational cost, loop pathology, apparatus validity, and manual authority as independent decision axes. The Codex Host emits four fixed attempt artifacts with bounded timeline and reset evidence. SQW selects the lowest conclusion-changing evidence, classifies failure ownership before another edit, stops unchanged failure loops, and reports implementation, verification, and release truth separately. Writing Plans binds acceptance, minimum evidence, external gates, stop states, and cleanup without prescribing patch-by-patch proof order.
+
+Model evolution can complete a four-Skill bootstrap without manufacturing a candidate, localizes an SQW residual to one mapped clause, and permits one exact Skill-plus-Bundle minor candidate only when evidence selects it. Qualification v3 binds the selected source, plugin, Skill roots, observed Host, claim, limits, and validity interval.
+
+Release authorization v3 projects and hashes that exact qualification. Release builders require the qualification and authorization together and reject drift, expiry, unobserved Host identity, or non-releasable decisions. Passing the deterministic repository, package, plugin, archive, and static gates establishes source completeness only; this candidate has not issued a live qualification, release authorization, installation, or publication claim.
+
 ## Bundle 7.0.0 readable evidence boundaries
 
 Bundle 7.0.0 advances Long Document to 2.0.0, Skill Evaluator to 4.0.0, Software Quality Workflows to 10.0.0, and Writing Plans to 8.3.0 at schema epoch 6. The existing mixed activation matrix remains: Long Document, SQW, and Writing Plans are implicit-eligible; Skill Evaluator is explicit-only.

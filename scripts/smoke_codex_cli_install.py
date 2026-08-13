@@ -126,6 +126,7 @@ def _run_validator(
     plugin_root: Path,
     build_evidence_path: Path,
     release_authorization_path: Path,
+    qualification_path: Path,
     *,
     environment: dict[str, str],
     cwd: Path,
@@ -142,6 +143,8 @@ def _run_validator(
             str(build_evidence_path),
             "--release-authorization",
             str(release_authorization_path),
+            "--qualification",
+            str(qualification_path),
         ],
         cwd=cwd,
         env=environment,
@@ -310,6 +313,7 @@ def run_cli_smoke(
     plugin_root: Path,
     build_evidence_path: Path,
     release_authorization_path: Path,
+    qualification_path: Path,
     static_smoke_path: Path,
     marketplace_root: Path,
     work_root: Path,
@@ -339,6 +343,7 @@ def run_cli_smoke(
     if tree_hash(source_records) != build.get("plugin_tree_hash"):
         raise ValueError("source plugin tree differs from build evidence")
     release_authorization_path = release_authorization_path.resolve(strict=True)
+    qualification_path = qualification_path.resolve(strict=True)
     if not RELEASE_VALIDATOR.is_file() or RELEASE_VALIDATOR.is_symlink():
         raise ValueError("repository release validator is missing or symlinked")
     codex_bin = _resolve_codex(codex_command)
@@ -354,6 +359,7 @@ def run_cli_smoke(
             plugin_root,
             build_evidence_path,
             release_authorization_path,
+            qualification_path,
             environment=environment,
             cwd=marketplace_root,
         )
@@ -433,6 +439,7 @@ def run_cli_smoke(
             installed_root,
             build_evidence_path,
             release_authorization_path,
+            qualification_path,
             environment=environment,
             cwd=marketplace_root,
         )
@@ -545,6 +552,7 @@ def run_cli_smoke(
             "activation_ceiling": activation_ceiling,
             "release_gate": "passed" if release_eligible else "blocked_prerequisites",
             "blocking_prerequisites": [] if release_eligible else [
+                "model_qualification",
                 "release_authorization",
                 "signed_clean_source_revision",
             ],
@@ -583,6 +591,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plugin-root", type=Path, required=True)
     parser.add_argument("--build-evidence", type=Path, required=True)
     parser.add_argument("--release-authorization", type=Path, required=True)
+    parser.add_argument("--qualification", type=Path, required=True)
     parser.add_argument("--static-smoke", type=Path, required=True)
     parser.add_argument("--marketplace-root", type=Path, required=True)
     parser.add_argument("--work-root", type=Path, required=True)
@@ -594,6 +603,7 @@ def main(argv: list[str] | None = None) -> int:
             args.plugin_root,
             args.build_evidence,
             args.release_authorization,
+            args.qualification,
             args.static_smoke,
             args.marketplace_root,
             args.work_root,
