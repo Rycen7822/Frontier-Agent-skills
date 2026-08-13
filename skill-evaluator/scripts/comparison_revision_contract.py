@@ -7,7 +7,13 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from comparison_contract import CycleCapsule, make_diagnostic
-from evidence_io import canonical_json_bytes
+from evidence_io import (
+    canonical_json_bytes,
+    file_sha256,
+    load_json,
+    normalize_relative_path,
+    resolve_contained_path,
+)
 
 
 _FIXED_EXECUTION_PROFILE = (
@@ -144,13 +150,17 @@ def _project_treatment(treatment: dict[str, Any]) -> dict[str, Any]:
 def _project_catalog_entries(
     entries: list[dict[str, Any]],
     subject_id: str,
+    *,
+    bundle_mode: bool = False,
 ) -> list[dict[str, Any]]:
     projected_entries = []
     for entry in entries:
         projected = deepcopy(entry)
-        if projected["id"] == subject_id:
+        if bundle_mode or projected["id"] == subject_id:
             projected.pop("root_digest", None)
             projected.pop("version", None)
+        if bundle_mode:
+            projected.pop("description", None)
         projected_entries.append(projected)
     return projected_entries
 
@@ -158,6 +168,8 @@ def _project_catalog_entries(
 def _project_entry(
     entry: dict[str, Any],
     subject_id: str,
+    *,
+    bundle_mode: bool = False,
 ) -> dict[str, Any]:
     projected = deepcopy(entry)
     projected.pop("artifact_relpath", None)
@@ -167,6 +179,7 @@ def _project_entry(
         payload["catalog"] = _project_catalog_entries(
             payload["catalog"],
             subject_id,
+            bundle_mode=bundle_mode,
         )
         payload["treatment"] = _project_treatment(payload["treatment"])
         payload["fixture"].pop("sha256", None)
@@ -174,7 +187,9 @@ def _project_entry(
     return projected
 
 
-def _project_plan(plan: dict[str, Any], subject_id: str) -> dict[str, Any]:
+def _project_plan(
+    plan: dict[str, Any], subject_id: str, *, bundle_mode: bool = False
+) -> dict[str, Any]:
     projected = {field: deepcopy(plan[field]) for field in _PLAN_STABLE_FIELDS}
     projected["compiler"] = {
         key: deepcopy(value)
@@ -184,12 +199,13 @@ def _project_plan(plan: dict[str, Any], subject_id: str) -> dict[str, Any]:
     projected["catalog"] = _project_catalog_entries(
         plan["catalog"],
         subject_id,
+        bundle_mode=bundle_mode,
     )
     projected["treatments"] = [
         _project_treatment(item) for item in plan["treatments"]
     ]
     projected["entries"] = [
-        _project_entry(entry, subject_id)
+        _project_entry(entry, subject_id, bundle_mode=bundle_mode)
         for entry in plan["entries"]
     ]
     return projected
@@ -203,21 +219,37 @@ def cycle_spec_projection(spec: dict[str, Any]) -> dict[str, Any]:
 def cycle_plan_projection(
     plan: dict[str, Any],
     subject_id: str,
+    *,
+    bundle_mode: bool = False,
 ) -> dict[str, Any]:
     """Return execution semantics with cycle-derived identities removed."""
-    return _project_plan(plan, subject_id)
+    return _project_plan(plan, subject_id, bundle_mode=bundle_mode)
 
 
 def _project_catalog(
     catalog: dict[str, Any],
     subject_id: str,
+    *,
+    bundle_mode: bool = False,
 ) -> list[dict[str, Any]]:
-    return _project_catalog_entries(catalog["entries"], subject_id)
+    return _project_catalog_entries(
+        catalog["entries"], subject_id, bundle_mode=bundle_mode
+    )
 
 
-def _project_host(host: dict[str, Any], subject_id: str) -> dict[str, Any]:
+def _project_host(
+    host: dict[str, Any], subject_id: str, *, bundle_mode: bool = False
+) -> dict[str, Any]:
     identity = host["identity"]
     execution = deepcopy(identity["execution"])
+    command = deepcopy(host["command"])
+    if bundle_mode:
+        execution.pop("catalog_id", None)
+        argv = command["argv"]
+        for option in ("--host-manifest", "--plugin-root"):
+            positions = [index for index, item in enumerate(argv) if item == option]
+            if len(positions) == 1 and positions[0] + 1 < len(argv):
+                argv[positions[0] + 1] = f"<{option[2:]}>"
     return {
         "identity": {
             "host_id": identity["host_id"],
@@ -230,10 +262,12 @@ def _project_host(host: dict[str, Any], subject_id: str) -> dict[str, Any]:
             "session_topology": identity["session"]["topology"],
             "execution": execution,
         },
-        "catalog_entries": _project_catalog(host["catalog"], subject_id),
+        "catalog_entries": _project_catalog(
+            host["catalog"], subject_id, bundle_mode=bundle_mode
+        ),
         "capabilities": deepcopy(host["capabilities"]),
         "capture": deepcopy(host["capture"]),
-        "command": deepcopy(host["command"]),
+        "command": command,
         "policy": deepcopy(host["policy"]),
         "reset": deepcopy(host["reset"]),
     }
@@ -266,6 +300,153 @@ def _subject_package_bindings(
             "execution_profile"
         ]["source_revision"],
     }
+
+
+def _bundle_product_problems(
+    capsule: CycleCapsule,
+    product: dict[str, Any],
+) -> list[str]:
+    plan = capsule.execution_plan
+    subject = capsule.spec["subject"]
+    catalog_rows = capsule.host_manifest["catalog"]["entries"]
+    catalog = {
+        row["id"]: row
+        for row in catalog_rows
+        if isinstance(row, dict) and isinstance(row.get("id"), str)
+    }
+    skill_ids = set(product["skills"])
+    problems: list[str] = []
+    if (
+        product["source_revision"] != plan["source_revision"]
+        or product["source_revision"]
+        != plan["execution_profile"]["source_revision"]
+        or product["source_revision"]
+        != subject["package"]["source_revision"]
+    ):
+        problems.append("source revision differs from the cycle")
+    if (
+        skill_ids != set(plan["package_digests"])
+        or skill_ids != set(catalog)
+        or len(catalog) != len(catalog_rows)
+    ):
+        problems.append("Skill set differs from plan or Host catalog")
+        return problems
+    for skill_id, expected in product["skills"].items():
+        row = catalog[skill_id]
+        if (
+            expected["root_hash"] != plan["package_digests"][skill_id]
+            or expected["root_hash"] != row["root_digest"]
+        ):
+            problems.append(f"{skill_id} root hash differs")
+        if expected["version"] != row["version"]:
+            problems.append(f"{skill_id} version differs")
+    subject_id = subject["skill_id"]
+    if product["skills"][subject_id]["version"] != subject["version"]:
+        problems.append("subject version differs")
+    return problems
+
+
+def _bundle_build_problems(
+    plan_path: Path,
+    role: str,
+    product: dict[str, Any],
+) -> list[str]:
+    binding = product["build_evidence"]
+    try:
+        relative = normalize_relative_path(
+            binding["path"], f"{role} Bundle build evidence"
+        )
+        cursor = plan_path.parent
+        for part in PurePosixPath(relative).parts:
+            cursor /= part
+            if cursor.is_symlink():
+                raise ValueError("path contains a symlink")
+        _, path = resolve_contained_path(
+            plan_path.parent,
+            relative,
+            f"{role} Bundle build evidence",
+            kind="file",
+        )
+        if file_sha256(path) != binding["digest"]:
+            raise ValueError("digest differs")
+        evidence = load_json(path)
+    except (OSError, TypeError, ValueError) as exc:
+        return [f"build evidence is invalid: {exc}"]
+    expected = {
+        "schema_version": "plugin-build-evidence/4.0",
+        "source_revision": product["source_revision"],
+        "source_tree_hash": product["source_tree_hash"],
+        "plugin_tree_hash": product["plugin_tree_hash"],
+        "bundle_id": product["bundle_id"],
+        "bundle_version": product["bundle_version"],
+        "skill_versions": {
+            skill_id: row["version"] for skill_id, row in product["skills"].items()
+        },
+        "skill_activation": {
+            skill_id: row["allow_implicit_invocation"]
+            for skill_id, row in product["skills"].items()
+        },
+        "output_class": "staging",
+    }
+    return [
+        f"build evidence {field} differs"
+        for field, value in expected.items()
+        if evidence.get(field) != value
+    ]
+
+
+def _bundle_identity_diagnostics(
+    plan_path: Path,
+    plan: dict[str, Any],
+    prior: CycleCapsule,
+    candidate: CycleCapsule,
+) -> list[dict[str, Any]]:
+    policy = plan["decision_policy"]
+    products = policy["bundle_products"]
+    assert isinstance(products, dict)
+    problems = {
+        role: [
+            *_bundle_product_problems(capsule, products[role]),
+            *_bundle_build_problems(plan_path, role, products[role]),
+        ]
+        for role, capsule in (("prior", prior), ("candidate", candidate))
+    }
+    prior_skills = products["prior"]["skills"]
+    candidate_skills = products["candidate"]["skills"]
+    change_set = policy["change_set"]
+    if set(prior_skills) != set(candidate_skills):
+        problems["cross_cycle"] = ["Bundle Skill sets differ"]
+    else:
+        cross_cycle = []
+        if products["prior"]["source_revision"] == products["candidate"]["source_revision"]:
+            cross_cycle.append("source revisions are identical")
+        if products["prior"]["plugin_tree_hash"] == products["candidate"]["plugin_tree_hash"]:
+            cross_cycle.append("plugin tree hashes are identical")
+        if products["candidate"]["source_revision"] != change_set["candidate_revision"]:
+            cross_cycle.append("candidate revision differs from the change set")
+        if change_set["category"] != "bundle":
+            cross_cycle.append("change-set category is not bundle")
+        if set(change_set["paths"]) != set(candidate_skills):
+            cross_cycle.append("change-set paths differ from the Bundle Skill roots")
+        if not any(
+            prior_skills[skill_id]["root_hash"]
+            != candidate_skills[skill_id]["root_hash"]
+            for skill_id in candidate_skills
+        ):
+            cross_cycle.append("no Skill package changed")
+        problems["cross_cycle"] = cross_cycle
+    if not any(problems.values()):
+        return []
+    return [capsule_diagnostic(
+        plan,
+        candidate,
+        "spec",
+        fact_type="identity_mismatch",
+        reason_key="revision_bundle_binding_invalid",
+        expected="two internally bound Bundle products with one declared revision boundary",
+        observed=problems,
+        json_pointer="/subject/package",
+    )]
 
 
 def estimand(spec: dict[str, Any], metric_id: str) -> dict[str, Any] | None:
@@ -344,11 +525,13 @@ def plan_diagnostic(
 
 
 def identity_diagnostics(
+    plan_path: Path,
     plan: dict[str, Any],
     prior: CycleCapsule,
     candidate: CycleCapsule,
 ) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
+    bundle_mode = plan["decision_policy"]["mode"] == "bundle_noninferiority"
     prior_identity = prior.execution_plan["execution_profile"]
     candidate_identity = candidate.execution_plan["execution_profile"]
     identity_mismatches = [
@@ -386,10 +569,12 @@ def identity_diagnostics(
     prior_plan_projection = cycle_plan_projection(
         prior.execution_plan,
         subject_id,
+        bundle_mode=bundle_mode,
     )
     candidate_plan_projection = cycle_plan_projection(
         candidate.execution_plan,
         subject_id,
+        bundle_mode=bundle_mode,
     )
     if not same(prior_plan_projection, candidate_plan_projection):
         diagnostics.append(capsule_diagnostic(
@@ -407,8 +592,8 @@ def identity_diagnostics(
         ))
 
     if candidate.spec["subject"]["skill_id"] != subject_id or not same(
-        _project_host(prior.host_manifest, subject_id),
-        _project_host(candidate.host_manifest, subject_id),
+        _project_host(prior.host_manifest, subject_id, bundle_mode=bundle_mode),
+        _project_host(candidate.host_manifest, subject_id, bundle_mode=bundle_mode),
     ):
         diagnostics.append(capsule_diagnostic(
             plan,
@@ -416,10 +601,20 @@ def identity_diagnostics(
             "host_manifest",
             fact_type="identity_mismatch",
             reason_key="revision_host_contract_drift",
-            expected="host behavior is unchanged outside the subject Skill binding",
+            expected=(
+                "host behavior is unchanged outside Bundle product identity"
+                if bundle_mode
+                else "host behavior is unchanged outside the subject Skill binding"
+            ),
             observed="the stable host projection or subject Skill ID differs",
             json_pointer="",
         ))
+
+    if bundle_mode:
+        diagnostics.extend(
+            _bundle_identity_diagnostics(plan_path, plan, prior, candidate)
+        )
+        return diagnostics
 
     change_set = plan["decision_policy"]["change_set"]
     candidate_revision = change_set["candidate_revision"]

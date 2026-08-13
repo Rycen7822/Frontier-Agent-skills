@@ -18,13 +18,29 @@ from comparison_contract import (
 )
 from comparison_revision import evaluate_revision
 from comparison_transition import evaluate_transition
+
+
 def _report(
     plan: dict[str, Any],
     capsules: dict[str, CycleCapsule],
     decision: dict[str, Any],
 ) -> dict[str, Any]:
     roles = sorted(capsules, key=ROLE_ORDER.__getitem__)
-    return {
+    bundle_products = (
+        plan["decision_policy"]["bundle_products"]
+        if (
+            plan["kind"] == "revision"
+            and plan["decision_policy"]["mode"] == "bundle_noninferiority"
+        )
+        else None
+    )
+    inputs = []
+    for role in roles:
+        record = capsules[role].report_record()
+        if bundle_products is not None:
+            record["product_identity"] = bundle_products[role]
+        inputs.append(record)
+    report = {
         "schema_version": 3,
         "comparison_id": plan["comparison_id"],
         "kind": plan["kind"],
@@ -37,10 +53,7 @@ def _report(
             ],
         },
         "registration_status": decision["registration_status"],
-        "inputs": [
-            capsules[role].report_record()
-            for role in roles
-        ],
+        "inputs": inputs,
         "comparability_checks": decision["comparability_checks"],
         "metrics": decision["metrics"],
         "result": decision["result"],
@@ -48,6 +61,11 @@ def _report(
         "claim_ceiling": decision["claim_ceiling"],
         "diagnostic_index_path": plan["output"]["diagnostic_index"],
     }
+    if bundle_products is not None:
+        report["registration_policy_digest"] = plan["decision_policy"][
+            "policy_digest"
+        ]
+    return report
 
 
 def _bounded_error(exc: BaseException) -> str:

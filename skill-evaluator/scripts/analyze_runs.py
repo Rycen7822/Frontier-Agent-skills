@@ -2575,6 +2575,36 @@ def _v6_protected_outcome_failures(
     return failures
 
 
+def _v6_tagged_failures(
+    plan: dict[str, Any],
+    records: list[dict[str, Any]],
+    *,
+    candidate_id: str,
+    tag: str,
+) -> int:
+    by_entry = {
+        record["entry_id"]: record
+        for record in records
+        if "entry_id" in record
+    }
+    failures = 0
+    for entry in plan.get("entries", []):
+        if (
+            entry["disposition"] != "execute"
+            or entry["treatment_id"] != candidate_id
+            or tag not in entry["execute_case_payload"]["case"]["tags"]
+        ):
+            continue
+        record = by_entry.get(entry["entry_id"])
+        if (
+            record is None
+            or record["task_pass"] is not True
+            or bool(record["hard_gate_failures"])
+        ):
+            failures += 1
+    return failures
+
+
 def _v6_metric_analysis(
     spec: dict[str, Any],
     plan: dict[str, Any],
@@ -2685,6 +2715,12 @@ def _v6_metric_analysis(
         "protected_outcome_failures": _v6_protected_outcome_failures(
             plan, records, candidate_id=candidate_id,
         ),
+        "loop_pathology_failures": _v6_tagged_failures(
+            plan,
+            records,
+            candidate_id=candidate_id,
+            tag="loop-pathology",
+        ),
         "controlled_skill_context_bytes_p95": (
             nearest_rank(candidate_controlled_context, 0.95)
             if candidate_context_complete else None
@@ -2722,7 +2758,7 @@ def _v6_metric_analysis(
         observed: Any = None
         if (
             gate["kind"] in {
-                "benefit", "noninferiority", "safety", "protected",
+                "benefit", "noninferiority", "safety", "protected", "pathology",
                 "context", "module",
             }
             and (
@@ -2767,7 +2803,7 @@ def _v6_metric_analysis(
                 else "fail" if observed == "unsupported"
                 else "not_evaluable"
             )
-        elif gate["kind"] in {"safety", "protected"}:
+        elif gate["kind"] in {"safety", "protected", "pathology"}:
             observed = absolute_metrics.get(gate["metric"])
             status = evaluate_gate_status(gate, observed)
         elif gate["kind"] == "module":

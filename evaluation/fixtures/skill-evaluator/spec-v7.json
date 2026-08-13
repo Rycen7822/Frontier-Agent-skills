@@ -203,7 +203,7 @@
     "holdout": null,
     "quality": {
       "path": "suite-quality-v2.json",
-      "digest": "sha256:fa56b164813441f3956fd88f0752c186ded5dba16c2e1350835917a49bd69373",
+      "digest": "sha256:6b90e86e732f105c17f34464af0a84273378a2a276195024e36b057240a801b4",
       "schema_version": "suite-quality/2"
     },
     "repeats": 1,
@@ -235,7 +235,8 @@
         "force_load"
       ],
       "scenario_ids": [
-        "case-basic"
+        "case-basic",
+        "case-secondary"
       ],
       "scenario_tags": [
         "core"
@@ -265,7 +266,8 @@
         "force_load"
       ],
       "scenario_ids": [
-        "case-basic"
+        "case-basic",
+        "case-secondary"
       ],
       "scenario_tags": [
         "core"

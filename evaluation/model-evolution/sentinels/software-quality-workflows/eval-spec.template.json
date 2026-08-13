@@ -14,6 +14,18 @@
         "estimand_id": "task-benefit",
         "metric": "task_pass_rate",
         "minimum_benefit": 0.0
+      },
+      {
+        "candidate_treatment_id": "candidate",
+        "comparator_treatment_id": "baseline",
+        "direction": "lower_is_better",
+        "effect": "absolute",
+        "eligible_modules": [
+          "core_outcome"
+        ],
+        "estimand_id": "tool-call-cost",
+        "metric": "task_tool_calls",
+        "minimum_benefit": -1.0
       }
     ],
     "materiality": {
@@ -335,6 +347,26 @@
       "threshold": 24576
     },
     {
+      "authority": "evaluation-owner",
+      "decision_axis": "operational_cost",
+      "direction": "at_least",
+      "gate_id": "tool-call-ceiling",
+      "kind": "noninferiority",
+      "metric": "task_tool_calls",
+      "required": true,
+      "threshold": -1.0
+    },
+    {
+      "authority": "evaluation-owner",
+      "decision_axis": "loop_pathology",
+      "direction": "at_most",
+      "gate_id": "loop-pathology",
+      "kind": "pathology",
+      "metric": "loop_pathology_failures",
+      "required": true,
+      "threshold": 0
+    },
+    {
       "authority": "calibration-owner",
       "decision_axis": "apparatus",
       "direction": "at_least",
@@ -399,7 +431,7 @@
       "path": "scenarios.public.jsonl"
     },
     "quality": {
-      "digest": "sha256:97a292434ab493cd8153acabdc4f10e4fbf704fda5195f2af81c5a5d40f40b33",
+      "digest": "sha256:96ca37943c2b22d79305baf536a930bf3c61647a6e861b29ad244cb273095633",
       "path": "suite-quality.json",
       "schema_version": "suite-quality/2"
     },
@@ -450,6 +482,7 @@
         "core",
         "cross-cutting",
         "failure-ownership",
+        "loop-pathology",
         "material-risk",
         "protected",
         "routine",
@@ -498,6 +531,7 @@
         "core",
         "cross-cutting",
         "failure-ownership",
+        "loop-pathology",
         "material-risk",
         "protected",
         "routine",

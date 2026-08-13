@@ -22,6 +22,7 @@
       "enum": [
         "diagnostic_only",
         "revision_closure",
+        "revision_noninferiority",
         "transition_retention"
       ]
     },
@@ -37,7 +38,7 @@
       "properties": {
         "kind": {"const": "revision"},
         "claim_scope": {
-          "enum": ["diagnostic_only", "revision_closure"]
+          "enum": ["diagnostic_only", "revision_closure", "revision_noninferiority"]
         },
         "input_bindings": {"$ref": "#/$defs/revision_bindings"},
         "decision_policy": {"$ref": "#/$defs/revision_policy"}
@@ -232,7 +233,8 @@
             "script",
             "schema",
             "test",
-            "package"
+            "package",
+            "bundle"
           ]
         },
         "paths": {
@@ -264,7 +266,10 @@
       "type": "object",
       "required": [
         "kind",
+        "mode",
+        "policy_digest",
         "target",
+        "bundle_products",
         "change_set",
         "metric_rules",
         "minimum_distinct_cases",
@@ -273,7 +278,25 @@
       ],
       "properties": {
         "kind": {"const": "revision"},
-        "target": {"$ref": "#/$defs/revision_target"},
+        "mode": {"enum": ["failure_closure", "bundle_noninferiority"]},
+        "policy_digest": {
+          "anyOf": [
+            {"$ref": "#/$defs/sha256"},
+            {"type": "null"}
+          ]
+        },
+        "target": {
+          "anyOf": [
+            {"$ref": "#/$defs/revision_target"},
+            {"type": "null"}
+          ]
+        },
+        "bundle_products": {
+          "anyOf": [
+            {"$ref": "#/$defs/bundle_products"},
+            {"type": "null"}
+          ]
+        },
         "change_set": {"$ref": "#/$defs/change_set"},
         "metric_rules": {
           "type": "array",
@@ -288,6 +311,89 @@
           "items": {"enum": ["task_behavior", "protected_safety", "routing", "operational_cost", "loop_pathology", "apparatus", "manual_authority"]}
         },
         "require_candidate_failure_index": {"type": "boolean"}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"mode": {"const": "failure_closure"}}},
+          "then": {
+            "properties": {
+              "policy_digest": {"type": "null"},
+              "target": {"$ref": "#/$defs/revision_target"},
+              "bundle_products": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"mode": {"const": "bundle_noninferiority"}}},
+          "then": {
+            "properties": {
+              "policy_digest": {"$ref": "#/$defs/sha256"},
+              "target": {"type": "null"},
+              "bundle_products": {"$ref": "#/$defs/bundle_products"},
+              "change_set": {
+                "allOf": [
+                  {"$ref": "#/$defs/change_set"},
+                  {"properties": {"category": {"const": "bundle"}}}
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "bundle_skill": {
+      "type": "object",
+      "required": ["version", "root_hash", "allow_implicit_invocation"],
+      "properties": {
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "root_hash": {"$ref": "#/$defs/sha256"},
+        "allow_implicit_invocation": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "bundle_product": {
+      "type": "object",
+      "required": [
+        "bundle_id",
+        "bundle_version",
+        "source_revision",
+        "source_tree_hash",
+        "plugin_tree_hash",
+        "build_evidence",
+        "skills"
+      ],
+      "properties": {
+        "bundle_id": {"type": "string", "minLength": 1},
+        "bundle_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "source_tree_hash": {"$ref": "#/$defs/sha256"},
+        "plugin_tree_hash": {"$ref": "#/$defs/sha256"},
+        "build_evidence": {
+          "allOf": [
+            {"$ref": "#/$defs/bound_artifact"},
+            {
+              "properties": {
+                "schema": {"const": "plugin-build-evidence/4.0"}
+              }
+            }
+          ]
+        },
+        "skills": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {"$ref": "#/$defs/safe_id"},
+          "additionalProperties": {"$ref": "#/$defs/bundle_skill"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "bundle_products": {
+      "type": "object",
+      "required": ["prior", "candidate"],
+      "properties": {
+        "prior": {"$ref": "#/$defs/bundle_product"},
+        "candidate": {"$ref": "#/$defs/bundle_product"}
       },
       "additionalProperties": false
     },

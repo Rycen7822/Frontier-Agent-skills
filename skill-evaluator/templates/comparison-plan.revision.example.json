@@ -93,6 +93,8 @@
   },
   "decision_policy": {
     "kind": "revision",
+    "mode": "failure_closure",
+    "policy_digest": null,
     "target": {
       "failure_class": "instruction_clarity",
       "diagnostic_ids": [
@@ -105,6 +107,7 @@
         "requirement-1"
       ]
     },
+    "bundle_products": null,
     "change_set": {
       "category": "instruction",
       "paths": [

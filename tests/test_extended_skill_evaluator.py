@@ -193,7 +193,7 @@ class ExtendedSkillEvaluator(unittest.TestCase):
             plan_value = json.loads(plan.read_text(encoding="utf-8"))
             self.assertEqual(3, plan_value["schema_version"])
             self.assertEqual(
-                {"execute": 2, "not_evaluable": 0, "total": 2, "unsupported": 0},
+                {"execute": 4, "not_evaluable": 0, "total": 4, "unsupported": 0},
                 plan_value["expected_counts"],
             )
             old_plan = work / "old-plan.json"
@@ -219,7 +219,7 @@ class ExtendedSkillEvaluator(unittest.TestCase):
                 "--index",
                 str(index),
                 "--new-attempt-budget",
-                "2",
+                "4",
             )
             self.assertEqual(0, executed.returncode, executed.stdout + executed.stderr)
             status = run_script(
@@ -231,7 +231,7 @@ class ExtendedSkillEvaluator(unittest.TestCase):
             )
             self.assertEqual(0, status.returncode, status.stdout + status.stderr)
             self.assertEqual(
-                (2, 2, 0, []),
+                (4, 4, 0, []),
                 tuple(
                     json.loads(status.stdout)[key]
                     for key in (
@@ -262,7 +262,7 @@ class ExtendedSkillEvaluator(unittest.TestCase):
             self.assertEqual("inconclusive_ceiling", summary_value["usefulness_status"])
             self.assertTrue(summary_value["baseline_ceiling"])
             self.assertEqual(
-                [("task-gate", "task_behavior", "not_evaluable")],
+                [("task-gate", "task_behavior", "pass")],
                 [
                     (item["gate_id"], item["decision_axis"], item["status"])
                     for item in summary_value["gate_results"]
@@ -273,7 +273,7 @@ class ExtendedSkillEvaluator(unittest.TestCase):
 
             expected_gates = json.loads((work / "spec-v7.json").read_text())["hard_gates"]
             for label, field, value in (
-                ("forged-status", "status", "pass"),
+                ("forged-status", "status", "fail"),
                 ("cross-axis-alias", "decision_axis", "operational_cost"),
                 ("old-summary", "schema_version", 5),
             ):
@@ -307,7 +307,7 @@ class ExtendedSkillEvaluator(unittest.TestCase):
                     expected_gates=[*expected_gates, failed_gate],
                 )["task_behavior"],
             )
-            self.assertEqual(2, len(list(work.glob("artifacts/entries/*/attempt-0001/receipt.json"))))
+            self.assertEqual(4, len(list(work.glob("artifacts/entries/*/attempt-0001/receipt.json"))))
             self.assertEqual([], list(work.glob("artifacts/entries/*/attempt-0002")))
 
     def test_package_auditor_checks_real_skills_and_broken_input(self) -> None:

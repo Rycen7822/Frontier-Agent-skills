@@ -5,27 +5,39 @@
   "raw_proofs": {
     "golden": {
       "path": "suite-quality-proof.json",
-      "digest": "sha256:2185357714f896ac3ad8533747d14ece2d263d84e5482090e6b3b61098dac4c7"
+      "digest": "sha256:95abc5a0ec2feff8a8cd564646e2907424c4652acee3c1798409b6ca17b1032e"
     },
     "known_bad": {
       "path": "suite-quality-proof.json",
-      "digest": "sha256:2185357714f896ac3ad8533747d14ece2d263d84e5482090e6b3b61098dac4c7"
+      "digest": "sha256:95abc5a0ec2feff8a8cd564646e2907424c4652acee3c1798409b6ca17b1032e"
     },
     "mutations": {
       "path": "suite-quality-proof.json",
-      "digest": "sha256:2185357714f896ac3ad8533747d14ece2d263d84e5482090e6b3b61098dac4c7"
+      "digest": "sha256:95abc5a0ec2feff8a8cd564646e2907424c4652acee3c1798409b6ca17b1032e"
     },
     "reviews": {
       "path": "suite-quality-proof.json",
-      "digest": "sha256:2185357714f896ac3ad8533747d14ece2d263d84e5482090e6b3b61098dac4c7"
+      "digest": "sha256:95abc5a0ec2feff8a8cd564646e2907424c4652acee3c1798409b6ca17b1032e"
     }
   },
-  "duplicate_groups": [],
+  "duplicate_groups": [
+    {
+      "group_id": "shared-fixture",
+      "kind": "fixture_overlap",
+      "case_ids": [
+        "case-basic",
+        "case-secondary"
+      ],
+      "status": "allowed",
+      "review_locator": null
+    }
+  ],
   "provenance_clusters": [
     {
       "cluster_id": "cluster-core",
       "case_ids": [
-        "case-basic"
+        "case-basic",
+        "case-secondary"
       ],
       "source_refs": [
         "cluster-core-source"
@@ -76,40 +88,40 @@
   "coverage": {
     "slices": {
       "core": {
-        "positive": 1,
-        "boundary_or_failure": 1
+        "positive": 2,
+        "boundary_or_failure": 2
       }
     },
     "claims": {
       "scoped-evaluation": {
-        "positive": 1,
-        "boundary_or_failure": 1
+        "positive": 2,
+        "boundary_or_failure": 2
       }
     },
     "modules": {
       "core_outcome": {
-        "positive": 1,
-        "boundary_or_failure": 1
+        "positive": 2,
+        "boundary_or_failure": 2
       }
     },
     "treatments": {
       "baseline": {
-        "positive": 1,
-        "boundary_or_failure": 1
+        "positive": 2,
+        "boundary_or_failure": 2
       },
       "candidate": {
-        "positive": 1,
-        "boundary_or_failure": 1
+        "positive": 2,
+        "boundary_or_failure": 2
       }
     },
     "checks": {
       "outcome-check": {
-        "positive": 1,
-        "boundary_or_failure": 1
+        "positive": 2,
+        "boundary_or_failure": 2
       },
       "safety-check": {
-        "positive": 1,
-        "boundary_or_failure": 1
+        "positive": 2,
+        "boundary_or_failure": 2
       }
     }
   },
@@ -117,7 +129,7 @@
     "known_good_pass": 1.0,
     "known_bad_detection": 1.0,
     "mutation_detection": 1.0,
-    "sample_count": 3
+    "sample_count": 4
   },
   "boundary_coverage": [
     {

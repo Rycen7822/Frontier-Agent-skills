@@ -1,0 +1,90 @@
+{
+  "schema_version": "frontier-bundle-revision-policy/1",
+  "registered_at": "2026-08-13T05:06:49Z",
+  "authority_id": "frontier-evaluation-owner",
+  "prior_bundle_version": "7.0.0",
+  "candidate_bundle_version": "8.0.0",
+  "candidate_activation": {
+    "long-document-segmented-writing": true,
+    "skill-evaluator": false,
+    "software-quality-workflows": false,
+    "writing-plans": true
+  },
+  "skills": {
+    "long-document-segmented-writing": {
+      "minimum_distinct_cases": 6,
+      "required_axes": [
+        "task_behavior",
+        "protected_safety",
+        "operational_cost",
+        "apparatus"
+      ],
+      "metric_rules": [
+        {
+          "purpose": "protected_noninferiority",
+          "metric_id": "task-benefit",
+          "direction": "higher_is_better",
+          "margin": 0.0
+        }
+      ]
+    },
+    "skill-evaluator": {
+      "minimum_distinct_cases": 6,
+      "required_axes": [
+        "task_behavior",
+        "protected_safety",
+        "operational_cost",
+        "apparatus"
+      ],
+      "metric_rules": [
+        {
+          "purpose": "protected_noninferiority",
+          "metric_id": "task-benefit",
+          "direction": "higher_is_better",
+          "margin": 0.0
+        }
+      ]
+    },
+    "software-quality-workflows": {
+      "minimum_distinct_cases": 9,
+      "required_axes": [
+        "task_behavior",
+        "protected_safety",
+        "operational_cost",
+        "loop_pathology",
+        "apparatus"
+      ],
+      "metric_rules": [
+        {
+          "purpose": "protected_noninferiority",
+          "metric_id": "task-benefit",
+          "direction": "higher_is_better",
+          "margin": 0.0
+        },
+        {
+          "purpose": "protected_noninferiority",
+          "metric_id": "tool-call-cost",
+          "direction": "lower_is_better",
+          "margin": 0.0
+        }
+      ]
+    },
+    "writing-plans": {
+      "minimum_distinct_cases": 6,
+      "required_axes": [
+        "task_behavior",
+        "protected_safety",
+        "operational_cost",
+        "apparatus"
+      ],
+      "metric_rules": [
+        {
+          "purpose": "protected_noninferiority",
+          "metric_id": "task-benefit",
+          "direction": "higher_is_better",
+          "margin": 0.0
+        }
+      ]
+    }
+  }
+}

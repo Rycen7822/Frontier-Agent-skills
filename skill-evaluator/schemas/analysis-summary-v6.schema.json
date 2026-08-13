@@ -174,7 +174,7 @@
       "properties": {
         "gate_id": {"$ref": "#/$defs/safe_id"},
         "decision_axis": {"enum": ["task_behavior", "protected_safety", "routing", "operational_cost", "loop_pathology", "apparatus", "manual_authority"]},
-        "kind": {"enum": ["benefit", "noninferiority", "safety", "protected", "context", "quality", "calibration", "host", "module", "manual"]},
+        "kind": {"enum": ["benefit", "noninferiority", "safety", "protected", "pathology", "context", "quality", "calibration", "host", "module", "manual"]},
         "metric": {"$ref": "#/$defs/safe_id"},
         "direction": {"enum": ["at_least", "at_most", "equal", "present"]},
         "threshold": {"anyOf": [{"type": "number"}, {"type": "string", "minLength": 1}, {"type": "boolean"}]},

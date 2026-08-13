@@ -117,6 +117,8 @@ def _scenario(
     if protected and coverage != "protected":
         boundary_tags.append("protected")
     value["tags"] = ["core", coverage, *boundary_tags]
+    if case.get("loop_pathology") is True:
+        value["tags"].append("loop-pathology")
     value["fixture"] = {
         "manifest": "fixtures/manifest.json",
         "sha256": fixture_hash,
@@ -471,6 +473,32 @@ def _spec(
             "authority": "evaluation-owner",
             "required": True,
         },
+        *(
+            [
+                {
+                    "gate_id": "tool-call-ceiling",
+                    "decision_axis": "operational_cost",
+                    "kind": "noninferiority",
+                    "metric": "task_tool_calls",
+                    "direction": "at_least",
+                    "threshold": -1.0,
+                    "authority": "evaluation-owner",
+                    "required": True,
+                },
+                {
+                    "gate_id": "loop-pathology",
+                    "decision_axis": "loop_pathology",
+                    "kind": "pathology",
+                    "metric": "loop_pathology_failures",
+                    "direction": "at_most",
+                    "threshold": 0,
+                    "authority": "evaluation-owner",
+                    "required": True,
+                },
+            ]
+            if skill_id == "software-quality-workflows"
+            else []
+        ),
         {
             "gate_id": "grader-agreement",
             "decision_axis": "apparatus",
@@ -495,6 +523,19 @@ def _spec(
     primary_estimand = value["analysis"]["estimands"][0]
     primary_estimand["minimum_benefit"] = minimum_interval_benefit
     value["analysis"]["estimands"] = [primary_estimand]
+    if skill_id == "software-quality-workflows":
+        value["analysis"]["estimands"].append(
+            {
+                "estimand_id": "tool-call-cost",
+                "metric": "task_tool_calls",
+                "candidate_treatment_id": "candidate",
+                "comparator_treatment_id": "baseline",
+                "direction": "lower_is_better",
+                "effect": "absolute",
+                "minimum_benefit": -1.0,
+                "eligible_modules": ["core_outcome"],
+            }
+        )
     value["analysis"]["slices"] = ["core", "protected"]
     value["analysis"]["materiality"]["minimum_baseline_failure_cases"] = config.get(
         "minimum_baseline_failure_cases", 2
