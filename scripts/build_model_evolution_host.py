@@ -167,6 +167,17 @@ def build_host(
     argv = command.get("argv") if isinstance(command, dict) else None
     if not isinstance(argv, list) or len(argv) < 2:
         raise HostBuildError("template Host command is invalid")
+    capabilities = value.get("capabilities")
+    if not isinstance(capabilities, list) or sum(
+        isinstance(item, dict) and item.get("capability") == "model_grading"
+        for item in capabilities
+    ) != 1:
+        raise HostBuildError("template must contain one model-grading fixture")
+    value["capabilities"] = [
+        item
+        for item in capabilities
+        if not isinstance(item, dict) or item.get("capability") != "model_grading"
+    ]
 
     executable = Path(sys.executable).resolve(strict=True)
     adapter = (repository_root / "scripts/codex_eval_host.py").resolve(strict=True)
