@@ -40,6 +40,8 @@ from _model_evolution_materialization import (
     promoted_model_grading_host,
 )
 
+import analyze_runs as analyzer  # noqa: E402
+
 
 _BUNDLE_FILES = {
     "holdout-manifest.json",
@@ -194,14 +196,19 @@ def _manual_authority(spec: dict[str, Any], root: Path) -> None:
         gate["kind"] for gate in spec["hard_gates"] if gate.get("required") is True
     }
     additions = {
-        "host": ("holdout-host", "host-feasibility", "feasible"),
-        "manual": ("holdout-manual", "manual-approval", "approve"),
+        "host": (
+            "holdout-host", "apparatus", "host-feasibility", "feasible",
+        ),
+        "manual": (
+            "holdout-manual", "manual_authority", "manual-approval", "approve",
+        ),
     }
-    for kind, (gate_id, metric, threshold) in additions.items():
+    for kind, (gate_id, decision_axis, metric, threshold) in additions.items():
         if kind not in required_kinds:
             spec["hard_gates"].append(
                 {
                     "gate_id": gate_id,
+                    "decision_axis": decision_axis,
                     "kind": kind,
                     "metric": metric,
                     "direction": "equal",
@@ -390,7 +397,11 @@ def _build_holdout_plan(
     except ContractError as exc:
         raise MaterializationError(str(exc)) from exc
     execute = sum(item.get("disposition") == "execute" for item in plan["entries"])
-    expected_execute = record["holdout_case_ceiling"] * 2
+    expected_execute = (
+        record["holdout_case_ceiling"]
+        * len(spec["treatments"])
+        * spec["suite"]["repeats"]
+    )
     if execute != expected_execute:
         raise MaterializationError("holdout plan execution count differs from ceiling")
     return {
@@ -544,7 +555,59 @@ def validate_holdout_plan(
         )
         _assert_tree_equal(root, expected_root, label="target_holdout")
     plan = load_json(plan_path, label="holdout plan")
+    spec = load_json(root / "eval-spec.json", label="holdout spec")
     execute = sum(item.get("disposition") == "execute" for item in plan["entries"])
-    if execute != record["holdout_case_ceiling"] * 2:
+    expected_execute = (
+        record["holdout_case_ceiling"]
+        * len(spec["treatments"])
+        * spec["suite"]["repeats"]
+    )
+    if execute != expected_execute:
         raise MaterializationError("holdout plan execution count differs from ceiling")
     return host
+
+
+def prepare_manual_review_receipt(
+    *,
+    campaign_root: Path,
+    skill_id: str,
+    plan_path: Path,
+    decision: str,
+    signature: str,
+) -> dict[str, Path]:
+    """Write and replay the exact manual-authority input receipt for one holdout."""
+    root = campaign_root / "holdout-plans" / skill_id
+    if plan_path != (root / "plan.json").resolve(strict=True):
+        raise MaterializationError("manual review plan is outside its holdout owner")
+    if decision not in {"approve", "hold", "reject"} or not signature.strip():
+        raise MaterializationError("manual review decision or signature is invalid")
+    spec_path = root / "eval-spec.json"
+    spec = load_json(spec_path, label="manual review spec")
+    plan = load_json(plan_path, label="manual review plan")
+    artifacts_root = root / plan["artifacts"]["root"]
+    artifacts_root.mkdir(parents=True, exist_ok=True)
+    binding = analyzer.manual_review_input_binding(spec, spec_path, plan_path)
+    binding_path = artifacts_root / "manual-review-input-binding.json"
+    _write_exact(binding_path, canonical_bytes(binding))
+    receipt = {
+        "schema_version": "manual-review-receipt/1",
+        "reviewer_role": spec["authority"]["manual_review"]["role"],
+        "evidence": [
+            {
+                "type": "frozen-study-input-binding",
+                "artifact": binding_path.name,
+                "digest": _file_hash(binding_path),
+                "schema_version": "manual-review-input-binding/2",
+            }
+        ],
+        "decision": decision,
+        "signature": signature.strip(),
+    }
+    receipt_path = artifacts_root / "manual-review-receipt.json"
+    _write_exact(receipt_path, canonical_bytes(receipt))
+    verified, issue = analyzer.verify_manual_review_receipt(
+        Path(receipt_path.name), spec, spec_path, plan_path
+    )
+    if issue is not None or verified.get("decision") != decision:
+        raise MaterializationError("manual review receipt failed replay")
+    return {"binding": binding_path, "receipt": receipt_path}

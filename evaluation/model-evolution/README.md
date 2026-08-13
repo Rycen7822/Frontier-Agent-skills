@@ -29,7 +29,7 @@ Each binding follows its source owner:
 4. `prepare-calibration` creates one bounded workspace per Skill; `record grader_calibration` binds each validated result.
 5. `prepare-current`, `prepare-candidate`, `prepare-prior`, and `prepare-holdout` materialize evaluator-owned plans from their declared inputs. The prior path validates Bundle 7 with its signed builder while retaining the current Host, compiler, fixtures, and graders as the apparatus identity.
 6. `verify-plan` rebuilds a selected plan, while `register-plan` records its plan ID, content digest, Host identity, request ceiling, and initial runner counts.
-7. `record` joins analysis and comparison evidence by readable plan IDs and campaign roles.
+7. `prepare-manual-review` binds an explicit decision and attestation to one registered holdout plan, then replays the analyzer's receipt contract; `record` joins analysis and comparison evidence by readable plan IDs and campaign roles.
 8. `status` projects the next legal event and durable worker state; `qualify` publishes JSON and Markdown; `verify` reprojects that qualification in a fresh process.
 
 Bundle 8.0 bootstrap keeps `candidate=null`, records one closed revision report per Skill against the signed 7.0 source, and admits the final plugin only after all four reports. Later SQW evolution registers at most one prebuilt candidate for one transition classification: native absorption selects the largest eligible clause, routing changes preserve the runtime body, and source candidates advance the owner Skill and Bundle by one minor before holdout freeze.

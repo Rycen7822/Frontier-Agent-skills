@@ -50,7 +50,11 @@ from _model_evolution_materialization import (
     validate_current_plan,
 )
 from _model_evolution_prior import prepare_prior_plan, validate_prior_plan
-from _model_evolution_holdout import prepare_holdout_plan, validate_holdout_plan
+from _model_evolution_holdout import (
+    prepare_holdout_plan,
+    prepare_manual_review_receipt,
+    validate_holdout_plan,
+)
 from _model_evolution_jobs import (
     render_probe_command,
     render_runner_command,
@@ -952,6 +956,35 @@ def _prepare_holdout(args: argparse.Namespace) -> None:
     })
 
 
+def _prepare_manual_review(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    campaign = _campaign_store(repository_root, campaign_root).read()
+    if campaign["state_revision"] != args.expected_revision:
+        raise CliError("prepare-manual-review expected revision is stale")
+    registered = _registered_plan(campaign, "target_holdout", args.skill_id)
+    plan_path = args.plan.resolve(strict=True)
+    if (
+        resolve_binding(registered["plan"], repository_root, campaign_root)
+        != plan_path
+        or content_hash(plan_path.read_bytes()) != registered["plan_digest"]
+    ):
+        raise CliError("manual review differs from its registered holdout plan")
+    result = prepare_manual_review_receipt(
+        campaign_root=campaign_root,
+        skill_id=args.skill_id,
+        plan_path=plan_path,
+        decision=args.decision,
+        signature=args.signature,
+    )
+    _emit({
+        "skill_id": args.skill_id,
+        "decision": args.decision,
+        "input_binding": str(result["binding"]),
+        "receipt": str(result["receipt"]),
+        "provider_requests": 0,
+    })
+
+
 def _verify_plan(args: argparse.Namespace) -> None:
     repository_root, campaign_root = _roots(args)
     campaign = _campaign_store(repository_root, campaign_root).read()
@@ -1581,6 +1614,15 @@ def _parser() -> argparse.ArgumentParser:
     holdout.add_argument("--plugin-root", type=Path, required=True)
     holdout.add_argument("--holdout-root", type=Path, required=True)
 
+    manual_review = commands.add_parser("prepare-manual-review")
+    manual_review.add_argument("--expected-revision", type=int, required=True)
+    manual_review.add_argument("--skill-id", choices=SKILL_IDS, required=True)
+    manual_review.add_argument("--plan", type=Path, required=True)
+    manual_review.add_argument(
+        "--decision", choices=("approve", "hold", "reject"), required=True
+    )
+    manual_review.add_argument("--signature", required=True)
+
     verify_plan = commands.add_parser("verify-plan")
     verify_plan.add_argument(
         "--role",
@@ -1681,6 +1723,7 @@ def main(argv: list[str] | None = None) -> int:
             "prepare-candidate": _prepare_candidate,
             "prepare-prior": _prepare_prior,
             "prepare-holdout": _prepare_holdout,
+            "prepare-manual-review": _prepare_manual_review,
             "verify-plan": _verify_plan,
             "close-calibration-failure": _close_calibration_failure,
             "close-calibration-rejection": _close_calibration_rejection,

@@ -2045,12 +2045,12 @@ def _validate_level_requirements(
             f"cannot read holdout manifest: {exc}",
         )
         return
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") not in {1, 2}:
         _add_contract_error(
             errors,
             "holdout.manifest",
             "/suite/holdout/manifest",
-            "holdout manifest must be a version-1 object",
+            "holdout manifest must be a supported version object",
         )
         return
     manifest_payload = manifest.get("payload_file")
@@ -2069,9 +2069,14 @@ def _validate_level_requirements(
             f"holdout manifest payload is invalid: {exc}",
         )
         return
+    payload_digest = (
+        manifest.get("payload_digest")
+        if manifest.get("schema_version") == 2
+        else manifest.get("payload_sha256")
+    )
     if (
         declared_payload != payload_path
-        or manifest.get("payload_sha256") != file_sha256(payload_path)
+        or payload_digest != file_sha256(payload_path)
         or manifest.get("custodian") != holdout.get("custodian")
         or manifest.get("exposure_status")
         != holdout.get("exposure_status")
