@@ -47,12 +47,14 @@ NEXT_EVENT = {
     "target_profile_ready": "record grader_calibration or register-plan target_current",
     "calibration_ready": "register-plan target_current",
     "current_evidence_ready": "record transition_report",
-    "decision_ready": "record candidate_source or plugin_build",
+    "decision_ready": "record revision_report, candidate_source, or plugin_build",
     "candidate_registered": "register-plan target_candidate",
     "candidate_evidence_ready": "record plugin_build",
     "final_plugin_ready": "register-plan target_holdout",
     "holdout_ready": "qualify",
 }
+
+
 class StateError(ValueError):
     """A campaign state, transition, or concurrency failure."""
 
@@ -266,7 +268,14 @@ def record_evidence(
     if role == "plugin_build":
         if skill_id is not None or state["skill_evidence"]["plugin_build"] is not None:
             raise StateError("plugin build identity or cardinality is invalid")
-        if state["phase"] == "decision_ready" and state["candidate"] is None:
+        if (
+            state["phase"] == "decision_ready"
+            and state["candidate"] is None
+            and all(
+                state["skill_evidence"][item]["revision_report"] is not None
+                for item in SKILL_IDS
+            )
+        ):
             state["skill_evidence"]["plugin_build"] = binding
             state["phase"] = "final_plugin_ready"
             return
@@ -295,7 +304,7 @@ def record_evidence(
         "revision_report": (
             "revision_report",
             None,
-            {"candidate_registered"},
+            {"candidate_registered", "decision_ready"},
         ),
         "holdout_summary": (
             "holdout_summary",
@@ -307,6 +316,10 @@ def record_evidence(
         field, required_plan, allowed_phases = field_role[role]
     except KeyError as exc:
         raise StateError(f"unsupported evidence role: {role}") from exc
+    if role == "revision_report" and state["phase"] == "decision_ready" and (
+        state["candidate"] is not None or state["profiles"]["predecessor"] is not None
+    ):
+        raise StateError("decision-ready revision is only legal for candidate-null bootstrap")
     if state["phase"] not in allowed_phases:
         raise StateError(f"{role} is not legal from {state['phase']}")
     if required_plan is not None and not _has_plan(state, required_plan, skill_id):
@@ -328,10 +341,14 @@ def record_evidence(
         for item in SKILL_IDS
     ):
         state["phase"] = "decision_ready"
-    elif role in {"candidate_summary", "revision_report"} and all(
-        state["skill_evidence"][item]["candidate_summary"] is not None
-        and state["skill_evidence"][item]["revision_report"] is not None
-        for item in SKILL_IDS
+    elif (
+        state["candidate"] is not None
+        and role in {"candidate_summary", "revision_report"}
+        and all(
+            state["skill_evidence"][item]["candidate_summary"] is not None
+            and state["skill_evidence"][item]["revision_report"] is not None
+            for item in SKILL_IDS
+        )
     ):
         state["phase"] = "candidate_evidence_ready"
     elif role == "holdout_summary" and all(

@@ -59,6 +59,7 @@ from _model_evolution_jobs import (
 from _model_evolution_ops import (
     OperationError,
     bundle_skill_at_revision,
+    bundle_version_at_revision,
     candidate_source,
     git_identity,
     preflight_operations,
@@ -229,6 +230,59 @@ def _validate_evidence_join(
         plan = load_json(plan_path, label=f"{role} registered plan")
         if value.get("plan_id") != plan.get("plan_id"):
             raise CliError(f"{role} differs from its registered plan")
+        return
+    if role == "revision_report" and campaign["candidate"] is None:
+        if campaign["profiles"]["predecessor"] is not None:
+            raise CliError("candidate-null revision is only legal for bootstrap")
+        current_binding = campaign["skill_evidence"][skill_id]["current_summary"]
+        if current_binding is None:
+            raise CliError("bootstrap revision lacks current summary evidence")
+        current = _load_bound_document(
+            current_binding,
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+            label="bootstrap current summary",
+        )
+        registered = _registered_plan(campaign, "target_current", skill_id)
+        current_plan_path = resolve_binding(
+            registered["plan"], repository_root, campaign_root
+        )
+        if content_hash(current_plan_path.read_bytes()) != registered["plan_digest"]:
+            raise CliError("bootstrap current plan bytes changed")
+        current_plan = load_json(
+            current_plan_path,
+            label="bootstrap current plan",
+        )
+        inputs = value.get("inputs", [])
+        candidate_inputs = [row for row in inputs if row.get("role") == "candidate"]
+        prior_inputs = [row for row in inputs if row.get("role") == "prior"]
+        prior_revision = (
+            prior_inputs[0].get("execution_profile", {}).get("source_revision")
+            if len(prior_inputs) == 1
+            else None
+        )
+        if (
+            len(inputs) != 2
+            or len(candidate_inputs) != 1
+            or len(prior_inputs) != 1
+            or candidate_inputs[0].get("plan_id") != current.get("plan_id")
+            or candidate_inputs[0].get("evaluation_id") != current.get("evaluation_id")
+            or prior_inputs[0].get("evaluation_id") != current.get("evaluation_id")
+            or candidate_inputs[0].get("execution_profile")
+            != current_plan.get("execution_profile")
+            or candidate_inputs[0].get("execution_profile", {}).get("source_revision")
+            != campaign["product"]["source_commit"]
+            or not isinstance(prior_revision, str)
+            or prior_revision == campaign["product"]["source_commit"]
+        ):
+            raise CliError("bootstrap revision must compare signed prior to current 8.0")
+        try:
+            git_identity(repository_root, prior_revision)
+            prior_version = bundle_version_at_revision(repository_root, prior_revision)
+        except OperationError as exc:
+            raise CliError("bootstrap prior must be a signed repository revision") from exc
+        if prior_version != "7.0.0":
+            raise CliError("bootstrap prior must be Bundle 7.0.0")
         return
     required_fields = {
         "transition_report": ("current_summary",),
@@ -936,6 +990,7 @@ def _record_candidate(args: argparse.Namespace) -> None:
     )
     candidate = candidate_source(
         repository_root=repository_root,
+        campaign_root=campaign_root,
         campaign=campaign,
         sentinel=sentinel,
         base_commit=args.base_commit,
@@ -1039,6 +1094,10 @@ def _record(args: argparse.Namespace) -> None:
             repository_root / "bundle-manifest.json",
             label="selected Bundle manifest",
         )
+        expected_generated_bundle = load_json(
+            repository_root / "frontier-engineering.bundle.json",
+            label="selected generated Bundle",
+        )
         plugin_root = args.plugin_root.resolve(strict=True)
         if (
             args.plugin_root.is_symlink()
@@ -1051,7 +1110,7 @@ def _record(args: argparse.Namespace) -> None:
             plugin_root=plugin_root,
             evidence_path=path,
             expected_commit=expected_commit,
-            expected_bundle_id=campaign["product"]["bundle_id"],
+            expected_bundle_id=expected_generated_bundle["bundle_id"],
             expected_bundle_version=expected_bundle["bundle_version"],
             expected_skill_versions={
                 skill_id: expected_skills[skill_id]["version"] for skill_id in SKILL_IDS

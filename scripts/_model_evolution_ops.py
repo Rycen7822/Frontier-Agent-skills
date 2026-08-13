@@ -44,6 +44,14 @@ from _model_evolution_qualification import (
     project_observed_host,
     project_qualification,
 )
+from _model_evolution_residual import (
+    AGENTS_PATH as SQW_AGENTS_PATH,
+    MAP_PATH as SQW_RESIDUAL_MAP_PATH,
+    SCENARIOS_PATH as SQW_SCENARIOS_PATH,
+    SOURCE_PATH as SQW_SOURCE_PATH,
+    ResidualError,
+    validate_candidate_change,
+)
 
 
 MAX_DIAGNOSTIC_BYTES = 64 * 1024
@@ -156,6 +164,17 @@ def bundle_skill_at_revision(
         return build["skills"][skill_id]
     except KeyError as exc:
         raise OperationError("selected Bundle build lacks the requested Skill") from exc
+
+
+def bundle_version_at_revision(repository_root: Path, revision: str) -> str:
+    raw = _git_blob(repository_root, revision, "bundle-manifest.json")
+    if raw is None:
+        raise OperationError("Bundle manifest is unavailable at selected revision")
+    value = strict_json_bytes(raw, label="selected Bundle manifest")
+    version = value.get("bundle_version") if isinstance(value, dict) else None
+    if not isinstance(version, str):
+        raise OperationError("selected Bundle manifest lacks a version")
+    return version
 
 
 def is_tracked(repository_root: Path, path: Path) -> bool:
@@ -1080,9 +1099,10 @@ def _run_profile_command(repository_root: Path, words: list[str]) -> dict[str, A
     )
 
 
-def _manifest_versions(raw: bytes, *, label: str) -> dict[str, str]:
+def _manifest_identity(raw: bytes, *, label: str) -> tuple[str, dict[str, str]]:
     value = strict_json_bytes(raw, label=label)
     skills = value.get("skills") if isinstance(value, dict) else None
+    bundle_version = value.get("bundle_version") if isinstance(value, dict) else None
     if not isinstance(skills, list):
         raise OperationError(f"{label} has no Skill version catalog")
     versions = {
@@ -1090,11 +1110,28 @@ def _manifest_versions(raw: bytes, *, label: str) -> dict[str, str]:
         for row in skills
         if isinstance(row, dict) and isinstance(row.get("id"), str)
     }
-    if set(versions) != set(SKILL_IDS) or any(
-        not isinstance(version, str) for version in versions.values()
+    if (
+        set(versions) != set(SKILL_IDS)
+        or any(not isinstance(version, str) for version in versions.values())
+        or not isinstance(bundle_version, str)
     ):
         raise OperationError(f"{label} does not contain exact four Skill versions")
-    return versions
+    return bundle_version, versions
+
+
+def _minor_successor(current: str, candidate: str, *, label: str) -> None:
+    current_raw = current.split(".")
+    candidate_raw = candidate.split(".")
+    if (
+        len(current_raw) != 3
+        or len(candidate_raw) != 3
+        or any(not part.isdigit() for part in (*current_raw, *candidate_raw))
+    ):
+        raise OperationError(f"{label} is not semantic versioning")
+    current_parts = tuple(int(part) for part in current_raw)
+    candidate_parts = tuple(int(part) for part in candidate_raw)
+    if candidate_parts != (current_parts[0], current_parts[1] + 1, 0):
+        raise OperationError(f"{label} must receive exactly one minor increment")
 
 
 def _validate_candidate_version(
@@ -1112,30 +1149,19 @@ def _validate_candidate_version(
     )
     if base_blob is None or candidate_blob is None:
         raise OperationError("candidate version manifests are unavailable")
-    base = _manifest_versions(base_blob, label="base Bundle manifest")
-    candidate = _manifest_versions(candidate_blob, label="candidate Bundle manifest")
+    base_bundle, base = _manifest_identity(base_blob, label="base Bundle manifest")
+    candidate_bundle, candidate = _manifest_identity(
+        candidate_blob, label="candidate Bundle manifest"
+    )
     for skill_id in SKILL_IDS:
         if skill_id != owner_surface and base[skill_id] != candidate[skill_id]:
             raise OperationError(
                 f"candidate changes non-owner Skill version: {skill_id}"
             )
-    try:
-        base_version = tuple(int(part) for part in base[owner_surface].split("."))
-        candidate_version = tuple(
-            int(part) for part in candidate[owner_surface].split(".")
-        )
-    except ValueError as exc:
-        raise OperationError(
-            "candidate Skill version is not semantic versioning"
-        ) from exc
-    if len(base_version) != 3 or candidate_version != (
-        base_version[0],
-        base_version[1] + 1,
-        0,
-    ):
-        raise OperationError(
-            "candidate owner must receive exactly one minor version increment"
-        )
+    _minor_successor(
+        base[owner_surface], candidate[owner_surface], label="candidate owner Skill"
+    )
+    _minor_successor(base_bundle, candidate_bundle, label="candidate Bundle")
     required_generated = {
         "bundle-manifest.json",
         "frontier-engineering.bundle.json",
@@ -1181,9 +1207,87 @@ def _validate_candidate_file_modes(raw_diff: str) -> None:
             raise OperationError("candidate file mode or type changes are forbidden")
 
 
+def _required_git_blob(repository_root: Path, revision: str, path: Path) -> bytes:
+    raw = _git_blob(repository_root, revision, path.as_posix())
+    if raw is None:
+        raise OperationError(f"candidate residual input is unavailable: {path}")
+    return raw
+
+
+def _sqw_residual_candidate(
+    repository_root: Path,
+    campaign_root: Path,
+    campaign: dict[str, Any],
+    *,
+    base_commit: str,
+    candidate_commit: str,
+    root_cause_ids: list[str],
+) -> str:
+    evidence = campaign["skill_evidence"]["software-quality-workflows"]
+    if campaign["profiles"]["predecessor"] is None:
+        raise OperationError(
+            "candidate-null bootstrap cannot register a residual candidate"
+        )
+    if evidence["transition_report"] is None or evidence["current_summary"] is None:
+        raise OperationError("SQW candidate lacks current and transition evidence")
+    transition_path = resolve_binding(
+        evidence["transition_report"], repository_root, campaign_root
+    )
+    current_path = resolve_binding(
+        evidence["current_summary"], repository_root, campaign_root
+    )
+    if evaluator_evidence_status(transition_path, kind="transition_report") != "pass":
+        raise OperationError("SQW transition evidence is not eligible")
+    if evaluator_evidence_status(current_path, kind="current_summary") not in {
+        "pass", "limited_native_absorption",
+    }:
+        raise OperationError("SQW current evidence is not eligible")
+    transition = load_json(transition_path, label="SQW transition report")
+    current = load_json(current_path, label="SQW current summary")
+    classification = (
+        transition.get("result", {}).get("classification")
+        if isinstance(transition, dict)
+        else None
+    )
+    if not isinstance(classification, str) or not isinstance(current, dict):
+        raise OperationError("SQW evolution evidence has an invalid result")
+    paths = (
+        SQW_RESIDUAL_MAP_PATH,
+        SQW_SOURCE_PATH,
+        SQW_AGENTS_PATH,
+        SQW_SCENARIOS_PATH,
+    )
+    base = {
+        path: _required_git_blob(repository_root, base_commit, path)
+        for path in paths
+    }
+    candidate = {
+        path: _required_git_blob(repository_root, candidate_commit, path)
+        for path in paths
+    }
+    try:
+        validate_candidate_change(
+            base_map_raw=base[SQW_RESIDUAL_MAP_PATH],
+            candidate_map_raw=candidate[SQW_RESIDUAL_MAP_PATH],
+            base_source_raw=base[SQW_SOURCE_PATH],
+            candidate_source_raw=candidate[SQW_SOURCE_PATH],
+            base_agents_raw=base[SQW_AGENTS_PATH],
+            candidate_agents_raw=candidate[SQW_AGENTS_PATH],
+            base_scenarios_raw=base[SQW_SCENARIOS_PATH],
+            candidate_scenarios_raw=candidate[SQW_SCENARIOS_PATH],
+            classification=classification,
+            root_cause_ids=root_cause_ids,
+            current_summary=current,
+        )
+    except ResidualError as exc:
+        raise OperationError(str(exc)) from exc
+    return classification
+
+
 def candidate_source(
     *,
     repository_root: Path,
+    campaign_root: Path,
     campaign: dict[str, Any],
     sentinel: dict[str, Any],
     base_commit: str,
@@ -1250,6 +1354,16 @@ def candidate_source(
     skill = sentinel["skills"].get(owner_surface)
     if skill is None:
         raise OperationError("candidate owner surface is not in the sentinel index")
+    residual_classification = None
+    if owner_surface == "software-quality-workflows":
+        residual_classification = _sqw_residual_candidate(
+            repository_root,
+            campaign_root,
+            campaign,
+            base_commit=base_commit,
+            candidate_commit=candidate_commit,
+            root_cause_ids=root_cause_ids,
+        )
     allowed_prefixes = {f"{owner_surface}/"}
     allowed_exact = {
         "bundle-manifest.json",
@@ -1261,6 +1375,19 @@ def candidate_source(
         for binding in skill[field]:
             allowed_exact.add(binding["path"])
             allowed_prefixes.add(binding["path"].rstrip("/") + "/")
+    if owner_surface == "software-quality-workflows":
+        allowed_exact.add(SQW_RESIDUAL_MAP_PATH.as_posix())
+        if residual_classification == "insufficient_specialization":
+            allowed_exact.update(
+                {
+                    "evaluation/model-evolution/sentinel-index-v2.json",
+                    "evaluation/model-evolution/sentinel_sources/software_quality_workflows.py",
+                    "evaluation/model-evolution/sentinel_sources/software_quality_workflows_verifier.py",
+                }
+            )
+            allowed_prefixes.add(
+                "evaluation/model-evolution/sentinels/software-quality-workflows/"
+            )
     forbidden = [
         path
         for path in changed_paths
@@ -1269,6 +1396,45 @@ def candidate_source(
     ]
     if forbidden:
         raise OperationError(f"candidate changes a non-owner path: {forbidden[0]}")
+    if owner_surface == "software-quality-workflows":
+        residual_allowed = {
+            "bundle-manifest.json",
+            "frontier-engineering.bundle.json",
+            "RELEASE_NOTES.md",
+            SQW_SOURCE_PATH.as_posix(),
+        }
+        if residual_classification in {
+            "routing_loss",
+            "loading_loss",
+            "application_loss",
+        }:
+            residual_allowed.add(SQW_AGENTS_PATH.as_posix())
+        elif residual_classification == "insufficient_specialization":
+            residual_allowed.update(
+                {
+                    SQW_RESIDUAL_MAP_PATH.as_posix(),
+                    "evaluation/model-evolution/sentinel-index-v2.json",
+                    "evaluation/model-evolution/sentinel_sources/software_quality_workflows.py",
+                    "evaluation/model-evolution/sentinel_sources/software_quality_workflows_verifier.py",
+                }
+            )
+        else:
+            residual_allowed.add(SQW_RESIDUAL_MAP_PATH.as_posix())
+        unexpected = [
+            path
+            for path in changed_paths
+            if path not in residual_allowed
+            and not (
+                residual_classification == "insufficient_specialization"
+                and path.startswith(
+                    "evaluation/model-evolution/sentinels/software-quality-workflows/"
+                )
+            )
+        ]
+        if unexpected:
+            raise OperationError(
+                f"SQW residual candidate changes an unowned path: {unexpected[0]}"
+            )
     _validate_candidate_version(
         repository_root,
         base_commit=base_commit,
@@ -1278,10 +1444,15 @@ def candidate_source(
         changed_paths=changed_paths,
     )
     operations: list[dict[str, Any]] = []
-    for operation_id, script in (
+    gate_scripts = [
         ("candidate-bundle-check", "bundle/build_bundle_manifest.py"),
         ("candidate-static-check", "scripts/evaluate_static_contracts.py"),
-    ):
+    ]
+    if residual_classification == "insufficient_specialization":
+        gate_scripts.append(
+            ("candidate-sentinel-check", "scripts/build_model_evolution_sentinels.py")
+        )
+    for operation_id, script in gate_scripts:
         fact, _ = run_model_free_command(
             operation_id,
             [sys.executable, script, "--check"],
