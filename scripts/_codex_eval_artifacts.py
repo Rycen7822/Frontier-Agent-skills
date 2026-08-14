@@ -108,6 +108,8 @@ def build_command_trace(
                 "file_change",
             }:
                 continue
+            if fact["type"] == "file_change" and fact.get("changes") == []:
+                continue
             ordinal += 1
             if ordinal > MAX_TRACE_ITEMS:
                 overflow = True
