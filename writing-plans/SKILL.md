@@ -9,13 +9,13 @@ Handoff crosses contexts; Program tracks a changing frontier; otherwise stay nat
 
 A bounded single-session request naming files and checks must end as a native ordered plan even when Git identity, dirty/protected paths, or exact source identity are visible; omit those facts unless named; skip the Handoff/Program contract below. Inspect each available bound file once. State observed symbols and behavior, exact edits, checks, expected results, and failure exits.
 
-Exact means observed old→new symbols/expressions, argument-parser calls, literal replacements and preserved structural anchors, complete runnable test bodies when exact tests are requested, and a runnable assertion command for every exact check; an expected snippet, generic "add parsing", prose-only tests, or "follow existing conventions" fails.
+Exact means observed old→new symbols, argument-parser calls, literal edits and structural anchors, and complete runnable test bodies when exact tests are requested. Every exact check is a runnable command asserting its edit literals; expected snippets, generic "add parsing", prose-only tests, and "follow existing conventions" fail.
 
 For a symbol rename, make the residual check identifier-aware: test old-name absence and new-name presence against the same collected identifier set; avoid raw substrings when names overlap and never compare identifiers with a tokenizer token-type constant.
 
-Derive one starting cwd and module path from imports/layout; never `cd` into the stated cwd again. Include `PYTHONPATH` when needed; before return, resolve each test import from that cwd and set it to the directory containing the top-level imported package, not its parent.
+Derive one starting cwd and module path from imports/layout; never `cd` into the stated cwd again. Include `PYTHONPATH` when needed; set it to the directory containing the top-level imported package, not the directory above, and use that value in every command.
 
-Use only executable workspace-bound checks. A native proof never adds whole-file snapshots, Git status/diff scope, protected-boundary, residue, whitespace, rollback, cleanup, attestation, combined-only proof, or repository-wide checks unless the request or bound source names that exact check. An explicit non-Git identity forbids Git status, diff, or rollback. No contract rows or unrequested owners.
+Use only executable workspace-bound checks. A native proof never adds whole-file snapshots, Git scope, protected boundary, residue/whitespace, rollback/cleanup, attestation, combined-only proof, or repository-wide check unless named by the request or bound source. An explicit non-Git identity forbids Git status, diff, or rollback. No contract rows or unrequested owners.
 
 ## Bind
 
@@ -44,6 +44,6 @@ The Resume row resolves root anew; exclude the named plan deliverable itself (in
 
 Next action: first edit/result/check; inspect only if blocked. Use the prompt-bound verification command. When the prompt binds exact files and required checks but omits a repository-wide runner, state the narrow checks implied by those bindings and leave only the broader runner as a blocker; do not block the plan or invent a full-suite command. The repository's test owner supplies any broader Proof. Prefix tests with `PYTHONDONTWRITEBYTECODE=1`; use `python -m unittest <repo-test>`, or `python -m pytest -p no:cacheprovider`; other owners bind residue cleanup. The executor completes coherent edits, then selects the lowest-cost evidence for risk/gate; Proof sets no patch-by-patch order.
 
-Before return, require attestation acceptance or one-preflight fallback for Resume, name every dependency, and carry every promised transformation or invariant into its exact edit. After writing, run at most one planner-only non-content confirmation using `git diff --check` or the owner-supplied check, then return the plan; Proof remains executor-owned.
+Before return, require attestation acceptance or one-preflight fallback for Resume, name dependencies, and carry every promised transformation or invariant into its exact edit, including each observed literal and structural anchor. After writing, run at most one planner-only non-content confirmation using `git diff --check` or the owner-supplied check, then return the plan; Proof remains executor-owned.
 
 Reply only with the plan or named Markdown. The selected Program is the durable planning state; source edits and completion claims remain with execution owners.
