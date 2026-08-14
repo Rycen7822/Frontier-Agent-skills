@@ -88,12 +88,56 @@ def _change_kind(change: dict[str, Any]) -> tuple[str, str | None]:
     raise ArtifactError("Codex file change kind is unsupported")
 
 
+def _private_scratch_path(
+    value: Any, scratch_root: str, protected_roots: tuple[str, ...]
+) -> bool:
+    root = scratch_root.rstrip("/")
+    return bool(
+        isinstance(value, str)
+        and root
+        and value.startswith(root + "/")
+        and "\\" not in value
+        and not any(
+            ord(character) < 32 or ord(character) == 127
+            for character in value
+        )
+        and not any(part in {"", ".", ".."} for part in value.split("/")[1:])
+        and not any(
+            protected
+            and (
+                value == protected.rstrip("/")
+                or value.startswith(protected.rstrip("/") + "/")
+            )
+            for protected in protected_roots
+        )
+    )
+
+
+def _private_scratch_change(
+    change: Any, scratch_root: str, protected_roots: tuple[str, ...]
+) -> bool:
+    if not isinstance(change, dict):
+        return False
+    try:
+        _, destination = _change_kind(change)
+    except ArtifactError:
+        return False
+    return _private_scratch_path(
+        change.get("path"), scratch_root, protected_roots
+    ) and (
+        destination is None
+        or _private_scratch_path(destination, scratch_root, protected_roots)
+    )
+
+
 def build_command_trace(
     turns: list[dict[str, Any]],
     turn_ids: list[str],
     *,
     workspace: Path,
     workspace_alias: str,
+    scratch_root: str,
+    protected_scratch_roots: tuple[str, ...],
     normalize_text: Callable[[str], str],
 ) -> dict[str, Any]:
     """Project only direct completed command and file-change facts."""
@@ -110,6 +154,19 @@ def build_command_trace(
                 continue
             if fact["type"] == "file_change" and fact.get("changes") == []:
                 continue
+            if fact["type"] == "file_change":
+                changes = fact.get("changes")
+                if isinstance(changes, list):
+                    changes = [
+                        change
+                        for change in changes
+                        if not _private_scratch_change(
+                            change, scratch_root, protected_scratch_roots
+                        )
+                    ]
+                    if not changes:
+                        continue
+                    fact = fact | {"changes": changes}
             ordinal += 1
             if ordinal > MAX_TRACE_ITEMS:
                 overflow = True
