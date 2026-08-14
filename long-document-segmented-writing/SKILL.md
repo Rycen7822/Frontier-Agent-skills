@@ -87,6 +87,8 @@ After compaction, recover in this order: repository instructions and `CODEX_STAT
 5. Reread exact sources for commands, flags, schemas, APIs, state transitions, numbers, dates, citations, tests, paths, and public contracts.
 6. Check each section for required content, unsupported claims, contradictions, placeholders, sensitive data, broken Markdown, duplication, and source-style violations.
 
+Source qualifiers are part of the claim. Mark a broader statement unsupported when its citation proves only a narrower scope, even when the citation is otherwise related.
+
 Do not rely on conversation memory for a material claim. When evidence conflicts, record the owning source decision in the ledger and repair the section from that source.
 
 ## Source style
