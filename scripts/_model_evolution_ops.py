@@ -775,14 +775,24 @@ def validate_target_host_staging(
     if host.get("identity", {}).get("repository") != expected:
         raise OperationError("target Host repository identity differs")
     argv = host.get("command", {}).get("argv", [])
+    runtime_root = host_path.resolve().with_name(f"{host_path.stem}.runtime")
+    try:
+        codex = Path(argv[argv.index("--codex") + 1]).resolve(strict=True)
+        code_mode_host = Path(
+            argv[argv.index("--code-mode-host") + 1]
+        ).resolve(strict=True)
+    except (OSError, ValueError, IndexError) as exc:
+        raise OperationError("target Host runtime binding is invalid") from exc
     if (
         repository_root.parent.name != ".worktrees"
         or argv.count("--isolation-tool") != 1
         or argv.count("--isolation-tool-sha256") != 1
         or argv.count("--code-mode-host") != 1
         or argv.count("--code-mode-host-sha256") != 1
+        or codex.parent != runtime_root
+        or code_mode_host.parent != runtime_root
     ):
-        raise OperationError("target Host lacks the required worktree isolation")
+        raise OperationError("target Host lacks campaign-local runtime isolation")
     return host
 
 
