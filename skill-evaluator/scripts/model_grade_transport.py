@@ -468,6 +468,41 @@ def _workspace_evidence(
     return value
 
 
+def _semantic_workspace_complete(
+    workspace: dict[str, Any],
+    assessment: dict[str, Any],
+) -> bool:
+    """Accept metadata-only Python caches without weakening source evidence."""
+    if workspace["complete"]:
+        return True
+    if workspace["overflow"]:
+        return False
+    snapshots = [
+        workspace["initial"],
+        *(snapshot["files"] for snapshot in workspace["turn_snapshots"]),
+        workspace["final"],
+    ]
+    incomplete_found = False
+    for path in assessment["changed_paths"]:
+        incomplete = [
+            record
+            for snapshot in snapshots
+            for record in snapshot
+            if record["path"] == path and record["truncated"]
+        ]
+        if not incomplete:
+            continue
+        incomplete_found = True
+        parts = path.split("/")
+        if (
+            "__pycache__" not in parts
+            or not path.endswith(".pyc")
+            or any(record["encoding"] != "binary" for record in incomplete)
+        ):
+            return False
+    return incomplete_found
+
+
 def _command_trace(payload: str, assessment: dict[str, Any]) -> dict[str, Any]:
     if len(payload.encode("utf-8")) > MAX_COMMAND_TRACE_BYTES:
         raise ValueError("model grader command trace exceeds its bound")
@@ -768,7 +803,10 @@ def execution_item(
     final_answer = _redact_workspace_paths(
         evidence["final-answer"], assessment, fixture_paths,
     )
-    if not command_trace["complete"] or not workspace["complete"]:
+    if (
+        not command_trace["complete"]
+        or not _semantic_workspace_complete(workspace, assessment)
+    ):
         raise ValueError("model grader deterministic evidence is incomplete")
     if not turn_answers or turn_answers[-1]["content"].strip() != final_answer.strip():
         raise ValueError("model grader final answer differs from its last turn")
