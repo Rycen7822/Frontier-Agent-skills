@@ -523,6 +523,12 @@ def _init(args: argparse.Namespace) -> None:
         path for path in fixed.values() if path.is_relative_to(campaign_root)
     }
     bootstrap_paths.update(path for path in plugin_root.rglob("*") if path.is_file())
+    runtime_root = fixed["target_host"].with_name(
+        f"{fixed['target_host'].stem}.runtime"
+    )
+    bootstrap_paths.update(
+        runtime_root / name for name in ("codex", "codex-code-mode-host")
+    )
     store.create(
         campaign,
         bootstrap_paths=tuple(sorted(bootstrap_paths)),
