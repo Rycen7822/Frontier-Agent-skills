@@ -29,10 +29,10 @@ Facts/authority/evidence are fixed. Unknowns block later slices only; missing in
 
 Minimal sufficient form: omit generic/empty prose; do not expand one sentence into its own heading. No word/byte reduction target: retain needed facts. Keep each prose paragraph on one physical line; insert line breaks only at Markdown structural boundaries, never inside a sentence or merely to fit a column.
 
-For a Handoff or Program, write a title and either one contract table or a three- or four-row bullet contract:
+For a Handoff or Program, write a title; use these rows in one contract table or a three- or four-row bullet contract:
 
-- State — Bound source identity; Protected work and allowed effects; Settled decisions; Exact first-slice inputs, outputs, values, invariants; observed protected-test I/O and values, once; Later blockers and dependencies. Mark unfinished gates and verification pending even when Slice performs them.
-- Resume — For a later source-changing slice that crosses contexts, consume a matching freshness-bound host attestation when resolved root, bound source identity, freshness, and dirty scope match; transfer it unchanged and do not rerun it; if missing or mismatched, run one combined preflight. Omit this row for an immutable artifact handoff whose next action is verification only.
+- State — Bound source identity; Protected work and allowed effects; Settled decisions; Exact first-slice inputs, outputs, values, invariants; observed protected-test I/O and values, edit literals/headings, once; Later blockers and dependencies. Mark unfinished gates and verification pending even when Slice performs them.
+- Resume — Required for any later source edit crossing contexts. Consume a matching freshness-bound host attestation when resolved root, bound source identity, freshness, and dirty scope match; transfer it unchanged and do not rerun it; if missing or mismatched, run one combined preflight. Omit only for an immutable artifact handoff whose next action is verification.
 - Slice — Goal / non-goals; First source-changing slice and files/symbols; Exact next source-changing action.
 - Proof — Acceptance and verification: Acceptance behavior; Minimum sufficient evidence; External owner gates; Escalation and blocked/inconclusive stops; Rollback/cleanup when material.
 
@@ -44,6 +44,6 @@ The Resume row resolves root anew; exclude the named plan deliverable itself (in
 
 Next action: first edit/result/check; inspect only if blocked. Use the prompt-bound verification command. When the prompt binds exact files and required checks but omits a repository-wide runner, state the narrow checks implied by those bindings and leave only the broader runner as a blocker; do not block the plan or invent a full-suite command. The repository's test owner supplies any broader Proof. Prefix tests with `PYTHONDONTWRITEBYTECODE=1`; use `python -m unittest <repo-test>`, or `python -m pytest -p no:cacheprovider`; other owners bind residue cleanup. The executor completes coherent edits, then selects the lowest-cost evidence for risk/gate; Proof sets no patch-by-patch order.
 
-Before return, require attestation acceptance or one-preflight fallback for Resume, name dependencies, and carry every promised transformation or invariant into its exact edit, including each observed literal and structural anchor. After writing, run at most one planner-only non-content confirmation using `git diff --check` or the owner-supplied check, then return the plan; Proof remains executor-owned.
+Before return, require attestation acceptance or one-preflight fallback for Resume, name dependencies, and carry every promised transformation or invariant into its exact edit, including each observed literal and structural anchor. After writing, run at most one planner-only non-content confirmation (`git diff --check` or owner check), then return the plan; Proof remains executor-owned.
 
 Reply only with the plan or named Markdown. The selected Program is the durable planning state; source edits and completion claims remain with execution owners.
