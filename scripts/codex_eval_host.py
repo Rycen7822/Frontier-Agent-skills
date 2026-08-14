@@ -52,6 +52,7 @@ from _codex_eval_events import (
     project_execute_result,
 )
 from _codex_eval_isolation import (
+    ISOLATED_OUTPUT,
     ISOLATED_SANDBOX_POLICY_IDS,
     ISOLATED_WORKSPACE,
     IsolationError,
@@ -1280,6 +1281,8 @@ def _run_execute_in_workspace(
         turn_ids,
         workspace=workspace,
         workspace_alias=ISOLATED_WORKSPACE,
+        scratch_root="/tmp",
+        protected_scratch_roots=(ISOLATED_WORKSPACE, ISOLATED_OUTPUT),
         normalize_text=lambda value: _redact_text(value, workspace),
     )
     workspace_evidence, changed_paths = workspace_timeline.finish()
