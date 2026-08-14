@@ -44,6 +44,14 @@ def _hash_bytes(value: bytes) -> str:
     return "sha256:" + sha256(value).hexdigest()
 
 
+def _hash_file(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return "sha256:" + digest.hexdigest()
+
+
 def _canonical_bytes(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
@@ -158,6 +166,52 @@ def _tree_hash(root: Path) -> str:
     return tree_hash(inventory(root, paths))
 
 
+def _materialize_runtime_snapshot(
+    *,
+    codex_source: Path,
+    code_mode_host_source: Path,
+    runtime_root: Path,
+    codex_hash: str,
+    code_mode_host_hash: str,
+) -> None:
+    if runtime_root.exists() or runtime_root.is_symlink():
+        raise HostBuildError("refusing to replace the Host runtime snapshot")
+    temporary = runtime_root.with_name(f".{runtime_root.name}.tmp-{os.getpid()}")
+    if temporary.exists() or temporary.is_symlink():
+        raise HostBuildError("Host runtime snapshot temporary path already exists")
+    temporary.mkdir(mode=0o700, parents=False)
+    try:
+        for source, name, expected_hash in (
+            (codex_source, "codex", codex_hash),
+            (code_mode_host_source, "codex-code-mode-host", code_mode_host_hash),
+        ):
+            destination = temporary / name
+            shutil.copyfile(source, destination, follow_symlinks=False)
+            destination.chmod(0o555)
+            source_stat = source.stat()
+            destination_stat = destination.stat()
+            if (
+                source_stat.st_dev == destination_stat.st_dev
+                and source_stat.st_ino == destination_stat.st_ino
+            ):
+                raise HostBuildError("Host runtime snapshot reused the source inode")
+            if _hash_file(destination) != expected_hash:
+                raise HostBuildError("Host runtime changed while its snapshot was created")
+        temporary.chmod(0o555)
+        os.replace(temporary, runtime_root)
+    except Exception:
+        if temporary.is_dir() and not temporary.is_symlink():
+            temporary.chmod(0o700)
+            shutil.rmtree(temporary)
+        raise
+
+
+def _remove_runtime_snapshot(runtime_root: Path) -> None:
+    if runtime_root.is_dir() and not runtime_root.is_symlink():
+        runtime_root.chmod(0o700)
+        shutil.rmtree(runtime_root)
+
+
 def build_host(
     *,
     repository_root: Path,
@@ -172,6 +226,7 @@ def build_host(
 ) -> dict[str, Any]:
     repository_root = repository_root.resolve(strict=True)
     plugin_root = plugin_root.resolve(strict=True)
+    output_path = output_path.resolve()
     template_path = template_path.resolve(strict=True)
     if not template_path.is_relative_to(repository_root):
         raise HostBuildError("template Host escapes the selected source")
@@ -229,15 +284,18 @@ def build_host(
     executable = Path(sys.executable).resolve(strict=True)
     adapter = (repository_root / "scripts/codex_eval_host.py").resolve(strict=True)
     argv[0:2] = [str(executable), str(adapter)]
-    codex_path, codex_version = _codex_runtime(codex_entrypoint)
-    codex_hash = _hash_bytes(codex_path.read_bytes())
-    code_mode_host_input = codex_path.with_name("codex-code-mode-host")
+    codex_source, codex_version = _codex_runtime(codex_entrypoint)
+    codex_hash = _hash_file(codex_source)
+    code_mode_host_input = codex_source.with_name("codex-code-mode-host")
     if code_mode_host_input.is_symlink() or not code_mode_host_input.is_file():
         raise HostBuildError("Codex code-mode Host executable is invalid")
-    code_mode_host = code_mode_host_input.resolve(strict=True)
-    if not os.access(code_mode_host, os.X_OK):
+    code_mode_host_source = code_mode_host_input.resolve(strict=True)
+    if not os.access(code_mode_host_source, os.X_OK):
         raise HostBuildError("Codex code-mode Host executable is invalid")
-    code_mode_host_hash = _hash_bytes(code_mode_host.read_bytes())
+    code_mode_host_hash = _hash_file(code_mode_host_source)
+    runtime_root = output_path.with_name(f"{output_path.stem}.runtime")
+    codex_path = runtime_root / "codex"
+    code_mode_host = runtime_root / "codex-code-mode-host"
     isolation_name = shutil.which("bwrap")
     if isolation_name is None:
         raise HostBuildError("bubblewrap isolation executable is unavailable")
@@ -368,8 +426,19 @@ def build_host(
 
     validate_plugin_catalog(plugin_root, value)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.exists() or output_path.is_symlink():
+        raise HostBuildError(f"refusing to replace Host manifest: {output_path.name}")
     created = False
+    runtime_created = False
     try:
+        _materialize_runtime_snapshot(
+            codex_source=codex_source,
+            code_mode_host_source=code_mode_host_source,
+            runtime_root=runtime_root,
+            codex_hash=codex_hash,
+            code_mode_host_hash=code_mode_host_hash,
+        )
+        runtime_created = True
         with output_path.open("xb") as handle:
             created = True
             handle.write(_canonical_bytes(value) + b"\n")
@@ -377,10 +446,14 @@ def build_host(
             os.fsync(handle.fileno())
         codex_eval_host.validate_bound_manifest(output_path, plugin_root)
     except FileExistsError as exc:
+        if runtime_created:
+            _remove_runtime_snapshot(runtime_root)
         raise HostBuildError(f"refusing to replace Host manifest: {output_path.name}") from exc
     except Exception:
         if created:
             output_path.unlink(missing_ok=True)
+        if runtime_created:
+            _remove_runtime_snapshot(runtime_root)
         raise
     return value
 
