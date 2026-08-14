@@ -15,6 +15,7 @@ DEFINITION = {
     ],
     "grader_rules": [
         "Apply a case-specific rule only when task_evidence.case_id exactly equals its full named ID.",
+        "For writing-plans-resume-preflight, quality and process pass when the handoff preserves abc123 parser/test completion, binds the pending documentation and integration check, and names the exact documentation edit; treating completed work as protected or including the Handoff resume preflight is compatible.",
         "For writing-plans-source-bound-plan, quality and process require ordered bindings to all three task files, one coherent starting cwd, a pytest command with -p no:cacheprovider, and executable behavior and residual-name checks. Resolve command arguments and inline proof-script files against that cwd; local-path-redacted preserves the rooted path, Markdown links remain source labels, and identifier-aware checks distinguish timeout_ms from request_timeout_ms.",
         "For writing-plans-continuous-execution, both `import argparse` with `argparse.ArgumentParser` and `from argparse import ArgumentParser` with `ArgumentParser` pass. Bound proof covers cli.py and test_cli.py, while documentation states the interface behavior at its own granularity.",
         "For writing-plans-protected-description, quality and process change only the version, preserve the complete observed description verbatim, and verify both lines exactly.",

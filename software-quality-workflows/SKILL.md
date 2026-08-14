@@ -18,7 +18,7 @@ metadata:
 
 Preserve work, scope, authority, and evidence at material boundaries. Bind claims to their oracle, coverage, freshness, limitations, and raw reference. The owner seam is the smallest code/API/config/test/component controlling behavior.
 
-Keep known-seam work Direct and change its smallest coherent owner set.
+Keep known-seam work Direct and change its smallest coherent owner set. Honor prompt-bound paths and commands; rediscover only on binding failure or conflict.
 
 ## Observable contract
 
@@ -26,7 +26,7 @@ Before cross-cutting/API/data/error/migration work, freeze observable input/outp
 
 ## Evidence selection
 
-Complete coherent edits before proof. If no conclusion-changing risk or gate remains, close. Otherwise use the lowest deciding evidence, escalating from inspection/direct examples through focused/affected checks to integration or high-cost gates only when needed. Cover changed behavior and its nearest protected control; filtering proof covers retained values and order.
+Complete coherent edits before proof. If no conclusion-changing risk or gate remains, close. Otherwise use the lowest deciding evidence, escalating from inspection/direct examples through focused/affected checks to integration or high-cost gates. Cover changed behavior and its nearest protected control; filtering proof covers retained values and order.
 
 Load [authority](references/control/scope-authority-and-effects.md) when effects, protected work, source identity, or writers are unresolved.
 
@@ -54,4 +54,4 @@ Classify only new or changed tests with unclear disposition. Keep stable contrac
 
 Create durable state or a digest only for a cross-context consumer, external effect, staged release, or multiple writers. Prefer host/repo state; otherwise use one [fallback ledger](references/control/durable-work-ledger.md). Route other risks through the [index](references/index.md).
 
-Report ordinary success naturally. When states diverge, report `implementation: complete | partial | blocked`, `verification: verified | partial | blocked | inconclusive`, and `release: not_claimed | eligible_only_after_named_gates`. Unrelated red preserves completed implementation; local proof grants no release authority.
+Report success naturally. When states diverge, report `implementation: complete | partial | blocked`, `verification: verified | partial | blocked | inconclusive`, and `release: not_claimed | eligible_only_after_named_gates`. Unrelated red preserves completed implementation; local proof grants no release authority.

@@ -70,7 +70,13 @@ def _command_body(preview: str) -> str:
         argv = shlex.split(preview)
     except ValueError:
         return preview
-    return argv[2] if argv[:2] == ["/usr/bin/zsh", "-lc"] and len(argv) == 3 else preview
+    return (
+        argv[2]
+        if len(argv) == 3
+        and argv[0] == "/usr/bin/zsh"
+        and argv[1] in {"-c", "-lc"}
+        else preview
+    )
 
 
 def _command_errors(
@@ -152,7 +158,11 @@ def _command_errors(
             if len(signatures) != 1:
                 errors.append("repeated failure signature changed")
 
-    failures = sum(item.get("exit_code") != 0 for item in commands)
+    failures = sum(
+        item.get("exit_code") != 0
+        for item in commands
+        if _command_body(item.get("command_preview", "")) in required_previews
+    )
     if not contract["failure_count"][0] <= failures <= contract["failure_count"][1]:
         errors.append("failed command count differs")
     file_ordinals = [
@@ -222,7 +232,10 @@ def _evaluate() -> dict[str, tuple[bool, str]]:
     initial = _records(workspace.get("initial"), "initial snapshot")
     contract = _select_contract(contracts, _case_initial_paths(initial))
     final_answer = (
-        (WORKSPACE / "final-answer.md").read_text(encoding="utf-8").casefold()
+        (WORKSPACE / "final-answer.md")
+        .read_text(encoding="utf-8")
+        .casefold()
+        .replace("`", "")
     )
 
     common = terminal_checks(result)

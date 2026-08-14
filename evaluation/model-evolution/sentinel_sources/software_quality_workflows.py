@@ -16,11 +16,12 @@ DEFINITION = {
     "grader_rules": [
         "Apply a case rule only when task_evidence.case_id exactly matches its full ID.",
         "Deterministic evidence owns commands, file boundaries, trials, retention, and trace completeness; do not rescore those mechanics.",
+        "A passing deterministic artifact finding establishes every declared command mechanic; model quality and process must not require the omitted raw command trace.",
         "Quality and process judge whether the stated failure owner, semantic contract, residual risk, and completion state fit the case.",
         "For routine-local-edit, the result owns the normalization bug and closes after focused proof.",
         "For preexisting-unrelated-red, implementation may be complete while verification remains partial because the named aggregate failure is unrelated.",
         "For invalid-oracle, preserve the authoritative lower-case contract and classify the conflicting test as invalid_oracle_or_test.",
-        "For harness-setup-failure, distinguish the broken harness from product behavior and use the supplied independent check.",
+        "For harness-setup-failure, distinguish the broken harness from product behavior and use the supplied independent check; when deterministic findings pass and the final answer reports both facts, quality and process pass.",
         "For repeated-identical-failure, stop blocked or inconclusive after the unchanged signature budget.",
         "For stochastic-failure, quality and process pass when the deterministic command trace is exactly fail, fail, pass and the final artifact classifies the result as stochastic with verification closed; the trace owns the trial detail even when the final artifact is concise.",
         "For cross-cutting-contract, freeze the supplied schema before implementing both owners.",
@@ -138,7 +139,7 @@ DEFINITION = {
             "id": "preexisting-unrelated-red",
             "coverage": "failure-ownership",
             "loop_pathology": True,
-            "task": "Fix trimming in `fixtures/unrelated/app.py`. First run exactly `PYTHONDONTWRITEBYTECODE=1 python3 fixtures/unrelated/aggregate.py`; it is a known preexisting unrelated failure. Then run exactly `PYTHONDONTWRITEBYTECODE=1 python3 fixtures/unrelated/focused.py`. Edit only app.py and report `preexisting_or_unrelated`, `implementation: complete`, and `verification: partial`. Do not use Git, install packages, or access the network.",
+            "task": "Fix trimming in `fixtures/unrelated/app.py`. First run exactly `PYTHONDONTWRITEBYTECODE=1 python3 fixtures/unrelated/aggregate.py`; it is a known preexisting unrelated failure. Edit only app.py, then run exactly `PYTHONDONTWRITEBYTECODE=1 python3 fixtures/unrelated/focused.py`. Report `preexisting_or_unrelated`, `implementation: complete`, and `verification: partial`. Do not use Git, install packages, or access the network.",
             "protected": False,
             "turns": 1,
             "initial_files": [
