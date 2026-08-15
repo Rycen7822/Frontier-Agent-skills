@@ -107,6 +107,13 @@ def _scenario(
     task = case["task"]
     protected = case["protected"]
     turn_count = case["turns"]
+    deterministic_quality_process = case.get("deterministic_quality_process") is True
+    semantic_owner = "deterministic" if deterministic_quality_process else "model"
+    semantic_grader = (
+        "sentinel-envelope-grader"
+        if deterministic_quality_process
+        else "sentinel-model-grader"
+    )
     value = copy.deepcopy(base)
     value["case_id"] = f"{skill_id}-{slug}"
     value["timeout_seconds"] = (
@@ -179,9 +186,13 @@ def _scenario(
             "requirement_id": "semantic-quality",
             "dimension": "quality",
             "required": True,
-            "owner": "model",
-            "grader_id": "sentinel-model-grader",
-            "check_id": "quality-check",
+            "owner": semantic_owner,
+            "grader_id": semantic_grader,
+            "check_id": (
+                "task-quality-check"
+                if deterministic_quality_process
+                else "quality-check"
+            ),
             "checkpoint": "final",
             "obligation": "quality",
             "transition_id": None,
@@ -192,9 +203,13 @@ def _scenario(
             "requirement_id": "workflow-process",
             "dimension": "process",
             "required": process_required,
-            "owner": "model",
-            "grader_id": "sentinel-model-grader",
-            "check_id": "process-check",
+            "owner": semantic_owner,
+            "grader_id": semantic_grader,
+            "check_id": (
+                "task-process-check"
+                if deterministic_quality_process
+                else "process-check"
+            ),
             "checkpoint": "final",
             "obligation": "process",
             "transition_id": None,
@@ -359,6 +374,10 @@ def _spec(
         "required_capabilities": ["force_load", "model_grading"],
     }
     executable = bool(config.get("executable_contracts"))
+    deterministic_task_checks = any(
+        case.get("deterministic_quality_process") is True
+        for case in config["cases"]
+    )
     deterministic_checks = [
         {
             "check_id": "artifact-check",
@@ -378,6 +397,25 @@ def _spec(
             "pass_condition": "The Host terminal records no treatment error or external effect.",
         },
     ]
+    if deterministic_task_checks:
+        deterministic_checks.extend([
+            {
+                "check_id": "task-quality-check",
+                "dimension": "quality",
+                "required": True,
+                "pass_condition": (
+                    "The final artifact satisfies the case's fully mechanical quality contract."
+                ),
+            },
+            {
+                "check_id": "task-process-check",
+                "dimension": "process",
+                "required": True,
+                "pass_condition": (
+                    "The final artifact satisfies the case's fully mechanical process contract."
+                ),
+            },
+        ])
     model_checks = copy.deepcopy(MODEL_CHECKS)
     if not config.get("process_required", True):
         next(check for check in model_checks if check["check_id"] == "process-check")[
@@ -404,7 +442,15 @@ def _spec(
                         "workspace/host-observation.json",
                     ]
                     if executable
-                    else ["result.json"]
+                    else (
+                        [
+                            "result.json",
+                            "workspace/final-answer.md",
+                            "workspace/workspace-evidence.json",
+                        ]
+                        if deterministic_task_checks
+                        else ["result.json"]
+                    )
                 ),
                 "pass_exit_codes": [0],
             },
