@@ -85,7 +85,7 @@
   "leakage_probes": [
     {
       "artifact": {
-        "digest": "sha256:8166d3db1d217663a8221cfb7bfdabe16e9b955c09d851b681ec0698b8025107",
+        "digest": "sha256:199e1fc3805d0f0dd620bf34cea11336b272990f9d7836d46622e17eac7d91a6",
         "path": "grader-prompt.md"
       },
       "locator": {
