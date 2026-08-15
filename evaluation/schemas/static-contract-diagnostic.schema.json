@@ -58,7 +58,7 @@
         "long-document-segmented-writing": {"type": "integer", "minimum": 1},
         "skill-evaluator": {"type": "integer", "minimum": 1},
         "software-quality-workflows": {"type": "integer", "minimum": 1, "maximum": 4096},
-        "writing-plans": {"type": "integer", "minimum": 1, "maximum": 6400}
+        "writing-plans": {"type": "integer", "minimum": 1, "maximum": 6656}
       }
     },
     "model_facing_files_checked": {

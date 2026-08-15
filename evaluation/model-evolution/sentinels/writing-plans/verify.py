@@ -18,6 +18,10 @@ SOURCE_BOUND_PATHS = (
 )
 CASE_PATHS = {
     "source-bound-plan": frozenset(SOURCE_BOUND_PATHS),
+    "resume-preflight": frozenset({
+        "fixtures/resume-state.md",
+        "fixtures/docs/config.md",
+    }),
     "continuous-execution": frozenset({
         "fixtures/cli.py",
         "fixtures/tests/test_cli.py",
@@ -194,17 +198,10 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
     residual_start = (
         answer.rfind("python - <<", 0, old_absent[1]) if old_absent else -1
     )
-    pytest_start = min(
-        (
-            answer.find(line, residual_start)
-            for line in pytest_lines
-            if answer.find(line, residual_start) >= 0
-        ),
-        default=-1,
-    )
+    residual_end = answer.find("```", old_absent[1]) if old_absent else -1
     residual = (
-        answer[residual_start:pytest_start]
-        if residual_start >= 0 and pytest_start > residual_start
+        answer[residual_start:residual_end]
+        if residual_start >= 0 and residual_end > residual_start
         else ""
     )
     root_paths = all(
@@ -249,7 +246,6 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
             "return 0",
             "pytest.raises(systemexit)",
             ".value.code == 2",
-            "readouterr()",
             "boolean",
             "unknown options",
             "-p no:cacheprovider",
@@ -264,14 +260,24 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
             )
             or (
                 "from fixtures.cli import main" in answer
-                and "PYTHONPATH=" not in pytest_lines[0]
+                and (
+                    "PYTHONPATH=" not in pytest_lines[0]
+                    or re.search(r"(?:^|\s)PYTHONPATH=\.(?:\s|$)", pytest_lines[0])
+                )
             )
         )
-        output_bound = all(
+        capsys_output = all(
             f"captured.{stream} == \"\"" in answer
             or f"captured.{stream} == ''" in answer
             for stream in ("out", "err")
         )
+        redirected_output = all(term in answer for term in (
+            "redirect_stdout",
+            "redirect_stderr",
+            "stdout.getvalue() == \"\"",
+            "stderr.getvalue() == \"\"",
+        ))
+        output_bound = ("readouterr()" in answer and capsys_output) or redirected_output
         invocation_bound = "main([])" in answer or (
             "pytest.mark.parametrize" in answer and "[]" in answer
         )
@@ -297,6 +303,8 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
         exact_proof = (
             "assert lines ==" in answer
             or ("splitlines()" in answer and ".count(" in answer)
+            or ("splitlines()" in answer and 'fields.get("description") ==' in answer)
+            or ".read_text() ==" in answer
             or ("sed -n '1p'" in answer and "sed -n '2p'" in answer)
         )
         return _paired_checks(
@@ -321,6 +329,27 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
         return _paired_checks(
             all(term in lower for term in required) and pending and authority,
             "release-handoff",
+        )
+
+    if case_id == "resume-preflight":
+        required = (
+            "abc123",
+            "parser",
+            "unit tests",
+            "fixtures/docs/config.md",
+            "integration check",
+            "# configuration",
+            "parser configuration is not yet documented.",
+        )
+        replacement = "replac" in lower
+        documentation = any(term in lower for term in (
+            "parser-configuration documentation",
+            "documentation describing the parser configuration",
+            "document the parser configuration",
+        ))
+        return _paired_checks(
+            all(term in lower for term in required) and replacement and documentation,
+            "resume documentation handoff",
         )
 
     raise ValueError(f"unsupported deterministic Writing Plans case: {case_id}")

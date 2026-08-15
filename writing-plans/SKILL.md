@@ -11,7 +11,7 @@ A bounded single-session request naming files and checks must end as a native or
 
 Exact means old→new symbols, argument-parser calls, literals/anchors, and complete runnable test bodies when exact tests are requested. Edits keep literals in owning files; each exact check is a runnable command asserting them there; expected snippets, generic "add parsing", prose-only tests, and "follow existing conventions" fail.
 
-Edit only exact old-name matches; files without it are proof-only; preserve superstrings such as `test_timeout`. Make the residual check identifier-aware: prove old-name absence and new-name presence against the same collected identifier set; substring or tokenizer token-type constant comparisons fail.
+Map every observed old-name match to its owning file exactly once; never invent an occurrence or copy one across owners. Files without a match are proof-only; preserve superstrings such as `test_timeout`. Prove residuals with one identifier set: old absent, new present. Substring-only comparison fails; tokenizer type checks may select identifiers, but name comparison uses `token.string`.
 
 Derive one starting cwd and module path; never `cd` into the stated cwd again. Include `PYTHONPATH` when needed: remove the imported package from its path; `fixtures/src/client.py` imported as `src.client` yields `fixtures`. Reuse it in every command.
 
@@ -23,7 +23,7 @@ Use invocation-bound source; do not reread it. Treat named plan/owner/test/symbo
 
 Bind portable identity: revision or explicit non-Git identity, with repo-relative dirty/protected and first-slice paths/symbols. Resolve root once; never bind temporary/home paths or future `pwd` equality.
 
-Facts/authority/evidence are fixed. Unknowns block later slices only; missing intent/write/irreversible approval blocks that slice.
+Facts/authority/evidence stay fixed; retain every named identity/status literal across turns. Unknowns block later slices only; missing intent/write/irreversible approval blocks that slice.
 
 ## Contract
 
