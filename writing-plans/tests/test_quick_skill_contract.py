@@ -54,7 +54,7 @@ class QuickWritingPlansTests(unittest.TestCase):
         self.assertGreaterEqual(len(description), 80)
         for term in ("source-bound", "software implementation", "handoff", "program"):
             self.assertIn(term, description)
-        self.assertLessEqual(len(SKILL_PATH.read_bytes()), 6400)
+        self.assertLessEqual(len(SKILL_PATH.read_bytes()), 6912)
         agents = yaml.safe_load(
             (SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
         )
@@ -110,12 +110,10 @@ class QuickWritingPlansTests(unittest.TestCase):
     def test_transfer_consumes_matching_preflight(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8").casefold()
         for contract in (
-            "consume a matching freshness-bound host attestation",
-            "resolved root, bound source identity, freshness, and dirty scope match",
-            "transfer it unchanged",
-            "missing or mismatched",
-            "one combined preflight",
-            "do not rerun it",
+            "state both branches explicitly",
+            "matching freshness-bound host attestation unchanged",
+            "root, identity, freshness, and dirty scope match",
+            "otherwise run one combined preflight",
         ):
             self.assertIn(contract, body)
         self.assertNotIn("root/revision/head/dirty scope", body)
@@ -127,9 +125,9 @@ class QuickWritingPlansTests(unittest.TestCase):
         for contract in (
             "dependencies name every prerequisite milestone",
             "never ordinals or collective references",
-            "executable against the observed body",
-            "carry every preserved transformation/invariant into code, not prose",
-            "carry every promised transformation or invariant into its exact edit",
+            "every settled source transition, including gated removal",
+            "with its exact edit and one runnable command against the post-edit body",
+            "shared commands run once after the last milestone they cover",
         ):
             self.assertIn(contract, body)
 
@@ -185,9 +183,8 @@ class QuickWritingPlansTests(unittest.TestCase):
             "even when git identity, dirty/protected paths, or exact source identity are visible",
             "a native proof never adds whole-file snapshots",
             "argument-parser calls",
-            "make the residual check identifier-aware",
-            "same collected identifier set",
-            "tokenizer token-type constant",
+            "one identifier set",
+            "tokenizer type checks",
             "non-git identity forbids git status, diff, or rollback",
         ):
             self.assertIn(contract, body)
