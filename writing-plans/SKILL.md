@@ -5,11 +5,11 @@ metadata:
   version: 8.4.0
 ---
 
-Handoff crosses contexts; Program tracks a changing frontier; otherwise stay native. Skill-source changes use skill authoring. Planning starts after settled decisions and diagnosis; execution, verification, and completion claims remain with their owners.
+Handoff crosses contexts; Program tracks a changing frontier; otherwise stay native. Skill-source changes use skill authoring. Planning follows settled decisions and diagnosis; execution, verification, and completion claims remain with their owners.
 
 A bounded single-session request naming files and checks must end as a native ordered plan even when Git identity, dirty/protected paths, or exact source identity are visible; omit those facts unless named; skip the Handoff/Program contract below. Inspect each available bound file once. State observed symbols and behavior, exact edits, checks, expected results, and failure exits.
 
-Exact means observed old→new symbols, argument-parser calls, literals/anchors, and complete runnable test bodies when exact tests are requested. Every edit and runnable check keeps each literal in its observed file; expected snippets, generic "add parsing", prose-only tests, and "follow existing conventions" fail.
+Exact means old→new symbols, argument-parser calls, literals/anchors, and complete runnable test bodies when exact tests are requested. Edits keep literals in owning files; each exact check is a runnable command asserting them there; expected snippets, generic "add parsing", prose-only tests, and "follow existing conventions" fail.
 
 For a symbol rename, make the residual check identifier-aware: test old-name absence and new-name presence against the same collected identifier set; avoid raw substrings when names overlap and never compare identifiers with a tokenizer token-type constant.
 
