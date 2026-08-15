@@ -159,7 +159,7 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
             "work from `<workspace>`",
             "run commands from `<workspace>`",
         )
-    ) or "repository root" in lower or (
+    ) or "repository root" in lower or "workspace root" in lower or (
         f"<workspace>/{SOURCE_BOUND_PATHS[0]}" in lower
     )
     fixtures_bound = any(
@@ -366,7 +366,10 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
         )
         replacement = "replac" in lower
         return _paired_checks(
-            all(term in lower for term in required) and replacement,
+            all(term in lower for term in required)
+            and replacement
+            and "attestation" in lower
+            and "combined preflight" in lower,
             "resume documentation handoff",
         )
 
