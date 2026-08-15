@@ -125,8 +125,8 @@ class QuickWritingPlansTests(unittest.TestCase):
         for contract in (
             "dependencies name every prerequisite milestone",
             "never ordinals or collective references",
-            "every settled source transition, including gated removal",
-            "with its exact edit and one runnable command against the post-edit body",
+            "name every settled source transition as a milestone",
+            "for a later gated removal, define its milestone, old→new edit, dependencies, condition, and command now",
             "shared commands run once after the last milestone they cover",
         ):
             self.assertIn(contract, body)
@@ -244,7 +244,7 @@ class QuickWritingPlansTests(unittest.TestCase):
             "use invocation-bound source; do not reread it",
             "treat named plan/owner/test/symbol paths as resolved",
             "do not inventory, seek alternate owners, or check existence",
-            "only a later planning invocation updates the program",
+            "only a later planning invocation updates unsettled facts",
             "protected immutable input",
             "dependencies name every prerequisite milestone, never ordinals",
             "require attestation acceptance or one-preflight fallback for resume",

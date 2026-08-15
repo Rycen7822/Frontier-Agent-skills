@@ -75,9 +75,26 @@ def _action_position(answer: str, path: str, actions: tuple[str, ...]) -> int:
     return -1
 
 
-def _proof_only_position(answer: str, path: str) -> int:
-    position = -1
+def _observed_mapping(
+    answer: str,
+    *,
+    path: str,
+    line_number: int,
+    role: str,
+    old: str,
+    new: str,
+) -> bool:
+    owner = f"{path}:{line_number}"
+    return any(
+        owner in line and role in line.lower() and old in line and new in line
+        for line in answer.splitlines()
+    )
+
+
+def _proof_only_position(answer: str, path: str, *, after: int) -> int:
     for match in re.finditer(re.escape(path), answer):
+        if match.start() <= after:
+            continue
         start = answer.rfind("\n", 0, match.start()) + 1
         end = answer.find("\n", match.end())
         line = (answer[start:] if end < 0 else answer[start:end]).lower()
@@ -89,13 +106,14 @@ def _proof_only_position(answer: str, path: str) -> int:
             "preserve",
             "proof-only",
             "proof only",
+            "python -m pytest",
         )):
-            position = match.start()
+            return match.start()
         if "unchanged" in line and not any(
             term in line for term in ("edit", "change", "update", "rename")
         ):
-            position = match.start()
-    return position
+            return match.start()
+    return -1
 
 
 def _asserted_collection(
@@ -118,10 +136,14 @@ def _asserted_collection(
 
 
 def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
-    edit_actions = ("edit", "change", "update", "replace")
+    edit_actions = ("edit", "change", "update", "replace", "rename")
     config_start = _action_position(answer, SOURCE_BOUND_PATHS[0], edit_actions)
     client_start = _action_position(answer, SOURCE_BOUND_PATHS[1], edit_actions)
-    test_start = _proof_only_position(answer, SOURCE_BOUND_PATHS[2])
+    test_start = _proof_only_position(
+        answer,
+        SOURCE_BOUND_PATHS[2],
+        after=client_start,
+    )
     ordered = (
         min(config_start, client_start, test_start) >= 0
         and config_start < client_start < test_start
@@ -129,24 +151,63 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
     config = answer[config_start:client_start] if ordered else ""
     client = answer[client_start:test_start] if ordered else ""
     test = answer[test_start:] if ordered else ""
+    normalized_test = test.replace("`", "")
+    behavior_bound = bool(re.search(
+        r"request\(\)\s+(?:==\s*|(?:(?:still|continues(?:\s+to)?)\s+)?return(?:s|ing)?\s+)30000",
+        normalized_test,
+    ))
+    config_bound = bool(
+        "timeout_ms = 30000" in config and "request_timeout_ms" in config
+    ) or _observed_mapping(
+        answer,
+        path=SOURCE_BOUND_PATHS[0],
+        line_number=1,
+        role="",
+        old="timeout_ms = 30000",
+        new="request_timeout_ms = 30000",
+    )
+    import_bound = bool(
+        "from .config import timeout_ms" in client
+        and "from .config import request_timeout_ms" in client
+    ) or bool(
+        _observed_mapping(
+            answer,
+            path=SOURCE_BOUND_PATHS[1],
+            line_number=1,
+            role="imported symbol",
+            old="timeout_ms",
+            new="request_timeout_ms",
+        ) and (
+            "from .config import request_timeout_ms" in answer
+            or r"from \.config import request_timeout_ms" in answer
+        )
+    )
+    return_bound = bool(
+        "return timeout_ms" in client and "return request_timeout_ms" in client
+    ) or bool(
+        _observed_mapping(
+            answer,
+            path=SOURCE_BOUND_PATHS[1],
+            line_number=4,
+            role="returned symbol",
+            old="timeout_ms",
+            new="request_timeout_ms",
+        ) and "return request_timeout_ms" in answer
+    )
+    misowned_assignment = any(
+        SOURCE_BOUND_PATHS[1] in line and "request_timeout_ms = 30000" in line
+        for line in answer.splitlines()
+    )
     quality = bool(
         ordered
-        and "timeout_ms = 30000" in config
-        and "request_timeout_ms" in config
+        and config_bound
         and "request_timeout_ms = 30000" in answer
         and "return timeout_ms" not in config
         and "return request_timeout_ms" not in config
-        and "from .config import timeout_ms" in client
-        and "from .config import request_timeout_ms" in client
-        and "return timeout_ms" in client
-        and "return request_timeout_ms" in client
-        and "request_timeout_ms = 30000" not in client
-        and (
-            "request() == 30000" in test
-            or "request()` still returns `30000" in test
-            or "request()` returns `30000" in test
-            or ("calls `request()`" in test and "asserts `30000`" in test)
-        )
+        and import_bound
+        and return_bound
+        and not misowned_assignment
+        and (behavior_bound or ("calls `request()`" in test and "asserts `30000`" in test))
     )
 
     lower = answer.lower()
@@ -209,8 +270,10 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
         or (
             ("generate_tokens" in answer or "tokenize.tokenize" in answer)
             and (
-                "token.type == NAME" in answer
-                or "token.type == tokenize.NAME" in answer
+                re.search(
+                    r"\b[A-Za-z_]\w*\.type\s*==\s*(?:tokenize\.)?NAME\b",
+                    answer,
+                )
                 or ".isidentifier()" in answer
             )
         )
@@ -231,6 +294,10 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
         if residual_start >= 0 and residual_end > residual_start
         else ""
     )
+    if not residual and old_position >= 0:
+        line_start = answer.rfind("\n", 0, old_position) + 1
+        line_end = answer.find("\n", old_position)
+        residual = answer[line_start:line_end if line_end >= 0 else len(answer)]
     root_paths = all(
         f'"{path}"' in residual or f"'{path}'" in residual
         for path in SOURCE_BOUND_PATHS
