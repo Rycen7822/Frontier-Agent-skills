@@ -13,7 +13,7 @@ Exact means observed old→new symbols, argument-parser calls, literals/anchors,
 
 For a symbol rename, make the residual check identifier-aware: test old-name absence and new-name presence against the same collected identifier set; avoid raw substrings when names overlap and never compare identifiers with a tokenizer token-type constant.
 
-Derive one starting cwd and module path from imports/layout; never `cd` into the stated cwd again. Include `PYTHONPATH` when needed; set it to the directory containing the top-level imported package, not the directory above, and use that value in every command.
+Derive one starting cwd and module path; never `cd` into the stated cwd again. Include `PYTHONPATH` when needed: remove the imported package from its path; `fixtures/src/client.py` imported as `src.client` yields `fixtures`. Reuse it in every command.
 
 Use only executable workspace-bound checks. A native proof never adds whole-file snapshots, Git scope, protected boundary, residue/whitespace, rollback/cleanup, attestation, combined-only proof, or repository-wide check unless named by the request or bound source. An explicit non-Git identity forbids Git status, diff, or rollback. No contract rows or unrequested owners.
 
