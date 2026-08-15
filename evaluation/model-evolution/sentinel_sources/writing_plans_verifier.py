@@ -278,14 +278,43 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
             )
         )
     )
+    expected_owner_counts = all(
+        re.search(
+            rf"Path\(['\"]{re.escape(path)}['\"]\)\s*:\s*\{{"
+            rf"(?=[^}}]*['\"]timeout_ms['\"]\s*:\s*0)"
+            rf"(?=[^}}]*['\"]request_timeout_ms['\"]\s*:\s*{new_count})[^}}]*\}}",
+            answer,
+        )
+        for path, new_count in (
+            (SOURCE_BOUND_PATHS[0], 1),
+            (SOURCE_BOUND_PATHS[1], 2),
+            (SOURCE_BOUND_PATHS[2], 0),
+        )
+    )
+    mapped_count_matches = [
+        re.search(
+            rf"\.count\(['\"]{name}['\"]\)\s*==\s*"
+            rf"[A-Za-z_]\w*\[['\"]{name}['\"]\]",
+            answer,
+        )
+        for name in ("timeout_ms", "request_timeout_ms")
+    ]
+    mapped_count_assertions = all(mapped_count_matches)
     python_identifier_aware = bool(
-        old_absence
-        and new_presence
-        and extractor
-        and (not old_absent or not new_present or old_absent[0] == new_present[0])
+        extractor
+        and (
+            (
+                old_absence
+                and new_presence
+                and (not old_absent or not new_present or old_absent[0] == new_present[0])
+            )
+            or (expected_owner_counts and mapped_count_assertions)
+        )
     )
     old_position = old_absent[1] if old_absent else (
-        old_absence.start() if old_absence else -1
+        old_absence.start() if old_absence else (
+            mapped_count_matches[0].start() if mapped_count_matches[0] else -1
+        )
     )
     residual_start = answer.rfind("python - <<", 0, old_position)
     residual_end = answer.find("```", old_position)
