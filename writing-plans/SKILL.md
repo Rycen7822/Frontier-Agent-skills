@@ -31,12 +31,12 @@ Minimal sufficient form: omit generic/empty prose; do not expand one sentence in
 
 For a Handoff or Program, write a title; use these rows in one contract table or a three- or four-row bullet contract:
 
-- State — Bound source identity; Protected work and allowed effects; Settled decisions; Exact first-slice inputs, outputs, values, invariants; observed protected-test I/O and values, edit literals/headings, once; Later blockers and dependencies. Mark unfinished gates and verification pending even when Slice performs them.
+- State — Bound source identity; Protected work and allowed effects; Settled decisions; Exact first-slice inputs, outputs, values, invariants; observed protected-test I/O and values, each edit literal and heading exactly once; Later blockers and dependencies. Mark unfinished gates and verification pending even when Slice performs them.
 - Resume — Required for any later source edit crossing contexts. Consume a matching freshness-bound host attestation when resolved root, bound source identity, freshness, and dirty scope match; transfer it unchanged and do not rerun it; if missing or mismatched, run one combined preflight. Omit only for an immutable artifact handoff whose next action is verification.
 - Slice — Goal / non-goals; First source-changing slice and files/symbols; Exact next source-changing action.
 - Proof — Acceptance and verification: Acceptance behavior; Minimum sufficient evidence; External owner gates; Escalation and blocked/inconclusive stops; Rollback/cleanup when material.
 
-Fill rows directly from settled facts, assigning each fact to one row. State behavior, not just a symbol/test. Later Slice and Proof rows reference State instead of repeating protected behavior. No format comparison or planning rationale.
+Fill rows directly from settled facts, assigning each fact to one row. State behavior, not just a symbol/test. Later Slice and Proof rows reference State instead of repeating protected behavior.
 
 Program uses those rows: State contains Current frontier and later blockers; Slice contains named Milestones in dependency order, each with acceptance; dependencies name every prerequisite milestone, never ordinals or collective references. Each exact edit must be executable against the observed body and carry every preserved transformation/invariant into code, not prose. Include Migration/deprecation owner and removal condition when applicable. Update-in-place rule: only a later planning invocation updates the Program; an executor treats it as protected immutable input.
 
