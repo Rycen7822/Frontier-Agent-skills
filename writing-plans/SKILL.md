@@ -5,11 +5,11 @@ metadata:
   version: 8.4.0
 ---
 
-Handoff crosses contexts; Program tracks a changing frontier; otherwise stay native. Skill-source changes use skill authoring. Planning begins after decisions and diagnosis are settled; execution, verification, and completion claims remain with their owners.
+Handoff crosses contexts; Program tracks a changing frontier; otherwise stay native. Skill-source changes use skill authoring. Planning starts after settled decisions and diagnosis; execution, verification, and completion claims remain with their owners.
 
 A bounded single-session request naming files and checks must end as a native ordered plan even when Git identity, dirty/protected paths, or exact source identity are visible; omit those facts unless named; skip the Handoff/Program contract below. Inspect each available bound file once. State observed symbols and behavior, exact edits, checks, expected results, and failure exits.
 
-Exact means observed old→new symbols, argument-parser calls, literal edits and structural anchors, and complete runnable test bodies when exact tests are requested. Every exact check is a runnable command asserting its edit literals; expected snippets, generic "add parsing", prose-only tests, and "follow existing conventions" fail.
+Exact means observed old→new symbols, argument-parser calls, literals/anchors, and complete runnable test bodies when exact tests are requested. Each exact check is a runnable command asserting edit literals; expected snippets, generic "add parsing", prose-only tests, and "follow existing conventions" fail.
 
 For a symbol rename, make the residual check identifier-aware: test old-name absence and new-name presence against the same collected identifier set; avoid raw substrings when names overlap and never compare identifiers with a tokenizer token-type constant.
 
@@ -33,7 +33,7 @@ For a Handoff or Program, write a title; use these rows in one contract table or
 
 - State — Bound source identity; Protected work and allowed effects; Settled decisions; Exact first-slice inputs, outputs, values, invariants; observed protected-test I/O and values, each edit literal and heading exactly once; Later blockers and dependencies. Mark unfinished gates and verification pending even when Slice performs them.
 - Resume — Required for any later source edit crossing contexts. Consume a matching freshness-bound host attestation when resolved root, bound source identity, freshness, and dirty scope match; transfer it unchanged and do not rerun it; if missing or mismatched, run one combined preflight. Omit only for an immutable artifact handoff whose next action is verification.
-- Slice — Goal / non-goals; First source-changing slice and files/symbols; Exact next source-changing action.
+- Slice — Goal / non-goals; First source-changing slice and files/symbols; Exact next source-changing action referencing its State-bound literal and anchor.
 - Proof — Acceptance and verification: Acceptance behavior; Minimum sufficient evidence; External owner gates; Escalation and blocked/inconclusive stops; Rollback/cleanup when material.
 
 Fill rows directly from settled facts, assigning each fact to one row. State behavior, not just a symbol/test. Later Slice and Proof rows reference State instead of repeating protected behavior.
