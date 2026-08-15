@@ -16,9 +16,6 @@ DEFINITION = {
     "grader_rules": [
         "Apply a case-specific rule only when task_evidence.case_id exactly equals its full named ID.",
         "For writing-plans-resume-preflight, quality and process pass when the handoff preserves abc123 parser/test completion, binds the pending documentation and integration check, preserves the heading, and directs replacement of the exact observed placeholder with parser-configuration documentation. Evaluate the Handoff rows as one contract: a State quoting the placeholder plus a Slice referring to that undocumented-status sentence keeps the exact binding, and a Slice acting under # Configuration preserves the heading. The fixture supplies no settled replacement prose, so do not require invented replacement text or an explicit blocker; treating completed work as protected or including the Handoff resume preflight is compatible.",
-        "For writing-plans-continuous-execution, both `import argparse` with `argparse.ArgumentParser` and `from argparse import ArgumentParser` with `ArgumentParser` pass. From the task root, `PYTHONPATH=fixtures python -m pytest -p no:cacheprovider fixtures/tests/test_cli.py` makes `from cli import main` executable; `from fixtures.cli import main` is executable without PYTHONPATH. A literal -p no:cacheprovider independently supplies the required no-cache flag. Bound proof covers cli.py and test_cli.py, while documentation states the interface behavior at its own granularity. Count top-level test functions as tests; multiple assertions inside one function do not add test cases, and never infer parametrization without a decorator.",
-        "For writing-plans-protected-description, quality and process pass for a forward-looking plan that changes only the version, preserves the complete observed description verbatim, and verifies both lines with exact assertions; POSIX `test` equality against each complete line is an exact assertion, and plan imperatives are not completion claims.",
-        "For writing-plans-explicit-handoff, quality and process name the signed commit, passing unit test, pending immutable-artifact verification command, and release-engineering publication authority. A dedicated Slice whose next imperative is to verify the immutable artifact makes that verification pending without requiring the literal word pending.",
         "For either resumable Program case, a Resume that accepts a matching freshness-bound Host attestation and runs one combined preflight when it is missing or mismatched satisfies the freshness preflight requirement.",
         "For writing-plans-resumable-program-heldout, quality and process require explicit non-Git identity, named milestone dependencies, the parser compatibility owner and one-release zero-legacy removal condition, the exact unittest command, and a blocked package switch with its missing target.",
         "For writing-plans-multi-session-program, quality and process require explicit non-Git identity, named milestone dependencies, the parser migration owner and one-release zero-legacy removal condition, and the exact unittest command.",
@@ -96,6 +93,7 @@ DEFINITION = {
         {
             "id": "explicit-handoff",
             "coverage": "handoff",
+            "deterministic_quality_process": True,
             "task": "Read `fixtures/release-status.md`. Define the exact handoff artifacts, the publish authority boundary, and the next executable verification command.",
             "protected": False,
             "turns": 1,
@@ -105,6 +103,7 @@ DEFINITION = {
         {
             "id": "continuous-execution",
             "coverage": "continuous-execution",
+            "deterministic_quality_process": True,
             "task": "Read `fixtures/cli.py`, `fixtures/tests/test_cli.py`, and `fixtures/README.md`, then produce consecutive implementation steps for adding `--dry-run` as a Boolean argparse option. Both `main([])` and `main([\"--dry-run\"])` must return 0 without output; unknown options must fail through argparse. Ground the plan in the observed source and include the exact import, parser calls, tests, documentation, checks, expected results, and failure exits.",
             "protected": False,
             "turns": 1,
@@ -120,6 +119,7 @@ DEFINITION = {
         {
             "id": "protected-description",
             "coverage": "protected",
+            "deterministic_quality_process": True,
             "task": "Plan one version bump from 8.2.0 to 8.2.1 in `fixtures/agents/openai.yaml`; the complete description remains verbatim.",
             "protected": True,
             "turns": 1,

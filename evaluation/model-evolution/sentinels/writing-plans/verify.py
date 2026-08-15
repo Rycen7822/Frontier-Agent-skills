@@ -16,20 +16,48 @@ SOURCE_BOUND_PATHS = (
     "fixtures/src/client.py",
     "fixtures/tests/test_client.py",
 )
+CASE_PATHS = {
+    "source-bound-plan": frozenset(SOURCE_BOUND_PATHS),
+    "continuous-execution": frozenset({
+        "fixtures/cli.py",
+        "fixtures/tests/test_cli.py",
+        "fixtures/README.md",
+    }),
+    "protected-description": frozenset({"fixtures/agents/openai.yaml"}),
+    "explicit-handoff": frozenset({"fixtures/release-status.md"}),
+}
+DESCRIPTION = (
+    "description: Use after software decisions and diagnosis are settled to write "
+    "source-bound software implementation Handoffs and durable multi-session Programs."
+)
 
 
-def _source_bound_case(workspace: dict) -> bool:
+def _case_id(workspace: dict) -> str | None:
     initial = workspace.get("initial")
     if not isinstance(initial, list):
-        return False
+        return None
     paths = {
         item.get("path")
         for item in initial
         if isinstance(item, dict) and isinstance(item.get("path"), str)
     }
-    return {path for path in paths if path.startswith("fixtures/")} == set(
-        SOURCE_BOUND_PATHS,
+    fixture_paths = frozenset(path for path in paths if path.startswith("fixtures/"))
+    return next(
+        (case_id for case_id, expected in CASE_PATHS.items() if fixture_paths == expected),
+        None,
     )
+
+
+def _paired_checks(passed: bool, label: str) -> dict[str, tuple[bool, str]]:
+    observation = (
+        f"the final plan satisfies the exact {label} contract"
+        if passed
+        else f"the exact {label} contract is incomplete or contradictory"
+    )
+    return {
+        "task-quality-check": (passed, observation),
+        "task-process-check": (passed, observation),
+    }
 
 
 def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
@@ -63,14 +91,18 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
         and (
             "request() == 30000" in test
             or "request()` still returns `30000" in test
+            or "request()` returns `30000" in test
+            or ("calls `request()`" in test and "asserts `30000`" in test)
         )
         and any(
             marker in (client + test).lower()
             for marker in (
                 "do not edit",
+                "do not modify",
                 "make no edit",
                 "leave `fixtures/tests/test_client.py` unchanged",
                 "preserve its existing behavior",
+                "unchanged",
             )
         )
     )
@@ -80,7 +112,9 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
         marker in lower
         for marker in (
             "starting cwd: `<workspace>`",
+            "starting directory: `<workspace>`",
             "from `<workspace>`",
+            "work from `<workspace>`",
             "run commands from `<workspace>`",
         )
     )
@@ -88,7 +122,9 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
         marker in lower
         for marker in (
             "starting cwd: `<workspace>/fixtures`",
+            "starting directory: `<workspace>/fixtures`",
             "from `<workspace>/fixtures`",
+            "work from `<workspace>/fixtures`",
             "run commands from `<workspace>/fixtures`",
         )
     )
@@ -109,14 +145,17 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
         for line in pytest_lines
     )
     old_absent = re.search(
-        r"assert\s+['\"]timeout_ms['\"]\s+not\s+in\s+identifiers", answer,
+        r"assert\s+['\"]timeout_ms['\"]\s+not\s+in\s+([A-Za-z_][A-Za-z0-9_]*)",
+        answer,
     )
     new_present = re.search(
-        r"assert\s+['\"]request_timeout_ms['\"]\s+in\s+identifiers", answer,
+        r"assert\s+['\"]request_timeout_ms['\"]\s+in\s+([A-Za-z_][A-Za-z0-9_]*)",
+        answer,
     )
     identifier_aware = bool(
         old_absent
         and new_present
+        and old_absent.group(1) == new_present.group(1)
         and (
             ("ast.parse" in answer and "ast.walk" in answer)
             or (
@@ -125,7 +164,9 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
             )
         )
     )
-    residual_start = lower.find("identifier-aware")
+    residual_start = (
+        answer.rfind("python - <<", 0, old_absent.start()) if old_absent else -1
+    )
     pytest_start = min(
         (
             answer.find(line, residual_start)
@@ -167,6 +208,92 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
     }
 
 
+def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]:
+    lower = answer.lower()
+    if case_id == "continuous-execution":
+        required = (
+            "fixtures/cli.py",
+            "fixtures/tests/test_cli.py",
+            "fixtures/readme.md",
+            "argumentparser",
+            "--dry-run",
+            "store_true",
+            "parse_args(argv)",
+            "return 0",
+            "pytest.raises(systemexit)",
+            ".value.code == 2",
+            "readouterr()",
+            "boolean",
+            "unknown options",
+            "-p no:cacheprovider",
+        )
+        pytest_lines = [
+            line for line in answer.splitlines() if "python -m pytest" in line
+        ]
+        import_bound = len(pytest_lines) == 1 and (
+            (
+                "from cli import main" in answer
+                and "PYTHONPATH=fixtures" in pytest_lines[0]
+            )
+            or (
+                "from fixtures.cli import main" in answer
+                and "PYTHONPATH=" not in pytest_lines[0]
+            )
+        )
+        output_bound = all(
+            f"captured.{stream} == \"\"" in answer
+            or f"captured.{stream} == ''" in answer
+            for stream in ("out", "err")
+        )
+        invocation_bound = "main([])" in answer or (
+            "pytest.mark.parametrize" in answer and "[]" in answer
+        )
+        passed = (
+            all(term in lower for term in required)
+            and import_bound
+            and output_bound
+            and invocation_bound
+        )
+        return _paired_checks(passed, "argparse implementation/test/documentation")
+
+    if case_id == "protected-description":
+        required = (
+            "fixtures/agents/openai.yaml",
+            "version: 8.2.0",
+            "version: 8.2.1",
+            DESCRIPTION,
+        )
+        exact_proof = (
+            "assert lines ==" in answer
+            or ("splitlines()" in answer and ".count(" in answer)
+            or ("sed -n '1p'" in answer and "sed -n '2p'" in answer)
+        )
+        return _paired_checks(
+            all(term in answer for term in required) and exact_proof,
+            "version-and-description",
+        )
+
+    if case_id == "explicit-handoff":
+        required = (
+            "signed implementation commit",
+            "passing",
+            "unit-test",
+            "pythondontwritebytecode=1 python -m unittest tests.test_release",
+            "release engineering",
+            "immutable",
+            "artifact",
+            "verification",
+        )
+        pending = "pending" in lower or "remains" in lower
+        authority = "publish" in lower or "publication" in lower
+        return _paired_checks(
+            all(term in lower for term in required) and pending and authority,
+            "release-handoff",
+        )
+
+    raise ValueError(f"unsupported deterministic Writing Plans case: {case_id}")
+
+
 def main() -> int:
     result = json.loads(Path("result.json").read_text(encoding="utf-8"))
     checks = terminal_checks(result)
@@ -174,8 +301,13 @@ def main() -> int:
     answer_path = Path("workspace/final-answer.md")
     if workspace_path.is_file() and answer_path.is_file():
         workspace = json.loads(workspace_path.read_text(encoding="utf-8"))
-        if _source_bound_case(workspace):
+        case_id = _case_id(workspace)
+        if case_id == "source-bound-plan":
             checks.update(_source_bound_checks(answer_path.read_text(encoding="utf-8")))
+        elif case_id is not None:
+            checks.update(
+                _fixed_case_checks(case_id, answer_path.read_text(encoding="utf-8")),
+            )
     return emit(
         "writing-plans",
         checks,
