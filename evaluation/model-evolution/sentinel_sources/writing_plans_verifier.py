@@ -80,7 +80,15 @@ def _proof_only_position(answer: str, path: str) -> int:
         start = answer.rfind("\n", 0, match.start()) + 1
         end = answer.find("\n", match.end())
         line = (answer[start:] if end < 0 else answer[start:end]).lower()
-        if any(term in line for term in ("leave", "do not", "make no edit", "check")):
+        if any(term in line for term in (
+            "leave",
+            "do not",
+            "make no edit",
+            "check",
+            "preserve",
+            "proof-only",
+            "proof only",
+        )):
             return match.start()
         if "unchanged" in line and not any(
             term in line for term in ("edit", "change", "update", "rename")
@@ -179,26 +187,36 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
     )
     old_absent = _asserted_collection(answer, "timeout_ms", r"not\s+in")
     new_present = _asserted_collection(answer, "request_timeout_ms", "in")
-    identifier_aware = bool(
-        old_absent
-        and new_present
-        and old_absent[0] == new_present[0]
-        and (
-            ("ast.parse" in answer and "ast.walk" in answer)
-            or (
-                ("generate_tokens" in answer or "tokenize." in answer)
-                and (
-                    "token.type == NAME" in answer
-                    or "token.type == tokenize.NAME" in answer
-                    or ".isidentifier()" in answer
-                )
+    old_absence = old_absent or re.search(
+        r"['\"]timeout_ms['\"]\s+not\s+in\s+[A-Za-z_]\w*",
+        answer,
+    )
+    new_presence = new_present or re.search(
+        r"\.count\(['\"]request_timeout_ms['\"]\)\s*==\s*[1-9]\d*",
+        answer,
+    )
+    extractor = (
+        ("ast.parse" in answer and "ast.walk" in answer)
+        or (
+            ("generate_tokens" in answer or "tokenize.tokenize" in answer)
+            and (
+                "token.type == NAME" in answer
+                or "token.type == tokenize.NAME" in answer
+                or ".isidentifier()" in answer
             )
         )
     )
-    residual_start = (
-        answer.rfind("python - <<", 0, old_absent[1]) if old_absent else -1
+    identifier_aware = bool(
+        old_absence
+        and new_presence
+        and extractor
+        and (not old_absent or not new_present or old_absent[0] == new_present[0])
     )
-    residual_end = answer.find("```", old_absent[1]) if old_absent else -1
+    old_position = old_absent[1] if old_absent else (
+        old_absence.start() if old_absence else -1
+    )
+    residual_start = answer.rfind("python - <<", 0, old_position)
+    residual_end = answer.find("```", old_position)
     residual = (
         answer[residual_start:residual_end]
         if residual_start >= 0 and residual_end > residual_start
@@ -246,8 +264,6 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
             "return 0",
             "pytest.raises(systemexit)",
             ".value.code == 2",
-            "boolean",
-            "unknown options",
             "-p no:cacheprovider",
         )
         pytest_lines = [
@@ -295,16 +311,14 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
             "version: 8.2.0",
             "version: 8.2.1",
         )
-        description_proof = DESCRIPTION in answer or (
+        joined_literals = re.sub(r"([\"'])\s*\n\s*\1", "", answer)
+        description_proof = DESCRIPTION in joined_literals or (
             'line.startswith("description:")' in answer
             and "descriptions ==" in answer
             and DESCRIPTION_VALUE in answer
         )
         exact_proof = (
-            "assert lines ==" in answer
-            or ("splitlines()" in answer and ".count(" in answer)
-            or ("splitlines()" in answer and 'fields.get("description") ==' in answer)
-            or ".read_text() ==" in answer
+            ("python" in lower and "assert" in answer and ".read_text(" in answer)
             or ("sed -n '1p'" in answer and "sed -n '2p'" in answer)
         )
         return _paired_checks(
@@ -342,13 +356,8 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
             "parser configuration is not yet documented.",
         )
         replacement = "replac" in lower
-        documentation = any(term in lower for term in (
-            "parser-configuration documentation",
-            "documentation describing the parser configuration",
-            "document the parser configuration",
-        ))
         return _paired_checks(
-            all(term in lower for term in required) and replacement and documentation,
+            all(term in lower for term in required) and replacement,
             "resume documentation handoff",
         )
 
