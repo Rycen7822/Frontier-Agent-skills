@@ -262,7 +262,7 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
         r"assert\s+any\s*\([\s\S]{0,400}?==\s*['\"]request_timeout_ms['\"]",
         answer,
     ) or re.search(
-        r"\.count\(['\"]request_timeout_ms['\"]\)\s*==\s*[1-9]\d*",
+        r"\.count\([\s\S]{0,160}?['\"]request_timeout_ms['\"][\s\S]{0,80}?\)\s*==\s*[1-9]\d*",
         answer,
     )
     extractor = (
@@ -278,7 +278,7 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
             )
         )
     )
-    identifier_aware = bool(
+    python_identifier_aware = bool(
         old_absence
         and new_presence
         and extractor
@@ -306,9 +306,30 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
         f'"{path}"' in residual or f"'{path}'" in residual
         for path in ("src/config.py", "src/client.py", "tests/test_client.py")
     )
-    process = len(pytest_lines) == 1 and identifier_aware and (
+    old_rg_line = next(
+        (
+            line
+            for line in answer.splitlines()
+            if "\\btimeout_ms\\b" in line
+            and all(path in line for path in SOURCE_BOUND_PATHS)
+        ),
+        "",
+    )
+    old_rg_absent = old_rg_line.lstrip().startswith("! rg ") or bool(
+        re.search(r"\bif\s+rg\b.*\bthen\s+exit\s+1\b", old_rg_line)
+    )
+    python_process = python_identifier_aware and (
         (root_bound and root_pytest and root_paths)
         or (fixtures_bound and fixtures_pytest and fixture_paths)
+    )
+    rg_process = bool(
+        quality
+        and old_rg_absent
+        and root_pytest
+        and (root_bound or all(path in old_rg_line for path in SOURCE_BOUND_PATHS))
+    )
+    process = len(pytest_lines) == 1 and (
+        python_process or rg_process
     )
     return {
         "task-quality-check": (
