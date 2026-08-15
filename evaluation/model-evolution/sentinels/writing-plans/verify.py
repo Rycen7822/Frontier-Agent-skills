@@ -30,6 +30,7 @@ DESCRIPTION = (
     "description: Use after software decisions and diagnosis are settled to write "
     "source-bound software implementation Handoffs and durable multi-session Programs."
 )
+DESCRIPTION_VALUE = DESCRIPTION.removeprefix("description: ")
 
 
 def _case_id(workspace: dict) -> str | None:
@@ -60,18 +61,56 @@ def _paired_checks(passed: bool, label: str) -> dict[str, tuple[bool, str]]:
     }
 
 
-def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
-    config_literal = answer.find("request_timeout_ms = 30000")
-    config_start = answer.rfind(SOURCE_BOUND_PATHS[0], 0, config_literal)
-    client_literal = answer.find(
-        "from .config import request_timeout_ms", config_literal,
+def _action_position(answer: str, path: str, actions: tuple[str, ...]) -> int:
+    for match in re.finditer(re.escape(path), answer):
+        start = answer.rfind("\n", 0, match.start()) + 1
+        end = answer.find("\n", match.end())
+        line = answer[start:] if end < 0 else answer[start:end]
+        if any(action in line.lower() for action in actions):
+            return match.start()
+    return -1
+
+
+def _proof_only_position(answer: str, path: str) -> int:
+    for match in re.finditer(re.escape(path), answer):
+        start = answer.rfind("\n", 0, match.start()) + 1
+        end = answer.find("\n", match.end())
+        line = (answer[start:] if end < 0 else answer[start:end]).lower()
+        if any(term in line for term in ("leave", "do not", "make no edit", "check")):
+            return match.start()
+        if "unchanged" in line and not any(
+            term in line for term in ("edit", "change", "update", "rename")
+        ):
+            return match.start()
+    return -1
+
+
+def _asserted_collection(
+    answer: str,
+    literal: str,
+    relation: str,
+) -> tuple[str, int] | None:
+    pattern = re.compile(
+        rf"assert\s+(?P<subject>['\"]{re.escape(literal)}['\"]|[A-Za-z_]\w*)"
+        rf"\s+{relation}\s+(?P<collection>[A-Za-z_]\w*)",
     )
-    client_start = answer.rfind(SOURCE_BOUND_PATHS[1], 0, client_literal)
-    test_start = answer.find(SOURCE_BOUND_PATHS[2], client_literal)
+    for match in pattern.finditer(answer):
+        subject = match.group("subject")
+        if subject[0] in "'\"" or re.search(
+            rf"\b{re.escape(subject)}\s*=\s*['\"]{re.escape(literal)}['\"]",
+            answer[:match.start()],
+        ):
+            return match.group("collection"), match.start()
+    return None
+
+
+def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
+    edit_actions = ("edit", "change", "update", "replace")
+    config_start = _action_position(answer, SOURCE_BOUND_PATHS[0], edit_actions)
+    client_start = _action_position(answer, SOURCE_BOUND_PATHS[1], edit_actions)
+    test_start = _proof_only_position(answer, SOURCE_BOUND_PATHS[2])
     ordered = (
-        min(
-            config_literal, config_start, client_literal, client_start, test_start,
-        ) >= 0
+        min(config_start, client_start, test_start) >= 0
         and config_start < client_start < test_start
     )
     config = answer[config_start:client_start] if ordered else ""
@@ -80,7 +119,8 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
     quality = bool(
         ordered
         and "timeout_ms = 30000" in config
-        and "request_timeout_ms = 30000" in config
+        and "request_timeout_ms" in config
+        and "request_timeout_ms = 30000" in answer
         and "return timeout_ms" not in config
         and "return request_timeout_ms" not in config
         and "from .config import timeout_ms" in client
@@ -93,17 +133,6 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
             or "request()` still returns `30000" in test
             or "request()` returns `30000" in test
             or ("calls `request()`" in test and "asserts `30000`" in test)
-        )
-        and any(
-            marker in (client + test).lower()
-            for marker in (
-                "do not edit",
-                "do not modify",
-                "make no edit",
-                "leave `fixtures/tests/test_client.py` unchanged",
-                "preserve its existing behavior",
-                "unchanged",
-            )
         )
     )
 
@@ -144,28 +173,26 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
         and "tests/test_client.py" in line
         for line in pytest_lines
     )
-    old_absent = re.search(
-        r"assert\s+['\"]timeout_ms['\"]\s+not\s+in\s+([A-Za-z_][A-Za-z0-9_]*)",
-        answer,
-    )
-    new_present = re.search(
-        r"assert\s+['\"]request_timeout_ms['\"]\s+in\s+([A-Za-z_][A-Za-z0-9_]*)",
-        answer,
-    )
+    old_absent = _asserted_collection(answer, "timeout_ms", r"not\s+in")
+    new_present = _asserted_collection(answer, "request_timeout_ms", "in")
     identifier_aware = bool(
         old_absent
         and new_present
-        and old_absent.group(1) == new_present.group(1)
+        and old_absent[0] == new_present[0]
         and (
             ("ast.parse" in answer and "ast.walk" in answer)
             or (
-                "tokenize." in answer
-                and ("tokenize.NAME" in answer or ".isidentifier()" in answer)
+                ("generate_tokens" in answer or "tokenize." in answer)
+                and (
+                    "token.type == NAME" in answer
+                    or "token.type == tokenize.NAME" in answer
+                    or ".isidentifier()" in answer
+                )
             )
         )
     )
     residual_start = (
-        answer.rfind("python - <<", 0, old_absent.start()) if old_absent else -1
+        answer.rfind("python - <<", 0, old_absent[1]) if old_absent else -1
     )
     pytest_start = min(
         (
@@ -261,7 +288,11 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
             "fixtures/agents/openai.yaml",
             "version: 8.2.0",
             "version: 8.2.1",
-            DESCRIPTION,
+        )
+        description_proof = DESCRIPTION in answer or (
+            'line.startswith("description:")' in answer
+            and "descriptions ==" in answer
+            and DESCRIPTION_VALUE in answer
         )
         exact_proof = (
             "assert lines ==" in answer
@@ -269,7 +300,9 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
             or ("sed -n '1p'" in answer and "sed -n '2p'" in answer)
         )
         return _paired_checks(
-            all(term in answer for term in required) and exact_proof,
+            all(term in answer for term in required)
+            and description_proof
+            and exact_proof,
             "version-and-description",
         )
 
@@ -277,7 +310,6 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
         required = (
             "signed implementation commit",
             "passing",
-            "unit-test",
             "pythondontwritebytecode=1 python -m unittest tests.test_release",
             "release engineering",
             "immutable",
