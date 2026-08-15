@@ -76,6 +76,7 @@ def _action_position(answer: str, path: str, actions: tuple[str, ...]) -> int:
 
 
 def _proof_only_position(answer: str, path: str) -> int:
+    position = -1
     for match in re.finditer(re.escape(path), answer):
         start = answer.rfind("\n", 0, match.start()) + 1
         end = answer.find("\n", match.end())
@@ -89,12 +90,12 @@ def _proof_only_position(answer: str, path: str) -> int:
             "proof-only",
             "proof only",
         )):
-            return match.start()
+            position = match.start()
         if "unchanged" in line and not any(
             term in line for term in ("edit", "change", "update", "rename")
         ):
-            return match.start()
-    return -1
+            position = match.start()
+    return position
 
 
 def _asserted_collection(
@@ -158,6 +159,8 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
             "work from `<workspace>`",
             "run commands from `<workspace>`",
         )
+    ) or "repository root" in lower or (
+        f"<workspace>/{SOURCE_BOUND_PATHS[0]}" in lower
     )
     fixtures_bound = any(
         marker in lower
@@ -188,10 +191,16 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
     old_absent = _asserted_collection(answer, "timeout_ms", r"not\s+in")
     new_present = _asserted_collection(answer, "request_timeout_ms", "in")
     old_absence = old_absent or re.search(
+        r"assert\s+not\s+any\s*\([\s\S]{0,400}?==\s*['\"]timeout_ms['\"]",
+        answer,
+    ) or re.search(
         r"['\"]timeout_ms['\"]\s+not\s+in\s+[A-Za-z_]\w*",
         answer,
     )
     new_presence = new_present or re.search(
+        r"assert\s+any\s*\([\s\S]{0,400}?==\s*['\"]request_timeout_ms['\"]",
+        answer,
+    ) or re.search(
         r"\.count\(['\"]request_timeout_ms['\"]\)\s*==\s*[1-9]\d*",
         answer,
     )
