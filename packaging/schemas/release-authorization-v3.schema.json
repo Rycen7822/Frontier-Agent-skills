@@ -135,7 +135,7 @@
         {"$ref": "#/$defs/skill_base"},
         {"properties": {
           "version": {"const": "11.0.0"},
-          "allow_implicit_invocation": {"const": false}
+          "allow_implicit_invocation": {"const": true}
         }}
       ]
     },

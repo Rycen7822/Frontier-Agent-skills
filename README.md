@@ -10,7 +10,7 @@ The indivisible release unit is bundle version 8.0.0 at schema epoch 7. Its mani
 {
   "long-document-segmented-writing": true,
   "skill-evaluator": false,
-  "software-quality-workflows": false,
+  "software-quality-workflows": true,
   "writing-plans": true
 }
 ```

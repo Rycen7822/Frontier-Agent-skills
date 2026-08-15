@@ -36,7 +36,7 @@ EXPECTED_SKILLS = {
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": False,
+    "software-quality-workflows": True,
     "writing-plans": True,
 }
 SOURCE_FIELDS = {
