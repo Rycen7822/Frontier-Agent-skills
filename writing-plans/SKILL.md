@@ -11,7 +11,7 @@ A bounded single-session request naming files and checks must end as a native or
 
 Exact means old→new symbols, argument-parser calls, literals/anchors, and complete runnable test bodies when exact tests are requested. Edits keep literals in owning files; each exact check is a runnable command asserting them there; expected snippets, generic "add parsing", prose-only tests, and "follow existing conventions" fail.
 
-For a symbol rename, make the residual check identifier-aware: test old-name absence and new-name presence against the same collected identifier set; avoid raw substrings when names overlap and never compare identifiers with a tokenizer token-type constant.
+Edit only exact old-name matches; files without it are proof-only; preserve superstrings such as `test_timeout`. Make the residual check identifier-aware: prove old-name absence and new-name presence against the same collected identifier set; substring or tokenizer token-type constant comparisons fail.
 
 Derive one starting cwd and module path; never `cd` into the stated cwd again. Include `PYTHONPATH` when needed: remove the imported package from its path; `fixtures/src/client.py` imported as `src.client` yields `fixtures`. Reuse it in every command.
 
