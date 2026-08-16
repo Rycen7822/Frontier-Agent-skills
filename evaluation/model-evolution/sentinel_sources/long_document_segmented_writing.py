@@ -84,6 +84,7 @@ DEFINITION = {
         {
             "id": "whole-draft-review",
             "coverage": "whole-draft-review",
+            "deterministic_quality_process": True,
             "task": "Review `fixtures/draft.md` against `fixtures/run-a.md` and `fixtures/release.md`. Identify contradictions, unsupported claims, and broken source bindings.",
             "protected": False,
             "turns": 1,
