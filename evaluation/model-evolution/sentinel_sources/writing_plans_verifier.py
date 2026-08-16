@@ -271,7 +271,7 @@ def _source_bound_checks(answer: str) -> dict[str, tuple[bool, str]]:
             ("generate_tokens" in answer or "tokenize.tokenize" in answer)
             and (
                 re.search(
-                    r"\b[A-Za-z_]\w*\.type\s*==\s*(?:tokenize\.)?NAME\b",
+                    r"\b[A-Za-z_]\w*\.type\s*==\s*(?:[A-Za-z_]\w*\.)?NAME\b",
                     answer,
                 )
                 or ".isidentifier()" in answer
@@ -462,12 +462,15 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
             "release engineering",
             "immutable",
             "artifact",
-            "verification",
         )
         pending = "pending" in lower or "remains" in lower
         authority = "publish" in lower or "publication" in lower
+        verification = "verification" in lower or bool(re.search(r"\bverify\b", lower))
         return _paired_checks(
-            all(term in lower for term in required) and pending and authority,
+            all(term in lower for term in required)
+            and pending
+            and authority
+            and verification,
             "release-handoff",
         )
 
