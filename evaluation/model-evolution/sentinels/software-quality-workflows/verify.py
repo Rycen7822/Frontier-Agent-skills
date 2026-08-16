@@ -79,6 +79,23 @@ def _command_body(preview: str) -> str:
     )
 
 
+def _runs_fixture_python(command: str) -> bool:
+    """Identify an actual Python fixture command, not a quoted command value."""
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    index = 0
+    while index < len(tokens):
+        name, separator, _ = tokens[index].partition("=")
+        if not separator or not name.isidentifier():
+            break
+        index += 1
+    return index < len(tokens) and Path(tokens[index]).name.casefold().startswith(
+        "python"
+    ) and any(argument.startswith("fixtures/") for argument in tokens[index + 1:])
+
+
 def _command_errors(
     trace: dict[str, Any],
     contract: dict[str, Any],
@@ -105,11 +122,7 @@ def _command_errors(
         padded = f" {command.casefold()} "
         if any(fragment in padded for fragment in forbidden):
             errors.append("command escaped the local fixture boundary")
-        if (
-            "python" in padded
-            and "fixtures/" in padded
-            and command not in required_previews
-        ):
+        if _runs_fixture_python(command) and command not in required_previews:
             errors.append("undeclared fixture command ran")
 
     required_ordinals: list[int] = []
