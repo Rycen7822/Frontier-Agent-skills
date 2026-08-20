@@ -89,6 +89,8 @@ After compaction, recover in this order: repository instructions and `CODEX_STAT
 
 Source qualifiers are part of the claim. Mark a broader statement unsupported when its citation proves only a narrower scope, even when the citation is otherwise related.
 
+During review, enumerate every in-scope claim once in source order, classify it against its source and the request's taxonomy, then reconcile the returned findings with that enumeration.
+
 Do not rely on conversation memory for a material claim. When evidence conflicts, record the owning source decision in the ledger and repair the section from that source.
 
 ## Source style
