@@ -69,7 +69,7 @@ L4 library-scale orchestration claims require selection, order, and composition 
 
 Run the matching CLI before opening its implementation source. Read implementation source only after a CLI failure to diagnose its owner.
 
-When the task asks only for a canonical command or owner mapping stated in this contract, return that bound artifact directly. Execution is required only when the task asks to validate or run it.
+When the task asks only for a canonical command or owner mapping stated in this contract, return that bound artifact directly. Preserve the top-level container and field types of an exact machine-readable artifact, and add no wrapper unless requested. Execution is required only when the task asks to validate or run it.
 
 ```bash
 python3 "$SKILL_EVALUATOR_DIR/scripts/audit_skill_package.py" /path/to/skill
