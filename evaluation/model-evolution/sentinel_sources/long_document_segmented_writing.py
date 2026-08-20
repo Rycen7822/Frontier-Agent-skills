@@ -14,7 +14,7 @@ DEFINITION = {
         "For long-document-segmented-writing-compact-recovery, quality passes when the sole recovery block has distinct Current recovery anchor, Next action, Final-assembly order, and Confidence gaps/proof fields bound to the supplied facts.",
         "For long-document-segmented-writing-compaction-resume, turn one owns the recovery anchor; quality evaluates the final self-contained two-section report and requires the correct distinction between request retries and fresh attempts.",
         "For long-document-segmented-writing-full-mode-selection, quality passes when 13 sources select full mode and the answer names scope, source inventory, reading ledger, section matrix, recovery packet, ordered section drafts, confidence review, and final document.",
-        "For long-document-segmented-writing-whole-draft-review, quality passes when the answer identifies that zero retries overstates zero request retries, the second retry claim lacks support and cites the wrong source, and release readiness conflicts with the no-decision source. Labeling the release claim contradictory and unsupported while citing that source identifies the broken binding without requiring the literal word broken.",
+        "For long-document-segmented-writing-whole-draft-review, quality passes when the answer identifies that zero retries overstates zero request retries, the twice-retried claim is contradicted by zero request retries, and release readiness is unsupported by the no-decision source.",
     ],
     "process_evidence": [
         "the source inventory is mapped to bounded draft sections",
@@ -85,7 +85,7 @@ DEFINITION = {
             "id": "whole-draft-review",
             "coverage": "whole-draft-review",
             "deterministic_quality_process": True,
-            "task": "Review `fixtures/draft.md` against `fixtures/run-a.md` and `fixtures/release.md`. Return only valid JSON with shape `{\"findings\":[{\"claim\":string,\"source\":string,\"status\":string,\"source_fact\":string}]}`. Include one object per defective draft claim. Copy claim text without its citation or terminal punctuation; copy the supporting source sentence verbatim including punctuation; use only the source basename; set status to exactly one of `overbroad`, `contradicted`, or `unsupported`.",
+            "task": "Review `fixtures/draft.md` against `fixtures/run-a.md` and `fixtures/release.md`. Return only valid JSON with shape `{\"findings\":[{\"claim\":string,\"source\":string,\"status\":string,\"source_fact\":string}]}`. Include one object per defective draft claim. Copy claim text without its citation or terminal punctuation; copy the supporting source sentence verbatim including punctuation; use only the source basename. Use `overbroad` when the source supports only a narrower claim, `contradicted` when the source states an incompatible fact, and `unsupported` when no source establishes or rules out the claim.",
             "protected": False,
             "turns": 1,
             "initial_files": [
