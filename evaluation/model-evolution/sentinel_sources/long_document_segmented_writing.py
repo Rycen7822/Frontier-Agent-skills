@@ -24,7 +24,7 @@ DEFINITION = {
     "fixtures": {
         "fixtures/service-scope.md": "The service listens only on 127.0.0.1.\n",
         "fixtures/failure-ownership.md": "Host failures include transport loss and process termination. Product failures are incorrect or incomplete deliverables. Timeout ownership remains unresolved.\n",
-        "fixtures/recovery-state.md": "Active section: Failure ownership. Sources: failure-ownership.md. Unresolved decision: whether the observed timeout belongs to Host or product.\n",
+        "fixtures/recovery-state.md": "Active section: Failure ownership. Final assembly order: Failure ownership. Sources: failure-ownership.md. Unresolved decision: whether the observed timeout belongs to Host or product.\n",
         "fixtures/run-a.md": "The run recorded zero request retries. The worker survived TUI exit.\n",
         "fixtures/run-b.md": "Two fresh attempts were created. The final receipt closed with exit code 0.\n",
         "fixtures/draft.md": "The run had zero retries [run-a.md]. The run retried twice [run-a.md]. It is release-ready [release.md].\n",
