@@ -91,6 +91,8 @@ Source qualifiers are part of the claim. Mark a broader statement unsupported wh
 
 During review, enumerate every in-scope claim once in source order, classify it against its source and the request's taxonomy, then reconcile the returned findings with that enumeration.
 
+Before returning structured findings, reconcile every output tuple against its cited source and the request's taxonomy: copy the source fact exactly, classify an incompatible fact as contradicted, and use unsupported when no source establishes or rules out the claim.
+
 Do not rely on conversation memory for a material claim. When evidence conflicts, record the owning source decision in the ledger and repair the section from that source.
 
 ## Source style
