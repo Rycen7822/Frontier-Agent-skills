@@ -15,6 +15,27 @@ WHOLE_DRAFT_PATHS = frozenset({
     "fixtures/run-a.md",
     "fixtures/release.md",
 })
+FINDING_FIELDS = ("claim", "source", "status", "source_fact")
+EXPECTED_FINDINGS = frozenset({
+    (
+        "The run had zero retries",
+        "run-a.md",
+        "overbroad",
+        "The run recorded zero request retries.",
+    ),
+    (
+        "The run retried twice",
+        "run-a.md",
+        "contradicted",
+        "The run recorded zero request retries.",
+    ),
+    (
+        "It is release-ready",
+        "release.md",
+        "unsupported",
+        "No release decision has been recorded.",
+    ),
+})
 
 
 def _is_whole_draft_review(workspace: dict) -> bool:
@@ -32,55 +53,25 @@ def _is_whole_draft_review(workspace: dict) -> bool:
 
 
 def _whole_draft_checks(answer: str) -> dict[str, tuple[bool, str]]:
-    lower = answer.lower()
-    zero_overreach = all(term in lower for term in (
-        "zero retries",
-        "zero request retries",
-    )) and any(term in lower for term in (
-        "broader",
-        "broadens",
-        "overbroad",
-        "drops",
-        "omits",
-        "qualifier",
-        "generalized",
-    ))
-    retry_conflict = (
-        "retried twice" in lower
-        and "run-a.md" in lower
-        and any(term in lower for term in (
-            "conflict",
-            "contradict",
-            "false",
-            "cannot support",
-            "not two",
-            "mutually inconsistent",
-        ))
+    try:
+        payload = json.loads(answer)
+    except json.JSONDecodeError:
+        payload = None
+    findings = payload.get("findings") if isinstance(payload, dict) else None
+    observed = [
+        tuple(item.get(field) for field in FINDING_FIELDS)
+        for item in findings or []
+        if isinstance(item, dict)
+    ]
+    passed = (
+        isinstance(findings, list)
+        and len(findings) == len(EXPECTED_FINDINGS)
+        and frozenset(observed) == EXPECTED_FINDINGS
     )
-    release_unsupported = (
-        ("release-ready" in lower or "release readiness" in lower)
-        and "release.md" in lower
-        and "no release decision" in lower
-        and any(term in lower for term in (
-            "unsupported",
-            "not supported",
-            "not established",
-            "cannot support",
-            "conflict",
-            "contradict",
-            "opposite",
-        ))
-    )
-    source_binding = (
-        "run-a.md" in lower
-        and "release.md" in lower
-        and ("binding" in lower or "citation" in lower)
-    )
-    passed = zero_overreach and retry_conflict and release_unsupported and source_binding
     observation = (
-        "the review identifies both retry defects and the unsupported release binding"
+        "the JSON findings bind both retry defects and the unsupported release claim"
         if passed
-        else "the review misses a retry defect, release contradiction, or source binding"
+        else "the JSON findings differ from the three frozen claim/source facts"
     )
     return {
         "task-quality-check": (passed, observation),

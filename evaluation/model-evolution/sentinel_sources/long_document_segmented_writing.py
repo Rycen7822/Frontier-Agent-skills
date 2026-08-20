@@ -85,7 +85,7 @@ DEFINITION = {
             "id": "whole-draft-review",
             "coverage": "whole-draft-review",
             "deterministic_quality_process": True,
-            "task": "Review `fixtures/draft.md` against `fixtures/run-a.md` and `fixtures/release.md`. Identify contradictions, unsupported claims, and broken source bindings.",
+            "task": "Review `fixtures/draft.md` against `fixtures/run-a.md` and `fixtures/release.md`. Return only valid JSON with shape `{\"findings\":[{\"claim\":string,\"source\":string,\"status\":string,\"source_fact\":string}]}`. Include one object per defective draft claim. Copy claim text without its citation or terminal punctuation; copy the supporting source sentence verbatim including punctuation; use only the source basename; set status to exactly one of `overbroad`, `contradicted`, or `unsupported`.",
             "protected": False,
             "turns": 1,
             "initial_files": [
@@ -94,7 +94,7 @@ DEFINITION = {
                 "fixtures/release.md",
             ],
             "semantic_oracle": [
-                "retry contradiction and unsupported release claim are reported"
+                "three exact claim/source/status/source_fact bindings identify both retry defects and the unsupported release claim"
             ],
         },
         {
