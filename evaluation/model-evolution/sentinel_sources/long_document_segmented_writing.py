@@ -14,7 +14,7 @@ DEFINITION = {
         "For long-document-segmented-writing-compact-recovery, quality passes when the sole recovery block has distinct Current recovery anchor, Next action, Final-assembly order, and Confidence gaps/proof fields bound to the supplied facts.",
         "For long-document-segmented-writing-compaction-resume, turn one owns the recovery anchor; quality evaluates the final self-contained two-section report and requires the correct distinction between request retries and fresh attempts.",
         "For long-document-segmented-writing-full-mode-selection, quality passes when 13 sources select full mode and the answer names scope, source inventory, reading ledger, section matrix, recovery packet, ordered section drafts, confidence review, and final document.",
-        "For long-document-segmented-writing-whole-draft-review, quality passes when the answer identifies that zero retries overstates zero request retries, the twice-retried claim is contradicted by zero request retries, and release readiness is unsupported by the no-decision source.",
+        "For long-document-segmented-writing-whole-draft-review, quality passes when the answer identifies that zero retries overstates zero request retries, the twice-retried claim is contradicted by zero request retries, and release readiness is unsupported by the source that explicitly says the record neither supports nor rules it out.",
     ],
     "process_evidence": [
         "the source inventory is mapped to bounded draft sections",
@@ -28,7 +28,7 @@ DEFINITION = {
         "fixtures/run-a.md": "The run recorded zero request retries. The worker survived TUI exit.\n",
         "fixtures/run-b.md": "Two fresh attempts were created. The final receipt closed with exit code 0.\n",
         "fixtures/draft.md": "The run had zero retries [run-a.md]. The run retried twice [run-a.md]. It is release-ready [release.md].\n",
-        "fixtures/release.md": "No release decision has been recorded.\n",
+        "fixtures/release.md": "The available record neither supports nor rules out release readiness.\n",
         "fixtures/completion.md": "Completed entries: 12. Planned entries: 12.\n",
         "fixtures/mode-selection.md": "Source count: 13. Final section count: 2. Cross-session recovery: no. Full audit requested: no.\n",
     },
