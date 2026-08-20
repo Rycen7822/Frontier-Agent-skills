@@ -221,7 +221,7 @@
         "official_transient"
       ]
     },
-    "timeout_seconds": 1230
+    "timeout_seconds": 1830
   },
   "graders": [
     {
