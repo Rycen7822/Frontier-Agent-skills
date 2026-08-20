@@ -27,7 +27,7 @@ import validate_eval_suite as evaluator  # noqa: E402
 
 
 MODEL_ROOT = Path("evaluation/model-evolution")
-CODEX_TURN_TIMEOUT_SECONDS = 600
+CODEX_TURN_TIMEOUT_SECONDS = 900
 HOST_CLEANUP_GRACE_SECONDS = 30
 MODEL_CHECKS = [
     {
