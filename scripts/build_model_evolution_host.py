@@ -37,7 +37,7 @@ class HostBuildError(ValueError):
 CODEX_VERSION = re.compile(r"codex-cli ([0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?)")
 TARGET_MODEL = "gpt-5.6-luna"
 TARGET_EFFORT = "high"
-TARGET_TIMEOUT_SECONDS = 600
+TARGET_TIMEOUT_SECONDS = 900
 
 
 def _hash_bytes(value: bytes) -> str:
