@@ -18,7 +18,7 @@ metadata:
 
 Preserve work, scope, authority, and evidence at material boundaries. Bind claims to their oracle, coverage, freshness, limitations, and raw reference. The owner seam is the smallest code/API/config/test/component controlling behavior.
 
-Keep known-seam work Direct and change its smallest coherent owner set. Honor prompt-bound paths and commands; copy a bound command verbatim before execution and count every attempted invocation, including a shell-start failure, against its declared run budget. Rediscover only on binding failure or conflict.
+Keep known-seam work Direct and change its smallest coherent owner set. Resolve prompt-bound paths and establish their working directory before consuming a command attempt. Copy a bound command verbatim, execute it from that directory, and count every attempted invocation, including a shell-start failure, against its declared run budget. Rediscover only on binding failure or conflict.
 
 ## Observable contract
 

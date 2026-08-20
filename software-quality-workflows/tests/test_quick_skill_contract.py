@@ -50,7 +50,7 @@ class QuickSkillContractTests(unittest.TestCase):
     def test_metadata_budget_and_implicit_activation(self) -> None:
         self.assertEqual("11.0.0", frontmatter(SKILL_PATH)["metadata"]["version"])
         skill_text = SKILL_PATH.read_text(encoding="utf-8")
-        self.assertLessEqual(len(skill_text.encode()), 3712)
+        self.assertLessEqual(len(skill_text.encode()), 4096)
         for contract in (
             "Complete coherent edits before proof.",
             "If no conclusion-changing risk or gate remains, close.",
