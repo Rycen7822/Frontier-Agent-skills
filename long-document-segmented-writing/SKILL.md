@@ -33,6 +33,8 @@ Completion requires the final file and its named checks; a plan, partial draft, 
 
 Direct work does not emit a recovery status or invent a scratch anchor. When the user explicitly requests a same-session continuation anchor, return that anchor inline without creating durable working files; the requested anchor does not by itself select a segmented profile.
 
+When returning a recovery anchor, name each material fact and its owning source explicitly in the proof or gap field.
+
 ## Same-session Direct gate
 
 Use Direct, with no scratch root, only when all of these facts are true:
@@ -89,7 +91,7 @@ After compaction, recover in this order: repository instructions and `CODEX_STAT
 
 Source qualifiers are part of the claim. Mark a broader statement unsupported when its citation proves only a narrower scope, even when the citation is otherwise related.
 
-During review, enumerate every in-scope claim once in source order, classify it against its source and the request's taxonomy, then reconcile the returned findings with that enumeration.
+During review, enumerate every in-scope claim once in source order, classify it against its source and the request's taxonomy, then return the resulting tuples one-for-one in that same order.
 
 Before returning structured findings, reconcile every output tuple against its cited source and the request's taxonomy: copy the source fact exactly, classify an incompatible fact as contradicted, and use unsupported when no source establishes or rules out the claim.
 
