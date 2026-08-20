@@ -33,7 +33,7 @@ EXPECTED_FINDINGS = frozenset({
         "It is release-ready",
         "release.md",
         "unsupported",
-        "No release decision has been recorded.",
+        "The available record neither supports nor rules out release readiness.",
     ),
 })
 

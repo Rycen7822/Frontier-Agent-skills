@@ -1,1 +1,1 @@
-No release decision has been recorded.
+The available record neither supports nor rules out release readiness.
