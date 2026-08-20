@@ -45,7 +45,6 @@ DEFINITION = {
         {
             "id": "source-bound-plan",
             "coverage": "source-bound",
-            "deterministic_quality_process": True,
             "task": "Plan the rename `timeout_ms` to `request_timeout_ms` using `fixtures/src/config.py`, `fixtures/src/client.py`, and `fixtures/tests/test_client.py`. Bind every step to exact files and checks.",
             "protected": False,
             "turns": 1,
@@ -61,7 +60,6 @@ DEFINITION = {
         {
             "id": "resume-preflight",
             "coverage": "resume-preflight",
-            "deterministic_quality_process": True,
             "task": "This is a two-turn planning handoff. Read `fixtures/resume-state.md` and `fixtures/docs/config.md`; record the exact completed state, pending state, and next executable documentation step. After the continuation request, return that state as a self-contained final handoff.",
             "continuation": "Return the self-contained planning handoff now: restate completed and pending state and the next executable documentation step.",
             "protected": False,
@@ -103,7 +101,6 @@ DEFINITION = {
         {
             "id": "continuous-execution",
             "coverage": "continuous-execution",
-            "deterministic_quality_process": True,
             "task": "Read `fixtures/cli.py`, `fixtures/tests/test_cli.py`, and `fixtures/README.md`, then produce consecutive implementation steps for adding `--dry-run` as a Boolean argparse option. Both `main([])` and `main([\"--dry-run\"])` must return 0 without output; unknown options must fail through argparse. Ground the plan in the observed source and include the exact import, parser calls, tests, documentation, checks, expected results, and failure exits.",
             "protected": False,
             "turns": 1,
