@@ -88,8 +88,9 @@ After compaction, recover in this order: repository instructions and `CODEX_STAT
 4. Draft one sortable shard per coherent edit and review unit, not per heading. Compact uses 1–4 shards even when the final document has more headings; full uses only the section files justified by its scale facts.
 5. Reread exact sources for commands, flags, schemas, APIs, state transitions, numbers, dates, citations, tests, paths, and public contracts.
 6. Check each section for required content, unsupported claims, contradictions, placeholders, sensitive data, broken Markdown, duplication, and source-style violations.
+7. State every requested distinction as an explicit relationship in the final synthesis, even when the related facts occupy separate sections.
 
-Source qualifiers are part of the claim. Mark a broader statement unsupported when its citation proves only a narrower scope, even when the citation is otherwise related.
+Source qualifiers are part of the claim. When a citation proves only a narrower statement, apply the request's taxonomy label for that mismatch and bind the exact narrower source fact.
 
 During review, enumerate every in-scope claim once in source order, classify it against its source and the request's taxonomy, then return the resulting tuples one-for-one in that same order.
 
