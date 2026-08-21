@@ -14,6 +14,7 @@ from verify_common import emit, terminal_checks  # noqa: E402
 CASE_PATHS = {
     "protected-description": frozenset({"fixtures/agents/openai.yaml"}),
     "explicit-handoff": frozenset({"fixtures/release-status.md"}),
+    "resume-preflight": frozenset({"fixtures/resume-state.md", "fixtures/docs/config.md"}),
 }
 DESCRIPTION = (
     "description: Use after software decisions and diagnosis are settled to write "
@@ -79,12 +80,12 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
     if case_id == "explicit-handoff":
         required = (
             "signed implementation commit",
-            "passing",
             "pythondontwritebytecode=1 python -m unittest tests.test_release",
             "release engineering",
             "immutable",
             "artifact",
         )
+        passing = "passing" in lower or "marked pass" in lower
         remaining_state = (
             "pending" in lower
             or "remains" in lower
@@ -94,10 +95,28 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
         verification = "verification" in lower or bool(re.search(r"\bverify\b", lower))
         return _paired_checks(
             all(term in lower for term in required)
+            and passing
             and remaining_state
             and authority
             and verification,
             "release-handoff",
+        )
+
+    if case_id == "resume-preflight":
+        required = (
+            "abc123",
+            "completed",
+            "pending",
+            "fixtures/docs/config.md",
+            "integration check",
+            "attestation",
+            "combined preflight",
+        )
+        rows = all(re.search(rf"\b{row}\b", lower) for row in ("state", "resume", "slice", "proof"))
+        next_action = "replac" in lower or "edit" in lower
+        return _paired_checks(
+            all(term in lower for term in required) and rows and next_action,
+            "resume documentation handoff",
         )
 
     raise ValueError(f"unsupported deterministic Writing Plans case: {case_id}")
