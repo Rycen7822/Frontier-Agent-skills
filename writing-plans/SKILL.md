@@ -23,7 +23,7 @@ Use invocation-bound source; do not reread it. Treat named plan/owner/test/symbo
 
 Bind portable identity: revision or explicit non-Git identity, with repo-relative dirty/protected and first-slice paths/symbols. Resolve root once; never bind temporary/home paths or future `pwd` equality.
 
-Facts/authority/evidence stay fixed; retain every named identity/status literal across turns. Unknowns block later slices only; missing intent/write/irreversible approval blocks that slice.
+Facts/authority/evidence stay fixed; copy named paths, commands, statuses, and authorities verbatim into State or Proof; say `pending` or `remains` for unfinished gates. Unknowns block later slices only; missing intent/write/irreversible approval blocks that slice.
 
 ## Contract
 
@@ -32,7 +32,7 @@ Minimal sufficient form: omit generic/empty prose; do not expand one sentence in
 For a Handoff or Program, write a title; use these rows in one contract table or a three- or four-row bullet contract:
 
 - State — Bound source identity; Protected work and allowed effects; Settled decisions; Exact first-slice inputs, outputs, values, invariants; observed protected-test I/O and values, each edit literal and heading exactly once; Later blockers and dependencies. Mark unfinished gates and verification pending even when Slice performs them.
-- Resume — Required for any later source edit crossing contexts. State both branches explicitly: consume a matching freshness-bound host attestation unchanged when root, identity, freshness, and dirty scope match; otherwise run one combined preflight. Omit only for an immutable artifact handoff whose next action is verification.
+- Resume — Required for any later source edit crossing contexts. State both branches with `freshness-bound host attestation` and `combined preflight`; consume a matching attestation unchanged, otherwise run one combined preflight. Omit only for an immutable artifact handoff whose next action is verification.
 - Slice — Goal / non-goals; First source-changing slice and files/symbols; Exact next source-changing action referencing its State-bound literal and anchor.
 - Proof — Acceptance and verification: Acceptance behavior; Minimum sufficient evidence; External owner gates; Escalation and blocked/inconclusive stops; Rollback/cleanup when material.
 
@@ -42,7 +42,7 @@ Program uses those rows: State contains Current frontier and later blockers; Sli
 
 The Resume row resolves root anew; exclude the named plan deliverable itself (including untracked `PLAN.md`) from dirty scope; reject other dirt. Never compare against the original absolute root or require globally clean status.
 
-Next action: first edit/result/check; inspect only if blocked. Use the prompt-bound verification command. With exact files/checks but no repository runner, state the narrow checks implied by those bindings; do not block the plan or invent a full-suite command. The repository's test owner supplies any broader Proof. Prefix tests with `PYTHONDONTWRITEBYTECODE=1`; use `python -m unittest <repo-test>` or `python -m pytest -p no:cacheprovider`; other owners bind residue cleanup. The executor completes coherent edits and selects the lowest-cost evidence; Proof sets no patch-by-patch order.
+Next action: first edit/result/check; inspect only if blocked. Copy any prompt-bound command verbatim; put derived environment/import checks in separate commands. With exact files/checks but no runner, state narrow checks; do not invent a full suite. The test owner supplies broader Proof. Prefix only derived tests with `PYTHONDONTWRITEBYTECODE=1`; use `python -m unittest <repo-test>` or `python -m pytest -p no:cacheprovider`; other owners bind cleanup. Executor selects lowest-cost evidence; Proof sets no patch order.
 
 Before return, require attestation acceptance or one-preflight fallback for Resume; name dependencies; carry every promised transformation or invariant into its exact edit; verify State and Slice bind each relevant observed literal and structural anchor; verify every exact check is runnable. After writing, run at most one planner-only non-content confirmation (`git diff --check` or owner check), then return the plan; Proof remains executor-owned.
 
