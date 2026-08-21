@@ -86,6 +86,7 @@ DEFINITION = {
             "coverage": "transition-revision",
             "task": "Read `fixtures/control-matrix.md`. Classify both comparisons and name the controls that remain frozen.",
             "protected": False,
+            "deterministic_quality_process": True,
             "turns": 2,
             "initial_files": ["fixtures/control-matrix.md"],
             "semantic_oracle": ["A is a model transition and B is a Skill revision"],
@@ -95,6 +96,7 @@ DEFINITION = {
             "coverage": "protected",
             "task": "Read `fixtures/invalid-record.json`. Return one unapplied JSON Patch operation that changes `schema_version` to integer 1 as the complete deliverable.",
             "protected": True,
+            "deterministic_quality_process": True,
             "turns": 1,
             "initial_files": ["fixtures/invalid-record.json"],
             "semantic_oracle": [
