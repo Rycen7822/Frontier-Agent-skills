@@ -55,8 +55,8 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
     if case_id == "protected-description":
         required = (
             "fixtures/agents/openai.yaml",
-            "version: 8.2.0",
-            "version: 8.2.1",
+            "8.2.0",
+            "8.2.1",
         )
         joined_literals = re.sub(r"([\"'])\s*\n\s*\1", "", answer)
         description_proof = DESCRIPTION in joined_literals or (
@@ -70,6 +70,7 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
         )
         return _paired_checks(
             all(term in answer for term in required)
+            and "version" in lower
             and description_proof
             and exact_proof,
             "version-and-description",
