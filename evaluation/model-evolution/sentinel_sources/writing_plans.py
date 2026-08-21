@@ -16,7 +16,6 @@ DEFINITION = {
     "grader_rules": [
         "Apply a case-specific rule only when task_evidence.case_id exactly equals its full named ID.",
         "For either resumable Program case, a Resume that accepts a matching freshness-bound Host attestation and runs one combined preflight when it is missing or mismatched satisfies the freshness preflight requirement.",
-        "For writing-plans-resume-preflight, quality and process require a State/Resume/Slice/Proof handoff. Completed, pending, and next-step facts belong inside those rows, and Resume contains the matching-attestation and combined-preflight branches.",
         "For writing-plans-resumable-program-heldout, quality and process require explicit non-Git identity, named milestone dependencies, the parser compatibility owner and one-release zero-legacy removal condition, the exact unittest command, and a blocked package switch with its missing target.",
         "For writing-plans-multi-session-program, the Program artifact is the durable cross-session state and its Resume row is the handoff protocol. Explicit non-Git identity, State/Resume/Slice/Proof, named milestone dependencies, the parser migration owner and one-release zero-legacy removal condition, and the exact unittest command satisfy quality and process.",
         "For writing-plans-continuous-execution and writing-plans-source-bound-plan, evaluate the exact stated working directory, import, and environment together. From the workspace root, `from fixtures.cli import main` is runnable without PYTHONPATH, while `PYTHONPATH=fixtures` makes `src.*` imports runnable; accept either bound form as executable proof.",
@@ -62,6 +61,7 @@ DEFINITION = {
         {
             "id": "resume-preflight",
             "coverage": "resume-preflight",
+            "deterministic_quality_process": True,
             "task": "This is a two-turn planning handoff. Read `fixtures/resume-state.md` and `fixtures/docs/config.md`; record the exact completed state, pending state, and next executable documentation step. After the continuation request, return that state as a self-contained final handoff.",
             "continuation": "Return the self-contained planning handoff now: restate completed and pending state and the next executable documentation step.",
             "protected": False,
