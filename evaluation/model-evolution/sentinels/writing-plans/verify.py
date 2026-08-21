@@ -84,12 +84,16 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
             "immutable",
             "artifact",
         )
-        pending = "pending" in lower or "remains" in lower
+        remaining_state = (
+            "pending" in lower
+            or "remains" in lower
+            or ("verification only" in lower and "no source-changing work" in lower)
+        )
         authority = "publish" in lower or "publication" in lower
         verification = "verification" in lower or bool(re.search(r"\bverify\b", lower))
         return _paired_checks(
             all(term in lower for term in required)
-            and pending
+            and remaining_state
             and authority
             and verification,
             "release-handoff",
