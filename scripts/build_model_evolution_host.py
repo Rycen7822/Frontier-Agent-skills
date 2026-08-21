@@ -35,8 +35,8 @@ class HostBuildError(ValueError):
 
 
 CODEX_VERSION = re.compile(r"codex-cli ([0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?)")
-TARGET_MODEL = "gpt-5.6-luna"
-TARGET_EFFORT = "high"
+DEFAULT_MODEL = "gpt-5.6-luna"
+DEFAULT_EFFORT = "high"
 TARGET_TIMEOUT_SECONDS = 900
 
 
@@ -223,7 +223,11 @@ def build_host(
     output_path: Path,
     manifest_id: str,
     session_id: str,
+    model: str = DEFAULT_MODEL,
+    effort: str = DEFAULT_EFFORT,
 ) -> dict[str, Any]:
+    if not model.strip() or not effort.strip():
+        raise HostBuildError("model and effort must be non-empty")
     repository_root = repository_root.resolve(strict=True)
     plugin_root = plugin_root.resolve(strict=True)
     output_path = output_path.resolve()
@@ -323,9 +327,9 @@ def build_host(
         "--host-manifest",
         str(output_path.resolve()),
         "--model",
-        TARGET_MODEL,
+        model,
         "--effort",
-        TARGET_EFFORT,
+        effort,
         "--profile",
         "none",
         "--plugin-root",
@@ -373,8 +377,8 @@ def build_host(
         "catalog_id": catalog_id,
         "harness": "codex-cli",
         "harness_version": codex_version,
-        "model": TARGET_MODEL,
-        "model_revision": _model_revision(TARGET_MODEL, codex_version),
+        "model": model,
+        "model_revision": _model_revision(model, codex_version),
         "monotonic_clock_id": "python-time-monotonic",
         "policy_id": ISOLATED_SANDBOX_POLICY_IDS["workspace-write"],
         "pricing_id": "provider-account-not-recorded",
@@ -469,6 +473,8 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--manifest-id", required=True)
     parser.add_argument("--session-id", required=True)
+    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--effort", default=DEFAULT_EFFORT)
     args = parser.parse_args()
     try:
         value = build_host(
@@ -481,6 +487,8 @@ def main() -> int:
             output_path=args.output,
             manifest_id=args.manifest_id,
             session_id=args.session_id,
+            model=args.model,
+            effort=args.effort,
         )
     except (
         HostBuildError,
