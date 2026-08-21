@@ -9,7 +9,7 @@ Handoff crosses contexts; Program tracks a changing frontier; otherwise stay nat
 
 A bounded single-session request naming files and checks must end as a native ordered plan even when Git identity, dirty/protected paths, or exact source identity are visible; omit those facts unless named; skip the Handoff/Program contract below. Inspect each available bound file once. State observed symbols and behavior, exact edits, checks, expected results, and failure exits.
 
-Exact means old→new symbols, argument-parser calls, literals/anchors, and complete runnable test bodies when exact tests are requested. Edits keep literals in owning files; each exact check is a runnable command asserting them there; expected snippets, generic "add parsing", prose-only tests, and "follow existing conventions" fail. An identical command appears once, after the last coherent edit it covers.
+Exact means old→new symbols, argument-parser calls, literals/anchors, and complete runnable test bodies when exact tests are requested. Edits keep literals in owning files; each exact check is a runnable command asserting them there; expected snippets, generic "add parsing", prose-only tests, and "follow existing conventions" fail. Derive positions from the complete post-edit body; otherwise assert syntax or identifiers. An identical command appears once, after the last coherent edit it covers.
 
 Map every observed old-name match to its owning file exactly once; never invent an occurrence or copy one across owners. Files without a match are proof-only; preserve superstrings such as `test_timeout`. Prove residuals with one identifier set: old absent, new present. Substring-only comparison fails; tokenizer type checks may select identifiers, but name comparison uses `token.string`.
 
