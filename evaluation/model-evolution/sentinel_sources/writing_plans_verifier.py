@@ -85,11 +85,13 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
             "immutable",
             "artifact",
         )
-        passing = "passing" in lower or "marked pass" in lower
+        passing = "passing unit-test" in lower or bool(
+            re.search(r"\bunit[- ]tests?(?: result)?(?: marked)?\s*:?\s*pass\b", lower)
+        )
         remaining_state = (
             "pending" in lower
             or "remains" in lower
-            or ("verification only" in lower and "no source-changing work" in lower)
+            or ("verification only" in lower and "source chang" in lower)
         )
         authority = "publish" in lower or "publication" in lower
         verification = "verification" in lower or bool(re.search(r"\bverify\b", lower))
