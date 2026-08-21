@@ -62,6 +62,7 @@ L4 library-scale orchestration claims require selection, order, and composition 
 - Safety and protected outcomes are unweighted guardrails and must pass independently of utility.
 - Static audit findings are provisional review locators. A product change requires package-role, reachability, impact, and ownership evidence; scanner silence is only a scan result.
 - Empirical usefulness is `supported`, `not_supported`, `inconclusive_ceiling`, or `not_evaluable`. Manual review and deployment authority are separate final gates.
+- When a supplied analyzer summary names `usefulness_status`, report that status as the maximum empirical claim; evaluation levels describe available capability and never raise the recorded result.
 - Public templates are starting shapes; live decisions use run-owned receipts, Host evidence, and scored artifacts.
 - Offline comparison consumes immutable cycle capsules and returns a bounded revision or model-transition classification. Skill editing, run scheduling, and release decisions remain with their named owners.
 

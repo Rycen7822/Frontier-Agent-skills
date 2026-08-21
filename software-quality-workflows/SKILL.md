@@ -22,7 +22,7 @@ Keep known-seam work Direct and change its smallest coherent owner set. Resolve 
 
 ## Observable contract
 
-Before cross-cutting/API/data/error/migration work, freeze observable input/output, invariants, errors, compatibility, and non-goals. Before claiming verification, check each frozen fact at every owning boundary, not only through a composed happy path.
+Before cross-cutting/API/data/error/migration work, freeze input/output, invariants, errors, compatibility, and non-goals. Verify each owner independently, including upstream-masked behavior; a composed happy path is insufficient.
 
 ## Evidence selection
 
@@ -44,7 +44,7 @@ Classify a failed check before another edit:
 
 ## Progress stop
 
-Use `(command_sha256, exit_code, output_sha256)` for command failures. In one unchanged workspace/trial state, run an identical failure at most twice. Continue only to change the hypothesis, owner, signature, or independent observation. If one discriminator changes none, stop `verification_blocked` or `verification_inconclusive`. Treat Host/provider timeout as unobserved apparatus.
+Use `(command_sha256, exit_code, output_sha256)` for command failures. In one unchanged workspace/trial state, run an identical failure at most twice. The `repeated` label needs two bound observations; a prior may be first. Continue only when hypothesis, owner, signature, or independent observation changes. If a discriminator changes none, stop `verification_blocked` or `verification_inconclusive`. Host/provider timeout is unobserved apparatus.
 
 ## Test retention
 
