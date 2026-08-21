@@ -23,7 +23,7 @@ Use invocation-bound source; do not reread it. Treat named plan/owner/test/symbo
 
 Bind portable identity: revision or explicit non-Git identity, with repo-relative dirty/protected and first-slice paths/symbols. Resolve root once; never bind temporary/home paths or future `pwd` equality.
 
-Facts/authority/evidence stay fixed; copy named paths, commands, statuses, and authorities verbatim into State or Proof; say `pending` or `remains` for unfinished gates. Unknowns block later slices only; missing intent/write/irreversible approval blocks that slice.
+Facts stay fixed; copy named paths, commands, statuses, authorities, and bound digests once from their source into State/Proof; executable checks recompute identity. Mark unfinished gates `pending`; unknowns block later slices; missing intent or approval blocks that slice.
 
 ## Contract
 
