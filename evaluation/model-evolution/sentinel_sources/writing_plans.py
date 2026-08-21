@@ -17,7 +17,8 @@ DEFINITION = {
         "Apply a case-specific rule only when task_evidence.case_id exactly equals its full named ID.",
         "For either resumable Program case, a Resume that accepts a matching freshness-bound Host attestation and runs one combined preflight when it is missing or mismatched satisfies the freshness preflight requirement.",
         "For writing-plans-resumable-program-heldout, quality and process require explicit non-Git identity, named milestone dependencies, the parser compatibility owner and one-release zero-legacy removal condition, the exact unittest command, and a blocked package switch with its missing target.",
-        "For writing-plans-multi-session-program, quality and process require explicit non-Git identity, named milestone dependencies, the parser migration owner and one-release zero-legacy removal condition, and the exact unittest command.",
+        "For writing-plans-multi-session-program, the Program artifact is the durable cross-session state and its Resume row is the handoff protocol. Explicit non-Git identity, State/Resume/Slice/Proof, named milestone dependencies, the parser migration owner and one-release zero-legacy removal condition, and the exact unittest command satisfy quality and process.",
+        "For writing-plans-continuous-execution and writing-plans-source-bound-plan, evaluate the exact stated working directory, import, and environment together. From the workspace root, `from fixtures.cli import main` is runnable without PYTHONPATH, while `PYTHONPATH=fixtures` makes `src.*` imports runnable; accept either bound form as executable proof.",
     ],
     "process_evidence": [
         "each implementation step names its exact source owner and verification command",
