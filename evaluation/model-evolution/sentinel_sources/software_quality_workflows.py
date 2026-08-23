@@ -2,7 +2,7 @@
 
 DEFINITION = {
     "name": "Software Quality Workflows",
-    "version": "11.0.0",
+    "version": "11.0.1",
     "context_ceiling": 24576,
     "regression_origin": "failure-ownership-and-evidence-pull",
     "verifier_source": "software_quality_workflows_verifier.py",

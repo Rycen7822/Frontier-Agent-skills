@@ -48,7 +48,7 @@ def linked_markdown(path: Path) -> set[Path]:
 
 class QuickSkillContractTests(unittest.TestCase):
     def test_metadata_budget_and_implicit_activation(self) -> None:
-        self.assertEqual("11.0.0", frontmatter(SKILL_PATH)["metadata"]["version"])
+        self.assertEqual("11.0.1", frontmatter(SKILL_PATH)["metadata"]["version"])
         skill_text = SKILL_PATH.read_text(encoding="utf-8")
         self.assertLessEqual(len(skill_text.encode()), 4096)
         for contract in (
@@ -63,7 +63,7 @@ class QuickSkillContractTests(unittest.TestCase):
         agents = yaml.safe_load(
             (SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
         )
-        self.assertIs(agents["policy"]["allow_implicit_invocation"], True)
+        self.assertIs(agents["policy"]["allow_implicit_invocation"], False)
 
     def test_local_links_and_legacy_runtime_absence(self) -> None:
         checker = load_static_checker()

@@ -3,7 +3,7 @@ name: software-quality-workflows
 description: Use when software work has a material boundary in evidence, authority, ownership, source, or effects.
 license: MIT
 metadata:
-  version: 11.0.0
+  version: 11.0.1
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:

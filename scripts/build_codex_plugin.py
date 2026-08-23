@@ -52,13 +52,13 @@ PLACEHOLDER_PATTERN = re.compile(re.escape(chr(91)) + "TODO:")
 EXPECTED_SKILLS = {
     "long-document-segmented-writing": "2.0.0",
     "skill-evaluator": "5.0.0",
-    "software-quality-workflows": "11.0.0",
+    "software-quality-workflows": "11.0.1",
     "writing-plans": "8.4.0",
 }
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": True,
+    "software-quality-workflows": False,
     "writing-plans": True,
 }
 CANONICAL_MARKETPLACE = {
@@ -207,7 +207,7 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     skills = manifest.get("skills")
     if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != set(EXPECTED_SKILLS):
         raise ValueError("manifest must declare exactly the four canonical skills")
-    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "8.0.0"):
+    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "8.0.1"):
         raise ValueError("manifest bundle schema/version is invalid")
     if {item.get("id"): item.get("version") for item in skills} != EXPECTED_SKILLS:
         raise ValueError("version mismatch: manifest skill versions do not match the four-skill release identity")
