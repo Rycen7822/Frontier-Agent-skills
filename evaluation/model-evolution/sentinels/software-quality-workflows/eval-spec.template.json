@@ -423,7 +423,7 @@
     "principal_mode": "single",
     "shape": "single_skill",
     "skill_id": "software-quality-workflows",
-    "version": "11.0.0"
+    "version": "11.0.1"
   },
   "suite": {
     "holdout": null,

@@ -22,8 +22,8 @@
         "decision": {"enum": ["qualified", "qualified_with_limits"]}
       }
     },
-    "bundle_id": {"const": "frontier-engineering/8.0.0"},
-    "bundle_version": {"const": "8.0.0"},
+    "bundle_id": {"const": "frontier-engineering/8.0.1"},
+    "bundle_version": {"const": "8.0.1"},
     "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "source_tree_hash": {"$ref": "#/$defs/digest"},
     "plugin_tree_hash": {"$ref": "#/$defs/digest"},
@@ -134,8 +134,8 @@
       "allOf": [
         {"$ref": "#/$defs/skill_base"},
         {"properties": {
-          "version": {"const": "11.0.0"},
-          "allow_implicit_invocation": {"const": true}
+          "version": {"const": "11.0.1"},
+          "allow_implicit_invocation": {"const": false}
         }}
       ]
     },

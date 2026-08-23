@@ -1,27 +1,27 @@
 # Frontier Agent Skills
 
-This repository is the development source of truth for the dual-host `frontier-engineering/8.0.0` bundle. It contains exactly four skills: `long-document-segmented-writing` 2.0.0, `skill-evaluator` 5.0.0, `software-quality-workflows` 11.0.0, and `writing-plans` 8.4.0. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository leaves active installations unchanged.
+This repository is the development source of truth for the dual-host `frontier-engineering/8.0.1` bundle. It contains exactly four skills: `long-document-segmented-writing` 2.0.0, `skill-evaluator` 5.0.0, `software-quality-workflows` 11.0.1, and `writing-plans` 8.4.0. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository leaves active installations unchanged.
 
 ## Release identity
 
-The indivisible release unit is bundle version 8.0.0 at schema epoch 7. Its manifest records the four exact versions and mixed activation matrix:
+The indivisible release unit is bundle version 8.0.1 at schema epoch 7. Its manifest records the four exact versions and mixed activation matrix:
 
 ```json
 {
   "long-document-segmented-writing": true,
   "skill-evaluator": false,
-  "software-quality-workflows": true,
+  "software-quality-workflows": false,
   "writing-plans": true
 }
 ```
 
-`true` permits implicit local selection; `false` is explicit-only and its prompt retains the exact `$skill-name`. The bundle ceiling remains `implicit_local_pilot`, and `remote_writes` is false. Bundle 8.0.0 requires a signed, clean source candidate plus the repository's deterministic source, schema, bundle, plugin, archive, and test gates. Those local gates establish source completeness; installation, publication, deployment, and external effects retain their own authority boundaries.
+`true` permits implicit local selection; `false` is explicit-only and its prompt retains the exact `$skill-name`. The bundle ceiling remains `implicit_local_pilot`, and `remote_writes` is false. Bundle 8.0.1 requires a signed, clean source candidate plus the repository's deterministic source, schema, bundle, plugin, archive, and test gates. Those local gates establish source completeness; installation, publication, deployment, and external effects retain their own authority boundaries.
 
 ## Design boundary
 
 The skills assume a capable coding agent and keep the common path compact. SQW loads optional references only for a concrete specialist risk; Writing Plans is self-contained.
 
-- `software-quality-workflows` is implicit-eligible for development work with a material evidence, authority, ownership, source, or effect boundary. It keeps known-seam work direct, escalates only to conclusion-changing evidence, classifies failure ownership before another edit, and separates implementation, verification, and release truth.
+- `software-quality-workflows` is explicit-only and enters only when a user or owning process supplies the exact `$software-quality-workflows`. It keeps known-seam work direct, escalates only to conclusion-changing evidence, classifies failure ownership before another edit, and separates implementation, verification, and release truth.
 - `writing-plans` is implicit-eligible when the user requests a software implementation plan, Handoff, or multi-session Program. It compiles settled decisions into one source-bound Handoff or update-in-place Program Markdown, binds the root once, states each fact once, batches compatible evidence checks, separates resume preflight from the first source-changing action, leaves same-session plans model-native, and returns unresolved facts to the caller or owning process.
 - `long-document-segmented-writing` owns long-corpus drafting, bounded scratch state, deterministic assembly, and final confidence repair.
 - `skill-evaluator` is explicit-only and owns L0–L4 evaluation claim ceilings, package audit, scored analysis, controlled revision closure, model-transition classification, and evidence interpretation.
@@ -38,7 +38,7 @@ Every retained digest has one producer, one named validating consumer, a bounded
 
 ## Verification boundary
 
-Bundle 8.0.0 uses model-free repository tests, validators, canonical generated identities, live static checking, and plugin smoke as local source-complete gates. Scored usefulness remains a separate evaluator claim. A canonical `release-authorization/3` binds one current `model-qualification/3`, the signed source, staged plugin, live static-gate result, and release-owner attestation; external release still requires its own authority.
+Bundle 8.0.1 uses model-free repository tests, validators, canonical generated identities, live static checking, and plugin smoke as local source-complete gates. Scored usefulness remains a separate evaluator claim. A canonical `release-authorization/3` binds one current `model-qualification/3`, the signed source, staged plugin, live static-gate result, and release-owner attestation; external release still requires its own authority.
 
 ## Model evolution qualification
 
@@ -52,7 +52,7 @@ The source archive uses root `frontier-engineering-bundle`; the skills-only arch
 
 ## Plugin staging
 
-The plugin identity is `frontier-engineering-plugin` version 8.0.0 with display name `Frontier Engineering`. Its release layout is:
+The plugin identity is `frontier-engineering-plugin` version 8.0.1 with display name `Frontier Engineering`. Its release layout is:
 
 ```text
 frontier-engineering-plugin/
@@ -72,7 +72,7 @@ Release mode also requires `--marketplace-root` and `--marketplace-archive-outpu
 
 ## Same-thread Codex skill reload supervisor
 
-This optional developer tool sits outside the Bundle 8.0.0 source-complete and release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles through a local Unix-socket app-server and launches each replacement TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
+This optional developer tool sits outside the Bundle 8.0.1 source-complete and release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles through a local Unix-socket app-server and launches each replacement TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
 
 The protocol is fail-closed and pinned to `codex-cli 0.144.6`. Validate the CLI schema and local Unix WebSocket transport before the first run:
 
@@ -112,6 +112,6 @@ Any CLI version drift, schema drift, thread/cwd mismatch, permission mismatch, p
 
 ## Evaluation boundary
 
-The [Skill Evaluator entrypoint](skill-evaluator/SKILL.md) remains an explicit-only product for structured Skill evaluation. Bundle 8.0.0 source-completeness uses deterministic local gates; scored runtime evaluation and model-evolution qualification remain explicit evaluator operations. The offline comparator consumes explicitly supplied immutable cycle capsules and reports only the comparison claim they support.
+The [Skill Evaluator entrypoint](skill-evaluator/SKILL.md) remains an explicit-only product for structured Skill evaluation. Bundle 8.0.1 source-completeness uses deterministic local gates; scored runtime evaluation and model-evolution qualification remain explicit evaluator operations. The offline comparator consumes explicitly supplied immutable cycle capsules and reports only the comparison claim they support.
 
 Rollback uses an ordinary revert to a selected signed predecessor. Installed rollback uses a separately verified predecessor plugin or archive under the same deployment authority boundary.

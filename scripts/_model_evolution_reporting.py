@@ -73,7 +73,7 @@ EXPECTED_METRICS = {
 EXPECTED_ACTIVATION = {
     "long-document-segmented-writing": True,
     "skill-evaluator": False,
-    "software-quality-workflows": True,
+    "software-quality-workflows": False,
     "writing-plans": True,
 }
 
@@ -97,7 +97,7 @@ def validate_bundle_revision_policy(
         set(policy) != required
         or policy["schema_version"] != "frontier-bundle-revision-policy/1"
         or policy["prior_bundle_version"] != "7.0.0"
-        or policy["candidate_bundle_version"] != "8.0.0"
+        or policy["candidate_bundle_version"] != "8.0.1"
         or policy["candidate_activation"] != EXPECTED_ACTIVATION
         or set(policy["skills"]) != set(SKILL_IDS)
         or not isinstance(policy["authority_id"], str)
