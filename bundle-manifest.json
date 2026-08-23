@@ -1,6 +1,6 @@
 {
   "bundle_schema_version": "3.0",
-  "bundle_version": "8.0.1",
+  "bundle_version": "8.0.2",
   "skills": [
     {
       "id": "long-document-segmented-writing",
@@ -20,7 +20,7 @@
     {
       "id": "writing-plans",
       "path": "writing-plans",
-      "version": "8.4.0"
+      "version": "8.4.1"
     }
   ],
   "activation_ceiling": "implicit_local_pilot",

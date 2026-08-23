@@ -252,7 +252,7 @@ assert values["description"] == "{DESCRIPTION_VALUE}"
             )
             self.assertEqual(0, smoked.returncode, smoked.stdout + smoked.stderr)
             smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
-            self.assertEqual("frontier-engineering/8.0.1", smoke["bundle_id"])
+            self.assertEqual("frontier-engineering/8.0.2", smoke["bundle_id"])
             self.assertFalse(smoke["actual_codex_cli_install"])
 
     def test_source_archives_are_clean_and_reproducible(self) -> None:

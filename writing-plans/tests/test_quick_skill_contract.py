@@ -43,7 +43,7 @@ def frontmatter(path: Path) -> dict:
 class QuickWritingPlansTests(unittest.TestCase):
     def test_metadata_budget_and_implicit_activation(self) -> None:
         metadata = frontmatter(SKILL_PATH)
-        self.assertEqual("8.4.0", metadata["metadata"]["version"])
+        self.assertEqual("8.4.1", metadata["metadata"]["version"])
         self.assertEqual(
             "Use after software decisions and diagnosis are settled to write "
             "source-bound software implementation Handoffs and durable "
