@@ -169,7 +169,14 @@ def _apparatus_artifact(
             and isinstance(operation.get("state_revision"), int)
             and not isinstance(operation["state_revision"], bool)
             and operation["state_revision"] >= 0
-            and operation.get("exit_code") in {0, None}
+            and (
+                operation.get("exit_code") is None
+                or (
+                    isinstance(operation["exit_code"], int)
+                    and not isinstance(operation["exit_code"], bool)
+                    and operation["exit_code"] >= 0
+                )
+            )
             and (
                 operation.get("diagnostic") is None
                 or isinstance(operation["diagnostic"], str)

@@ -11,6 +11,12 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from _model_evolution_contract import ContractError  # noqa: E402
+from _model_evolution_qualification import _apparatus_artifact  # noqa: E402
+
+
 ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 SKILLS = {
     "long-document-segmented-writing",
@@ -33,6 +39,54 @@ def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[st
 
 
 class ExtendedRelease(unittest.TestCase):
+    def test_apparatus_operation_uses_producer_verdict(self) -> None:
+        operation = {
+            "operation_id": "fake-candidate-analyze",
+            "status": "pass",
+            "duration_ms": 1,
+            "state_revision": 0,
+            "exit_code": 3,
+            "diagnostic": None,
+        }
+        report = {
+            "schema_version": "model-evolution-apparatus-report/2",
+            "campaign_id": "campaign-test",
+            "state_revision": 0,
+            "source_commit": "1" * 40,
+            "source_tree": "2" * 40,
+            "status": "pass",
+            "operations": [operation],
+        }
+        campaign = {
+            "campaign_id": report["campaign_id"],
+            "state_revision": 0,
+            "product": {
+                "source_commit": report["source_commit"],
+                "source_tree": report["source_tree"],
+            },
+            "apparatus_report": {
+                "root": "campaign",
+                "path": "apparatus-report.json",
+                "schema_version": "model-evolution-apparatus-report/2",
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            report_path = root / "apparatus-report.json"
+
+            def validate(candidate: dict[str, object]) -> None:
+                report["operations"] = [candidate]
+                report_path.write_text(json.dumps(report), encoding="utf-8")
+                _apparatus_artifact(campaign, ROOT, root)
+
+            validate(operation)
+            for exit_code in (True, "3", -1):
+                with self.subTest(exit_code=exit_code):
+                    with self.assertRaises(ContractError):
+                        validate({**operation, "exit_code": exit_code})
+            with self.assertRaises(ContractError):
+                validate({**operation, "status": "fail"})
+
     def test_plugin_build_and_static_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
