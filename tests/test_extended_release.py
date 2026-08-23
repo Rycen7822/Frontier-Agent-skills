@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,9 @@ sys.path.insert(0, str(ROOT / "evaluation" / "model-evolution" / "sentinel_sourc
 
 from _model_evolution_contract import ContractError  # noqa: E402
 from _model_evolution_qualification import _apparatus_artifact  # noqa: E402
+from _model_evolution_reporting import _registered_plan as analysis_plan  # noqa: E402
+from _model_evolution_state import StateError, register_plan  # noqa: E402
+from model_evolution import _registered_plan as record_plan  # noqa: E402
 from writing_plans_verifier import (  # noqa: E402
     DESCRIPTION_VALUE,
     _fixed_case_checks,
@@ -44,6 +48,90 @@ def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[st
 
 
 class ExtendedRelease(unittest.TestCase):
+    def test_plan_replacement_is_strict_and_consumable(self) -> None:
+        old = {
+            "role": "target_current",
+            "skill_id": "skill-evaluator",
+            "plan": {"root": "campaign", "path": "old/plan.json"},
+            "plan_digest": f"sha256:{'1' * 64}",
+            "host_id": "host",
+            "host_version": "1",
+            "execute_ceiling": 72,
+            "model_grade_ceiling": 48,
+            "runner_status": {"completed": 0, "total": 36, "failed": 0},
+        }
+        new = {
+            **old,
+            "plan": {"root": "campaign", "path": "new/plan.json"},
+            "plan_digest": f"sha256:{'2' * 64}",
+        }
+        state = {
+            "state_revision": 10,
+            "phase": "calibration_ready",
+            "plans": [old],
+            "candidate": None,
+            "profiles": {"predecessor": None},
+            "budgets": {
+                "ceiling": {"execute": 200, "model_grade": 200,
+                            "provider_requests": 400},
+                "reserved": {"execute": 72, "model_grade": 48,
+                             "provider_requests": 120},
+            },
+            "skill_evidence": {
+                "skill-evaluator": {"grader_calibration": {"root": "campaign"}},
+                "writing-plans": {"grader_calibration": {"root": "campaign"}},
+            },
+        }
+        stopped = {
+            "active_attempts": [],
+            "recoverable_attempts": [],
+            "indexed_attempts": 7,
+        }
+        empty = {
+            "active_attempts": [],
+            "recoverable_attempts": [],
+            "indexed_attempts": 0,
+            "completed_entries": 0,
+            "invalid_attempts": 0,
+        }
+
+        def replace(
+            candidate: dict[str, object] = new,
+            *,
+            old_status: dict[str, object] = stopped,
+            new_status: dict[str, object] = empty,
+            runner_stopped: bool = True,
+        ) -> dict[str, object]:
+            target = deepcopy(state)
+            register_plan(
+                target,
+                deepcopy(candidate),
+                replace_existing=True,
+                old_runner_stopped=runner_stopped,
+                old_runner_status=old_status,
+                new_runner_status=new_status,
+            )
+            return target
+
+        rejected = (
+            {"runner_stopped": False},
+            {"old_status": {**stopped, "active_attempts": ["attempt.1"]}},
+            {"old_status": {**stopped, "recoverable_attempts": ["attempt.1"]}},
+            {"new_status": {**empty, "indexed_attempts": 1}},
+            {"candidate": {**new, "execute_ceiling": 73}},
+            {"candidate": {**new, "skill_id": "writing-plans"}},
+        )
+        for arguments in rejected:
+            with self.subTest(arguments=arguments), self.assertRaises(StateError):
+                replace(**arguments)
+
+        updated = replace()
+        self.assertEqual(state["budgets"]["reserved"], updated["budgets"]["reserved"])
+        self.assertEqual([new], updated["plans"])
+        self.assertEqual(old["plan_digest"], updated["plan_replacement_lineage"][0]["plan_digest"])
+        self.assertEqual(new, record_plan(updated, "target_current", "skill-evaluator"))
+        self.assertEqual(new, analysis_plan(updated, "target_current", "skill-evaluator"))
+
     def test_writing_plans_parsed_description_proof_is_fail_closed(self) -> None:
         proof = f'''Plan `fixtures/agents/openai.yaml` from 8.2.0 to 8.2.1.
 ```python
