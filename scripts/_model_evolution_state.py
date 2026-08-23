@@ -40,6 +40,7 @@ ALLOWED_PHASE_TRANSITIONS = {
     for index, phase in enumerate(PHASES)
 }
 ALLOWED_PHASE_TRANSITIONS["decision_ready"].add("final_plugin_ready")
+ALLOWED_PHASE_TRANSITIONS["decision_ready"].add("calibration_ready")
 ALLOWED_PHASE_TRANSITIONS["calibration_ready"].add("decision_ready")
 NEXT_EVENT = {
     "declared": "preflight",
@@ -313,6 +314,107 @@ def register_plan(
     state["plans"].sort(key=lambda item: (item["role"], item["skill_id"]))
     if role == "target_current" and state["phase"] == "target_profile_ready":
         state["phase"] = "calibration_ready"
+
+
+def rebind_product(
+    state: dict[str, Any],
+    *,
+    product: dict[str, Any],
+    apparatus_report: dict[str, Any],
+    target_provisional: dict[str, Any],
+    target_observed: dict[str, Any],
+    direct_descendant: bool,
+    runner_statuses: list[dict[str, Any]],
+) -> None:
+    """Replace the D4 product identity without rebinding unaffected evidence."""
+    if state["phase"] != "decision_ready":
+        raise StateError("product rebind is only legal from decision_ready")
+    if not direct_descendant:
+        raise StateError("product rebind requires a descendant source commit")
+    if len(runner_statuses) != len(state["plans"]) or any(
+        status.get("active_attempts") or status.get("recoverable_attempts")
+        for status in runner_statuses
+    ):
+        raise StateError("product rebind requires no active or recoverable attempt")
+
+    previous = state["product"]
+    stable_fields = {
+        "dirty",
+        "calibration_requests",
+        "bundle_manifest",
+        "bundle_build",
+        "static_gate",
+    }
+    if set(product) != set(previous) or any(
+        product[field] != previous[field] for field in stable_fields
+    ):
+        raise StateError("product rebind changes an unauthorized product field")
+    if (
+        previous["bundle_id"] != "frontier-engineering/8.0.1"
+        or previous["bundle_version"] != "8.0.1"
+        or product["bundle_id"] != "frontier-engineering/8.0.2"
+        or product["bundle_version"] != "8.0.2"
+    ):
+        raise StateError("product rebind differs from the authorized Bundle transition")
+
+    unchanged = (
+        "long-document-segmented-writing",
+        "skill-evaluator",
+        "software-quality-workflows",
+    )
+    if any(product["skills"][skill_id] != previous["skills"][skill_id]
+           for skill_id in unchanged):
+        raise StateError("product rebind changes an unaffected Skill identity")
+    old_wp = previous["skills"]["writing-plans"]
+    new_wp = product["skills"]["writing-plans"]
+    if (
+        old_wp != {
+            "allow_implicit_invocation": True,
+            "root_hash": "sha256:911e5913108029d3e95db6c111f304467896b607de8222615be4120670f7b516",
+            "version": "8.4.0",
+        }
+        or new_wp != {
+            "allow_implicit_invocation": True,
+            "root_hash": "sha256:1d5861c02e453cb7caab59c5b8a3c02f9971c5569bb5ee23a8308367acdaf51f",
+            "version": "8.4.1",
+        }
+    ):
+        raise StateError("product rebind differs from the authorized Writing Plans transition")
+    prior_summary = state["skill_evidence"]["writing-plans"]["current_summary"]
+    if prior_summary is None or any(
+        state["skill_evidence"][skill_id]["current_summary"] is None
+        for skill_id in unchanged
+    ):
+        raise StateError("product rebind requires four recorded current summaries")
+
+    state.setdefault("product_rebind_lineage", []).append(
+        {
+            "old_product": copy.deepcopy(previous),
+            "new_product": copy.deepcopy(product),
+            "unchanged_skill_digests": {
+                skill_id: previous["skills"][skill_id]["root_hash"]
+                for skill_id in unchanged
+            },
+            "old_apparatus_report": copy.deepcopy(state["apparatus_report"]),
+            "new_apparatus_report": copy.deepcopy(apparatus_report),
+            "old_target_provisional": copy.deepcopy(
+                state["profiles"]["target_provisional"]
+            ),
+            "new_target_provisional": copy.deepcopy(target_provisional),
+            "old_target_observed": copy.deepcopy(
+                state["profiles"]["target_observed"]
+            ),
+            "new_target_observed": copy.deepcopy(target_observed),
+            "old_writing_plans_summary": copy.deepcopy(prior_summary),
+            "rebound_state_revision": state["state_revision"] + 1,
+        }
+    )
+    state["product"] = copy.deepcopy(product)
+    state["apparatus_report"] = copy.deepcopy(apparatus_report)
+    state["profiles"]["target_provisional"] = copy.deepcopy(target_provisional)
+    state["profiles"]["target_observed"] = copy.deepcopy(target_observed)
+    state["skill_evidence"]["writing-plans"]["current_summary"] = None
+    state["phase"] = "calibration_ready"
 
 
 def _has_plan(state: dict[str, Any], role: str, skill_id: str) -> bool:
