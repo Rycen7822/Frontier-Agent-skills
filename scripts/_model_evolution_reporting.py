@@ -486,6 +486,61 @@ def _bundle_revision_plan(
     }
 
 
+def _analysis_paths(summary: Path, *, label: str) -> tuple[Path, Path]:
+    failures = summary.parent / "failure-index.json"
+    if any(not path.is_file() or path.is_symlink() for path in (summary, failures)):
+        raise MaterializationError(f"{label} analysis is missing")
+    return summary, failures
+
+
+def _canonical_analysis_paths(
+    *, campaign_root: Path, role: str, skill_id: str,
+) -> tuple[Path, Path]:
+    summary = campaign_root / "analysis" / role / skill_id / "summary.json"
+    return _analysis_paths(summary, label=f"{role}/{skill_id}")
+
+
+def _recorded_current_analysis_paths(
+    *,
+    campaign: dict[str, Any],
+    repository_root: Path,
+    campaign_root: Path,
+    skill_id: str,
+) -> tuple[Path, Path]:
+    binding = campaign.get("skill_evidence", {}).get(skill_id, {}).get(
+        "current_summary"
+    )
+    if not isinstance(binding, dict) or binding.get("root") != "campaign":
+        raise MaterializationError("recorded current summary must be campaign-bound")
+    bound_path = binding.get("path")
+    if not isinstance(bound_path, str):
+        raise MaterializationError("recorded current summary path is invalid")
+    expected_root = PurePosixPath("analysis") / "target_current" / skill_id
+    try:
+        relative = PurePosixPath(bound_path).relative_to(expected_root)
+    except ValueError as exc:
+        raise MaterializationError(
+            "recorded current summary is outside its Skill analysis root"
+        ) from exc
+    parts = relative.parts
+    if not (
+        parts == ("summary.json",)
+        or (
+            len(parts) == 2
+            and SAFE_ID.fullmatch(parts[0]) is not None
+            and parts[1] == "summary.json"
+        )
+    ):
+        raise MaterializationError("recorded current summary path shape is invalid")
+    summary = resolve_binding(binding, repository_root, campaign_root)
+    analysis_root = (campaign_root / expected_root.as_posix()).resolve(strict=True)
+    if not summary.is_relative_to(analysis_root):
+        raise MaterializationError(
+            "recorded current summary resolves outside its Skill analysis root"
+        )
+    return _analysis_paths(summary, label=f"target_current/{skill_id}")
+
+
 def prepare_revision_report(
     *,
     repository_root: Path,
@@ -508,22 +563,21 @@ def prepare_revision_report(
             repository_root=repository_root,
             campaign_root=campaign_root,
         )
-        summary_root = campaign_root / "analysis" / role / skill_id
-        summary = summary_root / "summary.json"
-        failures = summary_root / "failure-index.json"
-        if any(not path.is_file() or path.is_symlink() for path in (summary, failures)):
-            raise MaterializationError(f"{role}/{skill_id} analysis is missing")
         roots[role] = root
         paths[role] = (spec, host, plan)
-        analyses[role] = (summary, failures)
+        if role == "target_prior":
+            analyses[role] = _canonical_analysis_paths(
+                campaign_root=campaign_root,
+                role=role,
+                skill_id=skill_id,
+            )
 
-    current_summary = resolve_binding(
-        campaign["skill_evidence"][skill_id]["current_summary"],
-        repository_root,
-        campaign_root,
+    analyses["target_current"] = _recorded_current_analysis_paths(
+        campaign=campaign,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        skill_id=skill_id,
     )
-    if current_summary != analyses["target_current"][0].resolve(strict=True):
-        raise MaterializationError("recorded current summary is noncanonical")
     products = {
         "prior": _prior_product_identity(
             repository_root=repository_root,

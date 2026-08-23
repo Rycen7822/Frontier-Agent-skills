@@ -17,7 +17,12 @@ sys.path.insert(0, str(ROOT / "evaluation" / "model-evolution" / "sentinel_sourc
 
 from _model_evolution_contract import ContractError  # noqa: E402
 from _model_evolution_qualification import _apparatus_artifact  # noqa: E402
-from _model_evolution_reporting import _registered_plan as analysis_plan  # noqa: E402
+from _model_evolution_materialization import MaterializationError  # noqa: E402
+from _model_evolution_reporting import (  # noqa: E402
+    _canonical_analysis_paths,
+    _recorded_current_analysis_paths,
+    _registered_plan as analysis_plan,
+)
 from _model_evolution_state import (  # noqa: E402
     StateError,
     rebind_product,
@@ -70,6 +75,148 @@ Host, tasks, grader, and policy remain frozen in both comparisons.
         self.assertTrue(passes(answer))
         self.assertFalse(passes(answer.replace("Skill-revision", "model-revision")))
         self.assertFalse(passes(answer.replace("policy", "permissions")))
+
+    def test_revision_uses_recorded_current_analysis_pair(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_root = Path(temp) / "campaign"
+            repository_root = Path(temp) / "repository"
+            repository_root.mkdir()
+            analysis_root = (
+                campaign_root / "analysis" / "target_current" / "skill-evaluator"
+            )
+
+            def write_pair(relative: str, marker: str) -> tuple[Path, Path]:
+                summary = analysis_root / relative
+                summary.parent.mkdir(parents=True, exist_ok=True)
+                summary.write_text(
+                    json.dumps({"schema_version": 6, "marker": marker}),
+                    encoding="utf-8",
+                )
+                failures = summary.parent / "failure-index.json"
+                failures.write_text(
+                    json.dumps({"schema_version": 2, "marker": marker}),
+                    encoding="utf-8",
+                )
+                return summary.resolve(), failures.resolve()
+
+            canonical = write_pair("summary.json", "canonical")
+            sidecars = {
+                name: write_pair(f"{name}/summary.json", name)
+                for name in ("d2-regrade", "d4-rebind")
+            }
+            campaign = {"skill_evidence": {"skill-evaluator": {}}}
+
+            def select(relative: str) -> tuple[Path, Path]:
+                campaign["skill_evidence"]["skill-evaluator"]["current_summary"] = {
+                    "root": "campaign",
+                    "path": (
+                        "analysis/target_current/skill-evaluator/" + relative
+                    ),
+                    "schema_version": "6",
+                }
+                return _recorded_current_analysis_paths(
+                    campaign=campaign,
+                    repository_root=repository_root,
+                    campaign_root=campaign_root,
+                    skill_id="skill-evaluator",
+                )
+
+            self.assertEqual(canonical, select("summary.json"))
+            for name, expected in sidecars.items():
+                with self.subTest(sidecar=name):
+                    self.assertEqual(expected, select(f"{name}/summary.json"))
+                    self.assertNotEqual(canonical[0], expected[0])
+
+    def test_revision_analysis_paths_are_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_root = Path(temp) / "campaign"
+            repository_root = Path(temp) / "repository"
+            repository_root.mkdir()
+            current_root = (
+                campaign_root / "analysis" / "target_current" / "skill-evaluator"
+            )
+            prior_root = (
+                campaign_root / "analysis" / "target_prior" / "skill-evaluator"
+            )
+
+            def write_json(path: Path, version: int) -> None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    json.dumps({"schema_version": version}), encoding="utf-8"
+                )
+
+            write_json(current_root / "summary.json", 6)
+            write_json(current_root / "failure-index.json", 2)
+            write_json(prior_root / "summary.json", 6)
+            write_json(prior_root / "failure-index.json", 2)
+            write_json(prior_root / "sidecar" / "summary.json", 6)
+            write_json(prior_root / "sidecar" / "failure-index.json", 2)
+            self.assertEqual(
+                (prior_root / "summary.json", prior_root / "failure-index.json"),
+                _canonical_analysis_paths(
+                    campaign_root=campaign_root,
+                    role="target_prior",
+                    skill_id="skill-evaluator",
+                ),
+            )
+
+            def binding(path: str, root: str = "campaign") -> dict[str, str]:
+                return {"root": root, "path": path, "schema_version": "6"}
+
+            rejected = [
+                binding("analysis/target_current/skill-evaluator/summary.json", "repository"),
+                binding("analysis/target_current/skill-evaluator/summary.json", "external"),
+                binding("analysis/target_current/writing-plans/summary.json"),
+                binding("analysis/target_current/skill-evaluator/a/b/summary.json"),
+                binding("analysis/target_current/skill-evaluator/sidecar/report.json"),
+                binding("analysis/target_current/skill-evaluator/bad$id/summary.json"),
+            ]
+            for candidate in rejected:
+                campaign = {
+                    "skill_evidence": {
+                        "skill-evaluator": {"current_summary": candidate}
+                    }
+                }
+                with self.subTest(binding=candidate), self.assertRaises(
+                    MaterializationError
+                ):
+                    _recorded_current_analysis_paths(
+                        campaign=campaign,
+                        repository_root=repository_root,
+                        campaign_root=campaign_root,
+                        skill_id="skill-evaluator",
+                    )
+
+            missing = current_root / "missing" / "summary.json"
+            write_json(missing, 6)
+            symlinked = current_root / "symlinked" / "summary.json"
+            write_json(symlinked, 6)
+            (symlinked.parent / "failure-index.json").symlink_to(
+                current_root / "failure-index.json"
+            )
+            for relative in ("missing/summary.json", "symlinked/summary.json"):
+                campaign = {
+                    "skill_evidence": {"skill-evaluator": {"current_summary": binding(
+                        f"analysis/target_current/skill-evaluator/{relative}"
+                    )}}
+                }
+                with self.subTest(relative=relative), self.assertRaises(
+                    MaterializationError
+                ):
+                    _recorded_current_analysis_paths(
+                        campaign=campaign,
+                        repository_root=repository_root,
+                        campaign_root=campaign_root,
+                        skill_id="skill-evaluator",
+                    )
+
+            (prior_root / "summary.json").unlink()
+            with self.assertRaises(MaterializationError):
+                _canonical_analysis_paths(
+                    campaign_root=campaign_root,
+                    role="target_prior",
+                    skill_id="skill-evaluator",
+                )
 
     def test_plan_replacement_is_strict_and_consumable(self) -> None:
         old = {
