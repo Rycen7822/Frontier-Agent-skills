@@ -1,9 +1,9 @@
 {
   "schema_version": "frontier-bundle-revision-policy/1",
-  "registered_at": "2026-08-23T00:41:56Z",
+  "registered_at": "2026-08-23T08:18:05Z",
   "authority_id": "frontier-evaluation-owner",
   "prior_bundle_version": "7.0.0",
-  "candidate_bundle_version": "8.0.1",
+  "candidate_bundle_version": "8.0.2",
   "candidate_activation": {
     "long-document-segmented-writing": true,
     "skill-evaluator": false,

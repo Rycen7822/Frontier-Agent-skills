@@ -2,7 +2,7 @@
 name: writing-plans
 description: "Use after software decisions and diagnosis are settled to write source-bound software implementation Handoffs and durable multi-session Programs."
 metadata:
-  version: 8.4.0
+  version: 8.4.1
 ---
 
 Handoff crosses contexts; Program tracks a frontier; otherwise stay native. Skill-source changes use skill authoring. Plan after decisions and diagnosis are settled; execution, verification, and completion claims stay owner-held.
@@ -32,7 +32,7 @@ Minimal sufficient form: omit generic/empty prose; do not expand one sentence in
 For a Handoff or Program, write a title; use these rows in one contract table or a three- or four-row bullet contract:
 
 - State — Bound source identity; Protected work and allowed effects; Settled decisions; Exact first-slice inputs, outputs, values, invariants; observed protected-test I/O and values, each edit literal and heading exactly once; Later blockers and dependencies. Mark unfinished gates and verification pending even when Slice performs them.
-- Resume — For cross-context edits, state both branches explicitly. If root, identity, freshness, and dirty scope match, reuse the matching freshness-bound host attestation unchanged; otherwise run one combined preflight. Omit for immutable verification handoffs.
+- Resume — State both branches explicitly. If root, identity, freshness, and dirty scope match: `matching freshness-bound host attestation unchanged`; `otherwise run one combined preflight`. Plan names both verbatim. Omit for immutable verification handoffs.
 - Slice — Goal / non-goals; First source-changing slice and files/symbols; Exact next source-changing action referencing its State-bound literal and anchor.
 - Proof — Acceptance and verification: Acceptance behavior; Minimum sufficient evidence; External owner gates; Escalation and blocked/inconclusive stops; Rollback/cleanup when material.
 

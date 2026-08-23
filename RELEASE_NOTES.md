@@ -1,5 +1,11 @@
 # Release Notes
 
+## Bundle 8.0.2 source-complete candidate
+
+Bundle 8.0.2 advances Writing Plans to 8.4.1 at schema epoch 7; Long Document remains 2.0.0, Skill Evaluator remains 5.0.0, and Software Quality Workflows remains 11.0.1. The activation matrix, `implicit_local_pilot` ceiling, and `remote_writes=false` boundary are unchanged.
+
+Relative to the signed Bundle 8.0.1 source candidate, the only product semantic delta restores the Writing Plans Resume contract: plans explicitly retain the `freshness-bound host attestation` and `combined preflight` artifact names while preserving the existing branch, identity, freshness, dirty-scope, and immutable-handoff rules.
+
 ## Bundle 8.0.1 source-complete candidate
 
 Bundle 8.0.1 advances Skill Evaluator to 5.0.0, Software Quality Workflows to 11.0.1, and Writing Plans to 8.4.0 at schema epoch 7; Long Document remains 2.0.0. Long Document and Writing Plans are implicit-eligible, while Skill Evaluator and SQW are explicit-only. SQW retains the exact `$software-quality-workflows` prompt. The activation ceiling remains `implicit_local_pilot`, and `remote_writes` remains false.

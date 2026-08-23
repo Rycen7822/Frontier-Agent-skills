@@ -196,7 +196,7 @@ def _run_cycle(
         acceptable={0, 1, 3},
     )
     operations.append(fact)
-    bundle_version = "7.0.0" if role == "prior" else "8.0.1"
+    bundle_version = "7.0.0" if role == "prior" else "8.0.2"
     product = {
         "bundle_id": f"frontier-engineering/{bundle_version}",
         "bundle_version": bundle_version,

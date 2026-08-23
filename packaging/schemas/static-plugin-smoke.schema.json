@@ -10,8 +10,8 @@
   ],
   "properties": {
     "schema_version": {"const": "static-plugin-smoke/4.0"},
-    "bundle_id": {"const": "frontier-engineering/8.0.1"},
-    "bundle_version": {"const": "8.0.1"},
+    "bundle_id": {"const": "frontier-engineering/8.0.2"},
+    "bundle_version": {"const": "8.0.2"},
     "plugin_name": {"const": "frontier-engineering-plugin"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "activation_ceiling": {"const": "implicit_local_pilot"},
@@ -25,7 +25,7 @@
         "long-document-segmented-writing": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "2.0.0"}, "implicit_eligible": {"const": true}}}]},
         "skill-evaluator": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "5.0.0"}, "implicit_eligible": {"const": false}}}]},
         "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "11.0.1"}, "implicit_eligible": {"const": false}}}]},
-        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.4.0"}, "implicit_eligible": {"const": true}}}]}
+        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.4.1"}, "implicit_eligible": {"const": true}}}]}
       }
     },
     "isolated_install_discovery": {"const": true},
