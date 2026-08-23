@@ -44,6 +44,10 @@
     "sentinel_index": {"$ref": "#/$defs/binding"},
     "budgets": {"$ref": "#/$defs/budgets"},
     "plans": {"type": "array", "items": {"$ref": "#/$defs/plan"}},
+    "plan_replacement_lineage": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/plan_replacement"}
+    },
     "skill_evidence": {"$ref": "#/$defs/skill_evidence"},
     "candidate": {"anyOf": [{"$ref": "#/$defs/candidate"}, {"type": "null"}]}
   },
@@ -307,6 +311,29 @@
             "failed": {"type": "integer", "minimum": 0}
           }
         }
+      }
+    },
+    "plan_replacement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "skill_id",
+        "plan_digest",
+        "registered_state_revision"
+      ],
+      "properties": {
+        "role": {
+          "enum": [
+            "target_current",
+            "target_candidate",
+            "target_prior",
+            "target_holdout"
+          ]
+        },
+        "skill_id": {"$ref": "#/$defs/skill_id"},
+        "plan_digest": {"$ref": "#/$defs/hash"},
+        "registered_state_revision": {"type": "integer", "minimum": 1}
       }
     },
     "skill_id": {

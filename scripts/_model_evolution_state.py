@@ -100,6 +100,19 @@ def reserve_budget(state: dict[str, Any], increments: dict[str, int]) -> None:
         reserved[field] += amount
 
 
+def release_budget(state: dict[str, Any], decrements: dict[str, int]) -> None:
+    if set(decrements) - set(BUDGET_FIELDS):
+        raise StateError("budget release contains an unknown field")
+    reserved = state["budgets"]["reserved"]
+    for field, amount in decrements.items():
+        if isinstance(amount, bool) or not isinstance(amount, int) or amount < 0:
+            raise StateError("budget release must be a non-negative integer")
+        if reserved[field] is None or amount > reserved[field]:
+            raise StateError(f"budget field {field} cannot be released")
+    for field, amount in decrements.items():
+        reserved[field] -= amount
+
+
 def record_observed_budget(
     state: dict[str, Any], observed: dict[str, int | None]
 ) -> None:
@@ -209,6 +222,11 @@ def block_probes(state: dict[str, Any], reason: str) -> None:
 def register_plan(
     state: dict[str, Any],
     plan_record: dict[str, Any],
+    *,
+    replace_existing: bool = False,
+    old_runner_stopped: bool = False,
+    old_runner_status: dict[str, Any] | None = None,
+    new_runner_status: dict[str, Any] | None = None,
 ) -> None:
     role = plan_record["role"]
     required_phase = {
@@ -219,11 +237,15 @@ def register_plan(
     }[role]
     if state["phase"] not in required_phase:
         raise StateError(f"{role} plan is not legal from {state['phase']}")
-    if any(
-        item["role"] == role and item["skill_id"] == plan_record["skill_id"]
-        for item in state["plans"]
-    ):
+    matching_indexes = [
+        index
+        for index, item in enumerate(state["plans"])
+        if item["role"] == role and item["skill_id"] == plan_record["skill_id"]
+    ]
+    if not replace_existing and matching_indexes:
         raise StateError("plan role and Skill are already registered")
+    if replace_existing and len(matching_indexes) != 1:
+        raise StateError("plan replacement requires one matching registered plan")
     if role == "target_prior" and (
         state["candidate"] is not None
         or state["profiles"]["predecessor"] is not None
@@ -236,17 +258,58 @@ def register_plan(
             "grader_calibration"
         ] is None:
             raise StateError("model-graded current plan requires calibration")
-    reserve_budget(
-        state,
-        {
-            "execute": plan_record["execute_ceiling"],
-            "model_grade": plan_record["model_grade_ceiling"],
+    increments = {
+        "execute": plan_record["execute_ceiling"],
+        "model_grade": plan_record["model_grade_ceiling"],
+        "provider_requests": (
+            plan_record["execute_ceiling"] + plan_record["model_grade_ceiling"]
+        ),
+    }
+    if replace_existing:
+        old_record = state["plans"][matching_indexes[0]]
+        if not old_runner_stopped:
+            raise StateError("plan replacement requires the old runner to be stopped")
+        if old_runner_status is None or new_runner_status is None:
+            raise StateError("plan replacement requires old and new runner status")
+        if (
+            old_runner_status.get("active_attempts") != []
+            or old_runner_status.get("recoverable_attempts") != []
+        ):
+            raise StateError("plan replacement requires no active or recoverable attempt")
+        if (
+            new_runner_status.get("indexed_attempts") != 0
+            or new_runner_status.get("completed_entries") != 0
+            or new_runner_status.get("invalid_attempts") != 0
+            or new_runner_status.get("active_attempts") != []
+            or new_runner_status.get("recoverable_attempts") != []
+        ):
+            raise StateError("replacement plan must have zero attempts")
+        if any(
+            old_record[field] != plan_record[field]
+            for field in ("execute_ceiling", "model_grade_ceiling")
+        ):
+            raise StateError("replacement plan request ceilings must be unchanged")
+        old_budget = {
+            "execute": old_record["execute_ceiling"],
+            "model_grade": old_record["model_grade_ceiling"],
             "provider_requests": (
-                plan_record["execute_ceiling"] + plan_record["model_grade_ceiling"]
+                old_record["execute_ceiling"] + old_record["model_grade_ceiling"]
             ),
-        },
-    )
-    state["plans"].append(plan_record)
+        }
+        release_budget(state, old_budget)
+        reserve_budget(state, increments)
+        state.setdefault("plan_replacement_lineage", []).append(
+            {
+                "role": old_record["role"],
+                "skill_id": old_record["skill_id"],
+                "plan_digest": old_record["plan_digest"],
+                "registered_state_revision": state["state_revision"] + 1,
+            }
+        )
+        state["plans"][matching_indexes[0]] = plan_record
+    else:
+        reserve_budget(state, increments)
+        state["plans"].append(plan_record)
     state["plans"].sort(key=lambda item: (item["role"], item["skill_id"]))
     if role == "target_current" and state["phase"] == "target_profile_ready":
         state["phase"] = "calibration_ready"

@@ -75,6 +75,17 @@ def verify_systemd_user(
         )
 
 
+def runner_service_stopped(service_id: str) -> bool:
+    _validate_unit(service_id)
+    result = _run(
+        ["systemctl", "--user", "is-active", f"{service_id}.service"],
+        cwd=Path.cwd(),
+        acceptable={0, 3, 4},
+        timeout=30,
+    )
+    return result.returncode in {3, 4}
+
+
 def render_runner_command(
     plan: Path,
     index: Path,

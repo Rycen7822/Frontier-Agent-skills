@@ -61,6 +61,7 @@ from _model_evolution_holdout import (
 from _model_evolution_jobs import (
     render_probe_command,
     render_runner_command,
+    runner_service_stopped,
     systemd_probe_argv,
     verify_systemd_user,
 )
@@ -753,6 +754,10 @@ def _register_plan(args: argparse.Namespace) -> None:
     campaign = store.read()
     if campaign["state_revision"] != args.expected_revision:
         raise CliError("register-plan expected revision is stale")
+    if args.replace_existing != (args.superseded_plan is not None):
+        raise CliError(
+            "plan replacement requires --replace-existing and --superseded-plan"
+        )
     plan_path = args.plan.resolve(strict=True)
     plan_binding = _binding_for_path(
         plan_path,
@@ -847,9 +852,52 @@ def _register_plan(args: argparse.Namespace) -> None:
             "failed": status["invalid_attempts"],
         },
     }
+    old_status = None
+    old_stopped = False
+    if args.replace_existing:
+        matches = [
+            item for item in campaign["plans"]
+            if item["role"] == args.role and item["skill_id"] == args.skill_id
+        ]
+        if len(matches) != 1:
+            raise CliError("plan replacement requires one matching registered plan")
+        old_record = matches[0]
+        old_plan_path = args.superseded_plan.resolve(strict=True)
+        old_binding = _binding_for_path(
+            old_plan_path,
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+        )
+        if old_binding["root"] != "campaign" or old_plan_path == plan_path:
+            raise CliError("superseded plan must be a distinct campaign artifact")
+        old_relative = old_plan_path.relative_to(campaign_root)
+        if not old_relative.parts or old_relative.parts[0] != "superseded-plans":
+            raise CliError("superseded plan must be under superseded-plans")
+        if content_hash(old_plan_path.read_bytes()) != old_record["plan_digest"]:
+            raise CliError("superseded plan differs from the registered plan")
+        old_plan = load_json(old_plan_path, label="superseded execution plan")
+        if not isinstance(old_plan, dict):
+            raise CliError("superseded execution plan must be an object")
+        old_index = _plan_index_path(old_plan_path, old_plan)
+        old_status = runner_status(
+            old_plan_path,
+            old_index,
+            repository_root=repository_root,
+        )
+        service_id = (
+            f"frontier-{campaign['campaign_id']}-{args.role}-{args.skill_id}"
+        )[:120]
+        old_stopped = runner_service_stopped(service_id)
     updated = store.mutate(
         args.expected_revision,
-        lambda state: register_plan(state, plan_record),
+        lambda state: register_plan(
+            state,
+            plan_record,
+            replace_existing=args.replace_existing,
+            old_runner_stopped=old_stopped,
+            old_runner_status=old_status,
+            new_runner_status=status,
+        ),
     )
     command = render_runner_command(
         plan_path,
@@ -1730,6 +1778,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     register.add_argument("--skill-id", choices=SKILL_IDS, required=True)
     register.add_argument("--plan", type=Path, required=True)
+    register.add_argument("--replace-existing", action="store_true")
+    register.add_argument("--superseded-plan", type=Path)
 
     record = commands.add_parser("record")
     record.add_argument("--expected-revision", type=int, required=True)
