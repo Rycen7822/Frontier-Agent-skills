@@ -12,9 +12,14 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "evaluation" / "model-evolution" / "sentinel_sources"))
 
 from _model_evolution_contract import ContractError  # noqa: E402
 from _model_evolution_qualification import _apparatus_artifact  # noqa: E402
+from writing_plans_verifier import (  # noqa: E402
+    DESCRIPTION_VALUE,
+    _fixed_case_checks,
+)
 
 
 ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
@@ -39,6 +44,30 @@ def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[st
 
 
 class ExtendedRelease(unittest.TestCase):
+    def test_writing_plans_parsed_description_proof_is_fail_closed(self) -> None:
+        proof = f'''Plan `fixtures/agents/openai.yaml` from 8.2.0 to 8.2.1.
+```python
+from pathlib import Path
+lines = Path("fixtures/agents/openai.yaml").read_text().splitlines()
+values = dict(line.split(": ", 1) for line in lines)
+assert values["version"] == "8.2.1"
+assert values["description"] == "{DESCRIPTION_VALUE}"
+```
+'''
+
+        def passes(answer: str) -> bool:
+            checks = _fixed_case_checks("protected-description", answer)
+            return all(passed for passed, _ in checks.values())
+
+        self.assertTrue(passes(proof))
+        self.assertFalse(passes(proof.replace(DESCRIPTION_VALUE, "EXPECTED_DESCRIPTION")))
+        self.assertFalse(passes(
+            proof.replace(
+                f'assert values["description"] == "{DESCRIPTION_VALUE}"',
+                f'correct = "{DESCRIPTION_VALUE}"\nassert values["description"] == "wrong"',
+            )
+        ))
+
     def test_apparatus_operation_uses_producer_verdict(self) -> None:
         operation = {
             "operation_id": "fake-candidate-analyze",

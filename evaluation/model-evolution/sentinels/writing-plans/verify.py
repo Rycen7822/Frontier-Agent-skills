@@ -60,11 +60,26 @@ def _fixed_case_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]
             "8.2.1",
         )
         joined_literals = re.sub(r"([\"'])\s*\n\s*\1", "", answer)
+        parsed_field_proof = (
+            DESCRIPTION_VALUE in answer
+            and ".read_text(" in answer
+            and ".splitlines(" in answer
+            and bool(re.search(
+                r'''assert\s+\w+\[\s*["']version["']\s*\]\s*==\s*["']8\.2\.1["']''',
+                answer,
+            ))
+            and bool(re.search(
+                r'''assert\s+\w+\[\s*["']description["']\s*\]\s*==\s*["']'''
+                + re.escape(DESCRIPTION_VALUE)
+                + r'''["']''',
+                answer,
+            ))
+        )
         description_proof = DESCRIPTION in joined_literals or (
             'line.startswith("description:")' in answer
             and "descriptions ==" in answer
             and DESCRIPTION_VALUE in answer
-        )
+        ) or parsed_field_proof
         exact_proof = (
             ("python" in lower and "assert" in answer and ".read_text(" in answer)
             or ("sed -n '1p'" in answer and "sed -n '2p'" in answer)
