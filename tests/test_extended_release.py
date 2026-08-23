@@ -10,6 +10,8 @@ import tempfile
 import unittest
 import zipfile
 
+from jsonschema import Draft202012Validator
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -19,12 +21,14 @@ from _model_evolution_contract import ContractError  # noqa: E402
 from _model_evolution_qualification import _apparatus_artifact  # noqa: E402
 from _model_evolution_materialization import MaterializationError  # noqa: E402
 from _model_evolution_reporting import (  # noqa: E402
+    _analysis_output_root,
     _canonical_analysis_paths,
     _recorded_current_analysis_paths,
     _registered_plan as analysis_plan,
 )
 from _model_evolution_state import (  # noqa: E402
     StateError,
+    refresh_current_evidence,
     rebind_product,
     register_plan,
 )
@@ -218,6 +222,65 @@ Host, tasks, grader, and policy remain frozen in both comparisons.
                     skill_id="skill-evaluator",
                 )
 
+    def test_prepare_analysis_variant_path_is_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            campaign = Path(temp) / "campaign"
+            current_parent = campaign / "analysis" / "target_current"
+            campaign.mkdir()
+            canonical = _analysis_output_root(
+                campaign,
+                role="target_current",
+                skill_id="skill-evaluator",
+                analysis_variant=None,
+            )
+            self.assertEqual(current_parent / "skill-evaluator", canonical)
+
+            canonical.mkdir(parents=True)
+            variant = _analysis_output_root(
+                campaign,
+                role="target_current",
+                skill_id="skill-evaluator",
+                analysis_variant="d8-product-align",
+            )
+            self.assertEqual(canonical / "d8-product-align", variant)
+            variant.mkdir()
+            with self.assertRaises(MaterializationError):
+                _analysis_output_root(
+                    campaign,
+                    role="target_current",
+                    skill_id="skill-evaluator",
+                    analysis_variant="d8-product-align",
+                )
+
+            for role in ("target_prior", "target_holdout"):
+                with self.subTest(role=role), self.assertRaises(MaterializationError):
+                    _analysis_output_root(
+                        campaign,
+                        role=role,
+                        skill_id="skill-evaluator",
+                        analysis_variant="sidecar",
+                    )
+            for unsafe in ("../sidecar", "a/b", "a..b", "/absolute", "bad$id"):
+                with self.subTest(variant=unsafe), self.assertRaises(
+                    MaterializationError
+                ):
+                    _analysis_output_root(
+                        campaign,
+                        role="target_current",
+                        skill_id="writing-plans",
+                        analysis_variant=unsafe,
+                    )
+
+            escaped = current_parent / "writing-plans"
+            escaped.symlink_to(Path(temp) / "outside", target_is_directory=True)
+            with self.assertRaises(MaterializationError):
+                _analysis_output_root(
+                    campaign,
+                    role="target_current",
+                    skill_id="writing-plans",
+                    analysis_variant="sidecar",
+                )
+
     def test_plan_replacement_is_strict_and_consumable(self) -> None:
         old = {
             "role": "target_current",
@@ -409,6 +472,199 @@ Host, tasks, grader, and policy remain frozen in both comparisons.
             self.assertEqual(binding, updated["skill_evidence"][skill_id]["current_summary"])
         self.assertEqual(product, updated["product_rebind_lineage"][0]["old_product"])
         self.assertEqual(rebound, updated["product_rebind_lineage"][0]["new_product"])
+
+    def test_d8_current_evidence_refresh_is_exact_and_single_use(self) -> None:
+        def binding(path: str, schema: str = "6") -> dict[str, str]:
+            return {
+                "root": "campaign", "path": path, "schema_version": schema,
+            }
+
+        skill_ids = (
+            "long-document-segmented-writing",
+            "skill-evaluator",
+            "software-quality-workflows",
+            "writing-plans",
+        )
+        old_skills = {
+            skill_id: {
+                "version": version,
+                "root_hash": f"sha256:{str(ordinal) * 64}",
+                "allow_implicit_invocation": skill_id in {
+                    "long-document-segmented-writing", "writing-plans",
+                },
+            }
+            for ordinal, (skill_id, version) in enumerate(zip(
+                skill_ids, ("2.0.0", "5.0.0", "11.0.1", "8.4.0"), strict=True
+            ), start=1)
+        }
+        new_skills = deepcopy(old_skills)
+        new_skills["writing-plans"].update({
+            "version": "8.4.1", "root_hash": f"sha256:{'5' * 64}",
+        })
+
+        def product(version: str, source: str, skills: dict[str, object]) -> dict[str, object]:
+            return {
+                "bundle_id": f"frontier-engineering/{version}",
+                "bundle_version": version,
+                "source_commit": source,
+                "source_tree": "6" * 40,
+                "dirty": False,
+                "plugin_tree": f"sha256:{'7' * 64}",
+                "plugin_build": binding(f"build-{version}.json", "4.0"),
+                "plugin_root": f"plugin-{version}",
+                "calibration_requests": 64,
+                "bundle_manifest": {"root": "repository", "path": "bundle-manifest.json"},
+                "bundle_build": {"root": "repository", "path": "frontier-engineering.bundle.json"},
+                "static_gate": {
+                    "schema_version": "static-contract-diagnostic/1.0",
+                    "status": "pass",
+                },
+                "skills": skills,
+            }
+
+        old_product = product("8.0.1", "8" * 40, old_skills)
+        new_product = product("8.0.2", "9" * 40, new_skills)
+        plans = [
+            {
+                "role": "target_current",
+                "skill_id": skill_id,
+                "plan": binding(f"current-plans/{skill_id}/plan.json", "3"),
+                "plan_digest": f"sha256:{str(index) * 64}",
+            }
+            for index, skill_id in enumerate(skill_ids, start=1)
+        ]
+        prior = {"role": "target_prior", "skill_id": "skill-evaluator"}
+        summaries = {
+            skill_id: binding(f"analysis/target_current/{skill_id}/summary.json")
+            for skill_id in skill_ids
+        }
+        state = {
+            "state_revision": 26,
+            "phase": "decision_ready",
+            "candidate": None,
+            "profiles": {"predecessor": None},
+            "product": new_product,
+            "plans": [*plans, prior],
+            "budgets": {"reserved": {"provider_requests": 1292}},
+            "skill_evidence": {
+                skill_id: {"current_summary": summaries[skill_id], "revision_report": None}
+                for skill_id in skill_ids
+            },
+            "product_rebind_lineage": [{
+                "old_product": old_product,
+                "new_product": new_product,
+                "unchanged_skill_digests": {
+                    skill_id: old_skills[skill_id]["root_hash"]
+                    for skill_id in skill_ids[:-1]
+                },
+                "rebound_state_revision": 18,
+            }],
+        }
+        refreshed = {
+            skill_id: {
+                "old_current_summary": summaries[skill_id],
+                "old_current_summary_digest": f"sha256:{'a' * 64}",
+                "old_plan": plans[index]["plan"],
+                "old_plan_digest": plans[index]["plan_digest"],
+                "unchanged_skill_digest": old_skills[skill_id]["root_hash"],
+                "old_plugin_build": old_product["plugin_build"],
+                "old_plugin_build_digest": f"sha256:{'b' * 64}",
+            }
+            for index, skill_id in enumerate(skill_ids[:-1])
+        }
+        proof = {
+            "reason": "bundle_revision_full_product_alignment",
+            "product_rebind_state_revision": 18,
+            "refresh_before_state_revision": 26,
+            "refresh_after_state_revision": 27,
+            "old_product": old_product,
+            "new_product": new_product,
+            "refresh_set": list(skill_ids[:-1]),
+            "refreshed_skills": refreshed,
+            "retained_writing_plans": {
+                "current_summary": summaries["writing-plans"],
+                "current_summary_digest": f"sha256:{'c' * 64}",
+                "plan": plans[3]["plan"],
+                "plan_digest": plans[3]["plan_digest"],
+                "plugin_build": new_product["plugin_build"],
+                "plugin_build_digest": f"sha256:{'d' * 64}",
+                "source_commit": new_product["source_commit"],
+                "skill_digest": new_skills["writing-plans"]["root_hash"],
+                "catalog_digest": f"sha256:{'e' * 64}",
+            },
+        }
+        idle = {
+            skill_id: {"active_attempts": [], "recoverable_attempts": []}
+            for skill_id in skill_ids
+        }
+        stopped = {skill_id: True for skill_id in skill_ids}
+
+        def rejected(
+            *, state_value: dict[str, object] = state,
+            proof_value: dict[str, object] = proof,
+            status_value: dict[str, object] = idle,
+            stopped_value: dict[str, bool] = stopped,
+        ) -> None:
+            with self.assertRaises(StateError):
+                refresh_current_evidence(
+                    deepcopy(state_value),
+                    evidence=deepcopy(proof_value),
+                    runner_statuses=deepcopy(status_value),
+                    runners_stopped=deepcopy(stopped_value),
+                )
+
+        for field, value in (("phase", "current_evidence_ready"), ("state_revision", 25)):
+            rejected(state_value={**state, field: value})
+        for refresh_set in (
+            list(skill_ids[:2]),
+            [*skill_ids[:-1], "writing-plans"],
+            list(skill_ids),
+        ):
+            rejected(proof_value={**proof, "refresh_set": refresh_set})
+        bad_rebind = deepcopy(state)
+        bad_rebind["product_rebind_lineage"][0]["new_product"]["source_tree"] = "0" * 40
+        rejected(state_value=bad_rebind)
+        for field in ("old_current_summary", "old_plan", "old_plugin_build"):
+            bad_proof = deepcopy(proof)
+            bad_proof["refreshed_skills"]["skill-evaluator"][field] = binding("wrong.json")
+            rejected(proof_value=bad_proof)
+        bad_wp = deepcopy(proof)
+        bad_wp["retained_writing_plans"]["skill_digest"] = f"sha256:{'0' * 64}"
+        rejected(proof_value=bad_wp)
+        active = deepcopy(idle)
+        active["skill-evaluator"]["active_attempts"] = ["attempt-0001"]
+        rejected(status_value=active)
+        not_stopped = {**stopped, "software-quality-workflows": False}
+        rejected(stopped_value=not_stopped)
+
+        updated = deepcopy(state)
+        refresh_current_evidence(
+            updated,
+            evidence=deepcopy(proof),
+            runner_statuses=idle,
+            runners_stopped=stopped,
+        )
+        self.assertEqual("calibration_ready", updated["phase"])
+        for skill_id in skill_ids[:-1]:
+            self.assertIsNone(updated["skill_evidence"][skill_id]["current_summary"])
+        self.assertEqual(
+            summaries["writing-plans"],
+            updated["skill_evidence"]["writing-plans"]["current_summary"],
+        )
+        self.assertEqual(state["product"], updated["product"])
+        self.assertEqual(state["budgets"], updated["budgets"])
+        self.assertEqual(prior, updated["plans"][-1])
+        rejected(state_value=updated)
+
+        schema = json.loads((
+            ROOT / "evaluation/model-evolution/schemas/campaign-v3.schema.json"
+        ).read_text(encoding="utf-8"))
+        validator = Draft202012Validator(schema)
+        errors = list(validator.descend(
+            updated["current_evidence_refresh_lineage"],
+            schema["properties"]["current_evidence_refresh_lineage"],
+        ))
+        self.assertEqual([], errors)
 
     def test_writing_plans_parsed_description_proof_is_fail_closed(self) -> None:
         proof = f'''Plan `fixtures/agents/openai.yaml` from 8.2.0 to 8.2.1.

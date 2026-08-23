@@ -96,6 +96,7 @@ from _model_evolution_state import (
     create_no_overwrite,
     record_evidence,
     record_observed_budget,
+    refresh_current_evidence,
     rebind_product,
     register_plan,
     reserve_probes,
@@ -114,6 +115,21 @@ RECORD_ROLES = (
     "revision_report",
     "holdout_summary",
     "plugin_build",
+)
+D8_REFRESH_SKILLS = (
+    "long-document-segmented-writing",
+    "skill-evaluator",
+    "software-quality-workflows",
+)
+D8_OLD_SOURCE = "283e8838caca486f795ed5f8afc0979862e333af"
+D8_NEW_SOURCE = "37ed0b7e6fdcc7ed1065ff1ad331de0c935d352a"
+D8_OLD_PLUGIN_TREE = "sha256:e88f947d64a3449fb601203e968d7a105c6c2decd880430c7c5baac3b176a7ac"
+D8_NEW_PLUGIN_TREE = "sha256:6dd4d2310feadc69b3279fd41622ded5560f68f576285097766df20edb053e32"
+D8_OLD_BUILD_DIGEST = (
+    "sha256:791050386dbaa61f7c644206b6bcb53fe777207586db3c87cc02fc752fabbc25"
+)
+D8_NEW_BUILD_DIGEST = (
+    "sha256:d349017806843f23c8fbc966b5d7d01cf8b65a8d184b80d30c76290483a71091"
 )
 
 
@@ -802,6 +818,173 @@ def _rebind_product(args: argparse.Namespace) -> None:
     )
 
 
+def _refresh_current_evidence(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    store = _campaign_store(repository_root, campaign_root)
+    campaign = store.read()
+    if campaign["state_revision"] != args.expected_revision:
+        raise CliError("refresh-current-evidence expected revision is stale")
+    rebinds = campaign.get("product_rebind_lineage", [])
+    if len(rebinds) != 1:
+        raise CliError("refresh-current-evidence requires exactly one D4 rebind")
+    d4 = rebinds[0]
+    old_product = d4.get("old_product", {})
+    new_product = d4.get("new_product", {})
+    if (
+        old_product.get("source_commit") != D8_OLD_SOURCE
+        or old_product.get("bundle_version") != "8.0.1"
+        or old_product.get("plugin_tree") != D8_OLD_PLUGIN_TREE
+        or new_product != campaign["product"]
+        or new_product.get("source_commit") != D8_NEW_SOURCE
+        or new_product.get("bundle_version") != "8.0.2"
+        or new_product.get("plugin_tree") != D8_NEW_PLUGIN_TREE
+        or tuple(sorted(d4.get("unchanged_skill_digests", {})))
+        != tuple(sorted(D8_REFRESH_SKILLS))
+    ):
+        raise CliError("D4 product lineage differs from the D8 authority")
+
+    def bound_bytes(binding: dict[str, Any], label: str) -> tuple[Path, bytes, str]:
+        path = resolve_binding(binding, repository_root, campaign_root)
+        if not path.is_file() or path.is_symlink():
+            raise CliError(f"{label} is not a regular immutable file")
+        payload = path.read_bytes()
+        return path, payload, content_hash(payload)
+
+    _, old_build_bytes, old_build_digest = bound_bytes(
+        old_product["plugin_build"], "D4 old plugin build"
+    )
+    _, new_build_bytes, new_build_digest = bound_bytes(
+        new_product["plugin_build"], "D4 new plugin build"
+    )
+    if (
+        old_build_digest != D8_OLD_BUILD_DIGEST
+        or new_build_digest != D8_NEW_BUILD_DIGEST
+    ):
+        raise CliError("D4 plugin build evidence digest differs from D8 authority")
+
+    refreshed: dict[str, dict[str, Any]] = {}
+    statuses: dict[str, dict[str, Any]] = {}
+    stopped: dict[str, bool] = {}
+    retained_wp: dict[str, Any] | None = None
+    for skill_id in (*D8_REFRESH_SKILLS, "writing-plans"):
+        record = _registered_plan(campaign, "target_current", skill_id)
+        plan_path = resolve_binding(record["plan"], repository_root, campaign_root)
+        if (
+            plan_path.is_symlink()
+            or content_hash(plan_path.read_bytes()) != record["plan_digest"]
+        ):
+            raise CliError(f"registered target_current/{skill_id} plan changed")
+        plan = load_json(plan_path, label=f"target_current/{skill_id} plan")
+        index = _plan_index_path(plan_path, plan)
+        statuses[skill_id] = runner_status(
+            plan_path, index, repository_root=repository_root
+        )
+        service_id = (
+            f"frontier-{campaign['campaign_id']}-target_current-{skill_id}"
+        )[:120]
+        stopped[skill_id] = runner_service_stopped(service_id)
+
+        summary_binding = campaign["skill_evidence"][skill_id]["current_summary"]
+        if summary_binding is None:
+            raise CliError(f"target_current/{skill_id} summary is not recorded")
+        summary_path, _, summary_digest = bound_bytes(
+            summary_binding, f"target_current/{skill_id} summary"
+        )
+        summary = load_json(summary_path, label=f"target_current/{skill_id} summary")
+        subject = summary.get("subject", {})
+        if (
+            summary.get("plan_id") != plan.get("plan_id")
+            or subject.get("skill_id") != skill_id
+            or subject.get("source_revision") != plan.get("source_revision")
+        ):
+            raise CliError(f"target_current/{skill_id} summary differs from its plan")
+
+        selected_path = plan_path.parent / "selected-plugin-build.json"
+        if not selected_path.is_file() or selected_path.is_symlink():
+            raise CliError(f"target_current/{skill_id} selected build is invalid")
+        selected_bytes = selected_path.read_bytes()
+        if skill_id in D8_REFRESH_SKILLS:
+            if (
+                plan.get("source_revision") != D8_OLD_SOURCE
+                or selected_bytes != old_build_bytes
+                or plan.get("package_digests", {}).get(skill_id)
+                != d4["unchanged_skill_digests"][skill_id]
+            ):
+                raise CliError(f"target_current/{skill_id} is not the D4 old cycle")
+            refreshed[skill_id] = {
+                "old_current_summary": copy.deepcopy(summary_binding),
+                "old_current_summary_digest": summary_digest,
+                "old_plan": copy.deepcopy(record["plan"]),
+                "old_plan_digest": record["plan_digest"],
+                "unchanged_skill_digest": d4["unchanged_skill_digests"][skill_id],
+                "old_plugin_build": copy.deepcopy(old_product["plugin_build"]),
+                "old_plugin_build_digest": old_build_digest,
+            }
+            continue
+
+        expected_packages = {
+            item_id: identity["root_hash"]
+            for item_id, identity in new_product["skills"].items()
+        }
+        catalog = {
+            item.get("id"): item for item in plan.get("catalog", [])
+            if isinstance(item, dict)
+        }
+        if (
+            plan.get("source_revision") != D8_NEW_SOURCE
+            or selected_bytes != new_build_bytes
+            or plan.get("package_digests") != expected_packages
+            or set(catalog) != set(new_product["skills"])
+            or any(
+                catalog[item_id].get("root_digest") != identity["root_hash"]
+                or catalog[item_id].get("version") != identity["version"]
+                for item_id, identity in new_product["skills"].items()
+            )
+        ):
+            raise CliError("retained Writing Plans cycle differs from D4 new product")
+        retained_wp = {
+            "current_summary": copy.deepcopy(summary_binding),
+            "current_summary_digest": summary_digest,
+            "plan": copy.deepcopy(record["plan"]),
+            "plan_digest": record["plan_digest"],
+            "plugin_build": copy.deepcopy(new_product["plugin_build"]),
+            "plugin_build_digest": new_build_digest,
+            "source_commit": new_product["source_commit"],
+            "skill_digest": new_product["skills"][skill_id]["root_hash"],
+            "catalog_digest": content_hash(canonical_bytes(plan["catalog"])),
+        }
+
+    if retained_wp is None:
+        raise CliError("retained Writing Plans proof was not produced")
+    evidence = {
+        "reason": "bundle_revision_full_product_alignment",
+        "product_rebind_state_revision": d4["rebound_state_revision"],
+        "refresh_before_state_revision": 26,
+        "refresh_after_state_revision": 27,
+        "old_product": copy.deepcopy(old_product),
+        "new_product": copy.deepcopy(new_product),
+        "refresh_set": list(D8_REFRESH_SKILLS),
+        "refreshed_skills": refreshed,
+        "retained_writing_plans": retained_wp,
+    }
+    updated = store.mutate(
+        args.expected_revision,
+        lambda state: refresh_current_evidence(
+            state,
+            evidence=evidence,
+            runner_statuses=statuses,
+            runners_stopped=stopped,
+        ),
+    )
+    _emit({
+        "campaign_id": updated["campaign_id"],
+        "state_revision": updated["state_revision"],
+        "phase": updated["phase"],
+        "refresh_set": list(D8_REFRESH_SKILLS),
+        "provider_requests": 0,
+    })
+
+
 def _validated_probe_inputs(
     campaign: dict[str, Any],
     approval_path: Path,
@@ -1267,6 +1450,7 @@ def _prepare_analysis(args: argparse.Namespace) -> None:
         campaign=campaign,
         role=args.role,
         skill_id=args.skill_id,
+        analysis_variant=args.analysis_variant,
     )
     _emit({
         "skill_id": args.skill_id,
@@ -1904,6 +2088,9 @@ def _parser() -> argparse.ArgumentParser:
     rebind.add_argument("--apparatus-report", type=Path, required=True)
     rebind.add_argument("--systemd-argv-only", action="store_true")
 
+    refresh = commands.add_parser("refresh-current-evidence")
+    refresh.add_argument("--expected-revision", type=int, required=True)
+
     probe = commands.add_parser("probe")
     probe.add_argument("--expected-revision", type=int, required=True)
     probe.add_argument("--budget-approval", type=Path, required=True)
@@ -1953,6 +2140,7 @@ def _parser() -> argparse.ArgumentParser:
     analysis.add_argument("--expected-revision", type=int, required=True)
     analysis.add_argument("--role", choices=sorted(ANALYSIS_ROLES), required=True)
     analysis.add_argument("--skill-id", choices=SKILL_IDS, required=True)
+    analysis.add_argument("--analysis-variant")
 
     revision = commands.add_parser("prepare-revision")
     revision.add_argument("--expected-revision", type=int, required=True)
@@ -2055,6 +2243,7 @@ def main(argv: list[str] | None = None) -> int:
             "init": _init,
             "preflight": _preflight,
             "rebind-product": _rebind_product,
+            "refresh-current-evidence": _refresh_current_evidence,
             "probe": _probe,
             "prepare-calibration": _prepare_calibration,
             "prepare-current": _prepare_current,

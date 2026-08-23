@@ -417,6 +417,115 @@ def rebind_product(
     state["phase"] = "calibration_ready"
 
 
+def refresh_current_evidence(
+    state: dict[str, Any],
+    *,
+    evidence: dict[str, Any],
+    runner_statuses: dict[str, dict[str, Any]],
+    runners_stopped: dict[str, bool],
+) -> None:
+    """Invalidate exactly the three D4-unchanged Bundle 8.0.1 current cycles."""
+    refresh_skills = (
+        "long-document-segmented-writing",
+        "skill-evaluator",
+        "software-quality-workflows",
+    )
+    all_skills = (*refresh_skills, "writing-plans")
+    if state["phase"] != "decision_ready" or state["state_revision"] != 26:
+        raise StateError("current evidence refresh requires decision_ready revision 26")
+    if state["candidate"] is not None or state["profiles"]["predecessor"] is not None:
+        raise StateError("current evidence refresh requires candidate-null bootstrap")
+    if any(
+        state["skill_evidence"][skill_id]["revision_report"] is not None
+        for skill_id in all_skills
+    ):
+        raise StateError("current evidence refresh requires empty revision reports")
+    if state.get("current_evidence_refresh_lineage"):
+        raise StateError("current evidence refresh is single-use")
+    rebinds = state.get("product_rebind_lineage", [])
+    if len(rebinds) != 1 or rebinds[0].get("new_product") != state["product"]:
+        raise StateError("current evidence refresh requires the authoritative D4 rebind")
+    d4 = rebinds[0]
+    unchanged = d4.get("unchanged_skill_digests")
+    if tuple(sorted(unchanged or {})) != tuple(sorted(refresh_skills)):
+        raise StateError("D4 unchanged Skill set differs from the authorized refresh")
+    if set(runner_statuses) != set(all_skills) or set(runners_stopped) != set(all_skills):
+        raise StateError("current evidence refresh runner proof is incomplete")
+    if not all(runners_stopped.values()) or any(
+        status.get("active_attempts") or status.get("recoverable_attempts")
+        for status in runner_statuses.values()
+    ):
+        raise StateError("current evidence refresh requires stopped, idle runners")
+
+    expected_header = {
+        "reason": "bundle_revision_full_product_alignment",
+        "product_rebind_state_revision": d4["rebound_state_revision"],
+        "refresh_before_state_revision": 26,
+        "refresh_after_state_revision": 27,
+        "old_product": d4["old_product"],
+        "new_product": d4["new_product"],
+        "refresh_set": list(refresh_skills),
+    }
+    if any(evidence.get(key) != value for key, value in expected_header.items()):
+        raise StateError("current evidence refresh proof differs from D4 authority")
+    refreshed = evidence.get("refreshed_skills")
+    if not isinstance(refreshed, dict) or set(refreshed) != set(refresh_skills):
+        raise StateError("current evidence refresh proof has the wrong Skill set")
+    for skill_id in refresh_skills:
+        plans = [
+            item for item in state["plans"]
+            if item["role"] == "target_current" and item["skill_id"] == skill_id
+        ]
+        item = refreshed[skill_id]
+        current_summary = state["skill_evidence"][skill_id]["current_summary"]
+        if current_summary is None or len(plans) != 1 or any(
+            (
+                item.get("old_current_summary") != current_summary,
+                item.get("old_plan") != plans[0]["plan"],
+                item.get("old_plan_digest") != plans[0]["plan_digest"],
+                item.get("unchanged_skill_digest") != unchanged[skill_id],
+                item.get("old_plugin_build") != d4["old_product"]["plugin_build"],
+            )
+        ):
+            raise StateError(f"current evidence refresh proof differs for {skill_id}")
+        if not isinstance(item.get("old_current_summary_digest"), str) or not isinstance(
+            item.get("old_plugin_build_digest"), str
+        ):
+            raise StateError(f"current evidence refresh digest is missing for {skill_id}")
+
+    wp_plans = [
+        item for item in state["plans"]
+        if item["role"] == "target_current" and item["skill_id"] == "writing-plans"
+    ]
+    retained = evidence.get("retained_writing_plans")
+    wp_summary = state["skill_evidence"]["writing-plans"]["current_summary"]
+    if (
+        wp_summary is None
+        or len(wp_plans) != 1
+        or not isinstance(retained, dict)
+        or any((
+            retained.get("current_summary") != wp_summary,
+            retained.get("plan") != wp_plans[0]["plan"],
+            retained.get("plan_digest") != wp_plans[0]["plan_digest"],
+            retained.get("plugin_build") != state["product"]["plugin_build"],
+            retained.get("source_commit") != state["product"]["source_commit"],
+            retained.get("skill_digest")
+            != state["product"]["skills"]["writing-plans"]["root_hash"],
+        ))
+    ):
+        raise StateError("retained Writing Plans proof differs from campaign authority")
+    for field in ("current_summary_digest", "plugin_build_digest", "catalog_digest"):
+        if not isinstance(retained.get(field), str):
+            raise StateError(f"retained Writing Plans {field} is missing")
+
+    state.setdefault("current_evidence_refresh_lineage", []).append(
+        copy.deepcopy(evidence)
+    )
+    for skill_id in refresh_skills:
+        state["skill_evidence"][skill_id]["current_summary"] = None
+    state["phase"] = "calibration_ready"
+
+
 def _has_plan(state: dict[str, Any], role: str, skill_id: str) -> bool:
     return any(
         item["role"] == role and item["skill_id"] == skill_id for item in state["plans"]
