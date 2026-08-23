@@ -45,12 +45,23 @@ def _paired(passed: bool, label: str) -> dict[str, tuple[bool, str]]:
 
 def _fixed_checks(case_id: str, answer: str) -> dict[str, tuple[bool, str]]:
     if case_id == "transition-vs-revision":
-        lower = answer.lower().replace("‑", "-").replace("–", "-")
+        lower = (
+            answer.lower()
+            .replace("‑", "-")
+            .replace("–", "-")
+            .replace("—", "-")
+        )
         comparison_a = bool(
-            re.search(r"(?:comparison\s+)?a\s*(?:is|:)[^\n]{0,120}model[- ]transition", lower)
+            re.search(
+                r"(?:comparison\s+)?a\s*(?:is|:|-)[^\n]{0,120}model[- ]transition",
+                lower,
+            )
         )
         comparison_b = bool(
-            re.search(r"(?:comparison\s+)?b\s*(?:is|:)[^\n]{0,120}skill[- ]revision", lower)
+            re.search(
+                r"(?:comparison\s+)?b\s*(?:is|:|-)[^\n]{0,120}skill[- ]revision",
+                lower,
+            )
         )
         controls = all(term in lower for term in ("host", "tasks", "grader", "policy"))
         return _paired(comparison_a and comparison_b and controls, "comparison-classification")
