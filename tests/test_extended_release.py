@@ -20,6 +20,7 @@ from _model_evolution_qualification import _apparatus_artifact  # noqa: E402
 from _model_evolution_reporting import _registered_plan as analysis_plan  # noqa: E402
 from _model_evolution_state import StateError, register_plan  # noqa: E402
 from model_evolution import _registered_plan as record_plan  # noqa: E402
+from skill_evaluator_verifier import _fixed_checks as evaluator_checks  # noqa: E402
 from writing_plans_verifier import (  # noqa: E402
     DESCRIPTION_VALUE,
     _fixed_case_checks,
@@ -48,6 +49,24 @@ def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[st
 
 
 class ExtendedRelease(unittest.TestCase):
+    def test_skill_evaluator_comparison_separator_is_fail_closed(self) -> None:
+        answer = """- Comparison A — model-transition comparison: M1 to M2, Skill v3 frozen.
+- Comparison B — controlled Skill-revision comparison: v3 to v4, model M2 frozen.
+Host, tasks, grader, and policy remain frozen in both comparisons.
+"""
+
+        def passes(candidate: str) -> bool:
+            return all(
+                passed
+                for passed, _ in evaluator_checks(
+                    "transition-vs-revision", candidate
+                ).values()
+            )
+
+        self.assertTrue(passes(answer))
+        self.assertFalse(passes(answer.replace("Skill-revision", "model-revision")))
+        self.assertFalse(passes(answer.replace("policy", "permissions")))
+
     def test_plan_replacement_is_strict_and_consumable(self) -> None:
         old = {
             "role": "target_current",
