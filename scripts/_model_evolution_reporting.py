@@ -176,6 +176,40 @@ def _artifact(path: Path, root: Path, schema: str) -> dict[str, str]:
     }
 
 
+def _analysis_output_root(
+    campaign_root: Path,
+    *,
+    role: str,
+    skill_id: str,
+    analysis_variant: str | None,
+) -> Path:
+    base = campaign_root / "analysis" / role / skill_id
+    if analysis_variant is not None:
+        if role != "target_current":
+            raise MaterializationError(
+                "analysis variants are only valid for target_current"
+            )
+        if ".." in analysis_variant or SAFE_ID.fullmatch(analysis_variant) is None:
+            raise MaterializationError("analysis variant is unsafe")
+        if base.is_symlink() or (base.exists() and not base.is_dir()):
+            raise MaterializationError("analysis variant parent is invalid")
+        final_root = base / analysis_variant
+    else:
+        final_root = base
+    if final_root.exists() or final_root.is_symlink():
+        raise MaterializationError(f"analysis already exists: {role}/{skill_id}")
+    existing_parent = final_root.parent
+    while not existing_parent.exists() and existing_parent != campaign_root:
+        existing_parent = existing_parent.parent
+    try:
+        existing_parent.resolve(strict=True).relative_to(
+            campaign_root.resolve(strict=True)
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise MaterializationError("analysis output escapes campaign root") from exc
+    return final_root
+
+
 def prepare_analysis(
     *,
     repository_root: Path,
@@ -183,6 +217,7 @@ def prepare_analysis(
     campaign: dict[str, Any],
     role: str,
     skill_id: str,
+    analysis_variant: str | None = None,
 ) -> dict[str, Path]:
     """Analyze one completed registered cycle into two canonical views."""
     if role not in ANALYSIS_ROLES or skill_id not in SKILL_IDS:
@@ -205,9 +240,12 @@ def prepare_analysis(
     ):
         raise MaterializationError(f"{role}/{skill_id} execution is incomplete")
 
-    final_root = campaign_root / "analysis" / role / skill_id
-    if final_root.exists():
-        raise MaterializationError(f"analysis already exists: {role}/{skill_id}")
+    final_root = _analysis_output_root(
+        campaign_root,
+        role=role,
+        skill_id=skill_id,
+        analysis_variant=analysis_variant,
+    )
     final_root.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{skill_id}-", dir=final_root.parent))
     try:

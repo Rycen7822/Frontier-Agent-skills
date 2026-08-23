@@ -52,6 +52,11 @@
       "type": "array",
       "items": {"$ref": "#/$defs/product_rebind"}
     },
+    "current_evidence_refresh_lineage": {
+      "type": "array",
+      "maxItems": 1,
+      "items": {"$ref": "#/$defs/current_evidence_refresh"}
+    },
     "skill_evidence": {"$ref": "#/$defs/skill_evidence"},
     "candidate": {"anyOf": [{"$ref": "#/$defs/candidate"}, {"type": "null"}]}
   },
@@ -381,6 +386,103 @@
         "new_target_observed": {"$ref": "#/$defs/binding"},
         "old_writing_plans_summary": {"$ref": "#/$defs/binding"},
         "rebound_state_revision": {"type": "integer", "minimum": 1}
+      }
+    },
+    "refreshed_current_skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "old_current_summary",
+        "old_current_summary_digest",
+        "old_plan",
+        "old_plan_digest",
+        "unchanged_skill_digest",
+        "old_plugin_build",
+        "old_plugin_build_digest"
+      ],
+      "properties": {
+        "old_current_summary": {"$ref": "#/$defs/binding"},
+        "old_current_summary_digest": {"$ref": "#/$defs/hash"},
+        "old_plan": {"$ref": "#/$defs/campaign_ref"},
+        "old_plan_digest": {"$ref": "#/$defs/hash"},
+        "unchanged_skill_digest": {"$ref": "#/$defs/hash"},
+        "old_plugin_build": {"$ref": "#/$defs/binding"},
+        "old_plugin_build_digest": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "retained_current_skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "current_summary",
+        "current_summary_digest",
+        "plan",
+        "plan_digest",
+        "plugin_build",
+        "plugin_build_digest",
+        "source_commit",
+        "skill_digest",
+        "catalog_digest"
+      ],
+      "properties": {
+        "current_summary": {"$ref": "#/$defs/binding"},
+        "current_summary_digest": {"$ref": "#/$defs/hash"},
+        "plan": {"$ref": "#/$defs/campaign_ref"},
+        "plan_digest": {"$ref": "#/$defs/hash"},
+        "plugin_build": {"$ref": "#/$defs/binding"},
+        "plugin_build_digest": {"$ref": "#/$defs/hash"},
+        "source_commit": {"$ref": "#/$defs/git_commit"},
+        "skill_digest": {"$ref": "#/$defs/hash"},
+        "catalog_digest": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "current_evidence_refresh": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "product_rebind_state_revision",
+        "refresh_before_state_revision",
+        "refresh_after_state_revision",
+        "old_product",
+        "new_product",
+        "refresh_set",
+        "refreshed_skills",
+        "retained_writing_plans"
+      ],
+      "properties": {
+        "reason": {"const": "bundle_revision_full_product_alignment"},
+        "product_rebind_state_revision": {"type": "integer", "minimum": 1},
+        "refresh_before_state_revision": {"const": 26},
+        "refresh_after_state_revision": {"const": 27},
+        "old_product": {"$ref": "#/$defs/product"},
+        "new_product": {"$ref": "#/$defs/product"},
+        "refresh_set": {
+          "type": "array",
+          "prefixItems": [
+            {"const": "long-document-segmented-writing"},
+            {"const": "skill-evaluator"},
+            {"const": "software-quality-workflows"}
+          ],
+          "items": false,
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "refreshed_skills": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "long-document-segmented-writing",
+            "skill-evaluator",
+            "software-quality-workflows"
+          ],
+          "properties": {
+            "long-document-segmented-writing": {"$ref": "#/$defs/refreshed_current_skill"},
+            "skill-evaluator": {"$ref": "#/$defs/refreshed_current_skill"},
+            "software-quality-workflows": {"$ref": "#/$defs/refreshed_current_skill"}
+          }
+        },
+        "retained_writing_plans": {"$ref": "#/$defs/retained_current_skill"}
       }
     },
     "skill_id": {
