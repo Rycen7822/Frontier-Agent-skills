@@ -48,6 +48,10 @@
       "type": "array",
       "items": {"$ref": "#/$defs/plan_replacement"}
     },
+    "product_rebind_lineage": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/product_rebind"}
+    },
     "skill_evidence": {"$ref": "#/$defs/skill_evidence"},
     "candidate": {"anyOf": [{"$ref": "#/$defs/candidate"}, {"type": "null"}]}
   },
@@ -334,6 +338,49 @@
         "skill_id": {"$ref": "#/$defs/skill_id"},
         "plan_digest": {"$ref": "#/$defs/hash"},
         "registered_state_revision": {"type": "integer", "minimum": 1}
+      }
+    },
+    "product_rebind": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "old_product",
+        "new_product",
+        "unchanged_skill_digests",
+        "old_apparatus_report",
+        "new_apparatus_report",
+        "old_target_provisional",
+        "new_target_provisional",
+        "old_target_observed",
+        "new_target_observed",
+        "old_writing_plans_summary",
+        "rebound_state_revision"
+      ],
+      "properties": {
+        "old_product": {"$ref": "#/$defs/product"},
+        "new_product": {"$ref": "#/$defs/product"},
+        "unchanged_skill_digests": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "long-document-segmented-writing",
+            "skill-evaluator",
+            "software-quality-workflows"
+          ],
+          "properties": {
+            "long-document-segmented-writing": {"$ref": "#/$defs/hash"},
+            "skill-evaluator": {"$ref": "#/$defs/hash"},
+            "software-quality-workflows": {"$ref": "#/$defs/hash"}
+          }
+        },
+        "old_apparatus_report": {"$ref": "#/$defs/nullable_binding"},
+        "new_apparatus_report": {"$ref": "#/$defs/binding"},
+        "old_target_provisional": {"$ref": "#/$defs/binding"},
+        "new_target_provisional": {"$ref": "#/$defs/binding"},
+        "old_target_observed": {"$ref": "#/$defs/nullable_binding"},
+        "new_target_observed": {"$ref": "#/$defs/binding"},
+        "old_writing_plans_summary": {"$ref": "#/$defs/binding"},
+        "rebound_state_revision": {"type": "integer", "minimum": 1}
       }
     },
     "skill_id": {

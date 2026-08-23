@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import copy
 from pathlib import Path
+import subprocess
 import sys
 from typing import Any
 
@@ -32,6 +34,7 @@ from _model_evolution_contract import (
 from _model_evolution_qualification import (
     CRITICAL_PROBE_CAPABILITIES,
     assess_interaction_probes,
+    project_observed_host,
     project_qualification,
     render_qualification_markdown,
     validate_qualification,
@@ -93,6 +96,7 @@ from _model_evolution_state import (
     create_no_overwrite,
     record_evidence,
     record_observed_budget,
+    rebind_product,
     register_plan,
     reserve_probes,
     reserve_budget,
@@ -597,6 +601,203 @@ def _preflight(args: argparse.Namespace) -> None:
             "phase": updated["phase"],
             "state_revision": updated["state_revision"],
             "apparatus_report": report_binding,
+        }
+    )
+
+
+def _rebind_product(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    store = _campaign_store(repository_root, campaign_root)
+    campaign = store.read()
+    if campaign["state_revision"] != args.expected_revision:
+        raise CliError("rebind-product expected revision is stale")
+
+    identity = git_identity(repository_root)
+    ancestry = subprocess.run(
+        [
+            "git", "-C", str(repository_root), "merge-base", "--is-ancestor",
+            campaign["product"]["source_commit"], identity["commit"],
+        ],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=30,
+    )
+    if ancestry.returncode not in {0, 1}:
+        raise CliError(f"source ancestry check failed: {ancestry.stderr.strip()}")
+
+    plugin_root = args.plugin_root.resolve(strict=True)
+    if (
+        args.plugin_root.is_symlink()
+        or not plugin_root.is_dir()
+        or not plugin_root.is_relative_to(campaign_root)
+    ):
+        raise CliError("rebound plugin staging root must be campaign-local")
+    plugin_binding = _binding_for_path(
+        args.plugin_build_evidence,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+    )
+    provisional_binding = _binding_for_path(
+        args.target_host,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+    )
+    observed_binding = _binding_for_path(
+        args.target_observed_host,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+    )
+    bundle_manifest = load_json(
+        repository_root / "bundle-manifest.json", label="Bundle manifest"
+    )
+    bundle_build = load_json(
+        repository_root / "frontier-engineering.bundle.json", label="Bundle build"
+    )
+    static_report = static_contracts.build_report(repository_root)
+    if static_contracts.blocking_fact_count(static_report):
+        raise CliError("static contract gate has blocking facts")
+    plugin_build = validate_plugin_staging(
+        repository_root=repository_root,
+        plugin_root=plugin_root,
+        evidence_path=args.plugin_build_evidence,
+        expected_commit=identity["commit"],
+        expected_bundle_id=static_report["bundle_id"],
+        expected_bundle_version=bundle_manifest["bundle_version"],
+        expected_skill_versions={
+            skill_id: bundle_build["skills"][skill_id]["version"]
+            for skill_id in SKILL_IDS
+        },
+    )
+    provisional = validate_target_host_staging(
+        args.target_host,
+        plugin_root,
+        repository_root=repository_root,
+        expected_commit=identity["commit"],
+        expected_tree=identity["tree"],
+    )
+    probe_set = _load_bound_document(
+        campaign["interaction_probes"]["probe_set"],
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        label="interaction probe set",
+    )
+    probe_results = _load_bound_document(
+        campaign["interaction_probes"]["results"],
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        label="interaction probe results",
+    )
+    expected_observed = project_observed_host(
+        provisional,
+        probe_set=probe_set,
+        results=probe_results["requests"],
+        observed_manifest_path=args.target_observed_host.resolve(),
+    )
+    observed = load_json(args.target_observed_host, label="rebound observed Host")
+    if canonical_bytes(observed) != canonical_bytes(expected_observed):
+        raise CliError("rebound observed Host differs from the frozen probe projection")
+
+    product = copy.deepcopy(campaign["product"])
+    product.update(
+        {
+            "bundle_id": static_report["bundle_id"],
+            "bundle_version": bundle_manifest["bundle_version"],
+            "source_commit": identity["commit"],
+            "source_tree": identity["tree"],
+            "plugin_tree": plugin_build["plugin_tree_hash"],
+            "plugin_build": plugin_binding,
+            "plugin_root": plugin_root.relative_to(campaign_root).as_posix(),
+            "skills": {
+                skill_id: {
+                    "version": bundle_build["skills"][skill_id]["version"],
+                    "root_hash": bundle_build["skills"][skill_id]["root_hash"],
+                    "allow_implicit_invocation": bundle_build["skills"][skill_id][
+                        "allow_implicit_invocation"
+                    ],
+                }
+                for skill_id in SKILL_IDS
+            },
+        }
+    )
+    statuses = []
+    for record in campaign["plans"]:
+        plan_path = resolve_binding(
+            record["plan"], repository_root, campaign_root
+        )
+        plan = load_json(plan_path, label="registered execution plan")
+        statuses.append(
+            runner_status(
+                plan_path,
+                _plan_index_path(plan_path, plan),
+                repository_root=repository_root,
+            )
+        )
+
+    proposed = copy.deepcopy(campaign)
+    proposed["product"] = product
+    proposed["profiles"]["target_provisional"] = provisional_binding
+    proposed["profiles"]["target_observed"] = observed_binding
+    proposed["phase"] = "declared"
+    proposed["apparatus_report"] = None
+    report, env_allowlist = preflight_operations(
+        proposed,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+    )
+    if args.systemd_argv_only:
+        systemd_probe_argv(
+            f"frontier-{campaign['campaign_id']}-rebind-preflight",
+            campaign_root / "systemd-rebind-preflight.closed",
+        )
+        report["operations"].append(
+            {
+                "operation_id": "systemd-user-argv",
+                "status": "pass",
+                "duration_ms": 0,
+                "state_revision": campaign["state_revision"],
+                "exit_code": None,
+                "diagnostic": "argv projected without starting a service",
+            }
+        )
+    else:
+        report["operations"].append(
+            verify_systemd_user(campaign["campaign_id"], env_allowlist)
+        )
+    report_path = args.apparatus_report.resolve()
+    if not report_path.is_relative_to(campaign_root):
+        raise CliError("rebound apparatus report must be campaign-local")
+    create_no_overwrite(report_path, report)
+    report_binding = _binding_for_path(
+        report_path,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+    )
+    try:
+        updated = store.mutate(
+            args.expected_revision,
+            lambda state: rebind_product(
+                state,
+                product=product,
+                apparatus_report=report_binding,
+                target_provisional=provisional_binding,
+                target_observed=observed_binding,
+                direct_descendant=ancestry.returncode == 0,
+                runner_statuses=statuses,
+            ),
+        )
+    except BaseException:
+        report_path.unlink(missing_ok=True)
+        raise
+    _emit(
+        {
+            "campaign_id": updated["campaign_id"],
+            "state_revision": updated["state_revision"],
+            "phase": updated["phase"],
+            "bundle_id": updated["product"]["bundle_id"],
+            "apparatus_report": report_binding,
+            "provider_requests": 0,
         }
     )
 
@@ -1694,6 +1895,15 @@ def _parser() -> argparse.ArgumentParser:
         help="CI-only: validate the transient service argv without starting it",
     )
 
+    rebind = commands.add_parser("rebind-product")
+    rebind.add_argument("--expected-revision", type=int, required=True)
+    rebind.add_argument("--plugin-root", type=Path, required=True)
+    rebind.add_argument("--plugin-build-evidence", type=Path, required=True)
+    rebind.add_argument("--target-host", type=Path, required=True)
+    rebind.add_argument("--target-observed-host", type=Path, required=True)
+    rebind.add_argument("--apparatus-report", type=Path, required=True)
+    rebind.add_argument("--systemd-argv-only", action="store_true")
+
     probe = commands.add_parser("probe")
     probe.add_argument("--expected-revision", type=int, required=True)
     probe.add_argument("--budget-approval", type=Path, required=True)
@@ -1844,6 +2054,7 @@ def main(argv: list[str] | None = None) -> int:
         dispatch = {
             "init": _init,
             "preflight": _preflight,
+            "rebind-product": _rebind_product,
             "probe": _probe,
             "prepare-calibration": _prepare_calibration,
             "prepare-current": _prepare_current,

@@ -18,7 +18,11 @@ sys.path.insert(0, str(ROOT / "evaluation" / "model-evolution" / "sentinel_sourc
 from _model_evolution_contract import ContractError  # noqa: E402
 from _model_evolution_qualification import _apparatus_artifact  # noqa: E402
 from _model_evolution_reporting import _registered_plan as analysis_plan  # noqa: E402
-from _model_evolution_state import StateError, register_plan  # noqa: E402
+from _model_evolution_state import (  # noqa: E402
+    StateError,
+    rebind_product,
+    register_plan,
+)
 from model_evolution import _registered_plan as record_plan  # noqa: E402
 from skill_evaluator_verifier import _fixed_checks as evaluator_checks  # noqa: E402
 from writing_plans_verifier import (  # noqa: E402
@@ -150,6 +154,114 @@ Host, tasks, grader, and policy remain frozen in both comparisons.
         self.assertEqual(old["plan_digest"], updated["plan_replacement_lineage"][0]["plan_digest"])
         self.assertEqual(new, record_plan(updated, "target_current", "skill-evaluator"))
         self.assertEqual(new, analysis_plan(updated, "target_current", "skill-evaluator"))
+
+    def test_product_rebind_is_strict_and_atomic(self) -> None:
+        binding = {"root": "campaign", "path": "evidence.json"}
+        skills = {
+            "long-document-segmented-writing": {
+                "version": "2.0.0", "root_hash": f"sha256:{'1' * 64}",
+                "allow_implicit_invocation": True,
+            },
+            "skill-evaluator": {
+                "version": "5.0.0", "root_hash": f"sha256:{'2' * 64}",
+                "allow_implicit_invocation": False,
+            },
+            "software-quality-workflows": {
+                "version": "11.0.1", "root_hash": f"sha256:{'3' * 64}",
+                "allow_implicit_invocation": False,
+            },
+            "writing-plans": {
+                "version": "8.4.0",
+                "root_hash": "sha256:911e5913108029d3e95db6c111f304467896b607de8222615be4120670f7b516",
+                "allow_implicit_invocation": True,
+            },
+        }
+        product = {
+            "bundle_id": "frontier-engineering/8.0.1",
+            "bundle_version": "8.0.1",
+            "source_commit": "1" * 40,
+            "source_tree": "2" * 40,
+            "dirty": False,
+            "plugin_tree": f"sha256:{'4' * 64}",
+            "plugin_build": binding,
+            "plugin_root": "old-plugin",
+            "calibration_requests": 64,
+            "bundle_manifest": {"root": "repository", "path": "bundle-manifest.json"},
+            "bundle_build": {"root": "repository", "path": "frontier-engineering.bundle.json"},
+            "static_gate": {"schema_version": "static-contract-diagnostic/1.0", "status": "pass"},
+            "skills": skills,
+        }
+        state = {
+            "state_revision": 17,
+            "phase": "decision_ready",
+            "product": product,
+            "apparatus_report": binding,
+            "profiles": {"target_provisional": binding, "target_observed": binding},
+            "plans": [{"skill_id": skill_id} for skill_id in sorted(SKILLS)],
+            "skill_evidence": {
+                skill_id: {"current_summary": binding} for skill_id in SKILLS
+            },
+        }
+        rebound = deepcopy(product)
+        rebound.update({
+            "bundle_id": "frontier-engineering/8.0.2",
+            "bundle_version": "8.0.2",
+            "source_commit": "3" * 40,
+            "source_tree": "4" * 40,
+            "plugin_tree": f"sha256:{'5' * 64}",
+            "plugin_build": {"root": "campaign", "path": "new-build.json"},
+            "plugin_root": "new-plugin",
+        })
+        rebound["skills"] = deepcopy(skills)
+        rebound["skills"]["writing-plans"].update({
+            "version": "8.4.1",
+            "root_hash": "sha256:1d5861c02e453cb7caab59c5b8a3c02f9971c5569bb5ee23a8308367acdaf51f",
+        })
+        idle = [{"active_attempts": [], "recoverable_attempts": []} for _ in SKILLS]
+
+        def apply(candidate: dict[str, object] = rebound, **overrides: object) -> dict[str, object]:
+            target = deepcopy(state)
+            rebind_product(
+                target,
+                product=deepcopy(candidate),
+                apparatus_report={"root": "campaign", "path": "new-report.json"},
+                target_provisional={"root": "campaign", "path": "new-host.json"},
+                target_observed={"root": "campaign", "path": "new-observed.json"},
+                direct_descendant=bool(overrides.get("direct_descendant", True)),
+                runner_statuses=overrides.get("runner_statuses", idle),
+            )
+            return target
+
+        rejected: list[tuple[str, dict[str, object], dict[str, object]]] = []
+        unchanged_wp = deepcopy(rebound)
+        unchanged_wp["skills"]["writing-plans"] = deepcopy(skills["writing-plans"])
+        rejected.append(("writing plans unchanged", unchanged_wp, {}))
+        lane_drift = deepcopy(rebound)
+        lane_drift["skills"]["skill-evaluator"]["root_hash"] = f"sha256:{'6' * 64}"
+        rejected.append(("unaffected digest drift", lane_drift, {}))
+        multi_drift = deepcopy(rebound)
+        multi_drift["skills"]["skill-evaluator"]["version"] = "5.0.1"
+        multi_drift["skills"]["software-quality-workflows"]["version"] = "11.0.2"
+        rejected.append(("multiple Skill drift", multi_drift, {}))
+        rejected.append(("non-descendant", rebound, {"direct_descendant": False}))
+        active = deepcopy(idle)
+        active[0]["active_attempts"] = ["attempt-0001"]
+        rejected.append(("active attempt", rebound, {"runner_statuses": active}))
+        recoverable = deepcopy(idle)
+        recoverable[0]["recoverable_attempts"] = ["attempt-0001"]
+        rejected.append(("recoverable attempt", rebound, {"runner_statuses": recoverable}))
+        for label, candidate, overrides in rejected:
+            with self.subTest(label=label), self.assertRaises(StateError):
+                apply(candidate, **overrides)
+            self.assertNotIn("product_rebind_lineage", state)
+
+        updated = apply()
+        self.assertEqual("calibration_ready", updated["phase"])
+        self.assertIsNone(updated["skill_evidence"]["writing-plans"]["current_summary"])
+        for skill_id in SKILLS - {"writing-plans"}:
+            self.assertEqual(binding, updated["skill_evidence"][skill_id]["current_summary"])
+        self.assertEqual(product, updated["product_rebind_lineage"][0]["old_product"])
+        self.assertEqual(rebound, updated["product_rebind_lineage"][0]["new_product"])
 
     def test_writing_plans_parsed_description_proof_is_fail_closed(self) -> None:
         proof = f'''Plan `fixtures/agents/openai.yaml` from 8.2.0 to 8.2.1.
