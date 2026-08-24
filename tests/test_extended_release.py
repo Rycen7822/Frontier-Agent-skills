@@ -30,6 +30,7 @@ from _model_evolution_campaign import (  # noqa: E402
 )
 from _model_evolution_qualification import _apparatus_artifact  # noqa: E402
 from _model_evolution_materialization import MaterializationError  # noqa: E402
+from _model_evolution_ops import _minimal_schema_fixture  # noqa: E402
 from _model_evolution_reporting import (  # noqa: E402
     _analysis_output_root,
     _canonical_analysis_paths,
@@ -73,6 +74,52 @@ def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[st
 
 
 class ExtendedRelease(unittest.TestCase):
+    def test_preflight_v2_schema_fixtures_ignore_live_sentinel_binding(self) -> None:
+        expected_binding = {
+            "root": "repository",
+            "path": "evaluation/model-evolution/probe-fixture.json",
+        }
+        live_bindings = (
+            {
+                "root": "repository",
+                "path": "evaluation/model-evolution/sentinel-index-v2.json",
+            },
+            {
+                "root": "campaign",
+                "path": "evaluation/model-evolution/confirmatory-v1/sentinel-index-v3.json",
+                "schema_version": "model-evolution-sentinel-index/3",
+            },
+        )
+        normalized: list[tuple[dict[str, object], dict[str, object]]] = []
+        for live_binding in live_bindings:
+            campaign = {"sentinel_index": deepcopy(live_binding)}
+            original = deepcopy(campaign)
+            original_bytes = json.dumps(campaign, sort_keys=True).encode("utf-8")
+            probes = _minimal_schema_fixture("interaction_probes", campaign)
+            sentinel = _minimal_schema_fixture("sentinel_index", campaign)
+            validate_document(probes, "interaction_probes")
+            validate_document(sentinel, "sentinel_index")
+            self.assertEqual(original, campaign)
+            self.assertEqual(
+                original_bytes, json.dumps(campaign, sort_keys=True).encode("utf-8")
+            )
+            probe_binding = probes["probes"][0]["fixture"]
+            self.assertEqual(expected_binding, probe_binding)
+            self.assertNotIn("schema_version", probe_binding)
+
+            bindings: list[dict[str, str]] = []
+            for skill in sentinel["skills"].values():
+                for field in ("spec_template", "public_scenarios", "calibration_gold"):
+                    self.assertEqual(expected_binding, skill[field])
+                    bindings.append(skill[field])
+                for field in ("fixture_roots", "verifier_roots"):
+                    self.assertEqual([expected_binding], skill[field])
+                    bindings.append(skill[field][0])
+            self.assertEqual(len(bindings), len({id(binding) for binding in bindings}))
+            self.assertNotIn(id(probe_binding), {id(binding) for binding in bindings})
+            normalized.append((probes, sentinel))
+        self.assertEqual(normalized[0], normalized[1])
+
     def test_confirmatory_suite_identity_and_budget_are_frozen(self) -> None:
         index_path = (
             ROOT / "evaluation/model-evolution/confirmatory-v1/sentinel-index-v3.json"
