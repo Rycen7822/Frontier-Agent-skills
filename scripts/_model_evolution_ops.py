@@ -938,6 +938,12 @@ def preflight_operations(
 
 
 def _minimal_schema_fixture(name: str, campaign: dict[str, Any]) -> dict[str, Any]:
+    def repository_fixture_binding() -> dict[str, str]:
+        return {
+            "root": "repository",
+            "path": "evaluation/model-evolution/probe-fixture.json",
+        }
+
     if name == "budget_approval":
         return {
             "schema_version": "model-evolution-budget-approval/2",
@@ -966,7 +972,7 @@ def _minimal_schema_fixture(name: str, campaign: dict[str, Any]) -> dict[str, An
                     "probe_id": "preflight-probe",
                     "capability": "multi_turn",
                     "prompt": "Return one inert completion.",
-                    "fixture": campaign["sentinel_index"],
+                    "fixture": repository_fixture_binding(),
                     "sandbox": "read-only",
                     "network": "denied",
                     "required_observations": ["thread.started", "turn.completed"],
@@ -975,25 +981,26 @@ def _minimal_schema_fixture(name: str, campaign: dict[str, Any]) -> dict[str, An
             ],
         }
     if name == "sentinel_index":
-        source = campaign["sentinel_index"]
-        item = {
-            "critical_bucket_id": "preflight-critical",
-            "spec_template": source,
-            "public_scenarios": source,
-            "calibration_gold": source,
-            "calibration_request_ceiling": 1,
-            "fixture_roots": [source],
-            "verifier_roots": [source],
-            "required_coverage_tags": ["preflight"],
-            "protected_case_ids": ["preflight-case"],
-            "external_holdout_contract_id": "preflight-holdout",
-            "holdout_case_ceiling": 2,
-        }
+        def skill_fixture() -> dict[str, Any]:
+            return {
+                "critical_bucket_id": "preflight-critical",
+                "spec_template": repository_fixture_binding(),
+                "public_scenarios": repository_fixture_binding(),
+                "calibration_gold": repository_fixture_binding(),
+                "calibration_request_ceiling": 1,
+                "fixture_roots": [repository_fixture_binding()],
+                "verifier_roots": [repository_fixture_binding()],
+                "required_coverage_tags": ["preflight"],
+                "protected_case_ids": ["preflight-case"],
+                "external_holdout_contract_id": "preflight-holdout",
+                "holdout_case_ceiling": 2,
+            }
+
         return {
             "schema_version": "model-evolution-sentinel-index/2",
             "sentinel_id": "preflight-sentinel",
             "skills": {
-                skill_id: dict(item)
+                skill_id: skill_fixture()
                 for skill_id in (
                     "long-document-segmented-writing",
                     "skill-evaluator",
