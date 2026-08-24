@@ -12,9 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from _model_evolution_apparatus import (  # noqa: E402
+    campaign_reserve_projection,
     derive_retry_budget,
     audit_plan_transport,
     materialized_attempt_policy,
+    plan_registration_projection,
     project_transport_sequence,
     validate_apparatus_retry_policy,
     validate_outcome_free_incomplete_command,
@@ -24,10 +26,16 @@ from _model_evolution_campaign import (  # noqa: E402
     require_qualification_request_ceilings,
 )
 from _model_evolution_contract import (  # noqa: E402
+    BUDGET_FIELDS,
     ContractError,
     canonical_bytes,
     content_hash,
     validate_document,
+)
+from _model_evolution_state import (  # noqa: E402
+    StateError,
+    register_plan,
+    reserve_budget,
 )
 from _model_evolution_materialization import (  # noqa: E402
     _campaign_runner_attempt_policy,
@@ -96,6 +104,66 @@ def valid(ordinal: int, attempt: int) -> dict[str, object]:
     }
 
 
+def zero_attempt_status(entries: int, *, max_attempts: int = 5) -> dict[str, object]:
+    raw = entries * max_attempts
+    return {
+        "selected_entries": entries,
+        "execute_entries": entries,
+        "indexed_attempts": 0,
+        "completed_entries": 0,
+        "invalid_attempts": 0,
+        "remaining_entries": entries,
+        "active_attempts": [],
+        "recoverable_attempts": [],
+        "next_pass_new_attempts": entries,
+        "worst_case_remaining_attempts": raw,
+        "execute_case_request_ceiling": raw,
+        "model_grade_request_ceiling": raw,
+    }
+
+
+def budget_state() -> dict[str, object]:
+    ceiling = {field: 0 for field in BUDGET_FIELDS}
+    ceiling.update(
+        {
+            "execute": 1032,
+            "model_grade": 1160,
+            "provider_requests": 2204,
+        }
+    )
+    reserved = {field: 0 for field in BUDGET_FIELDS}
+    return {
+        "phase": "calibration_ready",
+        "plans": [],
+        "budgets": {"ceiling": ceiling, "reserved": reserved},
+        "candidate": None,
+        "profiles": {"predecessor": None},
+        "skill_evidence": {
+            skill_id: {"grader_calibration": {"root": "campaign", "path": "x"}}
+            for skill_id in (
+                "long-document-segmented-writing",
+                "skill-evaluator",
+                "software-quality-workflows",
+                "writing-plans",
+            )
+        },
+    }
+
+
+def plan_record(role: str, skill_id: str, entries: int) -> dict[str, object]:
+    return {
+        "role": role,
+        "skill_id": skill_id,
+        "plan": {"root": "campaign", "path": f"plans/{role}/{skill_id}.json"},
+        "plan_digest": f"sha256:{role}.{skill_id}",
+        "host_id": "host.test",
+        "host_version": "1",
+        "execute_ceiling": entries,
+        "model_grade_ceiling": entries,
+        "runner_status": {"completed": 0, "total": entries, "failed": 0},
+    }
+
+
 class ApparatusRetryContract(unittest.TestCase):
     def setUp(self) -> None:
         self.policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
@@ -133,6 +201,128 @@ class ApparatusRetryContract(unittest.TestCase):
                 changed[field] += delta
                 with self.assertRaises(ContractError):
                     require_qualification_request_ceilings(changed, ceilings)
+
+    def test_shared_reserve_and_nominal_plan_reservations_close_exactly(self) -> None:
+        state = budget_state()
+        state["state_revision"] = 0
+        reserve_budget(
+            state,
+            {"model_grade": 128, "provider_requests": 128},
+        )
+        reserve_budget(state, campaign_reserve_projection(self.policy))
+        self.assertEqual(
+            {"execute": 156, "model_grade": 284, "provider_requests": 440},
+            {
+                field: state["budgets"]["reserved"][field]
+                for field in ("execute", "model_grade", "provider_requests")
+            },
+        )
+        reserve_budget(state, {"provider_requests": 12})
+        self.assertEqual(452, state["budgets"]["reserved"]["provider_requests"])
+
+        entries = {
+            "long-document-segmented-writing": 36,
+            "skill-evaluator": 288,
+            "software-quality-workflows": 54,
+            "writing-plans": 36,
+        }
+        register_plan(
+            state,
+            plan_record("target_current", "skill-evaluator", 288),
+        )
+        self.assertEqual(
+            {"execute": 444, "model_grade": 572, "provider_requests": 1028},
+            {
+                field: state["budgets"]["reserved"][field]
+                for field in ("execute", "model_grade", "provider_requests")
+            },
+        )
+        for skill_id, count in entries.items():
+            if skill_id != "skill-evaluator":
+                register_plan(
+                    state,
+                    plan_record("target_current", skill_id, count),
+                )
+        state["phase"] = "decision_ready"
+        for skill_id, count in entries.items():
+            register_plan(state, plan_record("target_prior", skill_id, count))
+        state["phase"] = "final_plugin_ready"
+        for skill_id in entries:
+            register_plan(state, plan_record("target_holdout", skill_id, 12))
+        self.assertEqual(
+            {"execute": 1032, "model_grade": 1160, "provider_requests": 2204},
+            {
+                field: state["budgets"]["reserved"][field]
+                for field in ("execute", "model_grade", "provider_requests")
+            },
+        )
+        snapshot = deepcopy(state["budgets"]["reserved"])
+        with self.assertRaises(StateError):
+            reserve_budget(state, campaign_reserve_projection(self.policy))
+        self.assertEqual(snapshot, state["budgets"]["reserved"])
+
+    def test_plan_projection_preserves_raw_ceiling_and_fails_closed(self) -> None:
+        status = zero_attempt_status(288)
+        projection = plan_registration_projection(status, self.policy)
+        self.assertEqual(288, projection["execute"])
+        self.assertEqual(288, projection["model_grade"])
+        self.assertEqual(288, projection["initial_attempt_budget"])
+        self.assertEqual(1440, projection["raw_execute_ceiling"])
+        self.assertEqual(1440, projection["raw_model_grade_ceiling"])
+
+        mutations = (
+            ("indexed_attempts", 1),
+            ("completed_entries", 1),
+            ("invalid_attempts", 1),
+            ("active_attempts", ["attempt"]),
+            ("recoverable_attempts", ["attempt"]),
+            ("next_pass_new_attempts", 287),
+            ("execute_case_request_ceiling", 1439),
+            ("model_grade_request_ceiling", 1439),
+            ("model_grade_request_ceiling", 1435),
+        )
+        for field, value in mutations:
+            changed = dict(status)
+            changed[field] = value
+            with self.subTest(field=field, value=value), self.assertRaises(
+                ContractError
+            ):
+                plan_registration_projection(changed, self.policy)
+
+    def test_replacement_keeps_shared_reserve_and_budget_limits_are_atomic(self) -> None:
+        state = budget_state()
+        state["state_revision"] = 4
+        reserve_budget(
+            state,
+            {"model_grade": 128, "provider_requests": 128},
+        )
+        reserve_budget(state, campaign_reserve_projection(self.policy))
+        reserve_budget(state, {"provider_requests": 12})
+        record = plan_record("target_current", "skill-evaluator", 288)
+        register_plan(state, record)
+        before = deepcopy(state["budgets"]["reserved"])
+        successor = deepcopy(record)
+        successor["plan"] = {
+            "root": "campaign",
+            "path": "plans/target_current/skill-evaluator-successor.json",
+        }
+        register_plan(
+            state,
+            successor,
+            replace_existing=True,
+            old_runner_stopped=True,
+            old_runner_status=zero_attempt_status(288),
+            new_runner_status=zero_attempt_status(288),
+        )
+        self.assertEqual(before, state["budgets"]["reserved"])
+
+        for field in ("execute", "model_grade", "provider_requests"):
+            changed = budget_state()
+            changed["budgets"]["ceiling"][field] = 1
+            snapshot = deepcopy(changed["budgets"]["reserved"])
+            with self.subTest(field=field), self.assertRaises(StateError):
+                reserve_budget(changed, {field: 2})
+            self.assertEqual(snapshot, changed["budgets"]["reserved"])
 
     def test_two_incomplete_commands_then_success_preserves_sample_prefix(self) -> None:
         projection = project_transport_sequence(

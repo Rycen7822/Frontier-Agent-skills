@@ -169,6 +169,66 @@ def materialized_attempt_policy(policy: dict[str, Any] | None) -> dict[str, Any]
     return deepcopy(validate_apparatus_retry_policy(policy)["runner_attempt_policy"])
 
 
+def campaign_reserve_projection(policy: dict[str, Any]) -> dict[str, int]:
+    """Reserve the shared apparatus envelope once for the whole campaign."""
+    validated = validate_apparatus_retry_policy(policy)
+    reserve = validated["request_budget"]["apparatus_attempt_reserve"]
+    return {
+        "execute": reserve,
+        "model_grade": reserve,
+        "provider_requests": 2 * reserve,
+    }
+
+
+def plan_registration_projection(
+    status: dict[str, Any], policy: dict[str, Any]
+) -> dict[str, int]:
+    """Project a zero-attempt runner status onto nominal plan reservations."""
+    validated = validate_apparatus_retry_policy(policy)
+    max_attempts = validated["runner_attempt_policy"]["max_attempts"]
+    for field in ("indexed_attempts", "completed_entries", "invalid_attempts"):
+        if _count(status.get(field), f"runner {field}") != 0:
+            raise ContractError("apparatus plan registration requires zero attempts")
+    for field in ("active_attempts", "recoverable_attempts"):
+        if status.get(field) != []:
+            raise ContractError("apparatus plan registration requires an idle runner")
+
+    nominal_execute = _count(
+        status.get("execute_entries"), "runner execute entries", minimum=1
+    )
+    if status.get("next_pass_new_attempts") != nominal_execute:
+        raise ContractError("runner next pass differs from nominal execute entries")
+    raw_execute = _count(
+        status.get("execute_case_request_ceiling"),
+        "runner execute request ceiling",
+        minimum=1,
+    )
+    if raw_execute != nominal_execute * max_attempts:
+        raise ContractError("runner execute ceiling differs from attempt policy")
+    if status.get("worst_case_remaining_attempts") != raw_execute:
+        raise ContractError("runner worst case differs from execute ceiling")
+
+    raw_model_grade = _count(
+        status.get("model_grade_request_ceiling"),
+        "runner model-grade request ceiling",
+        minimum=1,
+    )
+    if raw_model_grade % max_attempts:
+        raise ContractError("runner model-grade ceiling is not attempt-aligned")
+    nominal_model_grade = raw_model_grade // max_attempts
+    if nominal_model_grade != nominal_execute:
+        raise ContractError(
+            "confirmatory plan must model-grade every valid statistical sample"
+        )
+    return {
+        "execute": nominal_execute,
+        "model_grade": nominal_model_grade,
+        "initial_attempt_budget": nominal_execute,
+        "raw_execute_ceiling": raw_execute,
+        "raw_model_grade_ceiling": raw_model_grade,
+    }
+
+
 def validate_outcome_free_incomplete_command(
     value: Any, *, entry_ordinal: int, attempt: int
 ) -> dict[str, Any]:
