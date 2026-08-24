@@ -23,6 +23,7 @@ from _model_evolution_materialization import (
     MaterializationError,
     _assert_tree_equal,
     _bind_scenarios,
+    _campaign_runner_attempt_policy,
     _compile_and_validate,
     _copy_calibration,
     _copy_file,
@@ -335,6 +336,12 @@ def _build_holdout_plan(
         calibration=calibration,
         calibration_file_hash=_file_hash(calibration_path),
         scenarios=scenarios,
+        runner_attempt_policy=_campaign_runner_attempt_policy(
+            campaign,
+            role="target_holdout",
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+        ),
     )
     spec["level"] = "L3"
     spec["suite"]["public_scenarios"] = {"path": public_path.name}

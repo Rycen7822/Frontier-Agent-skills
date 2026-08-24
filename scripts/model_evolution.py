@@ -21,6 +21,10 @@ from _model_evolution_campaign import (
     require_qualification_request_ceilings,
     validate_campaign,
 )
+from _model_evolution_apparatus import (
+    audit_plan_transport,
+    validate_apparatus_retry_policy,
+)
 from _model_evolution_contract import (
     ContractError,
     SKILL_IDS,
@@ -392,6 +396,10 @@ def _init(args: argparse.Namespace) -> None:
         "probe_set": args.probe_set.resolve(strict=True),
         "sentinel": args.sentinel_index.resolve(strict=True),
     }
+    if args.apparatus_retry_policy is not None:
+        fixed["apparatus_retry_policy"] = args.apparatus_retry_policy.resolve(
+            strict=True
+        )
     bindings = {
         name: _binding_for_path(
             path,
@@ -441,6 +449,16 @@ def _init(args: argparse.Namespace) -> None:
         raise CliError("target Host capabilities differ from the interaction probe set")
     sentinel = load_json(fixed["sentinel"], label="sentinel index")
     validate_document(sentinel, "sentinel_index")
+    apparatus_policy = None
+    if "apparatus_retry_policy" in fixed:
+        apparatus_policy = validate_apparatus_retry_policy(
+            load_json(
+                fixed["apparatus_retry_policy"],
+                label="apparatus retry policy",
+            )
+        )
+        if bindings["apparatus_retry_policy"]["root"] != "campaign":
+            raise CliError("apparatus retry policy must be campaign-local")
     sentinel_bootstrap_paths: set[Path] = set()
     if sentinel.get("schema_version") == "model-evolution-sentinel-index/3":
         pending: list[object] = [sentinel]
@@ -460,6 +478,7 @@ def _init(args: argparse.Namespace) -> None:
         repository_root=repository_root,
         campaign_root=campaign_root,
         probe_count=len(probe_set["probes"]),
+        apparatus_policy=apparatus_policy,
     )
     predecessor_paths = (
         args.predecessor_cycle,
@@ -530,6 +549,7 @@ def _init(args: argparse.Namespace) -> None:
         target_host_binding=bindings["target_host"],
         probe_set_binding=bindings["probe_set"],
         sentinel_binding=bindings["sentinel"],
+        apparatus_retry_policy_binding=bindings.get("apparatus_retry_policy"),
         ceilings=ceilings,
         repository_root=repository_root,
         campaign_root=campaign_root,
@@ -1976,6 +1996,72 @@ def _status(args: argparse.Namespace) -> None:
             print(command)
 
 
+def _apparatus_status(args: argparse.Namespace) -> None:
+    """Project the bound policy across all indexed campaign plan attempts."""
+    repository_root, campaign_root = _roots(args)
+    campaign = _campaign_store(repository_root, campaign_root).read()
+    if campaign["state_revision"] != args.expected_revision:
+        raise CliError("apparatus-status expected revision is stale")
+    policy_binding = campaign.get("apparatus_retry_policy")
+    if policy_binding is None:
+        raise CliError("campaign has no versioned apparatus retry policy")
+    policy = validate_apparatus_retry_policy(
+        _load_bound_document(
+            policy_binding,
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+            label="apparatus retry policy",
+        )
+    )
+    target = _registered_plan(campaign, args.role, args.skill_id)
+    projections: dict[tuple[str, str], dict[str, Any]] = {}
+    global_apparatus_attempts = 0
+    for record in campaign["plans"]:
+        plan_path = resolve_binding(record["plan"], repository_root, campaign_root)
+        plan = load_json(plan_path, label="registered execution plan")
+        projection = audit_plan_transport(
+            plan_path,
+            _plan_index_path(plan_path, plan),
+            policy,
+        )
+        projections[(record["role"], record["skill_id"])] = projection
+        global_apparatus_attempts += projection["apparatus_attempts"]
+    selected = projections[(target["role"], target["skill_id"])]
+    reserve = policy["request_budget"]["apparatus_attempt_reserve"]
+    if selected["next_entry_id"] is None:
+        action = "complete"
+        reason = None
+    elif global_apparatus_attempts >= reserve:
+        action = "stop"
+        reason = "campaign_apparatus_reserve_exhausted"
+    elif selected["terminal_reason"] is not None:
+        action = "stop"
+        reason = selected["terminal_reason"]
+    elif selected["next_attempt"] is not None and selected["next_attempt"] > 1:
+        action = "retry_frontier"
+        reason = None
+    else:
+        action = "run_natural_prefix"
+        reason = None
+    _emit(
+        {
+            "campaign_id": campaign["campaign_id"],
+            "state_revision": campaign["state_revision"],
+            "role": args.role,
+            "skill_id": args.skill_id,
+            "action": action,
+            "reason": reason,
+            "plan": selected,
+            "campaign_apparatus_attempts": global_apparatus_attempts,
+            "campaign_apparatus_remaining": max(
+                0, reserve - global_apparatus_attempts
+            ),
+            "provider_requests": 0,
+            "reviewer_requests": 0,
+        }
+    )
+
+
 def _qualify(args: argparse.Namespace) -> None:
     repository_root, campaign_root = _roots(args)
     store = _campaign_store(repository_root, campaign_root)
@@ -2073,6 +2159,7 @@ def _parser() -> argparse.ArgumentParser:
     init.add_argument("--target-host", type=Path, required=True)
     init.add_argument("--probe-set", type=Path, required=True)
     init.add_argument("--sentinel-index", type=Path, required=True)
+    init.add_argument("--apparatus-retry-policy", type=Path)
     init.add_argument("--predecessor-cycle", type=Path)
     init.add_argument("--predecessor-host", type=Path)
     init.add_argument("--predecessor-comparison", type=Path)
@@ -2209,6 +2296,15 @@ def _parser() -> argparse.ArgumentParser:
     status = commands.add_parser("status")
     status.add_argument("--json", action="store_true")
 
+    apparatus = commands.add_parser("apparatus-status")
+    apparatus.add_argument("--expected-revision", type=int, required=True)
+    apparatus.add_argument(
+        "--role",
+        choices=("target_current", "target_prior", "target_holdout"),
+        required=True,
+    )
+    apparatus.add_argument("--skill-id", choices=SKILL_IDS, required=True)
+
     qualify = commands.add_parser("qualify")
     qualify.add_argument("--expected-revision", type=int, required=True)
     qualify.add_argument("--observed-as-of", required=True)
@@ -2274,6 +2370,7 @@ def main(argv: list[str] | None = None) -> int:
             "register-plan": _register_plan,
             "record": _record,
             "status": _status,
+            "apparatus-status": _apparatus_status,
             "qualify": _qualify,
             "verify": _verify,
         }
