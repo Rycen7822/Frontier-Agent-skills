@@ -104,8 +104,13 @@ def valid(ordinal: int, attempt: int) -> dict[str, object]:
     }
 
 
-def zero_attempt_status(entries: int, *, max_attempts: int = 5) -> dict[str, object]:
+def zero_attempt_status(
+    entries: int, *, max_attempts: int = 5, model_grade_entries: int | None = None
+) -> dict[str, object]:
     raw = entries * max_attempts
+    raw_model_grade = (
+        entries if model_grade_entries is None else model_grade_entries
+    ) * max_attempts
     return {
         "selected_entries": entries,
         "execute_entries": entries,
@@ -118,7 +123,7 @@ def zero_attempt_status(entries: int, *, max_attempts: int = 5) -> dict[str, obj
         "next_pass_new_attempts": entries,
         "worst_case_remaining_attempts": raw,
         "execute_case_request_ceiling": raw,
-        "model_grade_request_ceiling": raw,
+        "model_grade_request_ceiling": raw_model_grade,
     }
 
 
@@ -270,6 +275,21 @@ class ApparatusRetryContract(unittest.TestCase):
         self.assertEqual(1440, projection["raw_execute_ceiling"])
         self.assertEqual(1440, projection["raw_model_grade_ceiling"])
 
+        long_document = plan_registration_projection(
+            zero_attempt_status(36, model_grade_entries=30), self.policy
+        )
+        self.assertEqual(36, long_document["execute"])
+        self.assertEqual(36, long_document["model_grade"])
+        self.assertEqual(180, long_document["raw_execute_ceiling"])
+        self.assertEqual(150, long_document["raw_model_grade_ceiling"])
+
+        deterministic_only = plan_registration_projection(
+            zero_attempt_status(8, model_grade_entries=0), self.policy
+        )
+        self.assertEqual(8, deterministic_only["execute"])
+        self.assertEqual(8, deterministic_only["model_grade"])
+        self.assertEqual(0, deterministic_only["raw_model_grade_ceiling"])
+
         mutations = (
             ("indexed_attempts", 1),
             ("completed_entries", 1),
@@ -279,7 +299,7 @@ class ApparatusRetryContract(unittest.TestCase):
             ("next_pass_new_attempts", 287),
             ("execute_case_request_ceiling", 1439),
             ("model_grade_request_ceiling", 1439),
-            ("model_grade_request_ceiling", 1435),
+            ("model_grade_request_ceiling", 1445),
         )
         for field, value in mutations:
             changed = dict(status)
