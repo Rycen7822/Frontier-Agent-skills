@@ -23,6 +23,8 @@ from _model_evolution_campaign import (
 )
 from _model_evolution_apparatus import (
     audit_plan_transport,
+    campaign_reserve_projection,
+    plan_registration_projection,
     validate_apparatus_retry_policy,
 )
 from _model_evolution_contract import (
@@ -572,6 +574,9 @@ def _init(args: argparse.Namespace) -> None:
                 "model_grade": calibration_delta,
             },
         )
+        validate_campaign(campaign)
+    if apparatus_policy is not None:
+        reserve_budget(campaign, campaign_reserve_projection(apparatus_policy))
         validate_campaign(campaign)
     store = _campaign_store(repository_root, campaign_root)
     bootstrap_paths = {
@@ -1167,6 +1172,27 @@ def _plan_index_path(plan_path: Path, plan: dict[str, Any]) -> Path:
         raise CliError("execution plan artifact paths are invalid") from exc
 
 
+def _apparatus_policy_for_role(
+    campaign: dict[str, Any],
+    role: str,
+    *,
+    repository_root: Path,
+    campaign_root: Path,
+) -> dict[str, Any] | None:
+    binding = campaign.get("apparatus_retry_policy")
+    if binding is None:
+        return None
+    policy = validate_apparatus_retry_policy(
+        _load_bound_document(
+            binding,
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+            label="apparatus retry policy",
+        )
+    )
+    return policy if role in policy["scope"]["roles"] else None
+
+
 def _register_plan(args: argparse.Namespace) -> None:
     repository_root, campaign_root = _roots(args)
     store = _campaign_store(repository_root, campaign_root)
@@ -1256,6 +1282,17 @@ def _register_plan(args: argparse.Namespace) -> None:
         raise CliError(
             "plan registration requires zero indexed, active, and recoverable attempts"
         )
+    apparatus_policy = _apparatus_policy_for_role(
+        campaign,
+        args.role,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+    )
+    projection = (
+        plan_registration_projection(status, apparatus_policy)
+        if apparatus_policy is not None
+        else None
+    )
     plan_record = {
         "role": args.role,
         "skill_id": args.skill_id,
@@ -1263,8 +1300,16 @@ def _register_plan(args: argparse.Namespace) -> None:
         "plan_digest": content_hash(plan_path.read_bytes()),
         "host_id": host["identity"]["host_id"],
         "host_version": host["identity"]["host_version"],
-        "execute_ceiling": status["execute_case_request_ceiling"],
-        "model_grade_ceiling": status["model_grade_request_ceiling"],
+        "execute_ceiling": (
+            projection["execute"]
+            if projection is not None
+            else status["execute_case_request_ceiling"]
+        ),
+        "model_grade_ceiling": (
+            projection["model_grade"]
+            if projection is not None
+            else status["model_grade_request_ceiling"]
+        ),
         "runner_status": {
             "completed": status["completed_entries"],
             "total": status["selected_entries"],
@@ -1321,7 +1366,11 @@ def _register_plan(args: argparse.Namespace) -> None:
     command = render_runner_command(
         plan_path,
         index_path,
-        attempt_budget=status["worst_case_remaining_attempts"],
+        attempt_budget=(
+            projection["initial_attempt_budget"]
+            if projection is not None
+            else status["worst_case_remaining_attempts"]
+        ),
         service_id=(f"frontier-{campaign['campaign_id']}-{args.role}-{args.skill_id}")[
             :120
         ],
@@ -1937,11 +1986,23 @@ def _status(args: argparse.Namespace) -> None:
                     or status["recoverable_attempts"]
                 )
             ):
+                apparatus_policy = _apparatus_policy_for_role(
+                    campaign,
+                    plan_record["role"],
+                    repository_root=repository_root,
+                    campaign_root=campaign_root,
+                )
+                if apparatus_policy is None:
+                    attempt_budget = status["worst_case_remaining_attempts"]
+                elif status["recoverable_attempts"]:
+                    attempt_budget = 0
+                else:
+                    attempt_budget = status["next_pass_new_attempts"]
                 commands.append(
                     render_runner_command(
                         plan_path,
                         index,
-                        attempt_budget=status["worst_case_remaining_attempts"],
+                        attempt_budget=attempt_budget,
                         service_id=(
                             f"frontier-{campaign['campaign_id']}-{plan_record['role']}-"
                             f"{plan_record['skill_id']}"
