@@ -46,12 +46,21 @@ POLICY_PATH = (
     ROOT
     / "evaluation/model-evolution/confirmatory-v2/apparatus-retry-policy-v1.json"
 )
+POLICY_V2_PATH = (
+    ROOT
+    / "evaluation/model-evolution/confirmatory-v2/apparatus-retry-policy-v2.json"
+)
 INDEX_PATH = (
     ROOT / "evaluation/model-evolution/confirmatory-v1/sentinel-index-v3.json"
 )
 
 
-def host_result(ordinal: int, attempt: int) -> dict[str, object]:
+def host_result(
+    ordinal: int,
+    attempt: int,
+    *,
+    message: str | None = None,
+) -> dict[str, object]:
     return {
         "record_type": "skill-evaluator-host-result/2",
         "envelope": {
@@ -65,7 +74,8 @@ def host_result(ordinal: int, attempt: int) -> dict[str, object]:
         "terminal_status": "protocol_error",
         "protocol_error": {
             "kind": "malformed_record",
-            "message": (
+            "message": message
+            or (
                 "Codex stream has incomplete items: stdout record 9 "
                 "(item.started/command_execution)"
             ),
@@ -85,13 +95,18 @@ def host_result(ordinal: int, attempt: int) -> dict[str, object]:
     }
 
 
-def failed(ordinal: int, attempt: int) -> dict[str, object]:
+def failed(
+    ordinal: int,
+    attempt: int,
+    *,
+    message: str | None = None,
+) -> dict[str, object]:
     return {
         "entry_ordinal": ordinal,
         "attempt": attempt,
         "request_id": f"request.{ordinal}.{attempt}.execute_case",
         "valid": False,
-        "host_result": host_result(ordinal, attempt),
+        "host_result": host_result(ordinal, attempt, message=message),
     }
 
 
@@ -172,6 +187,7 @@ def plan_record(role: str, skill_id: str, entries: int) -> dict[str, object]:
 class ApparatusRetryContract(unittest.TestCase):
     def setUp(self) -> None:
         self.policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+        self.policy_v2 = json.loads(POLICY_V2_PATH.read_text(encoding="utf-8"))
 
     def test_observed_rate_derives_limits_and_exact_budget(self) -> None:
         validate_apparatus_retry_policy(self.policy)
@@ -395,6 +411,104 @@ class ApparatusRetryContract(unittest.TestCase):
                 wrong, entry_ordinal=0, attempt=1
             )
 
+    def test_v2_accepts_multiple_same_type_records_but_v1_rejects_them(self) -> None:
+        validate_apparatus_retry_policy(self.policy_v2)
+        multiple = host_result(
+            0,
+            1,
+            message=(
+                "Codex stream has incomplete items: stdout record 12 "
+                "(item.started/command_execution), stdout record 23 "
+                "(item.started/command_execution)"
+            ),
+        )
+        validate_outcome_free_incomplete_command(
+            multiple,
+            entry_ordinal=0,
+            attempt=1,
+            allow_multiple_incomplete_commands=True,
+        )
+        with self.assertRaises(ContractError):
+            validate_outcome_free_incomplete_command(
+                multiple, entry_ordinal=0, attempt=1
+            )
+        mixed = deepcopy(multiple)
+        mixed["protocol_error"]["message"] = (
+            "Codex stream has incomplete items: stdout record 12 "
+            "(item.started/command_execution), stdout record 23 "
+            "(item.completed/command_execution)"
+        )
+        with self.assertRaises(ContractError):
+            validate_outcome_free_incomplete_command(
+                mixed,
+                entry_ordinal=0,
+                attempt=1,
+                allow_multiple_incomplete_commands=True,
+            )
+
+    def test_v2_rejects_effects_dirty_cleanup_and_bad_reset_custody(self) -> None:
+        for field, value in (
+            ("actions", [{"kind": "write"}]),
+            ("artifacts", [{"path": "output.txt"}]),
+            ("assertions", [{"claim": "result"}]),
+            ("handoffs", [{"status": "result"}]),
+            ("principals", [{"id": "main"}]),
+            ("state", [{"phase": "changed"}]),
+        ):
+            changed = host_result(0, 1)
+            changed[field] = value
+            with self.subTest(field=field), self.assertRaises(ContractError):
+                validate_outcome_free_incomplete_command(
+                    changed,
+                    entry_ordinal=0,
+                    attempt=1,
+                    allow_multiple_incomplete_commands=True,
+                )
+        dirty = host_result(0, 1)
+        dirty["cleanup"] = {"status": "dirty"}
+        with self.assertRaises(ContractError):
+            validate_outcome_free_incomplete_command(
+                dirty,
+                entry_ordinal=0,
+                attempt=1,
+                allow_multiple_incomplete_commands=True,
+            )
+
+    def test_v2_transport_prefix_and_attempt_ceiling_remain_bounded(self) -> None:
+        message = (
+            "Codex stream has incomplete items: stdout record 12 "
+            "(item.started/command_execution), stdout record 23 "
+            "(item.started/command_execution)"
+        )
+        projection = project_transport_sequence(
+            [
+                failed(0, 1, message=message),
+                failed(0, 2, message=message),
+                valid(0, 3),
+            ],
+            max_attempts=5,
+            apparatus_reserve=156,
+            allow_multiple_incomplete_commands=True,
+        )
+        self.assertEqual(1, projection["valid_statistical_samples"])
+        self.assertEqual(2, projection["apparatus_attempts"])
+        self.assertEqual(3, projection["request_identities"])
+        exhausted = project_transport_sequence(
+            [failed(0, attempt, message=message) for attempt in range(1, 6)],
+            max_attempts=5,
+            apparatus_reserve=156,
+            allow_multiple_incomplete_commands=True,
+        )
+        self.assertEqual(
+            "entry_attempt_ceiling_exhausted", exhausted["terminal_reason"]
+        )
+
+    def test_unknown_apparatus_policy_version_fails_closed(self) -> None:
+        unknown = deepcopy(self.policy_v2)
+        unknown["schema_version"] = "model-evolution-apparatus-retry-policy/99"
+        with self.assertRaises(ContractError):
+            validate_apparatus_retry_policy(unknown)
+
     def test_nonprefix_events_and_duplicate_request_identities_fail_closed(self) -> None:
         with self.assertRaises(ContractError):
             project_transport_sequence(
@@ -471,6 +585,103 @@ class ApparatusRetryContract(unittest.TestCase):
             index_path.write_bytes(b"".join(canonical_bytes(row) + b"\n" for row in rows))
             with self.assertRaises(ContractError):
                 audit_plan_transport(plan_path, index_path, self.policy)
+
+    def test_v2_index_audit_requires_multiple_record_reset_custody(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            plan_path = root / "plan.json"
+            index_path = root / "artifacts/index.jsonl"
+            entry = {
+                "entry_id": "entry.test-0",
+                "entry_ordinal": 0,
+                "disposition": "execute",
+                "attempt_policy": self.policy_v2["runner_attempt_policy"],
+            }
+            plan = {
+                "plan_id": "plan.test-v2",
+                "entries": [entry],
+                "artifacts": {"root": "artifacts", "index_relpath": "index.jsonl"},
+            }
+            plan_path.write_bytes(canonical_bytes(plan))
+            attempt_root = root / "artifacts/entries/entry.test-0/attempt-0001"
+            (attempt_root / "reset").mkdir(parents=True)
+            (attempt_root / "workspace").mkdir()
+            proof_path = attempt_root / "workspace/reset-proof.json"
+            proof_path.write_bytes(
+                canonical_bytes(
+                    {"capability": "state_snapshot_reset", "workspace": "contained"}
+                )
+            )
+            reset = host_result(0, 1)
+            reset["envelope"]["request_kind"] = "probe_capability"
+            reset["terminal_status"] = "completed"
+            reset["protocol_error"] = None
+            reset["artifacts"] = [
+                {
+                    "digest": content_hash(proof_path.read_bytes()),
+                    "encoding": "utf-8",
+                    "path": "workspace/reset-proof.json",
+                }
+            ]
+            (attempt_root / "reset/host-stdout.jsonl").write_bytes(
+                canonical_bytes(reset) + b"\n"
+            )
+            receipt = {
+                "run": {
+                    "entry_id": entry["entry_id"],
+                    "entry_ordinal": 0,
+                    "attempt": 1,
+                    "request_id": "request.0.1.execute_case",
+                    "valid": False,
+                    "error": "official_transient",
+                    "terminal": "interrupted",
+                    "completion_origin": "resume_seal",
+                },
+                "usage": {"records": []},
+            }
+            receipt_path = attempt_root / "receipt.json"
+            receipt_path.write_bytes(canonical_bytes(receipt))
+            multi = host_result(
+                0,
+                1,
+                message=(
+                    "Codex stream has incomplete items: stdout record 12 "
+                    "(item.started/command_execution), stdout record 23 "
+                    "(item.started/command_execution)"
+                ),
+            )
+            (attempt_root / "host-stdout.jsonl").write_bytes(
+                canonical_bytes(multi) + b"\n"
+            )
+            relative = "entries/entry.test-0/attempt-0001"
+            rows = [
+                {
+                    "record_type": "index_header",
+                    "plan_id": plan["plan_id"],
+                    "plan_digest": content_hash(plan_path.read_bytes()),
+                },
+                {
+                    "record_type": "attempt",
+                    "entry_id": entry["entry_id"],
+                    "artifact_dir": relative,
+                    "receipt": {
+                        "path": f"{relative}/receipt.json",
+                        "digest": content_hash(receipt_path.read_bytes()),
+                    },
+                },
+            ]
+            index_path.write_bytes(
+                b"".join(canonical_bytes(row) + b"\n" for row in rows)
+            )
+            projection = audit_plan_transport(plan_path, index_path, self.policy_v2)
+            self.assertEqual(1, projection["apparatus_attempts"])
+            proof_path.write_bytes(
+                canonical_bytes(
+                    {"capability": "state_snapshot_reset", "workspace": "dirty"}
+                )
+            )
+            with self.assertRaises(ContractError):
+                audit_plan_transport(plan_path, index_path, self.policy_v2)
 
     def test_policy_is_versioned_and_legacy_budget_replays_unchanged(self) -> None:
         original = deepcopy(self.policy)

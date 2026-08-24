@@ -26,6 +26,14 @@ INCOMPLETE_COMMAND = re.compile(
     r"^Codex stream has incomplete items: stdout record [1-9][0-9]* "
     r"\(item\.started/command_execution\)$"
 )
+INCOMPLETE_COMMAND_SEQUENCE = re.compile(
+    r"^Codex stream has incomplete items: stdout record [1-9][0-9]* "
+    r"\(item\.started/command_execution\)"
+    r"(?:, stdout record [1-9][0-9]* \(item\.started/command_execution\))*$"
+)
+INCOMPLETE_COMMAND_RECORD = re.compile(
+    r"stdout record ([1-9][0-9]*) \(item\.started/command_execution\)"
+)
 
 
 def _count(value: Any, label: str, *, minimum: int = 0) -> int:
@@ -105,10 +113,17 @@ def validate_apparatus_retry_policy(value: Any) -> dict[str, Any]:
         raise ContractError("apparatus retry policy skills differ")
     if policy["scope"]["treatments"] != "all_registered_treatments":
         raise ContractError("apparatus retry policy treatment scope differs")
+    version = policy["schema_version"]
+    expected_message_contract = {
+        "model-evolution-apparatus-retry-policy/1":
+        "incomplete_item.started_command_execution",
+        "model-evolution-apparatus-retry-policy/2":
+        "incomplete_item.started_command_execution_any_count",
+    }[version]
     expected_predicate = {
         "terminal_status": "protocol_error",
         "protocol_error_kind": "malformed_record",
-        "message_contract": "incomplete_item.started_command_execution",
+        "message_contract": expected_message_contract,
         "usage_records": "empty",
         "complete_result": False,
         "timeout": False,
@@ -167,6 +182,13 @@ def materialized_attempt_policy(policy: dict[str, Any] | None) -> dict[str, Any]
     if policy is None:
         return None
     return deepcopy(validate_apparatus_retry_policy(policy)["runner_attempt_policy"])
+
+
+def _allows_multiple_incomplete_commands(policy: dict[str, Any]) -> bool:
+    return (
+        policy["schema_version"]
+        == "model-evolution-apparatus-retry-policy/2"
+    )
 
 
 def campaign_reserve_projection(policy: dict[str, Any]) -> dict[str, int]:
@@ -229,7 +251,11 @@ def plan_registration_projection(
 
 
 def validate_outcome_free_incomplete_command(
-    value: Any, *, entry_ordinal: int, attempt: int
+    value: Any,
+    *,
+    entry_ordinal: int,
+    attempt: int,
+    allow_multiple_incomplete_commands: bool = False,
 ) -> dict[str, Any]:
     """Accept only the exact D18 outcome-free malformed Host terminal."""
     if not isinstance(value, dict):
@@ -250,7 +276,11 @@ def validate_outcome_free_incomplete_command(
         or not isinstance(protocol_error, dict)
         or protocol_error.get("kind") != "malformed_record"
         or not isinstance(protocol_error.get("message"), str)
-        or INCOMPLETE_COMMAND.fullmatch(protocol_error["message"]) is None
+        or (
+            INCOMPLETE_COMMAND_SEQUENCE
+            if allow_multiple_incomplete_commands
+            else INCOMPLETE_COMMAND
+        ).fullmatch(protocol_error["message"]) is None
         or not isinstance(usage, dict)
         or usage.get("records") != []
         or not isinstance(context, dict)
@@ -273,6 +303,10 @@ def validate_outcome_free_incomplete_command(
         )
     ):
         raise ContractError("Host result is not an outcome-free incomplete command")
+    if allow_multiple_incomplete_commands:
+        records = INCOMPLETE_COMMAND_RECORD.findall(protocol_error["message"])
+        if len(records) != len(set(records)) or records != sorted(records, key=int):
+            raise ContractError("Host incomplete command records are not ordered")
     entry_id = envelope.get("entry_id")
     request_id = envelope.get("request_id")
     if (
@@ -285,8 +319,64 @@ def validate_outcome_free_incomplete_command(
     return value
 
 
+def _validate_reset_custody(attempt_root: Path) -> None:
+    """Require the provider-free reset proof for the v2 retry contract."""
+    workspace = attempt_root / "workspace"
+    reset_stdout = attempt_root / "reset/host-stdout.jsonl"
+    reset_proof = workspace / "reset-proof.json"
+    if not workspace.is_dir() or workspace.is_symlink():
+        raise ContractError("apparatus workspace custody is invalid")
+    try:
+        workspace.resolve(strict=True).relative_to(
+            attempt_root.resolve(strict=True)
+        )
+    except ValueError as exc:
+        raise ContractError("apparatus workspace escapes attempt custody") from exc
+    if not reset_stdout.is_file() or reset_stdout.is_symlink():
+        raise ContractError("apparatus reset proof is missing")
+    if not reset_proof.is_file() or reset_proof.is_symlink():
+        raise ContractError("apparatus reset proof artifact is missing")
+    if any(path.is_symlink() for path in workspace.rglob("*")):
+        raise ContractError("apparatus workspace contains a symlink")
+    rows = load_jsonl(reset_stdout, label="reset Host result")
+    if len(rows) != 1:
+        raise ContractError("reset Host result must contain one record")
+    result = rows[0]
+    cleanup = result.get("cleanup")
+    usage = result.get("usage")
+    if (
+        result.get("record_type") != "skill-evaluator-host-result/2"
+        or result.get("terminal") is not True
+        or result.get("terminal_status") != "completed"
+        or result.get("protocol_error") is not None
+        or result.get("refusal") is not False
+        or result.get("timeout") is not False
+        or result.get("treatment_error") is not None
+        or not isinstance(cleanup, dict)
+        or cleanup.get("status") != "clean"
+        or not isinstance(usage, dict)
+        or usage.get("records") != []
+    ):
+        raise ContractError("apparatus reset proof is not clean")
+    if result.get("artifacts") != [
+        {
+            "digest": content_hash(reset_proof.read_bytes()),
+            "encoding": "utf-8",
+            "path": "workspace/reset-proof.json",
+        }
+    ]:
+        raise ContractError("apparatus reset proof artifact binding differs")
+    proof = load_json(reset_proof, label="reset proof")
+    if proof != {"capability": "state_snapshot_reset", "workspace": "contained"}:
+        raise ContractError("apparatus reset proof claim differs")
+
+
 def project_transport_sequence(
-    events: list[dict[str, Any]], *, max_attempts: int, apparatus_reserve: int
+    events: list[dict[str, Any]],
+    *,
+    max_attempts: int,
+    apparatus_reserve: int,
+    allow_multiple_incomplete_commands: bool = False,
 ) -> dict[str, Any]:
     """Project a prefix of valid samples and exact outcome-free failures."""
     max_attempts = _count(max_attempts, "max attempts", minimum=1)
@@ -316,7 +406,10 @@ def project_transport_sequence(
         if event.get("valid") is not False:
             raise ContractError("transport event validity is invalid")
         validate_outcome_free_incomplete_command(
-            event.get("host_result"), entry_ordinal=ordinal, attempt=attempt
+            event.get("host_result"),
+            entry_ordinal=ordinal,
+            attempt=attempt,
+            allow_multiple_incomplete_commands=allow_multiple_incomplete_commands,
         )
         failures += 1
         if failures >= apparatus_reserve:
@@ -427,8 +520,15 @@ def audit_plan_transport(
         if len(terminal_rows) != 1:
             raise ContractError("Host result must contain one terminal record")
         validate_outcome_free_incomplete_command(
-            terminal_rows[0], entry_ordinal=ordinal, attempt=next_attempt
+            terminal_rows[0],
+            entry_ordinal=ordinal,
+            attempt=next_attempt,
+            allow_multiple_incomplete_commands=_allows_multiple_incomplete_commands(
+                policy
+            ),
         )
+        if _allows_multiple_incomplete_commands(policy):
+            _validate_reset_custody(attempt_root)
         failures += 1
         if failures >= policy["request_budget"]["apparatus_attempt_reserve"]:
             terminal_reason = "campaign_apparatus_reserve_exhausted"

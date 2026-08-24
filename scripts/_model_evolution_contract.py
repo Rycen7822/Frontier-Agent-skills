@@ -22,6 +22,8 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_ROOT = REPOSITORY_ROOT / "evaluation/model-evolution/schemas"
 SCHEMA_FILES = {
     "apparatus_retry_policy": "apparatus-retry-policy-v1.schema.json",
+    "apparatus_retry_policy_v1": "apparatus-retry-policy-v1.schema.json",
+    "apparatus_retry_policy_v2": "apparatus-retry-policy-v2.schema.json",
     "budget_approval": "budget-approval-v2.schema.json",
     "calibration_rejection_receipt": "calibration-rejection-receipt-v2.schema.json",
     "campaign": "campaign-v3.schema.json",
@@ -315,6 +317,14 @@ def validate_document(value: Any, name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ContractError(f"{name} document must be an object")
     schema_name = name
+    if name == "apparatus_retry_policy":
+        version = value.get("schema_version")
+        if version == "model-evolution-apparatus-retry-policy/1":
+            schema_name = "apparatus_retry_policy_v1"
+        elif version == "model-evolution-apparatus-retry-policy/2":
+            schema_name = "apparatus_retry_policy_v2"
+        else:
+            raise ContractError(f"unsupported apparatus retry policy version {version!r}")
     if name == "sentinel_index":
         version = value.get("schema_version")
         if version == "model-evolution-sentinel-index/3":
