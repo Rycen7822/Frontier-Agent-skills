@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontier.local/model-evolution/apparatus-retry-policy-v2.schema.json",
+  "title": "Frontier outcome-free apparatus retry policy v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "policy_id", "scope", "recoverable_failure", "observation", "design", "derivation", "runner_attempt_policy", "request_budget"],
+  "properties": {
+    "schema_version": {"const": "model-evolution-apparatus-retry-policy/2"},
+    "policy_id": {"$ref": "#/$defs/safe_id"},
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["roles", "skills", "treatments"],
+      "properties": {
+        "roles": {"type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true, "items": {"enum": ["target_current", "target_prior", "target_holdout"]}},
+        "skills": {"type": "array", "minItems": 4, "maxItems": 4, "uniqueItems": true, "items": {"$ref": "#/$defs/safe_id"}},
+        "treatments": {"const": "all_registered_treatments"}
+      }
+    },
+    "recoverable_failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminal_status", "protocol_error_kind", "message_contract", "usage_records", "complete_result", "timeout", "refusal", "treatment_error"],
+      "properties": {
+        "terminal_status": {"const": "protocol_error"},
+        "protocol_error_kind": {"const": "malformed_record"},
+        "message_contract": {"const": "incomplete_item.started_command_execution_any_count"},
+        "usage_records": {"const": "empty"},
+        "complete_result": {"const": false},
+        "timeout": {"const": false},
+        "refusal": {"const": false},
+        "treatment_error": {"type": "null"}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["campaign_id", "matching_failures", "transport_attempts"],
+      "properties": {
+        "campaign_id": {"$ref": "#/$defs/safe_id"},
+        "matching_failures": {"type": "integer", "minimum": 1},
+        "transport_attempts": {"type": "integer", "minimum": 1}
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valid_statistical_samples", "confidence_method", "confidence_level", "campaign_exhaustion_tail", "resampling_unit", "optional_stopping"],
+      "properties": {
+        "valid_statistical_samples": {"type": "integer", "minimum": 1},
+        "confidence_method": {"const": "wilson_score_one_sided"},
+        "confidence_level": {"type": "number", "exclusiveMinimum": 0.5, "exclusiveMaximum": 1},
+        "campaign_exhaustion_tail": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 0.5},
+        "resampling_unit": {"const": "valid_statistical_sample"},
+        "optional_stopping": {"const": false}
+      }
+    },
+    "derivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed_rate", "wilson_upper_bound", "campaign_reserve_cdf", "per_entry_exhaustion_union_bound"],
+      "properties": {
+        "observed_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "wilson_upper_bound": {"type": "number", "minimum": 0, "maximum": 1},
+        "campaign_reserve_cdf": {"type": "number", "minimum": 0, "maximum": 1},
+        "per_entry_exhaustion_union_bound": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "runner_attempt_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_attempts", "retryable_apparatus_classes", "backoff_seconds"],
+      "properties": {
+        "max_attempts": {"type": "integer", "minimum": 2},
+        "retryable_apparatus_classes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/safe_id"}},
+        "backoff_seconds": {"type": "integer", "minimum": 0}
+      }
+    },
+    "request_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valid_statistical_samples", "apparatus_attempt_reserve", "execute_request_ceiling", "calibration_request_count", "calibration_attempt_ceiling", "model_grade_request_ceiling", "probe_request_count", "probe_attempt_ceiling", "provider_request_ceiling", "reviewer_ceiling"],
+      "properties": {
+        "valid_statistical_samples": {"type": "integer", "minimum": 1},
+        "apparatus_attempt_reserve": {"type": "integer", "minimum": 1},
+        "execute_request_ceiling": {"type": "integer", "minimum": 1},
+        "calibration_request_count": {"type": "integer", "minimum": 1},
+        "calibration_attempt_ceiling": {"type": "integer", "minimum": 1},
+        "model_grade_request_ceiling": {"type": "integer", "minimum": 1},
+        "probe_request_count": {"type": "integer", "minimum": 1},
+        "probe_attempt_ceiling": {"type": "integer", "minimum": 1},
+        "provider_request_ceiling": {"type": "integer", "minimum": 1},
+        "reviewer_ceiling": {"const": 0}
+      }
+    }
+  },
+  "$defs": {
+    "safe_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}
+  }
+}

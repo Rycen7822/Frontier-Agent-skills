@@ -53,6 +53,7 @@ IGNORED_TOP_LEVEL = {
     ".work",
     ".worktrees",
     "CODEX_STATE.md",
+    "AGENTS.md",
     "reference",
     "share",
     "__pycache__",
