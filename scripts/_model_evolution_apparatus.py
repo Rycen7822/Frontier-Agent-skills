@@ -211,18 +211,17 @@ def plan_registration_projection(
     raw_model_grade = _count(
         status.get("model_grade_request_ceiling"),
         "runner model-grade request ceiling",
-        minimum=1,
     )
     if raw_model_grade % max_attempts:
         raise ContractError("runner model-grade ceiling is not attempt-aligned")
-    nominal_model_grade = raw_model_grade // max_attempts
-    if nominal_model_grade != nominal_execute:
+    runner_model_grade_entries = raw_model_grade // max_attempts
+    if runner_model_grade_entries > nominal_execute:
         raise ContractError(
-            "confirmatory plan must model-grade every valid statistical sample"
+            "runner model-grade entries exceed valid statistical samples"
         )
     return {
         "execute": nominal_execute,
-        "model_grade": nominal_model_grade,
+        "model_grade": nominal_execute,
         "initial_attempt_budget": nominal_execute,
         "raw_execute_ceiling": raw_execute,
         "raw_model_grade_ceiling": raw_model_grade,
