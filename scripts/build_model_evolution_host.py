@@ -28,6 +28,7 @@ from _codex_eval_delivery import (  # noqa: E402
 )
 from _codex_eval_isolation import ISOLATED_SANDBOX_POLICY_IDS  # noqa: E402
 import codex_eval_host  # noqa: E402
+from _codex_lifecycle_contract import LEGACY_CONTRACT, SUPPORTED_CONTRACTS  # noqa: E402
 
 
 class HostBuildError(ValueError):
@@ -225,9 +226,12 @@ def build_host(
     session_id: str,
     model: str = DEFAULT_MODEL,
     effort: str = DEFAULT_EFFORT,
+    lifecycle_contract: str = LEGACY_CONTRACT,
 ) -> dict[str, Any]:
     if not model.strip() or not effort.strip():
         raise HostBuildError("model and effort must be non-empty")
+    if lifecycle_contract not in SUPPORTED_CONTRACTS:
+        raise HostBuildError("unsupported lifecycle contract")
     repository_root = repository_root.resolve(strict=True)
     plugin_root = plugin_root.resolve(strict=True)
     output_path = output_path.resolve()
@@ -339,6 +343,8 @@ def build_host(
         "--timeout",
         str(TARGET_TIMEOUT_SECONDS),
     ]
+    if lifecycle_contract != LEGACY_CONTRACT:
+        argv.extend(["--lifecycle-contract", lifecycle_contract])
     command.update({
         "argv": argv,
         "resolved_executable": str(executable),
@@ -475,6 +481,11 @@ def main() -> int:
     parser.add_argument("--session-id", required=True)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--effort", default=DEFAULT_EFFORT)
+    parser.add_argument(
+        "--lifecycle-contract",
+        choices=tuple(sorted(SUPPORTED_CONTRACTS)),
+        default=LEGACY_CONTRACT,
+    )
     args = parser.parse_args()
     try:
         value = build_host(
@@ -489,6 +500,7 @@ def main() -> int:
             session_id=args.session_id,
             model=args.model,
             effort=args.effort,
+            lifecycle_contract=args.lifecycle_contract,
         )
     except (
         HostBuildError,
