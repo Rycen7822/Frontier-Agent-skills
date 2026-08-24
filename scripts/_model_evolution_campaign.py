@@ -19,6 +19,7 @@ from _model_evolution_contract import (
     strict_json_bytes,
     validate_document,
 )
+from _model_evolution_apparatus import validate_apparatus_retry_policy
 
 
 CAMPAIGN_SCHEMA_VERSION = "model-evolution-campaign/3"
@@ -53,6 +54,7 @@ def qualification_request_ceilings(
     repository_root: Path,
     campaign_root: Path,
     probe_count: int,
+    apparatus_policy: dict[str, Any] | None = None,
 ) -> dict[str, int]:
     """Compute the exact request ceilings for one fresh campaign."""
     public_cases: dict[str, int] = {}
@@ -114,12 +116,34 @@ def qualification_request_ceilings(
         for owner in SKILL_IDS
     )
     revision_execute = max(current_execute, candidate_cases * 2)
-    execute = (
+    valid_statistical_samples = (
         (current_execute + revision_execute + holdout_cases * 2)
         * repeats
-        * expected_retry_policy["max_attempts"]
     )
     calibration_attempts = 2 * calibration_requests
+    if apparatus_policy is not None:
+        policy = validate_apparatus_retry_policy(apparatus_policy)
+        budget = policy["request_budget"]
+        if (
+            budget["valid_statistical_samples"] != valid_statistical_samples
+            or budget["calibration_request_count"] != calibration_requests
+            or budget["calibration_attempt_ceiling"] != calibration_attempts
+            or budget["probe_request_count"] != probe_count
+            or budget["probe_attempt_ceiling"] != 2 * probe_count
+        ):
+            raise ContractError("apparatus retry policy differs from campaign inputs")
+        return {
+            "provider_requests": budget["provider_request_ceiling"],
+            "execute": budget["execute_request_ceiling"],
+            "model_grade": budget["model_grade_request_ceiling"],
+            "calibration": calibration_requests,
+            "calibration_attempts": calibration_attempts,
+            "valid_statistical_samples": valid_statistical_samples,
+            "apparatus_attempt_reserve": budget["apparatus_attempt_reserve"],
+            "max_attempts_per_entry": policy["runner_attempt_policy"]["max_attempts"],
+        }
+
+    execute = valid_statistical_samples * expected_retry_policy["max_attempts"]
     model_grade = calibration_attempts + execute
     return {
         "provider_requests": 2 * probe_count + execute + model_grade,
@@ -157,6 +181,7 @@ def build_initial_campaign(
     target_host_binding: dict[str, Any],
     probe_set_binding: dict[str, Any],
     sentinel_binding: dict[str, Any],
+    apparatus_retry_policy_binding: dict[str, Any] | None,
     ceilings: dict[str, int | None],
     repository_root: Path,
     campaign_root: Path,
@@ -277,6 +302,8 @@ def build_initial_campaign(
         },
         "candidate": None,
     }
+    if apparatus_retry_policy_binding is not None:
+        state["apparatus_retry_policy"] = apparatus_retry_policy_binding
     return validate_campaign(state)
 
 

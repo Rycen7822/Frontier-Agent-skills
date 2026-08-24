@@ -34,6 +34,11 @@ sys.path.insert(0, str(EVALUATOR_SCRIPTS))
 
 import validate_eval_suite as evaluator  # noqa: E402
 
+from _model_evolution_apparatus import (
+    materialized_attempt_policy,
+    validate_apparatus_retry_policy,
+)
+
 
 class MaterializationError(ValueError):
     """Formal-plan inputs cannot be derived exactly from frozen evidence."""
@@ -540,6 +545,7 @@ def _materialized_spec(
     calibration: dict[str, Any],
     calibration_file_hash: str,
     scenarios: list[dict[str, Any]],
+    runner_attempt_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     spec = copy.deepcopy(template)
     spec["execution"]["as_of"] = calibration["created"]
@@ -564,7 +570,26 @@ def _materialized_spec(
         "schema_version": "grader-calibration/3",
     }
     _bind_scenarios(spec, scenarios)
+    if runner_attempt_policy is not None:
+        spec["execution"]["retry_policy"] = copy.deepcopy(runner_attempt_policy)
     return spec
+
+
+def _campaign_runner_attempt_policy(
+    campaign: dict[str, Any], *, role: str, repository_root: Path, campaign_root: Path
+) -> dict[str, Any] | None:
+    binding = campaign.get("apparatus_retry_policy")
+    if binding is None:
+        return None
+    policy = validate_apparatus_retry_policy(
+        load_json(
+            resolve_binding(binding, repository_root, campaign_root),
+            label="apparatus retry policy",
+        )
+    )
+    if role not in policy["scope"]["roles"]:
+        return None
+    return materialized_attempt_policy(policy)
 
 
 def _compile_and_validate(
@@ -718,6 +743,12 @@ def _build_public_plan(
         calibration=calibration,
         calibration_file_hash=_file_hash(calibration_path),
         scenarios=scenarios,
+        runner_attempt_policy=_campaign_runner_attempt_policy(
+            campaign,
+            role=role,
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+        ),
     )
     if verifier_source_commit is not None:
         for grader in spec["graders"]:

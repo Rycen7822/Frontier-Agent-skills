@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_ROOT = ROOT / "evaluation/model-evolution/schemas"
 SCHEMAS = {
+    "apparatus-retry-policy-v1.schema.json": "https://frontier.local/model-evolution/apparatus-retry-policy-v1.schema.json",
     "comparison-plan-v4.schema.json": "https://frontier.local/model-evolution/comparison-plan-v4.schema.json",
     "comparison-report-v4.schema.json": "https://frontier.local/model-evolution/comparison-report-v4.schema.json",
     "manual-authority-packet-v1.schema.json": "https://frontier.local/model-evolution/manual-authority-packet-v1.schema.json",

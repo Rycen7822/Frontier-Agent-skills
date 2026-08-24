@@ -21,6 +21,7 @@ from referencing.exceptions import NoSuchResource, Unresolvable
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_ROOT = REPOSITORY_ROOT / "evaluation/model-evolution/schemas"
 SCHEMA_FILES = {
+    "apparatus_retry_policy": "apparatus-retry-policy-v1.schema.json",
     "budget_approval": "budget-approval-v2.schema.json",
     "calibration_rejection_receipt": "calibration-rejection-receipt-v2.schema.json",
     "campaign": "campaign-v3.schema.json",
