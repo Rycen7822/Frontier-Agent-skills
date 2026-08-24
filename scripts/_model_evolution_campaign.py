@@ -130,6 +130,17 @@ def qualification_request_ceilings(
     }
 
 
+def require_qualification_request_ceilings(
+    ceilings: dict[str, int], expected: dict[str, int]
+) -> None:
+    """Fail closed unless init uses the exact public request projection."""
+    for field in ("provider_requests", "execute", "model_grade"):
+        if ceilings.get(field) != expected[field]:
+            raise ContractError(
+                f"{field} ceiling must equal the fresh campaign budget {expected[field]}"
+            )
+
+
 def build_initial_campaign(
     *,
     campaign_id: str,

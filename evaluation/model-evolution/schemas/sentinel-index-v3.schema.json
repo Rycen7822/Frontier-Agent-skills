@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontier.local/model-evolution/sentinel-index-v3.schema.json",
+  "title": "Frontier four-skill confirmatory sentinel index v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "sentinel_id", "revision_policy", "manual_authority_protocol", "case_lineage", "power_sensitivity", "catalog_files", "skills"],
+  "properties": {
+    "schema_version": {"const": "model-evolution-sentinel-index/3"},
+    "sentinel_id": {"$ref": "#/$defs/safe_id"},
+    "revision_policy": {"$ref": "#/$defs/binding"},
+    "manual_authority_protocol": {"$ref": "#/$defs/binding"},
+    "case_lineage": {"$ref": "#/$defs/binding"},
+    "power_sensitivity": {"$ref": "#/$defs/binding"},
+    "catalog_files": {"$ref": "#/$defs/binding_list"},
+    "skills": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "long-document-segmented-writing",
+        "skill-evaluator",
+        "software-quality-workflows",
+        "writing-plans"
+      ],
+      "properties": {
+        "long-document-segmented-writing": {"$ref": "#/$defs/skill"},
+        "skill-evaluator": {"$ref": "#/$defs/skill"},
+        "software-quality-workflows": {"$ref": "#/$defs/skill"},
+        "writing-plans": {"$ref": "#/$defs/skill"}
+      }
+    }
+  },
+  "$defs": {
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "path", "schema_version"],
+      "properties": {
+        "root": {"const": "campaign"},
+        "schema_version": {"type": "string", "minLength": 1},
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*://)[A-Za-z0-9._/-]+$"
+        }
+      }
+    },
+    "binding_list": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/binding"}
+    },
+    "safe_id_list": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/safe_id"}
+    },
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "critical_bucket_id",
+        "spec_template",
+        "public_scenarios",
+        "calibration_gold",
+        "calibration_request_ceiling",
+        "fixture_roots",
+        "verifier_roots",
+        "required_coverage_tags",
+        "protected_case_ids",
+        "external_holdout_contract_id",
+        "holdout_case_ceiling"
+      ],
+      "properties": {
+        "critical_bucket_id": {"$ref": "#/$defs/safe_id"},
+        "spec_template": {"$ref": "#/$defs/binding"},
+        "public_scenarios": {"$ref": "#/$defs/binding"},
+        "calibration_gold": {"$ref": "#/$defs/binding"},
+        "calibration_request_ceiling": {"type": "integer", "minimum": 1},
+        "fixture_roots": {"$ref": "#/$defs/binding_list"},
+        "verifier_roots": {"$ref": "#/$defs/binding_list"},
+        "required_coverage_tags": {"$ref": "#/$defs/safe_id_list"},
+        "protected_case_ids": {"$ref": "#/$defs/safe_id_list"},
+        "external_holdout_contract_id": {"$ref": "#/$defs/safe_id"},
+        "holdout_case_ceiling": {"const": 2}
+      }
+    }
+  }
+}
