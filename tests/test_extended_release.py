@@ -120,9 +120,9 @@ class ExtendedRelease(unittest.TestCase):
             normalized.append((probes, sentinel))
         self.assertEqual(normalized[0], normalized[1])
 
-    def test_confirmatory_suite_identity_and_budget_are_frozen(self) -> None:
+    def test_confirmatory_v3_suite_identity_and_budget_are_frozen(self) -> None:
         index_path = (
-            ROOT / "evaluation/model-evolution/confirmatory-v1/sentinel-index-v3.json"
+            ROOT / "evaluation/model-evolution/confirmatory-v3/sentinel-index-v3.json"
         )
         index = json.loads(index_path.read_text(encoding="utf-8"))
         validate_document(index, "sentinel_index")
@@ -144,14 +144,21 @@ class ExtendedRelease(unittest.TestCase):
             repository_root=ROOT,
             campaign_root=ROOT,
             probe_count=6,
+            apparatus_policy=json.loads((
+                ROOT
+                / "evaluation/model-evolution/confirmatory-v2/apparatus-retry-policy-v1.json"
+            ).read_text()),
         )
         self.assertEqual(
             {
-                "provider_requests": 3644,
-                "execute": 1752,
-                "model_grade": 1880,
+                "provider_requests": 2204,
+                "execute": 1032,
+                "model_grade": 1160,
                 "calibration": 64,
                 "calibration_attempts": 128,
+                "valid_statistical_samples": 876,
+                "apparatus_attempt_reserve": 156,
+                "max_attempts_per_entry": 5,
             },
             ceilings,
         )

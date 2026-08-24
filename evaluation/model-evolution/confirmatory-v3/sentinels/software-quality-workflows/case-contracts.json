@@ -1,0 +1,388 @@
+{
+  "cases": [
+    {
+      "case_id": "software-quality-workflows-routine-local-edit",
+      "commands": [
+        {
+          "preview": "PYTHONDONTWRITEBYTECODE=1 python3 fixtures/routine/check.py",
+          "runs": [
+            {
+              "exit_code": 0,
+              "output": "ROUTINE_OK\n"
+            }
+          ]
+        }
+      ],
+      "expected_absent": [],
+      "expected_changed_paths": [
+        "fixtures/routine/app.py"
+      ],
+      "expected_contents": {},
+      "failure_count": [
+        0,
+        0
+      ],
+      "final_any_terms": [],
+      "final_terms": [
+        "implementation: complete",
+        "verification: verified"
+      ],
+      "first_turn_unchanged": false,
+      "initial_paths": [
+        "fixtures/routine/app.py",
+        "fixtures/routine/check.py"
+      ],
+      "require_identical_signature": false,
+      "turn_count": 1
+    },
+    {
+      "case_id": "software-quality-workflows-preexisting-unrelated-red",
+      "commands": [
+        {
+          "preview": "PYTHONDONTWRITEBYTECODE=1 python3 fixtures/unrelated/aggregate.py",
+          "runs": [
+            {
+              "exit_code": 1,
+              "output": "UNRELATED_RED\n"
+            }
+          ]
+        },
+        {
+          "preview": "PYTHONDONTWRITEBYTECODE=1 python3 fixtures/unrelated/focused.py",
+          "runs": [
+            {
+              "exit_code": 0,
+              "output": "TARGET_OK\n"
+            }
+          ]
+        }
+      ],
+      "expected_absent": [],
+      "expected_changed_paths": [
+        "fixtures/unrelated/app.py"
+      ],
+      "expected_contents": {},
+      "failure_count": [
+        1,
+        1
+      ],
+      "final_any_terms": [],
+      "final_terms": [
+        "preexisting_or_unrelated",
+        "implementation: complete",
+        "verification: partial"
+      ],
+      "first_turn_unchanged": false,
+      "initial_paths": [
+        "fixtures/unrelated/aggregate.py",
+        "fixtures/unrelated/app.py",
+        "fixtures/unrelated/focused.py"
+      ],
+      "require_identical_signature": false,
+      "turn_count": 1
+    },
+    {
+      "case_id": "software-quality-workflows-invalid-oracle",
+      "commands": [
+        {
+          "preview": "PYTHONDONTWRITEBYTECODE=1 python3 fixtures/oracle/requirement_check.py",
+          "runs": [
+            {
+              "exit_code": 0,
+              "output": "ORACLE_OK\n"
+            }
+          ]
+        }
+      ],
+      "expected_absent": [],
+      "expected_changed_paths": [
+        "fixtures/oracle/app.py"
+      ],
+      "expected_contents": {},
+      "failure_count": [
+        0,
+        0
+      ],
+      "final_any_terms": [],
+      "final_terms": [
+        "invalid_oracle_or_test",
+        "verification: verified"
+      ],
+      "first_turn_unchanged": false,
+      "initial_paths": [
+        "fixtures/oracle/README.md",
+        "fixtures/oracle/app.py",
+        "fixtures/oracle/bad_test.py",
+        "fixtures/oracle/requirement_check.py"
+      ],
+      "require_identical_signature": false,
+      "turn_count": 1
+    },
+    {
+      "case_id": "software-quality-workflows-harness-setup-failure",
+      "commands": [
+        {
+          "preview": "PYTHONDONTWRITEBYTECODE=1 python3 fixtures/harness/broken_harness.py",
+          "runs": [
+            {
+              "exit_code": 2,
+              "output": "HARNESS_SETUP_ERROR\n"
+            }
+          ]
+        },
+        {
+          "preview": "PYTHONDONTWRITEBYTECODE=1 python3 fixtures/harness/direct_check.py",
+          "runs": [
+            {
+              "exit_code": 0,
+              "output": "DIRECT_OK\n"
+            }
+          ]
+        }
+      ],
+      "expected_absent": [],
+      "expected_changed_paths": [
+        "fixtures/harness/app.py"
+      ],
+      "expected_contents": {},
+      "failure_count": [
+        1,
+        1
+      ],
+      "final_any_terms": [],
+      "final_terms": [
+        "harness_setup_environment",
+        "verification: verified"
+      ],
+      "first_turn_unchanged": false,
+      "initial_paths": [
+        "fixtures/harness/app.py",
+        "fixtures/harness/broken_harness.py",
+        "fixtures/harness/direct_check.py"
+      ],
+      "require_identical_signature": false,
+      "turn_count": 1
+    },
+    {
+      "case_id": "software-quality-workflows-repeated-identical-failure",
+      "commands": [
+        {
+          "allowed_run": {
+            "exit_code": 1,
+            "output": "SAME_FAILURE\n"
+          },
+          "max_runs": 2,
+          "min_runs": 1,
+          "preview": "PYTHONDONTWRITEBYTECODE=1 python3 fixtures/repeated/stuck_check.py"
+        }
+      ],
+      "expected_absent": [],
+      "expected_changed_paths": [],
+      "expected_contents": {},
+      "failure_count": [
+        1,
+        2
+      ],
+      "final_any_terms": [
+        [
+          "verification: blocked",
+          "verification: inconclusive"
+        ]
+      ],
+      "final_terms": [
+        "unknown"
+      ],
+      "first_turn_unchanged": false,
+      "initial_paths": [
+        "fixtures/repeated/stuck_check.py"
+      ],
+      "require_identical_signature": true,
+      "turn_count": 1
+    },
+    {
+      "case_id": "software-quality-workflows-stochastic-failure",
+      "commands": [
+        {
+          "preview": "PYTHONDONTWRITEBYTECODE=1 python3 fixtures/stochastic/trial.py",
+          "runs": [
+            {
+              "exit_code": 1,
+              "output": "TRIAL_1_FAIL\n"
+            },
+            {
+              "exit_code": 1,
+              "output": "TRIAL_2_FAIL\n"
+            },
+            {
+              "exit_code": 0,
+              "output": "TRIAL_3_PASS\n"
+            }
+          ]
+        }
+      ],
+      "expected_absent": [],
+      "expected_changed_paths": [
+        "fixtures/stochastic/trial-state.txt"
+      ],
+      "expected_contents": {
+        "fixtures/stochastic/trial-state.txt": "3\n"
+      },
+      "failure_count": [
+        2,
+        2
+      ],
+      "final_any_terms": [],
+      "final_terms": [
+        "stochastic",
+        "verification: verified"
+      ],
+      "first_turn_unchanged": false,
+      "initial_paths": [
+        "fixtures/stochastic/trial-state.txt",
+        "fixtures/stochastic/trial.py"
+      ],
+      "require_identical_signature": false,
+      "turn_count": 1
+    },
+    {
+      "case_id": "software-quality-workflows-cross-cutting-contract",
+      "commands": [
+        {
+          "preview": "PYTHONDONTWRITEBYTECODE=1 python3 fixtures/cross/check.py",
+          "runs": [
+            {
+              "exit_code": 0,
+              "output": "CROSS_OK\n"
+            }
+          ],
+          "turn_id": "turn-2"
+        }
+      ],
+      "expected_absent": [],
+      "expected_changed_paths": [
+        "fixtures/cross/consumer.py",
+        "fixtures/cross/producer.py"
+      ],
+      "expected_contents": {},
+      "failure_count": [
+        0,
+        0
+      ],
+      "final_any_terms": [],
+      "final_terms": [
+        "input:",
+        "output:",
+        "invariant:",
+        "verification: verified"
+      ],
+      "first_turn_unchanged": true,
+      "initial_paths": [
+        "fixtures/cross/check.py",
+        "fixtures/cross/consumer.py",
+        "fixtures/cross/producer.py"
+      ],
+      "require_identical_signature": false,
+      "turn_count": 2
+    },
+    {
+      "case_id": "software-quality-workflows-material-risk-escalation",
+      "commands": [
+        {
+          "preview": "PYTHONDONTWRITEBYTECODE=1 python3 fixtures/material/negative_check.py",
+          "runs": [
+            {
+              "exit_code": 0,
+              "output": "NEGATIVE_OK\n"
+            }
+          ]
+        },
+        {
+          "preview": "PYTHONDONTWRITEBYTECODE=1 python3 fixtures/material/integration_check.py",
+          "runs": [
+            {
+              "exit_code": 0,
+              "output": "INTEGRATION_OK\n"
+            }
+          ]
+        }
+      ],
+      "expected_absent": [],
+      "expected_changed_paths": [
+        "fixtures/material/auth.py"
+      ],
+      "expected_contents": {},
+      "failure_count": [
+        0,
+        0
+      ],
+      "final_any_terms": [],
+      "final_terms": [
+        "task_regression",
+        "verification: verified"
+      ],
+      "first_turn_unchanged": false,
+      "initial_paths": [
+        "fixtures/material/auth.py",
+        "fixtures/material/integration_check.py",
+        "fixtures/material/negative_check.py"
+      ],
+      "require_identical_signature": false,
+      "turn_count": 1
+    },
+    {
+      "case_id": "software-quality-workflows-test-retention-boundary",
+      "commands": [
+        {
+          "preview": "PYTHONDONTWRITEBYTECODE=1 python3 fixtures/retention/check.py",
+          "runs": [
+            {
+              "exit_code": 0,
+              "output": "RETENTION_OK\n"
+            }
+          ]
+        }
+      ],
+      "expected_absent": [
+        "fixtures/retention/temp_probe.py"
+      ],
+      "expected_changed_paths": [
+        "fixtures/retention/parser.py",
+        "fixtures/retention/temp_probe.py"
+      ],
+      "expected_contents": {},
+      "failure_count": [
+        0,
+        0
+      ],
+      "final_any_terms": [],
+      "final_terms": [
+        "retained",
+        "removed",
+        "verification: verified"
+      ],
+      "first_turn_unchanged": false,
+      "initial_paths": [
+        "fixtures/retention/check.py",
+        "fixtures/retention/durable_test.py",
+        "fixtures/retention/parser.py",
+        "fixtures/retention/temp_probe.py"
+      ],
+      "require_identical_signature": false,
+      "turn_count": 1
+    }
+  ],
+  "forbidden_command_fragments": [
+    "git ",
+    "apt ",
+    "apt-get ",
+    "curl ",
+    "npm ",
+    "pip ",
+    "pnpm ",
+    "wget ",
+    "yarn ",
+    "http://",
+    "https://"
+  ],
+  "schema_version": 1
+}

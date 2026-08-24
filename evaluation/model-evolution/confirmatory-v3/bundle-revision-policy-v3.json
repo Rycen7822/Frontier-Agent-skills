@@ -1,0 +1,100 @@
+{
+  "authority_id": "frontier-bundle-8-confirmatory-v3",
+  "candidate_activation": {
+    "long-document-segmented-writing": true,
+    "skill-evaluator": false,
+    "software-quality-workflows": false,
+    "writing-plans": true
+  },
+  "candidate_bundle_version": "8.0.2",
+  "estimator": {
+    "bootstrap_iterations": 10000,
+    "confidence_level": 0.95,
+    "decision_lower_percentile": 0.05,
+    "diagnostic_upper_percentile": 0.95,
+    "id": "paired-difference-of-differences",
+    "resampling_unit": "case",
+    "seed_derivation": "sha256-domain-separated-length-prefixed-policy-bytes-v1",
+    "version": "1.0.0"
+  },
+  "prior_bundle_version": "7.0.0",
+  "registered_at": "2026-08-25T00:00:00Z",
+  "schema_version": "frontier-bundle-revision-policy/2",
+  "skills": {
+    "long-document-segmented-writing": {
+      "metric_rules": [
+        {
+          "direction": "higher_is_better",
+          "margin": 0.0,
+          "metric_id": "task-benefit",
+          "purpose": "protected_noninferiority"
+        }
+      ],
+      "minimum_distinct_cases": 6,
+      "required_axes": [
+        "task_behavior",
+        "protected_safety",
+        "operational_cost",
+        "apparatus"
+      ]
+    },
+    "skill-evaluator": {
+      "metric_rules": [
+        {
+          "direction": "higher_is_better",
+          "margin": 0.0,
+          "metric_id": "task-benefit",
+          "purpose": "protected_noninferiority"
+        }
+      ],
+      "minimum_distinct_cases": 48,
+      "required_axes": [
+        "task_behavior",
+        "protected_safety",
+        "operational_cost",
+        "apparatus"
+      ]
+    },
+    "software-quality-workflows": {
+      "metric_rules": [
+        {
+          "direction": "higher_is_better",
+          "margin": 0.0,
+          "metric_id": "task-benefit",
+          "purpose": "protected_noninferiority"
+        },
+        {
+          "direction": "lower_is_better",
+          "margin": 0.0,
+          "metric_id": "tool-call-cost",
+          "purpose": "protected_noninferiority"
+        }
+      ],
+      "minimum_distinct_cases": 9,
+      "required_axes": [
+        "task_behavior",
+        "protected_safety",
+        "operational_cost",
+        "loop_pathology",
+        "apparatus"
+      ]
+    },
+    "writing-plans": {
+      "metric_rules": [
+        {
+          "direction": "higher_is_better",
+          "margin": 0.0,
+          "metric_id": "task-benefit",
+          "purpose": "protected_noninferiority"
+        }
+      ],
+      "minimum_distinct_cases": 6,
+      "required_axes": [
+        "task_behavior",
+        "protected_safety",
+        "operational_cost",
+        "apparatus"
+      ]
+    }
+  }
+}

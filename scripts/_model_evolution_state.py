@@ -63,6 +63,48 @@ class StateError(ValueError):
     """A campaign state, transition, or concurrency failure."""
 
 
+D23_SENTINEL_PATH = (
+    "evaluation/model-evolution/confirmatory-v3/sentinel-index-v3.json"
+)
+
+
+def se_first_revision_allowed(
+    state: dict[str, Any],
+    skill_id: str,
+    *,
+    require_prior_plan: bool = False,
+) -> bool:
+    binding = state.get("sentinel_index")
+    evidence = state.get("skill_evidence", {})
+    se_evidence = evidence.get("skill-evaluator", {})
+    other_skills = set(SKILL_IDS) - {"skill-evaluator"}
+    allowed = bool(
+        skill_id == "skill-evaluator"
+        and state.get("phase") == "calibration_ready"
+        and isinstance(binding, dict)
+        and binding.get("path") == D23_SENTINEL_PATH
+        and state.get("candidate") is None
+        and state.get("profiles", {}).get("predecessor") is None
+        and se_evidence.get("current_summary") is not None
+        and se_evidence.get("revision_report") is None
+        and all(
+            evidence.get(item, {}).get("current_summary") is None
+            and evidence.get(item, {}).get("revision_report") is None
+            for item in other_skills
+        )
+        and not any(
+            plan["role"] == "target_prior"
+            and plan["skill_id"] != "skill-evaluator"
+            for plan in state.get("plans", [])
+        )
+    )
+    if not allowed or not require_prior_plan:
+        return allowed
+    return _has_plan(state, "target_current", skill_id) and _has_plan(
+        state, "target_prior", skill_id
+    )
+
+
 def zero_counts(*, unknown_observed: bool = False) -> dict[str, int | None]:
     return {
         field: None if unknown_observed and field in {"artifact_bytes"} else 0
@@ -236,7 +278,10 @@ def register_plan(
         "target_prior": {"decision_ready"},
         "target_holdout": {"final_plugin_ready"},
     }[role]
-    if state["phase"] not in required_phase:
+    se_first_prior = role == "target_prior" and se_first_revision_allowed(
+        state, plan_record["skill_id"]
+    )
+    if state["phase"] not in required_phase and not se_first_prior:
         raise StateError(f"{role} plan is not legal from {state['phase']}")
     matching_indexes = [
         index
@@ -606,11 +651,14 @@ def record_evidence(
         field, required_plan, allowed_phases = field_role[role]
     except KeyError as exc:
         raise StateError(f"unsupported evidence role: {role}") from exc
+    se_first_revision = role == "revision_report" and se_first_revision_allowed(
+        state, skill_id, require_prior_plan=True
+    )
     if role == "revision_report" and state["phase"] == "decision_ready" and (
         state["candidate"] is not None or state["profiles"]["predecessor"] is not None
     ):
         raise StateError("decision-ready revision is only legal for candidate-null bootstrap")
-    if state["phase"] not in allowed_phases:
+    if state["phase"] not in allowed_phases and not se_first_revision:
         raise StateError(f"{role} is not legal from {state['phase']}")
     if required_plan is not None and not _has_plan(state, required_plan, skill_id):
         raise StateError(f"{role} lacks a registered {required_plan} plan")

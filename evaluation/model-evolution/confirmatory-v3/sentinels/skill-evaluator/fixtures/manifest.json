@@ -1,0 +1,245 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:da8e0e776798631a1b960a20cfbc23260f6fe7b4afd3acec6deddf185411c37b",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ab-01.md"
+    },
+    {
+      "digest": "sha256:1db185eaac52f71b82be95f33e2a8b32f8bf7091d3d8a52bfcdb5326f4b0a507",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ab-02.md"
+    },
+    {
+      "digest": "sha256:f72e70519fce34bdc966a72aca240bce2d60a910f4662eb36c88b9407c0470d8",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ab-03.md"
+    },
+    {
+      "digest": "sha256:8cf172479e0df677b4f6e6cfd5e274a6d3dca19f28b9fd8a1fadc01c2c447b8b",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ab-04.md"
+    },
+    {
+      "digest": "sha256:8c546d6c92d867eb09702e6c22da238d34509c5085f957984a9ea81cba732a95",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ab-05.md"
+    },
+    {
+      "digest": "sha256:4ca6a89c8779542f53e49bf3e7151e08244fb996c0ba7247ba44a88ba5ce787b",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ab-06.md"
+    },
+    {
+      "digest": "sha256:62559d638ea4e3b27389b228bfbf947e8ee6f78b16fc6946707be24e6d453dae",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ab-07.md"
+    },
+    {
+      "digest": "sha256:0f0b1f429aaa6cf79042424d7b48df2195fd2188be9f459e85dbdc6f5071e071",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ab-08.md"
+    },
+    {
+      "digest": "sha256:ace17317b29f2f24e360fcae67b8075cbc609eee73b96a99ca0abfc2f12f2db8",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ae-01.md"
+    },
+    {
+      "digest": "sha256:68e98f049e7592c9f4fe1e725a11945a08d544cbcf6e9a23340c858279da57d0",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ae-02.md"
+    },
+    {
+      "digest": "sha256:697117714a64fa2ba4b657e67ed1ddb03a71892748c83e33bc15216a04e75b4e",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ae-03.md"
+    },
+    {
+      "digest": "sha256:79366f33ecb5510c1d57123db1f248125b8ec276fa294aa41f97406db88b0090",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ae-04.md"
+    },
+    {
+      "digest": "sha256:ad07c36aaf722af117a58e159b009dded16c1c692f7807533a700fd4a6b594a1",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ae-05.md"
+    },
+    {
+      "digest": "sha256:a5699a3aae066de1dc0545760dfd82c385f092958cff1c5f931474c5961d41d5",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ae-06.md"
+    },
+    {
+      "digest": "sha256:7d3eaf734f51ded7f7cb1050d7108812d3ff3ce839e7e2678e7fdfa7399753aa",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ae-07.md"
+    },
+    {
+      "digest": "sha256:d1c151a74d321c2c63fa4c89ff3eecdbe3357d501f42214b706a0442c67e418a",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-ae-08.md"
+    },
+    {
+      "digest": "sha256:e07bd752cc1ae0abb208e9c02591e8a2f76cd8f891bb83ad20edc78530384bbc",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cc-01.md"
+    },
+    {
+      "digest": "sha256:f46f5b80fc35adcbe2f70e32e8a1bd242f93fce2c50eb0f7bc13ad0c779d0a97",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cc-02.md"
+    },
+    {
+      "digest": "sha256:ff2063d0ba0fdb10321d878e6dfb98e357ce918c3fc2a86a2f08de1617dcbe99",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cc-03.md"
+    },
+    {
+      "digest": "sha256:6713a74215de7ab88d4f1a91cb57863f5b05822088f10cfa3c449877acd7a72d",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cc-04.md"
+    },
+    {
+      "digest": "sha256:7640ed87c3ad1cc71de1f871a8a69c89ea67f8d08287dff7457e3859e094b731",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cc-05.md"
+    },
+    {
+      "digest": "sha256:a3338f1f1593cfdb4bf96701ad139bdc914fa0538422b9ebc89e5f4f0f09de3a",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cc-06.md"
+    },
+    {
+      "digest": "sha256:7706610c8d7d77e050cfcefa85db0221a31bcdbfd24462374e6e38222475fb83",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cc-07.md"
+    },
+    {
+      "digest": "sha256:968613eef70670076dc27534192cb4fd60ebbe0247f4b2042058c9dae882a4cb",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cc-08.md"
+    },
+    {
+      "digest": "sha256:bb0417c4a831adfa168bbb8b5d7ec2b03f3dde5f2dc80cba6550c781aca7656d",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cs-01.md"
+    },
+    {
+      "digest": "sha256:f0ec03033b3e0d9fcc259223f416a94be9daf4e47db968ba7ec26499e1c3760d",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cs-02.md"
+    },
+    {
+      "digest": "sha256:69c34c38b126679d58c0355b429ef1b9060470056cc788313c04e13384729006",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cs-03.md"
+    },
+    {
+      "digest": "sha256:20c6af496706723ff3ef3ef1445b7ea47aca15fc6d3a471bd71858491fe47722",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cs-04.md"
+    },
+    {
+      "digest": "sha256:b7c691f7decd4272e0aa4c467b9a1016a0cf5ea5e60cc59ecb6928201ace7ca2",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cs-05.md"
+    },
+    {
+      "digest": "sha256:f27d65e1e7cd9d7e072791989cdc9a2fd6b7167b0985a81dea4f376d4ff9ecca",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cs-06.md"
+    },
+    {
+      "digest": "sha256:6daee173471b49d84a3bbcccb4ad26f2e4842dadafecffd13668df2fc23d9aed",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cs-07.md"
+    },
+    {
+      "digest": "sha256:d52183977102f77e4285b92a37ad09c49ef5d1dea118dbfd37e0a2fff23bcd20",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-cs-08.md"
+    },
+    {
+      "digest": "sha256:b6eff7cb2c5fb84bea31f202eeb1fee51ef09e0665e4b005ca7e9806a985ef2b",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-dv-01.md"
+    },
+    {
+      "digest": "sha256:892c70b0154ec6832698a13afeef9d5c25a3f740a0087bc8c9bf58f317c226ed",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-dv-02.md"
+    },
+    {
+      "digest": "sha256:92236d5c52e05ce00668c8e5fa8e2d9b27e937840c07a4bcf73b9a2eef5226c7",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-dv-03.md"
+    },
+    {
+      "digest": "sha256:985c57e058887841911381225e21c6d0fd452b1baaaadc56a583080801ce9a66",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-dv-04.md"
+    },
+    {
+      "digest": "sha256:bc9544be12fb57e909d93ef7c457f09eab9cee14fc8ca3b4dcb5beb28ba6ac60",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-dv-05.md"
+    },
+    {
+      "digest": "sha256:e5cab3302f9f67a1bc41d41d0739de2ab4b009573246bb825924a4496e8301e5",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-dv-06.md"
+    },
+    {
+      "digest": "sha256:6f71e1fe24e2de6a086d24907c68f6fedac3cc0d03b7bd43af37e8a15098455d",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-dv-07.md"
+    },
+    {
+      "digest": "sha256:844b7d4642d1ee843a655f670ef79de332a80cc15cb77534d03ed0b630241463",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-dv-08.md"
+    },
+    {
+      "digest": "sha256:2ad593f409d1cbd14430347642462191f92c10ef08d7e0b98800ab61471cc159",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-nc-01.md"
+    },
+    {
+      "digest": "sha256:0ee906ebf44a74a35272abb88afab59b48590da510d0487fd39ea6bf1b84c95e",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-nc-02.md"
+    },
+    {
+      "digest": "sha256:56f5f394bfbde3f4f9fc9c67906b41139c9410e513435cdab272b1347a78faf6",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-nc-03.md"
+    },
+    {
+      "digest": "sha256:7a91c278f4e612125d17f2d9a2fcd5788112299ecb5af4933da792b90958d93a",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-nc-04.md"
+    },
+    {
+      "digest": "sha256:34a610f703f62710ea368159b9b99a932aa72db2cf82d47c489416ca2d1c8da6",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-nc-05.md"
+    },
+    {
+      "digest": "sha256:47e485a3612b41edbea351cbe9ef13b05c1a376524af1aa50bda0a90d52ffb80",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-nc-06.md"
+    },
+    {
+      "digest": "sha256:63c44c8f59d82e6200a71c3955d561b7018bc01751f1af5a642ffd6de2ebf9f2",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-nc-07.md"
+    },
+    {
+      "digest": "sha256:1e44675ea5ead3ac711d114a1eeff6b83d44c6e33e48e0b98b269c5346b69dac",
+      "encoding": "utf-8",
+      "path": "confirmatory-v3-nc-08.md"
+    }
+  ],
+  "schema_version": 1
+}
