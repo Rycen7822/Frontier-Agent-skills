@@ -40,6 +40,7 @@ from _codex_eval_delivery import (
     treatment_delivery,
     validate_plugin_catalog,
 )
+from _codex_transport_diagnostic import capture_child
 from _codex_eval_events import (
     MAX_JSONL_BYTES,
     MAX_RECORDS,
@@ -70,6 +71,7 @@ ADAPTER_SOURCE_FILES = (
     "_codex_eval_delivery.py",
     "_codex_eval_events.py",
     "_codex_eval_isolation.py",
+    "_codex_transport_diagnostic.py",
     "codex_eval_host.py",
 )
 PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.1"
@@ -443,6 +445,8 @@ def _run_child(
     workspace: Path,
     codex_home: Path | None,
     timeout_seconds: float,
+    capture_id: str | None = None,
+    last_message: Path | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
     child_env = dict(os.environ)
@@ -486,13 +490,26 @@ def _run_child(
         os.killpg(process.pid, signal.SIGKILL)
         stdout, stderr = process.communicate()
         timed_out = True
-    return {
+    child = {
         "returncode": process.returncode,
         "stdout": stdout,
         "stderr": stderr,
         "timed_out": timed_out,
         "runtime_ms": round((time.monotonic() - started) * 1000, 3),
     }
+    capture_dir = getattr(args, "diagnostic_capture_dir", None)
+    if capture_dir is not None:
+        if capture_id is None:
+            raise AdapterError("diagnostic capture requires a stable capture id")
+        capture_child(
+            capture_dir,
+            capture_id,
+            child,
+            workspace=workspace,
+            source_root=args.source_root,
+            last_message=last_message,
+        )
+    return child
 
 
 def _child_failure_diagnostics(
@@ -1077,6 +1094,8 @@ def _run_model_grade(
             workspace=temporary,
             codex_home=codex_home,
             timeout_seconds=args.timeout,
+            capture_id=request["envelope"]["request_id"],
+            last_message=last_message,
         )
         _write_child_stderr(child["stderr"], workspace, args.source_root)
         if child["timed_out"] or child["returncode"] != 0:
@@ -1190,6 +1209,10 @@ def _run_execute_in_workspace(
                 workspace=workspace,
                 codex_home=codex_home,
                 timeout_seconds=args.timeout,
+                capture_id=(
+                    f"{request['envelope']['request_id']}.turn-{index + 1}"
+                ),
+                last_message=last_message,
             )
             _write_child_stderr(child["stderr"], workspace, args.source_root)
             if child["timed_out"] or child["returncode"] != 0:
@@ -1478,6 +1501,8 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             workspace=workspace,
             codex_home=codex_home,
             timeout_seconds=args.timeout,
+            capture_id=f"probe-{row['probe_id']}",
+            last_message=last_message,
         )
         _write_child_stderr(child["stderr"], workspace, args.source_root)
         normalized = (
@@ -1601,6 +1626,7 @@ def _parser() -> argparse.ArgumentParser:
         "--probe-sandbox", choices=("read-only", "workspace-write")
     )
     parser.add_argument("--timeout", type=float, required=True)
+    parser.add_argument("--diagnostic-capture-dir", type=Path)
     return parser
 
 
@@ -1615,6 +1641,12 @@ def main(argv: list[str] | None = None) -> int:
             args.code_mode_host = args.code_mode_host.resolve(strict=True)
         if args.plugin_root is not None:
             args.plugin_root = args.plugin_root.resolve(strict=True)
+        if args.diagnostic_capture_dir is not None:
+            args.diagnostic_capture_dir = args.diagnostic_capture_dir.resolve(
+                strict=False
+            )
+            if args.diagnostic_capture_dir.is_symlink():
+                raise AdapterError("diagnostic capture directory is symlinked")
         if (
             not math.isfinite(args.timeout)
             or args.timeout <= 0
