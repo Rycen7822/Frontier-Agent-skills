@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import Counter
 from typing import Any
 
 import build_codex_plugin as plugin_builder
@@ -796,6 +797,79 @@ def validate_target_host_staging(
     return host
 
 
+def _validate_calibration_contract(
+    skill_id: str,
+    record: dict[str, Any],
+    spec_path: Path,
+    labels_path: Path,
+) -> None:
+    """Verify calibration gold is derived from the bound model grader."""
+    spec = load_json(spec_path, label=f"{skill_id} calibration spec")
+    labels = load_jsonl(labels_path, label=f"{skill_id} calibration gold")
+    model_graders = [grader for grader in spec.get("graders", []) if grader.get("type") == "model"]
+    if len(model_graders) != 1:
+        raise OperationError(f"{skill_id} calibration spec must have one model grader")
+    grader = model_graders[0]
+    checks = grader.get("checks")
+    if not isinstance(checks, list) or not checks:
+        raise OperationError(f"{skill_id} model grader checks are missing")
+    expected = {
+        check.get("check_id"): {
+            "dimension": check.get("dimension"),
+            "pass_condition": check.get("pass_condition"),
+        }
+        for check in checks
+    }
+    if len(expected) != len(checks) or any(
+        not check_id or not value["dimension"] or not value["pass_condition"]
+        for check_id, value in expected.items()
+    ):
+        raise OperationError(f"{skill_id} model grader checks are not canonical")
+    if len(labels) != record.get("calibration_request_ceiling"):
+        raise OperationError(f"{skill_id} calibration cardinality differs from sentinel")
+    expected_host = (spec.get("subject", {}).get("claimed_hosts") or [None])[0]
+    expected_model = grader.get("model")
+    if not expected_host or not expected_model:
+        raise OperationError(f"{skill_id} calibration host/model binding is incomplete")
+    class_counts: dict[str, Counter[str]] = {check_id: Counter() for check_id in expected}
+    for row in labels:
+        if not isinstance(row, dict):
+            raise OperationError(f"{skill_id} calibration gold row is not an object")
+        check_id = row.get("check_id")
+        contract = expected.get(check_id)
+        if contract is None:
+            raise OperationError(f"{skill_id} calibration gold has an unknown check")
+        if (
+            row.get("dimension") != contract["dimension"]
+            or row.get("host") != expected_host
+            or row.get("model") != expected_model
+        ):
+            raise OperationError(f"{skill_id} calibration gold binding differs from spec")
+        payload_check = row.get("payload", {}).get("check")
+        if not isinstance(payload_check, dict) or (
+            payload_check.get("check_id") != check_id
+            or payload_check.get("pass_condition") != contract["pass_condition"]
+        ):
+            raise OperationError(f"{skill_id} calibration payload differs from model check")
+        class_name = row.get("class")
+        if class_name not in {"known_good", "known_bad", "boundary", "abstain"}:
+            raise OperationError(f"{skill_id} calibration gold has an unknown class")
+        class_counts[check_id][class_name] += 1
+    expected_counts = Counter({
+        class_name: 2
+        for class_name in ("known_good", "known_bad", "boundary", "abstain")
+    })
+    if any(counts != expected_counts for counts in class_counts.values()):
+        raise OperationError(f"{skill_id} calibration gold lacks four-class coverage")
+    manifest = spec.get("host", {}).get("manifest", {}).get("path")
+    prompt = grader.get("prompt", {}).get("path")
+    output_schema = grader.get("output_schema", {}).get("path")
+    for relative, label in ((manifest, "Host template"), (prompt, "grader prompt"), (output_schema, "grader output schema")):
+        path = spec_path.parent / relative if isinstance(relative, str) else None
+        if path is None or path.is_symlink() or not path.is_file():
+            raise OperationError(f"{skill_id} {label} binding is unavailable")
+
+
 def preflight_operations(
     campaign: dict[str, Any],
     *,
@@ -873,9 +947,14 @@ def preflight_operations(
     for skill_id in SKILL_IDS:
         record = sentinel["skills"][skill_id]
         spec = resolve_binding(record["spec_template"], repository_root, campaign_root)
+        calibration = resolve_binding(
+            record["calibration_gold"], repository_root, campaign_root
+        )
         scenarios = resolve_binding(
             record["public_scenarios"], repository_root, campaign_root
         )
+        _validate_calibration_contract(skill_id, record, spec, calibration)
+        operations.append(_operation_fact(f"calibration-contract-{skill_id}", 0))
         validate_formal_timeout_inputs(
             validated_host,
             load_json(spec, label=f"{skill_id} sentinel spec"),

@@ -33,6 +33,26 @@ STRATA = {
 }
 CASE_ID = re.compile(r"D23-[A-Z]{2}-[0-9]{2}")
 ARM_IDS = {"baseline": "arm-17", "candidate": "arm-42"}
+V3_MODEL_CHECKS = (
+    {
+        "check_id": "quality-check",
+        "dimension": "quality",
+        "required": True,
+        "pass_condition": (
+            "The deterministic factual classification passes and the explanation "
+            "completely applies the case-specific semantic rubric."
+        ),
+    },
+    {
+        "check_id": "process-check",
+        "dimension": "process",
+        "required": True,
+        "pass_condition": (
+            "The answer preserves the case-specific protected boundary and names no "
+            "unsupported authority or effect."
+        ),
+    },
+)
 
 
 def _normalize(value: Any) -> Any:
@@ -277,6 +297,65 @@ def _rename_arms(spec: dict[str, Any], scenarios: list[dict[str, Any]]) -> None:
         estimand["comparator_treatment_id"] = ARM_IDS[estimand["comparator_treatment_id"]]
 
 
+def _set_v3_model_checks(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    model = next(grader for grader in spec["graders"] if grader["type"] == "model")
+    model["checks"] = copy.deepcopy(V3_MODEL_CHECKS)
+    return model["checks"]
+
+
+def _calibration_gold_from_checks(
+    skill_id: str,
+    claims: list[str],
+    checks: list[dict[str, Any]],
+) -> bytes:
+    rows = []
+    classes = (
+        ("known_good", "pass", 0),
+        ("known_bad", "fail", 2),
+        ("boundary", "fail", 1),
+        ("abstain", "abstain", 0),
+    )
+    for check in checks:
+        for repetition in (1, 2):
+            for ordinal, (class_name, label, severity) in enumerate(classes, 1):
+                position = (repetition - 1) * len(classes) + ordinal
+                payload = v1.legacy.grader_semantics.semantic_payload(
+                    v1.legacy._calibration_view(
+                        skill_id,
+                        claims,
+                        check["check_id"],
+                        class_name,
+                        repetition,
+                    ),
+                    check["check_id"],
+                    check["pass_condition"],
+                )
+                rows.append(
+                    {
+                        "schema_version": 3,
+                        "example_id": (
+                            f"{skill_id}-{check['check_id']}-cal-{position:02d}"
+                        ),
+                        "class": class_name,
+                        "dimension": check["dimension"],
+                        "check_id": check["check_id"],
+                        "payload": payload,
+                        "payload_digest": v1.legacy.grader_semantics.semantic_payload_hash(
+                            payload
+                        ),
+                        "source_support": "supported",
+                        "gold_label": label,
+                        "gold_severity": severity,
+                        "task": "frontier-engineering",
+                        "language": "en",
+                        "risk": "standard",
+                        "host": "replace-host",
+                        "model": "replace-before-scored-run",
+                    }
+                )
+    return v1.legacy._jsonl_bytes(rows)
+
+
 def materialize(repository_root: Path) -> list[Path]:
     source_bytes = (REPOSITORY_ROOT / SOURCE_PATH).read_bytes()
     source = json.loads(source_bytes)
@@ -308,7 +387,6 @@ def materialize(repository_root: Path) -> list[Path]:
     ]
     scenario_bytes = v1.legacy._jsonl_bytes(scenarios)
     prompt = v1.legacy._grader_prompt("skill-evaluator", definition["claims"], definition["grader_rules"])
-    calibration = v1.legacy._calibration_gold("skill-evaluator", definition["claims"])
     verifier = _verifier(definition)
     output_schema = (REPOSITORY_ROOT / "skill-evaluator/templates/grader-output.schema.json").read_bytes()
     initial: dict[Path, bytes] = {
@@ -320,7 +398,6 @@ def materialize(repository_root: Path) -> list[Path]:
         target / "grader-output.schema.json": output_schema,
         target / "host-manifest.template.json": v1.legacy._host_manifest(),
         target / "scenarios.public.jsonl": scenario_bytes,
-        target / "calibration-gold.jsonl": calibration,
     }
     for skill_id in ("long-document-segmented-writing", "software-quality-workflows", "writing-plans"):
         source_root = REPOSITORY_ROOT / V1_ROOT / "sentinels" / skill_id
@@ -339,8 +416,6 @@ def materialize(repository_root: Path) -> list[Path]:
     index_path = output / "sentinel-index-v3.json"
     source_copy_path = output / "skill-evaluator-authoring-source-v3.json"
     initial[source_copy_path] = source_bytes
-    for path, payload in initial.items():
-        v1._write(path, payload)
     spec = v1.legacy._spec(base_spec, skill_id="skill-evaluator", config=definition, scenarios=scenarios)
     _rename_arms(spec, scenarios)
     scenario_bytes = v1.legacy._jsonl_bytes(scenarios)
@@ -353,8 +428,14 @@ def materialize(repository_root: Path) -> list[Path]:
     deterministic["verifier"]["input_allowlist"] = ["result.json", "workspace/final-answer.md"]
     model = next(grader for grader in spec["graders"] if grader["type"] == "model")
     model["prompt_id"] = "skill-evaluator-confirmatory-v3-grader-prompt"
-    model["checks"][0]["pass_condition"] = "The deterministic factual classification passes and the explanation completely applies the case-specific semantic rubric."
-    model["checks"][1]["pass_condition"] = "The answer preserves the case-specific protected boundary and names no unsupported authority or effect."
+    model_checks = _set_v3_model_checks(spec)
+    calibration = _calibration_gold_from_checks(
+        "skill-evaluator", definition["claims"], model_checks
+    )
+    initial[target / "scenarios.public.jsonl"] = scenario_bytes
+    initial[target / "calibration-gold.jsonl"] = calibration
+    for path, payload in initial.items():
+        v1._write(path, payload)
     proof = v1.legacy._quality_proof(spec, scenarios, prompt_digest=v1.legacy._sha256(prompt))
     v1._write(spec_path, v1.legacy._json_bytes(spec))
     v1._write(proof_path, v1.legacy._json_bytes(proof))

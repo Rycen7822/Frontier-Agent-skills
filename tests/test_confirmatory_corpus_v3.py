@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,7 @@ from _model_evolution_confirmatory_v3_builder import (  # noqa: E402
     _validate_source,
 )
 from _model_evolution_contract import validate_document  # noqa: E402
+from _model_evolution_ops import OperationError, _validate_calibration_contract  # noqa: E402
 from model_evolution import CliError, _require_initializable_sentinel  # noqa: E402
 from _model_evolution_state import (  # noqa: E402
     StateError,
@@ -150,6 +152,65 @@ class ConfirmatoryCorpusV3(unittest.TestCase):
                 "calibration", "calibration_attempts",
             )},
         )
+
+    def test_calibration_gold_matches_final_spec_checks_and_coverage(self) -> None:
+        index = _json(INDEX_PATH)
+        for skill_id, skill_record in index["skills"].items():
+            _validate_calibration_contract(
+                skill_id,
+                skill_record,
+                ROOT / skill_record["spec_template"]["path"],
+                ROOT / skill_record["calibration_gold"]["path"],
+            )
+        record = index["skills"]["skill-evaluator"]
+        spec_path = ROOT / record["spec_template"]["path"]
+        labels_path = ROOT / record["calibration_gold"]["path"]
+        _validate_calibration_contract(
+            "skill-evaluator", record, spec_path, labels_path
+        )
+        spec = _json(spec_path)
+        checks = {
+            check["check_id"]: check
+            for grader in spec["graders"]
+            if grader["type"] == "model"
+            for check in grader["checks"]
+        }
+        labels = [
+            json.loads(line)
+            for line in labels_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(16, len(labels))
+        counts = {check_id: {name: 0 for name in (
+            "known_good", "known_bad", "boundary", "abstain"
+        )} for check_id in checks}
+        for row in labels:
+            check = checks[row["check_id"]]
+            self.assertEqual(check["dimension"], row["dimension"])
+            self.assertEqual(check["pass_condition"], row["payload"]["check"]["pass_condition"])
+            counts[row["check_id"]][row["class"]] += 1
+        self.assertEqual(
+            {name: 2 for name in ("known_good", "known_bad", "boundary", "abstain")},
+            counts["quality-check"],
+        )
+        self.assertEqual(counts["quality-check"], counts["process-check"])
+
+        with tempfile.TemporaryDirectory(prefix="confirmatory-v3-calibration-") as temporary:
+            copied = Path(temporary) / "sentinel"
+            shutil.copytree(spec_path.parent, copied)
+            mutated = _json(copied / "eval-spec.template.json")
+            mutated["graders"][1]["checks"][0]["pass_condition"] += " changed"
+            (copied / "eval-spec.template.json").write_text(
+                json.dumps(mutated, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(OperationError, "payload differs"):
+                _validate_calibration_contract(
+                    "skill-evaluator",
+                    record,
+                    copied / "eval-spec.template.json",
+                    copied / "calibration-gold.jsonl",
+                )
 
     def test_builder_replay_is_deterministic(self) -> None:
         result = subprocess.run(
