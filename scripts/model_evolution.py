@@ -364,6 +364,13 @@ def _validate_evidence_join(
         raise CliError(f"{role} inputs differ from the selected summaries")
 
 
+def _require_initializable_sentinel(sentinel: dict[str, Any]) -> None:
+    if sentinel.get("sentinel_id") == "frontier-four-skill-confirmatory-v1":
+        raise CliError(
+            "historical diagnostic confirmatory corpus cannot initialize a campaign"
+        )
+
+
 def _init(args: argparse.Namespace) -> None:
     repository_root, campaign_root = _roots(args)
     campaign_root.mkdir(parents=True, exist_ok=True)
@@ -451,6 +458,7 @@ def _init(args: argparse.Namespace) -> None:
         raise CliError("target Host capabilities differ from the interaction probe set")
     sentinel = load_json(fixed["sentinel"], label="sentinel index")
     validate_document(sentinel, "sentinel_index")
+    _require_initializable_sentinel(sentinel)
     apparatus_policy = None
     if "apparatus_retry_policy" in fixed:
         apparatus_policy = validate_apparatus_retry_policy(

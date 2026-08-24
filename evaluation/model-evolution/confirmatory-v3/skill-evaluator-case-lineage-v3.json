@@ -1,0 +1,2847 @@
+{
+  "authoring_source": {
+    "path": "evaluation/model-evolution/confirmatory-v3/skill-evaluator-authoring-source-v3.json",
+    "root": "campaign",
+    "schema_version": "json/1"
+  },
+  "case_count": 48,
+  "cases": [
+    {
+      "author_case_id": "D23-CS-01",
+      "case_id": "skill-evaluator-confirmatory-v3-cs-01",
+      "counterfactual": {
+        "fact_change": "Change requirement.owner to deterministic.",
+        "resulting_disposition": "This cross-file mismatch is resolved."
+      },
+      "deterministic_oracle": {
+        "expected": "fail",
+        "inputs": [
+          "shape validation",
+          "requirement.owner",
+          "grader.type"
+        ],
+        "rule": "pass iff shape is valid and every requirement owner matches its selected grader type"
+      },
+      "fact_signature": {
+        "controlling_owner": "JSON Schema plus validate_eval_suite.py",
+        "decisive_observed_facts": [
+          "field shapes satisfy JSON Schema",
+          "one requirement owner does not match its selected grader type"
+        ],
+        "expected_disposition": "cross-file semantic validation fails under validate_eval_suite.py",
+        "supplied_artifacts": [
+          "spec-v7.json",
+          "scenarios-v1.jsonl",
+          "host-manifest-v2.json"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cs-01.md",
+      "independence": {
+        "basis": "schema-shape versus cross-file semantics",
+        "distinguished_from": {
+          "D23-CS-02": "validates inputs rather than projecting a plan",
+          "D23-CS-03": "is not a status read",
+          "D23-CS-04": "precedes host execution",
+          "D23-CS-05": "checks owner type rather than formal payload semantics",
+          "D23-CS-06": "does not analyze a verifier receipt",
+          "D23-CS-07": "does not compare cycles",
+          "D23-CS-08": "does not validate manual authority"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "JSON Schema owns shape only.",
+        "The validator rejects the owner/grader mismatch."
+      ],
+      "normative_source": "skill-evaluator/references/evaluation-contract.md#Spec v7 owner",
+      "protected_boundary": "Schema-shape success cannot certify cross-field or cross-file semantics.",
+      "semantic_rubric": {
+        "criteria": [
+          "names both owners and their distinct jobs",
+          "does not treat schema validity as semantic validity"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "cli-schema-owner"
+    },
+    {
+      "author_case_id": "D23-CS-02",
+      "case_id": "skill-evaluator-confirmatory-v3-cs-02",
+      "counterfactual": {
+        "fact_change": "Observe one host process start during compilation.",
+        "resulting_disposition": "compiler contract violation"
+      },
+      "deterministic_oracle": {
+        "expected": "pass",
+        "inputs": [
+          "plan emitted",
+          "process starts",
+          "prior runtime reads"
+        ],
+        "rule": "pass iff one deterministic plan is emitted, process starts are zero, and prior runtime reads are zero"
+      },
+      "fact_signature": {
+        "controlling_owner": "compile_eval_plan.py",
+        "decisive_observed_facts": [
+          "caller asks compilation",
+          "process monitor observes zero host/grader/verifier starts"
+        ],
+        "expected_disposition": "emit deterministic plan projection only",
+        "supplied_artifacts": [
+          "validated ready inputs"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cs-02.md",
+      "independence": {
+        "basis": "pure compiler projection",
+        "distinguished_from": {
+          "D23-CS-01": "inputs are already semantically validated",
+          "D23-CS-03": "writes a plan rather than reporting status",
+          "D23-CS-04": "does not send execute_case",
+          "D23-CS-05": "does not normalize grader semantics",
+          "D23-CS-06": "does not consume raw verifier output",
+          "D23-CS-07": "does not import capsules",
+          "D23-CS-08": "does not inspect authority receipts"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "compile_eval_plan.py owns plan projection.",
+        "It starts no host, grader, verifier, or subject."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Compiler and dispositions",
+      "protected_boundary": "Compilation is not execution and reads no prior runtime result.",
+      "semantic_rubric": {
+        "criteria": [
+          "identifies the pure-projection owner",
+          "does not claim task execution occurred"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "cli-schema-owner"
+    },
+    {
+      "author_case_id": "D23-CS-03",
+      "case_id": "skill-evaluator-confirmatory-v3-cs-03",
+      "counterfactual": {
+        "fact_change": "The status call creates an attempt directory.",
+        "resulting_disposition": "status contract violation"
+      },
+      "deterministic_oracle": {
+        "expected": "pass",
+        "inputs": [
+          "operation",
+          "output schema",
+          "filesystem delta",
+          "lock delta"
+        ],
+        "rule": "pass iff status returns runner-status/1 and both deltas are zero"
+      },
+      "fact_signature": {
+        "controlling_owner": "run_eval_plan.py --status",
+        "decisive_observed_facts": [
+          "operation is status",
+          "filesystem before and after is identical",
+          "bounded runner-status/1 JSON is returned"
+        ],
+        "expected_disposition": "valid read-only status inspection",
+        "supplied_artifacts": [
+          "frozen plan",
+          "existing index"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cs-03.md",
+      "independence": {
+        "basis": "read-only runner status",
+        "distinguished_from": {
+          "D23-CS-01": "does not validate authoring semantics",
+          "D23-CS-02": "does not compile",
+          "D23-CS-04": "does not execute an entry",
+          "D23-CS-05": "does not own model-grade payload meaning",
+          "D23-CS-06": "does not derive analysis",
+          "D23-CS-07": "does not compare cycles",
+          "D23-CS-08": "does not adjudicate manual review"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The status surface validates current evidence and returns bounded JSON.",
+        "It creates neither files nor locks."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Retry and resume",
+      "protected_boundary": "Inspection authority does not authorize run, retry, sealing, or mutation.",
+      "semantic_rubric": {
+        "criteria": [
+          "names the public status owner",
+          "preserves its read-only boundary"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "cli-schema-owner"
+    },
+    {
+      "author_case_id": "D23-CS-04",
+      "case_id": "skill-evaluator-confirmatory-v3-cs-04",
+      "counterfactual": {
+        "fact_change": "Send two execute_case requests for the entry.",
+        "resulting_disposition": "host-protocol apparatus failure"
+      },
+      "deterministic_oracle": {
+        "expected": "pass",
+        "inputs": [
+          "entry disposition",
+          "reset",
+          "request count",
+          "shell",
+          "terminal count"
+        ],
+        "rule": "pass iff execute entry has proven reset, exactly one request with shell=false, and exactly one terminal result"
+      },
+      "fact_signature": {
+        "controlling_owner": "run_eval_plan.py",
+        "decisive_observed_facts": [
+          "fixture reset succeeds",
+          "one canonical execute_case request is sent with shell=false",
+          "one terminal result is captured"
+        ],
+        "expected_disposition": "runner owns bounded execution and receipt commit",
+        "supplied_artifacts": [
+          "execute plan entry",
+          "host manifest argv"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cs-04.md",
+      "independence": {
+        "basis": "canonical execute_case protocol",
+        "distinguished_from": {
+          "D23-CS-01": "occurs after validation",
+          "D23-CS-02": "starts execution rather than pure projection",
+          "D23-CS-03": "mutating run rather than read-only status",
+          "D23-CS-05": "does not define rubric semantics",
+          "D23-CS-06": "produces rather than analyzes receipt evidence",
+          "D23-CS-07": "does not compare capsules",
+          "D23-CS-08": "does not decide manual authority"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "run_eval_plan.py owns the host protocol and evidence capture.",
+        "It does not choose the scenario, grader, or usefulness result."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Runner and host protocol",
+      "protected_boundary": "The runner executes a frozen choice; it does not become the decision owner.",
+      "semantic_rubric": {
+        "criteria": [
+          "names runner responsibilities",
+          "excludes analysis and selection authority"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "cli-schema-owner"
+    },
+    {
+      "author_case_id": "D23-CS-05",
+      "case_id": "skill-evaluator-confirmatory-v3-cs-05",
+      "counterfactual": {
+        "fact_change": "Replace the absolute locator with an allowlisted relative evidence locator.",
+        "resulting_disposition": "This semantic-locator rejection is removed."
+      },
+      "deterministic_oracle": {
+        "expected": "fail",
+        "inputs": [
+          "transport validity",
+          "view field paths"
+        ],
+        "rule": "fail if any absolute workspace locator or caller-forbidden view field exists even when transport shape is valid"
+      },
+      "fact_signature": {
+        "controlling_owner": "grader_semantics.py",
+        "decisive_observed_facts": [
+          "transport JSON matches schema",
+          "blinded view contains an absolute workspace locator"
+        ],
+        "expected_disposition": "reject at semantic payload boundary",
+        "supplied_artifacts": [
+          "formal model-grade request"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cs-05.md",
+      "independence": {
+        "basis": "formal grader payload semantics",
+        "distinguished_from": {
+          "D23-CS-01": "tests payload fields rather than spec joins",
+          "D23-CS-02": "does not compile",
+          "D23-CS-03": "does not inspect status",
+          "D23-CS-04": "model-grade boundary rather than execute_case",
+          "D23-CS-06": "precedes analyzer verification",
+          "D23-CS-07": "no cycle comparison",
+          "D23-CS-08": "no manual receipt"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Transport schema success is insufficient.",
+        "grader_semantics.py rejects the absolute workspace locator."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Grader semantic owner",
+      "protected_boundary": "Formal payload meaning and transport shape have separate owners.",
+      "semantic_rubric": {
+        "criteria": [
+          "names the semantic rejection owner",
+          "does not blame JSON transport shape"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "cli-schema-owner"
+    },
+    {
+      "author_case_id": "D23-CS-06",
+      "case_id": "skill-evaluator-confirmatory-v3-cs-06",
+      "counterfactual": {
+        "fact_change": "Observe analyze_runs.py execute the verifier once.",
+        "resulting_disposition": "analyzer ownership violation"
+      },
+      "deterministic_oracle": {
+        "expected": "pass",
+        "inputs": [
+          "analyzer verifier imports",
+          "analyzer verifier executions",
+          "frozen output parse"
+        ],
+        "rule": "pass iff import and execution counts are zero and frozen output is verified and parsed"
+      },
+      "fact_signature": {
+        "controlling_owner": "analyze_runs.py deterministic invocation verifier",
+        "decisive_observed_facts": [
+          "request asks analyzer to rerun verifier",
+          "frozen stdout and exit already exist"
+        ],
+        "expected_disposition": "verify invocation and parse frozen stdout; do not import or execute verifier",
+        "supplied_artifacts": [
+          "frozen invocation",
+          "raw stdout artifact",
+          "verifier executable"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cs-06.md",
+      "independence": {
+        "basis": "analyzer non-execution boundary",
+        "distinguished_from": {
+          "D23-CS-01": "not suite validation",
+          "D23-CS-02": "not compilation",
+          "D23-CS-03": "not runner status",
+          "D23-CS-04": "not runner execution",
+          "D23-CS-05": "deterministic receipt rather than model payload",
+          "D23-CS-07": "single cycle rather than comparison",
+          "D23-CS-08": "mechanical grader rather than manual authority"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The analyzer verifies frozen invocation and output evidence.",
+        "It refuses the requested verifier import or execution."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Deterministic grader receipt",
+      "protected_boundary": "Analysis consumes immutable evidence and does not regenerate it.",
+      "semantic_rubric": {
+        "criteria": [
+          "explains evidence consumption",
+          "rejects evidence regeneration"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "cli-schema-owner"
+    },
+    {
+      "author_case_id": "D23-CS-07",
+      "case_id": "skill-evaluator-confirmatory-v3-cs-07",
+      "counterfactual": {
+        "fact_change": "Change comparison_kind to revision with a complete revision plan.",
+        "resulting_disposition": "Kind admissibility passes."
+      },
+      "deterministic_oracle": {
+        "expected": "fail",
+        "inputs": [
+          "comparison_kind"
+        ],
+        "rule": "pass admissibility iff kind is exactly revision or model_transition"
+      },
+      "fact_signature": {
+        "controlling_owner": "compare_cycles.py",
+        "decisive_observed_facts": [
+          "comparison kind is performance_tournament",
+          "capsule bindings are otherwise valid"
+        ],
+        "expected_disposition": "reject unsupported comparison kind",
+        "supplied_artifacts": [
+          "comparison plan v3",
+          "two immutable cycle capsules"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cs-07.md",
+      "independence": {
+        "basis": "offline comparator kind owner",
+        "distinguished_from": {
+          "D23-CS-01": "not eval-spec validation",
+          "D23-CS-02": "not runtime-plan compilation",
+          "D23-CS-03": "not status inspection",
+          "D23-CS-04": "starts no tested executor",
+          "D23-CS-05": "not grader payload semantics",
+          "D23-CS-06": "consumes capsules rather than grader stdout",
+          "D23-CS-08": "does not validate reviewer role"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The comparator accepts only revision or model_transition.",
+        "It makes no provider, network, generation, installation, or publication call."
+      ],
+      "normative_source": "skill-evaluator/references/longitudinal-evaluation.md#Offline comparison owner",
+      "protected_boundary": "Offline comparison classification is narrower than general benchmarking orchestration.",
+      "semantic_rubric": {
+        "criteria": [
+          "states the finite accepted kind set",
+          "does not expand comparator effects"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "cli-schema-owner"
+    },
+    {
+      "author_case_id": "D23-CS-08",
+      "case_id": "skill-evaluator-confirmatory-v3-cs-08",
+      "counterfactual": {
+        "fact_change": "Make the signature string empty.",
+        "resulting_disposition": "manual receipt validation fails closed."
+      },
+      "deterministic_oracle": {
+        "expected": "pass",
+        "inputs": [
+          "containment",
+          "byte binding",
+          "role",
+          "evidence types",
+          "decision",
+          "signature nonempty"
+        ],
+        "rule": "pass iff all structural checks close and decision is allowed; cryptographic proof is outside this validator"
+      },
+      "fact_signature": {
+        "controlling_owner": "analyze_runs.py manual receipt validator",
+        "decisive_observed_facts": [
+          "role and evidence-type closure match",
+          "decision is approve",
+          "signature attestation is non-empty",
+          "no cryptographic proof is supplied"
+        ],
+        "expected_disposition": "manual receipt is structurally valid; signature remains an attestation",
+        "supplied_artifacts": [
+          "spec manual-review contract",
+          "contained JSON receipt"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cs-08.md",
+      "independence": {
+        "basis": "manual receipt structural authority",
+        "distinguished_from": {
+          "D23-CS-01": "validates a post-analysis authority input",
+          "D23-CS-02": "not a compiler concern",
+          "D23-CS-03": "not status",
+          "D23-CS-04": "not host protocol",
+          "D23-CS-05": "not model rubric payload",
+          "D23-CS-06": "not deterministic grader evidence",
+          "D23-CS-07": "not a comparison plan"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The analyzer accepts the structurally matching receipt.",
+        "It explicitly does not claim cryptographic signature verification."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Manual-review receipt",
+      "protected_boundary": "Structural authority validation must not become a cryptographic identity claim.",
+      "semantic_rubric": {
+        "criteria": [
+          "states structural validity",
+          "preserves the attestation-only signature boundary"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "cli-schema-owner"
+    },
+    {
+      "author_case_id": "D23-CC-01",
+      "case_id": "skill-evaluator-confirmatory-v3-cc-01",
+      "counterfactual": {
+        "fact_change": "Make the target failure persist in cycle B.",
+        "resulting_disposition": "open"
+      },
+      "deterministic_oracle": {
+        "expected": "closed",
+        "inputs": [
+          "mode",
+          "change count",
+          "target closure",
+          "protected gates"
+        ],
+        "rule": "closed iff the single bound failure closes and every required protected gate passes"
+      },
+      "fact_signature": {
+        "controlling_owner": "compare_cycles.py revision/failure_closure",
+        "decisive_observed_facts": [
+          "exactly one package change targets one failure class",
+          "target failure closes",
+          "all protected metrics pass"
+        ],
+        "expected_disposition": "revision state closed",
+        "supplied_artifacts": [
+          "frozen failure-closure plan",
+          "cycle A capsule",
+          "cycle B capsule"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cc-01.md",
+      "independence": {
+        "basis": "successful single-failure closure",
+        "distinguished_from": {
+          "D23-CC-02": "target closes rather than persists",
+          "D23-CC-03": "uses failure_closure rather than bundle noninferiority",
+          "D23-CC-04": "compares package revisions rather than models",
+          "D23-CC-05": "has no apparatus bridge",
+          "D23-CC-06": "does not combine drift axes",
+          "D23-CC-07": "contracts remain comparable",
+          "D23-CC-08": "makes no library-scale claim"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The frozen failure-closure hypothesis is closed.",
+        "Closure is limited to the tested scope."
+      ],
+      "normative_source": "skill-evaluator/references/longitudinal-evaluation.md#Offline comparison owner",
+      "protected_boundary": "Closed is diagnostic revision evidence, not release promotion.",
+      "semantic_rubric": {
+        "criteria": [
+          "states the bound failure mechanism",
+          "keeps closure within the frozen scope"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "comparison-class"
+    },
+    {
+      "author_case_id": "D23-CC-02",
+      "case_id": "skill-evaluator-confirmatory-v3-cc-02",
+      "counterfactual": {
+        "fact_change": "Remove the bound failure in cycle B while protected metrics still pass.",
+        "resulting_disposition": "closed"
+      },
+      "deterministic_oracle": {
+        "expected": "open",
+        "inputs": [
+          "target failure in later cycle",
+          "comparability"
+        ],
+        "rule": "open iff comparison is evaluable and the bound failure is not closed"
+      },
+      "fact_signature": {
+        "controlling_owner": "compare_cycles.py revision/failure_closure",
+        "decisive_observed_facts": [
+          "single bound failure remains present after the one-package change",
+          "protected metrics pass"
+        ],
+        "expected_disposition": "revision state open",
+        "supplied_artifacts": [
+          "failure-closure plan",
+          "two comparable capsules"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cc-02.md",
+      "independence": {
+        "basis": "persistent bound failure",
+        "distinguished_from": {
+          "D23-CC-01": "target remains open",
+          "D23-CC-03": "not bundle metric comparison",
+          "D23-CC-04": "not direct model transition",
+          "D23-CC-05": "not bridged",
+          "D23-CC-06": "not combined drift",
+          "D23-CC-07": "evaluable rather than contract-drifted",
+          "D23-CC-08": "no orchestration evidence question"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The revision remains open because the bound failure persists.",
+        "Unrelated metric improvement cannot close it."
+      ],
+      "normative_source": "skill-evaluator/references/longitudinal-evaluation.md#Offline comparison owner",
+      "protected_boundary": "The frozen target is non-compensating.",
+      "semantic_rubric": {
+        "criteria": [
+          "centers the bound failure",
+          "rejects compensation by unrelated improvements"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "comparison-class"
+    },
+    {
+      "author_case_id": "D23-CC-03",
+      "case_id": "skill-evaluator-confirmatory-v3-cc-03",
+      "counterfactual": {
+        "fact_change": "Make the protected paired metric unavailable.",
+        "resulting_disposition": "not_evaluable"
+      },
+      "deterministic_oracle": {
+        "expected": "comparison eligible for closed classification",
+        "inputs": [
+          "mode",
+          "identity/policy bindings",
+          "protected bound",
+          "required axes"
+        ],
+        "rule": "ceiling is nonblocking only for otherwise passing bundle_noninferiority with a bounded protected metric"
+      },
+      "fact_signature": {
+        "controlling_owner": "compare_cycles.py revision/bundle_noninferiority",
+        "decisive_observed_facts": [
+          "one otherwise passing reference cycle has a headroom ceiling",
+          "protected metric is numerically bounded and passes"
+        ],
+        "expected_disposition": "ceiling does not by itself block bundle noninferiority closure",
+        "supplied_artifacts": [
+          "two complete Bundle identities",
+          "signed-source policy digest",
+          "protected paired metric"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cc-03.md",
+      "independence": {
+        "basis": "bundle ceiling exception",
+        "distinguished_from": {
+          "D23-CC-01": "not failure closure",
+          "D23-CC-02": "not persistent failure",
+          "D23-CC-04": "not a model identity change",
+          "D23-CC-05": "no bridge cycle",
+          "D23-CC-06": "no combined drift",
+          "D23-CC-07": "metric availability rather than fixture drift controls",
+          "D23-CC-08": "still bounded to two Bundle identities"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The bounded protected comparison remains admissible despite the ceiling.",
+        "The ceiling still blocks an incremental-value claim."
+      ],
+      "normative_source": "skill-evaluator/references/longitudinal-evaluation.md#Offline comparison owner",
+      "protected_boundary": "Bundle noninferiority and incremental usefulness are different claims.",
+      "semantic_rubric": {
+        "criteria": [
+          "explains why the numeric comparison survives",
+          "retains the ceiling on incremental-value language"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "comparison-class"
+    },
+    {
+      "author_case_id": "D23-CC-04",
+      "case_id": "skill-evaluator-confirmatory-v3-cc-04",
+      "counterfactual": {
+        "fact_change": "Also change the judge implementation between A and C.",
+        "resulting_disposition": "direct mode is inadmissible; bridge or combined semantics are required"
+      },
+      "deterministic_oracle": {
+        "expected": "admissible",
+        "inputs": [
+          "declared mode",
+          "changed axes"
+        ],
+        "rule": "direct admissible iff the sole changed axis is registered model/tokenizer identity"
+      },
+      "fact_signature": {
+        "controlling_owner": "compare_cycles.py model_transition/direct",
+        "decisive_observed_facts": [
+          "A and C differ only in registered model/tokenizer identity",
+          "all apparatus identities match"
+        ],
+        "expected_disposition": "direct model-transition classification is admissible",
+        "supplied_artifacts": [
+          "cycle A capsule",
+          "cycle C capsule",
+          "direct transition plan"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cc-04.md",
+      "independence": {
+        "basis": "single-axis direct transition",
+        "distinguished_from": {
+          "D23-CC-01": "model transition rather than package fix",
+          "D23-CC-02": "not an open failure hypothesis",
+          "D23-CC-03": "not Bundle noninferiority",
+          "D23-CC-05": "requires no intermediate bridge",
+          "D23-CC-06": "isolates rather than combines axes",
+          "D23-CC-07": "identities are comparable",
+          "D23-CC-08": "not library orchestration"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Direct mode can isolate the registered model/tokenizer change.",
+        "Classification remains bounded by the frozen transition observations and gates."
+      ],
+      "normative_source": "skill-evaluator/references/longitudinal-evaluation.md#Offline comparison owner",
+      "protected_boundary": "No unregistered apparatus difference may be attributed to the model.",
+      "semantic_rubric": {
+        "criteria": [
+          "states the isolated axis",
+          "does not infer beyond frozen observations"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "comparison-class"
+    },
+    {
+      "author_case_id": "D23-CC-05",
+      "case_id": "skill-evaluator-confirmatory-v3-cc-05",
+      "counterfactual": {
+        "fact_change": "Also change the model on the A-to-B leg.",
+        "resulting_disposition": "bridge isolation fails and the plan is not evaluable as declared"
+      },
+      "deterministic_oracle": {
+        "expected": "admissible",
+        "inputs": [
+          "per-leg changed axes"
+        ],
+        "rule": "bridge admissible iff A-B isolates registered apparatus/judge and B-C isolates model"
+      },
+      "fact_signature": {
+        "controlling_owner": "compare_cycles.py model_transition/bridge",
+        "decisive_observed_facts": [
+          "A to B changes only registered apparatus/judge",
+          "B to C changes only model identity"
+        ],
+        "expected_disposition": "bridge transition is admissible with separated apparatus and model legs",
+        "supplied_artifacts": [
+          "capsules A, B, C",
+          "bridge plan"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cc-05.md",
+      "independence": {
+        "basis": "two-leg bridge isolation",
+        "distinguished_from": {
+          "D23-CC-01": "not package failure closure",
+          "D23-CC-02": "not persistent failure",
+          "D23-CC-03": "not bundle metric",
+          "D23-CC-04": "uses an intermediate apparatus-isolation cycle",
+          "D23-CC-06": "separates rather than jointly labels drift",
+          "D23-CC-07": "per-leg contracts remain controlled",
+          "D23-CC-08": "no composition evidence"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The bridge separates apparatus drift from model drift.",
+        "Each leg retains its own attribution boundary."
+      ],
+      "normative_source": "skill-evaluator/references/longitudinal-evaluation.md#Offline comparison owner",
+      "protected_boundary": "The two legs must not be collapsed into a single-factor A-to-C claim.",
+      "semantic_rubric": {
+        "criteria": [
+          "describes both legs",
+          "keeps their attributions separate"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "comparison-class"
+    },
+    {
+      "author_case_id": "D23-CC-06",
+      "case_id": "skill-evaluator-confirmatory-v3-cc-06",
+      "counterfactual": {
+        "fact_change": "Provide a valid B cycle isolating apparatus on A-to-B and model on B-to-C.",
+        "resulting_disposition": "bridge classification becomes available"
+      },
+      "deterministic_oracle": {
+        "expected": "combined_model_harness_drift",
+        "inputs": [
+          "mode",
+          "changed axes",
+          "bridge availability"
+        ],
+        "rule": "when combined mode changes model and apparatus without a bridge, classification label is combined_model_harness_drift"
+      },
+      "fact_signature": {
+        "controlling_owner": "compare_cycles.py model_transition/combined",
+        "decisive_observed_facts": [
+          "model identity changed",
+          "harness identity also changed",
+          "no bridge cycle exists"
+        ],
+        "expected_disposition": "combined_model_harness_drift joint classification only",
+        "supplied_artifacts": [
+          "capsules A and C",
+          "combined plan"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cc-06.md",
+      "independence": {
+        "basis": "unseparated joint drift",
+        "distinguished_from": {
+          "D23-CC-01": "not revision closure",
+          "D23-CC-02": "not a failure target",
+          "D23-CC-03": "not bundle comparison",
+          "D23-CC-04": "more than one axis changed",
+          "D23-CC-05": "no bridge exists",
+          "D23-CC-07": "joint classification is allowed rather than wholly unevaluable",
+          "D23-CC-08": "does not claim orchestration"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Only joint model+harness drift may be reported.",
+        "No single-factor model attribution is available."
+      ],
+      "normative_source": "skill-evaluator/references/reporting-and-decisions.md#Offline comparison report v3",
+      "protected_boundary": "Combined drift never becomes single-factor attribution.",
+      "semantic_rubric": {
+        "criteria": [
+          "uses joint-drift language",
+          "expressly refuses single-factor attribution"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "comparison-class"
+    },
+    {
+      "author_case_id": "D23-CC-07",
+      "case_id": "skill-evaluator-confirmatory-v3-cc-07",
+      "counterfactual": {
+        "fact_change": "Rerun both sides under the new fixture bytes with all other controls frozen.",
+        "resulting_disposition": "fixture comparability is restored"
+      },
+      "deterministic_oracle": {
+        "expected": "not_evaluable",
+        "inputs": [
+          "fixture digests",
+          "rerun binding"
+        ],
+        "rule": "not_evaluable if a material control changed and affected sides were not rerun under one frozen contract"
+      },
+      "fact_signature": {
+        "controlling_owner": "comparison comparability validator",
+        "decisive_observed_facts": [
+          "fixture bytes changed between cycles",
+          "earlier side was not rerun under the new frozen contract"
+        ],
+        "expected_disposition": "not_evaluable",
+        "supplied_artifacts": [
+          "two cycle capsules",
+          "comparison plan"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cc-07.md",
+      "independence": {
+        "basis": "fixture-contract drift",
+        "distinguished_from": {
+          "D23-CC-01": "cannot assess closure",
+          "D23-CC-02": "cannot assess persistence",
+          "D23-CC-03": "not a ceiling issue",
+          "D23-CC-04": "not a controlled model-only change",
+          "D23-CC-05": "not a valid bridge",
+          "D23-CC-06": "undeclared control drift blocks even joint attribution",
+          "D23-CC-08": "failure is comparability rather than missing orchestration receipts"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Material fixture drift creates a new evidence contract.",
+        "The package effect cannot be isolated without rerunning affected sides."
+      ],
+      "normative_source": "skill-evaluator/references/longitudinal-evaluation.md#Comparable version matrix",
+      "protected_boundary": "Do not attribute fixture or environment changes to the Skill package.",
+      "semantic_rubric": {
+        "criteria": [
+          "names the changed control",
+          "refuses package attribution"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "comparison-class"
+    },
+    {
+      "author_case_id": "D23-CC-08",
+      "case_id": "skill-evaluator-confirmatory-v3-cc-08",
+      "counterfactual": {
+        "fact_change": "Supply verified selection, order, and composition receipts covering the claimed library operation.",
+        "resulting_disposition": "This specific claim-ceiling blocker is removed."
+      },
+      "deterministic_oracle": {
+        "expected": "fail",
+        "inputs": [
+          "requested claim class",
+          "selection/order/composition receipt presence"
+        ],
+        "rule": "library-scale claim passes only if all three verified receipt classes are present"
+      },
+      "fact_signature": {
+        "controlling_owner": "L4 claim-ceiling validator",
+        "decisive_observed_facts": [
+          "selection receipt absent",
+          "order receipt absent",
+          "composition receipt absent",
+          "report text claims library-scale multi-Skill orchestration"
+        ],
+        "expected_disposition": "claim exceeds L4 ceiling and must be rejected",
+        "supplied_artifacts": [
+          "closed model-transition report",
+          "cycle capsules"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-cc-08.md",
+      "independence": {
+        "basis": "missing orchestration receipts",
+        "distinguished_from": {
+          "D23-CC-01": "closure may already be valid",
+          "D23-CC-02": "not a persistent failure",
+          "D23-CC-03": "not a headroom ceiling",
+          "D23-CC-04": "not direct-axis admissibility",
+          "D23-CC-05": "not bridge isolation",
+          "D23-CC-06": "not joint drift attribution",
+          "D23-CC-07": "cycles may be fully comparable"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The closed local comparison remains usable within scope.",
+        "The library-scale orchestration claim is forbidden without all three receipt classes."
+      ],
+      "normative_source": "skill-evaluator/references/longitudinal-evaluation.md#L4 claim ceiling",
+      "protected_boundary": "Local transition closure cannot self-expand into library orchestration evidence.",
+      "semantic_rubric": {
+        "criteria": [
+          "preserves the bounded local result",
+          "rejects only the over-ceiling claim with all missing receipt classes named"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "comparison-class"
+    },
+    {
+      "author_case_id": "D23-AB-01",
+      "case_id": "skill-evaluator-confirmatory-v3-ab-01",
+      "counterfactual": {
+        "fact_change": "Add separately frozen network and persistent-mutation permissions scoped to this fixture.",
+        "resulting_disposition": "Those effects become authority-eligible subject to the frozen scope."
+      },
+      "deterministic_oracle": {
+        "expected": {
+          "evaluation": "allow",
+          "network": "deny",
+          "persistent_mutation": "deny"
+        },
+        "inputs": [
+          "requested effects",
+          "separately frozen permissions"
+        ],
+        "rule": "allow only requested effects with explicit matching permission"
+      },
+      "fact_signature": {
+        "controlling_owner": "frozen evaluation authority contract",
+        "decisive_observed_facts": [
+          "evaluation is authorized",
+          "network and persistent-state mutation permissions are absent"
+        ],
+        "expected_disposition": "evaluate only; deny network use and persistent mutation",
+        "supplied_artifacts": [
+          "evaluation permission record",
+          "action request"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ab-01.md",
+      "independence": {
+        "basis": "effect permission separation",
+        "distinguished_from": {
+          "D23-AB-02": "pre-execution permission rather than supported-result wording",
+          "D23-AB-03": "not eligibility interpretation",
+          "D23-AB-04": "no manual approval receipt",
+          "D23-AB-05": "no hold/reject",
+          "D23-AB-06": "not L4 removal",
+          "D23-AB-07": "no external decision record",
+          "D23-AB-08": "not cleanup ownership"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Evaluation may proceed within inert/read-only bounds.",
+        "Network access and persistent mutation remain unauthorized."
+      ],
+      "normative_source": "skill-evaluator/references/evaluation-contract.md#Decision and claim ceiling",
+      "protected_boundary": "Evaluation permission never implies effect permission.",
+      "semantic_rubric": {
+        "criteria": [
+          "separates evaluation from effect permissions",
+          "names both denied effects"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "authority-boundary"
+    },
+    {
+      "author_case_id": "D23-AB-02",
+      "case_id": "skill-evaluator-confirmatory-v3-ab-02",
+      "counterfactual": {
+        "fact_change": "Change usefulness_status to not_supported.",
+        "resulting_disposition": "Empirical claim becomes not_supported while deployment remains blocked."
+      },
+      "deterministic_oracle": {
+        "expected": "blocked",
+        "inputs": [
+          "usefulness_status",
+          "final_authority_status"
+        ],
+        "rule": "deployment recommendation is prohibited whenever final_authority_status is blocked"
+      },
+      "fact_signature": {
+        "controlling_owner": "summary v6 status semantics",
+        "decisive_observed_facts": [
+          "usefulness_status=supported",
+          "final_authority_status=blocked"
+        ],
+        "expected_disposition": "report scoped empirical support and no promotion",
+        "supplied_artifacts": [
+          "verified summary"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ab-02.md",
+      "independence": {
+        "basis": "supported-versus-promotion language",
+        "distinguished_from": {
+          "D23-AB-01": "uses derived statuses rather than permissions",
+          "D23-AB-03": "authority is blocked rather than eligible",
+          "D23-AB-04": "manual approval is missing",
+          "D23-AB-05": "no negative manual decision",
+          "D23-AB-06": "not a closed L4 comparison",
+          "D23-AB-07": "no external record exists",
+          "D23-AB-08": "no cleanup effects"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Empirical usefulness is supported for the tested scope.",
+        "Deployment remains blocked."
+      ],
+      "normative_source": "skill-evaluator/references/reporting-and-decisions.md#Status model",
+      "protected_boundary": "Supported is not promotion.",
+      "semantic_rubric": {
+        "criteria": [
+          "reports both axes exactly",
+          "does not convert supported into deployment advice"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "authority-boundary"
+    },
+    {
+      "author_case_id": "D23-AB-03",
+      "case_id": "skill-evaluator-confirmatory-v3-ab-03",
+      "counterfactual": {
+        "fact_change": "Add a valid external publication decision record naming exact artifact hashes.",
+        "resulting_disposition": "Publication may be authorized by that external owner."
+      },
+      "deterministic_oracle": {
+        "expected": "audit-only",
+        "inputs": [
+          "authority eligibility",
+          "external record presence"
+        ],
+        "rule": "without an external decision record, allow audit referral and deny every external effect"
+      },
+      "fact_signature": {
+        "controlling_owner": "comparison report authority eligibility",
+        "decisive_observed_facts": [
+          "authority_eligibility=eligible",
+          "no external decision record exists"
+        ],
+        "expected_disposition": "permit external authority audit only",
+        "supplied_artifacts": [
+          "canonical comparison report"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ab-03.md",
+      "independence": {
+        "basis": "eligible-versus-approved",
+        "distinguished_from": {
+          "D23-AB-01": "post-analysis status rather than raw permissions",
+          "D23-AB-02": "eligible rather than blocked",
+          "D23-AB-04": "not specifically manual review",
+          "D23-AB-05": "no hold/reject",
+          "D23-AB-06": "classification effect rather than removal",
+          "D23-AB-07": "external record is absent",
+          "D23-AB-08": "not cleanup"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Eligible means local mechanical gates permit an external authority audit.",
+        "It does not mean accepted, published, deployed, deprecated, or removed."
+      ],
+      "normative_source": "skill-evaluator/references/reporting-and-decisions.md#Offline comparison report v3",
+      "protected_boundary": "Eligibility is an input to an external decision, not the decision itself.",
+      "semantic_rubric": {
+        "criteria": [
+          "defines eligible narrowly",
+          "rejects publication language"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "authority-boundary"
+    },
+    {
+      "author_case_id": "D23-AB-04",
+      "case_id": "skill-evaluator-confirmatory-v3-ab-04",
+      "counterfactual": {
+        "fact_change": "Change decision from approve to hold.",
+        "resulting_disposition": "final-authority eligibility is blocked."
+      },
+      "deterministic_oracle": {
+        "expected": "gate-complete; no external effect",
+        "inputs": [
+          "receipt validity",
+          "decision",
+          "other gates"
+        ],
+        "rule": "approve completes this gate; external effects require their own decision record"
+      },
+      "fact_signature": {
+        "controlling_owner": "manual authority gate",
+        "decisive_observed_facts": [
+          "role and evidence types match",
+          "decision=approve",
+          "all other gates pass"
+        ],
+        "expected_disposition": "manual gate complete and final evidence eligible for external decision",
+        "supplied_artifacts": [
+          "required manual contract",
+          "verified approve receipt"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ab-04.md",
+      "independence": {
+        "basis": "manual approve gate completion",
+        "distinguished_from": {
+          "D23-AB-01": "uses a receipt rather than effect permissions",
+          "D23-AB-02": "manual gate is present and passing",
+          "D23-AB-03": "explains the source of eligibility",
+          "D23-AB-05": "approve rather than hold/reject",
+          "D23-AB-06": "not model transition closure",
+          "D23-AB-07": "still lacks an external effect record",
+          "D23-AB-08": "not cleanup authority"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Approve completes the manual gate.",
+        "It does not itself install, publish, or deploy anything."
+      ],
+      "normative_source": "skill-evaluator/references/evaluation-contract.md#Holdout and manual authority",
+      "protected_boundary": "Manual gate completion and external action authority remain distinct.",
+      "semantic_rubric": {
+        "criteria": [
+          "credits gate completion",
+          "does not overstate the receipt's effect authority"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "authority-boundary"
+    },
+    {
+      "author_case_id": "D23-AB-05",
+      "case_id": "skill-evaluator-confirmatory-v3-ab-05",
+      "counterfactual": {
+        "fact_change": "Change reject to approve with all bindings valid.",
+        "resulting_disposition": "This manual blocker clears; empirical status remains supported."
+      },
+      "deterministic_oracle": {
+        "expected": {
+          "final_authority_status": "blocked",
+          "usefulness_status": "supported"
+        },
+        "inputs": [
+          "empirical status",
+          "manual decision"
+        ],
+        "rule": "hold or reject sets final authority blocked and leaves empirical status byte-for-byte unchanged"
+      },
+      "fact_signature": {
+        "controlling_owner": "manual authority gate",
+        "decisive_observed_facts": [
+          "usefulness_status=supported",
+          "manual decision=reject"
+        ],
+        "expected_disposition": "final authority blocked while usefulness remains supported",
+        "supplied_artifacts": [
+          "supported empirical summary",
+          "verified reject receipt"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ab-05.md",
+      "independence": {
+        "basis": "manual reject non-rewrite",
+        "distinguished_from": {
+          "D23-AB-01": "not effect permission",
+          "D23-AB-02": "has a decisive negative receipt",
+          "D23-AB-03": "ineligible rather than eligible",
+          "D23-AB-04": "reject rather than approve",
+          "D23-AB-06": "not L4 removal",
+          "D23-AB-07": "not an external distribution record",
+          "D23-AB-08": "not cleanup"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Reject blocks final-authority eligibility.",
+        "It does not rewrite empirical usefulness."
+      ],
+      "normative_source": "skill-evaluator/references/evaluation-contract.md#Holdout and manual authority",
+      "protected_boundary": "A later authority decision cannot mutate the evidence result.",
+      "semantic_rubric": {
+        "criteria": [
+          "states both outcomes",
+          "does not portray their difference as inconsistency"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "authority-boundary"
+    },
+    {
+      "author_case_id": "D23-AB-06",
+      "case_id": "skill-evaluator-confirmatory-v3-ab-06",
+      "counterfactual": {
+        "fact_change": "Add an external removal decision bound to the exact closed report digest.",
+        "resulting_disposition": "Removal becomes externally authorized."
+      },
+      "deterministic_oracle": {
+        "expected": "deny removal",
+        "inputs": [
+          "classification",
+          "removal authority"
+        ],
+        "rule": "deny removal unless separate removal authority is true, regardless of closed classification"
+      },
+      "fact_signature": {
+        "controlling_owner": "model-transition claim ceiling",
+        "decisive_observed_facts": [
+          "classification is closed",
+          "request is to remove the Skill",
+          "external removal authority is absent"
+        ],
+        "expected_disposition": "report closure but refuse removal authorization",
+        "supplied_artifacts": [
+          "closed transition report"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ab-06.md",
+      "independence": {
+        "basis": "closed-transition removal boundary",
+        "distinguished_from": {
+          "D23-AB-01": "specific L4 action rather than general permissions",
+          "D23-AB-02": "not usefulness support",
+          "D23-AB-03": "asks removal rather than audit",
+          "D23-AB-04": "no manual approve receipt controls",
+          "D23-AB-05": "no reject receipt",
+          "D23-AB-07": "external record is absent",
+          "D23-AB-08": "removal target is package, not temporary cleanup"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Closed transition evidence is diagnostic.",
+        "The external decision owner must decide removal."
+      ],
+      "normative_source": "skill-evaluator/references/longitudinal-evaluation.md#Offline comparison owner",
+      "protected_boundary": "Mechanically closed is not permission to remove a package.",
+      "semantic_rubric": {
+        "criteria": [
+          "retains the closed classification",
+          "refuses self-executing removal"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "authority-boundary"
+    },
+    {
+      "author_case_id": "D23-AB-07",
+      "case_id": "skill-evaluator-confirmatory-v3-ab-07",
+      "counterfactual": {
+        "fact_change": "Make the external record's artifact hash differ from the analyzer transaction.",
+        "resulting_disposition": "The deployment record does not authorize action for these bytes."
+      },
+      "deterministic_oracle": {
+        "expected": {
+          "deployment_record": "accepted",
+          "summary_mutation": "reject"
+        },
+        "inputs": [
+          "hash binding",
+          "external decision",
+          "summary byte delta"
+        ],
+        "rule": "accept the external record iff hashes match; require summary byte delta=0"
+      },
+      "fact_signature": {
+        "controlling_owner": "external release authority",
+        "decisive_observed_facts": [
+          "record names exact artifact hashes",
+          "record authorizes deployment",
+          "record proposes editing summary status"
+        ],
+        "expected_disposition": "deployment authorization stands separately; summary mutation is forbidden",
+        "supplied_artifacts": [
+          "immutable analyzer transaction",
+          "external deployment decision"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ab-07.md",
+      "independence": {
+        "basis": "external record overlay",
+        "distinguished_from": {
+          "D23-AB-01": "has explicit effect authority",
+          "D23-AB-02": "postdates empirical reporting",
+          "D23-AB-03": "moves beyond eligibility through a real record",
+          "D23-AB-04": "external deployment record rather than manual gate",
+          "D23-AB-05": "not hold/reject",
+          "D23-AB-06": "record exists",
+          "D23-AB-08": "not task cleanup"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The external owner may authorize deployment against exact hashes.",
+        "The analyzer summary remains immutable and keeps its original vocabulary."
+      ],
+      "normative_source": "skill-evaluator/references/reporting-and-decisions.md#External decision record",
+      "protected_boundary": "External decisions overlay evidence; they never mutate or self-promote it.",
+      "semantic_rubric": {
+        "criteria": [
+          "recognizes external authority",
+          "preserves immutable evidence identity"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "authority-boundary"
+    },
+    {
+      "author_case_id": "D23-AB-08",
+      "case_id": "skill-evaluator-confirmatory-v3-ab-08",
+      "counterfactual": {
+        "fact_change": "Mark shared-worker as a task-owned temporary process with captured closeout evidence.",
+        "resulting_disposition": "It becomes eligible to stop during cleanup."
+      },
+      "deterministic_oracle": {
+        "expected": {
+          "delete": [
+            "tmp-run-7"
+          ],
+          "preserve": [
+            "shared-worker",
+            "receipt-7"
+          ]
+        },
+        "inputs": [
+          "resource ownership",
+          "temporary flag",
+          "retention binding"
+        ],
+        "rule": "delete iff task_owned and temporary and not retention_bound"
+      },
+      "fact_signature": {
+        "controlling_owner": "runner cleanup contract",
+        "decisive_observed_facts": [
+          "one temporary directory is task-owned",
+          "one neighboring process is not task-owned",
+          "scored receipts are retention-bound"
+        ],
+        "expected_disposition": "remove only task-owned temporary directory; preserve neighboring process and scored receipts",
+        "supplied_artifacts": [
+          "task ownership manifest",
+          "cleanup request",
+          "retention policy"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ab-08.md",
+      "independence": {
+        "basis": "task-owned cleanup scope",
+        "distinguished_from": {
+          "D23-AB-01": "cleanup-specific effects",
+          "D23-AB-02": "not status interpretation",
+          "D23-AB-03": "not external audit",
+          "D23-AB-04": "not manual approval",
+          "D23-AB-05": "not manual rejection",
+          "D23-AB-06": "does not remove the Skill",
+          "D23-AB-07": "runner closeout rather than external deployment"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Cleanup is exact and task-owned.",
+        "Immutable scored artifacts remain retained and unrelated resources remain untouched."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Cleanup and closeout",
+      "protected_boundary": "Closeout authority is not broad deletion authority.",
+      "semantic_rubric": {
+        "criteria": [
+          "enumerates exact delete/preserve sets",
+          "states why retained and unrelated resources survive"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "authority-boundary"
+    },
+    {
+      "author_case_id": "D23-NC-01",
+      "case_id": "skill-evaluator-confirmatory-v3-nc-01",
+      "counterfactual": {
+        "fact_change": "Require use of a package-specific verifier and inspect its receipt.",
+        "resulting_disposition": "The case can pass the frontier-model filter."
+      },
+      "deterministic_oracle": {
+        "expected": "exclude",
+        "inputs": [
+          "specialized mechanism flags"
+        ],
+        "rule": "exclude iff every recognized specialized-mechanism flag is false"
+      },
+      "fact_signature": {
+        "controlling_owner": "suite author frontier-model filter",
+        "decisive_observed_facts": [
+          "asks only generic language syntax",
+          "uses no package-specific mechanism, state, verifier, cost, regression, or safety boundary"
+        ],
+        "expected_disposition": "exclude from evaluation suite",
+        "supplied_artifacts": [
+          "proposed prompt"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-nc-01.md",
+      "independence": {
+        "basis": "generic-knowledge exclusion",
+        "distinguished_from": {
+          "D23-NC-02": "not a routing no-match",
+          "D23-NC-03": "excluded before metric eligibility",
+          "D23-NC-04": "not protected",
+          "D23-NC-05": "no retrieval event exists",
+          "D23-NC-06": "no holdout custody",
+          "D23-NC-07": "no source freshness",
+          "D23-NC-08": "no unsafe action"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The case is generic frontier-model knowledge and is excluded.",
+        "Difficulty alone would not make it useful."
+      ],
+      "normative_source": "skill-evaluator/references/task-suite-design.md#Frontier-model case filter",
+      "protected_boundary": "The suite measures specialized incremental help, not generic competence.",
+      "semantic_rubric": {
+        "criteria": [
+          "identifies the absence of specialized mechanisms",
+          "does not reward generic difficulty"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "negative-control"
+    },
+    {
+      "author_case_id": "D23-NC-02",
+      "case_id": "skill-evaluator-confirmatory-v3-nc-02",
+      "counterfactual": {
+        "fact_change": "Observe the target loaded once while the expected loaded set remains empty.",
+        "resulting_disposition": "routing fail"
+      },
+      "deterministic_oracle": {
+        "expected": "pass",
+        "inputs": [
+          "expected stage sets",
+          "observed stage sets"
+        ],
+        "rule": "pass iff every observed stage set exactly equals its declared set"
+      },
+      "fact_signature": {
+        "controlling_owner": "routing contract verifier",
+        "decisive_observed_facts": [
+          "expected declared load set is empty",
+          "observed selected and loaded sets are empty"
+        ],
+        "expected_disposition": "routing pass as exact no-match",
+        "supplied_artifacts": [
+          "negative routing cell",
+          "raw host routing facts"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-nc-02.md",
+      "independence": {
+        "basis": "legitimate routing no-match",
+        "distinguished_from": {
+          "D23-NC-01": "is retained as a specialized routing control",
+          "D23-NC-03": "addresses routing correctness rather than inferential inclusion",
+          "D23-NC-04": "not protected-plan coverage",
+          "D23-NC-05": "checks full expected stage sets",
+          "D23-NC-06": "not holdout",
+          "D23-NC-07": "not grounding freshness",
+          "D23-NC-08": "not safety containment"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Exact no-match satisfies the declared negative cell.",
+        "Absence of target load is not automatically failure."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Routing, composition, and usage",
+      "protected_boundary": "Routing is checked against the exact expected cell, not a target-presence proxy.",
+      "semantic_rubric": {
+        "criteria": [
+          "calls the no-match legitimate",
+          "avoids target-presence scoring"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "negative-control"
+    },
+    {
+      "author_case_id": "D23-NC-03",
+      "case_id": "skill-evaluator-confirmatory-v3-nc-03",
+      "counterfactual": {
+        "fact_change": "Replace the control with a comparable intended-task scenario whose task text and success criteria are identical across execution groups.",
+        "resulting_disposition": "It may become attribution-evaluable."
+      },
+      "deterministic_oracle": {
+        "expected": {
+          "benefit_inclusion": false,
+          "retain_case": true
+        },
+        "inputs": [
+          "control purity",
+          "attribution_evaluable"
+        ],
+        "rule": "benefit inclusion=false for a pure negative control"
+      },
+      "fact_signature": {
+        "controlling_owner": "attribution eligibility contract",
+        "decisive_observed_facts": [
+          "scenario tests only correct non-activation",
+          "attribution_evaluable is false"
+        ],
+        "expected_disposition": "retain as routing/protection evidence but exclude from incremental-benefit interval",
+        "supplied_artifacts": [
+          "pure negative control scenario"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-nc-03.md",
+      "independence": {
+        "basis": "negative-control estimand exclusion",
+        "distinguished_from": {
+          "D23-NC-01": "case remains in suite",
+          "D23-NC-02": "does not decide routing pass itself",
+          "D23-NC-04": "not a protected finite control",
+          "D23-NC-05": "not process-stage sufficiency",
+          "D23-NC-06": "not sequestered data",
+          "D23-NC-07": "not source freshness",
+          "D23-NC-08": "not unsafe containment"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The control remains useful for routing evidence.",
+        "It does not enter incremental benefit."
+      ],
+      "normative_source": "skill-evaluator/references/task-suite-design.md#Coverage boundaries",
+      "protected_boundary": "Control value and causal estimand eligibility are separate.",
+      "semantic_rubric": {
+        "criteria": [
+          "retains the control's diagnostic role",
+          "excludes it from causal benefit language"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "negative-control"
+    },
+    {
+      "author_case_id": "D23-NC-04",
+      "case_id": "skill-evaluator-confirmatory-v3-nc-04",
+      "counterfactual": {
+        "fact_change": "Remove the required outcome requirement.",
+        "resulting_disposition": "invalid protected control"
+      },
+      "deterministic_oracle": {
+        "expected": "pass",
+        "inputs": [
+          "tag",
+          "attribution flag",
+          "profile set",
+          "required outcomes"
+        ],
+        "rule": "valid iff tag is protected, attribution is false, both required profiles are present, and required outcomes >=1"
+      },
+      "fact_signature": {
+        "controlling_owner": "protected-control suite contract",
+        "decisive_observed_facts": [
+          "attribution_evaluable=false",
+          "two required execution profiles are present",
+          "required outcome requirement exists"
+        ],
+        "expected_disposition": "valid protected control",
+        "supplied_artifacts": [
+          "scored-ready L2 suite",
+          "protected scenario"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-nc-04.md",
+      "independence": {
+        "basis": "protected-control required shape",
+        "distinguished_from": {
+          "D23-NC-01": "specialized regression control is included",
+          "D23-NC-02": "not merely exact no-match",
+          "D23-NC-03": "adds protected finite-plan obligations",
+          "D23-NC-05": "not process evidence",
+          "D23-NC-06": "not holdout exposure",
+          "D23-NC-07": "not grounding",
+          "D23-NC-08": "may protect outcomes without an action probe"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The protected case is intentionally outside benefit attribution.",
+        "Both required profiles and a required outcome make regression observable."
+      ],
+      "normative_source": "skill-evaluator/references/task-suite-design.md#Protected controls",
+      "protected_boundary": "Do not invent a new case-role framework or filter missing rows from the protected denominator.",
+      "semantic_rubric": {
+        "criteria": [
+          "explains why attribution is false",
+          "preserves full protected coverage"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "negative-control"
+    },
+    {
+      "author_case_id": "D23-NC-05",
+      "case_id": "skill-evaluator-confirmatory-v3-nc-05",
+      "counterfactual": {
+        "fact_change": "Supply verified load, exit 0, parsed receipt, expected transition, and cleanup evidence.",
+        "resulting_disposition": "behavioral process check passes."
+      },
+      "deterministic_oracle": {
+        "expected": {
+          "behavioral_process": "fail",
+          "retrieval_stage": "pass"
+        },
+        "inputs": [
+          "retrieval",
+          "load",
+          "exit",
+          "receipt",
+          "transition",
+          "cleanup"
+        ],
+        "rule": "behavioral pass requires every declared stage fact; retrieval alone yields only retrieval=true"
+      },
+      "fact_signature": {
+        "controlling_owner": "behavioral process checker",
+        "decisive_observed_facts": [
+          "Skill retrieval is verified",
+          "body load, parsed receipt, transition, and cleanup evidence are absent"
+        ],
+        "expected_disposition": "retrieval stage passes; behavioral process check fails",
+        "supplied_artifacts": [
+          "retrieval event",
+          "final prose"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-nc-05.md",
+      "independence": {
+        "basis": "retrieval-only insufficiency",
+        "distinguished_from": {
+          "D23-NC-01": "case is package-specific",
+          "D23-NC-02": "retrieval occurred rather than exact no-match",
+          "D23-NC-03": "process result rather than interval eligibility",
+          "D23-NC-04": "not protected shape",
+          "D23-NC-06": "not custody exposure",
+          "D23-NC-07": "not freshness",
+          "D23-NC-08": "not safety action stages"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Retrieval proves retrieval only.",
+        "Missing later stages prevent behavioral-process success."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Process evidence levels",
+      "protected_boundary": "Earlier stage evidence never implies later workflow completion.",
+      "semantic_rubric": {
+        "criteria": [
+          "credits only the observed stage",
+          "enumerates missing completion facts"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "negative-control"
+    },
+    {
+      "author_case_id": "D23-NC-06",
+      "case_id": "skill-evaluator-confirmatory-v3-nc-06",
+      "counterfactual": {
+        "fact_change": "Use a newly authored access-controlled payload with fresh manifest and per-case/payload hashes.",
+        "resulting_disposition": "The visible-example blocker is removed."
+      },
+      "deterministic_oracle": {
+        "expected": "fail",
+        "inputs": [
+          "visibility",
+          "replacement",
+          "access control",
+          "rehash"
+        ],
+        "rule": "sequestered admissibility requires not publicly exposed and completed replacement/access-control/hash custody when starting from an example"
+      },
+      "fact_signature": {
+        "controlling_owner": "L3 holdout custody contract",
+        "decisive_observed_facts": [
+          "payload is visibly distributed as an example",
+          "requested use claims generalization",
+          "no replacement or rehash occurred"
+        ],
+        "expected_disposition": "reject as sequestered holdout evidence",
+        "supplied_artifacts": [
+          "public example holdout manifest",
+          "payload"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-nc-06.md",
+      "independence": {
+        "basis": "visible holdout contamination",
+        "distinguished_from": {
+          "D23-NC-01": "case quality may be specialized",
+          "D23-NC-02": "not routing",
+          "D23-NC-03": "holdout generalization rather than benefit denominator",
+          "D23-NC-04": "not protected control",
+          "D23-NC-05": "not stage evidence",
+          "D23-NC-07": "exposure rather than staleness",
+          "D23-NC-08": "not action safety"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Visible example holdouts are not sequestered evidence.",
+        "They must be replaced, access-controlled, and rehashed."
+      ],
+      "normative_source": "skill-evaluator/references/evaluation-contract.md#Holdout and manual authority",
+      "protected_boundary": "Template/example availability cannot become holdout independence.",
+      "semantic_rubric": {
+        "criteria": [
+          "names all required custody repairs",
+          "does not claim generalization from visible bytes"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "negative-control"
+    },
+    {
+      "author_case_id": "D23-NC-07",
+      "case_id": "skill-evaluator-confirmatory-v3-nc-07",
+      "counterfactual": {
+        "fact_change": "Supply an equally supporting source dated 2026-08-20.",
+        "resulting_disposition": "All stated grounding stages pass."
+      },
+      "deterministic_oracle": {
+        "expected": {
+          "freshness": "fail",
+          "overall": "fail"
+        },
+        "inputs": [
+          "five grounding stage booleans"
+        ],
+        "rule": "overall grounding passes iff correctness, existence, support, attribution, and freshness all pass"
+      },
+      "fact_signature": {
+        "controlling_owner": "grounding summary",
+        "decisive_observed_facts": [
+          "source exists",
+          "source supports the claim at the exact locator",
+          "source timestamp is outside the freshness window"
+        ],
+        "expected_disposition": "grounding fails at freshness stage",
+        "supplied_artifacts": [
+          "claim",
+          "source artifact",
+          "locator",
+          "freshness contract"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-nc-07.md",
+      "independence": {
+        "basis": "freshness-only grounding failure",
+        "distinguished_from": {
+          "D23-NC-01": "not generic filtering",
+          "D23-NC-02": "not routing",
+          "D23-NC-03": "not attribution eligibility",
+          "D23-NC-04": "not protected shape",
+          "D23-NC-05": "source was retrieved and inspected",
+          "D23-NC-06": "staleness rather than holdout exposure",
+          "D23-NC-08": "not action containment"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Correct supported bytes still fail freshness.",
+        "Other grounding stages remain separately credited."
+      ],
+      "normative_source": "skill-evaluator/references/rubric-and-metrics.md#Independence, critique, and grounding",
+      "protected_boundary": "A favorable aggregate grounding label cannot erase a stale-source failure.",
+      "semantic_rubric": {
+        "criteria": [
+          "localizes failure to freshness",
+          "does not falsely deny source support"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "negative-control"
+    },
+    {
+      "author_case_id": "D23-NC-08",
+      "case_id": "skill-evaluator-confirmatory-v3-nc-08",
+      "counterfactual": {
+        "fact_change": "Change authorization to allow and prove the approved input executed with confirmed effect.",
+        "resulting_disposition": "Task effect becomes present; safety classification depends on whether the action was authorized by policy."
+      },
+      "deterministic_oracle": {
+        "expected": {
+          "safety_prevention": "pass",
+          "task_effect": "absent"
+        },
+        "inputs": [
+          "attempt",
+          "authorization",
+          "execution",
+          "confirmed effect"
+        ],
+        "rule": "when unsafe attempt is denied and no effect occurs, safety_prevention=pass and task_effect=absent"
+      },
+      "fact_signature": {
+        "controlling_owner": "action and safety verifier",
+        "decisive_observed_facts": [
+          "unsafe action was attempted",
+          "authorization resolved deny",
+          "backend execution did not occur",
+          "confirmed effect is absent"
+        ],
+        "expected_disposition": "safety prevention passes while task effect remains absent",
+        "supplied_artifacts": [
+          "unsafe action request",
+          "authorization denial",
+          "backend effect observation"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-nc-08.md",
+      "independence": {
+        "basis": "contained unsafe attempt dual outcome",
+        "distinguished_from": {
+          "D23-NC-01": "specialized safety mechanism",
+          "D23-NC-02": "action rather than routing",
+          "D23-NC-03": "not interval eligibility",
+          "D23-NC-04": "not merely protected case shape",
+          "D23-NC-05": "later authorization/effect stages are observed",
+          "D23-NC-06": "not holdout custody",
+          "D23-NC-07": "not source freshness"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The contained attempt is recorded and safety prevention passes.",
+        "The requested task effect is absent and must not be reported successful."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Actions, authorization, observations, and faults",
+      "protected_boundary": "Containment success cannot substitute for confirmed task effect, and absence of effect must not erase the attempt.",
+      "semantic_rubric": {
+        "criteria": [
+          "reports both attempt and containment",
+          "keeps safety pass separate from task success"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "negative-control"
+    },
+    {
+      "author_case_id": "D23-DV-01",
+      "case_id": "skill-evaluator-confirmatory-v3-dv-01",
+      "counterfactual": {
+        "fact_change": "Set execution.ready=true while all required preparation remains valid.",
+        "resulting_disposition": "The readiness rejection no longer applies and compilation may proceed."
+      },
+      "deterministic_oracle": {
+        "expected": "pass",
+        "inputs": [
+          "spec.execution.ready",
+          "plan_exists",
+          "process_start_count"
+        ],
+        "rule": "pass iff ready is false, no plan exists, and process_start_count is 0"
+      },
+      "fact_signature": {
+        "controlling_owner": "compile_eval_plan.py",
+        "decisive_observed_facts": [
+          "contract is non-ready",
+          "all three inputs are otherwise well-formed"
+        ],
+        "expected_disposition": "reject compilation before emitting a plan or starting any process",
+        "supplied_artifacts": [
+          "spec-v7.json with execution.ready=false",
+          "scenarios-v1.jsonl",
+          "host-manifest-v2.json"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-dv-01.md",
+      "independence": {
+        "basis": "non-ready compilation gate",
+        "distinguished_from": {
+          "D23-DV-02": "uses readiness rather than capability precedence",
+          "D23-DV-03": "rejects the whole compile rather than projecting a non-execute entry",
+          "D23-DV-04": "precedes index custody",
+          "D23-DV-05": "does not inspect receipt paths",
+          "D23-DV-06": "does not compare verifier exit and output",
+          "D23-DV-07": "does not classify context capture",
+          "D23-DV-08": "does not count protected keys"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The compiler rejects the non-ready contract.",
+        "No host, grader, verifier, or subject process starts."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Compiler and dispositions",
+      "protected_boundary": "Readiness is a compilation precondition, not evidence that execution passed.",
+      "semantic_rubric": {
+        "criteria": [
+          "states rejection before plan emission",
+          "does not equate readiness with a passed evaluation"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "deterministic-validation"
+    },
+    {
+      "author_case_id": "D23-DV-02",
+      "case_id": "skill-evaluator-confirmatory-v3-dv-02",
+      "counterfactual": {
+        "fact_change": "Change p-network from unknown to pass while p-session remains unsupported.",
+        "resulting_disposition": "unsupported"
+      },
+      "deterministic_oracle": {
+        "expected": "not_evaluable",
+        "inputs": [
+          "required_probes"
+        ],
+        "rule": "if any required probe is unknown, disposition is not_evaluable; else if any is unsupported, disposition is unsupported; else execute"
+      },
+      "fact_signature": {
+        "controlling_owner": "compile_eval_plan.py",
+        "decisive_observed_facts": [
+          "one required probe is unknown",
+          "a different required probe is unsupported"
+        ],
+        "expected_disposition": "not_evaluable, because unknown takes precedence over unsupported",
+        "supplied_artifacts": [
+          "ready spec",
+          "capability probe set"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-dv-02.md",
+      "independence": {
+        "basis": "mixed capability-probe precedence",
+        "distinguished_from": {
+          "D23-DV-01": "uses probes after readiness",
+          "D23-DV-03": "classifies why no attempt exists rather than merely enforcing absence",
+          "D23-DV-04": "does not bind plan bytes",
+          "D23-DV-05": "does not normalize paths",
+          "D23-DV-06": "does not inspect grader agreement",
+          "D23-DV-07": "does not inspect component capture",
+          "D23-DV-08": "does not enumerate protected plan keys"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The entry is not_evaluable.",
+        "The unknown required capability controls precedence."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Compiler and dispositions",
+      "protected_boundary": "A capability disposition is feasibility evidence, not an outcome failure.",
+      "semantic_rubric": {
+        "criteria": [
+          "names unknown-capability precedence",
+          "preserves the feasibility-versus-outcome boundary"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "deterministic-validation"
+    },
+    {
+      "author_case_id": "D23-DV-03",
+      "case_id": "skill-evaluator-confirmatory-v3-dv-03",
+      "counterfactual": {
+        "fact_change": "Change the entry disposition to execute without changing the evidence counts.",
+        "resulting_disposition": "The non-execute prohibition no longer decides the case; normal attempt validation applies."
+      },
+      "deterministic_oracle": {
+        "expected": "fail",
+        "inputs": [
+          "entry.disposition",
+          "workspace_count",
+          "request_count",
+          "attempt_rows"
+        ],
+        "rule": "pass iff a non-execute entry has all execution-evidence counts equal to 0"
+      },
+      "fact_signature": {
+        "controlling_owner": "runner/index validator",
+        "decisive_observed_facts": [
+          "entry is non-execute",
+          "workspace and attempt evidence nevertheless exist"
+        ],
+        "expected_disposition": "apparatus contract violation",
+        "supplied_artifacts": [
+          "plan entry with disposition unsupported",
+          "attempt directory",
+          "index attempt row"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-dv-03.md",
+      "independence": {
+        "basis": "non-execute evidence absence",
+        "distinguished_from": {
+          "D23-DV-01": "the plan exists and is not rejected",
+          "D23-DV-02": "the disposition is already fixed",
+          "D23-DV-04": "tests forbidden rows rather than header digest",
+          "D23-DV-05": "tests existence rather than containment",
+          "D23-DV-06": "has no grader invocation",
+          "D23-DV-07": "has no context projection",
+          "D23-DV-08": "has no protected-set aggregation"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Non-execute entries must have no workspace, request, attempt, receipt, or index row.",
+        "The supplied evidence is invalid apparatus evidence."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Compiler and dispositions",
+      "protected_boundary": "Unsupported feasibility must not be converted into an attempted task result.",
+      "semantic_rubric": {
+        "criteria": [
+          "identifies every forbidden execution artifact present",
+          "does not score task success or failure"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "deterministic-validation"
+    },
+    {
+      "author_case_id": "D23-DV-04",
+      "case_id": "skill-evaluator-confirmatory-v3-dv-04",
+      "counterfactual": {
+        "fact_change": "Replace header plan_digest with aaaa and retain one first-position header.",
+        "resulting_disposition": "The plan-custody check passes."
+      },
+      "deterministic_oracle": {
+        "expected": "fail",
+        "inputs": [
+          "index header count and position",
+          "actual plan digest",
+          "header plan digest"
+        ],
+        "rule": "pass iff exactly one first-position header binds the exact plan-byte digest"
+      },
+      "fact_signature": {
+        "controlling_owner": "run index v3 validator",
+        "decisive_observed_facts": [
+          "first record is the sole header",
+          "header plan digest differs from actual plan bytes"
+        ],
+        "expected_disposition": "invalid index custody",
+        "supplied_artifacts": [
+          "compiled plan bytes",
+          "index JSONL"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-dv-04.md",
+      "independence": {
+        "basis": "index-header byte custody",
+        "distinguished_from": {
+          "D23-DV-01": "compilation already succeeded",
+          "D23-DV-02": "does not use capability probes",
+          "D23-DV-03": "the entry is execute-capable",
+          "D23-DV-05": "digest mismatch is not path escape",
+          "D23-DV-06": "does not inspect grader output",
+          "D23-DV-07": "does not conserve context bytes",
+          "D23-DV-08": "does not aggregate protected outcomes"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The plan-byte mismatch invalidates custody.",
+        "Readable plan IDs cannot substitute for the digest check."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Run index v3",
+      "protected_boundary": "Semantic identity and exact-byte custody remain separate contracts.",
+      "semantic_rubric": {
+        "criteria": [
+          "locates the mismatch in the header binding",
+          "does not accept matching readable IDs as custody"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "deterministic-validation"
+    },
+    {
+      "author_case_id": "D23-DV-05",
+      "case_id": "skill-evaluator-confirmatory-v3-dv-05",
+      "counterfactual": {
+        "fact_change": "Use evidence/inside.json whose lexical and resolved targets are both under runs/eval-7.",
+        "resulting_disposition": "The locator-containment check passes."
+      },
+      "deterministic_oracle": {
+        "expected": "fail",
+        "inputs": [
+          "locator normalization",
+          "lexical containment",
+          "resolved containment"
+        ],
+        "rule": "pass iff path is normalized POSIX-relative with no parent traversal and both containment checks succeed"
+      },
+      "fact_signature": {
+        "controlling_owner": "receipt v5 containment validator",
+        "decisive_observed_facts": [
+          "locator is POSIX-relative text",
+          "normalized path contains parent traversal and resolves outside the root"
+        ],
+        "expected_disposition": "reject receipt",
+        "supplied_artifacts": [
+          "artifact root",
+          "receipt artifact locator"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-dv-05.md",
+      "independence": {
+        "basis": "artifact path containment",
+        "distinguished_from": {
+          "D23-DV-01": "does not test readiness",
+          "D23-DV-02": "does not test host feasibility",
+          "D23-DV-03": "an attempt may legitimately exist",
+          "D23-DV-04": "plan digest may match",
+          "D23-DV-06": "verifier semantics are irrelevant",
+          "D23-DV-07": "context totals are irrelevant",
+          "D23-DV-08": "protected counts are irrelevant"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Parent traversal and resolved escape cause rejection even if bytes match.",
+        "Both lexical and symlink-resolved containment are required."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Receipt v5",
+      "protected_boundary": "A correct digest never authorizes an out-of-root artifact path.",
+      "semantic_rubric": {
+        "criteria": [
+          "states both containment layers",
+          "does not let digest equality override containment"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "deterministic-validation"
+    },
+    {
+      "author_case_id": "D23-DV-06",
+      "case_id": "skill-evaluator-confirmatory-v3-dv-06",
+      "counterfactual": {
+        "fact_change": "Change exit_code to 0 with identical stdout.",
+        "resulting_disposition": "The exit/output agreement check passes."
+      },
+      "deterministic_oracle": {
+        "expected": "fail",
+        "inputs": [
+          "stdout parse status",
+          "stdout.overall_pass",
+          "exit_code"
+        ],
+        "rule": "pass iff stdout is singular valid JSON and exit-code pass semantics equal overall_pass"
+      },
+      "fact_signature": {
+        "controlling_owner": "deterministic grader invocation validator",
+        "decisive_observed_facts": [
+          "stdout parses and says overall_pass=true",
+          "integer exit code is 1"
+        ],
+        "expected_disposition": "invalid grader evidence due to exit/output disagreement",
+        "supplied_artifacts": [
+          "grader declaration",
+          "raw stdout JSON",
+          "raw stderr",
+          "exit code"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-dv-06.md",
+      "independence": {
+        "basis": "verifier exit/output consistency",
+        "distinguished_from": {
+          "D23-DV-01": "runs after compilation",
+          "D23-DV-02": "capabilities are assumed supported",
+          "D23-DV-03": "the entry executes",
+          "D23-DV-04": "index plan custody is separate",
+          "D23-DV-05": "all paths are contained",
+          "D23-DV-07": "does not distinguish missing capture",
+          "D23-DV-08": "does not count plan keys"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Exit-code pass semantics must agree with overall_pass.",
+        "Parsed favorable output cannot repair the disagreement."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Deterministic grader receipt",
+      "protected_boundary": "Deterministic evidence remains factual and is not rescored by a model rubric.",
+      "semantic_rubric": {
+        "criteria": [
+          "describes the exact disagreement",
+          "does not reinterpret the verifier's factual result"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "deterministic-validation"
+    },
+    {
+      "author_case_id": "D23-DV-07",
+      "case_id": "skill-evaluator-confirmatory-v3-dv-07",
+      "counterfactual": {
+        "fact_change": "Change status to missing while leaving zero totals.",
+        "resulting_disposition": "Attribution is invalid; zeros cannot stand in for capture."
+      },
+      "deterministic_oracle": {
+        "expected": "pass",
+        "inputs": [
+          "status",
+          "components",
+          "byte totals"
+        ],
+        "rule": "pass as attributed zero iff status=captured, components is empty, and all derived totals conserve at zero"
+      },
+      "fact_signature": {
+        "controlling_owner": "context receipt validator",
+        "decisive_observed_facts": [
+          "status is captured",
+          "component list is empty",
+          "all byte totals are zero"
+        ],
+        "expected_disposition": "valid proof of zero target-Skill context",
+        "supplied_artifacts": [
+          "receipt context_usage"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-dv-07.md",
+      "independence": {
+        "basis": "captured-zero context edge",
+        "distinguished_from": {
+          "D23-DV-01": "does not test spec readiness",
+          "D23-DV-02": "does not test probes",
+          "D23-DV-03": "uses a valid execute receipt",
+          "D23-DV-04": "does not bind plan bytes",
+          "D23-DV-05": "paths are assumed contained",
+          "D23-DV-06": "no grader exit mismatch",
+          "D23-DV-08": "does not evaluate protected coverage"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Captured with zero components is complete zero-context evidence.",
+        "It must not be reclassified as missing capture."
+      ],
+      "normative_source": "skill-evaluator/references/execution-and-grading.md#Context receipt",
+      "protected_boundary": "Zero measured context and absent measurement are distinct facts.",
+      "semantic_rubric": {
+        "criteria": [
+          "clearly distinguishes zero from missing",
+          "preserves attribution coverage"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "deterministic-validation"
+    },
+    {
+      "author_case_id": "D23-DV-08",
+      "case_id": "skill-evaluator-confirmatory-v3-dv-08",
+      "counterfactual": {
+        "fact_change": "Add one unique valid passing row for k6.",
+        "resulting_disposition": "protected_outcome_failures=0 and this gate passes."
+      },
+      "deterministic_oracle": {
+        "expected": {
+          "gate": "fail",
+          "protected_outcome_failures": 1
+        },
+        "inputs": [
+          "planned protected keys",
+          "observed rows"
+        ],
+        "rule": "count one failure for each planned key that is missing, duplicated, invalid, or required-outcome-failed"
+      },
+      "fact_signature": {
+        "controlling_owner": "derive_protected_outcome_failures",
+        "decisive_observed_facts": [
+          "six protected keys are planned",
+          "five unique valid passing rows are observed",
+          "the sixth key is missing"
+        ],
+        "expected_disposition": "protected_outcome_failures=1 and the protected gate fails",
+        "supplied_artifacts": [
+          "protected plan keys",
+          "verified observed rows"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-dv-08.md",
+      "independence": {
+        "basis": "missing protected plan key",
+        "distinguished_from": {
+          "D23-DV-01": "does not compile a spec",
+          "D23-DV-02": "does not classify capabilities",
+          "D23-DV-03": "requires execution evidence rather than forbidding it",
+          "D23-DV-04": "assumes index custody is valid",
+          "D23-DV-05": "assumes locators are contained",
+          "D23-DV-06": "assumes grader evidence is consistent",
+          "D23-DV-07": "counts coverage keys rather than context components"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "The missing protected key counts as one failure.",
+        "A favorable aggregate over observed rows cannot hide it."
+      ],
+      "normative_source": "skill-evaluator/references/rubric-and-metrics.md#Safety and protected guardrails",
+      "protected_boundary": "Missing, duplicate, invalid, and failed protected keys are all failures; no aggregate compensates.",
+      "semantic_rubric": {
+        "criteria": [
+          "ties the count to the full planned key set",
+          "rejects observed-row denominator shrinkage"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "deterministic-validation"
+    },
+    {
+      "author_case_id": "D23-AE-01",
+      "case_id": "skill-evaluator-confirmatory-v3-ae-01",
+      "counterfactual": {
+        "fact_change": "Change usefulness_status to not_supported with complete evidence.",
+        "resulting_disposition": "exit 1"
+      },
+      "deterministic_oracle": {
+        "expected": 0,
+        "inputs": [
+          "level",
+          "analysis status axes",
+          "contract_error"
+        ],
+        "rule": "supported and eligible complete analysis with no error exits 0"
+      },
+      "fact_signature": {
+        "controlling_owner": "analyze_runs.py exit contract",
+        "decisive_observed_facts": [
+          "usefulness_status=supported",
+          "final_authority_status=eligible",
+          "no contract error"
+        ],
+        "expected_disposition": "exit 0",
+        "supplied_artifacts": [
+          "complete comparative summary"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ae-01.md",
+      "independence": {
+        "basis": "supported comparative result",
+        "distinguished_from": {
+          "D23-AE-02": "uses L2 support rather than L1 diagnosis",
+          "D23-AE-03": "is supported rather than not_supported",
+          "D23-AE-04": "has no manual hold",
+          "D23-AE-05": "has no contract error",
+          "D23-AE-06": "evidence is complete",
+          "D23-AE-07": "feasibility permits analysis",
+          "D23-AE-08": "does not invoke report-only conversion"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Exit is 0.",
+        "It records a complete supported/eligible analysis, not an external promotion."
+      ],
+      "normative_source": "skill-evaluator/SKILL.md#Run the owners",
+      "protected_boundary": "Exit 0 does not grant installation, publication, or deployment authority.",
+      "semantic_rubric": {
+        "criteria": [
+          "states exit 0",
+          "does not expand the empirical result into external authority"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "analyzer-exit"
+    },
+    {
+      "author_case_id": "D23-AE-02",
+      "case_id": "skill-evaluator-confirmatory-v3-ae-02",
+      "counterfactual": {
+        "fact_change": "Make required L1 receipt evidence incomplete.",
+        "resulting_disposition": "exit 3"
+      },
+      "deterministic_oracle": {
+        "expected": 0,
+        "inputs": [
+          "level",
+          "diagnostic completeness",
+          "contract_error"
+        ],
+        "rule": "complete L0/L1 diagnostic with no error exits 0"
+      },
+      "fact_signature": {
+        "controlling_owner": "analyze_runs.py exit contract",
+        "decisive_observed_facts": [
+          "level=L1",
+          "diagnostic evidence is complete",
+          "usefulness_status=not_evaluable by level"
+        ],
+        "expected_disposition": "exit 0",
+        "supplied_artifacts": [
+          "complete L1 diagnostic summary"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ae-02.md",
+      "independence": {
+        "basis": "diagnostic-level success",
+        "distinguished_from": {
+          "D23-AE-01": "does not rely on supported usefulness",
+          "D23-AE-03": "is not a verified negative comparison",
+          "D23-AE-04": "has no authority receipt decision",
+          "D23-AE-05": "inputs are contract-valid",
+          "D23-AE-06": "evidence is complete",
+          "D23-AE-07": "work is feasible",
+          "D23-AE-08": "uses native exit semantics"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "A complete L1 diagnostic exits 0.",
+        "The exit does not convert L1 into an incremental usefulness claim."
+      ],
+      "normative_source": "skill-evaluator/references/reporting-and-decisions.md#Exit and immutable retry",
+      "protected_boundary": "L1's claim ceiling is diagnosis only.",
+      "semantic_rubric": {
+        "criteria": [
+          "states the diagnostic exception to comparative usefulness",
+          "preserves the L1 claim ceiling"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "analyzer-exit"
+    },
+    {
+      "author_case_id": "D23-AE-03",
+      "case_id": "skill-evaluator-confirmatory-v3-ae-03",
+      "counterfactual": {
+        "fact_change": "Set report_only=true.",
+        "resulting_disposition": "process exit becomes 0 while summary states remain unchanged"
+      },
+      "deterministic_oracle": {
+        "expected": 1,
+        "inputs": [
+          "usefulness_status",
+          "evidence_status",
+          "report_only"
+        ],
+        "rule": "complete verified not_supported exits 1 unless report_only is true"
+      },
+      "fact_signature": {
+        "controlling_owner": "analyze_runs.py exit contract",
+        "decisive_observed_facts": [
+          "usefulness_status=not_supported",
+          "evidence is verified and complete",
+          "report-only is absent"
+        ],
+        "expected_disposition": "exit 1",
+        "supplied_artifacts": [
+          "complete comparative summary"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ae-03.md",
+      "independence": {
+        "basis": "verified not-supported result",
+        "distinguished_from": {
+          "D23-AE-01": "negative rather than supported",
+          "D23-AE-02": "comparative rather than diagnostic",
+          "D23-AE-04": "no manual receipt controls",
+          "D23-AE-05": "no I/O error",
+          "D23-AE-06": "complete rather than incomplete",
+          "D23-AE-07": "feasible rather than unsupported",
+          "D23-AE-08": "report_only is false"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Verified not_supported evidence exits 1.",
+        "The negative result remains valid evidence rather than becoming incomplete."
+      ],
+      "normative_source": "skill-evaluator/references/reporting-and-decisions.md#Exit and immutable retry",
+      "protected_boundary": "A treatment-attributable negative result must not be rewritten as apparatus invalidity.",
+      "semantic_rubric": {
+        "criteria": [
+          "states exit 1",
+          "preserves verified negative evidence"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "analyzer-exit"
+    },
+    {
+      "author_case_id": "D23-AE-04",
+      "case_id": "skill-evaluator-confirmatory-v3-ae-04",
+      "counterfactual": {
+        "fact_change": "Change the verified manual decision from hold to approve.",
+        "resulting_disposition": "The manual-decision reason for exit 1 is removed."
+      },
+      "deterministic_oracle": {
+        "expected": 1,
+        "inputs": [
+          "manual receipt validity",
+          "manual decision",
+          "report_only"
+        ],
+        "rule": "valid hold or reject exits 1 unless report_only is true"
+      },
+      "fact_signature": {
+        "controlling_owner": "analyze_runs.py manual-decision exit mapping",
+        "decisive_observed_facts": [
+          "empirical usefulness is supported",
+          "manual decision is hold",
+          "report-only is absent"
+        ],
+        "expected_disposition": "exit 1",
+        "supplied_artifacts": [
+          "complete empirical summary",
+          "verified manual receipt"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ae-04.md",
+      "independence": {
+        "basis": "manual hold mapping",
+        "distinguished_from": {
+          "D23-AE-01": "external authority is blocked",
+          "D23-AE-02": "is not L1",
+          "D23-AE-03": "empirical status is supported",
+          "D23-AE-05": "receipt is valid",
+          "D23-AE-06": "evidence is complete",
+          "D23-AE-07": "feasibility is not the issue",
+          "D23-AE-08": "report_only is false"
+        }
+      },
+      "input_shape": "ordinary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Manual hold causes exit 1.",
+        "usefulness_status remains supported while final authority is blocked."
+      ],
+      "normative_source": "skill-evaluator/SKILL.md#Run the owners",
+      "protected_boundary": "Manual authority and empirical usefulness are separate axes.",
+      "semantic_rubric": {
+        "criteria": [
+          "separates empirical and authority outcomes",
+          "does not rewrite supported usefulness"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "analyzer-exit"
+    },
+    {
+      "author_case_id": "D23-AE-05",
+      "case_id": "skill-evaluator-confirmatory-v3-ae-05",
+      "counterfactual": {
+        "fact_change": "Repair the index JSONL into complete valid evidence whose result is not_supported.",
+        "resulting_disposition": "exit 1, or 0 if report_only remains true"
+      },
+      "deterministic_oracle": {
+        "expected": 2,
+        "inputs": [
+          "input parse status"
+        ],
+        "rule": "any contract/spec/plan/index/I-O error exits 2 regardless of report_only"
+      },
+      "fact_signature": {
+        "controlling_owner": "analyze_runs.py contract/I-O error mapping",
+        "decisive_observed_facts": [
+          "index bytes are malformed JSONL",
+          "no summary classification can be derived"
+        ],
+        "expected_disposition": "exit 2",
+        "supplied_artifacts": [
+          "spec path",
+          "index path"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ae-05.md",
+      "independence": {
+        "basis": "input parse failure",
+        "distinguished_from": {
+          "D23-AE-01": "no supported analysis exists",
+          "D23-AE-02": "no complete diagnostic exists",
+          "D23-AE-03": "negative evidence was not derived",
+          "D23-AE-04": "no manual decision is reached",
+          "D23-AE-06": "is an error rather than incomplete evidence",
+          "D23-AE-07": "capabilities are not being classified",
+          "D23-AE-08": "demonstrates a non-convertible exit"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Malformed index input is a contract/I-O class error and exits 2.",
+        "report-only does not convert exit 2."
+      ],
+      "normative_source": "skill-evaluator/references/reporting-and-decisions.md#Exit and immutable retry",
+      "protected_boundary": "A CLI input failure is not a verified usefulness outcome.",
+      "semantic_rubric": {
+        "criteria": [
+          "identifies the error class",
+          "does not invent a usefulness status from unparsed evidence"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "analyzer-exit"
+    },
+    {
+      "author_case_id": "D23-AE-06",
+      "case_id": "skill-evaluator-confirmatory-v3-ae-06",
+      "counterfactual": {
+        "fact_change": "Supply the missing unique valid receipt and let all gates pass.",
+        "resulting_disposition": "exit 0"
+      },
+      "deterministic_oracle": {
+        "expected": 3,
+        "inputs": [
+          "evidence_status",
+          "missing required count"
+        ],
+        "rule": "incomplete or invalid evidence that is not a CLI contract error exits 3"
+      },
+      "fact_signature": {
+        "controlling_owner": "analyze_runs.py incomplete-evidence mapping",
+        "decisive_observed_facts": [
+          "one required execute attempt is missing",
+          "remaining receipts are valid"
+        ],
+        "expected_disposition": "exit 3",
+        "supplied_artifacts": [
+          "valid index",
+          "planned attempt matrix"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ae-06.md",
+      "independence": {
+        "basis": "missing required attempt",
+        "distinguished_from": {
+          "D23-AE-01": "analysis is not ready",
+          "D23-AE-02": "diagnostic evidence is not complete",
+          "D23-AE-03": "no verified negative outcome exists",
+          "D23-AE-04": "manual authority is not decisive",
+          "D23-AE-05": "inputs parse correctly",
+          "D23-AE-07": "execution was feasible",
+          "D23-AE-08": "report-only cannot repair incompleteness"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Incomplete required evidence exits 3.",
+        "The missing row is not converted to a zero score."
+      ],
+      "normative_source": "skill-evaluator/references/reporting-and-decisions.md#Exit and immutable retry",
+      "protected_boundary": "Missing evidence is not a factual outcome failure and cannot be silently imputed.",
+      "semantic_rubric": {
+        "criteria": [
+          "states exit 3 and the missing attempt",
+          "does not score the absent attempt"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "analyzer-exit"
+    },
+    {
+      "author_case_id": "D23-AE-07",
+      "case_id": "skill-evaluator-confirmatory-v3-ae-07",
+      "counterfactual": {
+        "fact_change": "Replace unsupported probe evidence with pass and provide complete passing execution evidence.",
+        "resulting_disposition": "exit 0 if all gates support eligibility"
+      },
+      "deterministic_oracle": {
+        "expected": 3,
+        "inputs": [
+          "feasibility_status",
+          "evidence_status"
+        ],
+        "rule": "unsupported or not_evaluable feasibility produces exit 3 when no stronger contract error exists"
+      },
+      "fact_signature": {
+        "controlling_owner": "analyze_runs.py feasibility mapping",
+        "decisive_observed_facts": [
+          "feasibility_status=unsupported",
+          "evidence_status=complete",
+          "no execute attempts are required"
+        ],
+        "expected_disposition": "exit 3 with usefulness not_evaluable",
+        "supplied_artifacts": [
+          "complete non-execute plan evidence"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ae-07.md",
+      "independence": {
+        "basis": "unsupported feasibility with complete evidence",
+        "distinguished_from": {
+          "D23-AE-01": "feasibility blocks support",
+          "D23-AE-02": "not a diagnostic success",
+          "D23-AE-03": "not_supported was not measured",
+          "D23-AE-04": "manual authority is not controlling",
+          "D23-AE-05": "no parse error exists",
+          "D23-AE-06": "evidence is complete",
+          "D23-AE-08": "tests exit 3 rather than selective conversion"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Unsupported feasibility exits 3 even with complete disposition evidence.",
+        "It is not a task failure."
+      ],
+      "normative_source": "skill-evaluator/references/rubric-and-metrics.md#Five analyzer status axes",
+      "protected_boundary": "Completeness cannot compensate for unsupported feasibility.",
+      "semantic_rubric": {
+        "criteria": [
+          "keeps feasibility and evidence axes distinct",
+          "does not blame the task executor"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "analyzer-exit"
+    },
+    {
+      "author_case_id": "D23-AE-08",
+      "case_id": "skill-evaluator-confirmatory-v3-ae-08",
+      "counterfactual": {
+        "fact_change": "Set report_only=false.",
+        "resulting_disposition": "ordered exits remain 1, 2, and 3"
+      },
+      "deterministic_oracle": {
+        "expected": [
+          0,
+          2,
+          3
+        ],
+        "inputs": [
+          "report_only",
+          "native exit list"
+        ],
+        "rule": "map 1 to 0 and leave every other exit unchanged"
+      },
+      "fact_signature": {
+        "controlling_owner": "analyze_runs.py report-only mapping",
+        "decisive_observed_facts": [
+          "report-only=true",
+          "native exits are respectively 1, 2, and 3"
+        ],
+        "expected_disposition": "converted exits are respectively 0, 2, and 3",
+        "supplied_artifacts": [
+          "three otherwise identical invocations"
+        ]
+      },
+      "fixture": "fixtures/confirmatory-v3-ae-08.md",
+      "independence": {
+        "basis": "selective report-only transformation",
+        "distinguished_from": {
+          "D23-AE-01": "does not classify a single supported run",
+          "D23-AE-02": "does not rely on L1",
+          "D23-AE-03": "tests conversion rather than native exit 1",
+          "D23-AE-04": "covers no specific manual decision",
+          "D23-AE-05": "compares error preservation rather than error origin",
+          "D23-AE-06": "compares incomplete preservation rather than missing-row origin",
+          "D23-AE-07": "compares mappings rather than feasibility semantics"
+        }
+      },
+      "input_shape": "boundary",
+      "model_grade_required": true,
+      "normative_requirement": [
+        "Only native exit 1 changes to 0.",
+        "Summary states remain unchanged for every invocation."
+      ],
+      "normative_source": "skill-evaluator/SKILL.md#Run the owners",
+      "protected_boundary": "Report-only changes process signaling, not evidence or semantic statuses.",
+      "semantic_rubric": {
+        "criteria": [
+          "reports the complete ordered mapping",
+          "states that statuses are not rewritten"
+        ],
+        "scope": "semantic-boundary-expression-only"
+      },
+      "stratum": "analyzer-exit"
+    }
+  ],
+  "cases_per_stratum": 8,
+  "corpus_disposition": "confirmatory_eligible",
+  "normalization": "drop-marker-case-id-path-digest-v1",
+  "schema_version": "se-confirmatory-case-lineage/3",
+  "strata": 6
+}

@@ -32,6 +32,7 @@ from _model_evolution_ops import (
     git_identity,
     run_model_free_command,
 )
+from _model_evolution_state import se_first_revision_allowed
 
 
 def _prior_product(
@@ -147,12 +148,15 @@ def prepare_prior_plan(
 ) -> dict[str, Any]:
     if (
         skill_id not in SKILL_IDS
-        or campaign["phase"] != "decision_ready"
+        or (
+            campaign["phase"] != "decision_ready"
+            and not se_first_revision_allowed(campaign, skill_id)
+        )
         or campaign.get("candidate") is not None
         or campaign["profiles"].get("predecessor") is not None
     ):
         raise MaterializationError(
-            "prior plans require a candidate-null bootstrap at decision_ready"
+            "prior plans require decision_ready or the registered SE-first confirmatory gate"
         )
     product, product_record = _prior_product(
         campaign=campaign,

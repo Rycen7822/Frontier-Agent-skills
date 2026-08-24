@@ -1,0 +1,435 @@
+{
+  "authority": "suite-quality-owner",
+  "boundary_coverage": [
+    {
+      "case_classes": [
+        "boundary_or_failure"
+      ],
+      "status": "pass",
+      "surface": "scenario-oracle"
+    }
+  ],
+  "case_classes": [
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cs-01",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cs-02",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cs-03",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cs-04",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cs-05",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cs-06",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cs-07",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cs-08",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cc-01",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cc-02",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cc-03",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cc-04",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cc-05",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cc-06",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cc-07",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-cc-08",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ab-01",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ab-02",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ab-03",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ab-04",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ab-05",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ab-06",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ab-07",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ab-08",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-nc-01",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-nc-02",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-nc-03",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-nc-04",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-nc-05",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-nc-06",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-nc-07",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-nc-08",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-dv-01",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-dv-02",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-dv-03",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-dv-04",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-dv-05",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-dv-06",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-dv-07",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-dv-08",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ae-01",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ae-02",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ae-03",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ae-04",
+      "class": "positive"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ae-05",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ae-06",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ae-07",
+      "class": "boundary_or_failure"
+    },
+    {
+      "case_id": "skill-evaluator-confirmatory-v3-ae-08",
+      "class": "boundary_or_failure"
+    }
+  ],
+  "custody": {
+    "author_visible_paths": [
+      "scenarios.public.jsonl"
+    ],
+    "custodian": "evaluation-owner",
+    "executor_visible_paths": [
+      "scenarios.public.jsonl"
+    ],
+    "exposure_status": "not_applicable",
+    "split_bindings": {
+      "dev": {
+        "path": "scenarios.public.jsonl"
+      },
+      "heldout": null,
+      "regression": {
+        "path": "scenarios.public.jsonl"
+      }
+    }
+  },
+  "duplicate_groups": [],
+  "evaluation_id": "frontier-skill-evaluator-confirmatory-v3",
+  "golden": {
+    "case_ids": [
+      "skill-evaluator-confirmatory-v3-cs-01",
+      "skill-evaluator-confirmatory-v3-cs-02",
+      "skill-evaluator-confirmatory-v3-cs-03",
+      "skill-evaluator-confirmatory-v3-cs-04",
+      "skill-evaluator-confirmatory-v3-cs-05",
+      "skill-evaluator-confirmatory-v3-cs-06",
+      "skill-evaluator-confirmatory-v3-cs-07",
+      "skill-evaluator-confirmatory-v3-cs-08",
+      "skill-evaluator-confirmatory-v3-cc-01",
+      "skill-evaluator-confirmatory-v3-cc-02",
+      "skill-evaluator-confirmatory-v3-cc-03",
+      "skill-evaluator-confirmatory-v3-cc-04",
+      "skill-evaluator-confirmatory-v3-cc-05",
+      "skill-evaluator-confirmatory-v3-cc-06",
+      "skill-evaluator-confirmatory-v3-cc-07",
+      "skill-evaluator-confirmatory-v3-cc-08",
+      "skill-evaluator-confirmatory-v3-ab-01",
+      "skill-evaluator-confirmatory-v3-ab-02",
+      "skill-evaluator-confirmatory-v3-ab-03",
+      "skill-evaluator-confirmatory-v3-ab-04",
+      "skill-evaluator-confirmatory-v3-ab-05",
+      "skill-evaluator-confirmatory-v3-ab-06",
+      "skill-evaluator-confirmatory-v3-ab-07",
+      "skill-evaluator-confirmatory-v3-ab-08",
+      "skill-evaluator-confirmatory-v3-nc-01",
+      "skill-evaluator-confirmatory-v3-nc-02",
+      "skill-evaluator-confirmatory-v3-nc-03",
+      "skill-evaluator-confirmatory-v3-nc-04",
+      "skill-evaluator-confirmatory-v3-nc-05",
+      "skill-evaluator-confirmatory-v3-nc-06",
+      "skill-evaluator-confirmatory-v3-nc-07",
+      "skill-evaluator-confirmatory-v3-nc-08",
+      "skill-evaluator-confirmatory-v3-dv-01",
+      "skill-evaluator-confirmatory-v3-dv-02",
+      "skill-evaluator-confirmatory-v3-dv-03",
+      "skill-evaluator-confirmatory-v3-dv-04",
+      "skill-evaluator-confirmatory-v3-dv-05",
+      "skill-evaluator-confirmatory-v3-dv-06",
+      "skill-evaluator-confirmatory-v3-dv-07",
+      "skill-evaluator-confirmatory-v3-dv-08",
+      "skill-evaluator-confirmatory-v3-ae-01",
+      "skill-evaluator-confirmatory-v3-ae-02",
+      "skill-evaluator-confirmatory-v3-ae-03",
+      "skill-evaluator-confirmatory-v3-ae-04",
+      "skill-evaluator-confirmatory-v3-ae-05",
+      "skill-evaluator-confirmatory-v3-ae-06",
+      "skill-evaluator-confirmatory-v3-ae-07",
+      "skill-evaluator-confirmatory-v3-ae-08"
+    ],
+    "passed_ids": [
+      "skill-evaluator-confirmatory-v3-cs-01",
+      "skill-evaluator-confirmatory-v3-cs-02",
+      "skill-evaluator-confirmatory-v3-cs-03",
+      "skill-evaluator-confirmatory-v3-cs-04",
+      "skill-evaluator-confirmatory-v3-cs-05",
+      "skill-evaluator-confirmatory-v3-cs-06",
+      "skill-evaluator-confirmatory-v3-cs-07",
+      "skill-evaluator-confirmatory-v3-cs-08",
+      "skill-evaluator-confirmatory-v3-cc-01",
+      "skill-evaluator-confirmatory-v3-cc-02",
+      "skill-evaluator-confirmatory-v3-cc-03",
+      "skill-evaluator-confirmatory-v3-cc-04",
+      "skill-evaluator-confirmatory-v3-cc-05",
+      "skill-evaluator-confirmatory-v3-cc-06",
+      "skill-evaluator-confirmatory-v3-cc-07",
+      "skill-evaluator-confirmatory-v3-cc-08",
+      "skill-evaluator-confirmatory-v3-ab-01",
+      "skill-evaluator-confirmatory-v3-ab-02",
+      "skill-evaluator-confirmatory-v3-ab-03",
+      "skill-evaluator-confirmatory-v3-ab-04",
+      "skill-evaluator-confirmatory-v3-ab-05",
+      "skill-evaluator-confirmatory-v3-ab-06",
+      "skill-evaluator-confirmatory-v3-ab-07",
+      "skill-evaluator-confirmatory-v3-ab-08",
+      "skill-evaluator-confirmatory-v3-nc-01",
+      "skill-evaluator-confirmatory-v3-nc-02",
+      "skill-evaluator-confirmatory-v3-nc-03",
+      "skill-evaluator-confirmatory-v3-nc-04",
+      "skill-evaluator-confirmatory-v3-nc-05",
+      "skill-evaluator-confirmatory-v3-nc-06",
+      "skill-evaluator-confirmatory-v3-nc-07",
+      "skill-evaluator-confirmatory-v3-nc-08",
+      "skill-evaluator-confirmatory-v3-dv-01",
+      "skill-evaluator-confirmatory-v3-dv-02",
+      "skill-evaluator-confirmatory-v3-dv-03",
+      "skill-evaluator-confirmatory-v3-dv-04",
+      "skill-evaluator-confirmatory-v3-dv-05",
+      "skill-evaluator-confirmatory-v3-dv-06",
+      "skill-evaluator-confirmatory-v3-dv-07",
+      "skill-evaluator-confirmatory-v3-dv-08",
+      "skill-evaluator-confirmatory-v3-ae-01",
+      "skill-evaluator-confirmatory-v3-ae-02",
+      "skill-evaluator-confirmatory-v3-ae-03",
+      "skill-evaluator-confirmatory-v3-ae-04",
+      "skill-evaluator-confirmatory-v3-ae-05",
+      "skill-evaluator-confirmatory-v3-ae-06",
+      "skill-evaluator-confirmatory-v3-ae-07",
+      "skill-evaluator-confirmatory-v3-ae-08"
+    ]
+  },
+  "known_bad": {
+    "case_ids": [
+      "known-bad-missing-required-contract"
+    ],
+    "detected_ids": [
+      "known-bad-missing-required-contract"
+    ]
+  },
+  "leakage_probes": [
+    {
+      "artifact": {
+        "digest": "sha256:bb9e210799fc1cb1d4b7d6fc2cfa73d1d3752daa450c80176923c3c51cae7849",
+        "path": "grader-prompt.md"
+      },
+      "locator": {
+        "artifact": "grader-prompt.md",
+        "end_line": 1,
+        "kind": "text_lines",
+        "start_line": 1
+      },
+      "probe_id": "tracked-holdout-absence",
+      "status": "pass",
+      "surface": "holdout"
+    }
+  ],
+  "mutations": {
+    "detected_ids": [
+      "mutation-remove-protected-requirement"
+    ],
+    "mutation_ids": [
+      "mutation-remove-protected-requirement"
+    ]
+  },
+  "provenance_clusters": [
+    {
+      "case_ids": [
+        "skill-evaluator-confirmatory-v3-cs-01",
+        "skill-evaluator-confirmatory-v3-cs-02",
+        "skill-evaluator-confirmatory-v3-cs-03",
+        "skill-evaluator-confirmatory-v3-cs-04",
+        "skill-evaluator-confirmatory-v3-cs-05",
+        "skill-evaluator-confirmatory-v3-cs-06",
+        "skill-evaluator-confirmatory-v3-cs-07",
+        "skill-evaluator-confirmatory-v3-cs-08",
+        "skill-evaluator-confirmatory-v3-cc-01",
+        "skill-evaluator-confirmatory-v3-cc-02",
+        "skill-evaluator-confirmatory-v3-cc-03",
+        "skill-evaluator-confirmatory-v3-cc-04",
+        "skill-evaluator-confirmatory-v3-cc-05",
+        "skill-evaluator-confirmatory-v3-cc-06",
+        "skill-evaluator-confirmatory-v3-cc-07",
+        "skill-evaluator-confirmatory-v3-cc-08",
+        "skill-evaluator-confirmatory-v3-ab-01",
+        "skill-evaluator-confirmatory-v3-ab-02",
+        "skill-evaluator-confirmatory-v3-ab-03",
+        "skill-evaluator-confirmatory-v3-ab-04",
+        "skill-evaluator-confirmatory-v3-ab-05",
+        "skill-evaluator-confirmatory-v3-ab-06",
+        "skill-evaluator-confirmatory-v3-ab-07",
+        "skill-evaluator-confirmatory-v3-ab-08",
+        "skill-evaluator-confirmatory-v3-nc-01",
+        "skill-evaluator-confirmatory-v3-nc-02",
+        "skill-evaluator-confirmatory-v3-nc-03",
+        "skill-evaluator-confirmatory-v3-nc-04",
+        "skill-evaluator-confirmatory-v3-nc-05",
+        "skill-evaluator-confirmatory-v3-nc-06",
+        "skill-evaluator-confirmatory-v3-nc-07",
+        "skill-evaluator-confirmatory-v3-nc-08",
+        "skill-evaluator-confirmatory-v3-dv-01",
+        "skill-evaluator-confirmatory-v3-dv-02",
+        "skill-evaluator-confirmatory-v3-dv-03",
+        "skill-evaluator-confirmatory-v3-dv-04",
+        "skill-evaluator-confirmatory-v3-dv-05",
+        "skill-evaluator-confirmatory-v3-dv-06",
+        "skill-evaluator-confirmatory-v3-dv-07",
+        "skill-evaluator-confirmatory-v3-dv-08",
+        "skill-evaluator-confirmatory-v3-ae-01",
+        "skill-evaluator-confirmatory-v3-ae-02",
+        "skill-evaluator-confirmatory-v3-ae-03",
+        "skill-evaluator-confirmatory-v3-ae-04",
+        "skill-evaluator-confirmatory-v3-ae-05",
+        "skill-evaluator-confirmatory-v3-ae-06",
+        "skill-evaluator-confirmatory-v3-ae-07",
+        "skill-evaluator-confirmatory-v3-ae-08"
+      ],
+      "cluster_id": "frontier-model-evolution-analysis",
+      "review_locator": {
+        "artifact": "grader-prompt.md",
+        "end_line": 1,
+        "kind": "text_lines",
+        "start_line": 1
+      },
+      "source_refs": [
+        "grader-prompt.md"
+      ],
+      "status": "closed"
+    }
+  ],
+  "review_status": {
+    "duplicate_and_provenance_review": "pass",
+    "leakage_review": "pass"
+  },
+  "schema_version": 1,
+  "thresholds": {
+    "minimum_detection": 1.0
+  }
+}

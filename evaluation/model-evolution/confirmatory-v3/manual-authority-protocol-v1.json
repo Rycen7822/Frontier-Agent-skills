@@ -1,0 +1,23 @@
+{
+  "authority_owner": "release-owner",
+  "custodian_id": "confirmatory-manual-custodian",
+  "decision": null,
+  "decision_values": [
+    "approve",
+    "hold",
+    "reject"
+  ],
+  "packet_schema": {
+    "path": "evaluation/model-evolution/confirmatory-v3/manual-authority-packet-v1.schema.json",
+    "root": "campaign",
+    "schema_version": "json/1"
+  },
+  "protocol": "post-holdout-independent-signoff",
+  "schema_version": "manual-authority-protocol/1",
+  "signed_attestation": null,
+  "signing_conditions": [
+    "four_revision_reports_closed",
+    "sealed_holdout_closed",
+    "packet_identity_verified"
+  ]
+}

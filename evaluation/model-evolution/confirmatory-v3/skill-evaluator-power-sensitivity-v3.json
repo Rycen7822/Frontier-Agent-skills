@@ -1,0 +1,64 @@
+{
+  "alpha_one_sided": 0.05,
+  "claim": "design_rationale_only_not_pass_guarantee",
+  "method": "normal-approximation-design-sensitivity",
+  "optional_stopping": false,
+  "registered_distinct_cases": 48,
+  "rows": [
+    {
+      "approximate_power": 0.829761,
+      "distinct_cases": 48,
+      "effect": 0.15,
+      "standard_deviation": 0.4
+    },
+    {
+      "approximate_power": 0.663199,
+      "distinct_cases": 48,
+      "effect": 0.15,
+      "standard_deviation": 0.503
+    },
+    {
+      "approximate_power": 0.48164,
+      "distinct_cases": 48,
+      "effect": 0.15,
+      "standard_deviation": 0.65
+    },
+    {
+      "approximate_power": 0.986107,
+      "distinct_cases": 48,
+      "effect": 0.222,
+      "standard_deviation": 0.4
+    },
+    {
+      "approximate_power": 0.921161,
+      "distinct_cases": 48,
+      "effect": 0.222,
+      "standard_deviation": 0.503
+    },
+    {
+      "approximate_power": 0.764667,
+      "distinct_cases": 48,
+      "effect": 0.222,
+      "standard_deviation": 0.65
+    },
+    {
+      "approximate_power": 0.999808,
+      "distinct_cases": 48,
+      "effect": 0.3,
+      "standard_deviation": 0.4
+    },
+    {
+      "approximate_power": 0.993564,
+      "distinct_cases": 48,
+      "effect": 0.3,
+      "standard_deviation": 0.503
+    },
+    {
+      "approximate_power": 0.939762,
+      "distinct_cases": 48,
+      "effect": 0.3,
+      "standard_deviation": 0.65
+    }
+  ],
+  "schema_version": "se-confirmatory-power-sensitivity/3"
+}

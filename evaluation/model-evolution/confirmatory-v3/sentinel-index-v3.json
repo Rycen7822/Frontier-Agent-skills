@@ -1,0 +1,1476 @@
+{
+  "case_lineage": {
+    "path": "evaluation/model-evolution/confirmatory-v3/skill-evaluator-case-lineage-v3.json",
+    "root": "campaign",
+    "schema_version": "se-confirmatory-case-lineage/3"
+  },
+  "catalog_files": [
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/bundle-revision-policy-v3.json",
+      "root": "campaign",
+      "schema_version": "frontier-bundle-revision-policy/2"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/manual-authority-packet-v1.schema.json",
+      "root": "campaign",
+      "schema_version": "json/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/manual-authority-protocol-v1.json",
+      "root": "campaign",
+      "schema_version": "manual-authority-protocol/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/calibration-gold.jsonl",
+      "root": "campaign",
+      "schema_version": "jsonl/3"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/eval-spec.template.json",
+      "root": "campaign",
+      "schema_version": "7"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/completion.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/draft.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/failure-ownership.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/manifest.json",
+      "root": "campaign",
+      "schema_version": "1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/mode-selection.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/recovery-state.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/release.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/run-a.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/run-b.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/service-scope.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/grader-output.schema.json",
+      "root": "campaign",
+      "schema_version": "json/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/grader-prompt.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/host-manifest.template.json",
+      "root": "campaign",
+      "schema_version": "2"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/scenarios.public.jsonl",
+      "root": "campaign",
+      "schema_version": "jsonl/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/suite-quality-proof.json",
+      "root": "campaign",
+      "schema_version": "1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/suite-quality.json",
+      "root": "campaign",
+      "schema_version": "2"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/verify.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/verify_common.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/calibration-gold.jsonl",
+      "root": "campaign",
+      "schema_version": "jsonl/3"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/eval-spec.template.json",
+      "root": "campaign",
+      "schema_version": "7"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-01.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-02.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-03.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-04.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-05.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-06.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-07.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-08.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-01.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-02.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-03.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-04.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-05.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-06.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-07.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-08.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-01.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-02.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-03.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-04.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-05.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-06.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-07.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-08.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-01.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-02.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-03.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-04.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-05.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-06.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-07.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-08.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-01.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-02.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-03.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-04.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-05.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-06.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-07.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-08.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-01.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-02.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-03.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-04.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-05.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-06.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-07.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-08.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/manifest.json",
+      "root": "campaign",
+      "schema_version": "1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/grader-output.schema.json",
+      "root": "campaign",
+      "schema_version": "json/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/grader-prompt.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/host-manifest.template.json",
+      "root": "campaign",
+      "schema_version": "2"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/scenarios.public.jsonl",
+      "root": "campaign",
+      "schema_version": "jsonl/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/suite-quality-proof.json",
+      "root": "campaign",
+      "schema_version": "1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/suite-quality.json",
+      "root": "campaign",
+      "schema_version": "2"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/verify.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/verify_common.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/calibration-gold.jsonl",
+      "root": "campaign",
+      "schema_version": "jsonl/3"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/case-contracts.json",
+      "root": "campaign",
+      "schema_version": "1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/eval-spec.template.json",
+      "root": "campaign",
+      "schema_version": "7"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/cross/check.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/cross/consumer.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/cross/producer.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/harness/app.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/harness/broken_harness.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/harness/direct_check.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/manifest.json",
+      "root": "campaign",
+      "schema_version": "1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/material/auth.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/material/integration_check.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/material/negative_check.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/oracle/README.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/oracle/app.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/oracle/bad_test.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/oracle/requirement_check.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/repeated/stuck_check.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/retention/check.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/retention/durable_test.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/retention/parser.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/retention/temp_probe.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/routine/app.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/routine/check.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/stochastic/trial-state.txt",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/stochastic/trial.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/unrelated/aggregate.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/unrelated/app.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/unrelated/focused.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/grader-output.schema.json",
+      "root": "campaign",
+      "schema_version": "json/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/grader-prompt.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/host-manifest.template.json",
+      "root": "campaign",
+      "schema_version": "2"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/scenarios.public.jsonl",
+      "root": "campaign",
+      "schema_version": "jsonl/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/suite-quality-proof.json",
+      "root": "campaign",
+      "schema_version": "1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/suite-quality.json",
+      "root": "campaign",
+      "schema_version": "2"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/verify.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/verify_common.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/calibration-gold.jsonl",
+      "root": "campaign",
+      "schema_version": "jsonl/3"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/eval-spec.template.json",
+      "root": "campaign",
+      "schema_version": "7"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/README.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/agents/openai.yaml",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/cli.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/docs/config.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/manifest.json",
+      "root": "campaign",
+      "schema_version": "1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/program-state.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/release-status.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/resume-state.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/schema.json",
+      "root": "campaign",
+      "schema_version": "json/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/scripts/build_package.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/src/client.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/src/config.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/src/parser.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/tests/test_cli.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/tests/test_client.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/grader-output.schema.json",
+      "root": "campaign",
+      "schema_version": "json/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/grader-prompt.md",
+      "root": "campaign",
+      "schema_version": "text/utf-8"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/host-manifest.template.json",
+      "root": "campaign",
+      "schema_version": "2"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/scenarios.public.jsonl",
+      "root": "campaign",
+      "schema_version": "jsonl/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/suite-quality-proof.json",
+      "root": "campaign",
+      "schema_version": "1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/suite-quality.json",
+      "root": "campaign",
+      "schema_version": "2"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/verify.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/verify_common.py",
+      "root": "campaign",
+      "schema_version": "bytes/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/skill-evaluator-authoring-source-v3.json",
+      "root": "campaign",
+      "schema_version": "json/1"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/skill-evaluator-case-lineage-v3.json",
+      "root": "campaign",
+      "schema_version": "se-confirmatory-case-lineage/3"
+    },
+    {
+      "path": "evaluation/model-evolution/confirmatory-v3/skill-evaluator-power-sensitivity-v3.json",
+      "root": "campaign",
+      "schema_version": "se-confirmatory-power-sensitivity/3"
+    }
+  ],
+  "manual_authority_protocol": {
+    "path": "evaluation/model-evolution/confirmatory-v3/manual-authority-protocol-v1.json",
+    "root": "campaign",
+    "schema_version": "manual-authority-protocol/1"
+  },
+  "power_sensitivity": {
+    "path": "evaluation/model-evolution/confirmatory-v3/skill-evaluator-power-sensitivity-v3.json",
+    "root": "campaign",
+    "schema_version": "se-confirmatory-power-sensitivity/3"
+  },
+  "revision_policy": {
+    "path": "evaluation/model-evolution/confirmatory-v3/bundle-revision-policy-v3.json",
+    "root": "campaign",
+    "schema_version": "frontier-bundle-revision-policy/2"
+  },
+  "schema_version": "model-evolution-sentinel-index/3",
+  "sentinel_id": "frontier-four-skill-confirmatory-v3",
+  "skills": {
+    "long-document-segmented-writing": {
+      "calibration_gold": {
+        "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/calibration-gold.jsonl",
+        "root": "campaign",
+        "schema_version": "jsonl/3"
+      },
+      "calibration_request_ceiling": 16,
+      "critical_bucket_id": "long-document-segmented-writing-critical",
+      "external_holdout_contract_id": "long-document-segmented-writing-external-holdout-v1",
+      "fixture_roots": [
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/manifest.json",
+          "root": "campaign",
+          "schema_version": "1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/completion.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/draft.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/failure-ownership.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/mode-selection.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/recovery-state.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/release.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/run-a.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/run-b.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/fixtures/service-scope.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        }
+      ],
+      "holdout_case_ceiling": 2,
+      "protected_case_ids": [
+        "long-document-segmented-writing-protected-no-scratch"
+      ],
+      "public_scenarios": {
+        "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/scenarios.public.jsonl",
+        "root": "campaign",
+        "schema_version": "jsonl/1"
+      },
+      "required_coverage_tags": [
+        "direct",
+        "compact-recovery",
+        "mode-selection",
+        "compaction-resume",
+        "whole-draft-review",
+        "protected"
+      ],
+      "spec_template": {
+        "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/eval-spec.template.json",
+        "root": "campaign",
+        "schema_version": "7"
+      },
+      "verifier_roots": [
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/verify.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/long-document-segmented-writing/verify_common.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        }
+      ]
+    },
+    "skill-evaluator": {
+      "calibration_gold": {
+        "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/calibration-gold.jsonl",
+        "root": "campaign",
+        "schema_version": "jsonl/3"
+      },
+      "calibration_request_ceiling": 16,
+      "critical_bucket_id": "skill-evaluator-confirmatory-critical-v3",
+      "external_holdout_contract_id": "skill-evaluator-confirmatory-external-holdout-v1",
+      "fixture_roots": [
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/manifest.json",
+          "root": "campaign",
+          "schema_version": "1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-01.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-02.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-03.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-04.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-05.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-06.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-07.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ab-08.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-01.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-02.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-03.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-04.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-05.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-06.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-07.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-ae-08.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-01.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-02.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-03.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-04.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-05.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-06.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-07.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cc-08.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-01.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-02.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-03.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-04.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-05.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-06.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-07.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-cs-08.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-01.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-02.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-03.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-04.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-05.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-06.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-07.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-dv-08.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-01.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-02.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-03.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-04.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-05.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-06.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-07.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/fixtures/confirmatory-v3-nc-08.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        }
+      ],
+      "holdout_case_ceiling": 2,
+      "protected_case_ids": [
+        "skill-evaluator-confirmatory-v3-cs-05",
+        "skill-evaluator-confirmatory-v3-cs-06",
+        "skill-evaluator-confirmatory-v3-cs-07",
+        "skill-evaluator-confirmatory-v3-cs-08",
+        "skill-evaluator-confirmatory-v3-cc-05",
+        "skill-evaluator-confirmatory-v3-cc-06",
+        "skill-evaluator-confirmatory-v3-cc-07",
+        "skill-evaluator-confirmatory-v3-cc-08",
+        "skill-evaluator-confirmatory-v3-ab-05",
+        "skill-evaluator-confirmatory-v3-ab-06",
+        "skill-evaluator-confirmatory-v3-ab-07",
+        "skill-evaluator-confirmatory-v3-ab-08",
+        "skill-evaluator-confirmatory-v3-nc-05",
+        "skill-evaluator-confirmatory-v3-nc-06",
+        "skill-evaluator-confirmatory-v3-nc-07",
+        "skill-evaluator-confirmatory-v3-nc-08",
+        "skill-evaluator-confirmatory-v3-dv-05",
+        "skill-evaluator-confirmatory-v3-dv-06",
+        "skill-evaluator-confirmatory-v3-dv-07",
+        "skill-evaluator-confirmatory-v3-dv-08",
+        "skill-evaluator-confirmatory-v3-ae-05",
+        "skill-evaluator-confirmatory-v3-ae-06",
+        "skill-evaluator-confirmatory-v3-ae-07",
+        "skill-evaluator-confirmatory-v3-ae-08"
+      ],
+      "public_scenarios": {
+        "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/scenarios.public.jsonl",
+        "root": "campaign",
+        "schema_version": "jsonl/1"
+      },
+      "required_coverage_tags": [
+        "analyzer-exit",
+        "authority-boundary",
+        "cli-schema-owner",
+        "comparison-class",
+        "deterministic-validation",
+        "negative-control"
+      ],
+      "spec_template": {
+        "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/eval-spec.template.json",
+        "root": "campaign",
+        "schema_version": "7"
+      },
+      "verifier_roots": [
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/verify.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/verify_common.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        }
+      ]
+    },
+    "software-quality-workflows": {
+      "calibration_gold": {
+        "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/calibration-gold.jsonl",
+        "root": "campaign",
+        "schema_version": "jsonl/3"
+      },
+      "calibration_request_ceiling": 16,
+      "critical_bucket_id": "software-quality-workflows-critical",
+      "external_holdout_contract_id": "software-quality-workflows-external-holdout-v1",
+      "fixture_roots": [
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/manifest.json",
+          "root": "campaign",
+          "schema_version": "1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/cross/check.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/cross/consumer.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/cross/producer.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/harness/app.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/harness/broken_harness.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/harness/direct_check.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/material/auth.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/material/integration_check.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/material/negative_check.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/oracle/README.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/oracle/app.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/oracle/bad_test.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/oracle/requirement_check.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/repeated/stuck_check.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/retention/check.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/retention/durable_test.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/retention/parser.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/retention/temp_probe.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/routine/app.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/routine/check.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/stochastic/trial-state.txt",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/stochastic/trial.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/unrelated/aggregate.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/unrelated/app.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/fixtures/unrelated/focused.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        }
+      ],
+      "holdout_case_ceiling": 2,
+      "protected_case_ids": [
+        "software-quality-workflows-test-retention-boundary"
+      ],
+      "public_scenarios": {
+        "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/scenarios.public.jsonl",
+        "root": "campaign",
+        "schema_version": "jsonl/1"
+      },
+      "required_coverage_tags": [
+        "routine",
+        "failure-ownership",
+        "circuit-breaker",
+        "stochastic",
+        "cross-cutting",
+        "material-risk",
+        "test-lifecycle"
+      ],
+      "spec_template": {
+        "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/eval-spec.template.json",
+        "root": "campaign",
+        "schema_version": "7"
+      },
+      "verifier_roots": [
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/verify.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/verify_common.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/software-quality-workflows/case-contracts.json",
+          "root": "campaign",
+          "schema_version": "1"
+        }
+      ]
+    },
+    "writing-plans": {
+      "calibration_gold": {
+        "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/calibration-gold.jsonl",
+        "root": "campaign",
+        "schema_version": "jsonl/3"
+      },
+      "calibration_request_ceiling": 16,
+      "critical_bucket_id": "writing-plans-critical",
+      "external_holdout_contract_id": "writing-plans-external-holdout-v1",
+      "fixture_roots": [
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/manifest.json",
+          "root": "campaign",
+          "schema_version": "1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/README.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/agents/openai.yaml",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/cli.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/docs/config.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/program-state.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/release-status.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/resume-state.md",
+          "root": "campaign",
+          "schema_version": "text/utf-8"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/schema.json",
+          "root": "campaign",
+          "schema_version": "json/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/scripts/build_package.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/src/client.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/src/config.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/src/parser.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/tests/test_cli.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/fixtures/tests/test_client.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        }
+      ],
+      "holdout_case_ceiling": 2,
+      "protected_case_ids": [
+        "writing-plans-protected-description"
+      ],
+      "public_scenarios": {
+        "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/scenarios.public.jsonl",
+        "root": "campaign",
+        "schema_version": "jsonl/1"
+      },
+      "required_coverage_tags": [
+        "source-bound",
+        "resume-preflight",
+        "program",
+        "handoff",
+        "continuous-execution",
+        "protected"
+      ],
+      "spec_template": {
+        "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/eval-spec.template.json",
+        "root": "campaign",
+        "schema_version": "7"
+      },
+      "verifier_roots": [
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/verify.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        },
+        {
+          "path": "evaluation/model-evolution/confirmatory-v3/sentinels/writing-plans/verify_common.py",
+          "root": "campaign",
+          "schema_version": "bytes/1"
+        }
+      ]
+    }
+  }
+}
