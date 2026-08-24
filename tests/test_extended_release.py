@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 from jsonschema import Draft202012Validator
@@ -17,7 +18,16 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "evaluation" / "model-evolution" / "sentinel_sources"))
 
-from _model_evolution_contract import ContractError  # noqa: E402
+from _model_evolution_contract import (  # noqa: E402
+    ContractError,
+    evaluator_evidence_status,
+    validate_document,
+)
+import _model_evolution_contract as model_contract  # noqa: E402
+from _model_evolution_campaign import (  # noqa: E402
+    qualification_request_ceilings,
+    require_qualification_request_ceilings,
+)
 from _model_evolution_qualification import _apparatus_artifact  # noqa: E402
 from _model_evolution_materialization import MaterializationError  # noqa: E402
 from _model_evolution_reporting import (  # noqa: E402
@@ -25,6 +35,7 @@ from _model_evolution_reporting import (  # noqa: E402
     _canonical_analysis_paths,
     _recorded_current_analysis_paths,
     _registered_plan as analysis_plan,
+    validate_confirmatory_revision_policy,
 )
 from _model_evolution_state import (  # noqa: E402
     StateError,
@@ -62,6 +73,112 @@ def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[st
 
 
 class ExtendedRelease(unittest.TestCase):
+    def test_confirmatory_suite_identity_and_budget_are_frozen(self) -> None:
+        index_path = (
+            ROOT / "evaluation/model-evolution/confirmatory-v1/sentinel-index-v3.json"
+        )
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        validate_document(index, "sentinel_index")
+        catalog = {ROOT / binding["path"] for binding in index["catalog_files"]}
+        actual_catalog = {
+            path
+            for path in index_path.parent.rglob("*")
+            if path.is_file() and path != index_path
+        }
+        self.assertEqual(actual_catalog, catalog)
+        self.assertFalse(any(path.is_symlink() for path in actual_catalog))
+        policy, policy_digest = validate_confirmatory_revision_policy(
+            ROOT / index["revision_policy"]["path"]
+        )
+        self.assertEqual("frontier-bundle-revision-policy/2", policy["schema_version"])
+        self.assertTrue(policy_digest.startswith("sha256:"))
+        ceilings = qualification_request_ceilings(
+            index,
+            repository_root=ROOT,
+            campaign_root=ROOT,
+            probe_count=6,
+        )
+        self.assertEqual(
+            {
+                "provider_requests": 3644,
+                "execute": 1752,
+                "model_grade": 1880,
+                "calibration": 64,
+                "calibration_attempts": 128,
+            },
+            ceilings,
+        )
+        supplied = {field: ceilings[field] for field in ("provider_requests", "execute", "model_grade")}
+        require_qualification_request_ceilings(supplied, ceilings)
+        for field in supplied:
+            for offset in (-1, 1):
+                changed = dict(supplied)
+                changed[field] += offset
+                with self.assertRaises(ContractError):
+                    require_qualification_request_ceilings(changed, ceilings)
+
+        scenarios_path = ROOT / index["skills"]["skill-evaluator"]["public_scenarios"]["path"]
+        rows = [json.loads(line) for line in scenarios_path.read_text().splitlines()]
+        ids = [row["case_id"] for row in rows]
+        old_ids = {
+            "skill-evaluator-level-owner-selection",
+            "skill-evaluator-deterministic-first",
+            "skill-evaluator-analyzer-exit-contract",
+            "skill-evaluator-cli-schema-diagnosis",
+            "skill-evaluator-transition-vs-revision",
+            "skill-evaluator-protected-no-reviewer",
+        }
+        self.assertEqual(48, len(ids))
+        self.assertEqual(48, len(set(ids)))
+        self.assertFalse(set(ids) & old_ids)
+        self.assertEqual(48, len({json.dumps(row, sort_keys=True) for row in rows}))
+        spec_path = ROOT / index["skills"]["skill-evaluator"]["spec_template"]["path"]
+        spec = json.loads(spec_path.read_text())
+        self.assertEqual(3, spec["suite"]["repeats"])
+        self.assertEqual(2, len(spec["treatments"]))
+        self.assertTrue(all(set(treatment["scenario_ids"]) == set(ids) for treatment in spec["treatments"]))
+
+        lineage_path = ROOT / index["case_lineage"]["path"]
+        lineage = json.loads(lineage_path.read_text())
+        self.assertEqual(48, lineage["case_count"])
+        strata = {row["stratum"] for row in lineage["cases"]}
+        self.assertEqual(6, len(strata))
+        self.assertTrue(all(sum(row["stratum"] == stratum for row in lineage["cases"]) == 8 for stratum in strata))
+        for row in lineage["cases"]:
+            source = row["normative_source"].split("#", 1)[0]
+            self.assertTrue((ROOT / source).is_file())
+            self.assertTrue((scenarios_path.parent / row["fixture"]).is_file())
+
+    def test_revision_report_consumer_dispatches_v3_and_v4_explicitly(self) -> None:
+        v3 = {
+            "schema_version": 3,
+            "authority_eligibility": "eligible",
+            "result": {"kind": "revision", "status": "closed"},
+        }
+        v4 = {
+            "schema_version": 4,
+            "authority_eligibility": "eligible",
+            "result": {"kind": "revision", "status": "closed"},
+            "metrics": [{
+                "evidence_completeness": "complete",
+                "revision_decision": "pass",
+            }],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "report.json"
+            with patch.object(model_contract, "_validate_external_schema"):
+                path.write_text(json.dumps(v3), encoding="utf-8")
+                self.assertEqual("pass", evaluator_evidence_status(path, kind="revision_report"))
+                path.write_text(json.dumps(v4), encoding="utf-8")
+                self.assertEqual("pass", evaluator_evidence_status(path, kind="revision_report"))
+                v4["metrics"][0]["revision_decision"] = "fail"
+                path.write_text(json.dumps(v4), encoding="utf-8")
+                self.assertEqual("blocked", evaluator_evidence_status(path, kind="revision_report"))
+                v4["schema_version"] = 99
+                path.write_text(json.dumps(v4), encoding="utf-8")
+                with self.assertRaises(ContractError):
+                    evaluator_evidence_status(path, kind="revision_report")
+
     def test_skill_evaluator_comparison_separator_is_fail_closed(self) -> None:
         answer = """- Comparison A — model-transition comparison: M1 to M2, Skill v3 frozen.
 - Comparison B — controlled Skill-revision comparison: v3 to v4, model M2 frozen.

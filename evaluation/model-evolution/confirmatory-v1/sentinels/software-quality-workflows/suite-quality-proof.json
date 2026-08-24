@@ -1,0 +1,162 @@
+{
+  "authority": "suite-quality-owner",
+  "boundary_coverage": [
+    {
+      "case_classes": [
+        "boundary_or_failure"
+      ],
+      "status": "pass",
+      "surface": "scenario-oracle"
+    }
+  ],
+  "case_classes": [
+    {
+      "case_id": "software-quality-workflows-routine-local-edit",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-preexisting-unrelated-red",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-invalid-oracle",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-harness-setup-failure",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-repeated-identical-failure",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-stochastic-failure",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-cross-cutting-contract",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-material-risk-escalation",
+      "class": "positive"
+    },
+    {
+      "case_id": "software-quality-workflows-test-retention-boundary",
+      "class": "boundary_or_failure"
+    }
+  ],
+  "custody": {
+    "author_visible_paths": [
+      "scenarios.public.jsonl"
+    ],
+    "custodian": "evaluation-owner",
+    "executor_visible_paths": [
+      "scenarios.public.jsonl"
+    ],
+    "exposure_status": "not_applicable",
+    "split_bindings": {
+      "dev": {
+        "path": "scenarios.public.jsonl"
+      },
+      "heldout": null,
+      "regression": {
+        "path": "scenarios.public.jsonl"
+      }
+    }
+  },
+  "duplicate_groups": [],
+  "evaluation_id": "frontier-software-quality-workflows-sentinel-v1",
+  "golden": {
+    "case_ids": [
+      "software-quality-workflows-routine-local-edit",
+      "software-quality-workflows-preexisting-unrelated-red",
+      "software-quality-workflows-invalid-oracle",
+      "software-quality-workflows-harness-setup-failure",
+      "software-quality-workflows-repeated-identical-failure",
+      "software-quality-workflows-stochastic-failure",
+      "software-quality-workflows-cross-cutting-contract",
+      "software-quality-workflows-material-risk-escalation",
+      "software-quality-workflows-test-retention-boundary"
+    ],
+    "passed_ids": [
+      "software-quality-workflows-routine-local-edit",
+      "software-quality-workflows-preexisting-unrelated-red",
+      "software-quality-workflows-invalid-oracle",
+      "software-quality-workflows-harness-setup-failure",
+      "software-quality-workflows-repeated-identical-failure",
+      "software-quality-workflows-stochastic-failure",
+      "software-quality-workflows-cross-cutting-contract",
+      "software-quality-workflows-material-risk-escalation",
+      "software-quality-workflows-test-retention-boundary"
+    ]
+  },
+  "known_bad": {
+    "case_ids": [
+      "known-bad-missing-required-contract"
+    ],
+    "detected_ids": [
+      "known-bad-missing-required-contract"
+    ]
+  },
+  "leakage_probes": [
+    {
+      "artifact": {
+        "digest": "sha256:f8003bdd091fffbebb9221253fabce38b7c8becba54561e5b06b002453e7dcf8",
+        "path": "grader-prompt.md"
+      },
+      "locator": {
+        "artifact": "grader-prompt.md",
+        "end_line": 1,
+        "kind": "text_lines",
+        "start_line": 1
+      },
+      "probe_id": "tracked-holdout-absence",
+      "status": "pass",
+      "surface": "holdout"
+    }
+  ],
+  "mutations": {
+    "detected_ids": [
+      "mutation-remove-protected-requirement"
+    ],
+    "mutation_ids": [
+      "mutation-remove-protected-requirement"
+    ]
+  },
+  "provenance_clusters": [
+    {
+      "case_ids": [
+        "software-quality-workflows-routine-local-edit",
+        "software-quality-workflows-preexisting-unrelated-red",
+        "software-quality-workflows-invalid-oracle",
+        "software-quality-workflows-harness-setup-failure",
+        "software-quality-workflows-repeated-identical-failure",
+        "software-quality-workflows-stochastic-failure",
+        "software-quality-workflows-cross-cutting-contract",
+        "software-quality-workflows-material-risk-escalation",
+        "software-quality-workflows-test-retention-boundary"
+      ],
+      "cluster_id": "frontier-model-evolution-analysis",
+      "review_locator": {
+        "artifact": "grader-prompt.md",
+        "end_line": 1,
+        "kind": "text_lines",
+        "start_line": 1
+      },
+      "source_refs": [
+        "grader-prompt.md"
+      ],
+      "status": "closed"
+    }
+  ],
+  "review_status": {
+    "duplicate_and_provenance_review": "pass",
+    "leakage_review": "pass"
+  },
+  "schema_version": 1,
+  "thresholds": {
+    "minimum_detection": 1.0
+  }
+}

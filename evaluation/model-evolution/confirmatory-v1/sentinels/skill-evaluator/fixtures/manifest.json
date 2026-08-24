@@ -1,0 +1,245 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:8f5d55b9e095fd489a23ec4db641a985f90f41d36c9c005be37ae78ac085af4e",
+      "encoding": "utf-8",
+      "path": "confirmatory-analyzer-exit-01.md"
+    },
+    {
+      "digest": "sha256:848df9f7dbf7ab0889306378deef77c03e16e068e812e41843dfd79d941d6b4a",
+      "encoding": "utf-8",
+      "path": "confirmatory-analyzer-exit-02.md"
+    },
+    {
+      "digest": "sha256:864e4406e478dc531f59927e5cd0bf03a6660d141199c3425e97f431f7ada7b3",
+      "encoding": "utf-8",
+      "path": "confirmatory-analyzer-exit-03.md"
+    },
+    {
+      "digest": "sha256:356d67b403f8d4ce4a2c106a6d4846ed7e2c7b499c5df69213d28205531c210f",
+      "encoding": "utf-8",
+      "path": "confirmatory-analyzer-exit-04.md"
+    },
+    {
+      "digest": "sha256:ad1c5e98cb4f0e8e15a9ecd1de91a5b152e16cdb87190884b7662d11ba897169",
+      "encoding": "utf-8",
+      "path": "confirmatory-analyzer-exit-05.md"
+    },
+    {
+      "digest": "sha256:1c80e9984432a0790badefa38bfb0c1b8e4368659d3293179abc11d28ba250d9",
+      "encoding": "utf-8",
+      "path": "confirmatory-analyzer-exit-06.md"
+    },
+    {
+      "digest": "sha256:937f0e87b6b7145716b0e6cd6c204c6661eb7670b5cd9c8bbb60b879464a5055",
+      "encoding": "utf-8",
+      "path": "confirmatory-analyzer-exit-07.md"
+    },
+    {
+      "digest": "sha256:417c948f6c57c5d4a78f91f4d95b80b11bac17cffe5e0d3f1995e5d674cbd599",
+      "encoding": "utf-8",
+      "path": "confirmatory-analyzer-exit-08.md"
+    },
+    {
+      "digest": "sha256:ed0c7d6f3ed4d774845db12001c7a63844baec920f98b4e22ded4bfb4b377412",
+      "encoding": "utf-8",
+      "path": "confirmatory-authority-boundary-01.md"
+    },
+    {
+      "digest": "sha256:ac66c0a0fafd4b1c6fcc400cb34d47cc155b4c4b0579efb54df5f47f3fa46fd6",
+      "encoding": "utf-8",
+      "path": "confirmatory-authority-boundary-02.md"
+    },
+    {
+      "digest": "sha256:5f69b1055daf32112a712707c73e7c60764577ec9e98413ae14fc5de584b3668",
+      "encoding": "utf-8",
+      "path": "confirmatory-authority-boundary-03.md"
+    },
+    {
+      "digest": "sha256:2e37cba481e292fcf90e6de1431d50ea0fb95deb94bba4992b564d67684f94e0",
+      "encoding": "utf-8",
+      "path": "confirmatory-authority-boundary-04.md"
+    },
+    {
+      "digest": "sha256:19cc352bacd70bc5fb9b5d2f05baffad0d3a057d9d6446d7e4708ad5d293bd86",
+      "encoding": "utf-8",
+      "path": "confirmatory-authority-boundary-05.md"
+    },
+    {
+      "digest": "sha256:d5aa2f226f8b8102b6b9a9c5cbdad74f8ca2d25bf9b8f079d3bd88bdc148acd6",
+      "encoding": "utf-8",
+      "path": "confirmatory-authority-boundary-06.md"
+    },
+    {
+      "digest": "sha256:092e849bd9bcb3ca6b094ee8800dae0c548b368ddc9ef9bae211108534d89bf7",
+      "encoding": "utf-8",
+      "path": "confirmatory-authority-boundary-07.md"
+    },
+    {
+      "digest": "sha256:bd5a790ece071731cfdca9af88a3724441c4a5984a81784f3f89b1c895d27f17",
+      "encoding": "utf-8",
+      "path": "confirmatory-authority-boundary-08.md"
+    },
+    {
+      "digest": "sha256:74e133450d0643d76a3edc1e9c400379a97789b6889b21113317e2b6aedfb800",
+      "encoding": "utf-8",
+      "path": "confirmatory-cli-schema-owner-01.md"
+    },
+    {
+      "digest": "sha256:bc0e1c5f58f96621eaeabe9b9c1ca304484456dae52d7395d5a5db1bb979c270",
+      "encoding": "utf-8",
+      "path": "confirmatory-cli-schema-owner-02.md"
+    },
+    {
+      "digest": "sha256:19b2534160f04258466446930319cf5ddaf76efd6a9a154f8d7dcefbab582a1b",
+      "encoding": "utf-8",
+      "path": "confirmatory-cli-schema-owner-03.md"
+    },
+    {
+      "digest": "sha256:ed7997beaf1264b55447b802f6301e73b1bcee0bd0f6d731c0d0a04af014c7dd",
+      "encoding": "utf-8",
+      "path": "confirmatory-cli-schema-owner-04.md"
+    },
+    {
+      "digest": "sha256:db13f4681020b58ed4d0ff88e36ca9162e7a2fd91ab382843adf94432962cf0a",
+      "encoding": "utf-8",
+      "path": "confirmatory-cli-schema-owner-05.md"
+    },
+    {
+      "digest": "sha256:94007051b9d2cc545e80ae745fbc019c07c16c26d64ebc2f484b6e49aa5a127c",
+      "encoding": "utf-8",
+      "path": "confirmatory-cli-schema-owner-06.md"
+    },
+    {
+      "digest": "sha256:b70771d7eb2a73452d477809c36cd71b0d489b43205855956be4e9af5fa9153e",
+      "encoding": "utf-8",
+      "path": "confirmatory-cli-schema-owner-07.md"
+    },
+    {
+      "digest": "sha256:92988c99ac9724ad98a7a70e58736cbd662be49962cb9a458c0f2fd8bf3d5de8",
+      "encoding": "utf-8",
+      "path": "confirmatory-cli-schema-owner-08.md"
+    },
+    {
+      "digest": "sha256:1440ad5cefec4c4e1e5de7e2e6f77addc671724512b38ab8790fa0a76a009be8",
+      "encoding": "utf-8",
+      "path": "confirmatory-comparison-class-01.md"
+    },
+    {
+      "digest": "sha256:df6dddc08a6090894948500a29a0f19638193ba92198973a1312f1592be2ec7e",
+      "encoding": "utf-8",
+      "path": "confirmatory-comparison-class-02.md"
+    },
+    {
+      "digest": "sha256:b317a82632cd620dbdc3c7e61a24c91f82f6b0fd419a2b14031da3cea91de4b8",
+      "encoding": "utf-8",
+      "path": "confirmatory-comparison-class-03.md"
+    },
+    {
+      "digest": "sha256:9e070d6dd6360de08005bd266343ccc1941fdf525c246fe40197feba1a68cfb7",
+      "encoding": "utf-8",
+      "path": "confirmatory-comparison-class-04.md"
+    },
+    {
+      "digest": "sha256:63b0f80a099af01e41f28efbec61564c0d8311397f15c053c43316ded4873298",
+      "encoding": "utf-8",
+      "path": "confirmatory-comparison-class-05.md"
+    },
+    {
+      "digest": "sha256:74999cc9758eade947be00064892412488343e4dca2efd395d7b3e48dbfd90b5",
+      "encoding": "utf-8",
+      "path": "confirmatory-comparison-class-06.md"
+    },
+    {
+      "digest": "sha256:ef8e054c49698de08b155ae6fc62167a0494524c28cb5fd5fed101363dd93782",
+      "encoding": "utf-8",
+      "path": "confirmatory-comparison-class-07.md"
+    },
+    {
+      "digest": "sha256:3e7348b8e84310e5f2b9e2ec8a395307a3474a49b8ac3d4c023841f1f95527a1",
+      "encoding": "utf-8",
+      "path": "confirmatory-comparison-class-08.md"
+    },
+    {
+      "digest": "sha256:8950022ef0106130ca29bba7efd1a086d745dbe8a58ef52208de0bef541c12b7",
+      "encoding": "utf-8",
+      "path": "confirmatory-deterministic-validation-01.md"
+    },
+    {
+      "digest": "sha256:a0f72eeb82f00b55d92c644bc435a059384cb5de2c21e8285282fc8266645dee",
+      "encoding": "utf-8",
+      "path": "confirmatory-deterministic-validation-02.md"
+    },
+    {
+      "digest": "sha256:9e872a2a81423ed4670837d2457217da8bf481724d60a85bf3ea0ddfe691bf8e",
+      "encoding": "utf-8",
+      "path": "confirmatory-deterministic-validation-03.md"
+    },
+    {
+      "digest": "sha256:1ec10f5f191912f911ef76596c032dae4eb536926da835a36e9a28203ea1fccb",
+      "encoding": "utf-8",
+      "path": "confirmatory-deterministic-validation-04.md"
+    },
+    {
+      "digest": "sha256:0476e4e4b4dacd6456f035a56acfd986c031f87d1459035c7d634b910515a7f4",
+      "encoding": "utf-8",
+      "path": "confirmatory-deterministic-validation-05.md"
+    },
+    {
+      "digest": "sha256:4e260e80842e0285cabbb60ace4559312fc6ba56dfb28d44db8dc776a4361a59",
+      "encoding": "utf-8",
+      "path": "confirmatory-deterministic-validation-06.md"
+    },
+    {
+      "digest": "sha256:e17f40846770b22d5146ba54cf652857d34398d0c7e40c046ec8cfac175f2f44",
+      "encoding": "utf-8",
+      "path": "confirmatory-deterministic-validation-07.md"
+    },
+    {
+      "digest": "sha256:34bbe716ef50eaad796bda14a4e69e9db0e601ceaedd27930c14e82b64dc5dc5",
+      "encoding": "utf-8",
+      "path": "confirmatory-deterministic-validation-08.md"
+    },
+    {
+      "digest": "sha256:a5e74183bfdf74f843b646e6958c325d3d015ee4cb18b30a0a0cc001e190475f",
+      "encoding": "utf-8",
+      "path": "confirmatory-negative-control-01.md"
+    },
+    {
+      "digest": "sha256:2651485f2f8e1a188789d77b293f666f779a4645af890a5391fd37487e5a8597",
+      "encoding": "utf-8",
+      "path": "confirmatory-negative-control-02.md"
+    },
+    {
+      "digest": "sha256:0609298aadd881f9063770cd09fb71b08377f9b55161fb1b7236942c2d650cc5",
+      "encoding": "utf-8",
+      "path": "confirmatory-negative-control-03.md"
+    },
+    {
+      "digest": "sha256:54601701908379941e2515bdb42130e7a07aeb54925ef56e201c53157ae3a285",
+      "encoding": "utf-8",
+      "path": "confirmatory-negative-control-04.md"
+    },
+    {
+      "digest": "sha256:6984b28053b3a0b8109a26e6e1f01def0e18337ea449ab0ffb0b6dcfa0fd4d7f",
+      "encoding": "utf-8",
+      "path": "confirmatory-negative-control-05.md"
+    },
+    {
+      "digest": "sha256:c4a9628c39bd99b81f7d7e8b5c3bc211fc38a5e3976825d8e5af2832eb16cbe3",
+      "encoding": "utf-8",
+      "path": "confirmatory-negative-control-06.md"
+    },
+    {
+      "digest": "sha256:b2158a5fe32c66924a0dca2ce92af3f6afa9106c058f5ce3b42597143adbf445",
+      "encoding": "utf-8",
+      "path": "confirmatory-negative-control-07.md"
+    },
+    {
+      "digest": "sha256:f5f4f085f429bfe43eec27fee7b8f5d255fb44e125628f89db27f4d586639d47",
+      "encoding": "utf-8",
+      "path": "confirmatory-negative-control-08.md"
+    }
+  ],
+  "schema_version": 1
+}

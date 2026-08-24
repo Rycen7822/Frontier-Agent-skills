@@ -122,6 +122,81 @@ def validate_bundle_revision_policy(
     return policy, content_hash(path.read_bytes())
 
 
+def validate_confirmatory_revision_policy(
+    path: Path,
+) -> tuple[dict[str, Any], str]:
+    """Validate the explicitly bound comparison-v4 policy."""
+    policy = load_json(path, label="confirmatory Bundle revision policy")
+    required = {
+        "schema_version", "registered_at", "authority_id",
+        "prior_bundle_version", "candidate_bundle_version",
+        "candidate_activation", "skills", "estimator",
+    }
+    estimator = policy.get("estimator")
+    expected_estimator = {
+        "id": "paired-difference-of-differences",
+        "version": "1.0.0",
+        "resampling_unit": "case",
+        "confidence_level": 0.95,
+        "bootstrap_iterations": 10000,
+        "decision_lower_percentile": 0.05,
+        "diagnostic_upper_percentile": 0.95,
+        "seed_derivation": "sha256-domain-separated-length-prefixed-policy-bytes-v1",
+    }
+    if (
+        set(policy) != required
+        or policy.get("schema_version") != "frontier-bundle-revision-policy/2"
+        or policy.get("prior_bundle_version") != "7.0.0"
+        or policy.get("candidate_bundle_version") != "8.0.2"
+        or policy.get("candidate_activation") != EXPECTED_ACTIVATION
+        or policy.get("estimator") != expected_estimator
+        or set(policy.get("skills", {})) != set(SKILL_IDS)
+        or not isinstance(policy.get("authority_id"), str)
+        or SAFE_ID.fullmatch(policy["authority_id"]) is None
+    ):
+        raise MaterializationError("confirmatory Bundle revision policy identity is invalid")
+    parse_utc(policy["registered_at"])
+    for skill_id, record in policy["skills"].items():
+        expected_minimum = {
+            "long-document-segmented-writing": 6,
+            "skill-evaluator": 48,
+            "software-quality-workflows": 9,
+            "writing-plans": 6,
+        }[skill_id]
+        if (
+            set(record) != {"minimum_distinct_cases", "required_axes", "metric_rules"}
+            or record["minimum_distinct_cases"] != expected_minimum
+            or record["required_axes"] != EXPECTED_AXES[skill_id]
+            or record["metric_rules"] != EXPECTED_METRICS[skill_id]
+        ):
+            raise MaterializationError(f"confirmatory policy differs for {skill_id}")
+    return policy, content_hash(path.read_bytes())
+
+
+def _campaign_revision_policy(
+    *,
+    campaign: dict[str, Any],
+    repository_root: Path,
+    campaign_root: Path,
+) -> tuple[dict[str, Any], str, int, Path]:
+    sentinel_path = resolve_binding(
+        campaign["sentinel_index"], repository_root, campaign_root
+    )
+    sentinel = load_json(sentinel_path, label="campaign sentinel index")
+    version = sentinel.get("schema_version")
+    if version == "model-evolution-sentinel-index/2":
+        policy, digest = validate_bundle_revision_policy(repository_root)
+        return policy, digest, 3, repository_root / POLICY_PATH
+    if version == "model-evolution-sentinel-index/3":
+        binding = sentinel.get("revision_policy")
+        if not isinstance(binding, dict):
+            raise MaterializationError("confirmatory sentinel lacks revision policy")
+        policy_path = resolve_binding(binding, repository_root, campaign_root)
+        policy, digest = validate_confirmatory_revision_policy(policy_path)
+        return policy, digest, 4, policy_path
+    raise MaterializationError(f"unsupported sentinel index version {version!r}")
+
+
 def _registered_plan(
     campaign: dict[str, Any], role: str, skill_id: str
 ) -> dict[str, Any]:
@@ -480,9 +555,12 @@ def _bundle_revision_plan(
     minimum_distinct_cases: int,
     required_axes: list[str],
     output_root: str,
+    schema_version: int = 3,
+    estimator: dict[str, Any] | None = None,
+    policy_path: Path | None = None,
 ) -> dict[str, Any]:
-    return {
-        "schema_version": 3,
+    plan = {
+        "schema_version": schema_version,
         "comparison_id": comparison_id,
         "kind": "revision",
         "claim_scope": "revision_noninferiority",
@@ -522,6 +600,14 @@ def _bundle_revision_plan(
             "diagnostic_index": "comparison-diagnostic-index.json",
         },
     }
+    if schema_version == 4:
+        if estimator is None or policy_path is None:
+            raise MaterializationError("comparison v4 requires an estimator")
+        plan["decision_policy"]["estimator"] = estimator
+        plan["decision_policy"]["registered_policy"] = _artifact(
+            policy_path, campaign_root, "frontier-bundle-revision-policy/2"
+        )
+    return plan
 
 
 def _analysis_paths(summary: Path, *, label: str) -> tuple[Path, Path]:
@@ -589,7 +675,11 @@ def prepare_revision_report(
     """Bind current/prior cycles and produce one Bundle noninferiority report."""
     if skill_id not in SKILL_IDS or campaign.get("candidate") is not None:
         raise MaterializationError("Bundle revision requires candidate-null bootstrap")
-    policy, policy_digest = validate_bundle_revision_policy(repository_root)
+    policy, policy_digest, comparison_schema_version, policy_path = _campaign_revision_policy(
+        campaign=campaign,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+    )
     roots: dict[str, Path] = {}
     paths: dict[str, tuple[Path, Path, Path]] = {}
     analyses: dict[str, tuple[Path, Path]] = {}
@@ -703,6 +793,9 @@ def prepare_revision_report(
             minimum_distinct_cases=skill_policy["minimum_distinct_cases"],
             required_axes=skill_policy["required_axes"],
             output_root=f"revision-reports/{skill_id}",
+            schema_version=comparison_schema_version,
+            estimator=policy.get("estimator"),
+            policy_path=policy_path,
         )
         plan_path = campaign_root / f"revision-{skill_id}.json"
         _write_exact(plan_path, canonical_bytes(comparison))
@@ -711,7 +804,14 @@ def prepare_revision_report(
             f"compare-bundle-{skill_id}",
             [
                 sys.executable,
-                "skill-evaluator/scripts/compare_cycles.py",
+                str(
+                    REPOSITORY_ROOT
+                    / (
+                        "scripts/_model_evolution_comparison_v4.py"
+                        if comparison_schema_version == 4
+                        else "skill-evaluator/scripts/compare_cycles.py"
+                    )
+                ),
                 str(plan_path),
             ],
             repository_root=repository_root,

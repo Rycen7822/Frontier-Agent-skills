@@ -18,6 +18,7 @@ from _model_evolution_campaign import (
     build_initial_campaign,
     prepare_predecessor,
     qualification_request_ceilings,
+    require_qualification_request_ceilings,
     validate_campaign,
 )
 from _model_evolution_contract import (
@@ -439,6 +440,21 @@ def _init(args: argparse.Namespace) -> None:
     if actual_capabilities != expected_capabilities:
         raise CliError("target Host capabilities differ from the interaction probe set")
     sentinel = load_json(fixed["sentinel"], label="sentinel index")
+    validate_document(sentinel, "sentinel_index")
+    sentinel_bootstrap_paths: set[Path] = set()
+    if sentinel.get("schema_version") == "model-evolution-sentinel-index/3":
+        pending: list[object] = [sentinel]
+        while pending:
+            value = pending.pop()
+            if isinstance(value, dict):
+                if value.get("root") == "campaign" and "path" in value:
+                    sentinel_bootstrap_paths.add(
+                        resolve_binding(value, repository_root, campaign_root)
+                    )
+                else:
+                    pending.extend(value.values())
+            elif isinstance(value, list):
+                pending.extend(value)
     request_ceilings = qualification_request_ceilings(
         sentinel,
         repository_root=repository_root,
@@ -495,12 +511,10 @@ def _init(args: argparse.Namespace) -> None:
             repository_root=repository_root,
             campaign_root=campaign_root,
         )
-    for field in ("provider_requests", "execute", "model_grade"):
-        expected = request_ceilings[field]
-        if ceilings[field] != expected:
-            raise CliError(
-                f"{field} ceiling must equal the fresh campaign budget {expected}"
-            )
+    try:
+        require_qualification_request_ceilings(ceilings, request_ceilings)
+    except ContractError as exc:
+        raise CliError(str(exc)) from exc
     campaign = build_initial_campaign(
         campaign_id=args.campaign_id,
         git_identity=identity,
@@ -543,6 +557,7 @@ def _init(args: argparse.Namespace) -> None:
     bootstrap_paths = {
         path for path in fixed.values() if path.is_relative_to(campaign_root)
     }
+    bootstrap_paths.update(sentinel_bootstrap_paths)
     bootstrap_paths.update(path for path in plugin_root.rglob("*") if path.is_file())
     runtime_root = fixed["target_host"].with_name(
         f"{fixed['target_host'].stem}.runtime"

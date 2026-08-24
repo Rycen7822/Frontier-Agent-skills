@@ -27,6 +27,7 @@ SCHEMA_FILES = {
     "failure_receipt": "failure-receipt-v2.schema.json",
     "interaction_probes": "interaction-probes-v2.schema.json",
     "sentinel_index": "sentinel-index-v2.schema.json",
+    "sentinel_index_v3": "sentinel-index-v3.schema.json",
     "qualification": "qualification-v3.schema.json",
     "residual_clause_map": "residual-clause-map-v1.schema.json",
 }
@@ -312,7 +313,14 @@ def validate_schema(value: Any, name: str) -> None:
 def validate_document(value: Any, name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ContractError(f"{name} document must be an object")
-    validate_schema(value, name)
+    schema_name = name
+    if name == "sentinel_index":
+        version = value.get("schema_version")
+        if version == "model-evolution-sentinel-index/3":
+            schema_name = "sentinel_index_v3"
+        elif version != "model-evolution-sentinel-index/2":
+            raise ContractError(f"unsupported sentinel index version {version!r}")
+    validate_schema(value, schema_name)
     if name == "interaction_probes":
         probe_ids = [probe["probe_id"] for probe in value["probes"]]
         if len(probe_ids) != len(set(probe_ids)):
@@ -627,16 +635,39 @@ def evaluator_evidence_status(
             return "limited_native_absorption"
         return "pass"
     if kind in {"transition_report", "revision_report"}:
+        report_version = value.get("schema_version")
+        if report_version not in {3, 4}:
+            raise ContractError(
+                f"unsupported comparison report version {report_version!r}"
+            )
+        if report_version == 4 and kind != "revision_report":
+            raise ContractError("comparison report v4 supports revision evidence only")
         _validate_external_schema(
             value,
-            REPOSITORY_ROOT
-            / "skill-evaluator/schemas/comparison-report-v3.schema.json",
+            REPOSITORY_ROOT / (
+                "evaluation/model-evolution/schemas/comparison-report-v4.schema.json"
+                if report_version == 4
+                else "skill-evaluator/schemas/comparison-report-v3.schema.json"
+            ),
             kind,
         )
         if value["authority_eligibility"] != "eligible":
             return "blocked"
         result = value["result"]
         if kind == "revision_report":
+            if report_version == 4:
+                metrics_closed = all(
+                    metric.get("evidence_completeness") == "complete"
+                    and metric.get("revision_decision") == "pass"
+                    for metric in value.get("metrics", [])
+                ) and bool(value.get("metrics"))
+                return (
+                    "pass"
+                    if result.get("kind") == "revision"
+                    and result.get("status") == "closed"
+                    and metrics_closed
+                    else "blocked"
+                )
             return (
                 "pass"
                 if result.get("kind") == "revision" and result.get("status") == "closed"
