@@ -745,6 +745,8 @@ def project_execute_result(
     ended_at: str,
     artifacts: list[dict[str, str]],
     assertions: list[dict[str, Any]],
+    treatment_error: str | None = None,
+    lifecycle: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Project completed Codex turns onto Host events and one terminal result."""
     payload = request["payload"]
@@ -776,6 +778,8 @@ def project_execute_result(
                 "usage": normalized["usage"],
             },
         }
+        if lifecycle is not None:
+            event_payload["lifecycle"] = lifecycle
         if normalized["routing"] is not None:
             event_payload["routing"] = normalized["routing"]
         events.append(
@@ -804,7 +808,7 @@ def project_execute_result(
     result.update(
         {
             "terminal_status": status,
-            "treatment_error": None if complete else "Codex turn failed",
+            "treatment_error": treatment_error if complete else "Codex turn failed",
             "principals": [
                 _principal_record(
                     payload,

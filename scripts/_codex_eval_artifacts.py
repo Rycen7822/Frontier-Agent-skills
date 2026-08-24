@@ -139,6 +139,7 @@ def build_command_trace(
     scratch_root: str,
     protected_scratch_roots: tuple[str, ...],
     normalize_text: Callable[[str], str],
+    abandoned_items: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Project only direct completed command and file-change facts."""
     complete = True
@@ -235,6 +236,37 @@ def build_command_trace(
                     except ArtifactError:
                         complete = False
             items.append(base | {"changes": projected})
+    for fact in abandoned_items or []:
+        if not isinstance(fact, dict) or fact.get("type") != "command_execution":
+            complete = False
+            continue
+        item_id = fact.get("id")
+        if not isinstance(item_id, str) or not item_id:
+            complete = False
+            continue
+        base = {
+            "ordinal": len(items) + 1,
+            "turn_id": turn_ids[-1] if turn_ids else None,
+            "type": "command_execution",
+            "item_id": item_id,
+            "status": "abandoned",
+            "completion": "unknown",
+            "exit_code": None,
+            "output_sha256": None,
+            "output_bytes": None,
+        }
+        command = fact.get("command")
+        if isinstance(command, str):
+            normalized_command = normalize_text(command.replace("\r\n", "\n").replace("\r", "\n"))
+            command_bytes = normalized_command.encode("utf-8")
+            base.update({
+                "command_sha256": _digest(command_bytes),
+                "command_preview": _utf8_prefix(normalized_command, MAX_PREVIEW_BYTES),
+            })
+        else:
+            complete = False
+        items.append(base)
+        complete = False
     return {
         "schema_version": "codex-command-trace/1",
         "complete": complete,
@@ -434,9 +466,10 @@ def build_host_observation(
     changed_paths: list[str],
     command_trace: dict[str, Any],
     workspace_evidence: dict[str, Any],
+    lifecycle: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Bind Host status to the two bounded evidence streams."""
-    return {
+    value = {
         "schema_version": "codex-host-observation/1",
         "terminal_status": terminal_status,
         "codex_status": codex_status,
@@ -447,3 +480,6 @@ def build_host_observation(
         "workspace_evidence_complete": workspace_evidence["complete"],
         "workspace_evidence_overflow": workspace_evidence["overflow"],
     }
+    if lifecycle is not None:
+        value["lifecycle"] = lifecycle
+    return value

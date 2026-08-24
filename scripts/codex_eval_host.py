@@ -41,6 +41,11 @@ from _codex_eval_delivery import (
     validate_plugin_catalog,
 )
 from _codex_transport_diagnostic import capture_child
+from _codex_lifecycle_contract import (
+    LEGACY_CONTRACT,
+    V2_CONTRACT,
+    classify_lifecycle,
+)
 from _codex_eval_events import (
     MAX_JSONL_BYTES,
     MAX_RECORDS,
@@ -71,6 +76,7 @@ ADAPTER_SOURCE_FILES = (
     "_codex_eval_delivery.py",
     "_codex_eval_events.py",
     "_codex_eval_isolation.py",
+    "_codex_lifecycle_contract.py",
     "_codex_transport_diagnostic.py",
     "codex_eval_host.py",
 )
@@ -249,6 +255,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         "--profile": args.profile,
         "--sandbox": args.sandbox,
     }
+    bound_lifecycle = _optional_bound_command_option(argv, "--lifecycle-contract") or LEGACY_CONTRACT
     isolation_options = {
         "--isolation-tool": (
             str(args.isolation_tool) if args.isolation_tool is not None else None
@@ -263,6 +270,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         bound_codex != args.codex
         or bound_manifest != path
         or bound_timeout != args.timeout
+        or bound_lifecycle != args.lifecycle_contract
         or any(
             _bound_command_option(argv, option) != value
             for option, value in expected.items()
@@ -355,6 +363,10 @@ def validate_bound_manifest(path: Path, plugin_root: Path) -> dict[str, Any]:
         isolation_tool_sha256=isolation_tool_sha256,
         code_mode_host=code_mode_host,
         code_mode_host_sha256=code_mode_host_sha256,
+        lifecycle_contract=(
+            _optional_bound_command_option(argv, "--lifecycle-contract")
+            or LEGACY_CONTRACT
+        ),
     )
     validated = _validate_manifest(path, args)
     project_command_environment(
@@ -1177,6 +1189,8 @@ def _run_execute_in_workspace(
     normalized_turns: list[dict[str, Any]] = []
     session_id: str | None = None
     child_failure: dict[str, Any] | None = None
+    lifecycle_pending: dict[str, Any] | None = None
+    last_message_present = False
     with (
         tempfile.TemporaryDirectory(prefix="frontier-codex-exec-") as temp_dir,
         request_codex_home(args.isolation_tool) as codex_home,
@@ -1227,6 +1241,21 @@ def _run_execute_in_workspace(
             if exposure is not None:
                 normalized["diagnostics"].append(exposure)
                 normalized["status"] = "protocol_error"
+            if args.lifecycle_contract == V2_CONTRACT and exposure is None:
+                shape = classify_lifecycle(
+                    child["stdout"],
+                    contract_version=args.lifecycle_contract,
+                )
+                if shape["branch"] == "outcome_bearing_abandoned_pending_custody":
+                    # The projection is deliberately single-turn.  A later
+                    # resumed turn would make the abandoned command's effect
+                    # boundary ambiguous, so keep the transport failure
+                    # fail-closed instead of attaching the last turn's raw
+                    # stream to the earlier incomplete items.
+                    if len(payload["turns"]) == 1:
+                        lifecycle_pending = shape
+                        normalized["status"] = "completed"
+                        normalized["diagnostics"] = []
             normalized["runtime_ms"] = child["runtime_ms"]
             normalized["permission_denials"] = sorted(
                 {
@@ -1260,6 +1289,7 @@ def _run_execute_in_workspace(
                 normalized["final_message"] = _output_message(last_message, normalized)
             except (OSError, UnicodeDecodeError) as exc:
                 raise AdapterError("Codex output-last-message is unreadable") from exc
+            last_message_present = last_message.is_file()
             workspace_timeline.capture_turn(turn["turn_id"])
             if normalized["status"] == "protocol_error":
                 normalized_turns.append(normalized)
@@ -1288,6 +1318,41 @@ def _run_execute_in_workspace(
             normalized_turns[-1]["diagnostics"] if normalized_turns else []
         )
         return [], result
+    workspace_evidence, changed_paths = workspace_timeline.finish()
+    preliminary_trace = build_command_trace(
+        normalized_turns,
+        [turn["turn_id"] for turn in payload["turns"][: len(normalized_turns)]],
+        workspace=workspace,
+        workspace_alias=ISOLATED_WORKSPACE,
+        scratch_root="/tmp",
+        protected_scratch_roots=(ISOLATED_WORKSPACE, ISOLATED_OUTPUT),
+        normalize_text=lambda value: _redact_text(value, workspace),
+        abandoned_items=(lifecycle_pending or {}).get("incomplete_items"),
+    )
+    lifecycle_result = None
+    if lifecycle_pending is not None:
+        lifecycle_result = classify_lifecycle(
+            child["stdout"],
+            contract_version=args.lifecycle_contract,
+            custody={
+                "process_exited": child_failure is None,
+                "timed_out": False,
+                "live_process": False,
+                "workspace_clean": workspace_evidence["complete"] and not changed_paths,
+                "isolation_clean": args.isolation_tool is not None,
+                "effects_captured": last_message_present and not preliminary_trace["overflow"],
+            },
+        )
+        if lifecycle_result["branch"] != "outcome_bearing_abandoned":
+            result = base_host_result(request, manifest)
+            result["terminal_status"] = "protocol_error"
+            result["protocol_error"] = host_protocol_error([{
+                "kind": "malformed_record",
+                "index": None,
+                "message": "lifecycle contract could not close abandoned command custody",
+            }])
+            return [], result
+
     protocol_diagnostics = execute_evidence_diagnostics(payload, normalized_turns)
     if protocol_diagnostics:
         result = base_host_result(request, manifest)
@@ -1307,8 +1372,8 @@ def _run_execute_in_workspace(
         scratch_root="/tmp",
         protected_scratch_roots=(ISOLATED_WORKSPACE, ISOLATED_OUTPUT),
         normalize_text=lambda value: _redact_text(value, workspace),
+        abandoned_items=(lifecycle_result or {}).get("incomplete_items"),
     )
-    workspace_evidence, changed_paths = workspace_timeline.finish()
     terminal_status = (
         "completed"
         if len(normalized_turns) == len(payload["turns"])
@@ -1322,6 +1387,7 @@ def _run_execute_in_workspace(
         changed_paths=changed_paths,
         command_trace=command_trace,
         workspace_evidence=workspace_evidence,
+        lifecycle=lifecycle_result,
     )
     final_message = normalized_turns[-1]["final_message"] or ""
     final_artifact = _artifact_bytes(
@@ -1367,6 +1433,12 @@ def _run_execute_in_workspace(
         ended_at=_utc_now(),
         artifacts=artifacts,
         assertions=assertions,
+        treatment_error=(
+            "abandoned_command_execution"
+            if lifecycle_result is not None
+            else None
+        ),
+        lifecycle=lifecycle_result,
     )
     principal_id = f"principal-{payload['execution_context']['expected_principal_slots'][0]}"
     result["usage"] = _captured_usage(
@@ -1626,6 +1698,11 @@ def _parser() -> argparse.ArgumentParser:
         "--probe-sandbox", choices=("read-only", "workspace-write")
     )
     parser.add_argument("--timeout", type=float, required=True)
+    parser.add_argument(
+        "--lifecycle-contract",
+        choices=(LEGACY_CONTRACT, V2_CONTRACT),
+        default=LEGACY_CONTRACT,
+    )
     parser.add_argument("--diagnostic-capture-dir", type=Path)
     return parser
 
