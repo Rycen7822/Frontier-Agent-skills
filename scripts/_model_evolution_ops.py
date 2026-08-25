@@ -58,6 +58,8 @@ from _model_evolution_residual import (
 
 MAX_DIAGNOSTIC_BYTES = 64 * 1024
 PROBE_MAX_ATTEMPTS = 2
+PROBE_TERMINAL_V3 = "model-evolution-probe-terminal/3"
+PROBE_TERMINAL_V4 = "model-evolution-probe-terminal/4"
 PLUGIN_BUILD_GATE_SCRIPT = "scripts/build_codex_plugin.py"
 ALLOWED_GATE_SCRIPTS = {
     "bundle/build_bundle_manifest.py",
@@ -512,8 +514,83 @@ def _run_probe_process(
     return _validate_probe_result(value, row), bounded_stderr
 
 
-def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
+def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
     required = {
+        "schema_version",
+        "child_timed_out",
+        "child_kill_sent",
+        "child_reaped",
+        "process_exited",
+        "isolation_custody",
+        "jsonl_bounded",
+        "jsonl_classified",
+        "event_count",
+        "event_types",
+        "incomplete_item_types",
+        "completed_turn",
+        "final_message_present",
+        "usage_present",
+        "command_action_effect",
+        "workspace_pre_digest",
+        "workspace_post_digest",
+        "workspace_clean",
+        "source_path_exposed",
+        "credential_marker_seen",
+        "custody_closed",
+        "retryable",
+        "branch",
+        "reason",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        raise OperationError("probe lifecycle shape is invalid")
+    for field in (
+        "child_timed_out",
+        "child_kill_sent",
+        "child_reaped",
+        "process_exited",
+        "isolation_custody",
+        "jsonl_bounded",
+        "jsonl_classified",
+        "completed_turn",
+        "final_message_present",
+        "usage_present",
+        "command_action_effect",
+        "workspace_clean",
+        "source_path_exposed",
+        "credential_marker_seen",
+        "custody_closed",
+        "retryable",
+    ):
+        if not isinstance(value[field], bool):
+            raise OperationError("probe lifecycle boolean field is invalid")
+    if (
+        value["schema_version"] != "codex-probe-lifecycle/1"
+        or isinstance(value["event_count"], bool)
+        or not isinstance(value["event_count"], int)
+        or value["event_count"] < 0
+        or not isinstance(value["event_types"], list)
+        or any(not isinstance(item, str) for item in value["event_types"])
+        or value["event_types"] != sorted(set(value["event_types"]))
+        or not isinstance(value["incomplete_item_types"], list)
+        or any(not isinstance(item, str) for item in value["incomplete_item_types"])
+        or value["incomplete_item_types"] != sorted(set(value["incomplete_item_types"]))
+        or value["branch"] not in {"complete", "outcome_free_transient", "unknown"}
+        or not isinstance(value["reason"], str)
+    ):
+        raise OperationError("probe lifecycle identity or collection is invalid")
+    for field in ("workspace_pre_digest", "workspace_post_digest"):
+        digest = value[field]
+        if digest is not None and (
+            not isinstance(digest, str)
+            or len(digest) != 71
+            or not digest.startswith("sha256:")
+        ):
+            raise OperationError("probe lifecycle workspace digest is invalid")
+    return value
+
+
+def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
+    legacy_required = {
         "schema_version",
         "probe_id",
         "capability",
@@ -526,13 +603,27 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
         "usage",
         "diagnostics",
     }
+    if not isinstance(value, dict):
+        raise OperationError("interaction probe result shape or identity is invalid")
+    version = value.get("schema_version")
+    if version == "codex-interaction-probe-result/1.1":
+        if set(value) != legacy_required:
+            raise OperationError("historical interaction probe result shape changed")
+    elif version == host_adapter.PROBE_RESULT_SCHEMA_VERSION:
+        if set(value) != legacy_required | {"lifecycle"}:
+            raise OperationError("versioned interaction probe result shape is invalid")
+        _validate_probe_lifecycle(value["lifecycle"])
+    else:
+        raise OperationError("unknown interaction probe result version")
     if (
-        not isinstance(value, dict)
-        or set(value) != required
-        or value["schema_version"] != host_adapter.PROBE_RESULT_SCHEMA_VERSION
-        or value["probe_id"] != row["probe_id"]
+        value["probe_id"] != row["probe_id"]
         or value["capability"] != row["capability"]
         or value["status"] not in {"pass", "unknown"}
+        or not isinstance(value["event_types"], list)
+        or any(not isinstance(item, str) for item in value["event_types"])
+        or value["event_types"] != sorted(set(value["event_types"]))
+        or not isinstance(value["direct_observations"], list)
+        or any(not isinstance(item, str) for item in value["direct_observations"])
         or not isinstance(value["routing"], list)
         or not all(
             isinstance(skill_id, str) and skill_id
@@ -564,40 +655,101 @@ def _load_probe_terminal(
         "attempts",
     }
     attempts = terminal.get("attempts") if isinstance(terminal, dict) else None
+    if not isinstance(terminal, dict):
+        raise OperationError("interaction probe terminal shape or identity is invalid")
+    version = terminal.get("schema_version")
+    if version == PROBE_TERMINAL_V3:
+        if set(terminal) != required:
+            raise OperationError("interaction probe attempt evidence is invalid")
+        if (
+            terminal["request_id"] != request["request_id"]
+            or terminal["probe_id"] != row["probe_id"]
+            or not isinstance(terminal["stderr"], str)
+            or not isinstance(attempts, list)
+            or not 1 <= len(attempts) <= PROBE_MAX_ATTEMPTS
+        ):
+            raise OperationError("historical interaction probe terminal identity is invalid")
+        _validate_probe_result(terminal["result"], row)
+        for index, attempt in enumerate(attempts, 1):
+            if (
+                not isinstance(attempt, dict)
+                or set(attempt) != {"attempt", "status", "diagnostics", "stderr"}
+                or attempt["attempt"] != index
+                or attempt["status"] not in {"pass", "unknown"}
+                or not isinstance(attempt["diagnostics"], list)
+                or not isinstance(attempt["stderr"], str)
+            ):
+                raise OperationError("historical interaction probe attempt is invalid")
+        if len(attempts) == 2 and not _probe_is_official_transient(attempts[0]):
+            raise OperationError("historical interaction probe retry lacks transient evidence")
+        if (
+            attempts[-1]["status"] != terminal["result"]["status"]
+            or attempts[-1]["diagnostics"] != terminal["result"]["diagnostics"]
+            or attempts[-1]["stderr"] != terminal["stderr"]
+        ):
+            raise OperationError("historical interaction probe final attempt differs")
+        return terminal
+    if version != PROBE_TERMINAL_V4 or set(terminal) != required | {"attempt_count"}:
+        raise OperationError("unknown interaction probe terminal version")
     if (
-        not isinstance(terminal, dict)
-        or set(terminal) != required
-        or terminal["schema_version"] != "model-evolution-probe-terminal/3"
-        or terminal["request_id"] != request["request_id"]
+        terminal["request_id"] != request["request_id"]
         or terminal["probe_id"] != row["probe_id"]
         or not isinstance(terminal["stderr"], str)
+        or isinstance(terminal["attempt_count"], bool)
+        or not isinstance(terminal["attempt_count"], int)
         or not isinstance(attempts, list)
         or not 1 <= len(attempts) <= PROBE_MAX_ATTEMPTS
+        or terminal["attempt_count"] != len(attempts)
     ):
-        raise OperationError("interaction probe terminal shape or identity is invalid")
+        raise OperationError("versioned interaction probe terminal identity is invalid")
     _validate_probe_result(terminal["result"], row)
+    if terminal["result"]["schema_version"] != host_adapter.PROBE_RESULT_SCHEMA_VERSION:
+        raise OperationError("versioned terminal must bind versioned probe result")
     for index, attempt in enumerate(attempts, 1):
         if (
             not isinstance(attempt, dict)
-            or set(attempt) != {"attempt", "status", "diagnostics", "stderr"}
+            or set(attempt) != {"attempt", "attempt_id", "status", "diagnostics", "stderr", "lifecycle"}
             or attempt["attempt"] != index
+            or attempt["attempt_id"] != f"{request['request_id']}.attempt-{index}"
             or attempt["status"] not in {"pass", "unknown"}
             or not isinstance(attempt["diagnostics"], list)
             or not isinstance(attempt["stderr"], str)
         ):
-            raise OperationError("interaction probe attempt evidence is invalid")
+            raise OperationError("versioned interaction probe attempt identity is invalid")
+        _validate_probe_lifecycle(attempt["lifecycle"])
+    if len(attempts) == 1 and _probe_is_official_transient(attempts[0]):
+        raise OperationError("versioned terminal cannot leave a transient attempt unspent")
     if len(attempts) == 2 and not _probe_is_official_transient(attempts[0]):
-        raise OperationError("interaction probe retry lacks transient evidence")
+        raise OperationError("versioned interaction probe retry lacks custody proof")
+    final = attempts[-1]
     if (
-        attempts[-1]["status"] != terminal["result"]["status"]
-        or attempts[-1]["diagnostics"] != terminal["result"]["diagnostics"]
-        or attempts[-1]["stderr"] != terminal["stderr"]
+        final["status"] != terminal["result"]["status"]
+        or final["diagnostics"] != terminal["result"]["diagnostics"]
+        or final["stderr"] != terminal["stderr"]
+        or final["lifecycle"] != terminal["result"]["lifecycle"]
     ):
-        raise OperationError("interaction probe final attempt differs from result")
+        raise OperationError("versioned interaction probe final attempt differs")
     return terminal
 
 
 def _probe_is_official_transient(value: dict[str, Any]) -> bool:
+    lifecycle = value.get("lifecycle")
+    if isinstance(lifecycle, dict) and (
+        value.get("schema_version") == host_adapter.PROBE_RESULT_SCHEMA_VERSION
+        or "schema_version" not in value
+    ):
+        return (
+            value.get("status") == "unknown"
+            and isinstance(lifecycle, dict)
+            and lifecycle.get("schema_version") == "codex-probe-lifecycle/1"
+            and lifecycle.get("branch") == "outcome_free_transient"
+            and lifecycle.get("retryable") is True
+            and lifecycle.get("custody_closed") is True
+            and lifecycle.get("completed_turn") is False
+            and lifecycle.get("final_message_present") is False
+            and lifecycle.get("usage_present") is False
+            and lifecycle.get("command_action_effect") is False
+        )
     diagnostics = value.get("diagnostics")
     return (
         value.get("status") == "unknown"
@@ -701,19 +853,22 @@ def run_interaction_probes(
                 attempts.append(
                     {
                         "attempt": attempt,
+                        "attempt_id": f"{request['request_id']}.attempt-{attempt}",
                         "status": value["status"],
                         "diagnostics": value["diagnostics"],
                         "stderr": stderr,
+                        "lifecycle": value["lifecycle"],
                     }
                 )
                 if not _probe_is_official_transient(value):
                     break
             terminal = {
-                "schema_version": "model-evolution-probe-terminal/3",
+                "schema_version": PROBE_TERMINAL_V4,
                 "request_id": request["request_id"],
                 "probe_id": row["probe_id"],
                 "result": value,
                 "stderr": stderr,
+                "attempt_count": len(attempts),
                 "attempts": attempts,
             }
             _write_json_exclusive(terminal_path, terminal)
@@ -989,6 +1144,166 @@ def _validate_calibration_contract(
             raise OperationError(f"{skill_id} {label} binding is unavailable")
 
 
+def _probe_lifecycle_contract_gate() -> None:
+    """Exercise the production probe classifier and terminal loader without a provider."""
+    row = {
+        "probe_id": "d34-preflight-probe",
+        "capability": "multi_turn",
+    }
+    request = {"request_id": "d34-preflight-probe.1.01"}
+
+    def raw(*, complete: bool) -> bytes:
+        records: list[dict[str, Any]] = [
+            {"type": "thread.started", "thread_id": "d34-thread"},
+            {"type": "turn.started", "turn_id": "d34-turn"},
+        ]
+        if complete:
+            records.append(
+                {
+                    "type": "turn.completed",
+                    "turn_id": "d34-turn",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                }
+            )
+        else:
+            records.append(
+                {
+                    "type": "item.started",
+                    "item": {
+                        "id": "d34-command",
+                        "type": "command_execution",
+                        "command": "true",
+                        "status": "in_progress",
+                    },
+                }
+            )
+        return b"\n".join(
+            json.dumps(record, separators=(",", ":")).encode("utf-8")
+            for record in records
+        ) + b"\n"
+
+    with tempfile.TemporaryDirectory(prefix="d34-probe-contract-") as temporary:
+        workspace = Path(temporary)
+        before: dict[str, str] = {}
+        normalized_transient = host_adapter.normalize_jsonl(raw(complete=False))
+        transient_lifecycle, transient_status, transient_diagnostics = (
+            host_adapter._probe_lifecycle_projection(
+                {
+                    "stdout": raw(complete=False),
+                    "stderr": b"",
+                    "returncode": -9,
+                    "timed_out": True,
+                    "kill_sent": True,
+                    "reaped": True,
+                },
+                normalized_transient,
+                workspace=workspace,
+                workspace_before=before,
+                workspace_after=before,
+                workspace_before_ok=True,
+                workspace_after_ok=True,
+                last_message=workspace / "last-message.txt",
+                source_root=None,
+                isolated=True,
+            )
+        )
+        if transient_status != "unknown" or not transient_lifecycle["retryable"]:
+            raise OperationError("probe lifecycle transient projection failed")
+        transient_result = {
+            "schema_version": host_adapter.PROBE_RESULT_SCHEMA_VERSION,
+            "probe_id": row["probe_id"],
+            "capability": row["capability"],
+            "status": transient_status,
+            "observed": "not established",
+            "session_id": "d34-thread",
+            "event_types": sorted(set(normalized_transient["event_types"])),
+            "direct_observations": [],
+            "routing": [],
+            "usage": None,
+            "diagnostics": transient_diagnostics,
+            "lifecycle": transient_lifecycle,
+        }
+        _validate_probe_result(transient_result, row)
+        if not _probe_is_official_transient(transient_result):
+            raise OperationError("probe lifecycle transient classifier failed")
+        normalized_complete = host_adapter.normalize_jsonl(raw(complete=True))
+        complete_lifecycle, complete_status, complete_diagnostics = (
+            host_adapter._probe_lifecycle_projection(
+                {
+                    "stdout": raw(complete=True),
+                    "stderr": b"",
+                    "returncode": 0,
+                    "timed_out": False,
+                    "kill_sent": False,
+                    "reaped": True,
+                },
+                normalized_complete,
+                workspace=workspace,
+                workspace_before=before,
+                workspace_after=before,
+                workspace_before_ok=True,
+                workspace_after_ok=True,
+                last_message=workspace / "last-message.txt",
+                source_root=None,
+                isolated=True,
+            )
+        )
+        if complete_status != "pass" or complete_diagnostics:
+            raise OperationError("probe lifecycle complete projection failed")
+        complete_result = {
+            "schema_version": host_adapter.PROBE_RESULT_SCHEMA_VERSION,
+            "probe_id": row["probe_id"],
+            "capability": row["capability"],
+            "status": complete_status,
+            "observed": "required direct Codex events observed",
+            "session_id": "d34-thread",
+            "event_types": sorted(set(normalized_complete["event_types"])),
+            "direct_observations": ["direct.usage"],
+            "routing": [],
+            "usage": normalized_complete["usage"],
+            "diagnostics": complete_diagnostics,
+            "lifecycle": complete_lifecycle,
+        }
+        _validate_probe_result(complete_result, row)
+        attempts = [
+            {
+                "attempt": 1,
+                "attempt_id": request["request_id"] + ".attempt-1",
+                "status": transient_status,
+                "diagnostics": transient_diagnostics,
+                "stderr": "",
+                "lifecycle": transient_lifecycle,
+            },
+            {
+                "attempt": 2,
+                "attempt_id": request["request_id"] + ".attempt-2",
+                "status": complete_status,
+                "diagnostics": complete_diagnostics,
+                "stderr": "",
+                "lifecycle": complete_lifecycle,
+            },
+        ]
+        terminal = {
+            "schema_version": PROBE_TERMINAL_V4,
+            "request_id": request["request_id"],
+            "probe_id": row["probe_id"],
+            "result": complete_result,
+            "stderr": "",
+            "attempt_count": 2,
+            "attempts": attempts,
+        }
+        terminal_path = workspace / "terminal.json"
+        terminal_path.write_text(json.dumps(terminal), encoding="utf-8")
+        _load_probe_terminal(terminal_path, request=request, row=row)
+        exhausted = dict(terminal)
+        exhausted["result"] = transient_result
+        exhausted["stderr"] = ""
+        exhausted["attempts"] = [attempts[0], {**attempts[0], "attempt": 2, "attempt_id": request["request_id"] + ".attempt-2"}]
+        exhausted_path = workspace / "exhausted.json"
+        exhausted_path.write_text(json.dumps(exhausted), encoding="utf-8")
+        _load_probe_terminal(exhausted_path, request=request, row=row)
+
+
 def preflight_operations(
     campaign: dict[str, Any],
     *,
@@ -1176,6 +1491,14 @@ def preflight_operations(
             )
         )
     operations.extend(fake_full_chain(repository_root))
+    started = time.monotonic()
+    _probe_lifecycle_contract_gate()
+    operations.append(
+        _operation_fact(
+            "probe-lifecycle-contract",
+            round((time.monotonic() - started) * 1000),
+        )
+    )
     project_qualification(
         campaign,
         repository_root=repository_root,
