@@ -80,7 +80,8 @@ ADAPTER_SOURCE_FILES = (
     "_codex_transport_diagnostic.py",
     "codex_eval_host.py",
 )
-PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.1"
+PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.2"
+PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/1"
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -492,6 +493,7 @@ def _run_child(
         shell=False,
         start_new_session=True,
     )
+    kill_sent = False
     try:
         stdout, stderr = process.communicate(
             input=prompt.encode("utf-8"),
@@ -499,7 +501,11 @@ def _run_child(
         )
         timed_out = False
     except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
+        kill_sent = True
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         stdout, stderr = process.communicate()
         timed_out = True
     child = {
@@ -507,6 +513,8 @@ def _run_child(
         "stdout": stdout,
         "stderr": stderr,
         "timed_out": timed_out,
+        "kill_sent": kill_sent,
+        "reaped": process.returncode is not None,
         "runtime_ms": round((time.monotonic() - started) * 1000, 3),
     }
     capture_dir = getattr(args, "diagnostic_capture_dir", None)
@@ -522,6 +530,218 @@ def _run_child(
             last_message=last_message,
         )
     return child
+
+
+def _probe_workspace_snapshot(workspace: Path) -> tuple[dict[str, str] | None, bool]:
+    try:
+        return _snapshot_workspace(workspace), True
+    except (AdapterError, OSError):
+        return None, False
+
+
+def _probe_snapshot_digest(snapshot: dict[str, str] | None) -> str | None:
+    if snapshot is None:
+        return None
+    return _sha256_bytes(_canonical_bytes(snapshot))
+
+
+def _probe_jsonl_is_classified(normalized: dict[str, Any]) -> bool:
+    diagnostics = normalized.get("diagnostics")
+    if not isinstance(diagnostics, list):
+        return False
+    for diagnostic in diagnostics:
+        if not isinstance(diagnostic, dict):
+            return False
+        kind = diagnostic.get("kind")
+        if kind in {"thread_identity", "turn_lifecycle", "missing_terminal"}:
+            continue
+        if kind == "item_lifecycle" and "incomplete items:" in str(
+            diagnostic.get("message", "")
+        ):
+            continue
+        return False
+    return True
+
+
+def _probe_action_effect(normalized: dict[str, Any]) -> bool:
+    if normalized.get("permission_denials"):
+        return True
+    for item in normalized.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        phase = item.get("phase")
+        if phase == "completed" and item_type != "agent_message":
+            return True
+        if phase in {"updated", "completed"} and any(
+            field in item for field in ("exit_code", "aggregated_output", "changes")
+        ):
+            return True
+    return False
+
+
+def _probe_lifecycle_projection(
+    child: dict[str, Any],
+    normalized: dict[str, Any],
+    *,
+    workspace: Path,
+    workspace_before: dict[str, str] | None,
+    workspace_after: dict[str, str] | None,
+    workspace_before_ok: bool,
+    workspace_after_ok: bool,
+    last_message: Path,
+    source_root: Path | None,
+    isolated: bool,
+) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
+    raw = child.get("stdout", b"")
+    stderr_raw = child.get("stderr", b"")
+    if not isinstance(raw, bytes):
+        raw = b""
+    if not isinstance(stderr_raw, bytes):
+        stderr_raw = b""
+    raw_channels = (raw, stderr_raw)
+    source_path_exposed = bool(
+        source_root is not None
+        and any(str(source_root).encode("utf-8") in channel for channel in raw_channels)
+    )
+    credential_marker_seen = bool(
+        any(
+            re.search(
+                rb"(?:sk-[A-Za-z0-9_-]{8,}|(?:token|secret|password|authorization|api[_-]?key)=)",
+                channel,
+                re.IGNORECASE,
+            )
+            for channel in raw_channels
+        )
+    )
+    event_types = [
+        value
+        for value in normalized.get("event_types", [])
+        if isinstance(value, str)
+    ]
+    event_types = list(dict.fromkeys(event_types))
+    incomplete_types = sorted(
+        {
+            item.get("type")
+            for item in normalized.get("items", [])
+            if isinstance(item, dict)
+            and item.get("phase") == "started"
+            and isinstance(item.get("type"), str)
+            and item.get("id")
+            not in {
+                completed.get("id")
+                for completed in normalized.get("items", [])
+                if isinstance(completed, dict) and completed.get("phase") == "completed"
+            }
+        }
+    )
+    completed_turn = "turn.completed" in event_types
+    last_message_present = last_message.is_file() or bool(
+        isinstance(normalized.get("final_message"), str)
+        and normalized["final_message"]
+    )
+    usage_present = isinstance(normalized.get("usage"), dict) and bool(
+        normalized["usage"]
+    )
+    command_action_effect = _probe_action_effect(normalized)
+    workspace_clean = (
+        workspace_before_ok
+        and workspace_after_ok
+        and workspace_before is not None
+        and workspace_after is not None
+        and workspace_before == workspace_after
+    )
+    jsonl_bounded = len(raw) <= MAX_JSONL_BYTES
+    jsonl_classified = jsonl_bounded and _probe_jsonl_is_classified(normalized)
+    process_exited = isinstance(child.get("returncode"), int) and not isinstance(
+        child.get("returncode"), bool
+    )
+    process_reaped = child.get("reaped") is True
+    child_timed_out = child.get("timed_out") is True
+    child_kill_sent = child.get("kill_sent") is True
+    isolation_custody = isolated
+    outcome_evidence = (
+        completed_turn
+        or last_message_present
+        or usage_present
+        or command_action_effect
+    )
+    custody_closed = (
+        process_exited
+        and process_reaped
+        and (not child_timed_out or child_kill_sent)
+        and isolation_custody
+        and jsonl_classified
+        and workspace_clean
+        and not source_path_exposed
+        and not credential_marker_seen
+    )
+    capacity_failure = any(
+        _is_model_capacity_failure(failure)
+        for failure in normalized.get("failures", [])
+    )
+    base = {
+        "schema_version": PROBE_LIFECYCLE_SCHEMA_VERSION,
+        "child_timed_out": child_timed_out,
+        "child_kill_sent": child_kill_sent,
+        "child_reaped": process_reaped,
+        "process_exited": process_exited,
+        "isolation_custody": isolation_custody,
+        "jsonl_bounded": jsonl_bounded,
+        "jsonl_classified": jsonl_classified,
+        "event_count": len(event_types),
+        "event_types": sorted(event_types),
+        "incomplete_item_types": incomplete_types,
+        "completed_turn": completed_turn,
+        "final_message_present": last_message_present,
+        "usage_present": usage_present,
+        "command_action_effect": command_action_effect,
+        "workspace_pre_digest": _probe_snapshot_digest(workspace_before),
+        "workspace_post_digest": _probe_snapshot_digest(workspace_after),
+        "workspace_clean": workspace_clean,
+        "source_path_exposed": source_path_exposed,
+        "credential_marker_seen": credential_marker_seen,
+        "custody_closed": custody_closed,
+        "retryable": False,
+        "branch": "unknown",
+        "reason": "unknown_lifecycle",
+    }
+    if (
+        normalized.get("status") == "completed"
+        and completed_turn
+        and custody_closed
+    ):
+        base.update({"branch": "complete", "reason": "complete"})
+        return base, "pass", []
+    if (
+        custody_closed
+        and not outcome_evidence
+        and (child.get("timed_out") is True or capacity_failure)
+    ):
+        reason = (
+            "child_timeout_outcome_free"
+            if child.get("timed_out") is True
+            else "model_capacity_outcome_free"
+        )
+        base.update({
+            "branch": "outcome_free_transient",
+            "reason": reason,
+            "retryable": True,
+        })
+        return base, "unknown", [{
+            "kind": "official_transient",
+            "index": None,
+            "message": "probe lifecycle custody closed",
+        }]
+    if outcome_evidence:
+        base["reason"] = "outcome_bearing"
+    elif not custody_closed:
+        base["reason"] = "custody_incomplete"
+    return base, "unknown", [{
+        "kind": "probe_lifecycle",
+        "index": None,
+        "message": "probe lifecycle is not retryable",
+    }]
 
 
 def _child_failure_diagnostics(
@@ -1557,6 +1777,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
         request_codex_home(args.isolation_tool) as codex_home,
     ):
         last_message = Path(temp_dir) / "last-message.txt"
+        workspace_before, workspace_before_ok = _probe_workspace_snapshot(workspace)
         child = _run_child(
             args,
             _fresh_argv(
@@ -1577,11 +1798,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             last_message=last_message,
         )
         _write_child_stderr(child["stderr"], workspace, args.source_root)
-        normalized = (
-            normalize_jsonl(child["stdout"])
-            if not child["timed_out"] and child["returncode"] == 0
-            else None
-        )
+        normalized = normalize_jsonl(child["stdout"])
         if normalized is not None:
             normalized["permission_denials"] = sorted(
                 {
@@ -1597,55 +1814,63 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
                         "loaded": routed,
                         "applied": routed,
                     }
-    child_diagnostics = []
-    if normalized is None:
-        child_diagnostics = _child_failure_diagnostics(child, workspace)
-    elif forced is not None and normalized["status"] == "completed":
+        workspace_after, workspace_after_ok = _probe_workspace_snapshot(workspace)
+        lifecycle, status, diagnostics = _probe_lifecycle_projection(
+            child,
+            normalized,
+            workspace=workspace,
+            workspace_before=workspace_before,
+            workspace_after=workspace_after,
+            workspace_before_ok=workspace_before_ok,
+            workspace_after_ok=workspace_after_ok,
+            last_message=last_message,
+            source_root=args.source_root,
+            isolated=args.isolation_tool is not None,
+        )
+    if forced is not None and status == "pass":
         normalized["routing"] = {
             "selected": [forced[0]],
             "loaded": [forced[0]],
             "applied": [forced[0]],
         }
-    observed_types = normalized["event_types"] if normalized is not None else []
+    observed_types = normalized["event_types"]
     direct_observations = []
-    if normalized is not None:
-        if normalized["routing"] is not None:
-            direct_observations.append("direct.routing")
-        if normalized["usage"] is not None:
-            direct_observations.append("direct.usage")
-        if normalized["permission_denials"]:
-            direct_observations.append("permission.denied")
+    if normalized["routing"] is not None:
+        direct_observations.append("direct.routing")
+    if normalized["usage"] is not None:
+        direct_observations.append("direct.usage")
+    if normalized["permission_denials"]:
+        direct_observations.append("permission.denied")
     observations = [*observed_types, *direct_observations]
     capability_observed = {
-        "force_load": bool(
-            normalized is not None
-            and forced is not None
-            and normalized["status"] == "completed"
-        ),
+        "force_load": bool(forced is not None and status == "pass"),
         "natural_routing": bool(
-            normalized is not None
-            and normalized["routing"] is not None
+            normalized["routing"] is not None
             and normalized["routing"]["selected"]
         ),
-        "usage_capture": bool(
-            normalized is not None and normalized["usage"] is not None
-        ),
+        "usage_capture": bool(normalized["usage"] is not None),
         "action_authorization_trace": bool(
-            normalized is not None and normalized["permission_denials"]
+            normalized["permission_denials"]
         ),
         # Current Codex JSONL has no direct principal record, and one probe request
         # cannot establish same-thread resume. Preserve both as unknown.
         "principal_tracing": False,
         "multi_turn": False,
     }[row["capability"]]
-    status = (
-        "pass"
-        if normalized is not None
-        and normalized["status"] == "completed"
-        and capability_observed
-        and set(row["expected_event_types"]) <= set(observations)
-        else "unknown"
-    )
+    if status == "pass" and not (
+        capability_observed and set(row["expected_event_types"]) <= set(observations)
+    ):
+        status = "unknown"
+        lifecycle.update({
+            "branch": "unknown",
+            "reason": "capability_observation_missing",
+            "retryable": False,
+        })
+        diagnostics = [{
+            "kind": "probe_lifecycle",
+            "index": None,
+            "message": "required probe observation is missing",
+        }]
     _emit(
         {
             "schema_version": PROBE_RESULT_SCHEMA_VERSION,
@@ -1666,11 +1891,8 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
                 else []
             ),
             "usage": normalized["usage"] if normalized is not None else None,
-            "diagnostics": (
-                normalized["diagnostics"]
-                if normalized is not None
-                else child_diagnostics
-            ),
+            "diagnostics": diagnostics,
+            "lifecycle": lifecycle,
         }
     )
     return 0

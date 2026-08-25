@@ -198,6 +198,8 @@ def capture_child(
     view["process"] = {
         "returncode": child.get("returncode"),
         "timed_out": child.get("timed_out"),
+        "kill_sent": child.get("kill_sent"),
+        "reaped": child.get("reaped"),
         "runtime_ms": child.get("runtime_ms"),
         "signal": (
             -child["returncode"]
