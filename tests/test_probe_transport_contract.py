@@ -235,6 +235,63 @@ def emitted_probe_result(raw: bytes, *, timed_out: bool = False, isolated: bool 
         return json.loads(stdout.buffer.getvalue().decode())
 
 
+def emitted_for_row(
+    row: dict,
+    raw: bytes,
+    *,
+    timed_out: bool = False,
+    isolated: bool = True,
+) -> dict:
+    input_row = {
+        "schema_version": "codex-interaction-probe/1.0",
+        "probe_id": row["probe_id"],
+        "capability": row["capability"],
+        "prompt": "probe",
+        "expected_event_types": row["required_event_types"],
+    }
+    with captured_probe_output(
+        input_row,
+        raw,
+        timed_out=timed_out,
+        isolated=isolated,
+    ) as (args, workspace, stdout):
+        self_result = host._run_probe_mode(args, workspace)
+        assert self_result == 0
+        return json.loads(stdout.buffer.getvalue().decode())
+
+
+def raw_noncritical_complete(*, routing: bool = False, permission: bool = False) -> bytes:
+    item = {
+        "id": "final-1",
+        "type": "agent_message",
+        "status": "completed",
+        "text": "inert marker",
+    }
+    if routing:
+        item["routing"] = {
+            "declared": [],
+            "discovered": [],
+            "loaded": ["writing-plans"],
+            "model_visible": [],
+            "selected": ["writing-plans"],
+            "invoked": [],
+            "applied": ["writing-plans"],
+            "order": ["writing-plans"],
+            "composition": ["writing-plans"],
+        }
+    records = [
+        event("thread.started", thread_id="thread-1"),
+        event("turn.started", turn_id="turn-1"),
+        event("item.completed", item=item),
+    ]
+    if permission:
+        records.append(event("error", error={"kind": "permission_denied"}))
+    records.append(
+        event("turn.completed", turn_id="turn-1", usage={"input_tokens": 2, "output_tokens": 1})
+    )
+    return b"\n".join(records) + b"\n"
+
+
 def project(
     raw: bytes,
     *,
@@ -269,6 +326,69 @@ def project(
 
 
 class ProbeTransportContractTests(unittest.TestCase):
+    def test_d38_noncritical_capabilities_close_unknown_without_diagnostic(self):
+        for capability in ("multi_turn", "principal_tracing"):
+            row = {
+                "probe_id": capability,
+                "capability": capability,
+                "required_event_types": ["thread.started", "turn.completed"],
+            }
+            result = emitted_for_row(row, raw_noncritical_complete())
+            _validate_probe_result(result, row)
+            self.assertEqual(result["schema_version"], "codex-interaction-probe-result/1.4")
+            self.assertEqual(result["status"], "unknown")
+            self.assertEqual(result["diagnostics"], [])
+            self.assertEqual(result["lifecycle"]["branch"], "noncritical_unknown")
+            self.assertTrue(result["lifecycle"]["required_events_complete"])
+            self.assertFalse(result["lifecycle"]["capability_observable"])
+            self.assertFalse(result["lifecycle"]["retryable"])
+
+    def test_d38_missing_required_event_is_diagnostic_and_not_retryable(self):
+        row = {
+            "probe_id": "multi-turn",
+            "capability": "multi_turn",
+            "required_event_types": ["thread.started", "turn.completed", "direct.routing"],
+        }
+        result = emitted_for_row(row, raw_noncritical_complete())
+        _validate_probe_result(result, row)
+        self.assertEqual(result["status"], "unknown")
+        self.assertTrue(result["diagnostics"])
+        self.assertEqual(result["lifecycle"]["branch"], "unknown")
+        self.assertFalse(result["lifecycle"]["retryable"])
+
+    def test_d38_effect_capable_noncritical_observation_fails_closed(self):
+        row = {
+            "probe_id": "multi-turn",
+            "capability": "multi_turn",
+            "required_event_types": ["thread.started", "turn.completed"],
+        }
+        result = emitted_for_row(row, raw_effect_timeout(), timed_out=False)
+        _validate_probe_result(result, row)
+        self.assertEqual(result["status"], "unknown")
+        self.assertTrue(result["diagnostics"])
+        self.assertEqual(result["lifecycle"]["reason"], "effect_capable")
+        self.assertFalse(result["lifecycle"]["retryable"])
+
+    def test_d38_critical_probe_projection_still_passes_expected_observation(self):
+        for capability, raw in (
+            ("force_load", raw_noncritical_complete()),
+            ("natural_routing", raw_noncritical_complete(routing=True)),
+            ("usage_capture", raw_noncritical_complete()),
+            ("action_authorization_trace", raw_noncritical_complete(permission=True)),
+        ):
+            row = {
+                "probe_id": capability,
+                "capability": capability,
+                "required_event_types": [
+                    "thread.started",
+                    "turn.completed",
+                    *(["direct.routing"] if capability == "force_load" else []),
+                ],
+            }
+            result = emitted_for_row(row, raw)
+            _validate_probe_result(result, row)
+            self.assertEqual(result["status"], "pass", capability)
+
     def test_reasoning_only_d35_event_vector_uses_real_emitter_and_terminal_loader(self):
         result = emitted_probe_result(raw_reasoning_vector(), timed_out=True, isolated=True)
         _validate_probe_result(result, ROW)
@@ -288,7 +408,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             for index in (1, 2)
         ]
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/5",
+            "schema_version": "model-evolution-probe-terminal/6",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -300,7 +420,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             path = Path(temporary) / "terminal.json"
             path.write_text(json.dumps(terminal), encoding="utf-8")
             loaded = _load_probe_terminal(path, request=REQUEST, row=ROW)
-        self.assertEqual(loaded["schema_version"], "model-evolution-probe-terminal/5")
+        self.assertEqual(loaded["schema_version"], "model-evolution-probe-terminal/6")
 
     def test_all_normalized_item_types_are_classified_without_content(self):
         for item_type in (
@@ -334,7 +454,7 @@ class ProbeTransportContractTests(unittest.TestCase):
         )
         _validate_probe_result(result, ROW)
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/5",
+            "schema_version": "model-evolution-probe-terminal/6",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -390,7 +510,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": complete_lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/5",
+            "schema_version": "model-evolution-probe-terminal/6",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": complete,
@@ -438,7 +558,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/5",
+            "schema_version": "model-evolution-probe-terminal/6",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -633,7 +753,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/5",
+            "schema_version": "model-evolution-probe-terminal/6",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,

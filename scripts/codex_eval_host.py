@@ -72,7 +72,8 @@ from _codex_eval_isolation import (
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
 LEGACY_ADAPTER_VERSION = "1.13"
-ADAPTER_VERSION = "1.14"
+PREVIOUS_ADAPTER_VERSION = "1.14"
+ADAPTER_VERSION = "1.15"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_artifacts.py",
@@ -84,9 +85,11 @@ ADAPTER_SOURCE_FILES = (
     "codex_eval_host.py",
 )
 PROBE_RESULT_SCHEMA_VERSION_LEGACY = "codex-interaction-probe-result/1.2"
-PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.3"
+PROBE_RESULT_SCHEMA_VERSION_PREVIOUS = "codex-interaction-probe-result/1.3"
+PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.4"
 PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY = "codex-probe-lifecycle/1"
-PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/2"
+PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS = "codex-probe-lifecycle/2"
+PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/3"
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -215,7 +218,11 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     if not isinstance(adapter, dict):
         raise AdapterError("adapter identity is missing")
     adapter_version = adapter.get("version")
-    if adapter_version not in {LEGACY_ADAPTER_VERSION, ADAPTER_VERSION}:
+    if adapter_version not in {
+        LEGACY_ADAPTER_VERSION,
+        PREVIOUS_ADAPTER_VERSION,
+        ADAPTER_VERSION,
+    }:
         raise AdapterError("unsupported Host adapter version")
     command = manifest.get("command")
     command_argv = command.get("argv") if isinstance(command, dict) else None
@@ -224,7 +231,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     runtime_surface = (
         _optional_bound_command_option(command_argv, "--runtime-surface-version")
     )
-    if adapter_version == ADAPTER_VERSION and runtime_surface != RUNTIME_SURFACE_VERSION:
+    if adapter_version in {PREVIOUS_ADAPTER_VERSION, ADAPTER_VERSION} and runtime_surface != RUNTIME_SURFACE_VERSION:
         raise AdapterError("runtime surface identity is missing")
     if adapter_version == LEGACY_ADAPTER_VERSION and runtime_surface is not None:
         raise AdapterError("legacy Host carries a runtime surface identity")
@@ -304,7 +311,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         "--profile": args.profile,
         "--sandbox": args.sandbox,
     }
-    if adapter_version == ADAPTER_VERSION:
+    if adapter_version in {PREVIOUS_ADAPTER_VERSION, ADAPTER_VERSION}:
         expected.update(
             {
                 "--model-catalog-snapshot": str(args.model_catalog_snapshot),
@@ -325,7 +332,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         ),
         "--code-mode-host-sha256": args.code_mode_host_sha256,
     }
-    if adapter_version == ADAPTER_VERSION:
+    if adapter_version in {PREVIOUS_ADAPTER_VERSION, ADAPTER_VERSION}:
         if not all(isinstance(value, str) for value in (bound_catalog, bound_catalog_hash, bound_catalog_client)):
             raise AdapterError("runtime surface lacks a model catalog snapshot")
         snapshot_path = Path(bound_catalog).resolve(strict=True)
@@ -766,6 +773,8 @@ def _probe_lifecycle_projection(
     last_message: Path,
     source_root: Path | None,
     isolated: bool,
+    required_event_types: list[str] | None = None,
+    capability_observable: bool | None = None,
 ) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
     raw = child.get("stdout", b"")
     stderr_raw = child.get("stderr", b"")
@@ -839,6 +848,17 @@ def _probe_lifecycle_projection(
         and not source_path_exposed
         and not credential_marker_seen
     )
+    observations = set(event_types)
+    if normalized.get("routing"):
+        observations.add("direct.routing")
+    if usage_present:
+        observations.add("direct.usage")
+    if normalized.get("permission_denials"):
+        observations.add("permission.denied")
+    required_events_complete = (
+        required_event_types is not None
+        and set(required_event_types) <= observations
+    )
     capacity_failure = any(
         _is_model_capacity_failure(failure)
         for failure in normalized.get("failures", [])
@@ -871,6 +891,12 @@ def _probe_lifecycle_projection(
         "source_path_exposed": source_path_exposed,
         "credential_marker_seen": credential_marker_seen,
         "custody_closed": custody_closed,
+        "required_events_complete": required_events_complete,
+        "capability_observable": (
+            bool(capability_observable)
+            if capability_observable is not None
+            else False
+        ),
         "retryable": False,
         "branch": "unknown",
         "reason": "unknown_lifecycle",
@@ -917,6 +943,75 @@ def _probe_lifecycle_projection(
         "index": None,
         "message": "probe lifecycle is not retryable",
     }]
+
+
+def _apply_probe_capability_projection(
+    lifecycle: dict[str, Any],
+    status: str,
+    diagnostics: list[dict[str, Any]],
+    *,
+    capability: str,
+    capability_observed: bool,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Separate required-event completeness from capability observability."""
+    lifecycle["capability_observable"] = capability_observed
+    if status == "pass" and not lifecycle["required_events_complete"]:
+        lifecycle.update({
+            "branch": "unknown",
+            "reason": "required_event_observation_missing",
+            "retryable": False,
+        })
+        return "unknown", [{
+            "kind": "probe_lifecycle",
+            "index": None,
+            "message": "required probe event is missing",
+        }]
+    if (
+        status == "pass"
+        and capability in {"multi_turn", "principal_tracing"}
+        and not capability_observed
+    ):
+        safe_unknown = (
+            lifecycle["branch"] == "complete"
+            and lifecycle["required_events_complete"]
+            and lifecycle["custody_closed"]
+            and lifecycle["completed_turn"]
+            and lifecycle["final_message_present"]
+            and lifecycle["usage_present"]
+            and not lifecycle["incomplete_item_types"]
+            and not lifecycle["effect_capable"]
+            and not lifecycle["source_path_exposed"]
+            and not lifecycle["credential_marker_seen"]
+        )
+        if not safe_unknown:
+            lifecycle.update({
+                "branch": "unknown",
+                "reason": "unsafe_noncritical_observation",
+                "retryable": False,
+            })
+            return "unknown", [{
+                "kind": "probe_lifecycle",
+                "index": None,
+                "message": "noncritical capability custody is not safely closed",
+            }]
+        lifecycle.update({
+            "branch": "noncritical_unknown",
+            "reason": "capability_not_directly_observable",
+            "retryable": False,
+        })
+        return "unknown", []
+    if status == "pass" and not capability_observed:
+        lifecycle.update({
+            "branch": "unknown",
+            "reason": "capability_observation_missing",
+            "retryable": False,
+        })
+        return "unknown", [{
+            "kind": "probe_lifecycle",
+            "index": None,
+            "message": "required probe capability is missing",
+        }]
+    return status, diagnostics
 
 
 def _child_failure_diagnostics(
@@ -2015,6 +2110,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             last_message=last_message,
             source_root=args.source_root,
             isolated=args.isolation_tool is not None,
+            required_event_types=row["expected_event_types"],
         )
     if forced is not None and status == "pass":
         normalized["routing"] = {
@@ -2031,6 +2127,9 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
     if normalized["permission_denials"]:
         direct_observations.append("permission.denied")
     observations = [*observed_types, *direct_observations]
+    lifecycle["required_events_complete"] = set(
+        row["expected_event_types"]
+    ) <= set(observations)
     capability_observed = {
         "force_load": bool(forced is not None and status == "pass"),
         "natural_routing": bool(
@@ -2046,20 +2145,13 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
         "principal_tracing": False,
         "multi_turn": False,
     }[row["capability"]]
-    if status == "pass" and not (
-        capability_observed and set(row["expected_event_types"]) <= set(observations)
-    ):
-        status = "unknown"
-        lifecycle.update({
-            "branch": "unknown",
-            "reason": "capability_observation_missing",
-            "retryable": False,
-        })
-        diagnostics = [{
-            "kind": "probe_lifecycle",
-            "index": None,
-            "message": "required probe observation is missing",
-        }]
+    status, diagnostics = _apply_probe_capability_projection(
+        lifecycle,
+        status,
+        diagnostics,
+        capability=row["capability"],
+        capability_observed=capability_observed,
+    )
     _emit(
         {
             "schema_version": PROBE_RESULT_SCHEMA_VERSION,
