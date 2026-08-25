@@ -905,6 +905,7 @@ def preflight_operations(
     repository_root: Path,
     campaign_root: Path,
     product_source_root: Path | None = None,
+    transport_fixture_root: Path | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     controller_identity = git_identity(repository_root)
     product_root = (
@@ -928,6 +929,26 @@ def preflight_operations(
             operation_id,
             [sys.executable, script, "--check"],
             repository_root=repository_root,
+        )
+        operations.append(fact)
+    if transport_fixture_root is not None:
+        fixture_root = transport_fixture_root.resolve(strict=True)
+        plan_root = fixture_root.parents[3]
+        plan_path = plan_root / "plan.json"
+        index_path = plan_root / "artifacts" / "index.jsonl"
+        fact, _ = run_model_free_command(
+            "model-grade-transport-contract",
+            [
+                sys.executable,
+                "skill-evaluator/scripts/run_eval_plan.py",
+                str(plan_path),
+                "--index",
+                str(index_path),
+                "--transport-contract-check",
+                str(fixture_root),
+            ],
+            repository_root=repository_root,
+            timeout=180,
         )
         operations.append(fact)
     plugin_build = resolve_binding(

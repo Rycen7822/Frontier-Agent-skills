@@ -642,6 +642,7 @@ def _preflight(args: argparse.Namespace) -> None:
         repository_root=repository_root,
         campaign_root=campaign_root,
         product_source_root=args.product_source_root,
+        transport_fixture_root=args.transport_fixture_root,
     )
     if args.systemd_argv_only:
         systemd_probe_argv(
@@ -2450,6 +2451,11 @@ def _parser() -> argparse.ArgumentParser:
         "--systemd-argv-only",
         action="store_true",
         help="CI-only: validate the transient service argv without starting it",
+    )
+    preflight.add_argument(
+        "--transport-fixture-root",
+        type=Path,
+        help="provider-free real model-grade transport replay fixture",
     )
 
     materialization = commands.add_parser("materialization-check")

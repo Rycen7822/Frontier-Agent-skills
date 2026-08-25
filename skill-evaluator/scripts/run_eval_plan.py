@@ -1638,6 +1638,145 @@ def _deterministic_findings(
         raise RunnerFailure(str(exc)) from None
 
 
+def _transport_contract_check(
+    *,
+    plan_path: Path,
+    index_path: Path,
+    raw_attempt_dir: Path,
+) -> dict[str, Any]:
+    """Replay one real six-member model-grade batch without a provider call."""
+    registry = load_epoch7_schema_registry()
+    plan = _load_plan(plan_path, registry)
+    spec, _, _, registry, spec_path = _load_bound_contract(plan, plan_path)
+    expected_index = _index_path(plan_path, plan, index_path)
+    rows = _load_index(expected_index, plan=plan, plan_digest=file_sha256(plan_path), registry=registry)
+    _verify_index_receipts(
+        rows, plan_path=plan_path, plan=plan, spec=spec, registry=registry,
+    )
+    raw_attempt_dir = raw_attempt_dir.resolve(strict=True)
+    raw_request = load_json(raw_attempt_dir / "host-request.json")
+    owner_id = raw_request.get("envelope", {}).get("entry_id")
+    entries = {entry["entry_id"]: entry for entry in plan["entries"]}
+    owner_entry = entries.get(owner_id)
+    if owner_entry is None:
+        raise RunnerFailure("transport replay owner is outside the plan")
+    owner_specs = [
+        value for value in owner_entry["model_grade_specs"]
+        if value["batch_owner_entry_id"] == owner_id
+    ]
+    if len(owner_specs) != 1 or len(owner_specs[0]["batch_entry_ids"]) != 6:
+        raise RunnerFailure("transport replay does not bind one six-member batch")
+    model_spec = owner_specs[0]
+    declarations = {
+        grader["grader_id"]: grader
+        for grader in spec["graders"]
+        if grader["type"] == "model"
+    }
+    grader_id = model_spec["grader_id"]
+    if grader_id not in declarations:
+        raise RunnerFailure("transport replay model grader declaration is absent")
+    members: list[tuple[dict[str, Any], dict[str, Any], Path, list[dict[str, Any]]]] = []
+    for member_id in model_spec["batch_entry_ids"]:
+        if member_id == owner_id:
+            member_entry = owner_entry
+            member_result = load_json(raw_attempt_dir / "result.json")
+            member_root = raw_attempt_dir
+            deterministic_path = raw_attempt_dir / "graders" / "sentinel-envelope-grader" / "stdout.json"
+            if not deterministic_path.is_file():
+                raise RunnerFailure("transport replay owner deterministic output is missing")
+            member_findings = model_transport.deterministic_findings([
+                load_json(deterministic_path),
+            ])
+        else:
+            member_entry, member_result, member_root, member_receipt = _batch_member(
+                entry_id=member_id,
+                plan_path=plan_path,
+                plan=plan,
+                prior_rows=rows,
+            )
+            member_findings = _deterministic_findings(
+                member_receipt["grader_outputs"], member_root,
+            )
+        members.append((member_entry, member_result, member_root, member_findings))
+
+    items = []
+    lifecycle_branches: list[str] = []
+    for member_entry, member_result, member_root, member_findings in members:
+        blinded = model_transport.blinded_execution(member_entry, member_result)
+        if sorted(blinded) != sorted(model_spec["blinded_projection"]):
+            raise RunnerFailure("transport replay blinded projection is incomplete")
+
+        def read_evidence(
+            record: dict[str, Any],
+            root: Path = member_root,
+        ) -> str:
+            _, path = resolve_contained_path(
+                root, record["path"], "transport replay evidence", kind="file",
+            )
+            if artifact_record(path, root, encoding="utf-8") != record:
+                raise RunnerFailure("transport replay evidence binding differs")
+            return path.read_text(encoding="utf-8")
+
+        observation = json.loads(read_evidence({
+            "path": "workspace/host-observation.json",
+            "encoding": "utf-8",
+            "digest": next(
+                item["digest"] for item in member_result["artifacts"]
+                if item["path"] == "workspace/host-observation.json"
+            ),
+        }))
+        version = observation.get("schema_version")
+        if version in {"codex-host-observation/1", "codex-host-observation/2"}:
+            if "lifecycle" in observation:
+                lifecycle_branches.append(observation["lifecycle"].get("branch"))
+            else:
+                lifecycle_branches.append("complete")
+        else:
+            raise RunnerFailure("transport replay Host observation version is unknown")
+        items.append(model_transport.execution_item(
+            blinded,
+            grader_id=grader_id,
+            grader_checks=declarations[grader_id]["checks"],
+            deterministic_findings=member_findings,
+            entry_id=member_entry["entry_id"],
+            read_artifact=read_evidence,
+        ))
+    batch = model_transport.execution_batch(items, batch_id=model_spec["batch_id"])
+    prompt_path = resolve_contained_path(
+        spec_path.parent, model_spec["prompt"]["path"], "transport replay prompt", kind="file",
+    )[1]
+    payload = model_transport.request_payload(
+        grader_id=grader_id,
+        batch=batch,
+        schedule_id=model_spec["schedule_id"],
+        prompt_bytes=prompt_path.read_bytes(),
+        prompt_id=model_spec["prompt_id"],
+        schema_id=model_spec["schema_id"],
+    )
+    replay_request = _host_request(
+        plan,
+        owner_entry,
+        "transport-replay",
+        1,
+        request_kind="model_grade",
+        payload=payload,
+    )
+    diagnostics = validate_host_protocol_record(
+        "host_request", replay_request, registry,
+    )
+    if diagnostics:
+        raise RunnerFailure(_first_diagnostic(diagnostics))
+    if lifecycle_branches.count("outcome_bearing_abandoned") != 4 or lifecycle_branches.count("complete") != 2:
+        raise RunnerFailure("transport replay lifecycle coverage differs")
+    return {
+        "status": "pass",
+        "batch_id": model_spec["batch_id"],
+        "member_count": len(items),
+        "lifecycle_branches": lifecycle_branches,
+        "provider_requests": 0,
+    }
+
+
 def _run_model_graders(
     *,
     plan_path: Path,
@@ -3265,6 +3404,14 @@ def _run_command(args: argparse.Namespace) -> int:
             plan, plan_path,
         )
         index_path = _index_path(plan_path, plan, Path(args.index))
+        if args.transport_contract_check is not None:
+            result = _transport_contract_check(
+                plan_path=plan_path,
+                index_path=index_path,
+                raw_attempt_dir=Path(args.transport_contract_check),
+            )
+            sys.stdout.buffer.write(canonical_json_bytes(result) + b"\n")
+            return 0
         selected = _selected_entries(plan, args.entry_id)
         if args.status and (
             args.resume
@@ -3426,6 +3573,11 @@ def main() -> int:
     parser.add_argument("--entry-id")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--status", action="store_true")
+    parser.add_argument(
+        "--transport-contract-check",
+        type=Path,
+        help="replay one bound six-member model-grade batch without a provider",
+    )
     parser.add_argument("--new-attempt-budget", type=int)
     parser.add_argument("--max-parallel", type=int)
     return _run_command(parser.parse_args())
