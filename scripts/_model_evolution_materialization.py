@@ -44,6 +44,9 @@ class MaterializationError(ValueError):
     """Formal-plan inputs cannot be derived exactly from frozen evidence."""
 
 
+HOST_ARTIFACT_AUTHORITY_VERSION = "host-artifact-authority/1"
+
+
 def _file_hash(path: Path) -> str:
     return "sha256:" + sha256(path.read_bytes()).hexdigest()
 
@@ -216,30 +219,212 @@ def _run(command: list[str], *, repository_root: Path, label: str) -> None:
         raise MaterializationError(f"{label} failed: {diagnostic}")
 
 
-def _host_artifact_source(
-    binding: dict[str, Any], *, repository_root: Path, campaign_root: Path
-) -> Path:
-    relative = _relative_path(binding.get("path"), label="Host probe artifact")
-    # Host probe artifacts are produced from the controller repository that
-    # built the Host. Campaign-local copies are never an authority source;
-    # accepting one here would make identical bytes ambiguous and could hide
-    # a bootstrap topology error.
-    repository_candidate = repository_root.joinpath(*relative.parts)
-    if (
-        repository_candidate.is_file()
-        and not repository_candidate.is_symlink()
-        and _file_hash(repository_candidate) == binding.get("digest")
-    ):
-        return repository_candidate
-    campaign_candidate = campaign_root.joinpath(*relative.parts)
-    if campaign_candidate.is_file() and not campaign_candidate.is_symlink():
-        raise MaterializationError(
-            "Host probe artifact authority is repository, but only a campaign "
-            f"copy is available: {relative}"
+def _authority_document(value: dict[str, Any]) -> list[dict[str, Any]]:
+    if not isinstance(value, dict) or value.get("schema_version") != HOST_ARTIFACT_AUTHORITY_VERSION:
+        raise MaterializationError("Host artifact authority version is unsupported")
+    bindings = value.get("bindings")
+    if not isinstance(bindings, list) or not bindings:
+        raise MaterializationError("Host artifact authority bindings are missing")
+    if [item.get("index") for item in bindings if isinstance(item, dict)] != list(range(len(bindings))):
+        raise MaterializationError("Host artifact authority indices are not contiguous")
+    for item in bindings:
+        if (
+            not isinstance(item, dict)
+            or set(item) != {"index", "path", "root", "digest", "encoding"}
+            or item["root"] not in {"repository", "campaign"}
+            or not isinstance(item["digest"], str)
+            or len(item["digest"]) != 71
+            or not item["digest"].startswith("sha256:")
+            or any(character not in "0123456789abcdef" for character in item["digest"][7:])
+            or item["encoding"] not in {"utf-8", "binary"}
+        ):
+            raise MaterializationError("Host artifact authority binding shape is invalid")
+    return bindings
+
+
+def host_artifact_authority_document(
+    host: dict[str, Any], *, repository_root: Path, campaign_root: Path,
+    root: str = "repository",
+) -> dict[str, Any]:
+    if root not in {"repository", "campaign"}:
+        raise MaterializationError("Host artifact authority root is invalid")
+    probes = [item.get("probe") for item in host.get("capabilities", [])]
+    probes.append(host.get("reset", {}).get("probe"))
+    bindings: list[dict[str, Any]] = []
+    for index, probe in enumerate(probes):
+        if not isinstance(probe, dict) or not isinstance(probe.get("artifact"), dict):
+            raise MaterializationError(f"Host artifact {index} has no binding")
+        artifact = probe["artifact"]
+        relative = _relative_path(artifact.get("path"), label="Host artifact")
+        source_root = repository_root if root == "repository" else campaign_root
+        source = source_root.joinpath(*relative.parts)
+        if source.is_symlink() or not source.is_file():
+            raise MaterializationError("Host artifact authority source is not a regular file")
+        bindings.append(
+            {
+                "index": index,
+                "path": relative.as_posix(),
+                "root": root,
+                "digest": _file_hash(source),
+                "encoding": artifact.get("encoding"),
+            }
         )
-    raise MaterializationError(
-        f"Host probe artifact must resolve to one exact repository source: {relative}"
+    _authority_document({"schema_version": HOST_ARTIFACT_AUTHORITY_VERSION, "bindings": bindings})
+    return {"schema_version": HOST_ARTIFACT_AUTHORITY_VERSION, "bindings": bindings}
+
+
+def observed_host_artifact_authority_document(
+    host: dict[str, Any], previous: dict[str, Any],
+    terminal_bindings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    previous_rows = _authority_document(previous)
+    probes = [item.get("probe") for item in host.get("capabilities", [])]
+    probes.append(host.get("reset", {}).get("probe"))
+    if len(previous_rows) != len(probes):
+        raise MaterializationError("previous Host artifact authority count differs from Host")
+    terminal_pairs = {
+        (item.get("path"), item.get("digest")): item for item in terminal_bindings
+    }
+    bindings: list[dict[str, Any]] = []
+    for index, probe in enumerate(probes):
+        if not isinstance(probe, dict) or not isinstance(probe.get("artifact"), dict):
+            raise MaterializationError(f"Observed Host artifact {index} has no binding")
+        artifact = probe["artifact"]
+        pair = (artifact.get("path"), artifact.get("digest"))
+        if pair in terminal_pairs:
+            root = "campaign"
+        else:
+            old = previous_rows[index]
+            if old["path"] != artifact.get("path") or old["digest"] != artifact.get("digest"):
+                raise MaterializationError("Observed Host artifact has no exact authority lineage")
+            root = old["root"]
+        bindings.append(
+            {
+                "index": index,
+                "path": artifact["path"],
+                "root": root,
+                "digest": artifact["digest"],
+                "encoding": artifact["encoding"],
+            }
+        )
+    return {"schema_version": HOST_ARTIFACT_AUTHORITY_VERSION, "bindings": bindings}
+
+
+def _repository_tracked(repository_root: Path, relative: PurePosixPath) -> bool:
+    result = subprocess.run(
+        ["git", "-C", str(repository_root), "ls-files", "--error-unmatch", "--", relative.as_posix()],
+        cwd=repository_root,
+        text=True,
+        capture_output=True,
+        check=False,
     )
+    return result.returncode == 0 and result.stdout.strip() == relative.as_posix()
+
+
+def _host_artifact_source(
+    binding: dict[str, Any], *, repository_root: Path, campaign_root: Path,
+    authority_version: str | None = None,
+) -> Path:
+    relative = _relative_path(binding.get("path"), label="Host artifact")
+    if authority_version is None:
+        # Legacy v2 Hosts intentionally keep their historical repository-only
+        # behavior. This branch is never used by the D29 explicit contract.
+        repository_candidate = repository_root.joinpath(*relative.parts)
+        if (
+            repository_candidate.is_file()
+            and not repository_candidate.is_symlink()
+            and _file_hash(repository_candidate) == binding.get("digest")
+        ):
+            return repository_candidate
+        campaign_candidate = campaign_root.joinpath(*relative.parts)
+        if campaign_candidate.is_file() and not campaign_candidate.is_symlink():
+            raise MaterializationError(
+                "legacy Host artifact authority is repository, but only a campaign "
+                f"copy is available: {relative}"
+            )
+        raise MaterializationError(
+            f"legacy Host artifact must resolve to one exact repository source: {relative}"
+        )
+    if authority_version != HOST_ARTIFACT_AUTHORITY_VERSION:
+        raise MaterializationError("Host artifact authority version is unsupported")
+    if set(binding) == {"index", "root", "path", "digest", "encoding"}:
+        if not isinstance(binding.get("index"), int) or binding["index"] < 0:
+            raise MaterializationError("explicit Host artifact index is invalid")
+        binding = {
+            field: binding[field]
+            for field in ("root", "path", "digest", "encoding")
+        }
+    if set(binding) != {"root", "path", "digest", "encoding"}:
+        raise MaterializationError("explicit Host artifact binding shape is invalid")
+    root_name = binding.get("root")
+    if root_name not in {"repository", "campaign"}:
+        raise MaterializationError("explicit Host artifact root is invalid")
+    if not isinstance(binding.get("digest"), str) or not binding["digest"].startswith("sha256:"):
+        raise MaterializationError("explicit Host artifact digest is invalid")
+    root = repository_root if root_name == "repository" else campaign_root
+    root = root.resolve(strict=True)
+    candidate = root.joinpath(*relative.parts)
+    if candidate.is_symlink() or not candidate.is_file():
+        raise MaterializationError(
+            f"Host artifact is missing or symlinked in declared {root_name} root: {relative}"
+        )
+    resolved = candidate.resolve(strict=True)
+    if not resolved.is_relative_to(root):
+        raise MaterializationError("Host artifact escapes its declared root")
+    if root_name == "repository" and not _repository_tracked(repository_root, relative):
+        raise MaterializationError(
+            f"repository Host artifact is not tracked: {relative}"
+        )
+    if _file_hash(resolved) != binding["digest"]:
+        raise MaterializationError(
+            f"Host artifact digest differs in declared {root_name} root: {relative}"
+        )
+    return resolved
+
+
+def _host_artifact_inventory(
+    host: dict[str, Any], *, repository_root: Path, campaign_root: Path,
+    authority: dict[str, Any] | None = None,
+    require_explicit: bool = False,
+) -> list[dict[str, Any]]:
+    authority_rows = _authority_document(authority) if authority is not None else None
+    if require_explicit and authority_rows is None:
+        raise MaterializationError("Host lacks the D29 artifact authority contract")
+    probes = [item.get("probe") for item in host.get("capabilities", [])]
+    probes.append(host.get("reset", {}).get("probe"))
+    if authority_rows is not None and len(authority_rows) != len(probes):
+        raise MaterializationError("Host artifact authority count differs from Host")
+    inventory_rows: list[dict[str, Any]] = []
+    for index, probe in enumerate(probes):
+        if not isinstance(probe, dict) or not isinstance(probe.get("artifact"), dict):
+            raise MaterializationError(f"Host artifact {index} has no binding")
+        binding = probe["artifact"]
+        if probe.get("locator", {}).get("artifact") != binding.get("path"):
+            raise MaterializationError(f"Host artifact {index} locator differs from binding")
+        if authority_rows is not None:
+            authority_binding = authority_rows[index]
+            if authority_binding["path"] != binding.get("path") or authority_binding["digest"] != binding.get("digest"):
+                raise MaterializationError("Host artifact locator differs from authority binding")
+            binding = {
+                field: authority_binding[field]
+                for field in ("root", "path", "digest", "encoding")
+            }
+        source = _host_artifact_source(
+            binding,
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+            authority_version=(HOST_ARTIFACT_AUTHORITY_VERSION if authority_rows is not None else None),
+        )
+        inventory_rows.append(
+            {
+                "index": index,
+                "root": binding.get("root", "repository"),
+                "path": binding["path"],
+                "digest": binding.get("digest"),
+                "source": str(source),
+            }
+        )
+    return inventory_rows
 
 
 def _copy_host_artifacts(
@@ -248,22 +433,73 @@ def _copy_host_artifacts(
     repository_root: Path,
     campaign_root: Path,
     target_root: Path,
+    authority: dict[str, Any] | None = None,
 ) -> None:
-    probes = [item.get("probe") for item in host.get("capabilities", [])]
-    probes.append(host.get("reset", {}).get("probe"))
-    for index, probe in enumerate(probes):
-        if not isinstance(probe, dict) or not isinstance(probe.get("artifact"), dict):
-            raise MaterializationError(f"Host probe {index} has no artifact binding")
+    for row, probe in zip(
+        _host_artifact_inventory(
+            host,
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+            authority=authority,
+        ),
+        [item.get("probe") for item in host.get("capabilities", [])]
+        + [host.get("reset", {}).get("probe")],
+        strict=True,
+    ):
         binding = probe["artifact"]
-        source = _host_artifact_source(
-            binding, repository_root=repository_root, campaign_root=campaign_root
-        )
+        source = Path(row["source"])
         relative = _relative_path(binding["path"], label="Host probe artifact")
         _copy_file(
             source,
             target_root.joinpath(*relative.parts),
             expected_hash=binding["digest"],
         )
+
+
+def validate_materialization_inputs(
+    *,
+    host: dict[str, Any],
+    sentinel: dict[str, Any],
+    authority: dict[str, Any] | None,
+    repository_root: Path,
+    campaign_root: Path,
+) -> dict[str, Any]:
+    """Run the production resolver over all pre-provider Host inputs."""
+    inventory_rows = _host_artifact_inventory(
+        host,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+        authority=authority,
+        require_explicit=True,
+    )
+    resolved_bindings = 0
+    for skill_id in SKILL_IDS:
+        record = sentinel["skills"][skill_id]
+        bindings = [
+            record["spec_template"],
+            record["public_scenarios"],
+            record["calibration_gold"],
+            *record["fixture_roots"],
+            *record["verifier_roots"],
+        ]
+        for binding in bindings:
+            resolve_binding(binding, repository_root, campaign_root)
+            resolved_bindings += 1
+    for binding in (
+        sentinel["revision_policy"],
+        sentinel["manual_authority_protocol"],
+        sentinel["case_lineage"],
+        sentinel["power_sensitivity"],
+        *sentinel["catalog_files"],
+    ):
+        resolve_binding(binding, repository_root, campaign_root)
+        resolved_bindings += 1
+    return {
+        "schema_version": "model-evolution-materialization-gate/1",
+        "authority_version": HOST_ARTIFACT_AUTHORITY_VERSION,
+        "host_artifacts": inventory_rows,
+        "resolved_bindings": resolved_bindings,
+    }
 
 
 def promoted_model_grading_host(
@@ -716,6 +952,18 @@ def _build_public_plan(
         repository_root=repository_root,
         campaign_root=campaign_root,
         target_root=root,
+        authority=(
+            load_json(
+                resolve_binding(
+                    campaign["host_artifact_authority"],
+                    repository_root,
+                    campaign_root,
+                ),
+                label="Host artifact authority",
+            )
+            if campaign.get("host_artifact_authority") is not None
+            else None
+        ),
     )
     host_path = root / "host.json"
     retarget = role in {"target_candidate", "target_prior"}

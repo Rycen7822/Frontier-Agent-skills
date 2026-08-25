@@ -57,8 +57,10 @@ from _model_evolution_calibration_receipt import (
 )
 from _model_evolution_materialization import (
     MaterializationError,
+    _validate_selected_plugin,
     prepare_candidate_plan,
     prepare_current_plan,
+    validate_materialization_inputs,
     validate_candidate_plan,
     validate_current_plan,
 )
@@ -411,6 +413,10 @@ def _init(args: argparse.Namespace) -> None:
         "probe_set": args.probe_set.resolve(strict=True),
         "sentinel": args.sentinel_index.resolve(strict=True),
     }
+    if args.host_artifact_authority is not None:
+        fixed["host_artifact_authority"] = args.host_artifact_authority.resolve(
+            strict=True
+        )
     if args.apparatus_retry_policy is not None:
         fixed["apparatus_retry_policy"] = args.apparatus_retry_policy.resolve(
             strict=True
@@ -570,6 +576,7 @@ def _init(args: argparse.Namespace) -> None:
         repository_root=repository_root,
         campaign_root=campaign_root,
         predecessor=predecessor,
+        host_artifact_authority_binding=bindings.get("host_artifact_authority"),
     )
     if ceilings["provider_requests"] < len(probe_set["probes"]):
         raise CliError(
@@ -672,6 +679,65 @@ def _preflight(args: argparse.Namespace) -> None:
             "phase": updated["phase"],
             "state_revision": updated["state_revision"],
             "apparatus_report": report_binding,
+        }
+    )
+
+
+def _materialization_check(args: argparse.Namespace) -> None:
+    repository_root, campaign_root = _roots(args)
+    campaign = _campaign_store(repository_root, campaign_root).read()
+    if campaign["state_revision"] != args.expected_revision:
+        raise CliError("materialization-check expected revision is stale")
+    if campaign["phase"] != "apparatus_ready":
+        raise CliError("materialization-check requires apparatus_ready")
+    observed = campaign["budgets"]["observed"]
+    if any(observed.get(field, 0) != 0 for field in ("execute", "model_grade", "provider")):
+        raise CliError("materialization-check requires zero provider observations")
+    host_path = resolve_binding(
+        campaign["profiles"]["target_provisional"], repository_root, campaign_root
+    )
+    host = load_json(host_path, label="target provisional Host")
+    sentinel = load_json(
+        resolve_binding(campaign["sentinel_index"], repository_root, campaign_root),
+        label="sentinel index",
+    )
+    authority = (
+        load_json(
+            resolve_binding(
+                campaign["host_artifact_authority"],
+                repository_root,
+                campaign_root,
+            ),
+            label="Host artifact authority",
+        )
+        if campaign.get("host_artifact_authority") is not None
+        else None
+    )
+    plugin_root = (campaign_root / campaign["product"]["plugin_root"]).resolve(strict=True)
+    plugin_build = resolve_binding(
+        campaign["product"]["plugin_build"], repository_root, campaign_root
+    )
+    _validate_selected_plugin(
+        campaign=campaign,
+        campaign_root=campaign_root,
+        role="target_current",
+        plugin_root=plugin_root,
+        evidence_path=plugin_build,
+    )
+    gate = validate_materialization_inputs(
+        host=host,
+        sentinel=sentinel,
+        authority=authority,
+        repository_root=repository_root,
+        campaign_root=campaign_root,
+    )
+    _emit(
+        {
+            "campaign_id": campaign["campaign_id"],
+            "phase": campaign["phase"],
+            "state_revision": campaign["state_revision"],
+            "provider_requests": 0,
+            "materialization_gate": gate,
         }
     )
 
@@ -1154,15 +1220,16 @@ def _probe_exclusive(
     )
     updated = store.mutate(
         reserved["state_revision"],
-        lambda state: close_probes(
-            state,
-            artifacts=outcome["artifacts"],
-            statuses=outcome["statuses"],
-            results_binding=outcome["results_binding"],
-            observed_host_binding=outcome["observed_host_binding"],
-            provider_requests=outcome["provider_requests"],
-            blocker=blocker,
-        ),
+            lambda state: close_probes(
+                state,
+                artifacts=outcome["artifacts"],
+                statuses=outcome["statuses"],
+                results_binding=outcome["results_binding"],
+                observed_host_binding=outcome["observed_host_binding"],
+                observed_authority_binding=outcome.get("observed_authority_binding"),
+                provider_requests=outcome["provider_requests"],
+                blocker=blocker,
+            ),
     )
     if updated["interaction_probes"]["blocker"] is not None:
         raise CliError(updated["interaction_probes"]["blocker"])
@@ -2255,6 +2322,7 @@ def _parser() -> argparse.ArgumentParser:
     init.add_argument("--plugin-root", type=Path, required=True)
     init.add_argument("--plugin-build-evidence", type=Path, required=True)
     init.add_argument("--target-host", type=Path, required=True)
+    init.add_argument("--host-artifact-authority", type=Path)
     init.add_argument("--probe-set", type=Path, required=True)
     init.add_argument("--sentinel-index", type=Path, required=True)
     init.add_argument("--apparatus-retry-policy", type=Path)
@@ -2283,6 +2351,9 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="CI-only: validate the transient service argv without starting it",
     )
+
+    materialization = commands.add_parser("materialization-check")
+    materialization.add_argument("--expected-revision", type=int, required=True)
 
     rebind = commands.add_parser("rebind-product")
     rebind.add_argument("--expected-revision", type=int, required=True)
@@ -2459,6 +2530,7 @@ def main(argv: list[str] | None = None) -> int:
         dispatch = {
             "init": _init,
             "preflight": _preflight,
+            "materialization-check": _materialization_check,
             "rebind-product": _rebind_product,
             "refresh-current-evidence": _refresh_current_evidence,
             "probe": _probe,

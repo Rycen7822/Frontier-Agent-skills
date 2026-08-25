@@ -31,8 +31,13 @@ from _model_evolution_campaign import (  # noqa: E402
 )
 from _model_evolution_qualification import _apparatus_artifact  # noqa: E402
 from _model_evolution_materialization import (  # noqa: E402
+    HOST_ARTIFACT_AUTHORITY_VERSION,
     MaterializationError,
+    _host_artifact_inventory,
     _host_artifact_source,
+    host_artifact_authority_document,
+    observed_host_artifact_authority_document,
+    validate_materialization_inputs,
 )
 from _model_evolution_ops import _minimal_schema_fixture  # noqa: E402
 from _model_evolution_reporting import (  # noqa: E402
@@ -78,6 +83,231 @@ def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[st
 
 
 class ExtendedRelease(unittest.TestCase):
+    def test_d29_layered_host_authority_is_declared_and_fail_closed(self) -> None:
+        relative = "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/grader-output.schema.json"
+        payload = (ROOT / relative).read_bytes()
+        digest = "sha256:" + sha256(payload).hexdigest()
+        with tempfile.TemporaryDirectory(prefix="layered-host-authority-") as raw:
+            campaign = Path(raw)
+            duplicate = campaign / relative
+            duplicate.parent.mkdir(parents=True)
+            duplicate.write_bytes(payload)
+            repository_binding = {
+                "root": "repository",
+                "path": relative,
+                "digest": digest,
+                "encoding": "utf-8",
+            }
+            self.assertEqual(
+                ROOT / relative,
+                _host_artifact_source(
+                    repository_binding,
+                    repository_root=ROOT,
+                    campaign_root=campaign,
+                    authority_version=HOST_ARTIFACT_AUTHORITY_VERSION,
+                ),
+            )
+            campaign_path = campaign / "probes" / "probe.json"
+            campaign_path.parent.mkdir()
+            campaign_path.write_bytes(b"{}\n")
+            campaign_binding = {
+                "root": "campaign",
+                "path": "probes/probe.json",
+                "digest": "sha256:" + sha256(b"{}\n").hexdigest(),
+                "encoding": "utf-8",
+            }
+            self.assertEqual(
+                campaign_path,
+                _host_artifact_source(
+                    campaign_binding,
+                    repository_root=ROOT,
+                    campaign_root=campaign,
+                    authority_version=HOST_ARTIFACT_AUTHORITY_VERSION,
+                ),
+            )
+            for bad in (
+                {**repository_binding, "root": "external"},
+                {**repository_binding, "path": "../grader-output.schema.json"},
+                {**repository_binding, "digest": "sha256:" + "0" * 64},
+            ):
+                with self.assertRaises(MaterializationError):
+                    _host_artifact_source(
+                        bad,
+                        repository_root=ROOT,
+                        campaign_root=campaign,
+                        authority_version=HOST_ARTIFACT_AUTHORITY_VERSION,
+                    )
+
+    def test_d29_authority_lineage_maps_generated_probe_without_fallback(self) -> None:
+        static_relative = "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/grader-output.schema.json"
+        static_payload = (ROOT / static_relative).read_bytes()
+        with tempfile.TemporaryDirectory(prefix="layered-host-lineage-") as raw:
+            campaign = Path(raw)
+            probe_path = campaign / "probes" / "request.json"
+            probe_path.parent.mkdir()
+            probe_path.write_bytes(b'{"status":"pass"}\n')
+            static_digest = "sha256:" + sha256(static_payload).hexdigest()
+            host = {
+                "capabilities": [
+                    {
+                        "probe": {
+                            "artifact": {
+                                "path": "probes/request.json",
+                                "digest": "sha256:" + sha256(probe_path.read_bytes()).hexdigest(),
+                                "encoding": "utf-8",
+                            },
+                            "locator": {"artifact": "probes/request.json"},
+                        }
+                    },
+                    {
+                        "probe": {
+                            "artifact": {
+                                "path": static_relative,
+                                "digest": static_digest,
+                                "encoding": "utf-8",
+                            },
+                            "locator": {"artifact": static_relative},
+                        }
+                    },
+                ],
+                "reset": {
+                    "probe": {
+                        "artifact": {
+                            "path": static_relative,
+                            "digest": static_digest,
+                            "encoding": "utf-8",
+                        },
+                        "locator": {"artifact": static_relative},
+                    }
+                },
+            }
+            previous = {
+                "schema_version": HOST_ARTIFACT_AUTHORITY_VERSION,
+                "bindings": [
+                    {
+                        "index": 0,
+                        "path": static_relative,
+                        "root": "repository",
+                        "digest": static_digest,
+                        "encoding": "utf-8",
+                    },
+                    {
+                        "index": 1,
+                        "path": static_relative,
+                        "root": "repository",
+                        "digest": static_digest,
+                        "encoding": "utf-8",
+                    },
+                    {
+                        "index": 2,
+                        "path": static_relative,
+                        "root": "repository",
+                        "digest": static_digest,
+                        "encoding": "utf-8",
+                    },
+                ],
+            }
+            observed = observed_host_artifact_authority_document(
+                host,
+                previous,
+                [
+                    {
+                        "path": "probes/request.json",
+                        "digest": host["capabilities"][0]["probe"]["artifact"]["digest"],
+                    }
+                ],
+            )
+            self.assertEqual("campaign", observed["bindings"][0]["root"])
+            self.assertEqual("repository", observed["bindings"][1]["root"])
+            self.assertEqual("repository", observed["bindings"][2]["root"])
+
+    def test_d29_explicit_inventory_consumes_authority_rows_without_fallback(self) -> None:
+        static_relative = "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/grader-output.schema.json"
+        static_payload = (ROOT / static_relative).read_bytes()
+        with tempfile.TemporaryDirectory(prefix="layered-host-inventory-") as raw:
+            campaign = Path(raw)
+            probe_path = campaign / "probes" / "request.json"
+            probe_path.parent.mkdir()
+            probe_path.write_bytes(b'{"status":"pass"}\n')
+            static_digest = "sha256:" + sha256(static_payload).hexdigest()
+            probe_digest = "sha256:" + sha256(probe_path.read_bytes()).hexdigest()
+            host = {
+                "capabilities": [
+                    {
+                        "probe": {
+                            "artifact": {
+                                "path": static_relative,
+                                "digest": static_digest,
+                                "encoding": "utf-8",
+                            },
+                            "locator": {"artifact": static_relative},
+                        }
+                    },
+                    {
+                        "probe": {
+                            "artifact": {
+                                "path": "probes/request.json",
+                                "digest": probe_digest,
+                                "encoding": "utf-8",
+                            },
+                            "locator": {"artifact": "probes/request.json"},
+                        }
+                    },
+                ],
+                "reset": {
+                    "probe": {
+                        "artifact": {
+                            "path": static_relative,
+                            "digest": static_digest,
+                            "encoding": "utf-8",
+                        },
+                        "locator": {"artifact": static_relative},
+                    }
+                },
+            }
+            authority = {
+                "schema_version": HOST_ARTIFACT_AUTHORITY_VERSION,
+                "bindings": [
+                    {
+                        "index": 0,
+                        "path": static_relative,
+                        "root": "repository",
+                        "digest": static_digest,
+                        "encoding": "utf-8",
+                    },
+                    {
+                        "index": 1,
+                        "path": "probes/request.json",
+                        "root": "campaign",
+                        "digest": probe_digest,
+                        "encoding": "utf-8",
+                    },
+                    {
+                        "index": 2,
+                        "path": static_relative,
+                        "root": "repository",
+                        "digest": static_digest,
+                        "encoding": "utf-8",
+                    },
+                ],
+            }
+            rows = _host_artifact_inventory(
+                host,
+                repository_root=ROOT,
+                campaign_root=campaign,
+                authority=authority,
+                require_explicit=True,
+            )
+            self.assertEqual(["repository", "campaign", "repository"], [row["root"] for row in rows])
+            self.assertEqual(probe_path, Path(rows[1]["source"]))
+            with self.assertRaisesRegex(MaterializationError, "count differs"):
+                _host_artifact_inventory(
+                    host,
+                    repository_root=ROOT,
+                    campaign_root=campaign,
+                    authority={**authority, "bindings": authority["bindings"][:-1]},
+                    require_explicit=True,
+                )
     def test_host_artifact_uses_repository_authority_when_campaign_copy_exists(self) -> None:
         with tempfile.TemporaryDirectory(prefix="host-artifact-authority-") as raw:
             root = Path(raw)
