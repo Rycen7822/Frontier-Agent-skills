@@ -186,6 +186,7 @@ def build_initial_campaign(
     repository_root: Path,
     campaign_root: Path,
     predecessor: dict[str, Any] | None = None,
+    host_artifact_authority_binding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build revision zero without importing any earlier campaign state."""
     if not SAFE_ID.fullmatch(campaign_id):
@@ -289,6 +290,7 @@ def build_initial_campaign(
             "blocker": None,
         },
         "sentinel_index": sentinel_binding,
+        "host_artifact_authority": host_artifact_authority_binding,
         "budgets": {
             "ceiling": ceilings,
             "reserved": counts,

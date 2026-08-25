@@ -212,6 +212,7 @@ def close_probes(
     statuses: dict[str, str],
     results_binding: dict[str, Any],
     observed_host_binding: dict[str, Any],
+    observed_authority_binding: dict[str, Any] | None = None,
     provider_requests: int,
     blocker: str | None = None,
 ) -> None:
@@ -245,6 +246,8 @@ def close_probes(
         blocker.strip()[:512] if blocker is not None else None
     )
     state["profiles"]["target_observed"] = observed_host_binding
+    if observed_authority_binding is not None:
+        state["host_artifact_authority"] = observed_authority_binding
     previous_requests = state["budgets"]["observed"]["provider_requests"]
     state["budgets"]["observed"]["provider_requests"] = (
         None if previous_requests is None else previous_requests + provider_requests

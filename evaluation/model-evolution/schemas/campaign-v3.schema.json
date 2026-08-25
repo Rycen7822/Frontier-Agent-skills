@@ -43,6 +43,7 @@
     "interaction_probes": {"$ref": "#/$defs/interaction_probes"},
     "sentinel_index": {"$ref": "#/$defs/binding"},
     "apparatus_retry_policy": {"$ref": "#/$defs/nullable_binding"},
+    "host_artifact_authority": {"$ref": "#/$defs/nullable_binding"},
     "budgets": {"$ref": "#/$defs/budgets"},
     "plans": {"type": "array", "items": {"$ref": "#/$defs/plan"}},
     "plan_replacement_lineage": {

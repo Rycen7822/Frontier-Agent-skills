@@ -45,6 +45,7 @@ from _model_evolution_qualification import (
     project_observed_host,
     project_qualification,
 )
+from _model_evolution_materialization import observed_host_artifact_authority_document
 from _model_evolution_residual import (
     AGENTS_PATH as SQW_AGENTS_PATH,
     MAP_PATH as SQW_RESIDUAL_MAP_PATH,
@@ -692,11 +693,39 @@ def run_interaction_probes(
         repository_root=repository_root,
         campaign_root=campaign_root,
     )
+    observed_authority_binding = None
+    if campaign.get("host_artifact_authority") is not None:
+        previous_authority = load_json(
+            resolve_binding(
+                campaign["host_artifact_authority"],
+                repository_root,
+                campaign_root,
+            ),
+            label="provisional Host artifact authority",
+        )
+        observed_authority = observed_host_artifact_authority_document(
+            observed,
+            previous_authority,
+            list(artifacts.values()),
+        )
+        observed_authority_path = campaign_root / "target-observed-host-artifacts.json"
+        if observed_authority_path.exists():
+            if canonical_bytes(load_json(observed_authority_path, label="observed Host artifact authority")) != canonical_bytes(observed_authority):
+                raise OperationError("existing observed Host artifact authority differs")
+        else:
+            _write_json_exclusive(observed_authority_path, observed_authority)
+        observed_authority_binding = make_binding(
+            observed_authority_path,
+            root="campaign",
+            repository_root=repository_root,
+            campaign_root=campaign_root,
+        )
     return {
         "artifacts": artifacts,
         "statuses": statuses,
         "results_binding": results_binding,
         "observed_host_binding": observed_binding,
+        "observed_authority_binding": observed_authority_binding,
         "provider_requests": provider_requests,
     }
 
