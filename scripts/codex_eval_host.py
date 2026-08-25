@@ -73,7 +73,8 @@ MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
 LEGACY_ADAPTER_VERSION = "1.13"
 PREVIOUS_ADAPTER_VERSION = "1.14"
-ADAPTER_VERSION = "1.15"
+D38_ADAPTER_VERSION = "1.15"
+ADAPTER_VERSION = "1.16"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_artifacts.py",
@@ -86,10 +87,12 @@ ADAPTER_SOURCE_FILES = (
 )
 PROBE_RESULT_SCHEMA_VERSION_LEGACY = "codex-interaction-probe-result/1.2"
 PROBE_RESULT_SCHEMA_VERSION_PREVIOUS = "codex-interaction-probe-result/1.3"
-PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.4"
+PROBE_RESULT_SCHEMA_VERSION_D38 = "codex-interaction-probe-result/1.4"
+PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.5"
 PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY = "codex-probe-lifecycle/1"
 PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS = "codex-probe-lifecycle/2"
-PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/3"
+PROBE_LIFECYCLE_SCHEMA_VERSION_D38 = "codex-probe-lifecycle/3"
+PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/4"
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -221,6 +224,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     if adapter_version not in {
         LEGACY_ADAPTER_VERSION,
         PREVIOUS_ADAPTER_VERSION,
+        D38_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         raise AdapterError("unsupported Host adapter version")
@@ -231,7 +235,11 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     runtime_surface = (
         _optional_bound_command_option(command_argv, "--runtime-surface-version")
     )
-    if adapter_version in {PREVIOUS_ADAPTER_VERSION, ADAPTER_VERSION} and runtime_surface != RUNTIME_SURFACE_VERSION:
+    if adapter_version in {
+        PREVIOUS_ADAPTER_VERSION,
+        D38_ADAPTER_VERSION,
+        ADAPTER_VERSION,
+    } and runtime_surface != RUNTIME_SURFACE_VERSION:
         raise AdapterError("runtime surface identity is missing")
     if adapter_version == LEGACY_ADAPTER_VERSION and runtime_surface is not None:
         raise AdapterError("legacy Host carries a runtime surface identity")
@@ -311,7 +319,11 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         "--profile": args.profile,
         "--sandbox": args.sandbox,
     }
-    if adapter_version in {PREVIOUS_ADAPTER_VERSION, ADAPTER_VERSION}:
+    if adapter_version in {
+        PREVIOUS_ADAPTER_VERSION,
+        D38_ADAPTER_VERSION,
+        ADAPTER_VERSION,
+    }:
         expected.update(
             {
                 "--model-catalog-snapshot": str(args.model_catalog_snapshot),
@@ -332,7 +344,11 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         ),
         "--code-mode-host-sha256": args.code_mode_host_sha256,
     }
-    if adapter_version in {PREVIOUS_ADAPTER_VERSION, ADAPTER_VERSION}:
+    if adapter_version in {
+        PREVIOUS_ADAPTER_VERSION,
+        D38_ADAPTER_VERSION,
+        ADAPTER_VERSION,
+    }:
         if not all(isinstance(value, str) for value in (bound_catalog, bound_catalog_hash, bound_catalog_client)):
             raise AdapterError("runtime surface lacks a model catalog snapshot")
         snapshot_path = Path(bound_catalog).resolve(strict=True)
@@ -761,6 +777,165 @@ def _probe_item_classification(
     )
 
 
+_SAFE_FAILURE_SOURCES = {"turn", "item", "record", "child", "normalizer"}
+_SAFE_FAILURE_CLASSES = {
+    "none",
+    "capacity_transient",
+    "transport_transient",
+    "authentication",
+    "configuration",
+    "usage_limit",
+    "provider_nonretryable",
+    "unknown",
+    "mixed",
+    "malformed",
+}
+_MALFORMED_FAILURE_DIAGNOSTICS = {
+    "unknown_record_type",
+    "missing_record_field",
+    "unknown_item",
+    "usage",
+    "routing",
+    "duplicate_terminal",
+    "post_terminal_event",
+    "stream_size",
+    "non_utf8",
+    "record_count",
+    "malformed_jsonl",
+}
+
+
+def _safe_failure_token(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    token = re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_")
+    return token[:64] or None
+
+
+def _safe_failure_kind(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    token = value.casefold()
+    if token in {"codex_error", "provider_error", "transport_error", "network_error", "process", "diagnostic"}:
+        return token
+    if "auth" in token or "credential" in token:
+        return "authentication"
+    if "config" in token or "request" in token:
+        return "configuration"
+    return "provider"
+
+
+def _failure_kind_class(failure: dict[str, Any]) -> tuple[str, str | None]:
+    """Project one normalized failure without persisting its message."""
+    if _is_model_capacity_failure(failure):
+        return "capacity_transient", "model_at_capacity"
+    kind = failure.get("kind") if isinstance(failure.get("kind"), str) else ""
+    code = failure.get("code") if isinstance(failure.get("code"), str) else ""
+    message = failure.get("message") if isinstance(failure.get("message"), str) else ""
+    folded = " ".join((kind, code, message)).casefold()
+    if "usage limit" in folded or "rate limit" in folded:
+        return "usage_limit", "usage_limit"
+    if any(token in folded for token in ("authentication", "unauthorized", "credential", "forbidden")):
+        return "authentication", "authentication"
+    if any(token in folded for token in ("configuration", "invalid_request", "invalid request", "bad_request")):
+        return "configuration", "configuration"
+    if kind in {"transport_error", "network_error"} and code in {
+        "tls_handshake_eof",
+        "connection_reset",
+        "websocket_eof",
+    }:
+        return "transport_transient", "transport"
+    if kind or code or message:
+        return "provider_nonretryable", "provider_error"
+    return "unknown", None
+
+
+def _probe_failure_observation(
+    child: dict[str, Any], normalized: dict[str, Any]
+) -> dict[str, Any]:
+    """Return a content-free, deterministic failure projection for one attempt."""
+    runtime_ms = child.get("runtime_ms")
+    if isinstance(runtime_ms, bool) or not isinstance(runtime_ms, int) or runtime_ms < 0:
+        runtime_ms = 0
+    failures = normalized.get("failures")
+    if not isinstance(failures, list):
+        failures = []
+    safe_failures: list[dict[str, Any]] = []
+    classes: list[str] = []
+    for failure in failures:
+        if not isinstance(failure, dict):
+            classes.append("malformed")
+            continue
+        failure_class, code = _failure_kind_class(failure)
+        classes.append(failure_class)
+        source = failure.get("source") if failure.get("source") in _SAFE_FAILURE_SOURCES else "unknown"
+        safe_failures.append({
+            "source": source,
+            "kind": _safe_failure_kind(failure.get("kind")),
+            "code": code,
+            "failure_class": failure_class,
+        })
+    transport_marker = (
+        b"responses_websocket: failed to connect to websocket: "
+        b"IO error: tls handshake eof"
+    )
+    event_types = _canonical_probe_event_types(normalized.get("event_types", []))
+    stderr = child.get("stderr", b"")
+    if not isinstance(stderr, bytes):
+        stderr = b""
+    if (
+        child.get("timed_out") is True
+        and transport_marker in stderr
+        and "turn.completed" not in event_types
+        and not safe_failures
+    ):
+        classes.append("transport_transient")
+        safe_failures.append({
+            "source": "child",
+            "kind": "transport",
+            "code": "tls_handshake_eof",
+            "failure_class": "transport_transient",
+        })
+    diagnostics = normalized.get("diagnostics")
+    diagnostic_kinds = {
+        item.get("kind") for item in diagnostics if isinstance(item, dict)
+    } if isinstance(diagnostics, list) else set()
+    if not isinstance(diagnostics, list) or any(
+        not isinstance(item, dict) or item.get("kind") in _MALFORMED_FAILURE_DIAGNOSTICS
+        for item in (diagnostics if isinstance(diagnostics, list) else [])
+    ):
+        if not safe_failures and not (
+            child.get("timed_out") is True
+            and diagnostic_kinds <= {
+                "thread_identity", "turn_lifecycle", "missing_terminal", "item_lifecycle"
+            }
+        ):
+            classes.append("malformed")
+    if not safe_failures and child.get("timed_out") is not True:
+        returncode = child.get("returncode")
+        if isinstance(returncode, int) and not isinstance(returncode, bool) and returncode != 0:
+            classes.append("provider_nonretryable")
+            safe_failures.append({
+                "source": "child",
+                "kind": "process",
+                "code": f"codex_exit_{returncode}" if returncode >= 0 else f"codex_signal_{-returncode}",
+                "failure_class": "provider_nonretryable",
+            })
+    classes = sorted(set(classes))
+    if not classes:
+        failure_class = "none"
+    elif len(classes) == 1:
+        failure_class = classes[0]
+    else:
+        failure_class = "mixed"
+    return {
+        "present": failure_class != "none",
+        "failures": safe_failures,
+        "failure_class": failure_class if failure_class in _SAFE_FAILURE_CLASSES else "unknown",
+        "runtime_ms": runtime_ms,
+    }
+
+
 def _probe_lifecycle_projection(
     child: dict[str, Any],
     normalized: dict[str, Any],
@@ -775,6 +950,7 @@ def _probe_lifecycle_projection(
     isolated: bool,
     required_event_types: list[str] | None = None,
     capability_observable: bool | None = None,
+    failure_observation: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
     raw = child.get("stdout", b"")
     stderr_raw = child.get("stderr", b"")
@@ -834,10 +1010,6 @@ def _probe_lifecycle_projection(
         effect_capable_evidence_types = sorted(
             {*effect_capable_evidence_types, "workspace_mutation"}
         )
-    outcome_evidence = bool(outcome_evidence_types)
-    effect_capable = bool(
-        effect_capable_item_types or effect_capable_evidence_types
-    )
     custody_closed = (
         process_exited
         and process_reaped
@@ -859,9 +1031,19 @@ def _probe_lifecycle_projection(
         required_event_types is not None
         and set(required_event_types) <= observations
     )
-    capacity_failure = any(
-        _is_model_capacity_failure(failure)
-        for failure in normalized.get("failures", [])
+    if failure_observation is None:
+        failure_observation = _probe_failure_observation(child, normalized)
+    if (
+        failure_observation["failure_class"] in {"capacity_transient", "transport_transient"}
+        and "turn.failed" in event_types
+        and not completed_turn
+    ):
+        outcome_evidence_types = [
+            item for item in outcome_evidence_types if item != "turn_completion"
+        ]
+    outcome_evidence = bool(outcome_evidence_types)
+    effect_capable = bool(
+        effect_capable_item_types or effect_capable_evidence_types
     )
     base = {
         "schema_version": PROBE_LIFECYCLE_SCHEMA_VERSION,
@@ -897,6 +1079,7 @@ def _probe_lifecycle_projection(
             if capability_observable is not None
             else False
         ),
+        "failure_observation": failure_observation,
         "retryable": False,
         "branch": "unknown",
         "reason": "unknown_lifecycle",
@@ -915,7 +1098,20 @@ def _probe_lifecycle_projection(
         and set(incomplete_item_types).issubset(
             set(non_effect_progress_item_types)
         )
-        and (child.get("timed_out") is True or capacity_failure)
+        and (
+            child.get("timed_out") is True
+            or failure_observation["failure_class"] in {
+                "capacity_transient",
+                "transport_transient",
+            }
+        )
+        and (
+            failure_observation["failure_class"] in {
+                "none",
+                "capacity_transient",
+                "transport_transient",
+            }
+        )
     ):
         reason = (
             "child_timeout_outcome_free"
@@ -936,6 +1132,8 @@ def _probe_lifecycle_projection(
         base["reason"] = "outcome_evidence"
     elif effect_capable:
         base["reason"] = "effect_capable"
+    elif failure_observation["present"]:
+        base["reason"] = "explicit_failure"
     elif not custody_closed:
         base["reason"] = "custody_incomplete"
     return base, "unknown", [{

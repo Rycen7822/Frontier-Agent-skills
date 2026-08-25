@@ -71,6 +71,34 @@ def raw_timeout(*, with_outcome: bool = False, malformed: bool = False) -> bytes
     return b"\n".join(records) + b"\n"
 
 
+def raw_failed(*, kind: str, code: str, message: str) -> bytes:
+    return b"\n".join(
+        [
+            event("thread.started", thread_id="thread-1"),
+            event("turn.started", turn_id="turn-1"),
+            event("turn.failed", error={"kind": kind, "code": code, "message": message}),
+        ]
+    ) + b"\n"
+
+
+def raw_error_item(*, kind: str, code: str, message: str) -> bytes:
+    return b"\n".join(
+        [
+            event("thread.started", thread_id="thread-1"),
+            event("turn.started", turn_id="turn-1"),
+            event(
+                "item.completed",
+                item={
+                    "id": "error-1",
+                    "type": "error",
+                    "status": "completed",
+                    "error": {"kind": kind, "code": code, "message": message},
+                },
+            ),
+        ]
+    ) + b"\n"
+
+
 def raw_effect_timeout() -> bytes:
     return b"\n".join(
         [
@@ -335,7 +363,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             }
             result = emitted_for_row(row, raw_noncritical_complete())
             _validate_probe_result(result, row)
-            self.assertEqual(result["schema_version"], "codex-interaction-probe-result/1.4")
+            self.assertEqual(result["schema_version"], host.PROBE_RESULT_SCHEMA_VERSION)
             self.assertEqual(result["status"], "unknown")
             self.assertEqual(result["diagnostics"], [])
             self.assertEqual(result["lifecycle"]["branch"], "noncritical_unknown")
@@ -395,32 +423,35 @@ class ProbeTransportContractTests(unittest.TestCase):
         self.assertEqual(result["status"], "unknown")
         self.assertEqual(result["lifecycle"]["completed_item_types"], ["reasoning"])
         self.assertEqual(result["lifecycle"]["non_effect_progress_item_types"], ["reasoning"])
-        self.assertTrue(result["lifecycle"]["retryable"])
+        self.assertFalse(result["lifecycle"]["retryable"])
+        self.assertEqual(
+            result["lifecycle"]["failure_observation"]["failure_class"],
+            "provider_nonretryable",
+        )
         attempts = [
             {
-                "attempt": index,
-                "attempt_id": REQUEST["request_id"] + f".attempt-{index}",
+                "attempt": 1,
+                "attempt_id": REQUEST["request_id"] + ".attempt-1",
                 "status": result["status"],
                 "diagnostics": result["diagnostics"],
                 "stderr": "",
                 "lifecycle": result["lifecycle"],
             }
-            for index in (1, 2)
         ]
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/6",
+            "schema_version": "model-evolution-probe-terminal/7",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
             "stderr": "",
-            "attempt_count": 2,
+            "attempt_count": 1,
             "attempts": attempts,
         }
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "terminal.json"
             path.write_text(json.dumps(terminal), encoding="utf-8")
             loaded = _load_probe_terminal(path, request=REQUEST, row=ROW)
-        self.assertEqual(loaded["schema_version"], "model-evolution-probe-terminal/6")
+        self.assertEqual(loaded["schema_version"], "model-evolution-probe-terminal/7")
 
     def test_all_normalized_item_types_are_classified_without_content(self):
         for item_type in (
@@ -454,7 +485,7 @@ class ProbeTransportContractTests(unittest.TestCase):
         )
         _validate_probe_result(result, ROW)
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/6",
+            "schema_version": "model-evolution-probe-terminal/7",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -510,7 +541,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": complete_lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/6",
+            "schema_version": "model-evolution-probe-terminal/7",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": complete,
@@ -558,7 +589,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/6",
+            "schema_version": "model-evolution-probe-terminal/7",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -623,6 +654,79 @@ class ProbeTransportContractTests(unittest.TestCase):
         self.assertFalse(lifecycle["retryable"])
         self.assertTrue(lifecycle["completed_turn"])
         self.assertTrue(lifecycle["usage_present"])
+
+    def test_d39_empty_timeout_and_exact_transients_are_retryable(self):
+        lifecycle, _, _ = project(raw_timeout())
+        self.assertTrue(lifecycle["retryable"])
+        self.assertEqual(lifecycle["failure_observation"]["failure_class"], "none")
+        capacity_lifecycle, _, _ = project(
+            raw_failed(
+                kind="codex_error",
+                code="capacity",
+                message=host.MODEL_CAPACITY_MESSAGE,
+            ),
+            timed_out=False,
+        )
+        self.assertTrue(capacity_lifecycle["retryable"])
+        self.assertEqual(
+            capacity_lifecycle["failure_observation"]["failure_class"],
+            "capacity_transient",
+        )
+        transport = child(raw_timeout(), timed_out=True)
+        transport["stderr"] = b"responses_websocket: failed to connect to websocket: IO error: tls handshake eof"
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            lifecycle, _, _ = host._probe_lifecycle_projection(
+                transport,
+                normalize_jsonl(raw_timeout()),
+                workspace=workspace,
+                workspace_before={"fixture": "sha256:" + "a" * 64},
+                workspace_after={"fixture": "sha256:" + "a" * 64},
+                workspace_before_ok=True,
+                workspace_after_ok=True,
+                last_message=workspace / "missing-last-message",
+                source_root=None,
+                isolated=True,
+            )
+        self.assertTrue(lifecycle["retryable"])
+        self.assertEqual(
+            lifecycle["failure_observation"]["failure_class"],
+            "transport_transient",
+        )
+
+    def test_d39_error_bearing_timeout_classes_are_never_retryable(self):
+        for kind, code, message, expected in (
+            ("authentication_error", "unauthorized", "credential rejected", "authentication"),
+            ("configuration_error", "invalid_request", "invalid request", "configuration"),
+            ("provider_error", "usage_limit", "usage limit reached", "usage_limit"),
+            ("provider_error", "bad_gateway", "provider failed", "provider_nonretryable"),
+        ):
+            lifecycle, _, _ = project(
+                raw_error_item(kind=kind, code=code, message=message)
+            )
+            self.assertFalse(lifecycle["retryable"], expected)
+            self.assertEqual(
+                lifecycle["failure_observation"]["failure_class"], expected
+            )
+            serialized = json.dumps(lifecycle, sort_keys=True)
+            self.assertNotIn(message, serialized)
+            self.assertNotIn(message, serialized)
+
+    def test_d39_mixed_and_malformed_fail_closed(self):
+        mixed_raw = b"\n".join(
+            [
+                event("thread.started", thread_id="thread-1"),
+                event("turn.started", turn_id="turn-1"),
+                event("error", error={"kind": "authentication_error", "code": "unauthorized"}),
+                event("error", error={"kind": "provider_error", "code": "bad_gateway"}),
+            ]
+        ) + b"\n"
+        lifecycle, _, _ = project(mixed_raw)
+        self.assertFalse(lifecycle["retryable"])
+        self.assertEqual(lifecycle["failure_observation"]["failure_class"], "mixed")
+        lifecycle, _, _ = project(raw_timeout(malformed=True))
+        self.assertFalse(lifecycle["retryable"])
+        self.assertEqual(lifecycle["failure_observation"]["failure_class"], "malformed")
 
     def test_effect_capable_item_is_not_probe_retryable(self):
         lifecycle, status, _ = project(raw_effect_timeout())
@@ -753,7 +857,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/6",
+            "schema_version": "model-evolution-probe-terminal/7",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
