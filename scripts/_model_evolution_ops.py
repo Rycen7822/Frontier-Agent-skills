@@ -152,6 +152,96 @@ def _git_blob(repository_root: Path, revision: str, path: str) -> bytes | None:
     return result.stdout if result.returncode == 0 else None
 
 
+def product_bundle_metadata_at_revision(
+    product_root: Path, revision: str
+) -> tuple[bytes, dict[str, Any], bytes, dict[str, Any]]:
+    """Read the selected product Bundle blobs from its signed Git revision.
+
+    The worktree is checked against the same commit so a clean-but-stale
+    snapshot cannot silently supply campaign identity metadata.
+    """
+    product_root = product_root.resolve(strict=True)
+    documents: list[tuple[str, bytes]] = []
+    for relative in ("bundle-manifest.json", "frontier-engineering.bundle.json"):
+        path = product_root / relative
+        if path.is_symlink() or not path.is_file():
+            raise OperationError(f"selected product metadata is unavailable: {relative}")
+        raw = _git_blob(product_root, revision, relative)
+        if raw is None:
+            raise OperationError(f"selected product Git blob is unavailable: {relative}")
+        if path.read_bytes() != raw:
+            raise OperationError(f"selected product metadata snapshot differs: {relative}")
+        documents.append((relative, raw))
+    manifest_raw, build_raw = documents
+    manifest = strict_json_bytes(manifest_raw[1], label="selected product Bundle manifest")
+    build = strict_json_bytes(build_raw[1], label="selected product Bundle build")
+    try:
+        validated_build = validate_bundle_build(build)
+    except (ContractError, KeyError) as exc:
+        raise OperationError(str(exc)) from exc
+    if not isinstance(manifest, dict) or not isinstance(validated_build, dict):
+        raise OperationError("selected product Bundle metadata must be objects")
+    return manifest_raw[1], manifest, build_raw[1], validated_build
+
+
+def validate_product_bundle_join(
+    *,
+    bundle_manifest: dict[str, Any],
+    bundle_build: dict[str, Any],
+    plugin_build: dict[str, Any],
+    host: dict[str, Any],
+) -> None:
+    """Join product Bundle identities with staged plugin and Host catalog."""
+    try:
+        bundle_build = validate_bundle_build(bundle_build)
+    except (ContractError, KeyError) as exc:
+        raise OperationError(str(exc)) from exc
+    manifest_skills = {
+        item.get("id"): item
+        for item in bundle_manifest.get("skills", [])
+        if isinstance(item, dict)
+    }
+    if set(manifest_skills) != set(SKILL_IDS):
+        raise OperationError("product Bundle manifest does not contain exact Skills")
+    if bundle_build.get("bundle_id") != f"frontier-engineering/{bundle_manifest.get('bundle_version')}":
+        raise OperationError("product Bundle identity is internally inconsistent")
+    if set(bundle_build.get("skills", {})) != set(SKILL_IDS):
+        raise OperationError("product Bundle build does not contain exact Skills")
+    expected_versions = {
+        skill_id: bundle_build["skills"][skill_id]["version"]
+        for skill_id in SKILL_IDS
+    }
+    for skill_id in SKILL_IDS:
+        if manifest_skills[skill_id].get("version") != expected_versions[skill_id]:
+            raise OperationError(f"product Bundle version differs for {skill_id}")
+    if (
+        plugin_build.get("bundle_id") != bundle_build.get("bundle_id")
+        or plugin_build.get("bundle_version") != bundle_manifest.get("bundle_version")
+        or plugin_build.get("skill_versions") != expected_versions
+        or plugin_build.get("skill_activation") != {
+            skill_id: bundle_build["skills"][skill_id]["allow_implicit_invocation"]
+            for skill_id in SKILL_IDS
+        }
+    ):
+        raise OperationError("staged plugin evidence differs from product Bundle")
+    entries = host.get("catalog", {}).get("entries") if isinstance(host.get("catalog"), dict) else None
+    observed = {
+        entry.get("id"): entry
+        for entry in entries or []
+        if isinstance(entry, dict)
+    }
+    if set(observed) != set(SKILL_IDS):
+        raise OperationError("Host catalog does not contain exact product Skills")
+    for skill_id in SKILL_IDS:
+        expected = bundle_build["skills"][skill_id]
+        entry = observed[skill_id]
+        if (
+            entry.get("version") != expected["version"]
+            or entry.get("root_digest") != expected["root_hash"]
+        ):
+            raise OperationError(f"Host catalog differs from product Skill {skill_id}")
+
+
 def bundle_skill_at_revision(
     repository_root: Path, revision: str, skill_id: str
 ) -> dict[str, Any]:
@@ -985,6 +1075,41 @@ def preflight_operations(
         expected_commit=controller_identity["commit"],
         expected_tree=controller_identity["tree"],
     )
+    product_manifest = load_json(
+        resolve_binding(
+            campaign["product"]["bundle_manifest"], repository_root, campaign_root
+        ),
+        label="campaign product Bundle manifest",
+    )
+    product_build = load_json(
+        resolve_binding(
+            campaign["product"]["bundle_build"], repository_root, campaign_root
+        ),
+        label="campaign product Bundle build",
+    )
+    plugin_evidence = load_json(plugin_build, label="campaign product plugin evidence")
+    validate_product_bundle_join(
+        bundle_manifest=product_manifest,
+        bundle_build=product_build,
+        plugin_build=plugin_evidence,
+        host=validated_host,
+    )
+    expected_product_skills = {
+        skill_id: {
+            "version": product_build["skills"][skill_id]["version"],
+            "root_hash": product_build["skills"][skill_id]["root_hash"],
+            "allow_implicit_invocation": product_build["skills"][skill_id][
+                "allow_implicit_invocation"
+            ],
+        }
+        for skill_id in SKILL_IDS
+    }
+    if (
+        campaign["product"]["bundle_id"] != product_build["bundle_id"]
+        or campaign["product"]["bundle_version"] != product_manifest["bundle_version"]
+        or campaign["product"]["skills"] != expected_product_skills
+    ):
+        raise OperationError("campaign product identity differs from selected Bundle")
     probe_set = load_json(
         resolve_binding(
             campaign["interaction_probes"]["probe_set"],

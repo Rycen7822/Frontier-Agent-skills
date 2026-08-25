@@ -41,7 +41,13 @@ from _model_evolution_materialization import (  # noqa: E402
     provider_free_calibration_preview,
     validate_materialization_inputs,
 )
-from _model_evolution_ops import _minimal_schema_fixture  # noqa: E402
+from _model_evolution_ops import (  # noqa: E402
+    OperationError,
+    _minimal_schema_fixture,
+    git_identity,
+    product_bundle_metadata_at_revision,
+    validate_product_bundle_join,
+)
 from _model_evolution_reporting import (  # noqa: E402
     _analysis_output_root,
     _canonical_analysis_paths,
@@ -55,7 +61,11 @@ from _model_evolution_state import (  # noqa: E402
     rebind_product,
     register_plan,
 )
-from model_evolution import _registered_plan as record_plan  # noqa: E402
+from model_evolution import (  # noqa: E402
+    CliError,
+    _materialize_product_blob,
+    _registered_plan as record_plan,
+)
 from skill_evaluator_verifier import _fixed_checks as evaluator_checks  # noqa: E402
 from writing_plans_verifier import (  # noqa: E402
     DESCRIPTION_VALUE,
@@ -85,6 +95,44 @@ def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[st
 
 
 class ExtendedRelease(unittest.TestCase):
+    def test_product_bundle_metadata_uses_selected_product_and_joins_host(self) -> None:
+        product_root = ROOT / ".worktrees/frontier-8.0.1-final-a2aafa22"
+        product_identity = git_identity(product_root)
+        manifest_bytes, manifest, build_bytes, build = product_bundle_metadata_at_revision(
+            product_root, product_identity["commit"]
+        )
+        d32_root = ROOT / ".work/campaign-8.0.2-se-confirmatory-v3-d32-367217d0-20260825T082504Z"
+        plugin_evidence = json.loads((d32_root / "plugin-build-evidence.json").read_text())
+        host = json.loads((d32_root / "host.json").read_text())
+        validate_product_bundle_join(
+            bundle_manifest=manifest,
+            bundle_build=build,
+            plugin_build=plugin_evidence,
+            host=host,
+        )
+        with tempfile.TemporaryDirectory(prefix="product-bundle-materialization-") as raw:
+            target = Path(raw)
+            manifest_path = target / "product-evidence/bundle-manifest.json"
+            build_path = target / "product-evidence/frontier-engineering.bundle.json"
+            _materialize_product_blob(manifest_path, manifest_bytes)
+            _materialize_product_blob(build_path, build_bytes)
+            self.assertEqual(manifest_bytes, manifest_path.read_bytes())
+            self.assertEqual(build_bytes, build_path.read_bytes())
+            with self.assertRaises(CliError):
+                _materialize_product_blob(manifest_path, manifest_bytes)
+
+        controller_build = deepcopy(build)
+        controller_build["skills"]["skill-evaluator"]["root_hash"] = json.loads(
+            (ROOT / "frontier-engineering.bundle.json").read_text()
+        )["skills"]["skill-evaluator"]["root_hash"]
+        with self.assertRaises(OperationError):
+            validate_product_bundle_join(
+                bundle_manifest=manifest,
+                bundle_build=controller_build,
+                plugin_build=plugin_evidence,
+                host=host,
+            )
+
     def test_ready_spec_separates_product_and_host_verifier_revision(self) -> None:
         campaign_root = (
             ROOT

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -91,10 +92,12 @@ from _model_evolution_ops import (
     candidate_source,
     git_identity,
     preflight_operations,
+    product_bundle_metadata_at_revision,
     require_tracked_binding,
     run_interaction_probes,
     runner_status,
     validate_plugin_staging,
+    validate_product_bundle_join,
     validate_target_host_staging,
 )
 from _model_evolution_reporting import (
@@ -206,6 +209,29 @@ def _load_bound_document(
     if not isinstance(value, dict):
         raise CliError(f"{label} must be a JSON object")
     return value
+
+
+def _materialize_product_blob(path: Path, payload: bytes) -> None:
+    """Materialize one selected product Git blob without rewriting it."""
+    if path.exists() or path.is_symlink():
+        raise CliError(f"refusing to replace product metadata: {path.name}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        descriptor = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+    except FileExistsError as exc:
+        raise CliError(f"refusing to replace product metadata: {path.name}") from exc
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
 
 
 def _registered_plan(
@@ -390,6 +416,14 @@ def _init(args: argparse.Namespace) -> None:
         else repository_root
     )
     product_identity = git_identity(product_root)
+    manifest_bytes, product_manifest, build_bytes, product_build = (
+        product_bundle_metadata_at_revision(product_root, product_identity["commit"])
+    )
+    product_metadata_root = campaign_root / "product-evidence"
+    product_manifest_path = product_metadata_root / "bundle-manifest.json"
+    product_build_path = product_metadata_root / "frontier-engineering.bundle.json"
+    _materialize_product_blob(product_manifest_path, manifest_bytes)
+    _materialize_product_blob(product_build_path, build_bytes)
     ceilings = {
         "provider_requests": args.provider_request_ceiling,
         "execute": args.execute_ceiling,
@@ -413,8 +447,8 @@ def _init(args: argparse.Namespace) -> None:
             "campaign requires fixed artifact/candidate ceilings and zero reviewer/optimizer/download budget"
         )
     fixed = {
-        "bundle_manifest": repository_root / "bundle-manifest.json",
-        "bundle_build": repository_root / "frontier-engineering.bundle.json",
+        "bundle_manifest": product_manifest_path,
+        "bundle_build": product_build_path,
         "plugin_build": args.plugin_build_evidence.resolve(strict=True),
         "target_host": args.target_host.resolve(strict=True),
         "probe_set": args.probe_set.resolve(strict=True),
@@ -443,9 +477,9 @@ def _init(args: argparse.Namespace) -> None:
         or not plugin_root.is_relative_to(campaign_root)
     ):
         raise CliError("plugin staging root must be a campaign-local directory")
-    bundle_manifest = load_json(fixed["bundle_manifest"], label="Bundle manifest")
-    bundle_build = load_json(fixed["bundle_build"], label="Bundle build")
-    static_report = static_contracts.build_report(repository_root)
+    bundle_manifest = product_manifest
+    bundle_build = product_build
+    static_report = static_contracts.build_report(product_root)
     if static_contracts.blocking_fact_count(static_report):
         raise CliError("static contract gate has blocking facts")
     plugin_build = validate_plugin_staging(
@@ -466,6 +500,12 @@ def _init(args: argparse.Namespace) -> None:
         repository_root=repository_root,
         expected_commit=controller_identity["commit"],
         expected_tree=controller_identity["tree"],
+    )
+    validate_product_bundle_join(
+        bundle_manifest=bundle_manifest,
+        bundle_build=bundle_build,
+        plugin_build=plugin_build,
+        host=target_host,
     )
     probe_set = load_json(fixed["probe_set"], label="interaction probe set")
     validate_document(probe_set, "interaction_probes")
