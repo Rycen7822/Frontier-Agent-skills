@@ -33,6 +33,7 @@ from _model_evolution_qualification import _apparatus_artifact  # noqa: E402
 from _model_evolution_materialization import (  # noqa: E402
     HOST_ARTIFACT_AUTHORITY_VERSION,
     MaterializationError,
+    _materialized_spec,
     _host_artifact_inventory,
     _host_artifact_source,
     host_artifact_authority_document,
@@ -83,6 +84,84 @@ def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[st
 
 
 class ExtendedRelease(unittest.TestCase):
+    def test_ready_spec_separates_product_and_host_verifier_revision(self) -> None:
+        campaign_root = (
+            ROOT
+            / ".work/campaign-8.0.2-se-confirmatory-v3-d29-cc7ac3-20260825T011044Z-r3"
+        )
+        template = json.loads(
+            (
+                ROOT
+                / "evaluation/model-evolution/confirmatory-v3/sentinels/"
+                "skill-evaluator/eval-spec.template.json"
+            ).read_text(encoding="utf-8")
+        )
+        campaign = json.loads((campaign_root / "campaign.json").read_text())
+        host = json.loads((campaign_root / "target-observed-host.json").read_text())
+        selected_skill = campaign["product"]["skills"]["skill-evaluator"]
+        calibration = {"created": "2026-08-25T00:00:00Z"}
+        product_revision = "1" * 40
+        spec = _materialized_spec(
+            template,
+            skill_id="skill-evaluator",
+            selected_skill=selected_skill,
+            source_commit=product_revision,
+            host=host,
+            calibration=calibration,
+            calibration_file_hash="sha256:" + "2" * 64,
+            scenarios=[],
+        )
+        verifier_revisions = {
+            grader["verifier"]["source_revision"]
+            for grader in spec["graders"]
+            if grader["type"] == "deterministic"
+        }
+        self.assertEqual({host["identity"]["repository"]["revision"]}, verifier_revisions)
+        self.assertEqual(product_revision, spec["subject"]["package"]["source_revision"])
+        self.assertNotEqual(product_revision, next(iter(verifier_revisions)))
+
+        for bad_host in (
+            {**host, "identity": {**host["identity"], "repository": {"revision": "0" * 40}}},
+            {**host, "identity": {**host["identity"], "repository": {}}},
+        ):
+            with self.subTest(repository=bad_host["identity"]["repository"]), self.assertRaises(
+                MaterializationError
+            ):
+                _materialized_spec(
+                    template,
+                    skill_id="skill-evaluator",
+                    selected_skill=selected_skill,
+                    source_commit=product_revision,
+                    host=bad_host,
+                    calibration=calibration,
+                    calibration_file_hash="sha256:" + "2" * 64,
+                    scenarios=[],
+                )
+        alternate = _materialized_spec(
+            template,
+            skill_id="skill-evaluator",
+            selected_skill=selected_skill,
+            source_commit=product_revision,
+            host={
+                **host,
+                "identity": {
+                    **host["identity"],
+                    "repository": {**host["identity"]["repository"], "revision": "2" * 40},
+                },
+            },
+            calibration=calibration,
+            calibration_file_hash="sha256:" + "2" * 64,
+            scenarios=[],
+        )
+        self.assertEqual(
+            {"2" * 40},
+            {
+                grader["verifier"]["source_revision"]
+                for grader in alternate["graders"]
+                if grader["type"] == "deterministic"
+            },
+        )
+
     def test_d29_layered_host_authority_is_declared_and_fail_closed(self) -> None:
         relative = "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/grader-output.schema.json"
         payload = (ROOT / relative).read_bytes()

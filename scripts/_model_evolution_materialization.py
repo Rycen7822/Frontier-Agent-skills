@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import subprocess
 import sys
@@ -45,10 +46,25 @@ class MaterializationError(ValueError):
 
 
 HOST_ARTIFACT_AUTHORITY_VERSION = "host-artifact-authority/1"
+_REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _file_hash(path: Path) -> str:
     return "sha256:" + sha256(path.read_bytes()).hexdigest()
+
+
+def _host_verifier_revision(host: dict[str, Any]) -> str:
+    repository = host.get("identity", {}).get("repository")
+    revision = repository.get("revision") if isinstance(repository, dict) else None
+    if (
+        not isinstance(revision, str)
+        or _REVISION_RE.fullmatch(revision) is None
+        or revision == "0" * 40
+    ):
+        raise MaterializationError(
+            "Host apparatus repository revision is missing or still a template value"
+        )
+    return revision
 
 
 def _relative_path(value: Any, *, label: str) -> PurePosixPath:
@@ -801,9 +817,10 @@ def _materialized_spec(
         "dirty_state": "clean",
     }
     spec["host"]["manifest"] = {"path": "host.json"}
+    verifier_revision = _host_verifier_revision(host)
     for grader in spec["graders"]:
         if grader["type"] == "deterministic":
-            grader["verifier"]["source_revision"] = source_commit
+            grader["verifier"]["source_revision"] = verifier_revision
     model_grader = next(item for item in spec["graders"] if item["type"] == "model")
     model_grader["model"] = host["identity"]["execution"]["model"]
     spec["suite"]["calibration"] = {
@@ -885,7 +902,6 @@ def _build_public_plan(
     plugin_evidence: Path,
     product: tuple[dict[str, Any], str, str] | None = None,
     source_repository_root: Path | None = None,
-    verifier_source_commit: str | None = None,
     preserve_host_repository: bool = False,
 ) -> dict[str, Any]:
     sentinel = load_json(
@@ -1004,10 +1020,6 @@ def _build_public_plan(
             campaign_root=campaign_root,
         ),
     )
-    if verifier_source_commit is not None:
-        for grader in spec["graders"]:
-            if grader["type"] == "deterministic":
-                grader["verifier"]["source_revision"] = verifier_source_commit
     try:
         validate_formal_timeout_inputs(host, spec, scenarios)
     except ContractError as exc:
