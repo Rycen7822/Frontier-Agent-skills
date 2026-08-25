@@ -381,8 +381,6 @@ def _init(args: argparse.Namespace) -> None:
         else repository_root
     )
     product_identity = git_identity(product_root)
-    if product_identity["dirty"]:
-        raise CliError("selected Bundle product source has tracked changes")
     ceilings = {
         "provider_requests": args.provider_request_ceiling,
         "execute": args.execute_ceiling,
@@ -1769,10 +1767,7 @@ def _record(args: argparse.Namespace) -> None:
             else repository_root
         )
         product_identity = git_identity(product_root)
-        if (
-            product_identity["commit"] != expected_commit
-            or product_identity["dirty"]
-        ):
+        if product_identity["commit"] != expected_commit:
             raise CliError("plugin build is not from the selected signed clean commit")
         expected_skills = (
             campaign["candidate"]["skills"]

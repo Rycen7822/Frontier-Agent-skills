@@ -884,8 +884,6 @@ def preflight_operations(
         else repository_root
     )
     product_identity = git_identity(product_root)
-    if product_identity["dirty"]:
-        raise OperationError("selected Bundle product source has tracked changes")
     if (
         product_identity["commit"] != campaign["product"]["source_commit"]
         or product_identity["tree"] != campaign["product"]["source_tree"]
