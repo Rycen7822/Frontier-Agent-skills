@@ -640,6 +640,172 @@ def _copy_calibration(
     return calibration, target
 
 
+def provider_free_calibration_preview(
+    *,
+    skill_id: str,
+    template: dict[str, Any],
+    labels_source: Path,
+    scenarios_source: Path,
+    host: dict[str, Any],
+    target_root: Path,
+) -> Path:
+    """Create a temporary calibration input for ready-contract projection.
+
+    The preview is derived only from tracked gold labels and the selected Host
+    identity.  It is validated by the production calibration command and is
+    never bound into campaign state or counted as observed calibration.
+    """
+    preview_root = target_root / "provider-free-calibration"
+    preview_root.mkdir(parents=True, exist_ok=True)
+    labels = load_jsonl(labels_source, label="calibration gold")
+    if not labels:
+        raise MaterializationError("calibration gold is empty")
+    model_grader = [
+        item for item in template.get("graders", [])
+        if item.get("type") == "model"
+    ]
+    if len(model_grader) != 1:
+        raise MaterializationError("provider-free preview requires one model grader")
+    model_grader = model_grader[0]
+    execution = host.get("identity", {}).get("execution", {})
+    host_identity = host.get("identity", {})
+    model = execution.get("model")
+    model_revision = execution.get("model_revision")
+    host_id = host_identity.get("host_id")
+    host_version = host_identity.get("host_version")
+    if not all(
+        isinstance(value, str) and value
+        for value in (model, model_revision, host_id, host_version)
+    ):
+        raise MaterializationError("Host identity is incomplete for calibration preview")
+
+    created = "2026-01-01T00:00:00Z"
+    expires = "2027-01-01T00:00:00Z"
+    spec = copy.deepcopy(template)
+    spec["execution"]["as_of"] = "2026-06-01T00:00:00Z"
+    spec["subject"]["claimed_hosts"] = [host_id]
+    spec["host"]["manifest"] = {"path": "host.json"}
+    spec["suite"]["scenarios"] = {"path": "scenarios.public.jsonl"}
+    spec["suite"]["public_scenarios"] = {"path": "scenarios.public.jsonl"}
+    model_grader = next(
+        item for item in spec["graders"] if item.get("type") == "model"
+    )
+    model_grader["model"] = model
+
+    labels_path = preview_root / "calibration-gold.jsonl"
+    preview_labels: list[dict[str, Any]] = []
+    for label in labels:
+        if not isinstance(label, dict):
+            raise MaterializationError("calibration gold row is not an object")
+        row = copy.deepcopy(label)
+        row["host"] = host_id
+        row["model"] = model
+        preview_labels.append(row)
+    _write_exact(
+        labels_path,
+        b"".join(canonical_bytes(row) + b"\n" for row in preview_labels),
+    )
+    _copy_file(scenarios_source, preview_root / "scenarios.public.jsonl")
+    _write_exact(preview_root / "host.json", canonical_bytes(host))
+    _write_exact(preview_root / "spec.json", canonical_bytes(spec))
+
+    labels_digest = _file_hash(labels_path)
+    ratings: list[dict[str, Any]] = []
+    for position, label in enumerate(preview_labels, start=1):
+        ratings.append(
+            {
+                "schema_version": 3,
+                "rating_id": f"preview-rating-{position:02d}",
+                "example_id": label["example_id"],
+                "grader_id": model_grader["grader_id"],
+                "dimension": label["dimension"],
+                "check_id": label["check_id"],
+                "label": label["gold_label"],
+                "severity": label["gold_severity"],
+                "position": position,
+                "blinded_treatment_labels": True,
+                "reviewer": {
+                    "reviewer_id": "provider-free-preview-judge",
+                    "role": "judge",
+                    "authority": "calibration-owner",
+                    "principal_id": "provider-free-preview-judge-principal",
+                    "blinded": True,
+                },
+                "grader_identity": {
+                    "grader_id": model_grader["grader_id"],
+                    "model": model,
+                    "model_revision": model_revision,
+                    "prompt_id": model_grader["prompt_id"],
+                    "schema_id": model_grader["schema_id"],
+                },
+                "independence_facts": {
+                    "candidate_principal_id": "provider-free-preview-candidate",
+                    "grader_principal_id": "provider-free-preview-judge-principal",
+                    "context_mode": "fresh",
+                    "rationale_exposed": False,
+                    "candidate_model_genealogy": ["provider-free-preview-candidate"],
+                    "grader_model_genealogy": ["provider-free-preview-grader"],
+                    "candidate_evidence_source_ids": ["provider-free-preview-input"],
+                    "grader_evidence_source_ids": ["provider-free-preview-gold"],
+                },
+                "ordering": {
+                    "method": "counterbalanced",
+                    "seed": 0,
+                    "schedule_id": model_grader["batch_schedule_id"],
+                },
+                "created": created,
+                "expires": expires,
+                "drift_triggers": [
+                    {
+                        "field": "prompt_id",
+                        "expected": model_grader["prompt_id"],
+                        "observed": model_grader["prompt_id"],
+                        "status": "unchanged",
+                    },
+                    {
+                        "field": "host_version",
+                        "expected": host_version,
+                        "observed": host_version,
+                        "status": "unchanged",
+                    },
+                ],
+                "adjudication_policy": "provider-free ready projection only",
+                "thresholds": {"minimum_agreement": 0.8, "minimum_examples": 8},
+                "execution_profile": {
+                    "host_id": host_id,
+                    "host_version": host_version,
+                    "harness": execution["harness"],
+                    "harness_version": execution["harness_version"],
+                    "model_genealogy": ["provider-free-preview-grader"],
+                    "context_exposure": [],
+                    "evidence_sources": [
+                        {"path": labels_path.name, "digest": labels_digest}
+                    ],
+                },
+            }
+        )
+    ratings_path = preview_root / "calibration-ratings.jsonl"
+    _write_exact(
+        ratings_path,
+        b"".join(canonical_bytes(row) + b"\n" for row in ratings),
+    )
+    calibration_path = preview_root / "grader-calibration.json"
+    _run(
+        [
+            sys.executable,
+            str(REPOSITORY_ROOT / "skill-evaluator/scripts/validate_eval_suite.py"),
+            "calibration",
+            "--spec", str(preview_root / "spec.json"),
+            "--ratings", str(ratings_path),
+            "--labels", str(labels_path),
+            "--output", str(calibration_path),
+        ],
+        repository_root=REPOSITORY_ROOT,
+        label=f"{skill_id} provider-free calibration preview",
+    )
+    return calibration_path
+
+
 def _copy_sentinel_inputs(
     record: dict[str, Any],
     *,
@@ -903,6 +1069,7 @@ def _build_public_plan(
     product: tuple[dict[str, Any], str, str] | None = None,
     source_repository_root: Path | None = None,
     preserve_host_repository: bool = False,
+    calibration_source: Path | None = None,
 ) -> dict[str, Any]:
     sentinel = load_json(
         resolve_binding(campaign["sentinel_index"], repository_root, campaign_root),
@@ -913,7 +1080,7 @@ def _build_public_plan(
         record["spec_template"], repository_root, campaign_root
     )
     template = load_json(template_path, label=f"{skill_id} spec template")
-    calibration_source = resolve_binding(
+    calibration_source = calibration_source or resolve_binding(
         campaign["skill_evidence"][skill_id]["grader_calibration"],
         repository_root,
         campaign_root,

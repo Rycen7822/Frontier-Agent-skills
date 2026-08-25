@@ -38,6 +38,7 @@ from _model_evolution_materialization import (  # noqa: E402
     _host_artifact_source,
     host_artifact_authority_document,
     observed_host_artifact_authority_document,
+    provider_free_calibration_preview,
     validate_materialization_inputs,
 )
 from _model_evolution_ops import _minimal_schema_fixture  # noqa: E402
@@ -161,6 +162,41 @@ class ExtendedRelease(unittest.TestCase):
                 if grader["type"] == "deterministic"
             },
         )
+
+    def test_provider_free_calibration_preview_uses_production_validator(self) -> None:
+        campaign_root = (
+            ROOT
+            / ".work/campaign-8.0.2-se-confirmatory-v3-d29-cc7ac3-20260825T011044Z-r3"
+        )
+        sentinel_root = (
+            campaign_root
+            / "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator"
+        )
+        sentinel = json.loads(
+            (
+                campaign_root
+                / "evaluation/model-evolution/confirmatory-v3/sentinel-index-v3.json"
+            ).read_text()
+        )
+        template_path = sentinel_root / "eval-spec.template.json"
+        template = json.loads(template_path.read_text())
+        host = json.loads((campaign_root / "target-observed-host.json").read_text())
+        before = (campaign_root / "campaign.json").read_bytes()
+        with tempfile.TemporaryDirectory(prefix="provider-free-preview-") as raw:
+            preview = provider_free_calibration_preview(
+                skill_id="skill-evaluator",
+                template=template,
+                labels_source=sentinel_root / "calibration-gold.jsonl",
+                scenarios_source=sentinel_root / "scenarios.public.jsonl",
+                host=host,
+                target_root=Path(raw),
+            )
+            artifact = json.loads(preview.read_text())
+            self.assertEqual(3, artifact["schema_version"])
+            self.assertEqual(template["evaluation_id"], artifact["evaluation_id"])
+            self.assertTrue(preview.is_relative_to(Path(raw)))
+            self.assertFalse(preview.is_relative_to(campaign_root))
+        self.assertEqual(before, (campaign_root / "campaign.json").read_bytes())
 
     def test_d29_layered_host_authority_is_declared_and_fail_closed(self) -> None:
         relative = "evaluation/model-evolution/confirmatory-v3/sentinels/skill-evaluator/grader-output.schema.json"
