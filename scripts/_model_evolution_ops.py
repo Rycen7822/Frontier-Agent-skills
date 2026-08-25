@@ -1465,12 +1465,6 @@ def _probe_lifecycle_contract_gate() -> None:
                     },
                 }
             )
-            records.append(
-                {
-                    "type": "error",
-                    "error": {"kind": "diagnostic"},
-                }
-            )
         return b"\n".join(
             json.dumps(record, separators=(",", ":")).encode("utf-8")
             for record in records
