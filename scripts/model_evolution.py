@@ -60,6 +60,7 @@ from _model_evolution_materialization import (
     MaterializationError,
     _build_public_plan,
     _validate_selected_plugin,
+    provider_free_calibration_preview,
     prepare_candidate_plan,
     prepare_current_plan,
     validate_materialization_inputs,
@@ -748,11 +749,41 @@ def _materialization_check(args: argparse.Namespace) -> None:
         raise CliError(
             "prior materialization check requires source, plugin, and build evidence"
         )
+    # A fresh campaign has no recorded grader calibration yet.  Projecting a
+    # ready plan still needs the production calibration contract, so use a
+    # temporary provider-free calibration derived from this campaign's frozen
+    # gold/spec/scenario inputs.  It is never recorded or bound into state.
+    projection_campaign = copy.deepcopy(campaign)
+    if projection_campaign["profiles"].get("target_observed") is None:
+        projection_campaign["profiles"]["target_observed"] = copy.deepcopy(
+            projection_campaign["profiles"]["target_provisional"]
+        )
     ready_projections: list[dict[str, str]] = []
+    preview_calibrations: dict[str, Path] = {}
     with tempfile.TemporaryDirectory(
         dir=campaign_root.parent, prefix=".materialization-ready-"
     ) as raw:
         temporary_root = Path(raw)
+        for skill_id in SKILL_IDS:
+            record = sentinel["skills"][skill_id]
+            template_path = resolve_binding(
+                record["spec_template"], repository_root, campaign_root
+            )
+            template = load_json(template_path, label=f"{skill_id} spec template")
+            labels_source = resolve_binding(
+                record["calibration_gold"], repository_root, campaign_root
+            )
+            scenarios_source = resolve_binding(
+                record["public_scenarios"], repository_root, campaign_root
+            )
+            preview_calibrations[skill_id] = provider_free_calibration_preview(
+                skill_id=skill_id,
+                template=template,
+                labels_source=labels_source,
+                scenarios_source=scenarios_source,
+                host=host,
+                target_root=temporary_root / "previews" / skill_id,
+            )
         prior_product = None
         if all(value is not None for value in prior_values):
             prior_product, _ = _prior_product(
@@ -781,7 +812,7 @@ def _materialization_check(args: argparse.Namespace) -> None:
                     final_root=output_root,
                     repository_root=repository_root,
                     campaign_root=campaign_root,
-                    campaign=campaign,
+                    campaign=projection_campaign,
                     skill_id=skill_id,
                     role=role,
                     plugin_root=selected_plugin,
@@ -789,6 +820,7 @@ def _materialization_check(args: argparse.Namespace) -> None:
                     product=product,
                     source_repository_root=source_repository_root,
                     preserve_host_repository=role == "target_prior",
+                    calibration_source=preview_calibrations[skill_id],
                 )
                 ready_projections.append(
                     {
@@ -804,6 +836,7 @@ def _materialization_check(args: argparse.Namespace) -> None:
             "state_revision": campaign["state_revision"],
             "provider_requests": 0,
             "materialization_gate": gate,
+            "calibration_mode": "provider_free_preview",
             "ready_projections": ready_projections,
         }
     )
