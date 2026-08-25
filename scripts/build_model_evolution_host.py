@@ -23,6 +23,7 @@ sys.dont_write_bytecode = True
 from _bundle_hash import inventory, tree_hash  # noqa: E402
 from _codex_eval_delivery import (  # noqa: E402
     MODEL_EVOLUTION_ENV_ALLOWLIST,
+    RUNTIME_SURFACE_VERSION,
     isolated_tool_schema_id,
     validate_plugin_catalog,
 )
@@ -43,6 +44,7 @@ DEFAULT_MODEL = "gpt-5.6-luna"
 DEFAULT_EFFORT = "high"
 TARGET_TIMEOUT_SECONDS = 900
 ARTIFACT_AUTHORITY_VERSION = "host-artifact-authority/1"
+MODEL_CATALOG_SNAPSHOT_NAME = "models_cache.json"
 
 
 def _hash_bytes(value: bytes) -> str:
@@ -153,8 +155,8 @@ def _codex_runtime(entrypoint: Path) -> tuple[Path, str]:
     return runtime, version
 
 
-def _model_revision(model: str, codex_version: str) -> str:
-    cache = _load(Path.home() / ".codex/models_cache.json")
+def _model_revision(model: str, codex_version: str, catalog_path: Path) -> str:
+    cache = _load(catalog_path)
     models = cache.get("models")
     selected = (
         [row for row in models if isinstance(row, dict) and row.get("slug") == model]
@@ -178,6 +180,8 @@ def _materialize_runtime_snapshot(
     runtime_root: Path,
     codex_hash: str,
     code_mode_host_hash: str,
+    model_catalog_source: Path,
+    model_catalog_hash: str,
 ) -> None:
     if runtime_root.exists() or runtime_root.is_symlink():
         raise HostBuildError("refusing to replace the Host runtime snapshot")
@@ -189,10 +193,11 @@ def _materialize_runtime_snapshot(
         for source, name, expected_hash in (
             (codex_source, "codex", codex_hash),
             (code_mode_host_source, "codex-code-mode-host", code_mode_host_hash),
+            (model_catalog_source, MODEL_CATALOG_SNAPSHOT_NAME, model_catalog_hash),
         ):
             destination = temporary / name
             shutil.copyfile(source, destination, follow_symlinks=False)
-            destination.chmod(0o555)
+            destination.chmod(0o444 if name == MODEL_CATALOG_SNAPSHOT_NAME else 0o555)
             source_stat = source.stat()
             destination_stat = destination.stat()
             if (
@@ -306,6 +311,23 @@ def build_host(
     if not os.access(code_mode_host_source, os.X_OK):
         raise HostBuildError("Codex code-mode Host executable is invalid")
     code_mode_host_hash = _hash_file(code_mode_host_source)
+    model_catalog_source = (Path.home() / ".codex/models_cache.json").resolve(strict=True)
+    if model_catalog_source.is_symlink() or not model_catalog_source.is_file():
+        raise HostBuildError("Codex model catalog snapshot source is invalid")
+    model_catalog_hash = _hash_file(model_catalog_source)
+    model_catalog = _load(model_catalog_source)
+    catalog_models = model_catalog.get("models")
+    selected_models = (
+        [
+            row
+            for row in catalog_models
+            if isinstance(row, dict) and row.get("slug") == model
+        ]
+        if isinstance(catalog_models, list)
+        else []
+    )
+    if model_catalog.get("client_version") != codex_version or len(selected_models) != 1:
+        raise HostBuildError("Codex model catalog differs from the bound runtime")
     runtime_root = output_path.with_name(f"{output_path.stem}.runtime")
     codex_path = runtime_root / "codex"
     code_mode_host = runtime_root / "codex-code-mode-host"
@@ -347,6 +369,16 @@ def build_host(
         "workspace-write",
         "--timeout",
         str(TARGET_TIMEOUT_SECONDS),
+        "--model-catalog-snapshot",
+        str(runtime_root / MODEL_CATALOG_SNAPSHOT_NAME),
+        "--model-catalog-relative-path",
+        f"{runtime_root.name}/{MODEL_CATALOG_SNAPSHOT_NAME}",
+        "--model-catalog-sha256",
+        model_catalog_hash,
+        "--model-catalog-client-version",
+        codex_version,
+        "--runtime-surface-version",
+        RUNTIME_SURFACE_VERSION,
     ]
     if lifecycle_contract != LEGACY_CONTRACT:
         argv.extend(["--lifecycle-contract", lifecycle_contract])
@@ -389,7 +421,7 @@ def build_host(
         "harness": "codex-cli",
         "harness_version": codex_version,
         "model": model,
-        "model_revision": _model_revision(model, codex_version),
+        "model_revision": _model_revision(model, codex_version, model_catalog_source),
         "monotonic_clock_id": "python-time-monotonic",
         "policy_id": ISOLATED_SANDBOX_POLICY_IDS["workspace-write"],
         "pricing_id": "provider-account-not-recorded",
@@ -401,6 +433,7 @@ def build_host(
             codex_hash,
             isolation_hash,
             code_mode_host_hash,
+            RUNTIME_SURFACE_VERSION,
         ),
         "utc_clock_id": "python-datetime-utc",
     }
@@ -452,6 +485,8 @@ def build_host(
             runtime_root=runtime_root,
             codex_hash=codex_hash,
             code_mode_host_hash=code_mode_host_hash,
+            model_catalog_source=model_catalog_source,
+            model_catalog_hash=model_catalog_hash,
         )
         runtime_created = True
         with output_path.open("xb") as handle:

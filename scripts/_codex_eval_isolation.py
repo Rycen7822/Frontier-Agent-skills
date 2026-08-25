@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import json
+from hashlib import sha256
 from pathlib import Path
 import tempfile
 from typing import Iterator
 
 
 ISOLATED_CODEX_HOME = "/run/frontier-codex-home"
+ISOLATED_MODEL_CATALOG = "/run/frontier-model-catalog/models_cache.json"
 ISOLATED_CODEX_BIN = "/run/frontier-codex-bin"
 ISOLATED_HOME = "/run/frontier-home"
 ISOLATED_OUTPUT = "/tmp/frontier-output"
@@ -51,6 +54,8 @@ def isolated_child_argv(
     argv: list[str],
     workspace: Path,
     codex_home: Path,
+    model_catalog_snapshot: Path | None = None,
+    model_catalog_sha256: str | None = None,
 ) -> list[str]:
     if sandbox not in ISOLATED_SANDBOX_POLICY_IDS:
         raise IsolationError("model-evolution isolation sandbox is unsupported")
@@ -67,9 +72,20 @@ def isolated_child_argv(
     global_codex_home = user_home / ".codex"
     auth = global_codex_home / "auth.json"
     model_cache = global_codex_home / "models_cache.json"
-    for path, label in ((auth, "Codex auth"), (model_cache, "Codex model cache")):
+    for path, label in ((auth, "Codex auth"),):
         if path.is_symlink() or not path.is_file():
             raise IsolationError(f"{label} input is unavailable")
+    if model_catalog_snapshot is not None:
+        if (
+            model_catalog_snapshot.is_symlink()
+            or not model_catalog_snapshot.is_file()
+            or not isinstance(model_catalog_sha256, str)
+            or "sha256:" + sha256(model_catalog_snapshot.read_bytes()).hexdigest()
+            != model_catalog_sha256
+        ):
+            raise IsolationError("bound model catalog snapshot is invalid")
+    elif model_cache.is_symlink() or not model_cache.is_file():
+        raise IsolationError("Codex model cache input is unavailable")
 
     rewritten = list(argv)
     if Path(rewritten[0]).resolve(strict=True) != codex:
@@ -93,6 +109,31 @@ def isolated_child_argv(
                 "Codex child workspace differs from the isolated workspace"
             )
         rewritten[cwd_position] = ISOLATED_WORKSPACE
+    catalog_options = [
+        index
+        for index, value in enumerate(rewritten)
+        if value.startswith("model_catalog_json=")
+    ]
+    if model_catalog_snapshot is not None:
+        if len(catalog_options) != 1:
+            raise IsolationError("child argv must bind one model catalog snapshot")
+        option = catalog_options[0]
+        try:
+            bound_catalog = json.loads(rewritten[option].split("=", 1)[1])
+        except (IndexError, json.JSONDecodeError) as exc:
+            raise IsolationError("child model catalog binding is invalid") from exc
+        if (
+            not isinstance(bound_catalog, str)
+            or Path(bound_catalog).resolve(strict=False)
+            != model_catalog_snapshot.resolve(strict=True)
+        ):
+            raise IsolationError("child model catalog differs from the Host binding")
+        rewritten[option] = "model_catalog_json=" + json.dumps(
+            ISOLATED_MODEL_CATALOG,
+            ensure_ascii=False,
+        )
+    elif catalog_options:
+        raise IsolationError("legacy child unexpectedly binds a model catalog")
 
     workspace_mount = "--ro-bind" if sandbox == "read-only" else "--bind"
     workspace_mounts = [workspace_mount, str(workspace), ISOLATED_WORKSPACE]
@@ -125,7 +166,16 @@ def isolated_child_argv(
         "--dir", ISOLATED_CODEX_HOME,
         "--bind", str(codex_home), ISOLATED_CODEX_HOME,
         "--ro-bind", str(auth), f"{ISOLATED_CODEX_HOME}/auth.json",
-        "--ro-bind", str(model_cache), f"{ISOLATED_CODEX_HOME}/models_cache.json",
+        *(
+            [
+                "--dir", "/run/frontier-model-catalog",
+                "--ro-bind", str(model_catalog_snapshot), ISOLATED_MODEL_CATALOG,
+            ]
+            if model_catalog_snapshot is not None
+            else [
+                "--ro-bind", str(model_cache), f"{ISOLATED_CODEX_HOME}/models_cache.json",
+            ]
+        ),
         "--tmpfs", str(user_home),
         "--dev", "/dev",
         "--proc", "/proc",
