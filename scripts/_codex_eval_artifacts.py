@@ -268,7 +268,9 @@ def build_command_trace(
         items.append(base)
         complete = False
     return {
-        "schema_version": "codex-command-trace/1",
+        "schema_version": (
+            "codex-command-trace/2" if abandoned_items else "codex-command-trace/1"
+        ),
         "complete": complete,
         "overflow": overflow,
         "items": items,
@@ -470,7 +472,10 @@ def build_host_observation(
 ) -> dict[str, Any]:
     """Bind Host status to the two bounded evidence streams."""
     value = {
-        "schema_version": "codex-host-observation/1",
+        "schema_version": (
+            "codex-host-observation/2" if lifecycle is not None
+            else "codex-host-observation/1"
+        ),
         "terminal_status": terminal_status,
         "codex_status": codex_status,
         "turn_ids": turn_ids,

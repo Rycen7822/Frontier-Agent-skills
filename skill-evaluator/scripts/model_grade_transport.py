@@ -55,6 +55,12 @@ HOST_OBSERVATION_FIELDS = {
     "workspace_evidence_complete",
     "workspace_evidence_overflow",
 }
+HOST_OBSERVATION_LIFECYCLE_FIELDS = HOST_OBSERVATION_FIELDS | {"lifecycle"}
+COMMAND_TRACE_FIELDS = {"schema_version", "complete", "overflow", "items"}
+COMMAND_TRACE_V1 = "codex-command-trace/1"
+COMMAND_TRACE_V2 = "codex-command-trace/2"
+HOST_OBSERVATION_V1 = "codex-host-observation/1"
+HOST_OBSERVATION_V2 = "codex-host-observation/2"
 EVIDENCE_PATHS = {
     "host-observation": "workspace/host-observation.json",
     "command-trace": "workspace/command-trace.json",
@@ -323,6 +329,55 @@ def _canonical_payload(value: dict[str, Any], payload: str) -> bool:
     ) == payload
 
 
+def _validate_lifecycle_projection(value: Any) -> dict[str, Any]:
+    common = {
+        "contract_version", "branch", "incomplete_items", "turn_completed",
+        "final_message_present", "usage_present", "custody_closed",
+        "retryable", "reserve_consumption", "sample_valid", "process_gate",
+        "unknown_completion",
+    }
+    if not isinstance(value, dict) or set(value) != common:
+        raise ValueError("model grader lifecycle projection differs")
+    if (
+        value.get("contract_version") != "codex-child-lifecycle/2"
+        or value.get("branch") != "outcome_bearing_abandoned"
+        or value.get("turn_completed") is not True
+        or value.get("final_message_present") is not True
+        or value.get("usage_present") is not True
+        or value.get("custody_closed") is not True
+        or value.get("retryable") is not False
+        or value.get("reserve_consumption") is not False
+        or value.get("sample_valid") is not True
+        or value.get("process_gate") != {
+            "status": "fail",
+            "reason": "command completion, exit code, and output remain unknown",
+        }
+    ):
+        raise ValueError("model grader lifecycle projection contradicts its branch")
+    incomplete = value.get("incomplete_items")
+    unknown = value.get("unknown_completion")
+    if (
+        not isinstance(incomplete, list)
+        or not incomplete
+        or not isinstance(unknown, list)
+        or unknown != [item.get("id") for item in incomplete]
+        or len(unknown) != len(set(unknown))
+    ):
+        raise ValueError("model grader lifecycle item identity differs")
+    for item in incomplete:
+        if (
+            not isinstance(item, dict)
+            or set(item) - {"id", "type", "command", "status"}
+            or not isinstance(item.get("id"), str)
+            or not item["id"]
+            or item.get("type") != "command_execution"
+            or ("command" in item and not isinstance(item["command"], str))
+            or ("status" in item and not isinstance(item["status"], str))
+        ):
+            raise ValueError("model grader lifecycle item shape differs")
+    return value
+
+
 def _host_observation(payload: str) -> dict[str, Any]:
     try:
         value = json.loads(payload)
@@ -330,11 +385,23 @@ def _host_observation(payload: str) -> dict[str, Any]:
         raise ValueError("model grader host assessment is invalid JSON") from exc
     changed = value.get("changed_paths") if isinstance(value, dict) else None
     turns = value.get("turn_ids") if isinstance(value, dict) else None
+    version = value.get("schema_version") if isinstance(value, dict) else None
+    lifecycle = None
+    compatibility_alias = False
+    if version == HOST_OBSERVATION_V1 and isinstance(value, dict):
+        if set(value) == HOST_OBSERVATION_LIFECYCLE_FIELDS:
+            lifecycle = _validate_lifecycle_projection(value["lifecycle"])
+            compatibility_alias = True
+        elif set(value) != HOST_OBSERVATION_FIELDS:
+            raise ValueError("model grader host assessment differs")
+    elif version == HOST_OBSERVATION_V2 and isinstance(value, dict):
+        if set(value) != HOST_OBSERVATION_LIFECYCLE_FIELDS:
+            raise ValueError("model grader host assessment differs")
+        lifecycle = _validate_lifecycle_projection(value["lifecycle"])
+    else:
+        raise ValueError("model grader host assessment differs")
     if (
-        not isinstance(value, dict)
-        or set(value) != HOST_OBSERVATION_FIELDS
-        or value.get("schema_version") != "codex-host-observation/1"
-        or value.get("terminal_status") not in {"completed", "failed"}
+        value.get("terminal_status") not in {"completed", "failed"}
         or value.get("codex_status") not in {"completed", "failed", "protocol_error"}
         or not isinstance(turns, list)
         or not turns
@@ -356,6 +423,9 @@ def _host_observation(payload: str) -> dict[str, Any]:
         or not _canonical_payload(value, payload)
     ):
         raise ValueError("model grader host assessment differs")
+    value = dict(value)
+    value["_lifecycle"] = lifecycle
+    value["_lifecycle_compatibility_alias"] = compatibility_alias
     return value
 
 
@@ -511,10 +581,13 @@ def _command_trace(payload: str, assessment: dict[str, Any]) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         raise ValueError("model grader command trace is invalid JSON") from exc
     items = value.get("items") if isinstance(value, dict) else None
+    version = value.get("schema_version") if isinstance(value, dict) else None
+    lifecycle = assessment.get("_lifecycle")
+    compatibility_alias = assessment.get("_lifecycle_compatibility_alias") is True
     if (
         not isinstance(value, dict)
-        or set(value) != {"schema_version", "complete", "overflow", "items"}
-        or value.get("schema_version") != "codex-command-trace/1"
+        or set(value) != COMMAND_TRACE_FIELDS
+        or version not in {COMMAND_TRACE_V1, COMMAND_TRACE_V2}
         or not isinstance(value.get("complete"), bool)
         or not isinstance(value.get("overflow"), bool)
         or not isinstance(items, list)
@@ -524,6 +597,7 @@ def _command_trace(payload: str, assessment: dict[str, Any]) -> dict[str, Any]:
         or value["complete"] and value["overflow"]
     ):
         raise ValueError("model grader command trace differs")
+    abandoned_ids: list[str] = []
     for ordinal, item in enumerate(items, 1):
         base = {"ordinal", "turn_id", "type"}
         if (
@@ -534,6 +608,31 @@ def _command_trace(payload: str, assessment: dict[str, Any]) -> dict[str, Any]:
         ):
             raise ValueError("model grader command trace item is invalid")
         if item["type"] == "command_execution":
+            if "item_id" in item:
+                abandoned_fields = {
+                    "ordinal", "turn_id", "type", "item_id", "status",
+                    "completion", "exit_code", "output_sha256", "output_bytes",
+                    "command_sha256", "command_preview",
+                }
+                if (
+                    version != COMMAND_TRACE_V2 and not compatibility_alias
+                    or lifecycle is None
+                    or set(item) != abandoned_fields
+                    or not isinstance(item["item_id"], str)
+                    or not item["item_id"]
+                    or item["status"] != "abandoned"
+                    or item["completion"] != "unknown"
+                    or item["exit_code"] is not None
+                    or item["output_sha256"] is not None
+                    or item["output_bytes"] is not None
+                    or not isinstance(item["command_sha256"], str)
+                    or not HASH.fullmatch(item["command_sha256"])
+                    or not isinstance(item["command_preview"], str)
+                    or len(item["command_preview"].encode("utf-8")) > 1024
+                ):
+                    raise ValueError("model grader abandoned command item differs")
+                abandoned_ids.append(item["item_id"])
+                continue
             full = base | {
                 "status", "exit_code", "command_sha256", "command_preview",
                 "output_sha256", "output_preview", "output_bytes",
@@ -602,6 +701,20 @@ def _command_trace(payload: str, assessment: dict[str, Any]) -> dict[str, Any]:
                     )
                 ):
                     raise ValueError("model grader file change is invalid")
+    if abandoned_ids:
+        if (
+            version == COMMAND_TRACE_V1
+            and not compatibility_alias
+            or version == COMMAND_TRACE_V2
+            and lifecycle is None
+            or value["complete"]
+            or value["overflow"]
+            or lifecycle.get("branch") != "outcome_bearing_abandoned"
+            or abandoned_ids != lifecycle.get("unknown_completion")
+        ):
+            raise ValueError("model grader abandoned command lifecycle differs")
+    elif version == COMMAND_TRACE_V2:
+        raise ValueError("model grader v2 command trace lacks lifecycle items")
     if not _canonical_payload(value, payload):
         raise ValueError("model grader command trace is not canonical")
     return value
@@ -803,17 +916,29 @@ def execution_item(
     final_answer = _redact_workspace_paths(
         evidence["final-answer"], assessment, fixture_paths,
     )
-    if (
-        not command_trace["complete"]
-        or not _semantic_workspace_complete(workspace, assessment)
-    ):
+    abandoned = (
+        assessment.get("_lifecycle") is not None
+        and assessment["_lifecycle"].get("branch") == "outcome_bearing_abandoned"
+    )
+    if not _semantic_workspace_complete(workspace, assessment):
+        raise ValueError("model grader deterministic evidence is incomplete")
+    if not command_trace["complete"] and not abandoned:
         raise ValueError("model grader deterministic evidence is incomplete")
     if not turn_answers or turn_answers[-1]["content"].strip() != final_answer.strip():
         raise ValueError("model grader final answer differs from its last turn")
+    findings = copy.deepcopy(deterministic_findings)
+    if abandoned:
+        findings.append({
+            "check_id": "process-check",
+            "pass": False,
+            "observations": [
+                "command completion, exit code, and output remain unknown",
+            ],
+        })
     grader_view = {
         "captured_output": captured_output,
         **copy.deepcopy(observations[0]),
-        "deterministic_findings": copy.deepcopy(deterministic_findings),
+        "deterministic_findings": findings,
         "turn_answers": turn_answers,
         "semantic_files": _semantic_files(
             workspace, assessment, fixture_paths,
