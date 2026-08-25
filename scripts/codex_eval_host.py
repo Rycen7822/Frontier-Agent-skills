@@ -74,7 +74,8 @@ MAX_FAILURE_DETAIL_CHARS = 2048
 LEGACY_ADAPTER_VERSION = "1.13"
 PREVIOUS_ADAPTER_VERSION = "1.14"
 D38_ADAPTER_VERSION = "1.15"
-ADAPTER_VERSION = "1.16"
+D39_ADAPTER_VERSION = "1.16"
+ADAPTER_VERSION = "1.17"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_artifacts.py",
@@ -88,11 +89,13 @@ ADAPTER_SOURCE_FILES = (
 PROBE_RESULT_SCHEMA_VERSION_LEGACY = "codex-interaction-probe-result/1.2"
 PROBE_RESULT_SCHEMA_VERSION_PREVIOUS = "codex-interaction-probe-result/1.3"
 PROBE_RESULT_SCHEMA_VERSION_D38 = "codex-interaction-probe-result/1.4"
-PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.5"
+PROBE_RESULT_SCHEMA_VERSION_D39 = "codex-interaction-probe-result/1.5"
+PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.6"
 PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY = "codex-probe-lifecycle/1"
 PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS = "codex-probe-lifecycle/2"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D38 = "codex-probe-lifecycle/3"
-PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/4"
+PROBE_LIFECYCLE_SCHEMA_VERSION_D39 = "codex-probe-lifecycle/4"
+PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/5"
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -225,6 +228,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         LEGACY_ADAPTER_VERSION,
         PREVIOUS_ADAPTER_VERSION,
         D38_ADAPTER_VERSION,
+        D39_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         raise AdapterError("unsupported Host adapter version")
@@ -238,6 +242,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     if adapter_version in {
         PREVIOUS_ADAPTER_VERSION,
         D38_ADAPTER_VERSION,
+        D39_ADAPTER_VERSION,
         ADAPTER_VERSION,
     } and runtime_surface != RUNTIME_SURFACE_VERSION:
         raise AdapterError("runtime surface identity is missing")
@@ -322,6 +327,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     if adapter_version in {
         PREVIOUS_ADAPTER_VERSION,
         D38_ADAPTER_VERSION,
+        D39_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         expected.update(
@@ -347,6 +353,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     if adapter_version in {
         PREVIOUS_ADAPTER_VERSION,
         D38_ADAPTER_VERSION,
+        D39_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         if not all(isinstance(value, str) for value in (bound_catalog, bound_catalog_hash, bound_catalog_client)):
@@ -777,6 +784,65 @@ def _probe_item_classification(
     )
 
 
+def _probe_command_custody(normalized: dict[str, Any]) -> dict[str, Any]:
+    """Project only the bounded, content-free custody of command items."""
+    command_items = [
+        item
+        for item in normalized.get("items", [])
+        if isinstance(item, dict) and item.get("type") == "command_execution"
+    ]
+    item_ids = {
+        item.get("id")
+        for item in command_items
+        if isinstance(item.get("id"), str)
+    }
+    started_count = sum(item.get("phase") == "started" for item in command_items)
+    updated_count = sum(item.get("phase") == "updated" for item in command_items)
+    completed_items = [
+        item for item in command_items if item.get("phase") == "completed"
+    ]
+    completed_count = len(completed_items)
+    completed = completed_items[0] if len(completed_items) == 1 else None
+    exit_code = (
+        completed.get("exit_code")
+        if isinstance(completed, dict)
+        and isinstance(completed.get("exit_code"), int)
+        and not isinstance(completed.get("exit_code"), bool)
+        else None
+    )
+    changes_present = any(
+        isinstance(item.get("changes"), list) and bool(item["changes"])
+        for item in command_items
+    )
+    error_present = any(isinstance(item.get("error"), dict) for item in command_items)
+    paired = (
+        len(item_ids) == 1
+        and started_count == 1
+        and completed_count == 1
+        and completed is not None
+        and completed.get("status") == "completed"
+    )
+    successful = (
+        paired
+        and exit_code == 0
+        and not changes_present
+        and not error_present
+    )
+    return {
+        "present": bool(command_items),
+        "item_count": len(item_ids),
+        "started_count": started_count,
+        "updated_count": updated_count,
+        "completed_count": completed_count,
+        "paired": paired,
+        "exit_code": exit_code,
+        "successful": successful,
+        "changes_present": changes_present,
+        "error_present": error_present,
+        "safe_completed": successful,
+    }
+
+
 _SAFE_FAILURE_SOURCES = {"turn", "item", "record", "child", "normalizer"}
 _SAFE_FAILURE_CLASSES = {
     "none",
@@ -990,6 +1056,7 @@ def _probe_lifecycle_projection(
         outcome_evidence_types,
         effect_capable_evidence_types,
     ) = _probe_item_classification(normalized)
+    command_custody = _probe_command_custody(normalized)
     workspace_clean = (
         workspace_before_ok
         and workspace_after_ok
@@ -1064,6 +1131,7 @@ def _probe_lifecycle_projection(
         "effect_capable_evidence_types": effect_capable_evidence_types,
         "outcome_evidence": outcome_evidence,
         "effect_capable": effect_capable,
+        "command_custody": command_custody,
         "completed_turn": completed_turn,
         "final_message_present": last_message_present,
         "usage_present": usage_present,
@@ -1169,6 +1237,20 @@ def _apply_probe_capability_projection(
         and capability in {"multi_turn", "principal_tracing"}
         and not capability_observed
     ):
+        failure_observation = lifecycle.get("failure_observation")
+        command_custody = lifecycle.get("command_custody")
+        completed_command_safe = (
+            lifecycle.get("effect_capable_item_types") == ["command_execution"]
+            and lifecycle.get("effect_capable_evidence_types") == []
+            and isinstance(command_custody, dict)
+            and command_custody.get("safe_completed") is True
+            and isinstance(failure_observation, dict)
+            and failure_observation.get("present") is False
+            and failure_observation.get("failure_class") == "none"
+            and lifecycle.get("child_timed_out") is False
+            and lifecycle.get("process_exited") is True
+            and lifecycle.get("child_reaped") is True
+        )
         safe_unknown = (
             lifecycle["branch"] == "complete"
             and lifecycle["required_events_complete"]
@@ -1177,7 +1259,10 @@ def _apply_probe_capability_projection(
             and lifecycle["final_message_present"]
             and lifecycle["usage_present"]
             and not lifecycle["incomplete_item_types"]
-            and not lifecycle["effect_capable"]
+            and (
+                not lifecycle["effect_capable"]
+                or completed_command_safe
+            )
             and not lifecycle["source_path_exposed"]
             and not lifecycle["credential_marker_seen"]
         )
