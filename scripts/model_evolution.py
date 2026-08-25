@@ -180,12 +180,12 @@ def _binding_for_path(
     external: bool = False,
 ) -> dict[str, str]:
     resolved = path.resolve(strict=True)
-    if resolved.is_relative_to(repository_root):
+    if resolved.is_relative_to(campaign_root):
+        root = "external" if external else "campaign"
+    elif resolved.is_relative_to(repository_root):
         if tracked_repository:
             require_tracked_binding(repository_root, resolved)
         root = "repository"
-    elif resolved.is_relative_to(campaign_root):
-        root = "external" if external else "campaign"
     else:
         raise CliError("artifact is outside repository and campaign roots")
     return make_binding(

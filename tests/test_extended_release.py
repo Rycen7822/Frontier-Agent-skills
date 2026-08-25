@@ -63,6 +63,7 @@ from _model_evolution_state import (  # noqa: E402
 )
 from model_evolution import (  # noqa: E402
     CliError,
+    _binding_for_path,
     _materialize_product_blob,
     _registered_plan as record_plan,
 )
@@ -95,6 +96,21 @@ def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[st
 
 
 class ExtendedRelease(unittest.TestCase):
+    def test_campaign_binding_wins_when_campaign_root_is_nested(self) -> None:
+        with tempfile.TemporaryDirectory(
+            dir=ROOT / ".work", prefix="nested-binding-"
+        ) as raw:
+            campaign_root = Path(raw)
+            artifact = campaign_root / "generated.json"
+            artifact.write_text('{"schema_version":"fixture/1"}\n', encoding="utf-8")
+            binding = _binding_for_path(
+                artifact,
+                repository_root=ROOT,
+                campaign_root=campaign_root,
+            )
+            self.assertEqual("campaign", binding["root"])
+            self.assertEqual("generated.json", binding["path"])
+
     def test_product_bundle_metadata_uses_selected_product_and_joins_host(self) -> None:
         product_root = ROOT / ".worktrees/frontier-8.0.1-final-a2aafa22"
         product_identity = git_identity(product_root)
