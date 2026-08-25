@@ -2103,6 +2103,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--profile", required=True)
     parser.add_argument("--plugin-root", type=Path)
     parser.add_argument("--model-catalog-snapshot", type=Path)
+    parser.add_argument("--model-catalog-relative-path")
     parser.add_argument("--model-catalog-sha256")
     parser.add_argument("--model-catalog-client-version")
     parser.add_argument("--runtime-surface-version")
