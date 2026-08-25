@@ -63,6 +63,7 @@ PROBE_MAX_ATTEMPTS = 2
 PROBE_TERMINAL_V3 = "model-evolution-probe-terminal/3"
 PROBE_TERMINAL_V4 = "model-evolution-probe-terminal/4"
 PROBE_TERMINAL_V5 = "model-evolution-probe-terminal/5"
+PROBE_TERMINAL_V6 = "model-evolution-probe-terminal/6"
 PLUGIN_BUILD_GATE_SCRIPT = "scripts/build_codex_plugin.py"
 ALLOWED_GATE_SCRIPTS = {
     "bundle/build_bundle_manifest.py",
@@ -544,7 +545,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         "branch",
         "reason",
     }
-    new_required = legacy_required - {"command_action_effect"} | {
+    previous_required = legacy_required - {"command_action_effect"} | {
         "completed_item_types",
         "non_effect_progress_item_types",
         "effect_capable_item_types",
@@ -553,15 +554,25 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         "outcome_evidence",
         "effect_capable",
     }
+    new_required = previous_required | {
+        "required_events_complete",
+        "capability_observable",
+    }
     if not isinstance(value, dict):
         raise OperationError("probe lifecycle shape is invalid")
     version = value.get("schema_version")
     if version not in {
         "codex-probe-lifecycle/1",
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         raise OperationError("unknown probe lifecycle version")
-    required = legacy_required if version == "codex-probe-lifecycle/1" else new_required
+    if version == "codex-probe-lifecycle/1":
+        required = legacy_required
+    elif version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS:
+        required = previous_required
+    else:
+        required = new_required
     if set(value) != required:
         raise OperationError("probe lifecycle shape is invalid")
     bool_fields = (
@@ -583,6 +594,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
     )
     if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION:
         bool_fields += ("outcome_evidence", "effect_capable")
+        bool_fields += ("required_events_complete", "capability_observable")
     if any(not isinstance(value[field], bool) for field in bool_fields):
         raise OperationError("probe lifecycle boolean field is invalid")
     if (
@@ -595,7 +607,12 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         or not isinstance(value["incomplete_item_types"], list)
         or any(not isinstance(item, str) for item in value["incomplete_item_types"])
         or value["incomplete_item_types"] != sorted(set(value["incomplete_item_types"]))
-        or value["branch"] not in {"complete", "outcome_free_transient", "unknown"}
+        or value["branch"] not in {
+            "complete",
+            "outcome_free_transient",
+            "noncritical_unknown",
+            "unknown",
+        }
         or not isinstance(value["reason"], str)
     ):
         raise OperationError("probe lifecycle identity or collection is invalid")
@@ -632,6 +649,20 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             for item in value["effect_capable_evidence_types"]
         ):
             raise OperationError("probe lifecycle evidence class is unknown")
+        if value["branch"] == "noncritical_unknown" and (
+            not value["required_events_complete"]
+            or value["capability_observable"]
+            or not value["custody_closed"]
+            or not value["completed_turn"]
+            or not value["final_message_present"]
+            or not value["usage_present"]
+            or value["incomplete_item_types"]
+            or value["effect_capable"]
+            or value["source_path_exposed"]
+            or value["credential_marker_seen"]
+            or value["retryable"]
+        ):
+            raise OperationError("noncritical unknown lifecycle predicate is invalid")
     for field in ("workspace_pre_digest", "workspace_post_digest"):
         digest = value[field]
         if digest is not None and (
@@ -665,16 +696,20 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
             raise OperationError("historical interaction probe result shape changed")
     elif version in {
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_LEGACY,
+        host_adapter.PROBE_RESULT_SCHEMA_VERSION_PREVIOUS,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION,
     }:
         if set(value) != legacy_required | {"lifecycle"}:
             raise OperationError("versioned interaction probe result shape is invalid")
         _validate_probe_lifecycle(value["lifecycle"])
-        expected_lifecycle = (
-            host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY
-            if version == host_adapter.PROBE_RESULT_SCHEMA_VERSION_LEGACY
-            else host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION
-        )
+        expected_lifecycle = {
+            host_adapter.PROBE_RESULT_SCHEMA_VERSION_LEGACY:
+                host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY,
+            host_adapter.PROBE_RESULT_SCHEMA_VERSION_PREVIOUS:
+                host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS,
+            host_adapter.PROBE_RESULT_SCHEMA_VERSION:
+                host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
+        }[version]
         if value["lifecycle"].get("schema_version") != expected_lifecycle:
             raise OperationError("probe result and lifecycle versions differ")
     else:
@@ -700,6 +735,14 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
         )
     ):
         raise OperationError("interaction probe result shape or identity is invalid")
+    if version == host_adapter.PROBE_RESULT_SCHEMA_VERSION:
+        lifecycle = value["lifecycle"]
+        if lifecycle["branch"] == "noncritical_unknown" and (
+            row["capability"] not in {"multi_turn", "principal_tracing"}
+            or value["status"] != "unknown"
+            or value["diagnostics"] != []
+        ):
+            raise OperationError("noncritical unknown result is invalid")
     return value
 
 
@@ -753,7 +796,7 @@ def _load_probe_terminal(
         ):
             raise OperationError("historical interaction probe final attempt differs")
         return terminal
-    if version not in {PROBE_TERMINAL_V4, PROBE_TERMINAL_V5} or set(terminal) != required | {"attempt_count"}:
+    if version not in {PROBE_TERMINAL_V4, PROBE_TERMINAL_V5, PROBE_TERMINAL_V6} or set(terminal) != required | {"attempt_count"}:
         raise OperationError("unknown interaction probe terminal version")
     if (
         terminal["request_id"] != request["request_id"]
@@ -767,11 +810,11 @@ def _load_probe_terminal(
     ):
         raise OperationError("versioned interaction probe terminal identity is invalid")
     _validate_probe_result(terminal["result"], row)
-    expected_result = (
-        host_adapter.PROBE_RESULT_SCHEMA_VERSION_LEGACY
-        if version == PROBE_TERMINAL_V4
-        else host_adapter.PROBE_RESULT_SCHEMA_VERSION
-    )
+    expected_result = {
+        PROBE_TERMINAL_V4: host_adapter.PROBE_RESULT_SCHEMA_VERSION_LEGACY,
+        PROBE_TERMINAL_V5: host_adapter.PROBE_RESULT_SCHEMA_VERSION_PREVIOUS,
+        PROBE_TERMINAL_V6: host_adapter.PROBE_RESULT_SCHEMA_VERSION,
+    }[version]
     if terminal["result"]["schema_version"] != expected_result:
         raise OperationError("versioned terminal must bind versioned probe result")
     for index, attempt in enumerate(attempts, 1):
@@ -786,11 +829,11 @@ def _load_probe_terminal(
         ):
             raise OperationError("versioned interaction probe attempt identity is invalid")
         _validate_probe_lifecycle(attempt["lifecycle"])
-        expected_lifecycle = (
-            host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY
-            if version == PROBE_TERMINAL_V4
-            else host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION
-        )
+        expected_lifecycle = {
+            PROBE_TERMINAL_V4: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY,
+            PROBE_TERMINAL_V5: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS,
+            PROBE_TERMINAL_V6: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
+        }[version]
         if attempt["lifecycle"]["schema_version"] != expected_lifecycle:
             raise OperationError("versioned terminal lifecycle version differs")
     if len(attempts) == 1 and _probe_is_official_transient(attempts[0]):
@@ -830,19 +873,31 @@ def _probe_is_official_transient(value: dict[str, Any]) -> bool:
         )
     if isinstance(lifecycle, dict) and (
         value.get("schema_version") == host_adapter.PROBE_RESULT_SCHEMA_VERSION_LEGACY
+        or value.get("schema_version") == host_adapter.PROBE_RESULT_SCHEMA_VERSION_PREVIOUS
         or "schema_version" not in value
     ):
+        is_previous = (
+            value.get("schema_version") == host_adapter.PROBE_RESULT_SCHEMA_VERSION_PREVIOUS
+            or lifecycle.get("schema_version") == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS
+        )
         return (
             value.get("status") == "unknown"
             and isinstance(lifecycle, dict)
-            and lifecycle.get("schema_version") == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY
+            and lifecycle.get("schema_version") in {
+                host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY,
+                host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS,
+            }
             and lifecycle.get("branch") == "outcome_free_transient"
             and lifecycle.get("retryable") is True
             and lifecycle.get("custody_closed") is True
             and lifecycle.get("completed_turn") is False
             and lifecycle.get("final_message_present") is False
             and lifecycle.get("usage_present") is False
-            and lifecycle.get("command_action_effect") is False
+            and (
+                lifecycle.get("effect_capable") is False
+                if is_previous
+                else lifecycle.get("command_action_effect") is False
+            )
         )
     diagnostics = value.get("diagnostics")
     return (
@@ -957,7 +1012,7 @@ def run_interaction_probes(
                 if not _probe_is_official_transient(value):
                     break
             terminal = {
-                "schema_version": PROBE_TERMINAL_V5,
+                "schema_version": PROBE_TERMINAL_V6,
                 "request_id": request["request_id"],
                 "probe_id": row["probe_id"],
                 "result": value,
@@ -1284,7 +1339,8 @@ def _probe_lifecycle_contract_gate() -> None:
     """Exercise the production probe classifier and terminal loader without a provider."""
     row = {
         "probe_id": "d34-preflight-probe",
-        "capability": "multi_turn",
+        "capability": "force_load",
+        "required_event_types": ["thread.started", "turn.completed"],
     }
     request = {"request_id": "d34-preflight-probe.1.01"}
 
@@ -1346,6 +1402,7 @@ def _probe_lifecycle_contract_gate() -> None:
                 last_message=workspace / "last-message.txt",
                 source_root=None,
                 isolated=True,
+                required_event_types=row["required_event_types"],
             )
         )
         if transient_status != "unknown" or not transient_lifecycle["retryable"]:
@@ -1387,6 +1444,7 @@ def _probe_lifecycle_contract_gate() -> None:
                 last_message=workspace / "last-message.txt",
                 source_root=None,
                 isolated=True,
+                required_event_types=row["required_event_types"],
             )
         )
         if complete_status != "pass" or complete_diagnostics:
@@ -1425,7 +1483,7 @@ def _probe_lifecycle_contract_gate() -> None:
             },
         ]
         terminal = {
-            "schema_version": PROBE_TERMINAL_V5,
+            "schema_version": PROBE_TERMINAL_V6,
             "request_id": request["request_id"],
             "probe_id": row["probe_id"],
             "result": complete_result,
@@ -1443,6 +1501,207 @@ def _probe_lifecycle_contract_gate() -> None:
         exhausted_path = workspace / "exhausted.json"
         exhausted_path.write_text(json.dumps(exhausted), encoding="utf-8")
         _load_probe_terminal(exhausted_path, request=request, row=row)
+
+
+def _probe_noncritical_capability_gate() -> None:
+    """Replay the six-row closure split without a provider or answer scoring."""
+    required = ["thread.started", "turn.completed"]
+
+    def raw_complete(*, routing: bool = False, permission: bool = False) -> bytes:
+        final_item: dict[str, Any] = {
+            "id": "d38-final",
+            "type": "agent_message",
+            "status": "completed",
+            "text": "inert marker",
+        }
+        if routing:
+            final_item["routing"] = {
+                "declared": [],
+                "discovered": [],
+                "loaded": ["writing-plans"],
+                "model_visible": [],
+                "selected": ["writing-plans"],
+                "invoked": [],
+                "applied": ["writing-plans"],
+                "order": ["writing-plans"],
+                "composition": ["writing-plans"],
+            }
+        records = [
+            {"type": "thread.started", "thread_id": "d38-thread"},
+            {"type": "turn.started", "turn_id": "d38-turn"},
+            {
+                "type": "item.completed",
+                "item": {
+                    **final_item,
+                },
+            },
+        ]
+        if permission:
+            records.append({"type": "error", "error": {"kind": "permission_denied"}})
+        records.append({
+            "type": "turn.completed",
+            "turn_id": "d38-turn",
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        })
+        return b"\n".join(
+            json.dumps(record, separators=(",", ":")).encode("utf-8")
+            for record in records
+        ) + b"\n"
+
+    with tempfile.TemporaryDirectory(prefix="d38-probe-contract-") as temporary:
+        workspace = Path(temporary)
+        before: dict[str, str] = {}
+        for index, capability in enumerate((
+            "force_load",
+            "natural_routing",
+            "multi_turn",
+            "principal_tracing",
+            "usage_capture",
+            "action_authorization_trace",
+        ), 1):
+            row = {
+                "probe_id": f"d38-{index}",
+                "capability": capability,
+                "required_event_types": required,
+            }
+            normalized = host_adapter.normalize_jsonl(
+                raw_complete(
+                    routing=capability == "natural_routing",
+                    permission=capability == "action_authorization_trace",
+                )
+            )
+            lifecycle, status, diagnostics = host_adapter._probe_lifecycle_projection(
+                {
+                    "stdout": raw_complete(
+                        routing=capability == "natural_routing",
+                        permission=capability == "action_authorization_trace",
+                    ),
+                    "stderr": b"",
+                    "returncode": 0,
+                    "timed_out": False,
+                    "kill_sent": False,
+                    "reaped": True,
+                },
+                normalized,
+                workspace=workspace,
+                workspace_before=before,
+                workspace_after=before,
+                workspace_before_ok=True,
+                workspace_after_ok=True,
+                last_message=workspace / "last-message.txt",
+                source_root=None,
+                isolated=True,
+                required_event_types=required,
+            )
+            capability_observed = {
+                "force_load": True,
+                "natural_routing": bool(normalized["routing"]),
+                "multi_turn": False,
+                "principal_tracing": False,
+                "usage_capture": bool(normalized["usage"]),
+                "action_authorization_trace": bool(normalized["permission_denials"]),
+            }[capability]
+            status, diagnostics = host_adapter._apply_probe_capability_projection(
+                lifecycle,
+                status,
+                diagnostics,
+                capability=capability,
+                capability_observed=capability_observed,
+            )
+            if capability in {"multi_turn", "principal_tracing"}:
+                if status != "unknown" or diagnostics or lifecycle["branch"] != "noncritical_unknown":
+                    raise OperationError("noncritical probe closure did not remain diagnostics-free")
+            elif capability in {
+                "natural_routing",
+                "usage_capture",
+                "action_authorization_trace",
+            } and status != "pass":
+                raise OperationError("synthetic observable capability did not pass")
+            elif capability not in {
+                "force_load",
+                "natural_routing",
+                "usage_capture",
+                "action_authorization_trace",
+            } and (
+                status != "unknown" or not diagnostics
+            ):
+                raise OperationError("synthetic critical capability unexpectedly passed")
+            if capability == "force_load" and status != "pass":
+                raise OperationError("synthetic critical capability did not pass")
+            result = {
+                "schema_version": host_adapter.PROBE_RESULT_SCHEMA_VERSION,
+                "probe_id": row["probe_id"],
+                "capability": capability,
+                "status": status,
+                "observed": "required lifecycle complete",
+                "session_id": "d38-thread",
+                "event_types": lifecycle["event_types"],
+                "direct_observations": ["direct.usage"],
+                "routing": [],
+                "usage": normalized["usage"],
+                "diagnostics": diagnostics,
+                "lifecycle": lifecycle,
+            }
+            _validate_probe_result(result, row)
+            terminal = {
+                "schema_version": PROBE_TERMINAL_V6,
+                "request_id": f"d38-{index}.1.01",
+                "probe_id": row["probe_id"],
+                "result": result,
+                "stderr": "",
+                "attempt_count": 1,
+                "attempts": [{
+                    "attempt": 1,
+                    "attempt_id": f"d38-{index}.1.01.attempt-1",
+                    "status": status,
+                    "diagnostics": diagnostics,
+                    "stderr": "",
+                    "lifecycle": lifecycle,
+                }],
+            }
+            path = workspace / f"terminal-{index}.json"
+            path.write_text(json.dumps(terminal), encoding="utf-8")
+            _load_probe_terminal(
+                path,
+                request={"request_id": f"d38-{index}.1.01"},
+                row=row,
+            )
+
+        missing = host_adapter.normalize_jsonl(
+            raw_complete().replace(
+                b'{"type":"turn.completed","turn_id":"d38-turn","usage":{"input_tokens":1,"output_tokens":1}}\n',
+                b"",
+            )
+        )
+        lifecycle, status, diagnostics = host_adapter._probe_lifecycle_projection(
+            {
+                "stdout": b"",
+                "stderr": b"",
+                "returncode": 0,
+                "timed_out": False,
+                "kill_sent": False,
+                "reaped": True,
+            },
+            missing,
+            workspace=workspace,
+            workspace_before=before,
+            workspace_after=before,
+            workspace_before_ok=True,
+            workspace_after_ok=True,
+            last_message=workspace / "last-message.txt",
+            source_root=None,
+            isolated=True,
+            required_event_types=required,
+        )
+        status, diagnostics = host_adapter._apply_probe_capability_projection(
+            lifecycle,
+            status,
+            diagnostics,
+            capability="multi_turn",
+            capability_observed=False,
+        )
+        if status == "pass" or not diagnostics or lifecycle["required_events_complete"]:
+            raise OperationError("missing required probe event was not fail-closed")
 
 
 def preflight_operations(
@@ -1646,6 +1905,14 @@ def preflight_operations(
     operations.append(
         _operation_fact(
             "probe-lifecycle-contract",
+            round((time.monotonic() - started) * 1000),
+        )
+    )
+    started = time.monotonic()
+    _probe_noncritical_capability_gate()
+    operations.append(
+        _operation_fact(
+            "probe-noncritical-capability-contract",
             round((time.monotonic() - started) * 1000),
         )
     )
