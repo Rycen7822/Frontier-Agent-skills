@@ -580,6 +580,13 @@ def _probe_action_effect(normalized: dict[str, Any]) -> bool:
     return False
 
 
+def _canonical_probe_event_types(values: Any) -> list[str]:
+    """Return the canonical sorted-unique event collection for probe evidence."""
+    if not isinstance(values, list):
+        return []
+    return sorted({value for value in values if isinstance(value, str)})
+
+
 def _probe_lifecycle_projection(
     child: dict[str, Any],
     normalized: dict[str, Any],
@@ -614,12 +621,7 @@ def _probe_lifecycle_projection(
             for channel in raw_channels
         )
     )
-    event_types = [
-        value
-        for value in normalized.get("event_types", [])
-        if isinstance(value, str)
-    ]
-    event_types = list(dict.fromkeys(event_types))
+    event_types = _canonical_probe_event_types(normalized.get("event_types", []))
     incomplete_types = sorted(
         {
             item.get("type")
@@ -1833,7 +1835,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             "loaded": [forced[0]],
             "applied": [forced[0]],
         }
-    observed_types = normalized["event_types"]
+    observed_types = _canonical_probe_event_types(normalized["event_types"])
     direct_observations = []
     if normalized["routing"] is not None:
         direct_observations.append("direct.routing")
