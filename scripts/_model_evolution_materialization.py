@@ -220,20 +220,26 @@ def _host_artifact_source(
     binding: dict[str, Any], *, repository_root: Path, campaign_root: Path
 ) -> Path:
     relative = _relative_path(binding.get("path"), label="Host probe artifact")
-    matches = []
-    for root in (campaign_root, repository_root):
-        candidate = root.joinpath(*relative.parts)
-        if (
-            candidate.is_file()
-            and not candidate.is_symlink()
-            and _file_hash(candidate) == binding.get("digest")
-        ):
-            matches.append(candidate)
-    if len(matches) != 1:
+    # Host probe artifacts are produced from the controller repository that
+    # built the Host. Campaign-local copies are never an authority source;
+    # accepting one here would make identical bytes ambiguous and could hide
+    # a bootstrap topology error.
+    repository_candidate = repository_root.joinpath(*relative.parts)
+    if (
+        repository_candidate.is_file()
+        and not repository_candidate.is_symlink()
+        and _file_hash(repository_candidate) == binding.get("digest")
+    ):
+        return repository_candidate
+    campaign_candidate = campaign_root.joinpath(*relative.parts)
+    if campaign_candidate.is_file() and not campaign_candidate.is_symlink():
         raise MaterializationError(
-            f"Host probe artifact must resolve to one exact source: {relative}"
+            "Host probe artifact authority is repository, but only a campaign "
+            f"copy is available: {relative}"
         )
-    return matches[0]
+    raise MaterializationError(
+        f"Host probe artifact must resolve to one exact repository source: {relative}"
+    )
 
 
 def _copy_host_artifacts(

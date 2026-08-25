@@ -875,10 +875,22 @@ def preflight_operations(
     *,
     repository_root: Path,
     campaign_root: Path,
+    product_source_root: Path | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
-    identity = git_identity(repository_root)
-    if identity["commit"] != campaign["product"]["source_commit"]:
-        raise OperationError("preflight source commit differs from campaign product")
+    controller_identity = git_identity(repository_root)
+    product_root = (
+        product_source_root.resolve(strict=True)
+        if product_source_root is not None
+        else repository_root
+    )
+    product_identity = git_identity(product_root)
+    if product_identity["dirty"]:
+        raise OperationError("selected Bundle product source has tracked changes")
+    if (
+        product_identity["commit"] != campaign["product"]["source_commit"]
+        or product_identity["tree"] != campaign["product"]["source_tree"]
+    ):
+        raise OperationError("product source identity differs from campaign product")
     operations: list[dict[str, Any]] = []
     for operation_id, script in (
         ("bundle-check", "bundle/build_bundle_manifest.py"),
@@ -903,7 +915,7 @@ def preflight_operations(
             sys.executable,
             PLUGIN_BUILD_GATE_SCRIPT,
             "--source-root",
-            str(repository_root),
+            str(product_root),
             "--validate-plugin-root",
             str(plugin_root),
             "--build-evidence",
@@ -922,8 +934,8 @@ def preflight_operations(
         host_path,
         plugin_root,
         repository_root=repository_root,
-        expected_commit=campaign["product"]["source_commit"],
-        expected_tree=campaign["product"]["source_tree"],
+        expected_commit=controller_identity["commit"],
+        expected_tree=controller_identity["tree"],
     )
     probe_set = load_json(
         resolve_binding(

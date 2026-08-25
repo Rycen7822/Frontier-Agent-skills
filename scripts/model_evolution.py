@@ -374,7 +374,15 @@ def _require_initializable_sentinel(sentinel: dict[str, Any]) -> None:
 def _init(args: argparse.Namespace) -> None:
     repository_root, campaign_root = _roots(args)
     campaign_root.mkdir(parents=True, exist_ok=True)
-    identity = git_identity(repository_root)
+    controller_identity = git_identity(repository_root)
+    product_root = (
+        args.product_source_root.resolve(strict=True)
+        if args.product_source_root is not None
+        else repository_root
+    )
+    product_identity = git_identity(product_root)
+    if product_identity["dirty"]:
+        raise CliError("selected Bundle product source has tracked changes")
     ceilings = {
         "provider_requests": args.provider_request_ceiling,
         "execute": args.execute_ceiling,
@@ -430,10 +438,10 @@ def _init(args: argparse.Namespace) -> None:
     if static_contracts.blocking_fact_count(static_report):
         raise CliError("static contract gate has blocking facts")
     plugin_build = validate_plugin_staging(
-        repository_root=repository_root,
+        repository_root=product_root,
         plugin_root=plugin_root,
         evidence_path=fixed["plugin_build"],
-        expected_commit=identity["commit"],
+        expected_commit=product_identity["commit"],
         expected_bundle_id=static_report["bundle_id"],
         expected_bundle_version=bundle_manifest["bundle_version"],
         expected_skill_versions={
@@ -445,8 +453,8 @@ def _init(args: argparse.Namespace) -> None:
         fixed["target_host"],
         plugin_root,
         repository_root=repository_root,
-        expected_commit=identity["commit"],
-        expected_tree=identity["tree"],
+        expected_commit=controller_identity["commit"],
+        expected_tree=controller_identity["tree"],
     )
     probe_set = load_json(fixed["probe_set"], label="interaction probe set")
     validate_document(probe_set, "interaction_probes")
@@ -546,7 +554,7 @@ def _init(args: argparse.Namespace) -> None:
         raise CliError(str(exc)) from exc
     campaign = build_initial_campaign(
         campaign_id=args.campaign_id,
-        git_identity=identity,
+        git_identity=product_identity,
         bundle_manifest=bundle_manifest,
         bundle_manifest_binding=bindings["bundle_manifest"],
         bundle_build=bundle_build,
@@ -621,6 +629,7 @@ def _preflight(args: argparse.Namespace) -> None:
         campaign,
         repository_root=repository_root,
         campaign_root=campaign_root,
+        product_source_root=args.product_source_root,
     )
     if args.systemd_argv_only:
         systemd_probe_argv(
@@ -1754,7 +1763,16 @@ def _record(args: argparse.Namespace) -> None:
             if campaign["candidate"] is not None
             else campaign["product"]["source_commit"]
         )
-        if git_identity(repository_root)["commit"] != expected_commit:
+        product_root = (
+            args.product_source_root.resolve(strict=True)
+            if args.product_source_root is not None
+            else repository_root
+        )
+        product_identity = git_identity(product_root)
+        if (
+            product_identity["commit"] != expected_commit
+            or product_identity["dirty"]
+        ):
             raise CliError("plugin build is not from the selected signed clean commit")
         expected_skills = (
             campaign["candidate"]["skills"]
@@ -1762,11 +1780,11 @@ def _record(args: argparse.Namespace) -> None:
             else campaign["product"]["skills"]
         )
         expected_bundle = load_json(
-            repository_root / "bundle-manifest.json",
+            product_root / "bundle-manifest.json",
             label="selected Bundle manifest",
         )
         expected_generated_bundle = load_json(
-            repository_root / "frontier-engineering.bundle.json",
+            product_root / "frontier-engineering.bundle.json",
             label="selected generated Bundle",
         )
         plugin_root = args.plugin_root.resolve(strict=True)
@@ -1777,7 +1795,7 @@ def _record(args: argparse.Namespace) -> None:
         ):
             raise CliError("selected plugin staging must be campaign-local")
         validate_plugin_staging(
-            repository_root=repository_root,
+            repository_root=product_root,
             plugin_root=plugin_root,
             evidence_path=path,
             expected_commit=expected_commit,
@@ -1946,18 +1964,29 @@ def _status(args: argparse.Namespace) -> None:
                     "message": str(exc),
                 }
             )
-    expected_commit = (
-        campaign["candidate"]["candidate_commit"]
-        if campaign["candidate"] is not None
-        else campaign["product"]["source_commit"]
-    )
     try:
         identity = git_identity(repository_root)
-        if identity["commit"] != expected_commit:
+        expected_commit = campaign["product"]["source_commit"]
+        expected_tree = campaign["product"]["source_tree"]
+        provisional = campaign["profiles"].get("target_provisional")
+        if provisional is not None:
+            host = _load_bound_document(
+                provisional,
+                repository_root=repository_root,
+                campaign_root=campaign_root,
+                label="target provisional Host",
+            )
+            repository_identity = host.get("identity", {}).get("repository", {})
+            expected_commit = repository_identity.get("revision", expected_commit)
+            expected_tree = repository_identity.get("tree", expected_tree)
+        if (
+            identity["commit"] != expected_commit
+            or identity["tree"] != expected_tree
+        ):
             blockers.append(
                 {
                     "code": "source-drift",
-                    "message": "checked-out signed commit differs from campaign source",
+                    "message": "checked-out controller commit differs from Host authority",
                 }
             )
     except OperationError as exc:
@@ -2223,6 +2252,11 @@ def _parser() -> argparse.ArgumentParser:
 
     init = commands.add_parser("init")
     init.add_argument("--campaign-id", required=True)
+    init.add_argument(
+        "--product-source-root",
+        type=Path,
+        help="separate clean Bundle product worktree; defaults to the controller root",
+    )
     init.add_argument("--plugin-root", type=Path, required=True)
     init.add_argument("--plugin-build-evidence", type=Path, required=True)
     init.add_argument("--target-host", type=Path, required=True)
@@ -2244,6 +2278,11 @@ def _parser() -> argparse.ArgumentParser:
 
     preflight = commands.add_parser("preflight")
     preflight.add_argument("--expected-revision", type=int, required=True)
+    preflight.add_argument(
+        "--product-source-root",
+        type=Path,
+        help="clean Bundle product worktree bound by campaign product identity",
+    )
     preflight.add_argument(
         "--systemd-argv-only",
         action="store_true",
@@ -2359,6 +2398,7 @@ def _parser() -> argparse.ArgumentParser:
     record.add_argument("--base-commit")
     record.add_argument("--candidate-commit")
     record.add_argument("--owner-surface", choices=SKILL_IDS)
+    record.add_argument("--product-source-root", type=Path)
     record.add_argument("--root-cause-id", action="append", default=[])
     record.add_argument("--semantic-change", action="append", default=[])
 
@@ -2406,6 +2446,8 @@ def _validate_record_args(args: argparse.Namespace) -> None:
         raise CliError("candidate-only arguments require role candidate_source")
     if args.role != "plugin_build" and args.plugin_root is not None:
         raise CliError("--plugin-root is only valid for role plugin_build")
+    if args.role != "plugin_build" and args.product_source_root is not None:
+        raise CliError("--product-source-root is only valid for role plugin_build")
     if args.role == "plugin_build" and args.skill_id is not None:
         raise CliError(f"{args.role} is campaign-scoped and rejects skill-id")
     if args.role not in {"plugin_build", "candidate_source"}:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -29,7 +30,10 @@ from _model_evolution_campaign import (  # noqa: E402
     require_qualification_request_ceilings,
 )
 from _model_evolution_qualification import _apparatus_artifact  # noqa: E402
-from _model_evolution_materialization import MaterializationError  # noqa: E402
+from _model_evolution_materialization import (  # noqa: E402
+    MaterializationError,
+    _host_artifact_source,
+)
 from _model_evolution_ops import _minimal_schema_fixture  # noqa: E402
 from _model_evolution_reporting import (  # noqa: E402
     _analysis_output_root,
@@ -74,6 +78,39 @@ def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[st
 
 
 class ExtendedRelease(unittest.TestCase):
+    def test_host_artifact_uses_repository_authority_when_campaign_copy_exists(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="host-artifact-authority-") as raw:
+            root = Path(raw)
+            repository = root / "repository"
+            campaign = root / "campaign"
+            relative = Path("evaluation/model-evolution/confirmatory-v3/grader-output.schema.json")
+            repository_path = repository / relative
+            campaign_path = campaign / relative
+            repository_path.parent.mkdir(parents=True)
+            campaign_path.parent.mkdir(parents=True)
+            payload = b'{"schema_version":"test"}\n'
+            repository_path.write_bytes(payload)
+            campaign_path.write_bytes(payload)
+            binding = {
+                "path": relative.as_posix(),
+                "digest": "sha256:" + sha256(payload).hexdigest(),
+            }
+            self.assertEqual(
+                repository_path,
+                _host_artifact_source(
+                    binding,
+                    repository_root=repository,
+                    campaign_root=campaign,
+                ),
+            )
+            repository_path.unlink()
+            with self.assertRaisesRegex(MaterializationError, "authority is repository"):
+                _host_artifact_source(
+                    binding,
+                    repository_root=repository,
+                    campaign_root=campaign,
+                )
+
     def test_preflight_v2_schema_fixtures_ignore_live_sentinel_binding(self) -> None:
         expected_binding = {
             "root": "repository",
