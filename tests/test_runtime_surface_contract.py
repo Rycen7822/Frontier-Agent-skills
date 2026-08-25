@@ -89,6 +89,28 @@ class RuntimeSurfaceContractTests(unittest.TestCase):
                     model="gpt-5.6-solx",
                 )
 
+    def test_runtime_host_parser_accepts_bound_relative_catalog_path(self) -> None:
+        parser = host._parser()
+        args = parser.parse_args(
+            [
+                "--codex", "/runtime/codex",
+                "--codex-sha256", "sha256:" + "0" * 64,
+                "--codex-version", "0.149.1",
+                "--host-manifest", "/runtime/host.json",
+                "--model", "gpt-5.6-sol",
+                "--effort", "xhigh",
+                "--profile", "none",
+                "--model-catalog-snapshot", "/runtime/host.runtime/models_cache.json",
+                "--model-catalog-relative-path", "host.runtime/models_cache.json",
+                "--model-catalog-sha256", "sha256:" + "1" * 64,
+                "--model-catalog-client-version", "0.149.1",
+                "--runtime-surface-version", RUNTIME_SURFACE_VERSION,
+                "--sandbox", "read-only",
+                "--timeout", "900",
+            ]
+        )
+        self.assertEqual(args.model_catalog_relative_path, "host.runtime/models_cache.json")
+
 
 if __name__ == "__main__":
     unittest.main()
