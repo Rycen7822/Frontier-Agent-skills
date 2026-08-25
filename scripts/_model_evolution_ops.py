@@ -1018,8 +1018,8 @@ def preflight_operations(
         "schema_version": "model-evolution-apparatus-report/2",
         "campaign_id": campaign["campaign_id"],
         "state_revision": campaign["state_revision"],
-        "source_commit": identity["commit"],
-        "source_tree": identity["tree"],
+        "source_commit": controller_identity["commit"],
+        "source_tree": controller_identity["tree"],
         "status": "pass",
         "operations": operations,
     }
