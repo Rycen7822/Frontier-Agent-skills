@@ -656,7 +656,8 @@ def _init(args: argparse.Namespace) -> None:
         f"{fixed['target_host'].stem}.runtime"
     )
     bootstrap_paths.update(
-        runtime_root / name for name in ("codex", "codex-code-mode-host")
+        runtime_root / name
+        for name in ("codex", "codex-code-mode-host", "models_cache.json")
     )
     store.create(
         campaign,

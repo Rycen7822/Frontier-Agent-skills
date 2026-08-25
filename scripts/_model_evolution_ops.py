@@ -21,6 +21,7 @@ import build_codex_plugin as plugin_builder
 import codex_eval_host as host_adapter
 from _codex_eval_delivery import (
     DeliveryError,
+    RUNTIME_SURFACE_VERSION,
     project_command_environment,
     validate_plugin_catalog,
 )
@@ -1164,6 +1165,48 @@ def validate_target_host_staging(
     return host
 
 
+def validate_runtime_surface(host_path: Path, host: dict[str, Any]) -> dict[str, Any]:
+    """Prove the pinned catalog and Apps-disabled child surface before providers."""
+    command = host.get("command")
+    argv = command.get("argv") if isinstance(command, dict) else None
+    if not isinstance(argv, list):
+        raise OperationError("runtime surface identity is incomplete")
+    def bound(name: str) -> str:
+        positions = [i for i, value in enumerate(argv) if value == name]
+        if len(positions) != 1 or positions[0] + 1 >= len(argv):
+            raise OperationError(f"runtime Host command lacks one {name}")
+        return argv[positions[0] + 1]
+
+    if bound("--runtime-surface-version") != RUNTIME_SURFACE_VERSION:
+        raise OperationError("runtime surface version is not D37-bound")
+    relative_path = bound("--model-catalog-relative-path")
+    digest = bound("--model-catalog-sha256")
+    client_version = bound("--model-catalog-client-version")
+    selected_model = bound("--model")
+    snapshot = host_path.resolve().parent / relative_path
+    runtime_root = host_path.resolve().with_name(f"{host_path.stem}.runtime")
+    if snapshot.parent != runtime_root or snapshot.name != "models_cache.json":
+        raise OperationError("runtime model catalog path is not Host-local")
+    if any(".codex/models_cache.json" in value for value in argv):
+        raise OperationError("runtime Host command references the global model cache")
+    if Path(bound("--model-catalog-snapshot")).resolve(strict=False) != snapshot.resolve(strict=False):
+        raise OperationError("runtime catalog absolute and relative paths differ")
+    if not snapshot.is_file() or snapshot.is_symlink():
+        raise OperationError("runtime model catalog snapshot is unavailable")
+    return {
+        "surface_version": RUNTIME_SURFACE_VERSION,
+        "apps_disabled": True,
+        "model_catalog": {
+            "relative_path": relative_path,
+            "digest": digest,
+            "client_version": client_version,
+            "selected_model": selected_model,
+        },
+        "global_model_cache_referenced": False,
+        "provider_requests": 0,
+    }
+
+
 def _validate_calibration_contract(
     skill_id: str,
     record: dict[str, Any],
@@ -1487,6 +1530,15 @@ def preflight_operations(
         repository_root=repository_root,
         expected_commit=controller_identity["commit"],
         expected_tree=controller_identity["tree"],
+    )
+    runtime_started = time.monotonic()
+    runtime_surface = validate_runtime_surface(host_path, validated_host)
+    operations.append(
+        _operation_fact(
+            "runtime-surface-contract",
+            round((time.monotonic() - runtime_started) * 1000),
+            diagnostic=json.dumps(runtime_surface, sort_keys=True),
+        )
     )
     product_manifest = load_json(
         resolve_binding(

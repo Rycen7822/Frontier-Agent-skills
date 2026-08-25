@@ -32,6 +32,7 @@ from _codex_eval_delivery import (
     forced_probe_delivery,
     is_workspace_infrastructure,
     isolated_tool_schema_id,
+    RUNTIME_SURFACE_VERSION,
     observed_permission_denials,
     observed_skill_routing,
     prepare_workspace,
@@ -70,7 +71,8 @@ from _codex_eval_isolation import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
-ADAPTER_VERSION = "1.13"
+LEGACY_ADAPTER_VERSION = "1.13"
+ADAPTER_VERSION = "1.14"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_artifacts.py",
@@ -180,17 +182,59 @@ def _optional_bound_command_option(argv: list[str], name: str) -> str | None:
     return argv[positions[0] + 1]
 
 
+def _validate_model_catalog_snapshot(
+    path: Path,
+    *,
+    digest: str,
+    client_version: str,
+    model: str,
+) -> None:
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or not HASH.fullmatch(digest)
+        or _file_sha256(path) != digest
+    ):
+        raise AdapterError("model catalog snapshot bytes differ from its binding")
+    value = _load_json_object(path)
+    models = value.get("models")
+    selected = (
+        [row for row in models if isinstance(row, dict) and row.get("slug") == model]
+        if isinstance(models, list)
+        else []
+    )
+    if value.get("client_version") != client_version or len(selected) != 1:
+        raise AdapterError("model catalog snapshot identity differs from the runtime")
+
+
 def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     manifest = _load_json_object(path)
     identity = manifest.get("identity")
     execution = identity.get("execution") if isinstance(identity, dict) else None
     adapter = identity.get("adapter") if isinstance(identity, dict) else None
+    if not isinstance(adapter, dict):
+        raise AdapterError("adapter identity is missing")
+    adapter_version = adapter.get("version")
+    if adapter_version not in {LEGACY_ADAPTER_VERSION, ADAPTER_VERSION}:
+        raise AdapterError("unsupported Host adapter version")
+    command = manifest.get("command")
+    command_argv = command.get("argv") if isinstance(command, dict) else None
+    if not isinstance(command_argv, list):
+        raise AdapterError("host manifest command argv is invalid")
+    runtime_surface = (
+        _optional_bound_command_option(command_argv, "--runtime-surface-version")
+    )
+    if adapter_version == ADAPTER_VERSION and runtime_surface != RUNTIME_SURFACE_VERSION:
+        raise AdapterError("runtime surface identity is missing")
+    if adapter_version == LEGACY_ADAPTER_VERSION and runtime_surface is not None:
+        raise AdapterError("legacy Host carries a runtime surface identity")
     if not isinstance(execution, dict) or execution.get("model") != args.model:
         raise AdapterError("model identity differs from the host manifest")
     if execution.get("tool_schema_id") != isolated_tool_schema_id(
         args.codex_sha256,
         args.isolation_tool_sha256,
         args.code_mode_host_sha256,
+        runtime_surface,
     ):
         raise AdapterError("tool schema identity differs from the host manifest")
     if (
@@ -199,11 +243,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         != ISOLATED_SANDBOX_POLICY_IDS.get(args.sandbox)
     ):
         raise AdapterError("sandbox policy identity differs from the runtime")
-    if (
-        not isinstance(adapter, dict)
-        or adapter.get("id") != "codex-eval-host"
-        or adapter.get("version") != ADAPTER_VERSION
-    ):
+    if adapter.get("id") != "codex-eval-host":
         raise AdapterError("adapter identity differs from the host manifest")
     expected_harness = "codex-cli"
     model_revision = f"codex-catalog-{args.codex_version}"
@@ -249,6 +289,11 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
             strict=True
         )
         bound_timeout = float(_bound_command_option(argv, "--timeout"))
+        bound_catalog = _optional_bound_command_option(argv, "--model-catalog-snapshot")
+        bound_catalog_hash = _optional_bound_command_option(argv, "--model-catalog-sha256")
+        bound_catalog_client = _optional_bound_command_option(
+            argv, "--model-catalog-client-version"
+        )
     except (OSError, ValueError) as exc:
         raise AdapterError("host manifest command binding is invalid") from exc
     expected = {
@@ -259,6 +304,16 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         "--profile": args.profile,
         "--sandbox": args.sandbox,
     }
+    if adapter_version == ADAPTER_VERSION:
+        expected.update(
+            {
+                "--model-catalog-snapshot": str(args.model_catalog_snapshot),
+                "--model-catalog-relative-path": f"{Path(args.model_catalog_snapshot).parent.name}/models_cache.json",
+                "--model-catalog-sha256": args.model_catalog_sha256,
+                "--model-catalog-client-version": args.model_catalog_client_version,
+                "--runtime-surface-version": RUNTIME_SURFACE_VERSION,
+            }
+        )
     bound_lifecycle = _optional_bound_command_option(argv, "--lifecycle-contract") or LEGACY_CONTRACT
     isolation_options = {
         "--isolation-tool": (
@@ -270,6 +325,26 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         ),
         "--code-mode-host-sha256": args.code_mode_host_sha256,
     }
+    if adapter_version == ADAPTER_VERSION:
+        if not all(isinstance(value, str) for value in (bound_catalog, bound_catalog_hash, bound_catalog_client)):
+            raise AdapterError("runtime surface lacks a model catalog snapshot")
+        snapshot_path = Path(bound_catalog).resolve(strict=True)
+        runtime_root = path.with_name(f"{path.stem}.runtime").resolve(strict=True)
+        if snapshot_path.parent != runtime_root or snapshot_path.name != "models_cache.json":
+            raise AdapterError("model catalog snapshot is outside the Host runtime")
+        _validate_model_catalog_snapshot(
+            snapshot_path,
+            digest=bound_catalog_hash,
+            client_version=bound_catalog_client,
+            model=args.model,
+        )
+        bound_relative = _bound_command_option(
+            argv, "--model-catalog-relative-path"
+        )
+        if bound_relative != f"{runtime_root.name}/models_cache.json":
+            raise AdapterError("model catalog relative path differs from the Host runtime")
+    elif any(value is not None for value in (bound_catalog, bound_catalog_hash, bound_catalog_client)) or "--model-catalog-relative-path" in argv:
+        raise AdapterError("legacy Host unexpectedly binds a model catalog")
     if (
         bound_codex != args.codex
         or bound_manifest != path
@@ -345,6 +420,23 @@ def validate_bound_manifest(path: Path, plugin_root: Path) -> dict[str, Any]:
             argv,
             "--code-mode-host-sha256",
         )
+        model_catalog_snapshot_value = _optional_bound_command_option(
+            argv,
+            "--model-catalog-snapshot",
+        )
+        model_catalog_snapshot = (
+            Path(model_catalog_snapshot_value).resolve(strict=True)
+            if model_catalog_snapshot_value is not None
+            else None
+        )
+        model_catalog_sha256 = _optional_bound_command_option(
+            argv,
+            "--model-catalog-sha256",
+        )
+        model_catalog_client_version = _optional_bound_command_option(
+            argv,
+            "--model-catalog-client-version",
+        )
         timeout = float(_bound_command_option(argv, "--timeout"))
     except (KeyError, OSError, TypeError, ValueError) as exc:
         raise AdapterError("host manifest command binding is invalid") from exc
@@ -367,6 +459,12 @@ def validate_bound_manifest(path: Path, plugin_root: Path) -> dict[str, Any]:
         isolation_tool_sha256=isolation_tool_sha256,
         code_mode_host=code_mode_host,
         code_mode_host_sha256=code_mode_host_sha256,
+        model_catalog_snapshot=model_catalog_snapshot,
+        model_catalog_sha256=model_catalog_sha256,
+        model_catalog_client_version=model_catalog_client_version,
+        runtime_surface_version=_optional_bound_command_option(
+            argv, "--runtime-surface-version"
+        ),
         lifecycle_contract=(
             _optional_bound_command_option(argv, "--lifecycle-contract")
             or LEGACY_CONTRACT
@@ -485,6 +583,8 @@ def _run_child(
             argv=argv,
             workspace=workspace,
             codex_home=codex_home,
+            model_catalog_snapshot=args.model_catalog_snapshot,
+            model_catalog_sha256=args.model_catalog_sha256,
         )
     process = subprocess.Popen(
         effective_argv,
@@ -1034,9 +1134,10 @@ def _fresh_argv(
         *(
             skill_isolation_argv(
                 include_installed_skills=args.isolation_tool is None,
+                include_apps=args.runtime_surface_version == RUNTIME_SURFACE_VERSION,
             )
             if args.plugin_root
-            else []
+            else (["--disable", "apps"] if args.runtime_surface_version == RUNTIME_SURFACE_VERSION else [])
         ),
         "--sandbox",
         args.sandbox,
@@ -1047,6 +1148,11 @@ def _fresh_argv(
         "--output-last-message",
         str(last_message),
     ]
+    if args.runtime_surface_version == RUNTIME_SURFACE_VERSION:
+        argv[argv.index("--config") + 2:argv.index("--config") + 2] = [
+            "--config",
+            _config_override("model_catalog_json", str(args.model_catalog_snapshot)),
+        ]
     if ephemeral:
         argv.append("--ephemeral")
     if output_schema is not None:
@@ -1060,7 +1166,7 @@ def _resume_argv(
     session_id: str,
     last_message: Path,
 ) -> list[str]:
-    return [
+    argv = [
         str(args.codex),
         "exec",
         "resume",
@@ -1072,9 +1178,10 @@ def _resume_argv(
         *(
             skill_isolation_argv(
                 include_installed_skills=args.isolation_tool is None,
+                include_apps=args.runtime_surface_version == RUNTIME_SURFACE_VERSION,
             )
             if args.plugin_root
-            else []
+            else (["--disable", "apps"] if args.runtime_surface_version == RUNTIME_SURFACE_VERSION else [])
         ),
         "--config",
         _config_override("model_reasoning_effort", args.effort),
@@ -1083,6 +1190,13 @@ def _resume_argv(
         session_id,
         "-",
     ]
+    if args.runtime_surface_version == RUNTIME_SURFACE_VERSION:
+        config_index = argv.index("--config")
+        argv[config_index + 2:config_index + 2] = [
+            "--config",
+            _config_override("model_catalog_json", str(args.model_catalog_snapshot)),
+        ]
+    return argv
 
 
 def _output_message(path: Path, normalized: dict[str, Any]) -> str | None:
@@ -1988,6 +2102,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--effort", required=True)
     parser.add_argument("--profile", required=True)
     parser.add_argument("--plugin-root", type=Path)
+    parser.add_argument("--model-catalog-snapshot", type=Path)
+    parser.add_argument("--model-catalog-sha256")
+    parser.add_argument("--model-catalog-client-version")
+    parser.add_argument("--runtime-surface-version")
     parser.add_argument(
         "--sandbox", choices=("read-only", "workspace-write"), required=True
     )
@@ -2015,6 +2133,8 @@ def main(argv: list[str] | None = None) -> int:
             args.code_mode_host = args.code_mode_host.resolve(strict=True)
         if args.plugin_root is not None:
             args.plugin_root = args.plugin_root.resolve(strict=True)
+        if args.model_catalog_snapshot is not None:
+            args.model_catalog_snapshot = args.model_catalog_snapshot.resolve(strict=True)
         if args.diagnostic_capture_dir is not None:
             args.diagnostic_capture_dir = args.diagnostic_capture_dir.resolve(
                 strict=False

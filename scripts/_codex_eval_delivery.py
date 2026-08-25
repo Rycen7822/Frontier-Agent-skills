@@ -27,6 +27,7 @@ MODEL_EVOLUTION_ENV_ALLOWLIST = tuple(sorted({
     "no_proxy",
 }))
 SKILL_ISOLATION_DISABLED_FEATURES = ("plugins", "multi_agent", "multi_agent_v2")
+RUNTIME_SURFACE_VERSION = "codex-runtime-surface/1"
 
 
 class DeliveryError(ValueError):
@@ -37,9 +38,16 @@ def isolated_tool_schema_id(
     codex_sha256: str,
     isolation_tool_sha256: str | None = None,
     code_mode_host_sha256: str | None = None,
+    runtime_surface_version: str | None = None,
 ) -> str:
     """Return the readable model-visible tool-surface contract ID."""
     del codex_sha256, code_mode_host_sha256
+    if runtime_surface_version == RUNTIME_SURFACE_VERSION:
+        return (
+            "codex-tools-workspace-isolated-v3"
+            if isolation_tool_sha256 is not None
+            else "codex-tools-host-sandbox-v3"
+        )
     return (
         "codex-tools-workspace-isolated-v2"
         if isolation_tool_sha256 is not None
@@ -115,7 +123,9 @@ def validate_plugin_catalog(plugin_root: Path, manifest: dict[str, Any]) -> None
         raise DeliveryError("Host catalog identity differs from its entries")
 
 
-def skill_isolation_argv(*, include_installed_skills: bool = True) -> list[str]:
+def skill_isolation_argv(
+    *, include_installed_skills: bool = True, include_apps: bool = False
+) -> list[str]:
     codex_home = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
     skills_root = codex_home / "skills"
     disabled = (
@@ -123,9 +133,14 @@ def skill_isolation_argv(*, include_installed_skills: bool = True) -> list[str]:
         if include_installed_skills and skills_root.is_dir()
         else []
     )
+    disabled_features = (
+        (*SKILL_ISOLATION_DISABLED_FEATURES, "apps")
+        if include_apps
+        else SKILL_ISOLATION_DISABLED_FEATURES
+    )
     argv = [
         value
-        for feature in SKILL_ISOLATION_DISABLED_FEATURES
+        for feature in disabled_features
         for value in ("--disable", feature)
     ]
     if disabled:
