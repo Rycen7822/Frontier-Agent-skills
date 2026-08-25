@@ -1,8 +1,11 @@
 import json
+import io
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,6 +72,16 @@ def raw_timeout(*, with_outcome: bool = False, malformed: bool = False) -> bytes
     return b"\n".join(records) + b"\n"
 
 
+def raw_complete() -> bytes:
+    return b"\n".join(
+        [
+            event("thread.started", thread_id="thread-1"),
+            event("turn.started", turn_id="turn-1"),
+            event("turn.completed", turn_id="turn-1"),
+        ]
+    ) + b"\n"
+
+
 def child(raw: bytes, *, timed_out: bool = True, reaped: bool = True) -> dict:
     return {
         "stdout": raw,
@@ -79,6 +92,69 @@ def child(raw: bytes, *, timed_out: bool = True, reaped: bool = True) -> dict:
         "reaped": reaped,
         "runtime_ms": 1,
     }
+
+
+class _BinaryStdout:
+    def __init__(self) -> None:
+        self.buffer = io.BytesIO()
+
+    def write(self, value: str) -> int:
+        return len(value)
+
+    def flush(self) -> None:
+        return None
+
+
+@contextmanager
+def captured_probe_output(input_row: dict, child_raw: bytes):
+    stdin = io.TextIOWrapper(
+        io.BytesIO(json.dumps(input_row, separators=(",", ":")).encode() + b"\n"),
+        encoding="utf-8",
+    )
+    stdout = _BinaryStdout()
+    args = mock.Mock(
+        plugin_root=Path("."),
+        isolation_tool=None,
+        source_root=None,
+        timeout=1.0,
+        model="gpt-5.6-sol",
+        effort="xhigh",
+        profile="default",
+        sandbox="read-only",
+        codex=Path("/usr/bin/codex"),
+    )
+    fake_child = child(child_raw, timed_out=False, reaped=True)
+    fake_child["stderr"] = b""
+    with (
+        mock.patch.object(host.sys, "stdin", stdin),
+        mock.patch.object(host.sys, "stdout", stdout),
+        mock.patch.object(host, "prepare_workspace"),
+        mock.patch.object(host, "forced_probe_delivery", return_value=("skill", "prompt")),
+        mock.patch.object(host, "observed_skill_routing", return_value=[]),
+        mock.patch.object(
+            host,
+            "_run_child",
+            return_value=fake_child,
+        ),
+    ):
+        with tempfile.TemporaryDirectory() as workspace_dir:
+            workspace = Path(workspace_dir)
+            yield args, workspace, stdout
+    stdin.detach()
+
+
+def emitted_probe_result(raw: bytes) -> dict:
+    row = {
+        "schema_version": "codex-interaction-probe/1.0",
+        "probe_id": ROW["probe_id"],
+        "capability": ROW["capability"],
+        "prompt": "probe",
+        "expected_event_types": ROW["required_event_types"],
+    }
+    with captured_probe_output(row, raw) as (args, workspace, stdout):
+        result_code = host._run_probe_mode(args, workspace)
+        assert result_code == 0
+        return json.loads(stdout.buffer.getvalue().decode())
 
 
 def project(
@@ -115,6 +191,143 @@ def project(
 
 
 class ProbeTransportContractTests(unittest.TestCase):
+    def test_real_host_emitter_output_is_validator_and_terminal_input(self):
+        result = emitted_probe_result(raw_complete())
+        self.assertEqual(
+            result["event_types"],
+            ["thread.started", "turn.completed", "turn.started"],
+        )
+        _validate_probe_result(result, ROW)
+        terminal = {
+            "schema_version": "model-evolution-probe-terminal/4",
+            "request_id": REQUEST["request_id"],
+            "probe_id": ROW["probe_id"],
+            "result": result,
+            "stderr": "",
+            "attempt_count": 1,
+            "attempts": [{
+                "attempt": 1,
+                "attempt_id": REQUEST["request_id"] + ".attempt-1",
+                "status": result["status"],
+                "diagnostics": result["diagnostics"],
+                "stderr": "",
+                "lifecycle": result["lifecycle"],
+            }],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "terminal.json"
+            path.write_text(json.dumps(terminal), encoding="utf-8")
+            loaded = _load_probe_terminal(path, request=REQUEST, row=ROW)
+        self.assertEqual(loaded["result"], result)
+
+    def test_transient_then_pass_terminal_is_valid(self):
+        transient_lifecycle, transient_status, transient_diagnostics = project(raw_timeout())
+        complete_lifecycle, complete_status, complete_diagnostics = project(
+            raw_complete(), timed_out=False
+        )
+        self.assertEqual(complete_status, "pass")
+        transient = {
+            "schema_version": host.PROBE_RESULT_SCHEMA_VERSION,
+            "probe_id": ROW["probe_id"],
+            "capability": ROW["capability"],
+            "status": transient_status,
+            "observed": "required direct Codex events were not established",
+            "session_id": "thread-1",
+            "event_types": transient_lifecycle["event_types"],
+            "direct_observations": [],
+            "routing": [],
+            "usage": None,
+            "diagnostics": transient_diagnostics,
+            "lifecycle": transient_lifecycle,
+        }
+        complete = {
+            "schema_version": host.PROBE_RESULT_SCHEMA_VERSION,
+            "probe_id": ROW["probe_id"],
+            "capability": ROW["capability"],
+            "status": complete_status,
+            "observed": "required direct Codex events observed",
+            "session_id": "thread-1",
+            "event_types": complete_lifecycle["event_types"],
+            "direct_observations": ["direct.usage"],
+            "routing": [],
+            "usage": {"input_tokens": 2, "output_tokens": 1},
+            "diagnostics": complete_diagnostics,
+            "lifecycle": complete_lifecycle,
+        }
+        terminal = {
+            "schema_version": "model-evolution-probe-terminal/4",
+            "request_id": REQUEST["request_id"],
+            "probe_id": ROW["probe_id"],
+            "result": complete,
+            "stderr": "",
+            "attempt_count": 2,
+            "attempts": [
+                {
+                    "attempt": 1,
+                    "attempt_id": REQUEST["request_id"] + ".attempt-1",
+                    "status": transient_status,
+                    "diagnostics": transient_diagnostics,
+                    "stderr": "",
+                    "lifecycle": transient_lifecycle,
+                },
+                {
+                    "attempt": 2,
+                    "attempt_id": REQUEST["request_id"] + ".attempt-2",
+                    "status": complete_status,
+                    "diagnostics": complete_diagnostics,
+                    "stderr": "",
+                    "lifecycle": complete_lifecycle,
+                },
+            ],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "terminal.json"
+            path.write_text(json.dumps(terminal), encoding="utf-8")
+            loaded = _load_probe_terminal(path, request=REQUEST, row=ROW)
+        self.assertEqual(loaded["attempt_count"], 2)
+
+    def test_two_transient_attempts_exhaust_without_success(self):
+        lifecycle, status, diagnostics = project(raw_timeout())
+        result = {
+            "schema_version": host.PROBE_RESULT_SCHEMA_VERSION,
+            "probe_id": ROW["probe_id"],
+            "capability": ROW["capability"],
+            "status": status,
+            "observed": "required direct Codex events were not established",
+            "session_id": "thread-1",
+            "event_types": lifecycle["event_types"],
+            "direct_observations": [],
+            "routing": [],
+            "usage": None,
+            "diagnostics": diagnostics,
+            "lifecycle": lifecycle,
+        }
+        terminal = {
+            "schema_version": "model-evolution-probe-terminal/4",
+            "request_id": REQUEST["request_id"],
+            "probe_id": ROW["probe_id"],
+            "result": result,
+            "stderr": "",
+            "attempt_count": 2,
+            "attempts": [
+                {
+                    "attempt": index,
+                    "attempt_id": REQUEST["request_id"] + f".attempt-{index}",
+                    "status": status,
+                    "diagnostics": diagnostics,
+                    "stderr": "",
+                    "lifecycle": lifecycle,
+                }
+                for index in (1, 2)
+            ],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "terminal.json"
+            path.write_text(json.dumps(terminal), encoding="utf-8")
+            loaded = _load_probe_terminal(path, request=REQUEST, row=ROW)
+        self.assertEqual(loaded["attempt_count"], 2)
+        self.assertEqual(loaded["result"]["status"], "unknown")
+
     def test_outcome_free_timeout_is_retryable_only_after_closed_custody(self):
         lifecycle, status, diagnostics = project(raw_timeout())
         self.assertEqual(status, "unknown")
@@ -195,6 +408,25 @@ class ProbeTransportContractTests(unittest.TestCase):
             _validate_probe_result({**result, "schema_version": "codex-probe-result/unknown"}, ROW)
         with self.assertRaises(ValueError):
             _validate_probe_result({**result, "lifecycle": {**lifecycle, "extra": True}}, ROW)
+
+    def test_external_unordered_or_duplicate_event_types_fail_closed(self):
+        lifecycle, status, diagnostics = project(raw_timeout(with_outcome=True), timed_out=False)
+        result = {
+            "schema_version": host.PROBE_RESULT_SCHEMA_VERSION,
+            "probe_id": ROW["probe_id"],
+            "capability": ROW["capability"],
+            "status": status,
+            "observed": "required direct Codex events observed",
+            "session_id": "thread-1",
+            "event_types": ["turn.completed", "thread.started", "thread.started"],
+            "direct_observations": ["direct.usage"],
+            "routing": [],
+            "usage": {"input_tokens": 2, "output_tokens": 1},
+            "diagnostics": diagnostics,
+            "lifecycle": lifecycle,
+        }
+        with self.assertRaises(ValueError):
+            _validate_probe_result(result, ROW)
 
     def test_historical_terminal_v3_replay_remains_exact_and_not_reclassified(self):
         result = {
