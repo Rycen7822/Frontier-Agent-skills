@@ -47,6 +47,7 @@ from _codex_lifecycle_contract import (
     classify_lifecycle,
 )
 from _codex_eval_events import (
+    ITEM_TYPES,
     MAX_JSONL_BYTES,
     MAX_RECORDS,
     base_host_result,
@@ -80,8 +81,10 @@ ADAPTER_SOURCE_FILES = (
     "_codex_transport_diagnostic.py",
     "codex_eval_host.py",
 )
-PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.2"
-PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/1"
+PROBE_RESULT_SCHEMA_VERSION_LEGACY = "codex-interaction-probe-result/1.2"
+PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.3"
+PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY = "codex-probe-lifecycle/1"
+PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/2"
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -564,20 +567,9 @@ def _probe_jsonl_is_classified(normalized: dict[str, Any]) -> bool:
 
 
 def _probe_action_effect(normalized: dict[str, Any]) -> bool:
-    if normalized.get("permission_denials"):
-        return True
-    for item in normalized.get("items", []):
-        if not isinstance(item, dict):
-            continue
-        item_type = item.get("type")
-        phase = item.get("phase")
-        if phase == "completed" and item_type != "agent_message":
-            return True
-        if phase in {"updated", "completed"} and any(
-            field in item for field in ("exit_code", "aggregated_output", "changes")
-        ):
-            return True
-    return False
+    """Return the D36 effect-capable projection without exposing item content."""
+    classification = _probe_item_classification(normalized)
+    return bool(classification[3] or classification[5])
 
 
 def _canonical_probe_event_types(values: Any) -> list[str]:
@@ -585,6 +577,81 @@ def _canonical_probe_event_types(values: Any) -> list[str]:
     if not isinstance(values, list):
         return []
     return sorted({value for value in values if isinstance(value, str)})
+
+
+_NON_EFFECT_PROGRESS_TYPES = {"reasoning", "todo_list", "error"}
+_EFFECT_CAPABLE_TYPES = {
+    "command_execution",
+    "file_change",
+    "mcp_tool_call",
+    "collab_tool_call",
+    "web_search",
+}
+
+
+def _probe_item_classification(
+    normalized: dict[str, Any],
+) -> tuple[list[str], list[str], list[str], list[str], list[str], list[str]]:
+    """Project only normalized item types and evidence classes."""
+    completed: set[str] = set()
+    started_by_id: dict[str, str] = {}
+    completed_ids: set[str] = set()
+    non_effect: set[str] = set()
+    effect_capable: set[str] = set()
+    for item in normalized.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        phase = item.get("phase")
+        if not isinstance(item_type, str) or item_type not in ITEM_TYPES:
+            continue
+        if phase == "completed":
+            completed.add(item_type)
+            if isinstance(item.get("id"), str):
+                completed_ids.add(item["id"])
+        elif phase in {"started", "updated"}:
+            if isinstance(item.get("id"), str):
+                started_by_id[item["id"]] = item_type
+        if item_type in _EFFECT_CAPABLE_TYPES:
+            effect_capable.add(item_type)
+        elif item_type in _NON_EFFECT_PROGRESS_TYPES:
+            error = item.get("error")
+            if any(field in item for field in ("exit_code", "aggregated_output", "changes")):
+                effect_capable.add(item_type)
+            elif not (
+                item_type == "error"
+                and isinstance(error, dict)
+                and error.get("kind") == "permission_denied"
+            ):
+                non_effect.add(item_type)
+            else:
+                effect_capable.add(item_type)
+    outcome_evidence: set[str] = set()
+    event_types = _canonical_probe_event_types(normalized.get("event_types", []))
+    if "turn.completed" in event_types or "turn.failed" in event_types:
+        outcome_evidence.add("turn_completion")
+    if isinstance(normalized.get("final_message"), str) and normalized["final_message"]:
+        outcome_evidence.add("final_message")
+    if isinstance(normalized.get("usage"), dict) and normalized["usage"]:
+        outcome_evidence.add("usage")
+    if normalized.get("routing") is not None:
+        outcome_evidence.add("routing")
+    effect_evidence: set[str] = set()
+    if normalized.get("permission_denials"):
+        effect_evidence.add("permission_denial")
+    incomplete = {
+        item_type
+        for item_id, item_type in started_by_id.items()
+        if item_id not in completed_ids
+    }
+    return (
+        sorted(completed),
+        sorted(incomplete),
+        sorted(non_effect),
+        sorted(effect_capable),
+        sorted(outcome_evidence),
+        sorted(effect_evidence),
+    )
 
 
 def _probe_lifecycle_projection(
@@ -622,21 +689,6 @@ def _probe_lifecycle_projection(
         )
     )
     event_types = _canonical_probe_event_types(normalized.get("event_types", []))
-    incomplete_types = sorted(
-        {
-            item.get("type")
-            for item in normalized.get("items", [])
-            if isinstance(item, dict)
-            and item.get("phase") == "started"
-            and isinstance(item.get("type"), str)
-            and item.get("id")
-            not in {
-                completed.get("id")
-                for completed in normalized.get("items", [])
-                if isinstance(completed, dict) and completed.get("phase") == "completed"
-            }
-        }
-    )
     completed_turn = "turn.completed" in event_types
     last_message_present = last_message.is_file() or bool(
         isinstance(normalized.get("final_message"), str)
@@ -645,7 +697,14 @@ def _probe_lifecycle_projection(
     usage_present = isinstance(normalized.get("usage"), dict) and bool(
         normalized["usage"]
     )
-    command_action_effect = _probe_action_effect(normalized)
+    (
+        completed_item_types,
+        incomplete_item_types,
+        non_effect_progress_item_types,
+        effect_capable_item_types,
+        outcome_evidence_types,
+        effect_capable_evidence_types,
+    ) = _probe_item_classification(normalized)
     workspace_clean = (
         workspace_before_ok
         and workspace_after_ok
@@ -662,11 +721,13 @@ def _probe_lifecycle_projection(
     child_timed_out = child.get("timed_out") is True
     child_kill_sent = child.get("kill_sent") is True
     isolation_custody = isolated
-    outcome_evidence = (
-        completed_turn
-        or last_message_present
-        or usage_present
-        or command_action_effect
+    if not workspace_clean:
+        effect_capable_evidence_types = sorted(
+            {*effect_capable_evidence_types, "workspace_mutation"}
+        )
+    outcome_evidence = bool(outcome_evidence_types)
+    effect_capable = bool(
+        effect_capable_item_types or effect_capable_evidence_types
     )
     custody_closed = (
         process_exited
@@ -693,11 +754,17 @@ def _probe_lifecycle_projection(
         "jsonl_classified": jsonl_classified,
         "event_count": len(event_types),
         "event_types": sorted(event_types),
-        "incomplete_item_types": incomplete_types,
+        "completed_item_types": completed_item_types,
+        "incomplete_item_types": incomplete_item_types,
+        "non_effect_progress_item_types": non_effect_progress_item_types,
+        "effect_capable_item_types": effect_capable_item_types,
+        "outcome_evidence_types": outcome_evidence_types,
+        "effect_capable_evidence_types": effect_capable_evidence_types,
+        "outcome_evidence": outcome_evidence,
+        "effect_capable": effect_capable,
         "completed_turn": completed_turn,
         "final_message_present": last_message_present,
         "usage_present": usage_present,
-        "command_action_effect": command_action_effect,
         "workspace_pre_digest": _probe_snapshot_digest(workspace_before),
         "workspace_post_digest": _probe_snapshot_digest(workspace_after),
         "workspace_clean": workspace_clean,
@@ -718,6 +785,10 @@ def _probe_lifecycle_projection(
     if (
         custody_closed
         and not outcome_evidence
+        and not effect_capable
+        and set(incomplete_item_types).issubset(
+            set(non_effect_progress_item_types)
+        )
         and (child.get("timed_out") is True or capacity_failure)
     ):
         reason = (
@@ -736,7 +807,9 @@ def _probe_lifecycle_projection(
             "message": "probe lifecycle custody closed",
         }]
     if outcome_evidence:
-        base["reason"] = "outcome_bearing"
+        base["reason"] = "outcome_evidence"
+    elif effect_capable:
+        base["reason"] = "effect_capable"
     elif not custody_closed:
         base["reason"] = "custody_incomplete"
     return base, "unknown", [{

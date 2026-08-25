@@ -44,9 +44,8 @@ def raw_timeout(*, with_outcome: bool = False, malformed: bool = False) -> bytes
         event(
             "item.started",
             item={
-                "id": "command-1",
-                "type": "command_execution",
-                "command": "printf hidden",
+                "id": "reasoning-1",
+                "type": "reasoning",
                 "status": "in_progress",
             },
         ),
@@ -70,6 +69,79 @@ def raw_timeout(*, with_outcome: bool = False, malformed: bool = False) -> bytes
             ]
         )
     return b"\n".join(records) + b"\n"
+
+
+def raw_effect_timeout() -> bytes:
+    return b"\n".join(
+        [
+            event("thread.started", thread_id="thread-1"),
+            event("turn.started", turn_id="turn-1"),
+            event(
+                "item.started",
+                item={
+                    "id": "command-1",
+                    "type": "command_execution",
+                    "command": "printf hidden",
+                    "status": "in_progress",
+                },
+            ),
+        ]
+    ) + b"\n"
+
+
+def raw_reasoning_vector() -> bytes:
+    return b"\n".join(
+        [
+            event("thread.started", thread_id="thread-1"),
+            event("turn.started", turn_id="turn-1"),
+            event(
+                "item.completed",
+                item={"id": "reasoning-1", "type": "reasoning", "status": "completed"},
+            ),
+            event("error", error={"kind": "diagnostic"}),
+        ]
+    ) + b"\n"
+
+
+def raw_completed_item(item_type: str) -> bytes:
+    item = {"id": f"item-{item_type}", "type": item_type, "status": "completed"}
+    if item_type == "agent_message":
+        item["text"] = "answer"
+    elif item_type == "command_execution":
+        item["command"] = "true"
+    elif item_type == "mcp_tool_call":
+        item.update({"server": "server", "tool": "tool"})
+    elif item_type == "collab_tool_call":
+        item.update({"server": "server", "tool": "tool"})
+    elif item_type == "web_search":
+        item["query"] = "query"
+    elif item_type == "error":
+        item["error"] = {"kind": "diagnostic"}
+    return b"\n".join(
+        [
+            event("thread.started", thread_id="thread-1"),
+            event("turn.started", turn_id="turn-1"),
+            event("item.completed", item=item),
+        ]
+    ) + b"\n"
+
+
+def raw_reasoning_with_output() -> bytes:
+    return b"\n".join(
+        [
+            event("thread.started", thread_id="thread-1"),
+            event("turn.started", turn_id="turn-1"),
+            event(
+                "item.completed",
+                item={
+                    "id": "reasoning-1",
+                    "type": "reasoning",
+                    "status": "completed",
+                    "aggregated_output": "hidden",
+                },
+            ),
+        ]
+    ) + b"\n"
 
 
 def raw_complete() -> bytes:
@@ -106,7 +178,13 @@ class _BinaryStdout:
 
 
 @contextmanager
-def captured_probe_output(input_row: dict, child_raw: bytes):
+def captured_probe_output(
+    input_row: dict,
+    child_raw: bytes,
+    *,
+    timed_out: bool = False,
+    isolated: bool = False,
+):
     stdin = io.TextIOWrapper(
         io.BytesIO(json.dumps(input_row, separators=(",", ":")).encode() + b"\n"),
         encoding="utf-8",
@@ -114,7 +192,7 @@ def captured_probe_output(input_row: dict, child_raw: bytes):
     stdout = _BinaryStdout()
     args = mock.Mock(
         plugin_root=Path("."),
-        isolation_tool=None,
+        isolation_tool=Path("/usr/bin/bwrap") if isolated else None,
         source_root=None,
         timeout=1.0,
         model="gpt-5.6-sol",
@@ -123,7 +201,7 @@ def captured_probe_output(input_row: dict, child_raw: bytes):
         sandbox="read-only",
         codex=Path("/usr/bin/codex"),
     )
-    fake_child = child(child_raw, timed_out=False, reaped=True)
+    fake_child = child(child_raw, timed_out=timed_out, reaped=True)
     fake_child["stderr"] = b""
     with (
         mock.patch.object(host.sys, "stdin", stdin),
@@ -143,7 +221,7 @@ def captured_probe_output(input_row: dict, child_raw: bytes):
     stdin.detach()
 
 
-def emitted_probe_result(raw: bytes) -> dict:
+def emitted_probe_result(raw: bytes, *, timed_out: bool = False, isolated: bool = False) -> dict:
     row = {
         "schema_version": "codex-interaction-probe/1.0",
         "probe_id": ROW["probe_id"],
@@ -151,7 +229,7 @@ def emitted_probe_result(raw: bytes) -> dict:
         "prompt": "probe",
         "expected_event_types": ROW["required_event_types"],
     }
-    with captured_probe_output(row, raw) as (args, workspace, stdout):
+    with captured_probe_output(row, raw, timed_out=timed_out, isolated=isolated) as (args, workspace, stdout):
         result_code = host._run_probe_mode(args, workspace)
         assert result_code == 0
         return json.loads(stdout.buffer.getvalue().decode())
@@ -191,6 +269,63 @@ def project(
 
 
 class ProbeTransportContractTests(unittest.TestCase):
+    def test_reasoning_only_d35_event_vector_uses_real_emitter_and_terminal_loader(self):
+        result = emitted_probe_result(raw_reasoning_vector(), timed_out=True, isolated=True)
+        _validate_probe_result(result, ROW)
+        self.assertEqual(result["status"], "unknown")
+        self.assertEqual(result["lifecycle"]["completed_item_types"], ["reasoning"])
+        self.assertEqual(result["lifecycle"]["non_effect_progress_item_types"], ["reasoning"])
+        self.assertTrue(result["lifecycle"]["retryable"])
+        attempts = [
+            {
+                "attempt": index,
+                "attempt_id": REQUEST["request_id"] + f".attempt-{index}",
+                "status": result["status"],
+                "diagnostics": result["diagnostics"],
+                "stderr": "",
+                "lifecycle": result["lifecycle"],
+            }
+            for index in (1, 2)
+        ]
+        terminal = {
+            "schema_version": "model-evolution-probe-terminal/5",
+            "request_id": REQUEST["request_id"],
+            "probe_id": ROW["probe_id"],
+            "result": result,
+            "stderr": "",
+            "attempt_count": 2,
+            "attempts": attempts,
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "terminal.json"
+            path.write_text(json.dumps(terminal), encoding="utf-8")
+            loaded = _load_probe_terminal(path, request=REQUEST, row=ROW)
+        self.assertEqual(loaded["schema_version"], "model-evolution-probe-terminal/5")
+
+    def test_all_normalized_item_types_are_classified_without_content(self):
+        for item_type in (
+            "agent_message",
+            "reasoning",
+            "command_execution",
+            "file_change",
+            "mcp_tool_call",
+            "collab_tool_call",
+            "web_search",
+            "todo_list",
+            "error",
+        ):
+            lifecycle, status, _ = project(raw_completed_item(item_type))
+            self.assertEqual(status, "unknown", item_type)
+            self.assertNotIn("command", lifecycle, item_type)
+            self.assertNotIn("output", lifecycle, item_type)
+            self.assertNotIn("command_action_effect", lifecycle, item_type)
+            if item_type in {"reasoning", "todo_list", "error"}:
+                self.assertFalse(lifecycle["effect_capable"], item_type)
+            elif item_type == "agent_message":
+                self.assertTrue(lifecycle["outcome_evidence"], item_type)
+            else:
+                self.assertTrue(lifecycle["effect_capable"], item_type)
+
     def test_real_host_emitter_output_is_validator_and_terminal_input(self):
         result = emitted_probe_result(raw_complete())
         self.assertEqual(
@@ -199,7 +334,7 @@ class ProbeTransportContractTests(unittest.TestCase):
         )
         _validate_probe_result(result, ROW)
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/4",
+            "schema_version": "model-evolution-probe-terminal/5",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -255,7 +390,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": complete_lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/4",
+            "schema_version": "model-evolution-probe-terminal/5",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": complete,
@@ -303,7 +438,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/4",
+            "schema_version": "model-evolution-probe-terminal/5",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -364,10 +499,24 @@ class ProbeTransportContractTests(unittest.TestCase):
     def test_outcome_bearing_timeout_is_unknown_and_not_retryable(self):
         lifecycle, status, _ = project(raw_timeout(with_outcome=True))
         self.assertEqual(status, "unknown")
-        self.assertEqual(lifecycle["reason"], "outcome_bearing")
+        self.assertEqual(lifecycle["reason"], "outcome_evidence")
         self.assertFalse(lifecycle["retryable"])
         self.assertTrue(lifecycle["completed_turn"])
         self.assertTrue(lifecycle["usage_present"])
+
+    def test_effect_capable_item_is_not_probe_retryable(self):
+        lifecycle, status, _ = project(raw_effect_timeout())
+        self.assertEqual(status, "unknown")
+        self.assertFalse(lifecycle["retryable"])
+        self.assertEqual(lifecycle["effect_capable_item_types"], ["command_execution"])
+        self.assertEqual(lifecycle["reason"], "effect_capable")
+
+    def test_non_effect_type_with_output_is_effect_capable(self):
+        lifecycle, status, _ = project(raw_reasoning_with_output())
+        self.assertEqual(status, "unknown")
+        self.assertTrue(lifecycle["effect_capable"])
+        self.assertEqual(lifecycle["effect_capable_item_types"], ["reasoning"])
+        self.assertNotIn("aggregated_output", lifecycle)
 
     def test_malformed_dirty_and_unreaped_custody_fail_closed(self):
         for raw, kwargs in (
@@ -484,7 +633,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/4",
+            "schema_version": "model-evolution-probe-terminal/5",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -504,6 +653,69 @@ class ProbeTransportContractTests(unittest.TestCase):
             path.write_text(json.dumps(terminal), encoding="utf-8")
             loaded = _load_probe_terminal(path, request=REQUEST, row=ROW)
         self.assertEqual(loaded["attempt_count"], 1)
+
+    def test_historical_terminal_v4_replay_remains_exact(self):
+        lifecycle = {
+            "schema_version": "codex-probe-lifecycle/1",
+            "child_timed_out": True,
+            "child_kill_sent": True,
+            "child_reaped": True,
+            "process_exited": True,
+            "isolation_custody": True,
+            "jsonl_bounded": True,
+            "jsonl_classified": True,
+            "event_count": 3,
+            "event_types": ["thread.started", "turn.started"],
+            "incomplete_item_types": [],
+            "completed_turn": False,
+            "final_message_present": False,
+            "usage_present": False,
+            "command_action_effect": False,
+            "workspace_pre_digest": "sha256:" + "a" * 64,
+            "workspace_post_digest": "sha256:" + "a" * 64,
+            "workspace_clean": True,
+            "source_path_exposed": False,
+            "credential_marker_seen": False,
+            "custody_closed": True,
+            "retryable": False,
+            "branch": "unknown",
+            "reason": "unknown_lifecycle",
+        }
+        result = {
+            "schema_version": "codex-interaction-probe-result/1.2",
+            "probe_id": ROW["probe_id"],
+            "capability": ROW["capability"],
+            "status": "unknown",
+            "observed": "not established",
+            "session_id": "thread-1",
+            "event_types": ["thread.started", "turn.started"],
+            "direct_observations": [],
+            "routing": [],
+            "usage": None,
+            "diagnostics": [],
+            "lifecycle": lifecycle,
+        }
+        terminal = {
+            "schema_version": "model-evolution-probe-terminal/4",
+            "request_id": REQUEST["request_id"],
+            "probe_id": ROW["probe_id"],
+            "result": result,
+            "stderr": "",
+            "attempt_count": 1,
+            "attempts": [{
+                "attempt": 1,
+                "attempt_id": REQUEST["request_id"] + ".attempt-1",
+                "status": "unknown",
+                "diagnostics": [],
+                "stderr": "",
+                "lifecycle": lifecycle,
+            }],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "terminal.json"
+            path.write_text(json.dumps(terminal), encoding="utf-8")
+            loaded = _load_probe_terminal(path, request=REQUEST, row=ROW)
+        self.assertEqual(loaded["schema_version"], "model-evolution-probe-terminal/4")
 
 
 if __name__ == "__main__":
