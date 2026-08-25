@@ -8,6 +8,7 @@ import copy
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 from typing import Any
 
 if __name__ == "__main__":
@@ -57,6 +58,7 @@ from _model_evolution_calibration_receipt import (
 )
 from _model_evolution_materialization import (
     MaterializationError,
+    _build_public_plan,
     _validate_selected_plugin,
     prepare_candidate_plan,
     prepare_current_plan,
@@ -64,7 +66,11 @@ from _model_evolution_materialization import (
     validate_candidate_plan,
     validate_current_plan,
 )
-from _model_evolution_prior import prepare_prior_plan, validate_prior_plan
+from _model_evolution_prior import (
+    _prior_product,
+    prepare_prior_plan,
+    validate_prior_plan,
+)
 from _model_evolution_holdout import (
     prepare_holdout_plan,
     prepare_manual_review_receipt,
@@ -731,6 +737,66 @@ def _materialization_check(args: argparse.Namespace) -> None:
         repository_root=repository_root,
         campaign_root=campaign_root,
     )
+    prior_values = (
+        args.prior_source_root,
+        args.prior_plugin_root,
+        args.prior_plugin_build_evidence,
+    )
+    if any(value is not None for value in prior_values) and not all(
+        value is not None for value in prior_values
+    ):
+        raise CliError(
+            "prior materialization check requires source, plugin, and build evidence"
+        )
+    ready_projections: list[dict[str, str]] = []
+    with tempfile.TemporaryDirectory(
+        dir=campaign_root.parent, prefix=".materialization-ready-"
+    ) as raw:
+        temporary_root = Path(raw)
+        prior_product = None
+        if all(value is not None for value in prior_values):
+            prior_product, _ = _prior_product(
+                campaign=campaign,
+                prior_source_root=args.prior_source_root,
+                plugin_root=args.prior_plugin_root,
+                plugin_evidence=args.prior_plugin_build_evidence,
+            )
+        for role in ("target_current", "target_prior"):
+            if role == "target_prior" and prior_product is None:
+                continue
+            for skill_id in SKILL_IDS:
+                output_root = temporary_root / role / skill_id
+                if role == "target_current":
+                    selected_plugin = plugin_root
+                    selected_evidence = plugin_build
+                    product = None
+                    source_repository_root = None
+                else:
+                    selected_plugin = args.prior_plugin_root
+                    selected_evidence = args.prior_plugin_build_evidence
+                    product = prior_product
+                    source_repository_root = args.prior_source_root
+                result = _build_public_plan(
+                    output_root,
+                    final_root=output_root,
+                    repository_root=repository_root,
+                    campaign_root=campaign_root,
+                    campaign=campaign,
+                    skill_id=skill_id,
+                    role=role,
+                    plugin_root=selected_plugin,
+                    plugin_evidence=selected_evidence,
+                    product=product,
+                    source_repository_root=source_repository_root,
+                    preserve_host_repository=role == "target_prior",
+                )
+                ready_projections.append(
+                    {
+                        "role": role,
+                        "skill_id": skill_id,
+                        "plan_digest": result["plan_digest"],
+                    }
+                )
     _emit(
         {
             "campaign_id": campaign["campaign_id"],
@@ -738,6 +804,7 @@ def _materialization_check(args: argparse.Namespace) -> None:
             "state_revision": campaign["state_revision"],
             "provider_requests": 0,
             "materialization_gate": gate,
+            "ready_projections": ready_projections,
         }
     )
 
@@ -2354,6 +2421,9 @@ def _parser() -> argparse.ArgumentParser:
 
     materialization = commands.add_parser("materialization-check")
     materialization.add_argument("--expected-revision", type=int, required=True)
+    materialization.add_argument("--prior-source-root", type=Path)
+    materialization.add_argument("--prior-plugin-root", type=Path)
+    materialization.add_argument("--prior-plugin-build-evidence", type=Path)
 
     rebind = commands.add_parser("rebind-product")
     rebind.add_argument("--expected-revision", type=int, required=True)

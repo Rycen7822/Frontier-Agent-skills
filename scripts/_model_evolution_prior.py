@@ -126,7 +126,6 @@ def _build_prior_plan(
         plugin_evidence=plugin_evidence,
         product=product,
         source_repository_root=prior_source_root,
-        verifier_source_commit=campaign["product"]["source_commit"],
         preserve_host_repository=True,
     )
     _write_exact(
@@ -246,6 +245,11 @@ def validate_prior_plan(
         ),
         label="target observed Host",
     )
+    expected_verifier_revision = (
+        base_host.get("identity", {}).get("repository", {}).get("revision")
+    )
+    if not isinstance(expected_verifier_revision, str):
+        raise MaterializationError("target observed Host lacks verifier repository identity")
     _, source_commit, source_tree = product
     expected_host = promoted_model_grading_host(
         base_host,
@@ -282,9 +286,9 @@ def validate_prior_plan(
     if (
         plan.get("source_revision") != source_commit
         or plan.get("compiler", {}).get("source_revision")
-        != campaign["product"]["source_commit"]
+        != expected_verifier_revision
         or host.get("identity", {}).get("repository", {}).get("revision")
-        != campaign["product"]["source_commit"]
+        != expected_verifier_revision
     ):
         raise MaterializationError("prior subject or apparatus identity differs")
     return host
