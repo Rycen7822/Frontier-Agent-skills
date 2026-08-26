@@ -1,7 +1,7 @@
 # Scope, Authority, and Effects
 
 ## Purpose
-Freeze the smallest coherent owner, request mode, scope, durability need, and effect boundary before work proceeds.
+Freeze the smallest coherent request mode, scope, durability need, and effect boundary before work proceeds.
 
 ## Known read-only/local boundary
 When the user already binds the target, protected paths, and forbidden effects:
@@ -23,7 +23,7 @@ This fast path takes precedence; do not continue into the full procedure.
 
 ## Procedure
 1. Apply instruction precedence and classify `report`, `review`, `diagnose`, `change`, `recovery`, or `plan` from the requested outcome; read-only work stays read-only unless separately authorized.
-2. Trace caller to outcome and select the smallest existing owner seam that expresses the entire distinction. Reject pass-through wrappers, parallel implementations, speculative extension points, and hidden public-contract changes.
+2. Trace caller to the observable outcome and select the direct existing product path that implements the requested distinction. Do not redirect a product task into specs, plans, slice definitions, evaluators, harnesses, release controllers, policies, or evidence generators unless that support/control surface is the explicit target. Reject pass-through wrappers, parallel implementations, speculative extension points, and hidden public-contract changes.
 3. Bind source root/revision only when material. Identify only protected, dirty, concurrent, generated, or external paths that affect the requested outcome.
 4. Keep same-session local reversible work Direct. Use durable coordination only for cross-context recovery, destructive/external effects, staged migration/release/rollout, multiple authorized writers, or a requested recoverable audit trail. File count, token count, worker availability, and subjective complexity never create durability.
 5. Classify actual effects as `READ_ONLY`, `LOCAL_REVERSIBLE`, `EXTERNAL_STATE`, or `PRIVILEGED_DANGEROUS`. Command names and dry-run labels are not evidence.

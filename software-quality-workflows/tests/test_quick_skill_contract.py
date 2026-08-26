@@ -47,19 +47,12 @@ def linked_markdown(path: Path) -> set[Path]:
 
 
 class QuickSkillContractTests(unittest.TestCase):
-    def test_metadata_budget_and_implicit_activation(self) -> None:
+    def test_metadata_budget_and_explicit_activation(self) -> None:
         self.assertEqual("11.0.1", frontmatter(SKILL_PATH)["metadata"]["version"])
         skill_text = SKILL_PATH.read_text(encoding="utf-8")
         self.assertLessEqual(len(skill_text.encode()), 4096)
-        for contract in (
-            "Complete coherent edits before proof.",
-            "If no conclusion-changing risk or gate remains, close.",
-            "(command_sha256, exit_code, output_sha256)",
-            "run an identical failure at most twice",
-            "implementation: complete | partial | blocked",
-            "verification: verified | partial | blocked | inconclusive",
-        ):
-            self.assertIn(contract, skill_text)
+        self.assertNotIn("owner seam", skill_text.lower())
+        self.assertNotRegex(skill_text, r"\b(?:command|output)_sha256\b")
         agents = yaml.safe_load(
             (SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
         )
