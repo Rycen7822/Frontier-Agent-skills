@@ -1,7 +1,7 @@
 # Performance Baseline and Parity
 
 ## Purpose
-Establish a stable measured bottleneck, change one owner seam, and prove comparable result parity and trade-offs.
+Establish a stable measured bottleneck, change the direct bottleneck path, and prove comparable result parity and trade-offs.
 
 ## Use when
 - Latency, throughput, memory, startup/import, I/O/cache/query/rendering, bundle, or workflow runtime is a claimed problem.
@@ -18,7 +18,7 @@ Establish a stable measured bottleneck, change one owner seam, and prove compara
 3. Run equivalent inputs/environments/build modes with enough repetitions to expose noise; retain raw results, sample count, invalid classifications, exact harness/command, uncertainty, and environmental differences.
 4. Identify one bottleneck from profile/trace/plan/allocation/waterfall/stage evidence; classify timeout, throttle, cache miss, and background load before blaming product logic. Stop inconclusive when comparison is unstable.
 5. Prefer removing repeated work/ownership mistakes before cache. Bound data by projection/pagination/stream/filter/limits; caches require owner/key/size/invalidation/fallback/hit-miss; concurrency requires independence/order/cancel/limits/quotas.
-6. Change only the owning seam with the smallest intervention. Keep baseline and candidate independently executable; a faster cache/model/backend/approximation cannot approve itself.
+6. Change the direct bottleneck path with the smallest intervention. Keep baseline and candidate independently executable; a faster cache/model/backend/approximation cannot approve itself.
 7. Rerun the same method/input/environment and prove parity for public output/order/errors/state/determinism/effects plus tolerances.
 8. Report before/after samples, noise/confidence, invalid runs, CPU/memory/I/O/latency/complexity trade-offs, inference versus measurement, threshold decision, rollback, and shifted bottlenecks.
 

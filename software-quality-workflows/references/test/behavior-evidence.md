@@ -6,7 +6,7 @@ Resolve genuine ambiguity about the behavior distinction, oracle, test shape, or
 
 ## Establish the distinction
 
-State the trigger/input, required output or state transition, boundary/error behavior, non-goals, and compatibility. Use the lightest channel that reaches the real owner surface: an existing test, focused regression, temporary reproduction, smoke, property/metamorphic check, benchmark, installed surface, browser, or real runtime.
+State the trigger/input, required output or state transition, boundary/error behavior, non-goals, and compatibility. Use the lightest channel that reaches the observable product surface: an existing test, focused regression, temporary reproduction, smoke, property/metamorphic check, benchmark, installed surface, browser, or real runtime.
 
 Strict RED is not required. A valid pre-change failure reaches the intended surface and shows the missing or wrong behavior; syntax, setup, fixture, permission, harness, or unavailable-environment failures do not. If a focused test already passes, distinguish existing behavior, a weak oracle, and the wrong surface before editing.
 
@@ -14,7 +14,7 @@ Derive expected values from a requirement, worked literal, independent reference
 
 ## Implement and prove
 
-Preserve user patches and valid contracts. Complete the smallest coherent owner set before proof. When an unresolved risk or explicit gate remains, run the lowest-cost independent evidence that decides it; escalate only when that evidence cannot support the claim. Never weaken the oracle, skip a required gate, or change expectations merely to obtain GREEN.
+Preserve user patches and valid contracts. Complete the smallest coherent product change before proof. When an unresolved risk or explicit gate remains, run the lowest-cost independent evidence that decides it; escalate only when that evidence cannot support the claim. Never weaken the oracle, skip a required gate, or change expectations merely to obtain GREEN.
 
 ## Retention classes
 
@@ -43,4 +43,4 @@ Refactors, documentation, configuration, generated artifacts, and spikes default
 
 ## Required result
 
-Record the distinction, oracle provenance, wrong implementation rejected, pre-change evidence or limitation, owner seam, focused and affected proof, retained contracts, per-test class, removed probes/duplicates, and remaining evidence limits.
+Record the distinction, oracle provenance, wrong implementation rejected, pre-change evidence or limitation, changed product surface, focused and affected proof, retained contracts, per-test class, removed probes/duplicates, and remaining evidence limits.
