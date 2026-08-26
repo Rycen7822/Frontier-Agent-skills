@@ -71,11 +71,13 @@ from _codex_eval_isolation import (
 
 MAX_STDERR_BYTES = 64 * 1024
 MAX_FAILURE_DETAIL_CHARS = 2048
+MAX_FAILURE_PROJECTION_CHARS = 512
 LEGACY_ADAPTER_VERSION = "1.13"
 PREVIOUS_ADAPTER_VERSION = "1.14"
 D38_ADAPTER_VERSION = "1.15"
 D39_ADAPTER_VERSION = "1.16"
-ADAPTER_VERSION = "1.17"
+D40_ADAPTER_VERSION = "1.17"
+ADAPTER_VERSION = "1.18"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_artifacts.py",
@@ -90,12 +92,14 @@ PROBE_RESULT_SCHEMA_VERSION_LEGACY = "codex-interaction-probe-result/1.2"
 PROBE_RESULT_SCHEMA_VERSION_PREVIOUS = "codex-interaction-probe-result/1.3"
 PROBE_RESULT_SCHEMA_VERSION_D38 = "codex-interaction-probe-result/1.4"
 PROBE_RESULT_SCHEMA_VERSION_D39 = "codex-interaction-probe-result/1.5"
-PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.6"
+PROBE_RESULT_SCHEMA_VERSION_D40 = "codex-interaction-probe-result/1.6"
+PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.7"
 PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY = "codex-probe-lifecycle/1"
 PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS = "codex-probe-lifecycle/2"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D38 = "codex-probe-lifecycle/3"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D39 = "codex-probe-lifecycle/4"
-PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/5"
+PROBE_LIFECYCLE_SCHEMA_VERSION_D40 = "codex-probe-lifecycle/5"
+PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/6"
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -229,6 +233,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         PREVIOUS_ADAPTER_VERSION,
         D38_ADAPTER_VERSION,
         D39_ADAPTER_VERSION,
+        D40_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         raise AdapterError("unsupported Host adapter version")
@@ -243,6 +248,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         PREVIOUS_ADAPTER_VERSION,
         D38_ADAPTER_VERSION,
         D39_ADAPTER_VERSION,
+        D40_ADAPTER_VERSION,
         ADAPTER_VERSION,
     } and runtime_surface != RUNTIME_SURFACE_VERSION:
         raise AdapterError("runtime surface identity is missing")
@@ -328,6 +334,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         PREVIOUS_ADAPTER_VERSION,
         D38_ADAPTER_VERSION,
         D39_ADAPTER_VERSION,
+        D40_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         expected.update(
@@ -354,6 +361,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         PREVIOUS_ADAPTER_VERSION,
         D38_ADAPTER_VERSION,
         D39_ADAPTER_VERSION,
+        D40_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         if not all(isinstance(value, str) for value in (bound_catalog, bound_catalog_hash, bound_catalog_client)):
@@ -916,31 +924,117 @@ def _failure_kind_class(failure: dict[str, Any]) -> tuple[str, str | None]:
     return "unknown", None
 
 
+def _integer_runtime_ms(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    numeric = float(value)
+    if not math.isfinite(numeric) or numeric < 0:
+        return 0
+    projected = int(math.floor(numeric + 0.5))
+    return max(1, projected) if numeric > 0 else 0
+
+
+def _failure_detail_projection(
+    failure: dict[str, Any],
+    *,
+    workspace: Path,
+    source_root: Path | None,
+    excluded_values: tuple[str, ...],
+) -> str:
+    values = [
+        f"{field}={failure[field]}"
+        for field in ("kind", "code", "message")
+        if isinstance(failure.get(field), str) and failure[field]
+    ]
+    detail = _redact_text("; ".join(values), workspace)
+    if source_root is not None:
+        detail = detail.replace(str(source_root), "<source-repository>")
+        if source_root.parent.name == ".worktrees":
+            detail = detail.replace(
+                str(source_root.parent.parent), "<repository-root>"
+            )
+    for value in sorted(
+        {item for item in excluded_values if isinstance(item, str) and len(item) >= 4},
+        key=len,
+        reverse=True,
+    ):
+        detail = detail.replace(value, "<content-redacted>")
+    detail = re.sub(r"(?<![A-Za-z0-9:])/(?:[^\s;]+)", "<path>", detail)
+    detail = " ".join(detail.split())
+    return detail[:MAX_FAILURE_PROJECTION_CHARS]
+
+
 def _probe_failure_observation(
-    child: dict[str, Any], normalized: dict[str, Any]
+    child: dict[str, Any],
+    normalized: dict[str, Any],
+    *,
+    workspace: Path,
+    source_root: Path | None,
+    excluded_values: tuple[str, ...] = (),
 ) -> dict[str, Any]:
-    """Return a content-free, deterministic failure projection for one attempt."""
-    runtime_ms = child.get("runtime_ms")
-    if isinstance(runtime_ms, bool) or not isinstance(runtime_ms, int) or runtime_ms < 0:
-        runtime_ms = 0
+    """Return a bounded, redacted failure projection for one attempt."""
+    runtime_ms = _integer_runtime_ms(child.get("runtime_ms"))
     failures = normalized.get("failures")
     if not isinstance(failures, list):
         failures = []
-    safe_failures: list[dict[str, Any]] = []
+    grouped_failures: dict[str, dict[str, Any]] = {}
+    source_totals: dict[str, int] = {}
     classes: list[str] = []
+
+    def add_failure(
+        failure: dict[str, Any],
+        *,
+        source: str,
+        failure_class: str,
+        code: str | None,
+    ) -> None:
+        safe_source = source if source in _SAFE_FAILURE_SOURCES else "unknown"
+        detail_input = (
+            failure
+            if failure_class
+            in {"provider_nonretryable", "capacity_transient", "transport_transient"}
+            else {key: failure[key] for key in ("kind", "code") if key in failure}
+        )
+        detail = _failure_detail_projection(
+            detail_input,
+            workspace=workspace,
+            source_root=source_root,
+            excluded_values=excluded_values,
+        )
+        identity = {
+            "kind": _safe_failure_kind(failure.get("kind")),
+            "code": code,
+            "failure_class": failure_class,
+            "detail": detail,
+        }
+        signature = _sha256_bytes(_canonical_bytes(identity))
+        row = grouped_failures.setdefault(
+            signature,
+            {
+                **identity,
+                "signature": signature,
+                "count": 0,
+                "source_counts": {},
+            },
+        )
+        row["count"] += 1
+        row["source_counts"][safe_source] = (
+            row["source_counts"].get(safe_source, 0) + 1
+        )
+        source_totals[safe_source] = source_totals.get(safe_source, 0) + 1
+
     for failure in failures:
         if not isinstance(failure, dict):
             classes.append("malformed")
             continue
         failure_class, code = _failure_kind_class(failure)
         classes.append(failure_class)
-        source = failure.get("source") if failure.get("source") in _SAFE_FAILURE_SOURCES else "unknown"
-        safe_failures.append({
-            "source": source,
-            "kind": _safe_failure_kind(failure.get("kind")),
-            "code": code,
-            "failure_class": failure_class,
-        })
+        add_failure(
+            failure,
+            source=failure.get("source", "unknown"),
+            failure_class=failure_class,
+            code=code,
+        )
     transport_marker = (
         b"responses_websocket: failed to connect to websocket: "
         b"IO error: tls handshake eof"
@@ -953,15 +1047,19 @@ def _probe_failure_observation(
         child.get("timed_out") is True
         and transport_marker in stderr
         and "turn.completed" not in event_types
-        and not safe_failures
+        and not grouped_failures
     ):
         classes.append("transport_transient")
-        safe_failures.append({
-            "source": "child",
-            "kind": "transport",
-            "code": "tls_handshake_eof",
-            "failure_class": "transport_transient",
-        })
+        add_failure(
+            {
+                "kind": "transport_error",
+                "code": "tls_handshake_eof",
+                "message": "Codex transport interrupted before turn completion",
+            },
+            source="child",
+            failure_class="transport_transient",
+            code="transport",
+        )
     diagnostics = normalized.get("diagnostics")
     diagnostic_kinds = {
         item.get("kind") for item in diagnostics if isinstance(item, dict)
@@ -970,23 +1068,28 @@ def _probe_failure_observation(
         not isinstance(item, dict) or item.get("kind") in _MALFORMED_FAILURE_DIAGNOSTICS
         for item in (diagnostics if isinstance(diagnostics, list) else [])
     ):
-        if not safe_failures and not (
+        if not grouped_failures and not (
             child.get("timed_out") is True
             and diagnostic_kinds <= {
                 "thread_identity", "turn_lifecycle", "missing_terminal", "item_lifecycle"
             }
         ):
             classes.append("malformed")
-    if not safe_failures and child.get("timed_out") is not True:
+    if not grouped_failures and child.get("timed_out") is not True:
         returncode = child.get("returncode")
         if isinstance(returncode, int) and not isinstance(returncode, bool) and returncode != 0:
             classes.append("provider_nonretryable")
-            safe_failures.append({
-                "source": "child",
-                "kind": "process",
-                "code": f"codex_exit_{returncode}" if returncode >= 0 else f"codex_signal_{-returncode}",
-                "failure_class": "provider_nonretryable",
-            })
+            process_code = (
+                f"codex_exit_{returncode}"
+                if returncode >= 0
+                else f"codex_signal_{-returncode}"
+            )
+            add_failure(
+                {"kind": "process", "code": process_code},
+                source="child",
+                failure_class="provider_nonretryable",
+                code=process_code,
+            )
     classes = sorted(set(classes))
     if not classes:
         failure_class = "none"
@@ -994,11 +1097,28 @@ def _probe_failure_observation(
         failure_class = classes[0]
     else:
         failure_class = "mixed"
+    projected_failures = []
+    for signature in sorted(grouped_failures):
+        row = grouped_failures[signature]
+        projected_failures.append(
+            {
+                **{key: row[key] for key in ("kind", "code", "failure_class", "detail", "signature", "count")},
+                "source_counts": [
+                    {"source": source, "count": count}
+                    for source, count in sorted(row["source_counts"].items())
+                ],
+            }
+        )
     return {
         "present": failure_class != "none",
-        "failures": safe_failures,
+        "failures": projected_failures,
         "failure_class": failure_class if failure_class in _SAFE_FAILURE_CLASSES else "unknown",
         "runtime_ms": runtime_ms,
+        "occurrence_count": sum(source_totals.values()),
+        "source_counts": [
+            {"source": source, "count": count}
+            for source, count in sorted(source_totals.items())
+        ],
     }
 
 
@@ -1017,6 +1137,7 @@ def _probe_lifecycle_projection(
     required_event_types: list[str] | None = None,
     capability_observable: bool | None = None,
     failure_observation: dict[str, Any] | None = None,
+    excluded_failure_values: tuple[str, ...] = (),
 ) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
     raw = child.get("stdout", b"")
     stderr_raw = child.get("stderr", b"")
@@ -1099,7 +1220,13 @@ def _probe_lifecycle_projection(
         and set(required_event_types) <= observations
     )
     if failure_observation is None:
-        failure_observation = _probe_failure_observation(child, normalized)
+        failure_observation = _probe_failure_observation(
+            child,
+            normalized,
+            workspace=workspace,
+            source_root=source_root,
+            excluded_values=excluded_failure_values,
+        )
     if (
         failure_observation["failure_class"] in {"capacity_transient", "transport_transient"}
         and "turn.failed" in event_types
@@ -2345,6 +2472,11 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
     ):
         last_message = Path(temp_dir) / "last-message.txt"
         workspace_before, workspace_before_ok = _probe_workspace_snapshot(workspace)
+        probe_prompt = (
+            force_loaded_prompt(forced[0], forced[1], row["prompt"])
+            if forced is not None
+            else row["prompt"]
+        )
         child = _run_child(
             args,
             _fresh_argv(
@@ -2353,11 +2485,7 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
                 last_message,
                 ephemeral=True,
             ),
-            prompt=(
-                force_loaded_prompt(forced[0], forced[1], row["prompt"])
-                if forced is not None
-                else row["prompt"]
-            ),
+            prompt=probe_prompt,
             workspace=workspace,
             codex_home=codex_home,
             timeout_seconds=args.timeout,
@@ -2394,6 +2522,20 @@ def _run_probe_mode(args: argparse.Namespace, workspace: Path) -> int:
             source_root=args.source_root,
             isolated=args.isolation_tool is not None,
             required_event_types=row["expected_event_types"],
+            excluded_failure_values=tuple(
+                value
+                for value in (
+                    probe_prompt,
+                    normalized.get("final_message"),
+                    *(
+                        item.get(field)
+                        for item in normalized.get("items", [])
+                        if isinstance(item, dict)
+                        for field in ("command", "aggregated_output", "query")
+                    ),
+                )
+                if isinstance(value, str)
+            ),
         )
     if forced is not None and status == "pass":
         normalized["routing"] = {

@@ -421,7 +421,7 @@ class ProbeTransportContractTests(unittest.TestCase):
         self.assertNotIn('"command":', serialized)
         self.assertNotIn("aggregated_output", serialized)
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/8",
+            "schema_version": "model-evolution-probe-terminal/9",
             "request_id": REQUEST["request_id"],
             "probe_id": row["probe_id"],
             "result": result,
@@ -471,6 +471,9 @@ class ProbeTransportContractTests(unittest.TestCase):
         historical["schema_version"] = host.PROBE_RESULT_SCHEMA_VERSION_D39
         historical["lifecycle"]["schema_version"] = host.PROBE_LIFECYCLE_SCHEMA_VERSION_D39
         historical["lifecycle"].pop("command_custody")
+        historical_observation = historical["lifecycle"]["failure_observation"]
+        historical_observation.pop("occurrence_count")
+        historical_observation.pop("source_counts")
         terminal = {
             "schema_version": "model-evolution-probe-terminal/7",
             "request_id": REQUEST["request_id"],
@@ -561,7 +564,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             }
         ]
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/8",
+            "schema_version": "model-evolution-probe-terminal/9",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -573,7 +576,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             path = Path(temporary) / "terminal.json"
             path.write_text(json.dumps(terminal), encoding="utf-8")
             loaded = _load_probe_terminal(path, request=REQUEST, row=ROW)
-        self.assertEqual(loaded["schema_version"], "model-evolution-probe-terminal/8")
+        self.assertEqual(loaded["schema_version"], "model-evolution-probe-terminal/9")
 
     def test_all_normalized_item_types_are_classified_without_content(self):
         for item_type in (
@@ -607,7 +610,7 @@ class ProbeTransportContractTests(unittest.TestCase):
         )
         _validate_probe_result(result, ROW)
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/8",
+            "schema_version": "model-evolution-probe-terminal/9",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -663,7 +666,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": complete_lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/8",
+            "schema_version": "model-evolution-probe-terminal/9",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": complete,
@@ -711,7 +714,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/8",
+            "schema_version": "model-evolution-probe-terminal/9",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -831,8 +834,81 @@ class ProbeTransportContractTests(unittest.TestCase):
                 lifecycle["failure_observation"]["failure_class"], expected
             )
             serialized = json.dumps(lifecycle, sort_keys=True)
-            self.assertNotIn(message, serialized)
-            self.assertNotIn(message, serialized)
+            if expected == "provider_nonretryable":
+                self.assertIn("provider failed", serialized)
+            else:
+                self.assertNotIn(message, serialized)
+
+    def test_d42_failure_projection_deduplicates_redacts_and_preserves_runtime(self):
+        prompt = "D42-PROMPT-CONTENT"
+        source_root = Path("/source/private/controller")
+        failure = {
+            "kind": "provider_error",
+            "code": "bad_gateway",
+            "message": (
+                "gateway unavailable D42-PROMPT-CONTENT "
+                "/source/private/controller/file.py /workspace/private/output "
+                "sk-secret-token"
+            ),
+        }
+        records = [
+            {"type": "thread.started", "thread_id": "thread-1"},
+            {"type": "turn.started"},
+            *({"type": "error", "error": failure} for _ in range(8)),
+            {
+                "type": "item.completed",
+                "item": {"id": "error-item", "type": "error", "error": failure},
+            },
+        ]
+        normalized = normalize_jsonl(
+            b"\n".join(
+                event(
+                    row["type"],
+                    **{key: value for key, value in row.items() if key != "type"},
+                )
+                for row in records
+            )
+            + b"\n"
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            observation = host._probe_failure_observation(
+                {
+                    "runtime_ms": 900000.4,
+                    "timed_out": True,
+                    "stderr": b"",
+                    "returncode": -9,
+                },
+                normalized,
+                workspace=workspace,
+                source_root=source_root,
+                excluded_values=(prompt, "/workspace/private/output"),
+            )
+        self.assertEqual(observation["runtime_ms"], 900000)
+        self.assertEqual(observation["occurrence_count"], 9)
+        self.assertEqual(
+            observation["source_counts"],
+            [{"source": "item", "count": 1}, {"source": "record", "count": 8}],
+        )
+        self.assertEqual(len(observation["failures"]), 1)
+        projected = observation["failures"][0]
+        self.assertEqual(projected["count"], 9)
+        self.assertEqual(projected["source_counts"], observation["source_counts"])
+        self.assertRegex(projected["signature"], r"^sha256:[0-9a-f]{64}$")
+        self.assertIn("gateway unavailable", projected["detail"])
+        serialized = json.dumps(observation, sort_keys=True)
+        for excluded in (
+            prompt,
+            "sk-secret-token",
+            str(source_root),
+            "/workspace/private/output",
+        ):
+            self.assertNotIn(excluded, serialized)
+
+    def test_d42_timeout_runtime_never_collapses_positive_float_to_zero(self):
+        self.assertEqual(host._integer_runtime_ms(0.1), 1)
+        self.assertEqual(host._integer_runtime_ms(12.5), 13)
+        self.assertEqual(host._integer_runtime_ms(900000.0), 900000)
 
     def test_d39_mixed_and_malformed_fail_closed(self):
         mixed_raw = b"\n".join(
@@ -979,7 +1055,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/8",
+            "schema_version": "model-evolution-probe-terminal/9",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
