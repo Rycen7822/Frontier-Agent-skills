@@ -66,6 +66,7 @@ PROBE_TERMINAL_V5 = "model-evolution-probe-terminal/5"
 PROBE_TERMINAL_V6 = "model-evolution-probe-terminal/6"
 PROBE_TERMINAL_V7 = "model-evolution-probe-terminal/7"
 PROBE_TERMINAL_V8 = "model-evolution-probe-terminal/8"
+PROBE_TERMINAL_V9 = "model-evolution-probe-terminal/9"
 PLUGIN_BUILD_GATE_SCRIPT = "scripts/build_codex_plugin.py"
 ALLOWED_GATE_SCRIPTS = {
     "bundle/build_bundle_manifest.py",
@@ -570,6 +571,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D38,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D39,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         raise OperationError("unknown probe lifecycle version")
@@ -581,6 +583,8 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         required = new_required
     elif version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D39:
         required = d39_required
+    elif version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40:
+        required = d40_required
     else:
         required = d40_required
     if set(value) != required:
@@ -605,6 +609,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
     if version in {
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D38,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D39,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         bool_fields += ("outcome_evidence", "effect_capable")
@@ -633,6 +638,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
     if version in {
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D38,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D39,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         for field in (
@@ -668,7 +674,10 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         ):
             raise OperationError("probe lifecycle evidence class is unknown")
         noncritical_effect_safe = not value["effect_capable"]
-        if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION:
+        if version in {
+            host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
+            host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
+        }:
             custody = value["command_custody"]
             noncritical_effect_safe = (
                 noncritical_effect_safe
@@ -695,6 +704,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             raise OperationError("noncritical unknown lifecycle predicate is invalid")
     if version in {
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D39,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         observation = value["failure_observation"]
@@ -710,9 +720,22 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             "mixed",
             "malformed",
         }
-        if not isinstance(observation, dict) or set(observation) != {
-            "present", "failures", "failure_class", "runtime_ms"
-        }:
+        historical_observation = version in {
+            host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D39,
+            host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
+        }
+        expected_observation_fields = {
+            "present",
+            "failures",
+            "failure_class",
+            "runtime_ms",
+        }
+        if not historical_observation:
+            expected_observation_fields |= {"occurrence_count", "source_counts"}
+        if (
+            not isinstance(observation, dict)
+            or set(observation) != expected_observation_fields
+        ):
             raise OperationError("probe failure observation shape is invalid")
         if (
             not isinstance(observation["present"], bool)
@@ -724,18 +747,80 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             or (observation["present"] != (observation["failure_class"] != "none"))
         ):
             raise OperationError("probe failure observation identity is invalid")
+        safe_sources = {"turn", "item", "record", "child", "normalizer", "unknown"}
+
+        def validate_counts(value: Any) -> int:
+            if not isinstance(value, list):
+                raise OperationError("probe failure source counts are invalid")
+            previous = ""
+            total = 0
+            for row in value:
+                if (
+                    not isinstance(row, dict)
+                    or set(row) != {"source", "count"}
+                    or row["source"] not in safe_sources
+                    or row["source"] <= previous
+                    or isinstance(row["count"], bool)
+                    or not isinstance(row["count"], int)
+                    or row["count"] <= 0
+                ):
+                    raise OperationError("probe failure source counts are invalid")
+                previous = row["source"]
+                total += row["count"]
+            return total
+
         for failure in observation["failures"]:
-            if not isinstance(failure, dict) or set(failure) != {
-                "source", "kind", "code", "failure_class"
-            }:
-                raise OperationError("probe failure projection is invalid")
+            historical_fields = {"source", "kind", "code", "failure_class"}
+            current_fields = {
+                "kind",
+                "code",
+                "failure_class",
+                "detail",
+                "signature",
+                "count",
+                "source_counts",
+            }
             if (
-                failure["source"] not in {"turn", "item", "record", "child", "normalizer", "unknown"}
-                or failure["kind"] is not None and not isinstance(failure["kind"], str)
-                or failure["code"] is not None and not isinstance(failure["code"], str)
-                or failure["failure_class"] not in allowed_classes - {"none", "mixed", "malformed"}
+                not isinstance(failure, dict)
+                or set(failure)
+                != (historical_fields if historical_observation else current_fields)
+            ):
+                raise OperationError("probe failure projection is invalid")
+            if historical_observation and failure["source"] not in safe_sources:
+                raise OperationError("probe failure projection identity is invalid")
+            if (
+                failure["kind"] is not None
+                and not isinstance(failure["kind"], str)
+                or failure["code"] is not None
+                and not isinstance(failure["code"], str)
+                or failure["failure_class"]
+                not in allowed_classes - {"none", "mixed", "malformed"}
             ):
                 raise OperationError("probe failure projection identity is invalid")
+            if not historical_observation and (
+                not isinstance(failure["detail"], str)
+                or len(failure["detail"]) > host_adapter.MAX_FAILURE_PROJECTION_CHARS
+                or not isinstance(failure["signature"], str)
+                or not host_adapter.HASH.fullmatch(failure["signature"])
+                or isinstance(failure["count"], bool)
+                or not isinstance(failure["count"], int)
+                or failure["count"] <= 0
+                or validate_counts(failure["source_counts"]) != failure["count"]
+            ):
+                raise OperationError("probe failure diagnostic projection is invalid")
+        if not historical_observation:
+            if (
+                isinstance(observation["occurrence_count"], bool)
+                or not isinstance(observation["occurrence_count"], int)
+                or observation["occurrence_count"] < 0
+                or validate_counts(observation["source_counts"])
+                != observation["occurrence_count"]
+                or sum(item["count"] for item in observation["failures"])
+                != observation["occurrence_count"]
+                or [item["signature"] for item in observation["failures"]]
+                != sorted({item["signature"] for item in observation["failures"]})
+            ):
+                raise OperationError("probe failure occurrence projection is invalid")
         if not observation["present"] and observation["failures"]:
             raise OperationError("empty failure observation cannot carry failures")
         observed_classes = {
@@ -749,7 +834,10 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             raise OperationError("failure observation class does not match facts")
         if observation["failure_class"] == "mixed" and len(observed_classes) < 2:
             raise OperationError("mixed failure observation lacks distinct facts")
-    if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION:
+    if version in {
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
+    }:
         custody = value["command_custody"]
         custody_fields = {
             "present",
@@ -842,6 +930,7 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_PREVIOUS,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D38,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D39,
+        host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION,
     }:
         if set(value) != legacy_required | {"lifecycle"}:
@@ -856,6 +945,8 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
                 host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D38,
             host_adapter.PROBE_RESULT_SCHEMA_VERSION_D39:
                 host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D39,
+            host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40:
+                host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
             host_adapter.PROBE_RESULT_SCHEMA_VERSION:
                 host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
         }[version]
@@ -887,6 +978,7 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
     if version in {
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D38,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D39,
+        host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION,
     }:
         lifecycle = value["lifecycle"]
@@ -955,6 +1047,7 @@ def _load_probe_terminal(
         PROBE_TERMINAL_V6,
         PROBE_TERMINAL_V7,
         PROBE_TERMINAL_V8,
+        PROBE_TERMINAL_V9,
     } or set(terminal) != required | {"attempt_count"}:
         raise OperationError("unknown interaction probe terminal version")
     if (
@@ -974,7 +1067,8 @@ def _load_probe_terminal(
         PROBE_TERMINAL_V5: host_adapter.PROBE_RESULT_SCHEMA_VERSION_PREVIOUS,
         PROBE_TERMINAL_V6: host_adapter.PROBE_RESULT_SCHEMA_VERSION_D38,
         PROBE_TERMINAL_V7: host_adapter.PROBE_RESULT_SCHEMA_VERSION_D39,
-        PROBE_TERMINAL_V8: host_adapter.PROBE_RESULT_SCHEMA_VERSION,
+        PROBE_TERMINAL_V8: host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40,
+        PROBE_TERMINAL_V9: host_adapter.PROBE_RESULT_SCHEMA_VERSION,
     }[version]
     if terminal["result"]["schema_version"] != expected_result:
         raise OperationError("versioned terminal must bind versioned probe result")
@@ -995,7 +1089,8 @@ def _load_probe_terminal(
             PROBE_TERMINAL_V5: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS,
             PROBE_TERMINAL_V6: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D38,
             PROBE_TERMINAL_V7: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D39,
-            PROBE_TERMINAL_V8: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
+            PROBE_TERMINAL_V8: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
+            PROBE_TERMINAL_V9: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
         }[version]
         if attempt["lifecycle"]["schema_version"] != expected_lifecycle:
             raise OperationError("versioned terminal lifecycle version differs")
@@ -1039,12 +1134,21 @@ def _probe_is_official_transient(value: dict[str, Any]) -> bool:
             and observation.get("present") == (observation_class != "none")
             and observation_class in {"none", "capacity_transient", "transport_transient"}
         )
-    if isinstance(lifecycle, dict) and lifecycle.get("schema_version") == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION:
+    if isinstance(lifecycle, dict) and lifecycle.get("schema_version") in {
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
+    }:
         observation = lifecycle.get("failure_observation")
         observation_class = observation.get("failure_class") if isinstance(observation, dict) else None
+        expected_result = (
+            host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40
+            if lifecycle.get("schema_version")
+            == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40
+            else host_adapter.PROBE_RESULT_SCHEMA_VERSION
+        )
         return (
             value.get("schema_version") in {
-                host_adapter.PROBE_RESULT_SCHEMA_VERSION,
+                expected_result,
                 None,
             }
             and value.get("status") == "unknown"
@@ -1218,7 +1322,7 @@ def run_interaction_probes(
                 if not _probe_is_official_transient(value):
                     break
             terminal = {
-                "schema_version": PROBE_TERMINAL_V8,
+                "schema_version": PROBE_TERMINAL_V9,
                 "request_id": request["request_id"],
                 "probe_id": row["probe_id"],
                 "result": value,
@@ -1683,7 +1787,7 @@ def _probe_lifecycle_contract_gate() -> None:
             },
         ]
         terminal = {
-            "schema_version": PROBE_TERMINAL_V8,
+            "schema_version": PROBE_TERMINAL_V9,
             "request_id": request["request_id"],
             "probe_id": row["probe_id"],
             "result": complete_result,
@@ -1701,6 +1805,77 @@ def _probe_lifecycle_contract_gate() -> None:
         exhausted_path = workspace / "exhausted.json"
         exhausted_path.write_text(json.dumps(exhausted), encoding="utf-8")
         _load_probe_terminal(exhausted_path, request=request, row=row)
+
+        failure_records = [
+            {"type": "thread.started", "thread_id": "d42-thread"},
+            {"type": "turn.started", "turn_id": "d42-turn"},
+            *(
+                {
+                    "type": "error",
+                    "error": {
+                        "kind": "provider_error",
+                        "code": "bad_gateway",
+                        "message": "bounded provider diagnostic",
+                    },
+                }
+                for _ in range(9)
+            ),
+        ]
+        failure_raw = b"\n".join(
+            json.dumps(record, separators=(",", ":")).encode("utf-8")
+            for record in failure_records
+        ) + b"\n"
+        failure_lifecycle, failure_status, failure_diagnostics = (
+            host_adapter._probe_lifecycle_projection(
+            {
+                "stdout": failure_raw,
+                "stderr": b"",
+                "returncode": -9,
+                "timed_out": True,
+                "kill_sent": True,
+                "reaped": True,
+                "runtime_ms": 900000.4,
+            },
+            host_adapter.normalize_jsonl(failure_raw),
+            workspace=workspace,
+            workspace_before=before,
+            workspace_after=before,
+            workspace_before_ok=True,
+            workspace_after_ok=True,
+            last_message=workspace / "last-message.txt",
+            source_root=None,
+            isolated=True,
+            required_event_types=row["required_event_types"],
+            )
+        )
+        observation = failure_lifecycle["failure_observation"]
+        if (
+            failure_status != "unknown"
+            or failure_lifecycle["retryable"]
+            or observation["failure_class"] != "provider_nonretryable"
+            or observation["runtime_ms"] != 900000
+            or observation["occurrence_count"] != 9
+            or len(observation["failures"]) != 1
+            or observation["failures"][0]["count"] != 9
+        ):
+            raise OperationError("probe failure-detail custody projection failed")
+        failure_result = {
+            "schema_version": host_adapter.PROBE_RESULT_SCHEMA_VERSION,
+            "probe_id": row["probe_id"],
+            "capability": row["capability"],
+            "status": failure_status,
+            "observed": "not established",
+            "session_id": "d42-thread",
+            "event_types": failure_lifecycle["event_types"],
+            "direct_observations": [],
+            "routing": [],
+            "usage": None,
+            "diagnostics": failure_diagnostics,
+            "lifecycle": failure_lifecycle,
+        }
+        _validate_probe_result(failure_result, row)
+        if _probe_is_official_transient(failure_result):
+            raise OperationError("generic provider failure became retryable")
 
 
 def _probe_noncritical_capability_gate() -> None:
@@ -1868,7 +2043,7 @@ def _probe_noncritical_capability_gate() -> None:
             }
             _validate_probe_result(result, row)
             terminal = {
-                "schema_version": PROBE_TERMINAL_V8,
+                "schema_version": PROBE_TERMINAL_V9,
                 "request_id": f"d38-{index}.1.01",
                 "probe_id": row["probe_id"],
                 "result": result,
