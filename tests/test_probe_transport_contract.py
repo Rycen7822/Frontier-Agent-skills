@@ -350,6 +350,45 @@ def raw_noncritical_complete(
     return b"\n".join(records) + b"\n"
 
 
+def raw_noncritical_command_sequence(
+    command_events: list[tuple[str, str, dict[str, object]]],
+) -> bytes:
+    records = [
+        event("thread.started", thread_id="thread-1"),
+        event("turn.started", turn_id="turn-1"),
+    ]
+    for command_id, phase, fields in command_events:
+        records.append(
+            event(
+                f"item.{phase}",
+                item={
+                    "id": command_id,
+                    "type": "command_execution",
+                    **fields,
+                },
+            )
+        )
+    records.extend(
+        [
+            event(
+                "item.completed",
+                item={
+                    "id": "final-1",
+                    "type": "agent_message",
+                    "status": "completed",
+                    "text": "inert marker",
+                },
+            ),
+            event(
+                "turn.completed",
+                turn_id="turn-1",
+                usage={"input_tokens": 2, "output_tokens": 1},
+            ),
+        ]
+    )
+    return b"\n".join(records) + b"\n"
+
+
 def project(
     raw: bytes,
     *,
@@ -421,7 +460,7 @@ class ProbeTransportContractTests(unittest.TestCase):
         self.assertNotIn('"command":', serialized)
         self.assertNotIn("aggregated_output", serialized)
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/9",
+            "schema_version": "model-evolution-probe-terminal/10",
             "request_id": REQUEST["request_id"],
             "probe_id": row["probe_id"],
             "result": result,
@@ -441,6 +480,139 @@ class ProbeTransportContractTests(unittest.TestCase):
             path.write_text(json.dumps(terminal), encoding="utf-8")
             loaded = _load_probe_terminal(path, request=REQUEST, row=row)
         self.assertEqual(loaded["result"]["status"], "unknown")
+
+    def test_d43_sequence_safe_command_custody_closes_one_and_three_commands(self):
+        row = {
+            "probe_id": "principal-tracing",
+            "capability": "principal_tracing",
+            "required_event_types": ["thread.started", "turn.completed"],
+        }
+        raw_values = (
+            raw_noncritical_complete(command=True),
+            raw_noncritical_command_sequence(
+                [
+                    ("command-1", "started", {"status": "in_progress"}),
+                    ("command-2", "started", {"status": "in_progress"}),
+                    ("command-3", "started", {"status": "in_progress"}),
+                    ("command-2", "completed", {"status": "completed", "exit_code": 0}),
+                    ("command-1", "completed", {"status": "completed", "exit_code": 0}),
+                    ("command-3", "completed", {"status": "completed", "exit_code": 0}),
+                ]
+            ),
+        )
+        for command_count, raw in enumerate(raw_values, 1):
+            result = emitted_for_row(row, raw)
+            _validate_probe_result(result, row)
+            custody = result["lifecycle"]["command_custody"]
+            expected_count = 1 if command_count == 1 else 3
+            self.assertEqual(custody["item_count"], expected_count)
+            self.assertEqual(custody["started_count"], expected_count)
+            self.assertEqual(custody["completed_count"], expected_count)
+            self.assertEqual(custody["zero_exit_count"], expected_count)
+            self.assertTrue(custody["paired"])
+            self.assertTrue(custody["safe_completed"])
+            self.assertEqual(set(custody["reason_counts"].values()), {0})
+            self.assertEqual(result["status"], "unknown")
+            self.assertEqual(result["diagnostics"], [])
+            projection = json.dumps(custody, sort_keys=True)
+            for forbidden in (
+                "command-1",
+                "command-2",
+                "command-3",
+                "aggregated_output",
+                '"command"',
+                "inert marker",
+            ):
+                self.assertNotIn(forbidden, projection)
+            terminal = {
+                "schema_version": "model-evolution-probe-terminal/10",
+                "request_id": REQUEST["request_id"],
+                "probe_id": row["probe_id"],
+                "result": result,
+                "stderr": "",
+                "attempt_count": 1,
+                "attempts": [{
+                    "attempt": 1,
+                    "attempt_id": REQUEST["request_id"] + ".attempt-1",
+                    "status": result["status"],
+                    "diagnostics": result["diagnostics"],
+                    "stderr": "",
+                    "lifecycle": result["lifecycle"],
+                }],
+            }
+            with tempfile.TemporaryDirectory() as temporary:
+                terminal_path = Path(temporary) / "terminal.json"
+                terminal_path.write_text(json.dumps(terminal), encoding="utf-8")
+                loaded = _load_probe_terminal(
+                    terminal_path,
+                    request=REQUEST,
+                    row=row,
+                )
+            self.assertEqual(
+                loaded["schema_version"],
+                "model-evolution-probe-terminal/10",
+            )
+
+    def test_d43_sequence_command_custody_fails_closed_on_phase_and_result_faults(self):
+        negative_items = (
+            [
+                {"id": "command-1", "type": "command_execution", "phase": "started"},
+                {"id": "command-1", "type": "command_execution", "phase": "started"},
+                {"id": "command-1", "type": "command_execution", "phase": "completed", "status": "completed", "exit_code": 0},
+            ],
+            [
+                {"id": "command-1", "type": "command_execution", "phase": "started"},
+            ],
+            [
+                {"id": "command-1", "type": "command_execution", "phase": "started"},
+                {"id": "command-2", "type": "command_execution", "phase": "completed", "status": "completed", "exit_code": 0},
+            ],
+            [
+                {"id": "", "type": "command_execution", "phase": "started"},
+            ],
+            [
+                {"id": "command-1", "type": "command_execution", "phase": "mystery"},
+            ],
+            [
+                {"id": "command-1", "type": "command_execution", "phase": "started"},
+                {"id": "command-1", "type": "command_execution", "phase": "completed", "status": "completed"},
+            ],
+            [
+                {"id": "command-1", "type": "command_execution", "phase": "started"},
+                {"id": "command-1", "type": "command_execution", "phase": "completed", "status": "completed", "exit_code": 1},
+            ],
+            [
+                {"id": "command-1", "type": "command_execution", "phase": "started", "error": {"kind": "failure"}},
+                {"id": "command-1", "type": "command_execution", "phase": "completed", "status": "completed", "exit_code": 0},
+            ],
+            [
+                {"id": "command-1", "type": "command_execution", "phase": "started", "changes": [{"kind": "write"}]},
+                {"id": "command-1", "type": "command_execution", "phase": "completed", "status": "completed", "exit_code": 0},
+            ],
+            [
+                {"id": "command-1", "type": "command_execution", "phase": "started"},
+                {"id": "command-1", "type": "command_execution", "phase": "completed", "status": "incomplete", "exit_code": 0},
+            ],
+        )
+        for items in negative_items:
+            custody = host._probe_command_custody({"items": items})
+            self.assertFalse(custody["safe_completed"], items)
+            self.assertFalse(custody["successful"], items)
+            self.assertTrue(any(custody["reason_counts"].values()), items)
+
+    def test_d43_dirty_workspace_remains_conjunctive_with_safe_command_sequence(self):
+        raw = raw_noncritical_command_sequence(
+            [
+                ("command-1", "started", {"status": "in_progress"}),
+                ("command-1", "completed", {"status": "completed", "exit_code": 0}),
+            ]
+        )
+        lifecycle, status, diagnostics = project(raw, timed_out=False, dirty=True)
+        self.assertTrue(lifecycle["command_custody"]["safe_completed"])
+        self.assertFalse(lifecycle["workspace_clean"])
+        self.assertFalse(lifecycle["custody_closed"])
+        self.assertEqual(status, "unknown")
+        self.assertTrue(diagnostics)
 
     def test_d40_command_custody_negative_shapes_fail_closed(self):
         row = {
@@ -564,7 +736,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             }
         ]
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/9",
+            "schema_version": "model-evolution-probe-terminal/10",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -576,7 +748,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             path = Path(temporary) / "terminal.json"
             path.write_text(json.dumps(terminal), encoding="utf-8")
             loaded = _load_probe_terminal(path, request=REQUEST, row=ROW)
-        self.assertEqual(loaded["schema_version"], "model-evolution-probe-terminal/9")
+        self.assertEqual(loaded["schema_version"], "model-evolution-probe-terminal/10")
 
     def test_all_normalized_item_types_are_classified_without_content(self):
         for item_type in (
@@ -610,7 +782,7 @@ class ProbeTransportContractTests(unittest.TestCase):
         )
         _validate_probe_result(result, ROW)
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/9",
+            "schema_version": "model-evolution-probe-terminal/10",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -666,7 +838,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": complete_lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/9",
+            "schema_version": "model-evolution-probe-terminal/10",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": complete,
@@ -714,7 +886,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/9",
+            "schema_version": "model-evolution-probe-terminal/10",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -1055,7 +1227,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/9",
+            "schema_version": "model-evolution-probe-terminal/10",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,

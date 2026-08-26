@@ -77,7 +77,8 @@ PREVIOUS_ADAPTER_VERSION = "1.14"
 D38_ADAPTER_VERSION = "1.15"
 D39_ADAPTER_VERSION = "1.16"
 D40_ADAPTER_VERSION = "1.17"
-ADAPTER_VERSION = "1.18"
+D42_ADAPTER_VERSION = "1.18"
+ADAPTER_VERSION = "1.19"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_artifacts.py",
@@ -93,13 +94,15 @@ PROBE_RESULT_SCHEMA_VERSION_PREVIOUS = "codex-interaction-probe-result/1.3"
 PROBE_RESULT_SCHEMA_VERSION_D38 = "codex-interaction-probe-result/1.4"
 PROBE_RESULT_SCHEMA_VERSION_D39 = "codex-interaction-probe-result/1.5"
 PROBE_RESULT_SCHEMA_VERSION_D40 = "codex-interaction-probe-result/1.6"
-PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.7"
+PROBE_RESULT_SCHEMA_VERSION_D42 = "codex-interaction-probe-result/1.7"
+PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.8"
 PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY = "codex-probe-lifecycle/1"
 PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS = "codex-probe-lifecycle/2"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D38 = "codex-probe-lifecycle/3"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D39 = "codex-probe-lifecycle/4"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D40 = "codex-probe-lifecycle/5"
-PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/6"
+PROBE_LIFECYCLE_SCHEMA_VERSION_D42 = "codex-probe-lifecycle/6"
+PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/7"
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -234,6 +237,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         D38_ADAPTER_VERSION,
         D39_ADAPTER_VERSION,
         D40_ADAPTER_VERSION,
+        D42_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         raise AdapterError("unsupported Host adapter version")
@@ -249,6 +253,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         D38_ADAPTER_VERSION,
         D39_ADAPTER_VERSION,
         D40_ADAPTER_VERSION,
+        D42_ADAPTER_VERSION,
         ADAPTER_VERSION,
     } and runtime_surface != RUNTIME_SURFACE_VERSION:
         raise AdapterError("runtime surface identity is missing")
@@ -335,6 +340,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         D38_ADAPTER_VERSION,
         D39_ADAPTER_VERSION,
         D40_ADAPTER_VERSION,
+        D42_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         expected.update(
@@ -362,6 +368,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         D38_ADAPTER_VERSION,
         D39_ADAPTER_VERSION,
         D40_ADAPTER_VERSION,
+        D42_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         if not all(isinstance(value, str) for value in (bound_catalog, bound_catalog_hash, bound_catalog_client)):
@@ -799,54 +806,101 @@ def _probe_command_custody(normalized: dict[str, Any]) -> dict[str, Any]:
         for item in normalized.get("items", [])
         if isinstance(item, dict) and item.get("type") == "command_execution"
     ]
-    item_ids = {
-        item.get("id")
-        for item in command_items
-        if isinstance(item.get("id"), str)
-    }
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    invalid_id_count = 0
+    for item in command_items:
+        item_id = item.get("id")
+        if not isinstance(item_id, str) or not SAFE_ID.fullmatch(item_id):
+            invalid_id_count += 1
+            continue
+        grouped.setdefault(item_id, []).append(item)
     started_count = sum(item.get("phase") == "started" for item in command_items)
     updated_count = sum(item.get("phase") == "updated" for item in command_items)
     completed_items = [
         item for item in command_items if item.get("phase") == "completed"
     ]
     completed_count = len(completed_items)
-    completed = completed_items[0] if len(completed_items) == 1 else None
-    exit_code = (
-        completed.get("exit_code")
-        if isinstance(completed, dict)
-        and isinstance(completed.get("exit_code"), int)
-        and not isinstance(completed.get("exit_code"), bool)
-        else None
-    )
+    reason_counts = {
+        "invalid_id": invalid_id_count,
+        "unknown_phase": 0,
+        "missing_started": 0,
+        "duplicate_started": 0,
+        "missing_completed": 0,
+        "duplicate_completed": 0,
+        "invalid_completed_status": 0,
+        "missing_exit_code": 0,
+        "nonzero_exit_code": 0,
+        "changes_present": 0,
+        "error_present": 0,
+        "incomplete_present": 0,
+    }
+    zero_exit_count = 0
+    for items in grouped.values():
+        starts = [item for item in items if item.get("phase") == "started"]
+        completions = [item for item in items if item.get("phase") == "completed"]
+        reason_counts["unknown_phase"] += sum(
+            item.get("phase") not in {"started", "updated", "completed"}
+            for item in items
+        )
+        reason_counts["missing_started"] += not starts
+        reason_counts["duplicate_started"] += max(0, len(starts) - 1)
+        reason_counts["missing_completed"] += not completions
+        reason_counts["duplicate_completed"] += max(0, len(completions) - 1)
+        for item in items:
+            reason_counts["changes_present"] += bool(item.get("changes"))
+            reason_counts["error_present"] += isinstance(item.get("error"), dict)
+            reason_counts["incomplete_present"] += (
+                item.get("incomplete") is True
+                or item.get("status") == "incomplete"
+            )
+        if len(completions) == 1:
+            completed = completions[0]
+            reason_counts["invalid_completed_status"] += (
+                completed.get("status") != "completed"
+            )
+            exit_code = completed.get("exit_code")
+            if isinstance(exit_code, bool) or not isinstance(exit_code, int):
+                reason_counts["missing_exit_code"] += 1
+            elif exit_code != 0:
+                reason_counts["nonzero_exit_code"] += 1
+            else:
+                zero_exit_count += 1
     changes_present = any(
-        isinstance(item.get("changes"), list) and bool(item["changes"])
+        bool(item.get("changes"))
         for item in command_items
     )
     error_present = any(isinstance(item.get("error"), dict) for item in command_items)
     paired = (
-        len(item_ids) == 1
-        and started_count == 1
-        and completed_count == 1
-        and completed is not None
-        and completed.get("status") == "completed"
+        bool(grouped)
+        and not invalid_id_count
+        and not any(
+            reason_counts[field]
+            for field in (
+                "unknown_phase",
+                "missing_started",
+                "duplicate_started",
+                "missing_completed",
+                "duplicate_completed",
+            )
+        )
     )
     successful = (
         paired
-        and exit_code == 0
-        and not changes_present
-        and not error_present
+        and zero_exit_count == len(grouped)
+        and not any(reason_counts.values())
     )
     return {
         "present": bool(command_items),
-        "item_count": len(item_ids),
+        "item_count": len(grouped),
         "started_count": started_count,
         "updated_count": updated_count,
         "completed_count": completed_count,
         "paired": paired,
-        "exit_code": exit_code,
+        "zero_exit_count": zero_exit_count,
         "successful": successful,
         "changes_present": changes_present,
         "error_present": error_present,
+        "reason_counts": reason_counts,
         "safe_completed": successful,
     }
 

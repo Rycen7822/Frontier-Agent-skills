@@ -67,6 +67,7 @@ PROBE_TERMINAL_V6 = "model-evolution-probe-terminal/6"
 PROBE_TERMINAL_V7 = "model-evolution-probe-terminal/7"
 PROBE_TERMINAL_V8 = "model-evolution-probe-terminal/8"
 PROBE_TERMINAL_V9 = "model-evolution-probe-terminal/9"
+PROBE_TERMINAL_V10 = "model-evolution-probe-terminal/10"
 PLUGIN_BUILD_GATE_SCRIPT = "scripts/build_codex_plugin.py"
 ALLOWED_GATE_SCRIPTS = {
     "bundle/build_bundle_manifest.py",
@@ -572,6 +573,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D38,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D39,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         raise OperationError("unknown probe lifecycle version")
@@ -610,6 +612,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D38,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D39,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         bool_fields += ("outcome_evidence", "effect_capable")
@@ -676,6 +679,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         noncritical_effect_safe = not value["effect_capable"]
         if version in {
             host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
+            host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
             host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
         }:
             custody = value["command_custody"]
@@ -705,6 +709,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
     if version in {
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D39,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         observation = value["failure_observation"]
@@ -836,10 +841,11 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             raise OperationError("mixed failure observation lacks distinct facts")
     if version in {
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         custody = value["command_custody"]
-        custody_fields = {
+        historical_custody_fields = {
             "present",
             "item_count",
             "started_count",
@@ -852,7 +858,16 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             "error_present",
             "safe_completed",
         }
-        if not isinstance(custody, dict) or set(custody) != custody_fields:
+        sequence_custody_fields = historical_custody_fields - {"exit_code"} | {
+            "zero_exit_count",
+            "reason_counts",
+        }
+        expected_fields = (
+            sequence_custody_fields
+            if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION
+            else historical_custody_fields
+        )
+        if not isinstance(custody, dict) or set(custody) != expected_fields:
             raise OperationError("command custody projection shape is invalid")
         if any(
             not isinstance(custody[field], bool)
@@ -861,32 +876,113 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             isinstance(custody[field], bool)
             or not isinstance(custody[field], int)
             or custody[field] < 0
-            for field in ("item_count", "started_count", "updated_count", "completed_count")
+            for field in (
+                "item_count",
+                "started_count",
+                "updated_count",
+                "completed_count",
+            )
         ):
             raise OperationError("command custody projection types are invalid")
-        if custody["exit_code"] is not None and (
-            isinstance(custody["exit_code"], bool)
-            or not isinstance(custody["exit_code"], int)
+        if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION:
+            reason_fields = {
+                "invalid_id",
+                "unknown_phase",
+                "missing_started",
+                "duplicate_started",
+                "missing_completed",
+                "duplicate_completed",
+                "invalid_completed_status",
+                "missing_exit_code",
+                "nonzero_exit_code",
+                "changes_present",
+                "error_present",
+                "incomplete_present",
+            }
+            reasons = custody["reason_counts"]
+            if (
+                not isinstance(reasons, dict)
+                or set(reasons) != reason_fields
+                or any(
+                    isinstance(count, bool)
+                    or not isinstance(count, int)
+                    or count < 0
+                    for count in reasons.values()
+                )
+                or isinstance(custody["zero_exit_count"], bool)
+                or not isinstance(custody["zero_exit_count"], int)
+                or not 0 <= custody["zero_exit_count"] <= custody["item_count"]
+                or custody["changes_present"] != bool(reasons["changes_present"])
+                or custody["error_present"] != bool(reasons["error_present"])
+            ):
+                raise OperationError("sequence command custody projection is invalid")
+            expected_paired = (
+                custody["present"]
+                and custody["item_count"] > 0
+                and custody["started_count"] == custody["item_count"]
+                and custody["completed_count"] == custody["item_count"]
+                and not any(
+                    reasons[field]
+                    for field in (
+                        "invalid_id",
+                        "unknown_phase",
+                        "missing_started",
+                        "duplicate_started",
+                        "missing_completed",
+                        "duplicate_completed",
+                    )
+                )
+            )
+            expected_successful = (
+                expected_paired
+                and custody["zero_exit_count"] == custody["item_count"]
+                and not any(reasons.values())
+            )
+        else:
+            if custody["exit_code"] is not None and (
+                isinstance(custody["exit_code"], bool)
+                or not isinstance(custody["exit_code"], int)
+            ):
+                raise OperationError("command custody exit code is invalid")
+            expected_paired = (
+                custody["item_count"] == 1
+                and custody["started_count"] == 1
+                and custody["completed_count"] == 1
+            )
+            expected_successful = (
+                expected_paired
+                and custody["exit_code"] == 0
+                and not custody["changes_present"]
+                and not custody["error_present"]
+            )
+        if not custody["present"] and (
+            any(
+                custody[field]
+                for field in (
+                    "paired",
+                    "successful",
+                    "changes_present",
+                    "error_present",
+                    "safe_completed",
+                )
+            )
+            or any(
+                custody[field]
+                for field in (
+                    "item_count",
+                    "started_count",
+                    "updated_count",
+                    "completed_count",
+                )
+            )
+            or (
+                version != host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION
+                and custody["exit_code"] is not None
+            )
         ):
-            raise OperationError("command custody exit code is invalid")
-        if not custody["present"]:
-            if any(custody[field] for field in ("paired", "successful", "changes_present", "error_present", "safe_completed")):
-                raise OperationError("empty command custody projection is inconsistent")
-            if any(custody[field] for field in ("item_count", "started_count", "updated_count", "completed_count")) or custody["exit_code"] is not None:
-                raise OperationError("empty command custody counts are inconsistent")
-        expected_paired = (
-            custody["item_count"] == 1
-            and custody["started_count"] == 1
-            and custody["completed_count"] == 1
-        )
+            raise OperationError("empty command custody projection is inconsistent")
         if custody["paired"] != expected_paired:
             raise OperationError("command custody pairing is inconsistent")
-        expected_successful = (
-            custody["paired"]
-            and custody["exit_code"] == 0
-            and not custody["changes_present"]
-            and not custody["error_present"]
-        )
         if custody["successful"] != expected_successful or custody["safe_completed"] != expected_successful:
             raise OperationError("command custody success is inconsistent")
         if "command_execution" not in value["completed_item_types"] + value["incomplete_item_types"]:
@@ -931,6 +1027,7 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D38,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D39,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40,
+        host_adapter.PROBE_RESULT_SCHEMA_VERSION_D42,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION,
     }:
         if set(value) != legacy_required | {"lifecycle"}:
@@ -947,6 +1044,8 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
                 host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D39,
             host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40:
                 host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
+            host_adapter.PROBE_RESULT_SCHEMA_VERSION_D42:
+                host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
             host_adapter.PROBE_RESULT_SCHEMA_VERSION:
                 host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
         }[version]
@@ -979,6 +1078,7 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D38,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D39,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40,
+        host_adapter.PROBE_RESULT_SCHEMA_VERSION_D42,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION,
     }:
         lifecycle = value["lifecycle"]
@@ -1048,6 +1148,7 @@ def _load_probe_terminal(
         PROBE_TERMINAL_V7,
         PROBE_TERMINAL_V8,
         PROBE_TERMINAL_V9,
+        PROBE_TERMINAL_V10,
     } or set(terminal) != required | {"attempt_count"}:
         raise OperationError("unknown interaction probe terminal version")
     if (
@@ -1068,7 +1169,8 @@ def _load_probe_terminal(
         PROBE_TERMINAL_V6: host_adapter.PROBE_RESULT_SCHEMA_VERSION_D38,
         PROBE_TERMINAL_V7: host_adapter.PROBE_RESULT_SCHEMA_VERSION_D39,
         PROBE_TERMINAL_V8: host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40,
-        PROBE_TERMINAL_V9: host_adapter.PROBE_RESULT_SCHEMA_VERSION,
+        PROBE_TERMINAL_V9: host_adapter.PROBE_RESULT_SCHEMA_VERSION_D42,
+        PROBE_TERMINAL_V10: host_adapter.PROBE_RESULT_SCHEMA_VERSION,
     }[version]
     if terminal["result"]["schema_version"] != expected_result:
         raise OperationError("versioned terminal must bind versioned probe result")
@@ -1090,7 +1192,8 @@ def _load_probe_terminal(
             PROBE_TERMINAL_V6: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D38,
             PROBE_TERMINAL_V7: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D39,
             PROBE_TERMINAL_V8: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
-            PROBE_TERMINAL_V9: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
+            PROBE_TERMINAL_V9: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
+            PROBE_TERMINAL_V10: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
         }[version]
         if attempt["lifecycle"]["schema_version"] != expected_lifecycle:
             raise OperationError("versioned terminal lifecycle version differs")
@@ -1136,16 +1239,19 @@ def _probe_is_official_transient(value: dict[str, Any]) -> bool:
         )
     if isinstance(lifecycle, dict) and lifecycle.get("schema_version") in {
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         observation = lifecycle.get("failure_observation")
         observation_class = observation.get("failure_class") if isinstance(observation, dict) else None
-        expected_result = (
-            host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40
-            if lifecycle.get("schema_version")
-            == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40
-            else host_adapter.PROBE_RESULT_SCHEMA_VERSION
-        )
+        expected_result = {
+            host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40:
+                host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40,
+            host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42:
+                host_adapter.PROBE_RESULT_SCHEMA_VERSION_D42,
+            host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION:
+                host_adapter.PROBE_RESULT_SCHEMA_VERSION,
+        }[lifecycle.get("schema_version")]
         return (
             value.get("schema_version") in {
                 expected_result,
@@ -1322,7 +1428,7 @@ def run_interaction_probes(
                 if not _probe_is_official_transient(value):
                     break
             terminal = {
-                "schema_version": PROBE_TERMINAL_V9,
+                "schema_version": PROBE_TERMINAL_V10,
                 "request_id": request["request_id"],
                 "probe_id": row["probe_id"],
                 "result": value,
@@ -1787,7 +1893,7 @@ def _probe_lifecycle_contract_gate() -> None:
             },
         ]
         terminal = {
-            "schema_version": PROBE_TERMINAL_V9,
+            "schema_version": PROBE_TERMINAL_V10,
             "request_id": request["request_id"],
             "probe_id": row["probe_id"],
             "result": complete_result,
@@ -2043,7 +2149,7 @@ def _probe_noncritical_capability_gate() -> None:
             }
             _validate_probe_result(result, row)
             terminal = {
-                "schema_version": PROBE_TERMINAL_V9,
+                "schema_version": PROBE_TERMINAL_V10,
                 "request_id": f"d38-{index}.1.01",
                 "probe_id": row["probe_id"],
                 "result": result,
