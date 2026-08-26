@@ -78,7 +78,8 @@ D38_ADAPTER_VERSION = "1.15"
 D39_ADAPTER_VERSION = "1.16"
 D40_ADAPTER_VERSION = "1.17"
 D42_ADAPTER_VERSION = "1.18"
-ADAPTER_VERSION = "1.19"
+D43_ADAPTER_VERSION = "1.19"
+ADAPTER_VERSION = "1.20"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_artifacts.py",
@@ -95,14 +96,16 @@ PROBE_RESULT_SCHEMA_VERSION_D38 = "codex-interaction-probe-result/1.4"
 PROBE_RESULT_SCHEMA_VERSION_D39 = "codex-interaction-probe-result/1.5"
 PROBE_RESULT_SCHEMA_VERSION_D40 = "codex-interaction-probe-result/1.6"
 PROBE_RESULT_SCHEMA_VERSION_D42 = "codex-interaction-probe-result/1.7"
-PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.8"
+PROBE_RESULT_SCHEMA_VERSION_D43 = "codex-interaction-probe-result/1.8"
+PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.9"
 PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY = "codex-probe-lifecycle/1"
 PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS = "codex-probe-lifecycle/2"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D38 = "codex-probe-lifecycle/3"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D39 = "codex-probe-lifecycle/4"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D40 = "codex-probe-lifecycle/5"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D42 = "codex-probe-lifecycle/6"
-PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/7"
+PROBE_LIFECYCLE_SCHEMA_VERSION_D43 = "codex-probe-lifecycle/7"
+PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/8"
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -238,6 +241,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         D39_ADAPTER_VERSION,
         D40_ADAPTER_VERSION,
         D42_ADAPTER_VERSION,
+        D43_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         raise AdapterError("unsupported Host adapter version")
@@ -254,6 +258,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         D39_ADAPTER_VERSION,
         D40_ADAPTER_VERSION,
         D42_ADAPTER_VERSION,
+        D43_ADAPTER_VERSION,
         ADAPTER_VERSION,
     } and runtime_surface != RUNTIME_SURFACE_VERSION:
         raise AdapterError("runtime surface identity is missing")
@@ -341,6 +346,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         D39_ADAPTER_VERSION,
         D40_ADAPTER_VERSION,
         D42_ADAPTER_VERSION,
+        D43_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         expected.update(
@@ -369,6 +375,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         D39_ADAPTER_VERSION,
         D40_ADAPTER_VERSION,
         D42_ADAPTER_VERSION,
+        D43_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         if not all(isinstance(value, str) for value in (bound_catalog, bound_catalog_hash, bound_catalog_client)):
@@ -827,14 +834,15 @@ def _probe_command_custody(normalized: dict[str, Any]) -> dict[str, Any]:
         "duplicate_started": 0,
         "missing_completed": 0,
         "duplicate_completed": 0,
-        "invalid_completed_status": 0,
+        "unknown_completed_status": 0,
         "missing_exit_code": 0,
-        "nonzero_exit_code": 0,
+        "status_exit_mismatch": 0,
         "changes_present": 0,
         "error_present": 0,
         "incomplete_present": 0,
     }
     zero_exit_count = 0
+    failed_nonzero_count = 0
     for items in grouped.values():
         starts = [item for item in items if item.get("phase") == "started"]
         completions = [item for item in items if item.get("phase") == "completed"]
@@ -855,16 +863,18 @@ def _probe_command_custody(normalized: dict[str, Any]) -> dict[str, Any]:
             )
         if len(completions) == 1:
             completed = completions[0]
-            reason_counts["invalid_completed_status"] += (
-                completed.get("status") != "completed"
-            )
+            status = completed.get("status")
             exit_code = completed.get("exit_code")
             if isinstance(exit_code, bool) or not isinstance(exit_code, int):
                 reason_counts["missing_exit_code"] += 1
-            elif exit_code != 0:
-                reason_counts["nonzero_exit_code"] += 1
-            else:
+            elif status == "completed" and exit_code == 0:
                 zero_exit_count += 1
+            elif status == "failed" and exit_code != 0:
+                failed_nonzero_count += 1
+            elif status not in {"completed", "failed"}:
+                reason_counts["unknown_completed_status"] += 1
+            else:
+                reason_counts["status_exit_mismatch"] += 1
     changes_present = any(
         bool(item.get("changes"))
         for item in command_items
@@ -889,6 +899,11 @@ def _probe_command_custody(normalized: dict[str, Any]) -> dict[str, Any]:
         and zero_exit_count == len(grouped)
         and not any(reason_counts.values())
     )
+    effect_custody_closed = (
+        paired
+        and zero_exit_count + failed_nonzero_count == len(grouped)
+        and not any(reason_counts.values())
+    )
     return {
         "present": bool(command_items),
         "item_count": len(grouped),
@@ -897,11 +912,71 @@ def _probe_command_custody(normalized: dict[str, Any]) -> dict[str, Any]:
         "completed_count": completed_count,
         "paired": paired,
         "zero_exit_count": zero_exit_count,
+        "failed_nonzero_count": failed_nonzero_count,
         "successful": successful,
+        "effect_custody_closed": effect_custody_closed,
         "changes_present": changes_present,
         "error_present": error_present,
         "reason_counts": reason_counts,
-        "safe_completed": successful,
+    }
+
+
+_CREDENTIAL_ASSIGNMENT = re.compile(
+    rb"(?i)(token|secret|password|authorization|api[_-]?key)\s*=\s*([^\s\"'\\,}\]]*)"
+)
+_CREDENTIAL_SECRET_PREFIX = re.compile(rb"sk-[A-Za-z0-9_-]{8,}")
+_CREDENTIAL_RAW_MARKER = re.compile(
+    rb"(?i)(?:sk-[A-Za-z0-9_-]{8,}|(?:token|secret|password|authorization|api[_-]?key)\s*[:=])"
+)
+_SAFE_CREDENTIAL_PLACEHOLDERS = {
+    b"",
+    b"unset",
+    b"redacted",
+    b"<redacted>",
+    b"[redacted]",
+}
+
+
+def _probe_credential_observation(raw_channels: tuple[bytes, bytes]) -> dict[str, Any]:
+    """Project bounded marker attribution without retaining marker values."""
+    grouped: dict[tuple[str, str, str], int] = {}
+    exposure_possible = False
+    for source, channel in zip(("child_stdout", "child_stderr"), raw_channels):
+        covered: list[tuple[int, int]] = []
+
+        def add(kind: str, shape: str, start: int, end: int, exposure: bool) -> None:
+            nonlocal exposure_possible
+            grouped[(kind, source, shape)] = grouped.get((kind, source, shape), 0) + 1
+            covered.append((start, end))
+            exposure_possible = exposure_possible or exposure
+
+        for match in _CREDENTIAL_SECRET_PREFIX.finditer(channel):
+            add("secret_prefix", "secret_like", match.start(), match.end(), True)
+        for match in _CREDENTIAL_ASSIGNMENT.finditer(channel):
+            value = match.group(2).lower()
+            if value == b"":
+                shape = "empty"
+                exposure = False
+            elif value in _SAFE_CREDENTIAL_PLACEHOLDERS:
+                shape = "safe_placeholder"
+                exposure = False
+            else:
+                shape = "non_placeholder"
+                exposure = True
+            add("assignment", shape, match.start(), match.end(), exposure)
+        for match in _CREDENTIAL_RAW_MARKER.finditer(channel):
+            if any(start <= match.start() and match.end() <= end for start, end in covered):
+                continue
+            add("raw_marker", "unattributed", match.start(), match.end(), True)
+    markers = [
+        {"kind": kind, "source": source, "count": count, "value_shape": shape}
+        for (kind, source, shape), count in sorted(grouped.items())
+    ]
+    return {
+        "marker_seen": bool(markers),
+        "exposure_possible": exposure_possible,
+        "occurrence_count": sum(item["count"] for item in markers),
+        "markers": markers,
     }
 
 
@@ -1204,16 +1279,9 @@ def _probe_lifecycle_projection(
         source_root is not None
         and any(str(source_root).encode("utf-8") in channel for channel in raw_channels)
     )
-    credential_marker_seen = bool(
-        any(
-            re.search(
-                rb"(?:sk-[A-Za-z0-9_-]{8,}|(?:token|secret|password|authorization|api[_-]?key)=)",
-                channel,
-                re.IGNORECASE,
-            )
-            for channel in raw_channels
-        )
-    )
+    credential_observation = _probe_credential_observation(raw_channels)
+    credential_marker_seen = credential_observation["marker_seen"]
+    credential_exposure_possible = credential_observation["exposure_possible"]
     event_types = _canonical_probe_event_types(normalized.get("event_types", []))
     completed_turn = "turn.completed" in event_types
     last_message_present = last_message.is_file() or bool(
@@ -1260,7 +1328,13 @@ def _probe_lifecycle_projection(
         and jsonl_classified
         and workspace_clean
         and not source_path_exposed
-        and not credential_marker_seen
+        and not credential_exposure_possible
+    )
+    effect_custody_closed = (
+        command_custody["effect_custody_closed"]
+        and custody_closed
+        and not source_path_exposed
+        and not credential_exposure_possible
     )
     observations = set(event_types)
     if normalized.get("routing"):
@@ -1321,7 +1395,10 @@ def _probe_lifecycle_projection(
         "workspace_clean": workspace_clean,
         "source_path_exposed": source_path_exposed,
         "credential_marker_seen": credential_marker_seen,
+        "credential_exposure_possible": credential_exposure_possible,
+        "credential_observation": credential_observation,
         "custody_closed": custody_closed,
+        "effect_custody_closed": effect_custody_closed,
         "required_events_complete": required_events_complete,
         "capability_observable": (
             bool(capability_observable)
@@ -1424,7 +1501,8 @@ def _apply_probe_capability_projection(
             lifecycle.get("effect_capable_item_types") == ["command_execution"]
             and lifecycle.get("effect_capable_evidence_types") == []
             and isinstance(command_custody, dict)
-            and command_custody.get("safe_completed") is True
+            and command_custody.get("effect_custody_closed") is True
+            and lifecycle.get("effect_custody_closed") is True
             and isinstance(failure_observation, dict)
             and failure_observation.get("present") is False
             and failure_observation.get("failure_class") == "none"
@@ -1445,7 +1523,7 @@ def _apply_probe_capability_projection(
                 or completed_command_safe
             )
             and not lifecycle["source_path_exposed"]
-            and not lifecycle["credential_marker_seen"]
+            and not lifecycle["credential_exposure_possible"]
         )
         if not safe_unknown:
             lifecycle.update({
