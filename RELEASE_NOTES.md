@@ -6,6 +6,8 @@ Bundle 8.0.2 advances Writing Plans to 8.4.1 at schema epoch 7; Long Document re
 
 Relative to the signed Bundle 8.0.1 source candidate, the only product semantic delta restores the Writing Plans Resume contract: plans explicitly retain the `freshness-bound host attestation` and `combined preflight` artifact names while preserving the existing branch, identity, freshness, dirty-scope, and immutable-handoff rules.
 
+The `frontier-engineering-v8.0.2-rc.1` GitHub pre-release distributes an installable staging-class Codex marketplace for local preview and loader verification. It is not a repository release-mode build and makes no model-qualification, model-support, production-deployment, or final Bundle 8.0.2 release claim.
+
 ## Bundle 8.0.1 source-complete candidate
 
 Bundle 8.0.1 advances Skill Evaluator to 5.0.0, Software Quality Workflows to 11.0.1, and Writing Plans to 8.4.0 at schema epoch 7; Long Document remains 2.0.0. Long Document and Writing Plans are implicit-eligible, while Skill Evaluator and SQW are explicit-only. SQW retains the exact `$software-quality-workflows` prompt. The activation ceiling remains `implicit_local_pilot`, and `remote_writes` remains false.
