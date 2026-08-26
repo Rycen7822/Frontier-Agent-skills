@@ -23,9 +23,11 @@ from _codex_eval_delivery import (
     DeliveryError,
     RUNTIME_SURFACE_VERSION,
     project_command_environment,
+    prepare_workspace,
     validate_plugin_catalog,
 )
 from _codex_eval_events import ITEM_TYPES
+from _codex_eval_isolation import credential_reachability_check
 
 from _model_evolution_contract import (
     ContractError,
@@ -69,6 +71,7 @@ PROBE_TERMINAL_V8 = "model-evolution-probe-terminal/8"
 PROBE_TERMINAL_V9 = "model-evolution-probe-terminal/9"
 PROBE_TERMINAL_V10 = "model-evolution-probe-terminal/10"
 PROBE_TERMINAL_V11 = "model-evolution-probe-terminal/11"
+PROBE_TERMINAL_V12 = "model-evolution-probe-terminal/12"
 PLUGIN_BUILD_GATE_SCRIPT = "scripts/build_codex_plugin.py"
 ALLOWED_GATE_SCRIPTS = {
     "bundle/build_bundle_manifest.py",
@@ -463,6 +466,54 @@ def _validate_probe_entrypoints(
             )
 
 
+def _validate_credential_reachability(
+    host: dict[str, Any],
+    probe_set: dict[str, Any],
+    repository_root: Path,
+    product_root: Path,
+    plugin_root: Path,
+) -> list[dict[str, Any]]:
+    argv = _probe_argv(host, repository_root)
+    environment = project_command_environment(
+        host["command"], dict(os.environ), require_model_evolution=True
+    )
+    try:
+        isolation_tool = Path(host_adapter._bound_command_option(argv, "--isolation-tool")).resolve(strict=True)
+        codex = Path(host_adapter._bound_command_option(argv, "--codex")).resolve(strict=True)
+        code_mode_host = Path(host_adapter._bound_command_option(argv, "--code-mode-host")).resolve(strict=True)
+        catalog = Path(host_adapter._bound_command_option(argv, "--model-catalog-snapshot")).resolve(strict=True)
+        catalog_sha256 = host_adapter._bound_command_option(argv, "--model-catalog-sha256")
+    except (OSError, ValueError) as exc:
+        raise OperationError("credential reachability Host binding is invalid") from exc
+    proofs = []
+    for sandbox in sorted({row["sandbox"] for row in probe_set["probes"]}):
+        with tempfile.TemporaryDirectory(prefix="frontier-credential-preflight-") as temporary:
+            workspace = Path(temporary)
+            prepare_workspace(workspace, plugin_root, exclude_skill_id=None)
+            plugin_candidates = sorted((workspace / ".agents" / "skills").glob("*/SKILL.md"))
+            if not plugin_candidates:
+                raise OperationError("credential reachability plugin projection is empty")
+            try:
+                proof = credential_reachability_check(
+                    isolation_tool=isolation_tool,
+                    sandbox=sandbox,
+                    source_root=repository_root,
+                    product_root=product_root,
+                    codex=codex,
+                    code_mode_host=code_mode_host,
+                    workspace=workspace,
+                    plugin_probe=plugin_candidates[0],
+                    model_catalog_snapshot=catalog,
+                    model_catalog_sha256=catalog_sha256,
+                    environment=environment,
+                    env_allowlist=host["command"]["env_allowlist"],
+                )
+            except (DeliveryError, ValueError) as exc:
+                raise OperationError("credential reachability preflight failed") from exc
+            proofs.append({"sandbox": sandbox, **proof})
+    return proofs
+
+
 def _run_probe_process(
     argv: list[str],
     row: dict[str, Any],
@@ -581,6 +632,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D43,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         raise OperationError("unknown probe lifecycle version")
@@ -625,11 +677,15 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D43,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         bool_fields += ("outcome_evidence", "effect_capable")
         bool_fields += ("required_events_complete", "capability_observable")
-    if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION:
+    if version in {
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
+    }:
         bool_fields += ("credential_exposure_possible", "effect_custody_closed")
     if any(not isinstance(value[field], bool) for field in bool_fields):
         raise OperationError("probe lifecycle boolean field is invalid")
@@ -658,6 +714,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D43,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         for field in (
@@ -697,6 +754,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
             host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
             host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D43,
+            host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
             host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
         }:
             custody = value["command_custody"]
@@ -708,12 +766,12 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
                     and isinstance(custody, dict)
                     and (
                         custody.get("effect_custody_closed") is True
-                        if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION
+                        if version in {host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44, host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION}
                         else custody.get("safe_completed") is True
                     )
                     and (
                         value.get("effect_custody_closed") is True
-                        if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION
+                        if version in {host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44, host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION}
                         else True
                     )
                 )
@@ -730,7 +788,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             or value["source_path_exposed"]
             or (
                 value["credential_exposure_possible"]
-                if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION
+                if version in {host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44, host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION}
                 else value["credential_marker_seen"]
             )
             or value["retryable"]
@@ -741,6 +799,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D43,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         observation = value["failure_observation"]
@@ -874,6 +933,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D43,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         custody = value["command_custody"]
@@ -900,7 +960,10 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
         }
         expected_fields = (
             effect_custody_fields
-            if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION
+            if version in {
+                host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
+                host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
+            }
             else sequence_custody_fields
             if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D43
             else historical_custody_fields
@@ -915,7 +978,9 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
                 "successful",
                 "changes_present",
                 "error_present",
-                "effect_custody_closed" if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION else "safe_completed",
+                "effect_custody_closed"
+                if version in {host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44, host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION}
+                else "safe_completed",
             )
         ) or any(
             isinstance(custody[field], bool)
@@ -931,6 +996,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             raise OperationError("command custody projection types are invalid")
         if version in {
             host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D43,
+            host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
             host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
         }:
             reason_fields = {
@@ -969,7 +1035,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
                 or not isinstance(custody["zero_exit_count"], int)
                 or not 0 <= custody["zero_exit_count"] <= custody["item_count"]
                 or (
-                    version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION
+                    version in {host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44, host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION}
                     and (
                         isinstance(custody["failed_nonzero_count"], bool)
                         or not isinstance(custody["failed_nonzero_count"], int)
@@ -1005,7 +1071,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             )
             expected_effect_closed = (
                 expected_paired
-                and version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION
+                and version in {host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44, host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION}
                 and custody["zero_exit_count"] + custody["failed_nonzero_count"] == custody["item_count"]
                 and not any(reasons.values())
             )
@@ -1034,7 +1100,9 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
                     "successful",
                     "changes_present",
                     "error_present",
-                    "effect_custody_closed" if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION else "safe_completed",
+                    "effect_custody_closed"
+                    if version in {host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44, host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION}
+                    else "safe_completed",
                 )
             )
             or any(
@@ -1049,6 +1117,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             or (
                 version not in {
                     host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D43,
+                    host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
                     host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
                 }
                 and custody["exit_code"] is not None
@@ -1059,7 +1128,7 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             raise OperationError("command custody pairing is inconsistent")
         if custody["successful"] != expected_successful:
             raise OperationError("command custody success is inconsistent")
-        if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION:
+        if version in {host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44, host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION}:
             if custody["effect_custody_closed"] != expected_effect_closed:
                 raise OperationError("command effect custody is inconsistent")
         elif custody["safe_completed"] != expected_successful:
@@ -1069,14 +1138,27 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
                 raise OperationError("command custody presence is inconsistent")
         elif not custody["present"]:
             raise OperationError("command custody is missing")
-    if version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION:
+    if version in {
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
+    }:
         observation = value["credential_observation"]
         allowed_kinds = {"assignment", "raw_marker", "secret_prefix"}
-        allowed_sources = {"child_stdout", "child_stderr"}
+        current = version == host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION
+        allowed_sources = (
+            {"command_text", "command_output", "agent_message", "structured_error", "child_stderr", "unknown", "raw_unattributed"}
+            if current
+            else {"child_stdout", "child_stderr"}
+        )
         allowed_shapes = {"empty", "safe_placeholder", "non_placeholder", "secret_like", "unattributed"}
+        if current:
+            allowed_shapes.add("command_syntax")
+        observation_fields = {"marker_seen", "exposure_possible", "occurrence_count", "markers"}
+        if current:
+            observation_fields.add("structured_coverage_complete")
         if (
             not isinstance(observation, dict)
-            or set(observation) != {"marker_seen", "exposure_possible", "occurrence_count", "markers"}
+            or set(observation) != observation_fields
             or not isinstance(observation["marker_seen"], bool)
             or not isinstance(observation["exposure_possible"], bool)
             or isinstance(observation["occurrence_count"], bool)
@@ -1085,6 +1167,8 @@ def _validate_probe_lifecycle(value: Any) -> dict[str, Any]:
             or not isinstance(observation["markers"], list)
         ):
             raise OperationError("credential observation shape is invalid")
+        if current and not isinstance(observation["structured_coverage_complete"], bool):
+            raise OperationError("credential structured coverage flag is invalid")
         previous_marker = None
         marker_total = 0
         exposure_expected = False
@@ -1160,6 +1244,7 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D42,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D43,
+        host_adapter.PROBE_RESULT_SCHEMA_VERSION_D44,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION,
     }:
         if set(value) != legacy_required | {"lifecycle"}:
@@ -1180,6 +1265,8 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
                 host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
             host_adapter.PROBE_RESULT_SCHEMA_VERSION_D43:
                 host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D43,
+            host_adapter.PROBE_RESULT_SCHEMA_VERSION_D44:
+                host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
             host_adapter.PROBE_RESULT_SCHEMA_VERSION:
                 host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
         }[version]
@@ -1214,6 +1301,7 @@ def _validate_probe_result(value: Any, row: dict[str, Any]) -> dict[str, Any]:
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D42,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION_D43,
+        host_adapter.PROBE_RESULT_SCHEMA_VERSION_D44,
         host_adapter.PROBE_RESULT_SCHEMA_VERSION,
     }:
         lifecycle = value["lifecycle"]
@@ -1285,6 +1373,7 @@ def _load_probe_terminal(
         PROBE_TERMINAL_V9,
         PROBE_TERMINAL_V10,
         PROBE_TERMINAL_V11,
+        PROBE_TERMINAL_V12,
     } or set(terminal) != required | {"attempt_count"}:
         raise OperationError("unknown interaction probe terminal version")
     if (
@@ -1307,7 +1396,8 @@ def _load_probe_terminal(
         PROBE_TERMINAL_V8: host_adapter.PROBE_RESULT_SCHEMA_VERSION_D40,
         PROBE_TERMINAL_V9: host_adapter.PROBE_RESULT_SCHEMA_VERSION_D42,
         PROBE_TERMINAL_V10: host_adapter.PROBE_RESULT_SCHEMA_VERSION_D43,
-        PROBE_TERMINAL_V11: host_adapter.PROBE_RESULT_SCHEMA_VERSION,
+        PROBE_TERMINAL_V11: host_adapter.PROBE_RESULT_SCHEMA_VERSION_D44,
+        PROBE_TERMINAL_V12: host_adapter.PROBE_RESULT_SCHEMA_VERSION,
     }[version]
     if terminal["result"]["schema_version"] != expected_result:
         raise OperationError("versioned terminal must bind versioned probe result")
@@ -1331,7 +1421,8 @@ def _load_probe_terminal(
             PROBE_TERMINAL_V8: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
             PROBE_TERMINAL_V9: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
             PROBE_TERMINAL_V10: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D43,
-            PROBE_TERMINAL_V11: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
+            PROBE_TERMINAL_V11: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
+            PROBE_TERMINAL_V12: host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
         }[version]
         if attempt["lifecycle"]["schema_version"] != expected_lifecycle:
             raise OperationError("versioned terminal lifecycle version differs")
@@ -1379,6 +1470,7 @@ def _probe_is_official_transient(value: dict[str, Any]) -> bool:
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D40,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D42,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D43,
+        host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44,
         host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION,
     }:
         observation = lifecycle.get("failure_observation")
@@ -1390,6 +1482,8 @@ def _probe_is_official_transient(value: dict[str, Any]) -> bool:
                 host_adapter.PROBE_RESULT_SCHEMA_VERSION_D42,
             host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D43:
                 host_adapter.PROBE_RESULT_SCHEMA_VERSION_D43,
+            host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION_D44:
+                host_adapter.PROBE_RESULT_SCHEMA_VERSION_D44,
             host_adapter.PROBE_LIFECYCLE_SCHEMA_VERSION:
                 host_adapter.PROBE_RESULT_SCHEMA_VERSION,
         }[lifecycle.get("schema_version")]
@@ -1569,7 +1663,7 @@ def run_interaction_probes(
                 if not _probe_is_official_transient(value):
                     break
             terminal = {
-                "schema_version": PROBE_TERMINAL_V11,
+                "schema_version": PROBE_TERMINAL_V12,
                 "request_id": request["request_id"],
                 "probe_id": row["probe_id"],
                 "result": value,
@@ -2034,7 +2128,7 @@ def _probe_lifecycle_contract_gate() -> None:
             },
         ]
         terminal = {
-            "schema_version": PROBE_TERMINAL_V11,
+            "schema_version": PROBE_TERMINAL_V12,
             "request_id": request["request_id"],
             "probe_id": row["probe_id"],
             "result": complete_result,
@@ -2290,7 +2384,7 @@ def _probe_noncritical_capability_gate() -> None:
             }
             _validate_probe_result(result, row)
             terminal = {
-                "schema_version": PROBE_TERMINAL_V11,
+                "schema_version": PROBE_TERMINAL_V12,
                 "request_id": f"d38-{index}.1.01",
                 "probe_id": row["probe_id"],
                 "result": result,
@@ -2489,6 +2583,21 @@ def preflight_operations(
         label="interaction probe set",
     )
     _validate_probe_entrypoints(validated_host, probe_set, repository_root)
+    reachability_started = time.monotonic()
+    reachability = _validate_credential_reachability(
+        validated_host,
+        probe_set,
+        repository_root,
+        product_root,
+        plugin_root,
+    )
+    operations.append(
+        _operation_fact(
+            "credential-reachability-contract",
+            round((time.monotonic() - reachability_started) * 1000),
+            diagnostic=json.dumps(reachability, sort_keys=True),
+        )
+    )
     operations.append(
         _operation_fact(
             "host-plugin-binding",

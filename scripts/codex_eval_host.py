@@ -62,8 +62,10 @@ from _codex_eval_events import (
 from _codex_eval_isolation import (
     ISOLATED_OUTPUT,
     ISOLATED_SANDBOX_POLICY_IDS,
+    LEGACY_ISOLATED_SANDBOX_POLICY_IDS,
     ISOLATED_WORKSPACE,
     IsolationError,
+    command_permission_argv,
     isolated_child_argv,
     request_codex_home,
 )
@@ -79,7 +81,8 @@ D39_ADAPTER_VERSION = "1.16"
 D40_ADAPTER_VERSION = "1.17"
 D42_ADAPTER_VERSION = "1.18"
 D43_ADAPTER_VERSION = "1.19"
-ADAPTER_VERSION = "1.20"
+D44_ADAPTER_VERSION = "1.20"
+ADAPTER_VERSION = "1.21"
 ADAPTER_SOURCE_FILES = (
     "_bundle_hash.py",
     "_codex_eval_artifacts.py",
@@ -97,7 +100,8 @@ PROBE_RESULT_SCHEMA_VERSION_D39 = "codex-interaction-probe-result/1.5"
 PROBE_RESULT_SCHEMA_VERSION_D40 = "codex-interaction-probe-result/1.6"
 PROBE_RESULT_SCHEMA_VERSION_D42 = "codex-interaction-probe-result/1.7"
 PROBE_RESULT_SCHEMA_VERSION_D43 = "codex-interaction-probe-result/1.8"
-PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.9"
+PROBE_RESULT_SCHEMA_VERSION_D44 = "codex-interaction-probe-result/1.9"
+PROBE_RESULT_SCHEMA_VERSION = "codex-interaction-probe-result/1.10"
 PROBE_LIFECYCLE_SCHEMA_VERSION_LEGACY = "codex-probe-lifecycle/1"
 PROBE_LIFECYCLE_SCHEMA_VERSION_PREVIOUS = "codex-probe-lifecycle/2"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D38 = "codex-probe-lifecycle/3"
@@ -105,7 +109,8 @@ PROBE_LIFECYCLE_SCHEMA_VERSION_D39 = "codex-probe-lifecycle/4"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D40 = "codex-probe-lifecycle/5"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D42 = "codex-probe-lifecycle/6"
 PROBE_LIFECYCLE_SCHEMA_VERSION_D43 = "codex-probe-lifecycle/7"
-PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/8"
+PROBE_LIFECYCLE_SCHEMA_VERSION_D44 = "codex-probe-lifecycle/8"
+PROBE_LIFECYCLE_SCHEMA_VERSION = "codex-probe-lifecycle/9"
 SECRET_NAME = re.compile(r"(?:TOKEN|KEY|SECRET|PASSWORD|AUTH|COOKIE)", re.IGNORECASE)
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -242,6 +247,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         D40_ADAPTER_VERSION,
         D42_ADAPTER_VERSION,
         D43_ADAPTER_VERSION,
+        D44_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         raise AdapterError("unsupported Host adapter version")
@@ -259,6 +265,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         D40_ADAPTER_VERSION,
         D42_ADAPTER_VERSION,
         D43_ADAPTER_VERSION,
+        D44_ADAPTER_VERSION,
         ADAPTER_VERSION,
     } and runtime_surface != RUNTIME_SURFACE_VERSION:
         raise AdapterError("runtime surface identity is missing")
@@ -273,11 +280,12 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         runtime_surface,
     ):
         raise AdapterError("tool schema identity differs from the host manifest")
-    if (
-        args.isolation_tool is not None
-        and execution.get("policy_id")
-        != ISOLATED_SANDBOX_POLICY_IDS.get(args.sandbox)
-    ):
+    policy_ids = (
+        ISOLATED_SANDBOX_POLICY_IDS
+        if adapter_version == ADAPTER_VERSION
+        else LEGACY_ISOLATED_SANDBOX_POLICY_IDS
+    )
+    if args.isolation_tool is not None and execution.get("policy_id") != policy_ids.get(args.sandbox):
         raise AdapterError("sandbox policy identity differs from the runtime")
     if adapter.get("id") != "codex-eval-host":
         raise AdapterError("adapter identity differs from the host manifest")
@@ -347,6 +355,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         D40_ADAPTER_VERSION,
         D42_ADAPTER_VERSION,
         D43_ADAPTER_VERSION,
+        D44_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         expected.update(
@@ -376,6 +385,7 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         D40_ADAPTER_VERSION,
         D42_ADAPTER_VERSION,
         D43_ADAPTER_VERSION,
+        D44_ADAPTER_VERSION,
         ADAPTER_VERSION,
     }:
         if not all(isinstance(value, str) for value in (bound_catalog, bound_catalog_hash, bound_catalog_client)):
@@ -937,37 +947,114 @@ _SAFE_CREDENTIAL_PLACEHOLDERS = {
 }
 
 
-def _probe_credential_observation(raw_channels: tuple[bytes, bytes]) -> dict[str, Any]:
-    """Project bounded marker attribution without retaining marker values."""
+def _jsonl_credential_scalars(raw: bytes) -> tuple[list[tuple[str, str, str]], bool]:
+    """Classify marker-bearing JSONL scalars without retaining them in evidence."""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return [], False
+    values: list[tuple[str, str, str]] = []
+    for record_index, line in enumerate(text.splitlines(), 1):
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            return [], False
+        if not isinstance(record, dict):
+            return [], False
+        record_type = record.get("type")
+        item = record.get("item")
+        item_id = (
+            item.get("id")
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+            else f"record-{record_index}"
+        )
+        classified: set[int] = set()
+
+        def add(value: Any, source: str) -> None:
+            if isinstance(value, str):
+                classified.add(id(value))
+                values.append((item_id, source, value))
+
+        if record_type in {"item.started", "item.updated", "item.completed"} and isinstance(item, dict):
+            item_type = item.get("type")
+            if item_type == "command_execution":
+                add(item.get("command"), "command_text")
+                add(item.get("aggregated_output"), "command_output")
+            elif item_type == "agent_message":
+                add(item.get("text"), "agent_message")
+            error = item.get("error")
+            if isinstance(error, dict):
+                for field in ("kind", "code", "message"):
+                    add(error.get(field), "structured_error")
+        if record_type in {"error", "turn.failed"}:
+            error = record.get("error")
+            if isinstance(error, dict):
+                for field in ("kind", "code", "message"):
+                    add(error.get(field), "structured_error")
+            add(record.get("message"), "structured_error")
+
+        def collect_unknown(value: Any) -> None:
+            if isinstance(value, str):
+                encoded = value.encode("utf-8")
+                if id(value) not in classified and _CREDENTIAL_RAW_MARKER.search(encoded):
+                    values.append((item_id, "unknown", value))
+            elif isinstance(value, dict):
+                for child in value.values():
+                    collect_unknown(child)
+            elif isinstance(value, list):
+                for child in value:
+                    collect_unknown(child)
+
+        collect_unknown(record)
+    return values, True
+
+
+def _probe_credential_observation(
+    stdout: bytes,
+    stderr: bytes,
+) -> dict[str, Any]:
+    """Project bounded structured provenance without retaining marker values."""
     grouped: dict[tuple[str, str, str], int] = {}
     exposure_possible = False
-    for source, channel in zip(("child_stdout", "child_stderr"), raw_channels):
+    scalars, structured_coverage_complete = _jsonl_credential_scalars(stdout)
+    scalars.append(("stderr", "child_stderr", stderr.decode("utf-8", errors="replace")))
+    seen: set[tuple[str, str, str]] = set()
+
+    def add(kind: str, source: str, shape: str, exposure: bool) -> None:
+        nonlocal exposure_possible
+        grouped[(kind, source, shape)] = grouped.get((kind, source, shape), 0) + 1
+        exposure_possible = exposure_possible or exposure
+
+    for item_id, source, value in scalars:
+        identity = (item_id, source, value)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        channel = value.encode("utf-8")
         covered: list[tuple[int, int]] = []
-
-        def add(kind: str, shape: str, start: int, end: int, exposure: bool) -> None:
-            nonlocal exposure_possible
-            grouped[(kind, source, shape)] = grouped.get((kind, source, shape), 0) + 1
-            covered.append((start, end))
-            exposure_possible = exposure_possible or exposure
-
         for match in _CREDENTIAL_SECRET_PREFIX.finditer(channel):
-            add("secret_prefix", "secret_like", match.start(), match.end(), True)
+            add("secret_prefix", source, "secret_like", True)
+            covered.append((match.start(), match.end()))
         for match in _CREDENTIAL_ASSIGNMENT.finditer(channel):
-            value = match.group(2).lower()
-            if value == b"":
-                shape = "empty"
-                exposure = False
-            elif value in _SAFE_CREDENTIAL_PLACEHOLDERS:
-                shape = "safe_placeholder"
-                exposure = False
+            marker_value = match.group(2).lower()
+            if marker_value == b"":
+                shape, exposure = "empty", False
+            elif marker_value in _SAFE_CREDENTIAL_PLACEHOLDERS:
+                shape, exposure = "safe_placeholder", False
+            elif source == "command_text":
+                shape, exposure = "command_syntax", False
             else:
-                shape = "non_placeholder"
-                exposure = True
-            add("assignment", shape, match.start(), match.end(), exposure)
+                shape, exposure = "non_placeholder", True
+            add("assignment", source, shape, exposure)
+            covered.append((match.start(), match.end()))
         for match in _CREDENTIAL_RAW_MARKER.finditer(channel):
             if any(start <= match.start() and match.end() <= end for start, end in covered):
                 continue
-            add("raw_marker", "unattributed", match.start(), match.end(), True)
+            add("raw_marker", source, "unattributed", True)
+    if not structured_coverage_complete and _CREDENTIAL_RAW_MARKER.search(stdout):
+        add("raw_marker", "raw_unattributed", "unattributed", True)
     markers = [
         {"kind": kind, "source": source, "count": count, "value_shape": shape}
         for (kind, source, shape), count in sorted(grouped.items())
@@ -976,6 +1063,7 @@ def _probe_credential_observation(raw_channels: tuple[bytes, bytes]) -> dict[str
         "marker_seen": bool(markers),
         "exposure_possible": exposure_possible,
         "occurrence_count": sum(item["count"] for item in markers),
+        "structured_coverage_complete": structured_coverage_complete,
         "markers": markers,
     }
 
@@ -1274,12 +1362,11 @@ def _probe_lifecycle_projection(
         raw = b""
     if not isinstance(stderr_raw, bytes):
         stderr_raw = b""
-    raw_channels = (raw, stderr_raw)
     source_path_exposed = bool(
         source_root is not None
-        and any(str(source_root).encode("utf-8") in channel for channel in raw_channels)
+        and any(str(source_root).encode("utf-8") in channel for channel in (raw, stderr_raw))
     )
-    credential_observation = _probe_credential_observation(raw_channels)
+    credential_observation = _probe_credential_observation(raw, stderr_raw)
     credential_marker_seen = credential_observation["marker_seen"]
     credential_exposure_possible = credential_observation["exposure_possible"]
     event_types = _canonical_probe_event_types(normalized.get("event_types", []))
@@ -1760,6 +1847,7 @@ def _fresh_argv(
 ) -> list[str]:
     argv = [
         str(args.codex),
+        *(command_permission_argv(args.sandbox) if args.isolation_tool is not None else []),
         "exec",
         "--json",
         "--strict-config",
@@ -1776,8 +1864,7 @@ def _fresh_argv(
             if args.plugin_root
             else (["--disable", "apps"] if args.runtime_surface_version == RUNTIME_SURFACE_VERSION else [])
         ),
-        "--sandbox",
-        args.sandbox,
+        *(["--sandbox", args.sandbox] if args.isolation_tool is None else []),
         "--cd",
         str(workspace),
         "--config",
@@ -1805,6 +1892,7 @@ def _resume_argv(
 ) -> list[str]:
     argv = [
         str(args.codex),
+        *(command_permission_argv(args.sandbox) if args.isolation_tool is not None else []),
         "exec",
         "resume",
         "--json",
