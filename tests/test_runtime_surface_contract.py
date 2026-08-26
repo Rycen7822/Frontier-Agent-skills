@@ -15,6 +15,12 @@ from _codex_eval_delivery import (  # noqa: E402
     isolated_tool_schema_id,
     skill_isolation_argv,
 )
+from _codex_eval_isolation import (
+    ISOLATED_PERMISSION_PROFILES,
+    command_permission_argv,
+    proxy_environment_projection,
+    request_codex_home,
+)
 
 
 class RuntimeSurfaceContractTests(unittest.TestCase):
@@ -54,10 +60,39 @@ class RuntimeSurfaceContractTests(unittest.TestCase):
             resume = host._resume_argv(args, "thread-1", root / "last")
             for argv in (fresh, resume):
                 self.assertEqual(argv.count("apps"), 1)
+                self.assertEqual(argv[1:3], command_permission_argv("read-only"))
+                self.assertNotIn("--sandbox", argv)
                 self.assertEqual(
                     sum(value.startswith("model_catalog_json=\"/") for value in argv),
                     1,
                 )
+
+    def test_request_codex_home_binds_strict_command_permission_profiles(self) -> None:
+        with request_codex_home(Path("/usr/bin/bwrap")) as home:
+            self.assertIsNotNone(home)
+            config = (home / "config.toml").read_text(encoding="utf-8")
+            for sandbox, profile in ISOLATED_PERMISSION_PROFILES.items():
+                self.assertIn(f"[permissions.{profile}]", config)
+                self.assertIn(f'extends = ":{sandbox if sandbox == "read-only" else "workspace"}"', config)
+            self.assertEqual(config.count('"/run/frontier-codex-home" = "deny"'), 2)
+
+    def test_proxy_environment_projection_excludes_values_and_detects_credentials(self) -> None:
+        rows = proxy_environment_projection(
+            ["HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"],
+            {
+                "HTTPS_PROXY": "http://user:pass@example.invalid:8080",
+                "HTTP_PROXY": "http://example.invalid:8080?token=value",
+                "NO_PROXY": "localhost",
+            },
+        )
+        self.assertTrue(rows[0]["url_userinfo"])
+        self.assertTrue(rows[0]["credential_like_component"])
+        self.assertFalse(rows[1]["url_userinfo"])
+        self.assertTrue(rows[1]["credential_like_component"])
+        self.assertFalse(rows[2]["credential_like_component"])
+        serialized = json.dumps(rows, sort_keys=True)
+        for forbidden in ("pass", "example.invalid", "value", "localhost"):
+            self.assertNotIn(forbidden, serialized)
 
     def test_catalog_snapshot_identity_is_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

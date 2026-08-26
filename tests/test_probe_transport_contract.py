@@ -461,7 +461,7 @@ class ProbeTransportContractTests(unittest.TestCase):
         self.assertNotIn('"command":', serialized)
         self.assertNotIn("aggregated_output", serialized)
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/11",
+            "schema_version": "model-evolution-probe-terminal/12",
             "request_id": REQUEST["request_id"],
             "probe_id": row["probe_id"],
             "result": result,
@@ -526,7 +526,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             ):
                 self.assertNotIn(forbidden, projection)
             terminal = {
-                "schema_version": "model-evolution-probe-terminal/11",
+                "schema_version": "model-evolution-probe-terminal/12",
                 "request_id": REQUEST["request_id"],
                 "probe_id": row["probe_id"],
                 "result": result,
@@ -551,7 +551,7 @@ class ProbeTransportContractTests(unittest.TestCase):
                 )
             self.assertEqual(
                 loaded["schema_version"],
-                "model-evolution-probe-terminal/11",
+                "model-evolution-probe-terminal/12",
             )
 
     def test_d43_sequence_command_custody_fails_closed_on_phase_and_result_faults(self):
@@ -668,6 +668,66 @@ class ProbeTransportContractTests(unittest.TestCase):
             self.assertTrue(result["diagnostics"], message)
             serialized = json.dumps(result, sort_keys=True)
             self.assertNotIn(message, serialized)
+
+    def test_d45_structured_credential_provenance_is_source_sensitive_and_deduplicated(self):
+        command_records = b"\n".join(
+            [
+                event("thread.started", thread_id="thread-1"),
+                event("turn.started", turn_id="turn-1"),
+                event("item.started", item={"id": "command-1", "type": "command_execution", "command": "TOKEN=ordinary-value", "status": "in_progress"}),
+                event("item.completed", item={"id": "command-1", "type": "command_execution", "command": "TOKEN=ordinary-value", "aggregated_output": "ok", "status": "completed", "exit_code": 0}),
+                event("turn.completed", turn_id="turn-1", usage={"input_tokens": 2, "output_tokens": 1}),
+            ]
+        ) + b"\n"
+        command = host._probe_credential_observation(command_records, b"")
+        self.assertTrue(command["structured_coverage_complete"])
+        self.assertFalse(command["exposure_possible"])
+        self.assertEqual(command["occurrence_count"], 1)
+        self.assertEqual(command["markers"], [{"kind": "assignment", "source": "command_text", "count": 1, "value_shape": "command_syntax"}])
+
+        output_records = command_records.replace(b'"aggregated_output":"ok"', b'"aggregated_output":"TOKEN=ordinary-value"')
+        output = host._probe_credential_observation(output_records, b"")
+        self.assertTrue(output["exposure_possible"])
+        self.assertIn("command_output", {row["source"] for row in output["markers"]})
+
+        secret = host._probe_credential_observation(command_records.replace(b"ordinary-value", b"sk-exampleSecretValue"), b"")
+        self.assertTrue(secret["exposure_possible"])
+        self.assertIn("secret_like", {row["value_shape"] for row in secret["markers"]})
+
+    def test_d45_structured_credential_provenance_fails_closed_on_unknown_raw_and_stderr(self):
+        unknown = b'{"type":"turn.started","future":"TOKEN=ordinary-value"}\n'
+        observation = host._probe_credential_observation(unknown, b"")
+        self.assertTrue(observation["exposure_possible"])
+        self.assertEqual(observation["markers"][0]["source"], "unknown")
+
+        malformed = host._probe_credential_observation(b'{not-json TOKEN=ordinary-value}\n', b"")
+        self.assertFalse(malformed["structured_coverage_complete"])
+        self.assertTrue(malformed["exposure_possible"])
+        self.assertEqual(malformed["markers"][0]["source"], "raw_unattributed")
+
+        stderr = host._probe_credential_observation(raw_complete(), b"TOKEN=ordinary-value")
+        self.assertTrue(stderr["exposure_possible"])
+        self.assertEqual(stderr["markers"][0]["source"], "child_stderr")
+
+    def test_d44_terminal_v11_replays_under_strict_historical_shape(self):
+        result = emitted_probe_result(raw_complete())
+        result["schema_version"] = host.PROBE_RESULT_SCHEMA_VERSION_D44
+        result["lifecycle"]["schema_version"] = host.PROBE_LIFECYCLE_SCHEMA_VERSION_D44
+        result["lifecycle"]["credential_observation"].pop("structured_coverage_complete")
+        terminal = {
+            "schema_version": "model-evolution-probe-terminal/11",
+            "request_id": REQUEST["request_id"],
+            "probe_id": ROW["probe_id"],
+            "result": result,
+            "stderr": "",
+            "attempt_count": 1,
+            "attempts": [{"attempt": 1, "attempt_id": REQUEST["request_id"] + ".attempt-1", "status": result["status"], "diagnostics": result["diagnostics"], "stderr": "", "lifecycle": result["lifecycle"]}],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "terminal.json"
+            path.write_text(json.dumps(terminal), encoding="utf-8")
+            loaded = _load_probe_terminal(path, request=REQUEST, row=ROW)
+        self.assertEqual(loaded["schema_version"], "model-evolution-probe-terminal/11")
 
     def test_d44_current_projection_excludes_sensitive_content(self):
         raw = raw_noncritical_command_sequence(
@@ -848,7 +908,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             }
         ]
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/11",
+            "schema_version": "model-evolution-probe-terminal/12",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -860,7 +920,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             path = Path(temporary) / "terminal.json"
             path.write_text(json.dumps(terminal), encoding="utf-8")
             loaded = _load_probe_terminal(path, request=REQUEST, row=ROW)
-        self.assertEqual(loaded["schema_version"], "model-evolution-probe-terminal/11")
+        self.assertEqual(loaded["schema_version"], "model-evolution-probe-terminal/12")
 
     def test_all_normalized_item_types_are_classified_without_content(self):
         for item_type in (
@@ -894,7 +954,7 @@ class ProbeTransportContractTests(unittest.TestCase):
         )
         _validate_probe_result(result, ROW)
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/11",
+            "schema_version": "model-evolution-probe-terminal/12",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -950,7 +1010,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": complete_lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/11",
+            "schema_version": "model-evolution-probe-terminal/12",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": complete,
@@ -998,7 +1058,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/11",
+            "schema_version": "model-evolution-probe-terminal/12",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
@@ -1339,7 +1399,7 @@ class ProbeTransportContractTests(unittest.TestCase):
             "lifecycle": lifecycle,
         }
         terminal = {
-            "schema_version": "model-evolution-probe-terminal/11",
+            "schema_version": "model-evolution-probe-terminal/12",
             "request_id": REQUEST["request_id"],
             "probe_id": ROW["probe_id"],
             "result": result,
