@@ -4,18 +4,10 @@
   "title": "Frontier Engineering generated bundle manifest",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schema_version",
-    "bundle_id",
-    "compatible_schema_epoch",
-    "release_build_id",
-    "activation_ceiling",
-    "remote_writes",
-    "skills"
-  ],
+  "required": ["schema_version", "bundle_id", "compatible_schema_epoch", "release_build_id", "activation_ceiling", "remote_writes", "skills"],
   "properties": {
     "schema_version": {"const": "frontier-engineering-bundle/2.0"},
-    "bundle_id": {"const": "frontier-engineering/8.0.2"},
+    "bundle_id": {"const": "frontier-engineering/9.0.0"},
     "compatible_schema_epoch": {"const": 7},
     "release_build_id": {"type": "string", "pattern": "^build-[0-9a-f]{24}$"},
     "activation_ceiling": {"const": "implicit_local_pilot"},
@@ -24,28 +16,28 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "code-review",
+        "code-simplifier",
+        "codebase-investigation",
+        "debugging",
         "long-document-segmented-writing",
+        "runtime-verification",
         "skill-evaluator",
+        "software-design",
         "software-quality-workflows",
         "writing-plans"
       ],
       "properties": {
-        "long-document-segmented-writing": {
-          "$ref": "#/$defs/implicit_skill",
-          "properties": {"version": {"const": "2.0.0"}}
-        },
-        "skill-evaluator": {
-          "$ref": "#/$defs/explicit_skill",
-          "properties": {"version": {"const": "5.0.0"}}
-        },
-        "software-quality-workflows": {
-          "$ref": "#/$defs/explicit_skill",
-          "properties": {"version": {"const": "11.0.1"}}
-        },
-        "writing-plans": {
-          "$ref": "#/$defs/implicit_skill",
-          "properties": {"version": {"const": "8.4.1"}}
-        }
+        "long-document-segmented-writing": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "2.0.0"}}},
+        "skill-evaluator": {"$ref": "#/$defs/explicit_skill", "properties": {"version": {"const": "5.0.0"}}},
+        "software-quality-workflows": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "12.0.0"}}},
+        "writing-plans": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "8.4.1"}}},
+        "code-review": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.0.0"}}},
+        "code-simplifier": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.0.0"}}},
+        "codebase-investigation": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.0.0"}}},
+        "debugging": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.0.0"}}},
+        "runtime-verification": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.0.0"}}},
+        "software-design": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.0.0"}}}
       }
     }
   },
@@ -60,13 +52,7 @@
         "allow_implicit_invocation": {"type": "boolean"}
       }
     },
-    "implicit_skill": {
-      "$ref": "#/$defs/base_skill",
-      "properties": {"allow_implicit_invocation": {"const": true}}
-    },
-    "explicit_skill": {
-      "$ref": "#/$defs/base_skill",
-      "properties": {"allow_implicit_invocation": {"const": false}}
-    }
+    "implicit_skill": {"$ref": "#/$defs/base_skill", "properties": {"allow_implicit_invocation": {"const": true}}},
+    "explicit_skill": {"$ref": "#/$defs/base_skill", "properties": {"allow_implicit_invocation": {"const": false}}}
   }
 }

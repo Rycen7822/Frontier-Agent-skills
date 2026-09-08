@@ -1,0 +1,6 @@
+interface:
+  display_name: "Code Simplifier"
+  short_description: "Reduce code complexity while preserving behavior"
+  default_prompt: "Use $code-simplifier for the requested task with proportionate evidence."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Software Design"
+  short_description: "Resolve requirements, boundaries, and migration choices"
+  default_prompt: "Use $software-design for the requested task with proportionate evidence."
+policy:
+  allow_implicit_invocation: true

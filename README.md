@@ -1,34 +1,29 @@
 # Frontier Agent Skills
 
-This repository is the development source of truth for the dual-host `frontier-engineering/8.0.2` bundle. It contains exactly four skills: `long-document-segmented-writing` 2.0.0, `skill-evaluator` 5.0.0, `software-quality-workflows` 11.0.1, and `writing-plans` 8.4.1. Installed Codex or Hermes Agent copies are separate deployment directories; editing this repository leaves active installations unchanged.
+This repository is the development source for the dual-host `frontier-engineering/9.0.0` bundle. One `frontier-engineering-plugin` contains ten skills for Codex and Hermes Agent. Installed copies are separate from source; local edits take effect after rebuilding and reinstalling.
+
+## Skill entrypoints
+
+| Skill | Use for | Version |
+|---|---|---|
+| [software-quality-workflows](software-quality-workflows/SKILL.md) | Feature implementation, known-cause fixes, testing and general development | 12.0.0 |
+| [codebase-investigation](codebase-investigation/SKILL.md) | Explain implementation, design history or previous project work | 1.0.0 |
+| [software-design](software-design/SKILL.md) | Resolve requirements, domain models, boundaries and migration choices | 1.0.0 |
+| [debugging](debugging/SKILL.md) | Diagnose unknown failures, regressions and performance problems | 1.0.0 |
+| [code-review](code-review/SKILL.md) | Assess changes, impact and review feedback | 1.0.0 |
+| [code-simplifier](code-simplifier/SKILL.md) | Simplify selected code while preserving intended behavior | 1.0.0 |
+| [runtime-verification](runtime-verification/SKILL.md) | Establish missing evidence through actual runtime or installed behavior | 1.0.0 |
+| [writing-plans](writing-plans/SKILL.md) | Plan implementation after design and diagnosis are settled | 8.4.1 |
+| [long-document-segmented-writing](long-document-segmented-writing/SKILL.md) | Produce long, source-grounded documents with recoverable state | 2.0.0 |
+| [skill-evaluator](skill-evaluator/SKILL.md) | Assess skill effectiveness and selected historical trajectories | 5.0.0 |
+
+SQW retains concise guidance throughout development. Specialized skills can be selected directly and do not require loading SQW first. No mandatory pipeline, model assignment, delegation or external plugin is needed. References provide conditional detail within each task.
 
 ## Release identity
 
-The indivisible release unit is bundle version 8.0.2 at schema epoch 7. Its manifest records the four exact versions and mixed activation matrix:
+Bundle 9.0.0 uses schema epoch 7. All skills are eligible for implicit local selection except `skill-evaluator`, which remains explicit-only. Invocation prompts retain `$skill-name`; eligibility does not guarantee model selection. The activation ceiling is `implicit_local_pilot` and `remote_writes` remains false.
 
-```json
-{
-  "long-document-segmented-writing": true,
-  "skill-evaluator": false,
-  "software-quality-workflows": false,
-  "writing-plans": true
-}
-```
-
-`true` permits implicit local selection; `false` is explicit-only and its prompt retains the exact `$skill-name`. The bundle ceiling remains `implicit_local_pilot`, and `remote_writes` is false. Bundle 8.0.2 requires a signed, clean source candidate plus the repository's deterministic source, schema, bundle, plugin, archive, and test gates. Those local gates establish source completeness; installation, publication, deployment, and external effects retain their own authority boundaries.
-
-## Design boundary
-
-The skills assume a capable coding agent and keep the common path compact. SQW loads optional references only for a concrete specialist risk; Writing Plans is self-contained.
-
-- `software-quality-workflows` is explicit-only and enters only when a user or owning process supplies the exact `$software-quality-workflows`. It keeps known-seam work direct, escalates only to conclusion-changing evidence, classifies failure ownership before another edit, and separates implementation, verification, and release truth.
-- `writing-plans` is implicit-eligible when the user requests a software implementation plan, Handoff, or multi-session Program. It compiles settled decisions into one source-bound Handoff or update-in-place Program Markdown, binds the root once, states each fact once, batches compatible evidence checks, separates resume preflight from the first source-changing action, leaves same-session plans model-native, and returns unresolved facts to the caller or owning process.
-- `long-document-segmented-writing` owns long-corpus drafting, bounded scratch state, deterministic assembly, and final confidence repair.
-- `skill-evaluator` is explicit-only and owns scoped maintenance evaluation, task/grade reuse, paired case diagnostics and task/judge cost reporting.
-
-SQW creates durable state or a digest only for a cross-context consumer, external effect, staged release, or multiple writers. It prefers existing Host or repository state and otherwise uses one fallback ledger.
-
-Development is distinction-first: each behavior change needs a deciding inspection, example, test, smoke, property, benchmark, or runtime proof, but strict RED is not mandatory. Stable contracts, regressions, and material risk boundaries remain; probes, duplicates, and retired-behavior tests are removed.
+The bundle ships as one unit. Existing visual design tools and review schemas belong to their respective task skills. Adopted source terms travel with the skills: pstack guidance is MIT; adapted Anthropic code-simplifier guidance is Apache-2.0. There is no separate simplifier plugin dependency.
 
 ## Evidence and digest policy
 
@@ -40,11 +35,11 @@ Every retained digest has one producer, one named validating consumer, a bounded
 
 Ordinary maintenance does not require model reevaluation. Non-behavioral documentation, version/hash updates, and editorial changes judged to preserve meaning use zero model calls; a historical report is not a prerequisite. Run `python3 skill-evaluator/scripts/evaluate.py check --base <revision> --impact editorial` for an explicit maintenance judgment, or use `--impact auto` to identify changes needing closer scoping. This command only performs local checks. Changes to behavior, routing, execution conditions, or grading require evidence only for the affected scope; Git identity and elapsed time alone do not invalidate model results.
 
-Bundle 8.0.2 uses model-free repository tests, validators, canonical generated identities, live static checking, and plugin smoke as local source-complete gates. Scored usefulness remains a separate evaluator claim. A canonical `release-authorization/3` binds one current `model-qualification/3`, the signed source, staged plugin, live static-gate result, and release-owner attestation; external release still requires its own authority.
+Bundle 9.0.0 uses model-free repository tests, validators, canonical generated identities, live static checking, and plugin smoke as local source-complete gates. Scored usefulness remains a separate evaluator claim. A canonical `release-authorization/3` binds one current `model-qualification/3`, the signed source, staged plugin, live static-gate result, and release-owner attestation; external release still requires its own authority.
 
 ## Source archives
 
-The source archive uses root `frontier-engineering-bundle`; the skills-only archive contains exactly the four canonical skill roots. Build both layouts with `scripts/build_source_archive.py` into a new temporary output directory, verify reproducible bytes and schema-valid evidence, and inspect the member list before publication. The builder excludes `.work`, worktrees, caches, local paths, credentials, and historical run artifacts; it does not publish the archive.
+The source archive uses root `frontier-engineering-bundle`; the skills-only archive contains the ten canonical skill roots. Build both layouts with `scripts/build_source_archive.py` into a new temporary output directory, verify reproducible bytes and schema-valid evidence, and inspect the member list before publication. The builder excludes `.work`, worktrees, caches, local paths, credentials, and historical run artifacts; it does not publish the archive.
 
 Ordinary change verification follows this table. Plugin staging remains a local packaging check and does not require a new model qualification.
 
@@ -60,19 +55,25 @@ Ordinary change verification follows this table. Plugin staging remains a local 
 
 ## Plugin staging
 
-The plugin identity is `frontier-engineering-plugin` version 8.0.2 with display name `Frontier Engineering`. Its release layout is:
+The plugin identity is `frontier-engineering-plugin` version 9.0.0 with display name `Frontier Engineering`. Its release layout is:
 
 ```text
 frontier-engineering-plugin/
   .codex-plugin/plugin.json
   skills/
+    code-review/
+    code-simplifier/
+    codebase-investigation/
+    debugging/
+    runtime-verification/
+    software-design/
     long-document-segmented-writing/
     skill-evaluator/
     software-quality-workflows/
     writing-plans/
 ```
 
-Use `scripts/build_codex_plugin.py` to create a new staging tree and build evidence, then validate the staged tree and run `scripts/smoke_codex_plugin.py`. These commands copy the four complete skill directories into a local staging output and preserve external deployment state.
+Use `scripts/build_codex_plugin.py` to create a new staging tree and build evidence, then validate the staged tree and run `scripts/smoke_codex_plugin.py`. These commands copy the ten complete skill directories into a local staging output and preserve external deployment state.
 
 A release build additionally requires the current `model-qualification/3` and a canonical `release-authorization/3` created by `scripts/create_release_authorization.py` from that qualification, the signed-clean source revision, verified staged plugin, live static gate, and release-owner attestation. Release mode validates the qualification's Host identity and validity interval and binds the authorization digest; staging mode remains a local source-completeness build.
 
@@ -80,7 +81,7 @@ Release mode also requires `--marketplace-root` and `--marketplace-archive-outpu
 
 ## Same-thread Codex skill reload supervisor
 
-This optional developer tool sits outside the Bundle 8.0.2 source-complete and release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles through a local Unix-socket app-server and launches each replacement TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
+This optional developer tool sits outside the Bundle 9.0.0 source-complete and release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles through a local Unix-socket app-server and launches each replacement TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
 
 The protocol is fail-closed and pinned to `codex-cli 0.144.6`. Validate the CLI schema and local Unix WebSocket transport before the first run:
 

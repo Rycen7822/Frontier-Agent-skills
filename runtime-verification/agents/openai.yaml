@@ -1,0 +1,6 @@
+interface:
+  display_name: "Runtime Verification"
+  short_description: "Check actual behavior at the relevant runtime surface"
+  default_prompt: "Use $runtime-verification for the requested task with proportionate evidence."
+policy:
+  allow_implicit_invocation: true

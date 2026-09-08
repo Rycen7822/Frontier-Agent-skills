@@ -1,20 +1,29 @@
 {
   "name": "frontier-engineering-plugin",
   "version": "${BUNDLE_VERSION}",
-  "description": "Four engineering skills for implementation and verification, explicit planning and handoff, long-document writing, and skill evaluation.",
+  "description": "Engineering skills for development, investigation, design, debugging, review, simplification, runtime verification, planning, writing and evaluation.",
   "author": {
     "name": "Hermes Agent"
   },
-  "license": "MIT",
-  "keywords": ["software-development", "planning", "verification", "documentation", "evaluation"],
+  "license": "MIT AND Apache-2.0",
+  "keywords": [
+    "software-development",
+    "planning",
+    "verification",
+    "documentation",
+    "evaluation"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Frontier Engineering",
-    "shortDescription": "Execute, plan handoffs, write long documents, and evaluate skills",
-    "longDescription": "Four Frontier Engineering owners for implementation and verification, explicit planning and handoff, long-document writing, and skill evaluation.",
+    "shortDescription": "Develop, investigate, design, debug, review and simplify",
+    "longDescription": "Engineering skills for development, investigation, design, debugging, review, simplification, runtime verification, planning, writing and evaluation.",
     "developerName": "Hermes Agent",
     "category": "Developer Tools",
-    "capabilities": ["Read", "Write"],
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
     "defaultPrompt": [
       "Execute and verify this local software task.",
       "Write an explicit handoff or program plan for settled software decisions.",

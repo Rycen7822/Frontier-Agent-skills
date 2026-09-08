@@ -4,29 +4,50 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "layout", "bundle_version", "root_prefix", "skill_versions",
-    "source_tree_hash", "archive_content_hash", "source_file_count", "archive_file_count",
-    "source_revision_verified", "generated_artifacts_excluded", "files"
+    "schema_version",
+    "layout",
+    "bundle_version",
+    "root_prefix",
+    "skill_versions",
+    "source_tree_hash",
+    "archive_content_hash",
+    "source_file_count",
+    "archive_file_count",
+    "source_revision_verified",
+    "generated_artifacts_excluded",
+    "files"
   ],
   "properties": {
     "schema_version": {"const": "source-archive-evidence/3.0"},
     "layout": {"enum": ["bundle", "skills_only"]},
-    "bundle_version": {"const": "8.0.2"},
-    "root_prefix": {
-      "oneOf": [
-        {"const": "frontier-engineering-bundle"},
-        {"type": "null"}
-      ]
-    },
+    "bundle_version": {"const": "9.0.0"},
+    "root_prefix": {"oneOf": [{"const": "frontier-engineering-bundle"}, {"type": "null"}]},
     "skill_versions": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
+      "required": [
+        "code-review",
+        "code-simplifier",
+        "codebase-investigation",
+        "debugging",
+        "long-document-segmented-writing",
+        "runtime-verification",
+        "skill-evaluator",
+        "software-design",
+        "software-quality-workflows",
+        "writing-plans"
+      ],
       "properties": {
         "long-document-segmented-writing": {"const": "2.0.0"},
         "skill-evaluator": {"const": "5.0.0"},
-        "software-quality-workflows": {"const": "11.0.1"},
-        "writing-plans": {"const": "8.4.1"}
+        "software-quality-workflows": {"const": "12.0.0"},
+        "writing-plans": {"const": "8.4.1"},
+        "code-review": {"const": "1.0.0"},
+        "code-simplifier": {"const": "1.0.0"},
+        "codebase-investigation": {"const": "1.0.0"},
+        "debugging": {"const": "1.0.0"},
+        "runtime-verification": {"const": "1.0.0"},
+        "software-design": {"const": "1.0.0"}
       }
     },
     "source_tree_hash": {"$ref": "#/$defs/hash"},
@@ -35,11 +56,7 @@
     "archive_file_count": {"type": "integer", "minimum": 1},
     "source_revision_verified": {"const": false},
     "generated_artifacts_excluded": {"const": true},
-    "files": {
-      "type": "array",
-      "minItems": 1,
-      "items": {"$ref": "#/$defs/file"}
-    }
+    "files": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/file"}}
   },
   "allOf": [
     {

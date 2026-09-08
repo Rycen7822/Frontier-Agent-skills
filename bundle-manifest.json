@@ -1,11 +1,36 @@
 {
   "bundle_schema_version": "3.0",
-  "bundle_version": "8.0.2",
+  "bundle_version": "9.0.0",
   "skills": [
+    {
+      "id": "code-review",
+      "path": "code-review",
+      "version": "1.0.0"
+    },
+    {
+      "id": "code-simplifier",
+      "path": "code-simplifier",
+      "version": "1.0.0"
+    },
+    {
+      "id": "codebase-investigation",
+      "path": "codebase-investigation",
+      "version": "1.0.0"
+    },
+    {
+      "id": "debugging",
+      "path": "debugging",
+      "version": "1.0.0"
+    },
     {
       "id": "long-document-segmented-writing",
       "path": "long-document-segmented-writing",
       "version": "2.0.0"
+    },
+    {
+      "id": "runtime-verification",
+      "path": "runtime-verification",
+      "version": "1.0.0"
     },
     {
       "id": "skill-evaluator",
@@ -13,9 +38,14 @@
       "version": "5.0.0"
     },
     {
+      "id": "software-design",
+      "path": "software-design",
+      "version": "1.0.0"
+    },
+    {
       "id": "software-quality-workflows",
       "path": "software-quality-workflows",
-      "version": "11.0.1"
+      "version": "12.0.0"
     },
     {
       "id": "writing-plans",
@@ -27,13 +57,12 @@
   "remote_writes": false,
   "test_profiles": {
     "quick": [
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_quick_*.py' -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s code-review/tests -p 'test_quick_*.py' -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s writing-plans/tests -p 'test_quick_*.py' -v",
-      "PYTHONDONTWRITEBYTECODE=1 python3 long-document-segmented-writing/tests/test_workflow_contract.py -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_quick_contracts.py -v"
     ],
     "extended": [
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-quality-workflows/tests -p 'test_extended_*.py' -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-design/tests -p 'test_extended_*.py' -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 long-document-segmented-writing/tests/test_assemble_markdown.py -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_extended_skill_evaluator.py tests/test_extended_release.py -v"
     ],

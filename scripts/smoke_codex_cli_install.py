@@ -29,16 +29,28 @@ from smoke_codex_plugin import inspect_plugin, isolated_smoke  # noqa: E402
 
 EXPECTED_PLUGIN = "frontier-engineering-plugin"
 EXPECTED_SKILLS = [
-    "long-document-segmented-writing",
-    "skill-evaluator",
-    "software-quality-workflows",
-    "writing-plans",
+    'code-review',
+    'code-simplifier',
+    'codebase-investigation',
+    'debugging',
+    'long-document-segmented-writing',
+    'runtime-verification',
+    'skill-evaluator',
+    'software-design',
+    'software-quality-workflows',
+    'writing-plans',
 ]
 EXPECTED_ACTIVATION = {
-    "long-document-segmented-writing": True,
-    "skill-evaluator": False,
-    "software-quality-workflows": False,
-    "writing-plans": True,
+    'code-review': True,
+    'code-simplifier': True,
+    'codebase-investigation': True,
+    'debugging': True,
+    'long-document-segmented-writing': True,
+    'runtime-verification': True,
+    'skill-evaluator': False,
+    'software-design': True,
+    'software-quality-workflows': True,
+    'writing-plans': True,
 }
 MAX_CLI_OUTPUT = 1024 * 1024
 SECRET_ENV_MARKERS = (

@@ -1,0 +1,3 @@
+Selected engineering guidance adapted from pstack by Lauren Tan.
+https://github.com/cursor/plugins/tree/71ed0d1076fec562c1b74ee353121a8d00f75382/pstack
+FAS adaptation removes host-specific orchestration and mandatory multi-agent workflows.

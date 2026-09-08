@@ -1,0 +1,6 @@
+interface:
+  display_name: "Codebase Investigation"
+  short_description: "Explain code and history from relevant evidence"
+  default_prompt: "Use $codebase-investigation for the requested task with proportionate evidence."
+policy:
+  allow_implicit_invocation: true

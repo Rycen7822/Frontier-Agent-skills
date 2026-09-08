@@ -1,0 +1,4 @@
+Code Simplifier includes adapted guidance from Anthropic code-simplifier.
+Copyright Anthropic. Licensed under Apache License 2.0; see LICENSE.
+Source: https://github.com/anthropics/claude-plugins-official/tree/85cce0381e7860082641b59d961a2b8c368b8b79/plugins/code-simplifier
+Adaptation: host-neutral skill, user-scoped work, conditional verification and no fixed model.

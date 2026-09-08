@@ -13,7 +13,7 @@ metadata:
 
 # Long Document Segmented Writing
 
-Use durable files as working memory only when scale or recovery requires them. Keep the workflow proportional: bounded same-session work is Direct, compact is the segmented default, and full exists only for an evidenced recovery or scale threshold.
+Use durable files as working memory only when scale or recovery requires them. Keep the workflow proportional: bounded same-session work is Direct, compact is the segmented default, and full serves needs that exceed one compact ledger or require a full audit structure.
 
 This skill owns long-corpus reading, segmented drafting, recovery, deterministic assembly, whole-document review, and evidence-backed confidence repair. Repository instructions and format/domain skills remain authoritative for their own surfaces.
 
@@ -52,12 +52,12 @@ In Direct, read the bounded sources, define the short section order in working c
 
 ## Select one segmented profile
 
-Use compact unless at least one full-mode fact is already true.
+Use compact unless a full-mode fact is already true. Cross-context or cross-session recovery can use one ledger; source and section counts alone do not require full.
 
 | Profile | Selection facts | Allowed scratch structure |
 |---|---|---|
-| compact | Direct does not apply, sources and sections can be indexed stably in one task, and no full-mode fact is true | One `scratch-ledger.md`, 1–4 ordered draft shards, and the final document; confidence gaps stay in the ledger |
-| full | Cross-context or cross-session recovery is explicitly required; sources exceed 12; expected final sections exceed 10; one ledger would exceed 16 KiB; or the user requires a full audit structure | One scope file, one source inventory, one reading ledger, one section matrix, one recovery packet, ordered section drafts, one confidence review, and the final document |
+| compact | Direct does not apply, one ledger can clearly index sources, sections and recovery state, and no full-mode fact is true | One `scratch-ledger.md`, 1–4 ordered draft shards, and the final document; confidence gaps stay in the ledger |
+| full | A compact ledger would exceed 16 KiB or cannot clearly represent source conflicts and recovery dependencies; or the user requires a full audit structure | One scope file, one source inventory, one reading ledger, one section matrix, one recovery packet, ordered section drafts, one confidence review, and the final document |
 
 Both segmented profiles use exactly one task-owned scratch root. Never create notes by reading batch, confidence-review siblings by iteration, per-step JSON, receipt copies, or parallel scratch roots.
 
@@ -74,9 +74,11 @@ Keep these sections in the single `scratch-ledger.md` and update them in place:
 
 Keep entries concise. Do not paste large excerpts, raw traces, manifests, schemas, or process history. `CODEX_STATE.md` remains a small index to active anchors, not a second ledger.
 
+On recovery, read the ledger and current draft shard, then only the source anchors needed for the next action. Reuse findings whose supporting sources and requirements remain valid.
+
 ## Full profile contract
 
-Full mode separates the same information only because a selection threshold requires it. Each information class has one canonical file and is updated in place. It does not permit batch notes, duplicate inventories, rolling recovery packets, or multiple confidence files.
+Full mode separates the same information when one compact ledger is insufficient or a full audit structure is required. Each information class has one canonical file and is updated in place. It does not permit batch notes, duplicate inventories, rolling recovery packets, or multiple confidence files.
 
 After compaction, recover in this order: repository instructions and `CODEX_STATE.md` once; the scope; inventory and reading ledger; section matrix; recovery packet; confidence review; current section; exact source anchors named by the next incomplete section. Do not traverse the corpus again by default.
 
