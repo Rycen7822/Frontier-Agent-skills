@@ -1,126 +1,37 @@
 ---
 name: skill-evaluator
-description: "Evaluate, benchmark, compare, regression-test, or security-audit an Agent Skill package. Use when deciding whether a skill triggers correctly, improves task outcomes over a no-skill or prior-version baseline, follows its intended process, remains efficient and safe, generalizes beyond development examples, or is ready to install, publish, or deploy."
+description: "Evaluate or regression-test an Agent Skill using selected cases, reusable task evidence, deterministic checks and optional model grading. Use when the user requests Skill behavior, routing, outcome or cost; ordinary editorial maintenance usually needs no model evaluation."
 metadata:
   version: 5.0.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
-    tags: [evaluation, testing, benchmarking, security]
+    tags: [evaluation, testing, benchmarking]
     category: software-development
     related_skills: [software-quality-workflows]
 ---
 
 # Skill Evaluator
 
-## Owner contract
+Use this skill explicitly for a requested evaluation decision. Resolve bundled resources through `$SKILL_EVALUATOR_DIR`, the directory containing this file.
 
-Evaluate the complete Skill package and its runtime contribution. For a frontier model, reward only specialized, task-relevant help beyond the model's native competence; treat redundant instructions and loaded references as context cost.
-
-Use the lightest decision-supporting level. Resolve bundled paths from this file's directory through the literal shell variable `$SKILL_EVALUATOR_DIR`. Deliver commands with the portable `"$SKILL_EVALUATOR_DIR/..."` form.
-
-This skill is explicit-only. Invoke it when the user requests a package-quality, comparison, security, release, or longitudinal decision.
-
-## Decision router
-
-| Decision | Level | Read next |
-|---|---|---|
-| Inspect an unknown or untrusted package | L0 | [Security and package audit](references/security-and-package-audit.md) |
-| Diagnose trigger, loading, or execution | L1 | [Execution and grading](references/execution-and-grading.md) |
-| Decide whether the Skill adds value at acceptable context cost | L2 | [Evaluation contract](references/evaluation-contract.md), then [Rubric and metrics](references/rubric-and-metrics.md) |
-| Support release, installation, high-risk, or generalization claims | L3 | [Task-suite design](references/task-suite-design.md), then [Reporting and decisions](references/reporting-and-decisions.md) |
-| Compare a controlled revision or model transition | L4 | [Longitudinal evaluation](references/longitudinal-evaluation.md) |
-| Trace method provenance | any | [Source map](references/source-map.md) |
-
-Load the one reference that owns the active question, then follow its exact links as needed.
-
-## Evidence read surface
-
-Keep evidence immutable. Read the analyzer summary first, then its failure index and spec-bounded representative receipts. Open raw artifacts only for named failures, disagreements, or integrity audits by exact locator. The CLI verifies custody digests internally. Keep working context compact by using these canonical views and exact locators.
-
-When a validator names a concrete input file and missing field, keep that validator, file, and current level as the owner. Correct that contract defect and rerun the same validation command. Add artifacts or arguments only when the selected level requires them.
-
-## Claim ceilings
-
-| Level | Required evidence | Maximum claim |
-|---|---|---|
-| L0 | Whole-package inventory and static review | Static findings only |
-| L1 | Focused scenarios with verified run receipts | Diagnostic behavior only |
-| L2 | Frozen baseline/candidate scenarios, independent-case intervals, benefit and context guardrails | Scoped incremental usefulness |
-| L3 | L2 plus sequestered holdout, adversarial controls, environment binding, and required manual-review receipt | Readiness for the tested scope only |
-| L4 | Immutable cycle capsules plus a frozen comparison plan | Revision closure or model-transition classification for the tested scope only |
-
-L4 library-scale orchestration claims require selection, order, and composition receipts.
-
-## Decision invariants
-
-- The epoch-7 runtime decision path is spec v7, scenario v1 `requirements[]`, host manifest v2, one compiled plan v3, one run index v3, and receipts v5. The index binds plan bytes once and each receipt once; receipts bind independently consumed raw artifacts.
-- L2+ contribution requires the same scenarios and controls for a no-Skill baseline and a candidate treatment: natural routing for a routing claim, or forced loading for explicit-invocation value. When both are declared, natural routing is the default comparison unless the analyzer caller selects the forced treatment; a prior comparator matches that mode.
-- Repeats diagnose run variability; inference resamples distinct case means. Point lift or absolute pass rate cannot replace the declared positive lower-bound benefit gate.
-- Metric denominators include complete valid evidence. Missing, duplicate, or tampered inputs produce an inconclusive usefulness state; treatment-attributable failures with complete Host evidence remain valid outcome failures.
-- Target-Skill context is verified from captured component artifacts. The frozen intended-trigger candidate plan is the attribution denominator; total input tokens cannot substitute for attributed body/reference cost.
-- Safety and protected outcomes are unweighted guardrails and must pass independently of utility.
-- Static audit findings are provisional review locators. A product change requires package-role, reachability, impact, and ownership evidence; scanner silence is only a scan result.
-- Empirical usefulness is `supported`, `not_supported`, `inconclusive_ceiling`, or `not_evaluable`. Manual review and deployment authority are separate final gates.
-- When a supplied analyzer summary names `usefulness_status`, report that status as the maximum empirical claim; evaluation levels describe available capability and never raise the recorded result.
-- Public templates are starting shapes; live decisions use run-owned receipts, Host evidence, and scored artifacts.
-- Offline comparison consumes immutable cycle capsules and returns a bounded revision or model-transition classification. Skill editing, run scheduling, and release decisions remain with their named owners.
-
-## Run the owners
-
-Run the matching CLI before opening its implementation source. Read implementation source only after a CLI failure to diagnose its owner.
-
-When the task asks only for a canonical command or owner mapping stated in this contract, return that bound artifact directly. Preserve the top-level container and field types of an exact machine-readable artifact, and add no wrapper unless requested. Execution is required only when the task asks to validate or run it.
+For a change that preserves behavior, judge editorial equivalence once from the diff and stop after relevant local checks. This needs no historical evaluation and no model call. Version, hash, timestamp and unrelated documentation changes do not justify another evaluation. Optional local routing:
 
 ```bash
-python3 "$SKILL_EVALUATOR_DIR/scripts/audit_skill_package.py" /path/to/skill
+python3 "$SKILL_EVALUATOR_DIR/scripts/evaluate.py" check --base <revision> --impact editorial
 ```
 
-L0 emits bounded triage in the terminal. Add `--json audit.json` for a frozen report; `--json -` reserves stdout. Its states route the next review step; safety approval remains a separate authority decision.
+For changed behavior, name the affected cases and use a real oracle. Reuse task evidence before scheduling work; changed grading normally needs only grading. Begin with explicit task and judge budgets. Missing budget returns the exact gap before creating a run or probing the Host.
 
 ```bash
-python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" contract eval-spec.l0.json
-python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" contract eval-spec.json scenarios.jsonl host-manifest.json
+python3 "$SKILL_EVALUATOR_DIR/scripts/evaluate.py" run \
+  --suite author-suite.json --host host.json --output run-2 \
+  --previous-report run-1/summary.json --case relevant-case \
+  --task-attempt-budget 1 --judge-invocation-budget 0
 ```
 
-Calibrate each model grader before suite quality. Gold rows own exact blinded payloads and one payload digest; Host-normalized ratings use semantic IDs, while reviewer responses contain ordered judgment values only. Thresholds apply per check. Reviewer pairs are optional; deterministic-only specs omit calibration. Set validity, request and timeout variables from frozen spec and Host.
+The [maintenance guide](references/maintenance.md) defines inputs, reuse, execution, grading and recovery. The [compact example](templates/author-suite.example.json) needs task-specific cases and an actual verifier. The existing Host controls model execution, isolation and credentials; task model/effort and judge model/effort are separate identities.
 
-```bash
-python3 "$SKILL_EVALUATOR_DIR/scripts/run_model_calibration.py" \
-  --spec draft-eval-spec.json --labels calibration-gold.jsonl --host host-manifest.json \
-  --output-dir calibration-run --created "$CREATED_UTC" --expires "$EXPIRES_UTC" \
-  --expected-requests "$REQUESTS" --host-timeout "$HOST_TIMEOUT" --max-workers 4
+Report the selected scope, case failures, missing evidence, actual task/judge usage and source references. `diagnostic_only` is a completed maintenance evaluation, not a claim of general usefulness or release qualification. A cost field that is unavailable remains unknown. An attempt is not an API request. Pair comparisons by independent case; repeats do not create independent samples. A saturated baseline or an inconclusive interval does not authorize more tasks.
 
-python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" calibration --spec draft-eval-spec.json \
-  --ratings calibration-run/calibration-ratings.jsonl --labels calibration-gold.jsonl --output grader-calibration.json
-
-python3 "$SKILL_EVALUATOR_DIR/scripts/validate_eval_suite.py" suite-quality \
-  --spec draft-eval-spec.json --proof suite-quality-proof.json --output suite-quality.json
-```
-
-Compile only an `execution.ready=true` spec; compilation starts no process. Inspect with `--status`. Run/resume require `--new-attempt-budget`; custody lasts through receipt/index commit.
-
-```bash
-python3 "$SKILL_EVALUATOR_DIR/scripts/compile_eval_plan.py" eval-spec.ready.json scenarios.jsonl host-manifest.json --output execution-plan.json
-python3 "$SKILL_EVALUATOR_DIR/scripts/run_eval_plan.py" execution-plan.json --index artifacts/index.jsonl --status
-python3 "$SKILL_EVALUATOR_DIR/scripts/run_eval_plan.py" execution-plan.json --index artifacts/index.jsonl --new-attempt-budget 2
-```
-
-```bash
-python3 "$SKILL_EVALUATOR_DIR/scripts/analyze_runs.py" artifacts/index.jsonl \
-  --spec eval-spec.ready.json --json summary.json
-```
-
-Add `--failure-index failures.json`, `--details details.json`, or `--markdown summary.md` only for a named diagnostic consumer.
-
-Analyzer exits: `0` supported/eligible or L0/L1 diagnostic; `1` verified not-supported or manual `hold|reject`; `2` contract/I/O error; `3` incomplete, invalid, unsupported, not-evaluable, inconclusive, or authority-ineligible. A required manual receipt is spec-relative. `--report-only` changes only `1` to `0`.
-
-## Owner index
-
-- Contracts: [evaluation](references/evaluation-contract.md), [suite](references/task-suite-design.md), [execution](references/execution-and-grading.md), [metrics](references/rubric-and-metrics.md), [reporting](references/reporting-and-decisions.md), [longitudinal](references/longitudinal-evaluation.md).
-- Support: [source map](references/source-map.md), [schemas](schemas/README.md), [report template](templates/evaluation-report.md).
-- Code: [audit](scripts/audit_skill_package.py), [validator](scripts/validate_eval_suite.py), [calibration](scripts/run_model_calibration.py), [reviewer pair](scripts/reviewer_pair_contract.py), [reviewer prompt](scripts/reviewer_prompt_contract.py), [compiler](scripts/compile_eval_plan.py), [runner](scripts/run_eval_plan.py), [status](scripts/runner_status.py), [transport](scripts/model_grade_transport.py), [grader semantics](scripts/grader_semantics.py), [analyzer](scripts/analyze_runs.py), [comparator](scripts/compare_cycles.py), [I/O](scripts/evidence_io.py).
-- Specs: [L0](templates/eval-spec.l0.example.json), [L1](templates/eval-spec.l1.example.json), [L2](templates/eval-spec.example.json); scenarios: [L1](templates/scenarios.l1.example.jsonl), [L2](templates/scenarios.example.jsonl); [host](templates/host-manifest.example.json).
-- Preparation: [calibration ratings](templates/calibration-ratings.example.jsonl), [calibration gold](templates/calibration-gold.example.jsonl), and [suite-quality proof](templates/suite-quality-proof.example.json).
-- Evidence: [run index](templates/runs.example.jsonl), [grader schema](templates/grader-output.schema.json), [grader prompt](templates/llm-grader-prompt.md), [holdout manifest](templates/holdout-manifest.example.json), and [holdout scenarios](templates/holdout-scenarios.example.jsonl).
-- Comparisons: [revision plan](templates/comparison-plan.revision.example.json) and [model-transition plan](templates/comparison-plan.model-transition.example.json).
+Maintenance results describe the selected cases and do not grant deployment authority. No automatic retries or sample expansion.

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "skill_id": "your-skill",
+  "cases": [
+    {
+      "case_id": "task-1",
+      "prompt": "Replace this with a representative task.",
+      "fixture": {},
+      "requirements": [
+        {
+          "grader_id": "task-oracle",
+          "check_id": "outcome"
+        }
+      ]
+    }
+  ],
+  "graders": [
+    {
+      "grader_id": "task-oracle",
+      "type": "deterministic",
+      "checks": [
+        {
+          "check_id": "outcome",
+          "dimension": "outcome",
+          "required": true,
+          "pass_condition": "Describe an observable task-specific success condition."
+        }
+      ],
+      "verifier": {
+        "path": "verify.py",
+        "argv": [
+          "python3",
+          "verify.py"
+        ],
+        "input_allowlist": [
+          "result.json",
+          "workspace/final-answer.md"
+        ]
+      }
+    }
+  ],
+  "constraints": {
+    "task_attempt_budget": 0,
+    "judge_invocation_budget": 0,
+    "timeout_seconds": 300
+  }
+}

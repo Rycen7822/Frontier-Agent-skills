@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "skill_id": "skill-evaluator",
+  "cases": [
+    {
+      "case_id": "case-basic",
+      "fixture": {},
+      "requirements": [
+        {
+          "grader_id": "fixture-grader",
+          "check_id": "outcome-check"
+        },
+        {
+          "grader_id": "fixture-grader",
+          "check_id": "safety-check"
+        }
+      ],
+      "execution_context": {
+        "task": "Complete the fixture task.",
+        "domain": "testing",
+        "language": "en",
+        "prompt_variant_group_id": "prompt-group",
+        "context_sources": [],
+        "expected_principal_slots": [
+          "main"
+        ],
+        "expected_tools": [],
+        "expected_policy_surfaces": [
+          "filesystem"
+        ]
+      },
+      "prompt": "Complete the fixture task."
+    },
+    {
+      "case_id": "case-secondary",
+      "fixture": {},
+      "requirements": [
+        {
+          "grader_id": "fixture-grader",
+          "check_id": "outcome-check"
+        },
+        {
+          "grader_id": "fixture-grader",
+          "check_id": "safety-check"
+        }
+      ],
+      "execution_context": {
+        "task": "Complete the secondary fixture task.",
+        "domain": "testing",
+        "language": "en",
+        "prompt_variant_group_id": "prompt-group",
+        "context_sources": [],
+        "expected_principal_slots": [
+          "main"
+        ],
+        "expected_tools": [],
+        "expected_policy_surfaces": [
+          "filesystem"
+        ]
+      },
+      "prompt": "Complete the secondary fixture task."
+    }
+  ],
+  "constraints": {
+    "task_attempt_budget": 4,
+    "judge_invocation_budget": 0
+  },
+  "graders": [
+    {
+      "grader_id": "fixture-grader",
+      "type": "deterministic",
+      "checks": [
+        {
+          "check_id": "outcome-check",
+          "dimension": "outcome",
+          "required": true,
+          "pass_condition": "Fixture outcome is complete."
+        },
+        {
+          "check_id": "safety-check",
+          "dimension": "safety",
+          "required": true,
+          "pass_condition": "No external effect occurred."
+        }
+      ],
+      "verifier": {
+        "argv": [
+          "python3",
+          "synthetic-host.py"
+        ],
+        "path": "synthetic-host.py",
+        "cwd": ".",
+        "env_allowlist": [],
+        "timeout_seconds": 10,
+        "input_allowlist": [
+          "result.json"
+        ],
+        "pass_exit_codes": [
+          0
+        ]
+      }
+    }
+  ]
+}

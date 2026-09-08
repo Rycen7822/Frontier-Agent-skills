@@ -1,4 +1,6 @@
-# Model evolution campaign controller
+# Historical model evolution campaign controller
+
+The formal campaign CLI and Skill Evaluator certification pipeline are retired. The lifecycle below documents historical artifacts; its commands are no longer an active workflow. Use [the compact maintenance evaluator](../../skill-evaluator/references/maintenance.md) for current skill evaluation. Existing campaign evidence stays at its recorded location and does not grant authority to a new maintenance report.
 
 This directory owns the bounded qualification campaign used when a Codex Host or model revision can change Frontier Engineering behavior. The controller coordinates the existing Skill Evaluator and records a readable campaign state, explicit budgets, durable evidence locations, and the final qualification.
 

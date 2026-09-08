@@ -1,0 +1,23 @@
+# Maintenance evaluation
+
+The only execution entry is `scripts/evaluate.py run`. A suite directly defines cases, graders, treatments and budgets. Both first scoring and regrading consume immutable task results through one grading implementation.
+
+`--suite` and `--host` are JSON files. `--case` may repeat to select a subset. `--task-attempt-budget` and `--judge-invocation-budget` default to the suite constraints, otherwise zero. `--max-parallel` defaults to one. The command reports an insufficient budget before creating output or running Host preflight. `--impact editorial` skips model evaluation even without prior evidence.
+
+A compact suite has `schema_version: 1`, `skill_id`, `cases`, `graders`, optional `treatments`, `repeats`, `constraints` and `analysis`. Each case needs a stable `case_id`, a prompt or user-message turns, and requirements naming declared grader/check IDs. Each grader check declares `dimension` (outcome, safety, process or quality), `required` and a concrete `pass_condition`. Every case needs a required outcome check. Default treatments are a disabled-skill baseline and a force-loaded candidate; natural routing is an explicit candidate profile.
+
+Fixture `initial_files` and `initial_state` bind contained source paths and optional expected SHA256 values. A fixture manifest is optional. `shared_resources` names resources that must be serialized across cases. The Host and verifier own domain-specific coordination, state and effect checks. The evaluator does not orchestrate services or infer permissions from a passing rubric.
+
+A deterministic grader declares `verifier.path`, `argv` and `input_allowlist`. Inputs may include the captured `result.json` and named Host workspace artifacts. The verifier runs in its own directory with copied input files and concrete Python sibling dependencies. It returns one JSON object with `checks`, `missing_evidence: []` and `grader_failure: false`. Every check needs a boolean pass value and a locator in a declared input; an invalid invocation or missing observation does not become a task failure. `cwd`, environment allowlist, timeout and accepted exit codes remain explicit verifier settings.
+
+A model grader declares checks and either an inline `prompt` or `prompt_template.path`. It consumes the existing blinded evidence projection and returns a batch judgment; see the [grader prompt](../templates/llm-grader-prompt.md). Task and judge identities are bound separately by the Host. Batches contain at most six items within one case and grader. Gold examples can be ordinary cases evaluated through this same path when the judge or rubric needs validation.
+
+Every run writes a small `summary.json`. New tasks write `tasks/<entry>/task.json` plus captured artifacts; grades write `grades/<batch>/grade.json`. Task and grade documents are immutable and referenced by path and digest. A `run.json` input snapshot and `attempts.json` budget reservations are created for actual execution/grading recovery. Exact reuse writes a fresh summary referencing existing evidence, without copying fixtures or issuing preflight, task or judge requests.
+
+Task reuse depends on task/fixture content, delivered Skill, shared inputs, effective Host runtime, task model/effort and the visible catalog. Grading additionally depends on actual verifier/rubric inputs, required checks and judge identity. Irrelevant version/time/price metadata does not request fresh task execution. Source bytes are validated only when consumed; damaged selected evidence is rejected.
+
+Use a new `--output` with `--previous-report previous/summary.json` to continue. Completed task and grade files in the previous run are recovered even if the final summary update was interrupted. A live run lock prevents consuming active output. Incomplete attempts remain spent; the next invocation requires an explicit budget for any replacement attempt. Already completed tasks are reused. A grading failure preserves task results and completed grader batches so continuation only fills the missing grades.
+
+CLI exit 0 means the selected diagnostic completed, including failed task checks; inspect `failures`. Exit 2 means an input, Host or operation error. Exit 3 means a budget or evidence gap. `usefulness_status` is `diagnostic_only` or `not_evaluable`; `final_authority_status` stays `maintenance_only`. Paired reports show case counts, differences, intervals and baseline saturation without automatically collecting more samples.
+
+Task and judge costs are reported separately for newly performed work. Exact reuse costs zero new task/judge work. Missing captured usage, unknown billing and incomplete attempts are never converted to zero token success. API request count cannot be derived from task-attempt count.

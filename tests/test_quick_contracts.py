@@ -1,30 +1,14 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 import re
-import subprocess
-import sys
 import unittest
 
 import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-
-
-def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, str(ROOT / relative), *arguments],
-        cwd=ROOT,
-        env=ENV,
-        text=True,
-        capture_output=True,
-        check=False,
-        timeout=30,
-    )
 
 
 class QuickContracts(unittest.TestCase):
@@ -64,28 +48,6 @@ class QuickContracts(unittest.TestCase):
         )["interface"]["default_prompt"]
         self.assertIn("$skill-evaluator", evaluator_prompt)
 
-    def test_public_evaluator_template_is_accepted_as_non_ready(self) -> None:
-        skill = ROOT / "skill-evaluator"
-        result = run_script(
-            "skill-evaluator/scripts/validate_eval_suite.py",
-            "contract",
-            str(skill / "templates" / "eval-spec.example.json"),
-            str(skill / "templates" / "scenarios.example.jsonl"),
-            str(skill / "templates" / "host-manifest.example.json"),
-            "--json",
-            "-",
-        )
-        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        report = json.loads(result.stdout)
-        self.assertEqual([], report["errors"])
-        self.assertEqual(
-            {
-                "non_ready.execution",
-                "non_ready.quality",
-                "non_ready.verifier",
-            },
-            {warning["code"] for warning in report["warnings"]},
-        )
 
 if __name__ == "__main__":
     unittest.main()

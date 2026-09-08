@@ -3,16 +3,14 @@
 
 from __future__ import annotations
 
-import ctypes
-import errno
 from hashlib import sha256
 import json
 import os
 from pathlib import Path, PurePosixPath
 import re
-import shutil
 import tempfile
-from typing import Any, Iterable, Mapping
+import sys
+from typing import Any, Mapping
 
 
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -28,16 +26,8 @@ def canonical_json_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
-def canonical_sha256(value: Any) -> str:
-    return "sha256:" + sha256(canonical_json_bytes(value)).hexdigest()
-
-
 def file_sha256(path: Path) -> str:
     return "sha256:" + sha256(path.read_bytes()).hexdigest()
-
-
-def stable_sha256_sort_key(value: Any) -> bytes:
-    return sha256(canonical_json_bytes(value)).digest()
 
 
 def normalize_relative_path(reference: Any, label: str) -> str:
@@ -90,29 +80,6 @@ def load_json(path: Path) -> Any:
         ) from None
 
 
-def load_jsonl_objects(path: Path) -> list[tuple[int, dict[str, Any]]]:
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except FileNotFoundError:
-        raise ValueError(f"file not found: {path}") from None
-    except UnicodeDecodeError as exc:
-        raise ValueError(f"invalid UTF-8 in {path}: {exc}") from None
-    records: list[tuple[int, dict[str, Any]]] = []
-    for line_no, line in enumerate(lines, 1):
-        if not line.strip():
-            continue
-        try:
-            value = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"invalid JSONL in {path} line {line_no}: {exc.msg}"
-            ) from None
-        if not isinstance(value, dict):
-            raise ValueError(f"JSONL record in {path} line {line_no} must be an object")
-        records.append((line_no, value))
-    return records
-
-
 def _fsync_directory(path: Path) -> None:
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     try:
@@ -161,83 +128,6 @@ def atomic_write_json(path: Path, value: Any, *, replace: bool = False) -> None:
     atomic_write_bytes(path, canonical_json_bytes(value), replace=replace)
 
 
-def atomic_write_jsonl(
-    path: Path,
-    records: Iterable[Any],
-    *,
-    replace: bool = False,
-) -> None:
-    payload = b"".join(canonical_json_bytes(record) + b"\n" for record in records)
-    atomic_write_bytes(path, payload, replace=replace)
-
-
-def _rename_no_replace(source: Path, destination: Path) -> None:
-    try:
-        renameat2 = ctypes.CDLL(None, use_errno=True).renameat2
-    except AttributeError:
-        raise ValueError("atomic no-replace publication is unavailable") from None
-    renameat2.argtypes = (
-        ctypes.c_int,
-        ctypes.c_char_p,
-        ctypes.c_int,
-        ctypes.c_char_p,
-        ctypes.c_uint,
-    )
-    renameat2.restype = ctypes.c_int
-    if renameat2(
-        -100,
-        os.fsencode(source),
-        -100,
-        os.fsencode(destination),
-        1,
-    ) == 0:
-        return
-    error = ctypes.get_errno()
-    if error == errno.EEXIST:
-        raise FileExistsError(
-            f"refusing to overwrite existing output root: {destination}",
-        )
-    raise OSError(error, os.strerror(error), destination)
-
-
-def atomic_write_directory(
-    path: Path,
-    files: Mapping[str, bytes],
-) -> None:
-    if not files:
-        raise ValueError("atomic directory output requires at least one file")
-    if path.is_symlink() or path.exists():
-        raise FileExistsError(f"refusing to overwrite existing output root: {path}")
-    parent = path.parent
-    if not parent.is_dir() or parent.is_symlink():
-        raise ValueError(f"output parent must be a regular directory: {parent}")
-
-    normalized_files: dict[str, bytes] = {}
-    for name, payload in files.items():
-        normalized = normalize_relative_path(name, "atomic directory file")
-        if PurePosixPath(normalized).parent != PurePosixPath("."):
-            raise ValueError("atomic directory files must be top-level names")
-        if not isinstance(payload, bytes):
-            raise TypeError("atomic directory payloads must be bytes")
-        normalized_files[normalized] = payload
-    if len(normalized_files) != len(files):
-        raise ValueError("atomic directory file names must be distinct")
-
-    temporary = Path(tempfile.mkdtemp(
-        dir=parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-    ))
-    try:
-        for name in sorted(normalized_files):
-            atomic_write_bytes(temporary / name, normalized_files[name])
-        _rename_no_replace(temporary, path)
-        _fsync_directory(parent)
-    except BaseException:
-        shutil.rmtree(temporary, ignore_errors=True)
-        raise
-
-
 def artifact_record(path: Path, root: Path, *, encoding: str) -> dict[str, str]:
     if encoding not in {"utf-8", "binary"}:
         raise ValueError("artifact encoding must be utf-8 or binary")
@@ -254,59 +144,6 @@ def artifact_record(path: Path, root: Path, *, encoding: str) -> dict[str, str]:
             raise ValueError(f"artifact is not valid UTF-8: {path}: {exc}") from None
     relative = resolved.relative_to(resolved_root).as_posix()
     return {"path": relative, "digest": file_sha256(resolved), "encoding": encoding}
-
-
-def verify_artifact_records(
-    records: Any,
-    root: Path,
-    *,
-    label: str = "artifact",
-) -> dict[str, dict[str, Any]]:
-    if not isinstance(records, list):
-        raise ValueError(f"{label} artifacts must be an array")
-    verified: dict[str, dict[str, Any]] = {}
-    resolved_paths: set[Path] = set()
-    for index, record in enumerate(records):
-        item_label = f"{label} artifacts[{index}]"
-        if not isinstance(record, dict) or set(record) != {"path", "digest", "encoding"}:
-            raise ValueError(
-                f"{item_label} must contain exactly path, digest, and encoding"
-            )
-        normalized, resolved = resolve_contained_path(
-            root, record.get("path"), f"{label} artifact", kind="file"
-        )
-        if normalized in verified:
-            raise ValueError(f"{label} duplicate normalized artifact path: {normalized}")
-        if record["path"] != normalized:
-            raise ValueError(f"{label} artifact path is not canonical: {record['path']}")
-        if resolved in resolved_paths:
-            raise ValueError(f"{label} duplicate resolved artifact path: {normalized}")
-        if record.get("encoding") not in {"utf-8", "binary"}:
-            raise ValueError(f"{item_label}.encoding must be utf-8 or binary")
-        claimed_digest = record.get("digest")
-        if (
-            not isinstance(claimed_digest, str)
-            or SHA256_RE.fullmatch(claimed_digest) is None
-        ):
-            raise ValueError(f"{item_label}.digest must be sha256:<64 lowercase hex>")
-        actual_digest = file_sha256(resolved)
-        if claimed_digest != actual_digest:
-            raise ValueError(
-                f"{label} artifact digest mismatch for {normalized}: "
-                f"expected {claimed_digest}, got {actual_digest}"
-            )
-        item: dict[str, Any] = {**record, "resolved": resolved}
-        if record["encoding"] == "utf-8":
-            try:
-                item["text"] = resolved.read_text(encoding="utf-8")
-            except UnicodeDecodeError as exc:
-                raise ValueError(
-                    f"{label} UTF-8 artifact is not decodable: {normalized}: {exc}"
-                ) from None
-            item["lines"] = item["text"].splitlines()
-        verified[normalized] = item
-        resolved_paths.add(resolved)
-    return verified
 
 
 def _json_pointer_target(value: Any, pointer: str) -> Any:
@@ -403,3 +240,44 @@ def validate_locator(
         or end > size
     ):
         raise ValueError("byte locator range is empty or out of bounds")
+
+
+def resolve_host_command(
+    host: dict[str, Any],
+    contract_root: Path,
+) -> tuple[list[str], dict[str, str]]:
+    command = host["command"]
+    executable = Path(command["resolved_executable"])
+    if (
+        not executable.is_absolute()
+        or not executable.is_file()
+        or executable.is_symlink()
+    ):
+        raise ValueError("host resolved executable must be an absolute regular file")
+    if file_sha256(executable) != command["executable_digest"]:
+        raise ValueError("host executable digest mismatch")
+    declared = command["argv"]
+    declared_executable = Path(declared[0])
+    if declared_executable.is_absolute():
+        declared_resolution = declared_executable.resolve()
+    elif len(declared_executable.parts) == 1:
+        declared_resolution = (executable.parent / declared[0]).resolve()
+    else:
+        raise ValueError("host argv[0] must be absolute or an executable name")
+    if declared_resolution != executable.resolve():
+        raise ValueError("host argv[0] does not resolve to the bound executable")
+
+    argv = [str(executable.resolve())]
+    for argument in declared[1:]:
+        candidate = contract_root / argument
+        argv.append(str(candidate.resolve()) if candidate.is_file() else argument)
+    repository_scripts = Path(__file__).resolve().parents[2] / "scripts"
+    if str(repository_scripts) not in sys.path:
+        sys.path.insert(0, str(repository_scripts))
+    from _codex_eval_delivery import DeliveryError, project_command_environment
+
+    try:
+        environment = project_command_environment(command, dict(os.environ))
+    except DeliveryError as exc:
+        raise ValueError(str(exc)) from exc
+    return argv, environment

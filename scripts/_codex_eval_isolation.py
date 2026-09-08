@@ -52,7 +52,9 @@ def request_codex_home(isolation_tool: Path | None) -> Iterator[Path | None]:
     ) as temp_dir:
         home = Path(temp_dir)
         home.chmod(0o700)
-        profile = """[permissions.frontier-read-only-credential-isolated]
+        profile = """default_permissions = "frontier-read-only-credential-isolated"
+
+[permissions.frontier-read-only-credential-isolated]
 extends = ":read-only"
 
 [permissions.frontier-read-only-credential-isolated.filesystem]
@@ -76,7 +78,7 @@ def command_permission_argv(sandbox: str) -> list[str]:
         profile = ISOLATED_PERMISSION_PROFILES[sandbox]
     except KeyError as exc:
         raise IsolationError("model-evolution isolation sandbox is unsupported") from exc
-    return ["-P", profile]
+    return ["--config", "default_permissions=" + json.dumps(profile)]
 
 
 def proxy_environment_projection(
