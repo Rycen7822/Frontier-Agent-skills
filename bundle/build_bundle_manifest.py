@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build or verify the exact four-skill Frontier 8.0 bundle manifest."""
+"""Build or verify the exact canonical skill Frontier 8.0 bundle manifest."""
 
 from __future__ import annotations
 
@@ -22,22 +22,34 @@ if str(SCRIPTS) not in sys.path:
 from _bundle_hash import FORBIDDEN_PARTS, FORBIDDEN_SUFFIXES, inventory, tree_hash  # noqa: E402
 
 
-BUNDLE_ID = "frontier-engineering/8.0.2"
+BUNDLE_ID = "frontier-engineering/9.0.0"
 SCHEMA_EPOCH = 7
 OUTPUT = ROOT / "frontier-engineering.bundle.json"
 SCHEMA = ROOT / "bundle" / "frontier-engineering-bundle.schema.json"
 SOURCE_MANIFEST = ROOT / "bundle-manifest.json"
 EXPECTED_SKILLS = {
-    "long-document-segmented-writing": "2.0.0",
-    "skill-evaluator": "5.0.0",
-    "software-quality-workflows": "11.0.1",
-    "writing-plans": "8.4.1",
+    'code-review': '1.0.0',
+    'code-simplifier': '1.0.0',
+    'codebase-investigation': '1.0.0',
+    'debugging': '1.0.0',
+    'long-document-segmented-writing': '2.0.0',
+    'runtime-verification': '1.0.0',
+    'skill-evaluator': '5.0.0',
+    'software-design': '1.0.0',
+    'software-quality-workflows': '12.0.0',
+    'writing-plans': '8.4.1',
 }
 EXPECTED_ACTIVATION = {
-    "long-document-segmented-writing": True,
-    "skill-evaluator": False,
-    "software-quality-workflows": False,
-    "writing-plans": True,
+    'code-review': True,
+    'code-simplifier': True,
+    'codebase-investigation': True,
+    'debugging': True,
+    'long-document-segmented-writing': True,
+    'runtime-verification': True,
+    'skill-evaluator': False,
+    'software-design': True,
+    'software-quality-workflows': True,
+    'writing-plans': True,
 }
 SOURCE_FIELDS = {
     "bundle_schema_version",
@@ -147,8 +159,8 @@ def build_manifest() -> dict[str, Any]:
     source = _load_json(SOURCE_MANIFEST)
     if set(source) != SOURCE_FIELDS:
         raise ValueError(f"source bundle fields differ from schema 3.0: {sorted(source)}")
-    if source.get("bundle_schema_version") != "3.0" or source.get("bundle_version") != "8.0.2":
-        raise ValueError("source bundle must bind schema 3.0 and release 8.0.2")
+    if source.get("bundle_schema_version") != "3.0" or source.get("bundle_version") != "9.0.0":
+        raise ValueError("source bundle must bind schema 3.0 and release 9.0.0")
     if source.get("activation_ceiling") != "implicit_local_pilot" or source.get("remote_writes") is not False:
         raise ValueError("source bundle activation ceiling or remote-write boundary is invalid")
     profiles = source.get("test_profiles")
@@ -169,7 +181,7 @@ def build_manifest() -> dict[str, Any]:
         if set(item) == {"id", "path", "version"} and item.get("path") == item.get("id")
     }
     if observed != EXPECTED_SKILLS or len(skills) != len(EXPECTED_SKILLS):
-        raise ValueError(f"source bundle must bind the exact four-skill set: {observed}")
+        raise ValueError(f"source bundle must bind the exact canonical skill set: {observed}")
     if [item.get("id") for item in skills] != sorted(EXPECTED_SKILLS):
         raise ValueError("source bundle skills must be sorted by id")
 

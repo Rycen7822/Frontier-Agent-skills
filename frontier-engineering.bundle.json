@@ -1,25 +1,55 @@
 {
   "activation_ceiling": "implicit_local_pilot",
-  "bundle_id": "frontier-engineering/8.0.2",
+  "bundle_id": "frontier-engineering/9.0.0",
   "compatible_schema_epoch": 7,
-  "release_build_id": "build-cbd59eb96562f44ec2a49bf6",
+  "release_build_id": "build-014d80e6a23021ba0375eb6e",
   "remote_writes": false,
   "schema_version": "frontier-engineering-bundle/2.0",
   "skills": {
+    "code-review": {
+      "allow_implicit_invocation": true,
+      "root_hash": "sha256:68adb19c697d97ad34e26180f7ecd846f3927841aa5018417e24952012edd9ef",
+      "version": "1.0.0"
+    },
+    "code-simplifier": {
+      "allow_implicit_invocation": true,
+      "root_hash": "sha256:9e1442d10e752c7c289fbbe66382f759020ecdff6b5d3d8f7dee8d2b0f6cc18b",
+      "version": "1.0.0"
+    },
+    "codebase-investigation": {
+      "allow_implicit_invocation": true,
+      "root_hash": "sha256:9a54e23ce339ec1468f82245a0e2845e6e1cccce04822bf3c752b2cd5ba6028e",
+      "version": "1.0.0"
+    },
+    "debugging": {
+      "allow_implicit_invocation": true,
+      "root_hash": "sha256:14c3003342e9873188509db05f8fee72ee4d07eb8ada442e24a577ca767b7c2f",
+      "version": "1.0.0"
+    },
     "long-document-segmented-writing": {
       "allow_implicit_invocation": true,
-      "root_hash": "sha256:97903d492cc348d932455defcbdf702fbfc1914761c9e934b0f447708bba8719",
+      "root_hash": "sha256:6cea950a8ede933c7d43b68847baa9620def2fce083248a084ceba594347bab5",
       "version": "2.0.0"
+    },
+    "runtime-verification": {
+      "allow_implicit_invocation": true,
+      "root_hash": "sha256:ef60d5d2dc0cb4ff849776df6df114e087f9e57d84cb8d5c1ee9d4f7ebae256e",
+      "version": "1.0.0"
     },
     "skill-evaluator": {
       "allow_implicit_invocation": false,
-      "root_hash": "sha256:7d5cd573a9c1f2e80254f13d957924af0b0a9af870c2c24c76a43c24c3aa022c",
+      "root_hash": "sha256:e02e375a07bd3dfbd3d7ebea2af727e3f6375b2879ce76213fb1250bd19dea68",
       "version": "5.0.0"
     },
+    "software-design": {
+      "allow_implicit_invocation": true,
+      "root_hash": "sha256:d2097babe7354c71e17e20399559acfc365cc22dda8330795c6fc78dddfa0bd6",
+      "version": "1.0.0"
+    },
     "software-quality-workflows": {
-      "allow_implicit_invocation": false,
-      "root_hash": "sha256:16b12ab36d718c9436162c5e7200be7d928ec8104530c0b5f3e21bc29dc5c4ea",
-      "version": "11.0.1"
+      "allow_implicit_invocation": true,
+      "root_hash": "sha256:d66a3ecdb601e30b3d8a03a92d56597d802c4af6c3652ef41249b4163cc50ac1",
+      "version": "12.0.0"
     },
     "writing-plans": {
       "allow_implicit_invocation": true,

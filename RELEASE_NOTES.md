@@ -1,5 +1,11 @@
 # Release Notes
 
+## Bundle 9.0.0 integrated engineering skills
+
+One FAS plugin exposes ten task skills. Software Quality Workflows 12.0.0 preserves general development guidance and YAGNI testing while enabling implicit selection. Six focused entries cover investigation, design, debugging, review, simplification and runtime verification. Their guidance absorbs selected pstack and Anthropic ideas without fixed models, compulsory delegation or orchestration controllers.
+
+SQW references are compressed into four conditional documents; specialized guidance and the existing visual design runtime move to their task owners. Unique runtime and schema checks are retained; redundant wording and retired-layout tests are removed. Local build and discovery evidence does not establish general model effectiveness or authorize publication.
+
 ## Bundle 8.0.2 source-complete candidate
 
 Bundle 8.0.2 advances Writing Plans to 8.4.1 at schema epoch 7; Long Document remains 2.0.0, Skill Evaluator remains 5.0.0, and Software Quality Workflows remains 11.0.1. The activation matrix, `implicit_local_pilot` ceiling, and `remote_writes=false` boundary are unchanged.

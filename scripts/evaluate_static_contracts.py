@@ -40,6 +40,18 @@ BLOCKING_FIELDS = (
 )
 
 MODEL_FACING_EXACT = (
+    "code-review/SKILL.md",
+    "code-review/agents/openai.yaml",
+    "code-simplifier/SKILL.md",
+    "code-simplifier/agents/openai.yaml",
+    "codebase-investigation/SKILL.md",
+    "codebase-investigation/agents/openai.yaml",
+    "debugging/SKILL.md",
+    "debugging/agents/openai.yaml",
+    "runtime-verification/SKILL.md",
+    "runtime-verification/agents/openai.yaml",
+    "software-design/SKILL.md",
+    "software-design/agents/openai.yaml",
     "README.md",
     "RELEASE_NOTES.md",
     "software-quality-workflows/SKILL.md",
@@ -54,7 +66,8 @@ MODEL_FACING_EXACT = (
 )
 MODEL_FACING_DIRS = (
     "software-quality-workflows/references",
-    "software-quality-workflows/operator",
+    "software-design/operator",
+    "code-review/operator",
 )
 LEGACY_RUNTIME_PATHS = (
     "brainstorming",

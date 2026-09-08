@@ -4,14 +4,23 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "bundle_id", "bundle_version", "plugin_name", "plugin_tree_hash", "activation_ceiling",
-    "actual_codex_cli_install", "model_invoked", "remote_writes", "discovered_skills",
-    "isolated_install_discovery", "uninstall_clean"
+    "schema_version",
+    "bundle_id",
+    "bundle_version",
+    "plugin_name",
+    "plugin_tree_hash",
+    "activation_ceiling",
+    "actual_codex_cli_install",
+    "model_invoked",
+    "remote_writes",
+    "discovered_skills",
+    "isolated_install_discovery",
+    "uninstall_clean"
   ],
   "properties": {
     "schema_version": {"const": "static-plugin-smoke/4.0"},
-    "bundle_id": {"const": "frontier-engineering/8.0.2"},
-    "bundle_version": {"const": "8.0.2"},
+    "bundle_id": {"const": "frontier-engineering/9.0.0"},
+    "bundle_version": {"const": "9.0.0"},
     "plugin_name": {"const": "frontier-engineering-plugin"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "activation_ceiling": {"const": "implicit_local_pilot"},
@@ -19,13 +28,31 @@
     "model_invoked": {"const": false},
     "remote_writes": {"const": false},
     "discovered_skills": {
-      "type": "object", "additionalProperties": false,
-      "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code-review",
+        "code-simplifier",
+        "codebase-investigation",
+        "debugging",
+        "long-document-segmented-writing",
+        "runtime-verification",
+        "skill-evaluator",
+        "software-design",
+        "software-quality-workflows",
+        "writing-plans"
+      ],
       "properties": {
         "long-document-segmented-writing": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "2.0.0"}, "implicit_eligible": {"const": true}}}]},
         "skill-evaluator": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "5.0.0"}, "implicit_eligible": {"const": false}}}]},
-        "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "11.0.1"}, "implicit_eligible": {"const": false}}}]},
-        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.4.1"}, "implicit_eligible": {"const": true}}}]}
+        "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "12.0.0"}, "implicit_eligible": {"const": true}}}]},
+        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "8.4.1"}, "implicit_eligible": {"const": true}}}]},
+        "code-review": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}, "implicit_eligible": {"const": true}}}]},
+        "code-simplifier": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}, "implicit_eligible": {"const": true}}}]},
+        "codebase-investigation": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}, "implicit_eligible": {"const": true}}}]},
+        "debugging": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}, "implicit_eligible": {"const": true}}}]},
+        "runtime-verification": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}, "implicit_eligible": {"const": true}}}]},
+        "software-design": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.0"}, "implicit_eligible": {"const": true}}}]}
       }
     },
     "isolated_install_discovery": {"const": true},
@@ -34,7 +61,8 @@
   "$defs": {
     "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "skill": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "required": ["version", "description", "explicit_invocation", "implicit_eligible"],
       "properties": {
         "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},

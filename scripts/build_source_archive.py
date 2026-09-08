@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build deterministic clean bundle or four-skill source ZIP archives."""
+"""Build deterministic clean bundle or canonical skill source ZIP archives."""
 
 from __future__ import annotations
 
@@ -36,10 +36,16 @@ from build_codex_plugin import (  # noqa: E402
 
 Layout = Literal["bundle", "skills_only"]
 EXPECTED_SKILLS = {
-    "long-document-segmented-writing",
-    "skill-evaluator",
-    "software-quality-workflows",
-    "writing-plans",
+    'code-review',
+    'code-simplifier',
+    'codebase-investigation',
+    'debugging',
+    'long-document-segmented-writing',
+    'runtime-verification',
+    'skill-evaluator',
+    'software-design',
+    'software-quality-workflows',
+    'writing-plans',
 }
 BUNDLE_ROOT_PREFIX = "frontier-engineering-bundle"
 BUNDLE_DIRECTORIES = {"bundle", "evaluation", "packaging", "scripts", "tests"}
@@ -115,7 +121,7 @@ def _collect_directory(source_root: Path, directory: Path) -> list[Path]:
 def _collect_source_files(source_root: Path, manifest: dict[str, Any], layout: Layout) -> list[Path]:
     skill_paths = {str(item["path"]) for item in manifest["skills"]}
     if skill_paths != EXPECTED_SKILLS:
-        raise ValueError("bundle manifest must bind exactly the four canonical skill paths")
+        raise ValueError("bundle manifest must bind exactly the canonical skill paths")
     allowed_names = skill_paths | BUNDLE_DIRECTORIES | BUNDLE_FILES
     if layout == "bundle":
         for child in source_root.iterdir():
@@ -262,7 +268,7 @@ def build_archive(
         for item in manifest["skills"]
     }
     if set(skill_versions) != EXPECTED_SKILLS:
-        raise ValueError("source archive skill identities differ from the canonical four-skill set")
+        raise ValueError("source archive skill identities differ from the canonical canonical skill set")
 
     archive_temp = _temporary_path(output.parent, ".source-archive-")
     evidence_temp = _temporary_path(evidence_output.parent, ".source-archive-evidence-")

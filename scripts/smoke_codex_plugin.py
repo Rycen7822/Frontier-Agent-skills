@@ -23,10 +23,16 @@ from build_codex_plugin import _strict_json  # noqa: E402
 
 
 EXPECTED_ACTIVATION = {
-    "long-document-segmented-writing": True,
-    "skill-evaluator": False,
-    "software-quality-workflows": False,
-    "writing-plans": True,
+    'code-review': True,
+    'code-simplifier': True,
+    'codebase-investigation': True,
+    'debugging': True,
+    'long-document-segmented-writing': True,
+    'runtime-verification': True,
+    'skill-evaluator': False,
+    'software-design': True,
+    'software-quality-workflows': True,
+    'writing-plans': True,
 }
 EXPECTED_SKILLS = set(EXPECTED_ACTIVATION)
 
@@ -67,7 +73,7 @@ def inspect_plugin(plugin_root: Path, evidence_path: Path) -> dict[str, Any]:
     discovered: dict[str, dict[str, Any]] = {}
     skills_root = plugin_root / "skills"
     if {path.name for path in skills_root.iterdir() if path.is_dir()} != EXPECTED_SKILLS:
-        raise ValueError("static discovery did not find exactly the four canonical skills")
+        raise ValueError("static discovery did not find exactly the canonical skills")
     for name in sorted(EXPECTED_SKILLS):
         skill_root = skills_root / name
         fields = _frontmatter(skill_root / "SKILL.md")

@@ -58,12 +58,24 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "code-review",
+        "code-simplifier",
+        "codebase-investigation",
+        "debugging",
+        "runtime-verification",
+        "software-design",
         "long-document-segmented-writing",
         "skill-evaluator",
         "software-quality-workflows",
         "writing-plans"
       ],
       "properties": {
+        "code-review": {"$ref": "#/$defs/skill_result"},
+        "code-simplifier": {"$ref": "#/$defs/skill_result"},
+        "codebase-investigation": {"$ref": "#/$defs/skill_result"},
+        "debugging": {"$ref": "#/$defs/skill_result"},
+        "runtime-verification": {"$ref": "#/$defs/skill_result"},
+        "software-design": {"$ref": "#/$defs/skill_result"},
         "long-document-segmented-writing": {"$ref": "#/$defs/skill_result"},
         "skill-evaluator": {"$ref": "#/$defs/skill_result"},
         "software-quality-workflows": {"$ref": "#/$defs/skill_result"},
@@ -173,12 +185,24 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "code-review",
+        "code-simplifier",
+        "codebase-investigation",
+        "debugging",
+        "runtime-verification",
+        "software-design",
         "long-document-segmented-writing",
         "skill-evaluator",
         "software-quality-workflows",
         "writing-plans"
       ],
       "properties": {
+        "code-review": {"$ref": "#/$defs/skill_identity"},
+        "code-simplifier": {"$ref": "#/$defs/skill_identity"},
+        "codebase-investigation": {"$ref": "#/$defs/skill_identity"},
+        "debugging": {"$ref": "#/$defs/skill_identity"},
+        "runtime-verification": {"$ref": "#/$defs/skill_identity"},
+        "software-design": {"$ref": "#/$defs/skill_identity"},
         "long-document-segmented-writing": {"$ref": "#/$defs/skill_identity"},
         "skill-evaluator": {"$ref": "#/$defs/skill_identity"},
         "software-quality-workflows": {"$ref": "#/$defs/skill_identity"},
@@ -234,13 +258,19 @@
         "skill_scope": {
           "type": "array",
           "prefixItems": [
+            {"const": "code-review"},
+            {"const": "code-simplifier"},
+            {"const": "codebase-investigation"},
+            {"const": "debugging"},
             {"const": "long-document-segmented-writing"},
+            {"const": "runtime-verification"},
             {"const": "skill-evaluator"},
+            {"const": "software-design"},
             {"const": "software-quality-workflows"},
             {"const": "writing-plans"}
           ],
-          "minItems": 4,
-          "maxItems": 4
+          "minItems": 10,
+          "maxItems": 10
         },
         "task_version": {"$ref": "#/$defs/safe_id"},
         "sentinel_version": {"$ref": "#/$defs/safe_id"},

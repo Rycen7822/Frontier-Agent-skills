@@ -50,16 +50,28 @@ LOCAL_PATH_PATTERNS = tuple(re.compile(pattern) for pattern in (
 ))
 PLACEHOLDER_PATTERN = re.compile(re.escape(chr(91)) + "TODO:")
 EXPECTED_SKILLS = {
-    "long-document-segmented-writing": "2.0.0",
-    "skill-evaluator": "5.0.0",
-    "software-quality-workflows": "11.0.1",
-    "writing-plans": "8.4.1",
+    'code-review': '1.0.0',
+    'code-simplifier': '1.0.0',
+    'codebase-investigation': '1.0.0',
+    'debugging': '1.0.0',
+    'long-document-segmented-writing': '2.0.0',
+    'runtime-verification': '1.0.0',
+    'skill-evaluator': '5.0.0',
+    'software-design': '1.0.0',
+    'software-quality-workflows': '12.0.0',
+    'writing-plans': '8.4.1',
 }
 EXPECTED_ACTIVATION = {
-    "long-document-segmented-writing": True,
-    "skill-evaluator": False,
-    "software-quality-workflows": False,
-    "writing-plans": True,
+    'code-review': True,
+    'code-simplifier': True,
+    'codebase-investigation': True,
+    'debugging': True,
+    'long-document-segmented-writing': True,
+    'runtime-verification': True,
+    'skill-evaluator': False,
+    'software-design': True,
+    'software-quality-workflows': True,
+    'writing-plans': True,
 }
 CANONICAL_MARKETPLACE = {
     "name": "frontier-engineering-v8-release",
@@ -197,7 +209,7 @@ def _validate_exact_bundle_identity(source_root: Path) -> None:
     expected = namespace["build_manifest"]()
     observed = _strict_json(output_path)
     if observed != expected:
-        raise ValueError("frontier-engineering.bundle.json does not match the exact four-skill source")
+        raise ValueError("frontier-engineering.bundle.json does not match the exact canonical skill source")
     rendered = (json.dumps(expected, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
     if output_path.is_symlink() or output_path.read_bytes() != rendered:
         raise ValueError("frontier-engineering.bundle.json is not the canonical generated artifact")
@@ -206,11 +218,11 @@ def _validate_exact_bundle_identity(source_root: Path) -> None:
 def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
     skills = manifest.get("skills")
     if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != set(EXPECTED_SKILLS):
-        raise ValueError("manifest must declare exactly the four canonical skills")
-    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "8.0.2"):
+        raise ValueError("manifest must declare exactly the canonical skills")
+    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "9.0.0"):
         raise ValueError("manifest bundle schema/version is invalid")
     if {item.get("id"): item.get("version") for item in skills} != EXPECTED_SKILLS:
-        raise ValueError("version mismatch: manifest skill versions do not match the four-skill release identity")
+        raise ValueError("version mismatch: manifest skill versions do not match the canonical skill release identity")
     observed_activation: dict[str, bool] = {}
     for item in skills:
         if not isinstance(item, dict) or set(item) != {"id", "path", "version"}:
@@ -390,7 +402,7 @@ def _validate_staging(staging: Path, plugin_name: str) -> list[dict[str, Any]]:
         raise ValueError("rendered plugin manifest identity or runtime surface is invalid")
     skill_names = {path.name for path in (staging / "skills").iterdir() if path.is_dir()}
     if skill_names != set(EXPECTED_SKILLS):
-        raise ValueError("staging must contain exactly the four canonical skills")
+        raise ValueError("staging must contain exactly the canonical skills")
     candidates = [path for path in staging.rglob("*") if path.is_file() or path.is_symlink()]
     if any(path.name in FORBIDDEN_PLUGIN_NAMES for path in candidates):
         raise ValueError("staging contains a forbidden MCP/app/hook file")

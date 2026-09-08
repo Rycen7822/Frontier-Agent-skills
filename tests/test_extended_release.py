@@ -24,10 +24,16 @@ from writing_plans_verifier import (  # noqa: E402
 
 ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 SKILLS = {
-    "long-document-segmented-writing",
-    "skill-evaluator",
-    "software-quality-workflows",
-    "writing-plans",
+    'code-review',
+    'code-simplifier',
+    'codebase-investigation',
+    'debugging',
+    'long-document-segmented-writing',
+    'runtime-verification',
+    'skill-evaluator',
+    'software-design',
+    'software-quality-workflows',
+    'writing-plans',
 }
 
 
@@ -103,7 +109,7 @@ assert values["description"] == "{DESCRIPTION_VALUE}"
             )
             self.assertEqual(0, smoked.returncode, smoked.stdout + smoked.stderr)
             smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
-            self.assertEqual("frontier-engineering/8.0.2", smoke["bundle_id"])
+            self.assertEqual("frontier-engineering/9.0.0", smoke["bundle_id"])
             self.assertFalse(smoke["actual_codex_cli_install"])
 
     def test_source_archives_are_clean_and_reproducible(self) -> None:

@@ -4,32 +4,80 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "bundle_id", "bundle_version", "skill_versions", "skill_activation", "source_tree_hash",
-    "source_revision", "source_file_count", "plugin_tree_hash", "plugin_file_count", "plugin_name",
-    "output_class", "release_authorization_digest", "activation_ceiling", "files"
+    "schema_version",
+    "bundle_id",
+    "bundle_version",
+    "skill_versions",
+    "skill_activation",
+    "source_tree_hash",
+    "source_revision",
+    "source_file_count",
+    "plugin_tree_hash",
+    "plugin_file_count",
+    "plugin_name",
+    "output_class",
+    "release_authorization_digest",
+    "activation_ceiling",
+    "files"
   ],
   "properties": {
     "schema_version": {"const": "plugin-build-evidence/4.0"},
-    "bundle_id": {"const": "frontier-engineering/8.0.2"},
-    "bundle_version": {"const": "8.0.2"},
+    "bundle_id": {"const": "frontier-engineering/9.0.0"},
+    "bundle_version": {"const": "9.0.0"},
     "skill_versions": {
-      "type": "object", "additionalProperties": false,
-      "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code-review",
+        "code-simplifier",
+        "codebase-investigation",
+        "debugging",
+        "long-document-segmented-writing",
+        "runtime-verification",
+        "skill-evaluator",
+        "software-design",
+        "software-quality-workflows",
+        "writing-plans"
+      ],
       "properties": {
         "long-document-segmented-writing": {"const": "2.0.0"},
         "skill-evaluator": {"const": "5.0.0"},
-        "software-quality-workflows": {"const": "11.0.1"},
-        "writing-plans": {"const": "8.4.1"}
+        "software-quality-workflows": {"const": "12.0.0"},
+        "writing-plans": {"const": "8.4.1"},
+        "code-review": {"const": "1.0.0"},
+        "code-simplifier": {"const": "1.0.0"},
+        "codebase-investigation": {"const": "1.0.0"},
+        "debugging": {"const": "1.0.0"},
+        "runtime-verification": {"const": "1.0.0"},
+        "software-design": {"const": "1.0.0"}
       }
     },
     "skill_activation": {
-      "type": "object", "additionalProperties": false,
-      "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code-review",
+        "code-simplifier",
+        "codebase-investigation",
+        "debugging",
+        "long-document-segmented-writing",
+        "runtime-verification",
+        "skill-evaluator",
+        "software-design",
+        "software-quality-workflows",
+        "writing-plans"
+      ],
       "properties": {
         "long-document-segmented-writing": {"const": true},
         "skill-evaluator": {"const": false},
-        "software-quality-workflows": {"const": false},
-        "writing-plans": {"const": true}
+        "software-quality-workflows": {"const": true},
+        "writing-plans": {"const": true},
+        "code-review": {"const": true},
+        "code-simplifier": {"const": true},
+        "codebase-investigation": {"const": true},
+        "debugging": {"const": true},
+        "runtime-verification": {"const": true},
+        "software-design": {"const": true}
       }
     },
     "source_tree_hash": {"$ref": "#/$defs/hash"},
@@ -53,7 +101,9 @@
   "$defs": {
     "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "file": {
-      "type": "object", "additionalProperties": false, "required": ["path", "content_hash", "size", "mode"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "content_hash", "size", "mode"],
       "properties": {
         "path": {"type": "string", "minLength": 1},
         "content_hash": {"$ref": "#/$defs/hash"},

@@ -25,54 +25,96 @@
   "properties": {
     "schema_version": {"const": "static-contract-diagnostic/1.0"},
     "classification": {"const": "static_contract_diagnostic"},
-    "bundle_id": {"const": "frontier-engineering/8.0.2"},
-    "version": {"const": "8.0.2"},
+    "bundle_id": {"const": "frontier-engineering/9.0.0"},
+    "version": {"const": "9.0.0"},
     "schema_epoch": {"const": 7},
     "skill_versions": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
+      "required": [
+        "code-review",
+        "code-simplifier",
+        "codebase-investigation",
+        "debugging",
+        "long-document-segmented-writing",
+        "runtime-verification",
+        "skill-evaluator",
+        "software-design",
+        "software-quality-workflows",
+        "writing-plans"
+      ],
       "properties": {
         "long-document-segmented-writing": {"const": "2.0.0"},
         "skill-evaluator": {"const": "5.0.0"},
-        "software-quality-workflows": {"const": "11.0.1"},
-        "writing-plans": {"const": "8.4.1"}
+        "software-quality-workflows": {"const": "12.0.0"},
+        "writing-plans": {"const": "8.4.1"},
+        "code-review": {"const": "1.0.0"},
+        "code-simplifier": {"const": "1.0.0"},
+        "codebase-investigation": {"const": "1.0.0"},
+        "debugging": {"const": "1.0.0"},
+        "runtime-verification": {"const": "1.0.0"},
+        "software-design": {"const": "1.0.0"}
       }
     },
     "skill_activation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
+      "required": [
+        "code-review",
+        "code-simplifier",
+        "codebase-investigation",
+        "debugging",
+        "long-document-segmented-writing",
+        "runtime-verification",
+        "skill-evaluator",
+        "software-design",
+        "software-quality-workflows",
+        "writing-plans"
+      ],
       "properties": {
         "long-document-segmented-writing": {"const": true},
         "skill-evaluator": {"const": false},
-        "software-quality-workflows": {"const": false},
-        "writing-plans": {"const": true}
+        "software-quality-workflows": {"const": true},
+        "writing-plans": {"const": true},
+        "code-review": {"const": true},
+        "code-simplifier": {"const": true},
+        "codebase-investigation": {"const": true},
+        "debugging": {"const": true},
+        "runtime-verification": {"const": true},
+        "software-design": {"const": true}
       }
     },
     "entry_bytes": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["long-document-segmented-writing", "skill-evaluator", "software-quality-workflows", "writing-plans"],
+      "required": [
+        "code-review",
+        "code-simplifier",
+        "codebase-investigation",
+        "debugging",
+        "long-document-segmented-writing",
+        "runtime-verification",
+        "skill-evaluator",
+        "software-design",
+        "software-quality-workflows",
+        "writing-plans"
+      ],
       "properties": {
         "long-document-segmented-writing": {"type": "integer", "minimum": 1},
         "skill-evaluator": {"type": "integer", "minimum": 1},
-        "software-quality-workflows": {"type": "integer", "minimum": 1, "maximum": 4096},
-        "writing-plans": {"type": "integer", "minimum": 1, "maximum": 6912}
+        "software-quality-workflows": {"type": "integer", "minimum": 1},
+        "writing-plans": {"type": "integer", "minimum": 1, "maximum": 6912},
+        "code-review": {"type": "integer", "minimum": 1},
+        "code-simplifier": {"type": "integer", "minimum": 1},
+        "codebase-investigation": {"type": "integer", "minimum": 1},
+        "debugging": {"type": "integer", "minimum": 1},
+        "runtime-verification": {"type": "integer", "minimum": 1},
+        "software-design": {"type": "integer", "minimum": 1}
       }
     },
-    "model_facing_files_checked": {
-      "type": "array",
-      "minItems": 1,
-      "uniqueItems": true,
-      "items": {"type": "string", "minLength": 1}
-    },
+    "model_facing_files_checked": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
     "markdown_link_errors": {"$ref": "#/$defs/linkErrors"},
-    "legacy_runtime_paths_present": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {"type": "string", "minLength": 1}
-    },
+    "legacy_runtime_paths_present": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
     "legacy_protocol_matches": {"$ref": "#/$defs/patternMatches"},
     "brainstorming_runtime_copies": {"$ref": "#/$defs/patternMatches"},
     "package_file_count": {"type": "integer", "minimum": 1},
