@@ -58,7 +58,7 @@ def _frontmatter(path: Path) -> dict[str, str]:
 def inspect_plugin(plugin_root: Path, evidence_path: Path) -> dict[str, Any]:
     plugin_root = plugin_root.resolve(strict=True)
     evidence = _strict_json(evidence_path)
-    if evidence.get("schema_version") != "plugin-build-evidence/4.0" or evidence.get("skill_activation") != EXPECTED_ACTIVATION:
+    if evidence.get("schema_version") != "plugin-build-evidence/5.0" or evidence.get("skill_activation") != EXPECTED_ACTIVATION:
         raise ValueError("build evidence identity or skill activation is invalid")
     manifest = _strict_json(plugin_root / ".codex-plugin" / "plugin.json")
     if plugin_root.name != manifest.get("name") or manifest.get("name") != evidence.get("plugin_name"):

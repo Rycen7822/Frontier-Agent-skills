@@ -4,7 +4,7 @@ Use this optional companion only when the design question is inherently visual: 
 
 ## Safety and lifecycle
 
-- Ask before opening a local visual session unless the user already requested visual treatment.
+- A reversible local preview within the authorized design task needs no separate approval. Ask only for a missing user choice or an effect outside the authorized scope.
 - Bind only to loopback. The runtime accepts `127.0.0.1` or `localhost` and verifies the actual listener is `127.0.0.1` or `::1`; it has no remote-bind or authentication mode.
 - Use a task-owned `/tmp` session by default. Pass `--project-dir` only when persistent mockups are wanted; this creates `<project>/.agent-design-discovery/`, whose tracked/ignored status must be checked before closeout.
 - Keep one server per discovery session, record its process session ID and returned `screen_dir`/`state_dir`, and stop it when the visual question is resolved. Session, content, and state directories are mode `0700`; `owner.json`, `server.pid`, and `server.log` are mode `0600`.
@@ -29,7 +29,7 @@ If the user's browser cannot reach the loopback URL, diagnose the WSL/container/
 1. Check the tracked process and `<state_dir>/server-info` before every screen write.
 2. Write a new semantic HTML fragment such as `layout.html` or `layout-v2.html` into `screen_dir` with the host's bounded file-edit capability; never reuse a filename.
 3. Open or inspect the returned URL with an available browser capability when useful, and tell the user what is shown and where to open it.
-4. End the turn so the user can inspect and respond. Their conversation reply is authoritative; `<state_dir>/events` adds structured click evidence when present.
+4. When a user choice is needed, give them time to inspect and respond; continue independent work while waiting. A new frame alone does not require ending the turn. Their conversation reply is authoritative; `<state_dir>/events` adds structured click evidence when present.
 5. Read events with the host's bounded file-read capability, merge them with the user's reply, then revise the current screen or advance.
 6. When moving back to a text-only question, write a fresh waiting screen so stale choices are not presented as current.
 

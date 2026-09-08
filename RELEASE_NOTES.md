@@ -1,5 +1,12 @@
 # Release Notes
 
+## Bundle 10.0.0 proportionate skill guidance
+
+Planning and long-document writing now keep their main entries short, with conditional references for handoffs, recovery and segmented assembly. Plans can evolve during authorized implementation, and combined planning/execution requests continue after the plan. SQW retains its general development scope, YAGNI testing and evidence reuse; all ten discovery descriptions state their task directly.
+
+Plugin and marketplace packaging use engineering checks without model qualification or release authorization files. Build evidence and CLI install evidence advance to 5.0 at bundle schema epoch 8. Model-effect claims remain scoped to actual evaluation evidence. Prompt wording tests and the SQW heading map are removed; artifact integrity and real runtime tests remain.
+
+
 ## Bundle 9.0.0 integrated engineering skills
 
 One FAS plugin exposes ten task skills. Software Quality Workflows 12.0.0 preserves general development guidance and YAGNI testing while enabling implicit selection. Six focused entries cover investigation, design, debugging, review, simplification and runtime verification. Their guidance absorbs selected pstack and Anthropic ideas without fixed models, compulsory delegation or orchestration controllers.

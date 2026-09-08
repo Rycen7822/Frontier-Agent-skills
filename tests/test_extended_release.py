@@ -14,14 +14,9 @@ sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-sys.path.insert(0, str(ROOT / "evaluation" / "model-evolution" / "sentinel_sources"))
-
-from writing_plans_verifier import (  # noqa: E402
-    DESCRIPTION_VALUE,
-    _fixed_case_checks,
-)
-
-
+from build_codex_plugin import build, validate_plugin_build  # noqa: E402
+from _bundle_hash import inventory, tree_hash  # noqa: E402
+from _deterministic_zip import verify_deterministic_zip  # noqa: E402
 ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 SKILLS = {
     'code-review',
@@ -50,33 +45,34 @@ def run_script(relative: str, *arguments: str) -> subprocess.CompletedProcess[st
 
 
 class ExtendedRelease(unittest.TestCase):
-    def test_writing_plans_parsed_description_proof_is_fail_closed(self) -> None:
-        proof = f'''Plan `fixtures/agents/openai.yaml` from 8.2.0 to 8.2.1.
-```python
-from pathlib import Path
-lines = Path("fixtures/agents/openai.yaml").read_text().splitlines()
-values = dict(line.split(": ", 1) for line in lines)
-assert values["version"] == "8.2.1"
-assert values["description"] == "{DESCRIPTION_VALUE}"
-```
-'''
-
-        def passes(answer: str) -> bool:
-            checks = _fixed_case_checks("protected-description", answer)
-            return all(passed for passed, _ in checks.values())
-
-        self.assertTrue(passes(proof))
-        self.assertFalse(
-            passes(proof.replace(DESCRIPTION_VALUE, "EXPECTED_DESCRIPTION"))
-        )
-        self.assertFalse(
-            passes(
-                proof.replace(
-                    f'assert values["description"] == "{DESCRIPTION_VALUE}"',
-                    f'correct = "{DESCRIPTION_VALUE}"\nassert values["description"] == "wrong"',
-                )
-            )
-        )
+    def test_marketplace_build_preserves_outputs_and_detects_tampering(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            marketplace = work / "marketplace"
+            plugin = marketplace / "plugins" / "frontier-engineering-plugin"
+            evidence = work / "build.json"
+            archive = work / "marketplace.zip"
+            build(ROOT, plugin, evidence, marketplace, archive)
+            validate_plugin_build(plugin, evidence, source_root=ROOT)
+            members = [
+                (path.relative_to(marketplace).as_posix(), path, path.stat().st_mode & 0o777)
+                for path in sorted(marketplace.rglob("*")) if path.is_file()
+            ]
+            verify_deterministic_zip(archive, members)
+            original = evidence.read_bytes(), archive.read_bytes()
+            with self.assertRaises(ValueError):
+                build(ROOT, plugin, evidence, marketplace, archive)
+            self.assertEqual(original, (evidence.read_bytes(), archive.read_bytes()))
+            skill = plugin / "skills" / "writing-plans" / "SKILL.md"
+            skill.write_text(skill.read_text() + "\nUnexpected package mutation.\n")
+            with self.assertRaises(ValueError):
+                validate_plugin_build(plugin, evidence, source_root=ROOT)
+            changed = json.loads(evidence.read_text())
+            changed["files"] = inventory(plugin, [path for path in plugin.rglob("*") if path.is_file()])
+            changed["plugin_tree_hash"] = tree_hash(changed["files"])
+            evidence.write_text(json.dumps(changed))
+            with self.assertRaises(ValueError):
+                validate_plugin_build(plugin, evidence, source_root=ROOT)
 
     def test_plugin_build_and_static_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -109,7 +105,7 @@ assert values["description"] == "{DESCRIPTION_VALUE}"
             )
             self.assertEqual(0, smoked.returncode, smoked.stdout + smoked.stderr)
             smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
-            self.assertEqual("frontier-engineering/9.0.0", smoke["bundle_id"])
+            self.assertEqual("frontier-engineering/10.0.0", smoke["bundle_id"])
             self.assertFalse(smoke["actual_codex_cli_install"])
 
     def test_source_archives_are_clean_and_reproducible(self) -> None:

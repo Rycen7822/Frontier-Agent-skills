@@ -1,9 +1,9 @@
 ---
 name: software-quality-workflows
-description: Guide feature implementation, known-cause fixes, test strategy and general software development with minimal necessary process. Keep designs simple, changes complete and evidence proportionate; specialized investigation, design, diagnosis, review and simplification have direct task skills.
+description: Guide software implementation and maintenance with proportionate design, testing, and completion.
 license: MIT
 metadata:
-  version: 12.0.0
+  version: 12.1.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -14,43 +14,31 @@ metadata:
 
 # Software Quality Workflows
 
-## Native default
+Understand current behavior and the requested outcome, then make the smallest complete change. Follow relevant owners and callers; preserve user work and actual compatibility commitments. Clear tasks need no preliminary specification or mandatory workflow stages.
 
-Understand current behavior and the requested outcome, read relevant owners and callers, then make the smallest complete change. Clear tasks need no preliminary specification or workflow ceremony. Preserve user work and actual compatibility commitments. Diagnosis and review remain read-only unless changes are requested.
+## Implementation
 
-Use existing architecture and data shapes when they serve the task. Keep related state and invariants together; reduce unnecessary indirection, duplicated decisions and hidden mutable state. Add abstractions, configuration, dependencies or durable automation only for a current need. Prefer clear control flow to clever compression, and retain explanations of non-obvious reasons and constraints.
+Prefer existing architecture and data shapes. Keep related state and invariants together; reduce duplicated decisions, unnecessary indirection and hidden mutable state. Add abstractions, configuration or dependencies only for a current need. Favor clear control flow and retain explanations of non-obvious constraints.
 
-Specs, plans, tests, evaluators and release controls are editable when requested or when they are the product. A failing control does not itself authorize changing that surface. Honor bound paths, commands and budgets; a command that never reaches the product cannot establish its behavior.
+Clarify observable behavior when APIs, data, errors or cross-cutting changes make it consequential. Tests, plans, specifications and evaluators are editable within the requested scope; a failing check alone does not authorize weakening its requirement.
 
-## Observable contract
+## Evidence and tests
 
-For API, data, error or cross-cutting changes, clarify current behavior, requested differences and actual compatibility. Reuse existing requirements; persist a new specification only when needed.
+Finish coherent edits before verification. Reuse evidence while relevant behavior, dependencies, environment and consumer remain valid. Obvious semantic no-ops usually need no rerun or model evaluation. Otherwise use the lowest-cost deciding check, covering changed behavior and the nearest protected control. Use the final consumer when internal checks cannot establish the claim.
 
-## Evidence selection
+Apply YAGNI to tests. Keep unique protection for stable behavior, regressions and material risks; extend existing coverage when useful. Remove duplicates, retired expectations and incidental prompt-wording assertions. Keep one-off probes temporary. Test-first is conditional on a useful, affordable oracle.
 
-Complete coherent edits before verification. Reuse evidence while relevant behavior, dependencies and environment remain valid; obvious semantic no-ops usually need no rerun or model evaluation. Otherwise run the lowest-cost deciding check after the last relevant change. Cover changed behavior and the nearest protected control; use the final consumer when internal checks are insufficient. If verification changes delivered state, confirm that state before handoff.
+Classify failures as product, expectation, setup/environment, unrelated or unknown before changing another surface. An unavailable dependency or provider timeout leaves behavior unobserved. Retry only when a changed hypothesis, input, setup or independent observation could change the conclusion.
 
-## Failure ownership
+## Completion
 
-Classify failure as product, contract/oracle, harness/environment, unrelated or still unknown before another edit. A file outside the diff can still be affected indirectly. Repair an authorized product defect; preserve requirements when an oracle is uncertain; treat unavailable setup or provider timeout as unobserved behavior.
+Continue until the requested outcome is complete and sufficiently verified. Existing user authorization persists; a skill default or completed phase does not create a new approval requirement. If one action needs missing input or authority, finish independent authorized work and report the specific remaining dependency. Respect review-only or analysis-only requests.
 
-## Progress stop
+Reuse current context and task state. Select specialized skills when their distinct method helps, without loading a pipeline. Delegate only when authorized and useful. If verification changes delivered state, confirm the resulting state before handoff. Report the outcome, decisive evidence and material limits; distinguish local verification from external publication when relevant.
 
-Avoid repeated unchanged failures. Continue only when a changed hypothesis, input, setup or independent observation could change the conclusion. Otherwise state the missing evidence and stop the blocked verification path without discarding completed work. Do not weaken checks for a pass.
+Read further only for a concrete need:
 
-## Test retention
-
-Apply YAGNI to tests: retain unique protection for stable behavior, regressions and material risks; extend existing coverage when possible. Do not add implementation mirrors or incidental prompt-wording assertions. Keep one-off probes temporary, remove duplicates and retire tests for removed behavior. Test-first is conditional on a useful, affordable oracle.
-
-## Completion truth
-
-Use existing state and already valid context. Delegate only with authorization and a concrete net benefit; no fixed roles, models or reviewer counts. Specialized skills can be selected directly when their distinct method helps; do not load a pipeline or reread shared guidance already in context.
-
-Use only the relevant reference when detail is needed:
-
-- [Scope and evidence](references/scope-and-evidence.md): protected work, external effects or evidence validity is uncertain.
-- [YAGNI testing](references/testing.md): test value, oracle independence or suite cleanup needs judgment.
-- [Collaboration and state](references/collaboration-and-state.md): multiple writers, cross-context recovery or resource ownership.
-- [Repository recovery](references/recovery.md): actual conflicts or damaged/interrupted repository operations.
-
-Report the outcome, decisive evidence and material limits in language the reader needs. Distinguish implementation, verification and external publication when relevant. Stop when the request is complete and sufficiently verified; local proof does not itself grant release authority.
+- [Scope and evidence](references/scope-and-evidence.md): ownership, external effects or evidence validity.
+- [YAGNI testing](references/testing.md): oracle independence or test retention.
+- [Collaboration and state](references/collaboration-and-state.md): multiple writers, recovery or resource ownership.
+- [Repository recovery](references/recovery.md): conflicts or interrupted repository operations.
