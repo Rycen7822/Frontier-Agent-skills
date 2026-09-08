@@ -1,115 +1,48 @@
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 import os
 from pathlib import Path
-import stat
+import shutil
 import sys
+import tempfile
 import unittest
 
 from jsonschema import Draft202012Validator
 
-
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / "scripts"
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(0, str(ROOT / "scripts"))
 
-from build_codex_plugin import _strict_json  # noqa: E402
+from build_codex_plugin import build, _strict_json  # noqa: E402
+from smoke_codex_plugin import isolated_smoke  # noqa: E402
 from smoke_codex_cli_install import run_cli_smoke  # noqa: E402
-
-
-def required_absolute_path(name: str, *, directory: bool = False) -> Path:
-    value = os.environ.get(name)
-    if not value:
-        raise AssertionError(f"required release environment variable is missing: {name}")
-    path = Path(value)
-    if not path.is_absolute() or path.is_symlink():
-        raise AssertionError(f"{name} must be an absolute non-symlink path")
-    resolved = path.resolve(strict=True)
-    if directory and not resolved.is_dir():
-        raise AssertionError(f"{name} must be a directory")
-    if not directory and not resolved.is_file():
-        raise AssertionError(f"{name} must be a file")
-    return resolved
-
-
-def content_hash(path: Path) -> str:
-    return "sha256:" + sha256(path.read_bytes()).hexdigest()
 
 
 class ReleaseCliInstallTests(unittest.TestCase):
     def test_real_isolated_install_and_remove(self) -> None:
-        run_root = required_absolute_path("FRONTIER_RUN_ROOT", directory=True)
-        release_authorization_path = required_absolute_path(
-            "FRONTIER_RELEASE_AUTHORIZATION"
-        )
-        qualification_path = required_absolute_path("FRONTIER_QUALIFICATION")
-        work_root = required_absolute_path("FRONTIER_CLI_WORK_ROOT", directory=True)
-        codex_bin = required_absolute_path("FRONTIER_CODEX_BIN")
-        self.assertEqual(
-            run_root / "release-authorization.json",
-            release_authorization_path,
-        )
-        self.assertEqual(run_root / "qualification.json", qualification_path)
-        self.assertTrue(codex_bin.stat().st_mode & stat.S_IXUSR, "Codex binary is not executable")
-
-        release_root = run_root / "release"
-        marketplace = release_root / "marketplace"
-        plugin = marketplace / "plugins" / "frontier-engineering-plugin"
-        build_path = release_root / "plugin-build-evidence.json"
-        static_path = release_root / "static-plugin-smoke.json"
-        output = release_root / "cli-install-smoke.json"
-        for path in (release_root, marketplace, plugin, work_root):
-            self.assertTrue(path.is_dir() and not path.is_symlink(), path)
-        for path in (build_path, static_path):
-            self.assertTrue(path.is_file() and not path.is_symlink(), path)
-        self.assertFalse(output.exists() or output.is_symlink(), "CLI evidence output is no-overwrite")
-
-        authorization = _strict_json(release_authorization_path)
-        build = _strict_json(build_path)
-        self.assertEqual("release", build.get("output_class"))
-        self.assertEqual(
-            content_hash(release_authorization_path),
-            build.get("release_authorization_digest"),
-        )
-        self.assertEqual(
-            authorization.get("source_revision"), build.get("source_revision")
-        )
-        self.assertEqual(
-            authorization.get("source_tree_hash"), build.get("source_tree_hash")
-        )
-        self.assertEqual(
-            authorization.get("plugin_tree_hash"), build.get("plugin_tree_hash")
-        )
-
-        result = run_cli_smoke(
-            plugin,
-            build_path,
-            release_authorization_path,
-            qualification_path,
-            static_path,
-            marketplace,
-            work_root,
-            codex_command=str(codex_bin),
-        )
-        schema = _strict_json(ROOT / "packaging" / "schemas" / "cli-install-smoke.schema.json")
-        Draft202012Validator(schema).validate(result)
-        self.assertEqual("cli-install-smoke/4.0", result["schema_version"])
-        self.assertEqual("passed", result["release_gate"])
-        self.assertTrue(result["release_eligible"])
-        self.assertFalse(result["model_invoked"])
-        self.assertEqual([], list(work_root.iterdir()))
-
-        descriptor = os.open(
-            output,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
-        )
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            json.dump(result, handle, ensure_ascii=False, indent=2, sort_keys=True)
-            handle.write("\n")
+        codex = shutil.which(os.environ.get("FRONTIER_CODEX_BIN", "codex"))
+        if codex is None:
+            self.skipTest("Codex CLI is not installed")
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            marketplace = work / "marketplace"
+            plugin = marketplace / "plugins" / "frontier-engineering-plugin"
+            evidence = work / "build.json"
+            build(ROOT, plugin, evidence, marketplace, work / "marketplace.zip")
+            static_path = work / "static.json"
+            static_path.write_text(json.dumps(isolated_smoke(plugin, evidence)))
+            isolated_work = work / "install"
+            isolated_work.mkdir()
+            result = run_cli_smoke(
+                plugin, Path(os.path.relpath(evidence)), Path(os.path.relpath(static_path)), marketplace, isolated_work,
+                codex_command=codex,
+            )
+            schema = _strict_json(ROOT / "packaging" / "schemas" / "cli-install-smoke.schema.json")
+            Draft202012Validator(schema).validate(result)
+            self.assertTrue(result["cache_matches_staging"])
+            self.assertTrue(result["uninstall_clean"])
+            self.assertFalse(result["model_invoked"])
+            self.assertEqual([], list(isolated_work.iterdir()))
 
 
 if __name__ == "__main__":

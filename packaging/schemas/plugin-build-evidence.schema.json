@@ -15,15 +15,13 @@
     "plugin_tree_hash",
     "plugin_file_count",
     "plugin_name",
-    "output_class",
-    "release_authorization_digest",
     "activation_ceiling",
     "files"
   ],
   "properties": {
-    "schema_version": {"const": "plugin-build-evidence/4.0"},
-    "bundle_id": {"const": "frontier-engineering/9.0.0"},
-    "bundle_version": {"const": "9.0.0"},
+    "schema_version": {"const": "plugin-build-evidence/5.0"},
+    "bundle_id": {"const": "frontier-engineering/10.0.0"},
+    "bundle_version": {"const": "10.0.0"},
     "skill_versions": {
       "type": "object",
       "additionalProperties": false,
@@ -40,16 +38,16 @@
         "writing-plans"
       ],
       "properties": {
-        "long-document-segmented-writing": {"const": "2.0.0"},
-        "skill-evaluator": {"const": "5.0.0"},
-        "software-quality-workflows": {"const": "12.0.0"},
-        "writing-plans": {"const": "8.4.1"},
-        "code-review": {"const": "1.0.0"},
-        "code-simplifier": {"const": "1.0.0"},
-        "codebase-investigation": {"const": "1.0.0"},
-        "debugging": {"const": "1.0.0"},
-        "runtime-verification": {"const": "1.0.0"},
-        "software-design": {"const": "1.0.0"}
+        "long-document-segmented-writing": {"const": "3.0.0"},
+        "skill-evaluator": {"const": "5.0.1"},
+        "software-quality-workflows": {"const": "12.1.0"},
+        "writing-plans": {"const": "9.0.0"},
+        "code-review": {"const": "1.0.1"},
+        "code-simplifier": {"const": "1.0.1"},
+        "codebase-investigation": {"const": "1.0.1"},
+        "debugging": {"const": "1.0.1"},
+        "runtime-verification": {"const": "1.0.1"},
+        "software-design": {"const": "1.0.1"}
       }
     },
     "skill_activation": {
@@ -86,18 +84,9 @@
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "plugin_file_count": {"type": "integer", "minimum": 1},
     "plugin_name": {"const": "frontier-engineering-plugin"},
-    "output_class": {"enum": ["staging", "release"]},
-    "release_authorization_digest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/hash"}]},
     "activation_ceiling": {"const": "implicit_local_pilot"},
     "files": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/file"}}
   },
-  "allOf": [
-    {
-      "if": {"properties": {"output_class": {"const": "staging"}}, "required": ["output_class"]},
-      "then": {"properties": {"release_authorization_digest": {"type": "null"}}},
-      "else": {"properties": {"release_authorization_digest": {"$ref": "#/$defs/hash"}}}
-    }
-  ],
   "$defs": {
     "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "file": {

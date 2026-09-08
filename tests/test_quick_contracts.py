@@ -17,9 +17,9 @@ class QuickContracts(unittest.TestCase):
         generated = json.loads(
             (ROOT / "frontier-engineering.bundle.json").read_text(encoding="utf-8")
         )
-        self.assertEqual("9.0.0", source["bundle_version"])
-        self.assertEqual(7, generated["compatible_schema_epoch"])
-        self.assertEqual("frontier-engineering/9.0.0", generated["bundle_id"])
+        self.assertEqual("10.0.0", source["bundle_version"])
+        self.assertEqual(8, generated["compatible_schema_epoch"])
+        self.assertEqual("frontier-engineering/10.0.0", generated["bundle_id"])
         self.assertFalse(source["remote_writes"])
         self.assertEqual("implicit_local_pilot", source["activation_ceiling"])
 

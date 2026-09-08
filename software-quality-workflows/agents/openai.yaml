@@ -1,6 +1,6 @@
 interface:
   display_name: "Software Quality Workflows"
-  short_description: "Implement and verify changes without control-process drift"
-  default_prompt: "Use $software-quality-workflows to complete the requested software task directly, keep support and control artifacts unchanged unless they are the requested target, and run proportionate verification."
+  short_description: "Complete software changes with proportionate evidence"
+  default_prompt: "Use $software-quality-workflows to complete the requested software task with simple design, useful tests and proportionate verification."
 policy:
   allow_implicit_invocation: true

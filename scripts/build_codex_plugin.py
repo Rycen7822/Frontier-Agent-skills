@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import ctypes
 import errno
-from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -30,7 +29,6 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from _bundle_hash import bundle_inventory, inventory, tree_hash  # noqa: E402
-import _release_authorization as release_contract  # noqa: E402
 import evaluate_static_contracts as static_contracts  # noqa: E402
 from _deterministic_zip import (  # noqa: E402
     ZipMember,
@@ -50,16 +48,16 @@ LOCAL_PATH_PATTERNS = tuple(re.compile(pattern) for pattern in (
 ))
 PLACEHOLDER_PATTERN = re.compile(re.escape(chr(91)) + "TODO:")
 EXPECTED_SKILLS = {
-    'code-review': '1.0.0',
-    'code-simplifier': '1.0.0',
-    'codebase-investigation': '1.0.0',
-    'debugging': '1.0.0',
-    'long-document-segmented-writing': '2.0.0',
-    'runtime-verification': '1.0.0',
-    'skill-evaluator': '5.0.0',
-    'software-design': '1.0.0',
-    'software-quality-workflows': '12.0.0',
-    'writing-plans': '8.4.1',
+    'code-review': '1.0.1',
+    'code-simplifier': '1.0.1',
+    'codebase-investigation': '1.0.1',
+    'debugging': '1.0.1',
+    'long-document-segmented-writing': '3.0.0',
+    'runtime-verification': '1.0.1',
+    'skill-evaluator': '5.0.1',
+    'software-design': '1.0.1',
+    'software-quality-workflows': '12.1.0',
+    'writing-plans': '9.0.0',
 }
 EXPECTED_ACTIVATION = {
     'code-review': True,
@@ -157,24 +155,6 @@ def _validate_schema(
         raise ValueError(f"{label} is invalid")
 
 
-def _content_hash(path: Path) -> str:
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags)
-    try:
-        info = os.fstat(descriptor)
-        if not stat.S_ISREG(info.st_mode):
-            raise ValueError(f"hash input is not a regular file: {path}")
-        digest = sha256()
-        while True:
-            chunk = os.read(descriptor, 1024 * 1024)
-            if not chunk:
-                break
-            digest.update(chunk)
-        return "sha256:" + digest.hexdigest()
-    finally:
-        os.close(descriptor)
-
-
 def skill_version(path: Path) -> str:
     text = (path / "SKILL.md").read_text(encoding="utf-8")
     match = re.search(r"(?m)^  version:\s*([^\s#]+)\s*$", text)
@@ -219,7 +199,7 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     skills = manifest.get("skills")
     if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != set(EXPECTED_SKILLS):
         raise ValueError("manifest must declare exactly the canonical skills")
-    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "9.0.0"):
+    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "10.0.0"):
         raise ValueError("manifest bundle schema/version is invalid")
     if {item.get("id"): item.get("version") for item in skills} != EXPECTED_SKILLS:
         raise ValueError("version mismatch: manifest skill versions do not match the canonical skill release identity")
@@ -247,6 +227,9 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     }
     if generated_activation != EXPECTED_ACTIVATION:
         raise ValueError("generated bundle activation does not match skill metadata")
+    report = static_contracts.build_report(source_root)
+    if static_contracts.blocking_fact_count(report):
+        raise ValueError("source has blocking static contract errors")
     records = bundle_inventory(source_root, manifest)
     for record in records:
         path = source_root / record["path"]
@@ -289,108 +272,6 @@ def _validate_template(template: dict[str, Any], bundle_version: str) -> dict[st
     return rendered
 
 
-def _git_release_source_ok(source_root: Path, revision: str) -> bool:
-    commands = (
-        ["git", "-C", str(source_root), "rev-parse", "HEAD"],
-        ["git", "-C", str(source_root), "status", "--porcelain", "--untracked-files=all", "--", "."],
-        ["git", "-C", str(source_root), "verify-commit", revision],
-    )
-    results = [subprocess.run(command, text=True, capture_output=True, check=False, timeout=30) for command in commands]
-    return results[0].returncode == 0 and results[0].stdout.strip() == revision and results[1].returncode == 0 and not results[1].stdout.strip() and results[2].returncode == 0
-
-
-def _validate_release_authorization(
-    authorization: dict[str, Any],
-    qualification: dict[str, Any],
-    *,
-    source_root: Path,
-    manifest: dict[str, Any],
-    source_tree_hash: str,
-    plugin_tree_hash: str | None = None,
-) -> dict[str, Any]:
-    _validate_schema(
-        source_root,
-        "release-authorization-v3.schema.json",
-        authorization,
-        "release authorization",
-    )
-    release_contract.validate_authorization_binding(
-        authorization,
-        qualification,
-    )
-    bundle = _strict_json(source_root / "frontier-engineering.bundle.json")
-    revision = authorization.get("source_revision")
-    authority = authorization.get("authority")
-    if (
-        authorization.get("bundle_id") != bundle.get("bundle_id")
-        or authorization.get("bundle_version") != manifest.get("bundle_version")
-        or authorization.get("source_tree_hash") != source_tree_hash
-        or authorization.get("skills") != bundle.get("skills")
-        or authorization.get("remote_writes") is not False
-        or not isinstance(authority, dict)
-        or any(
-            not isinstance(authority.get(field), str)
-            or not authority[field].strip()
-            for field in ("authority_id", "signature_attestation")
-        )
-        or not isinstance(revision, str)
-        or re.fullmatch(r"[0-9a-f]{40}", revision) is None
-        or not _git_release_source_ok(source_root, revision)
-    ):
-        raise ValueError(
-            "release authorization source, bundle, activation, or authority "
-            "identity does not match a clean signed revision"
-        )
-    if (
-        plugin_tree_hash is not None
-        and authorization.get("plugin_tree_hash") != plugin_tree_hash
-    ):
-        raise ValueError(
-            "release authorization plugin tree hash does not match the staged plugin"
-        )
-    static_report = static_contracts.build_report(source_root)
-    if (
-        static_contracts.blocking_fact_count(static_report) != 0
-        or authorization.get("static_gate")
-        != {
-            "schema_version": static_report.get("schema_version"),
-            "status": "pass",
-        }
-        or static_report.get("bundle_id") != bundle.get("bundle_id")
-        or static_report.get("version") != manifest.get("bundle_version")
-        or static_report.get("skill_activation") != EXPECTED_ACTIVATION
-    ):
-        raise ValueError(
-            "static contract gate differs from the selected source"
-        )
-    return authorization
-
-
-def validate_release_authorization(
-    path: Path | None,
-    qualification_path: Path | None,
-    *,
-    source_root: Path,
-    manifest: dict[str, Any],
-    source_tree_hash: str,
-    plugin_tree_hash: str | None = None,
-) -> dict[str, Any]:
-    if path is None or qualification_path is None:
-        raise ValueError(
-            "dist output requires matching qualification and release authorization"
-        )
-    _reject_symlink_components(path)
-    _reject_symlink_components(qualification_path)
-    return _validate_release_authorization(
-        _strict_json(path),
-        _strict_json(qualification_path),
-        source_root=source_root,
-        manifest=manifest,
-        source_tree_hash=source_tree_hash,
-        plugin_tree_hash=plugin_tree_hash,
-    )
-
-
 def _validate_staging(staging: Path, plugin_name: str) -> list[dict[str, Any]]:
     if {path.name for path in staging.iterdir()} != {".codex-plugin", "skills"}:
         raise ValueError("plugin staging root must contain only .codex-plugin and skills")
@@ -418,6 +299,9 @@ def _validate_staging(staging: Path, plugin_name: str) -> list[dict[str, Any]]:
 
 def _assert_skill_copy_matches(source_records: list[dict[str, Any]], plugin_records: list[dict[str, Any]]) -> None:
     plugin_by_path = {record["path"]: record for record in plugin_records}
+    expected_paths = {"skills/" + record["path"] for record in source_records if record["path"] != "bundle-manifest.json"}
+    if set(plugin_by_path) != expected_paths | {".codex-plugin/plugin.json"}:
+        raise ValueError("staged plugin file set differs from source")
     for source in source_records:
         if source["path"] == "bundle-manifest.json":
             continue
@@ -432,8 +316,6 @@ def validate_plugin_build(
     build_evidence_path: Path,
     *,
     source_root: Path,
-    release_authorization: Path | None,
-    qualification: Path | None = None,
 ) -> dict[str, Any]:
     source_root = source_root.resolve(strict=True)
     _reject_symlink_components(plugin_root)
@@ -449,6 +331,13 @@ def validate_plugin_build(
         "plugin build evidence",
     )
     plugin_records = _validate_staging(plugin_root, evidence["plugin_name"])
+    _assert_skill_copy_matches(source_records, plugin_records)
+    expected_manifest = _validate_template(
+        _strict_json(source_root / "packaging" / "codex-plugin" / "plugin.json.template"),
+        manifest["bundle_version"],
+    )
+    if _strict_json(plugin_root / ".codex-plugin" / "plugin.json") != expected_manifest:
+        raise ValueError("plugin manifest differs from the source template")
     versions = {
         skill_id: skill_version(plugin_root / "skills" / skill_id)
         for skill_id in EXPECTED_SKILLS
@@ -469,32 +358,6 @@ def validate_plugin_build(
     ):
         raise ValueError("plugin build evidence does not match source or plugin bytes")
 
-    output_class = evidence["output_class"]
-    if output_class == "staging":
-        if release_authorization is not None or qualification is not None:
-            raise ValueError(
-                "staging validation forbids qualification and release authorization"
-            )
-    elif release_authorization is None or qualification is None:
-        raise ValueError(
-            "release validation requires qualification and release authorization"
-        )
-    else:
-        _reject_symlink_components(release_authorization)
-        if evidence.get("release_authorization_digest") != _content_hash(
-            release_authorization
-        ):
-            raise ValueError(
-                "release authorization content hash does not match build evidence"
-            )
-        validate_release_authorization(
-            release_authorization,
-            qualification,
-            source_root=source_root,
-            manifest=manifest,
-            source_tree_hash=evidence["source_tree_hash"],
-            plugin_tree_hash=evidence["plugin_tree_hash"],
-        )
     return evidence
 
 
@@ -643,11 +506,9 @@ def _archive_members(
 def build(
     source_root: Path,
     output: Path,
-    release_authorization: Path | None,
     evidence_output: Path,
     marketplace_root: Path | None = None,
     marketplace_archive_output: Path | None = None,
-    qualification: Path | None = None,
 ) -> dict[str, Any]:
     source_root = source_root.resolve(strict=True)
     output = output.absolute()
@@ -668,16 +529,12 @@ def build(
     )
     if output.name != template["name"]:
         raise ValueError(f"plugin output folder must match manifest name: {template['name']}")
-    if (release_authorization is None) != (qualification is None):
-        raise ValueError(
-            "release build requires qualification and authorization together"
-        )
-    is_release = release_authorization is not None
-    if is_release:
-        if marketplace_root is None or marketplace_archive_output is None:
-            raise ValueError(
-                "release build requires canonical marketplace and archive outputs"
-            )
+    if (marketplace_root is None) != (marketplace_archive_output is None):
+        raise ValueError("marketplace root and archive output must be supplied together")
+    with_marketplace = marketplace_root is not None
+    if with_marketplace:
+        assert marketplace_root is not None
+        assert marketplace_archive_output is not None
         marketplace_root = marketplace_root.absolute()
         marketplace_archive_output = marketplace_archive_output.absolute()
         _reject_symlink_components(marketplace_root)
@@ -694,22 +551,12 @@ def build(
         if marketplace_archive_output == evidence_output:
             raise ValueError("marketplace archive and build evidence must be distinct")
         if output != marketplace_root / "plugins" / template["name"]:
-            raise ValueError("release plugin output must be inside the canonical marketplace")
+            raise ValueError("plugin output must be inside the canonical marketplace")
         if evidence_output.is_relative_to(marketplace_root):
             raise ValueError("build evidence must be outside the canonical marketplace")
         if marketplace_archive_output.is_relative_to(marketplace_root):
             raise ValueError("marketplace archive must be outside the canonical marketplace")
-        validate_release_authorization(
-            release_authorization,
-            qualification,
-            source_root=source_root,
-            manifest=manifest,
-            source_tree_hash=source_tree_hash,
-        )
-    elif marketplace_root is not None or marketplace_archive_output is not None:
-        raise ValueError("staging build forbids marketplace outputs")
-
-    if is_release:
+    if with_marketplace:
         assert marketplace_root is not None
         assert marketplace_archive_output is not None
         marketplace_root.parent.mkdir(parents=True, exist_ok=True)
@@ -723,14 +570,14 @@ def build(
     publish_parent = marketplace_root.parent if marketplace_root is not None else output.parent
     if publish_parent.stat().st_dev != evidence_output.parent.stat().st_dev:
         raise ValueError("plugin staging and destination must share one filesystem")
-    if is_release and (
+    if with_marketplace and (
         marketplace_archive_output is None
         or marketplace_archive_output.parent.stat().st_dev
         != evidence_output.parent.stat().st_dev
     ):
         raise ValueError("marketplace archive and staging must share one filesystem")
     marketplace_staging = evidence_output.parent / "marketplace-build-staging"
-    if is_release and (
+    if with_marketplace and (
         marketplace_staging.exists() or marketplace_staging.is_symlink()
     ):
         raise ValueError("marketplace build staging path is no-overwrite")
@@ -752,7 +599,7 @@ def build(
     def publication_still_matches() -> bool:
         if plugin_records is None:
             return False
-        if is_release:
+        if with_marketplace:
             if (
                 marketplace_root is None
                 or marketplace_staging_identity is None
@@ -791,22 +638,8 @@ def build(
         if validate_source(source_root, manifest) != source_records:
             raise ValueError("E_SOURCE_DRIFT: bundle source changed during plugin staging")
         plugin_tree_hash = tree_hash(plugin_records)
-        if is_release:
-            validate_release_authorization(
-                release_authorization,
-                qualification,
-                source_root=source_root,
-                manifest=manifest,
-                source_tree_hash=source_tree_hash,
-                plugin_tree_hash=plugin_tree_hash,
-            )
-        release_authorization_digest = (
-            _content_hash(release_authorization)
-            if release_authorization is not None
-            else None
-        )
         evidence: dict[str, Any] = {
-            "schema_version": "plugin-build-evidence/4.0",
+            "schema_version": "plugin-build-evidence/5.0",
             "bundle_id": _strict_json(source_root / "frontier-engineering.bundle.json")["bundle_id"],
             "bundle_version": manifest["bundle_version"],
             "skill_versions": {item["id"]: item["version"] for item in sorted(manifest["skills"], key=lambda item: item["id"])},
@@ -817,8 +650,6 @@ def build(
             "plugin_tree_hash": plugin_tree_hash,
             "plugin_file_count": len(plugin_records),
             "plugin_name": template["name"],
-            "output_class": "release" if is_release else "staging",
-            "release_authorization_digest": release_authorization_digest,
             "activation_ceiling": manifest["activation_ceiling"],
             "files": plugin_records,
         }
@@ -839,7 +670,7 @@ def build(
         if _file_identity(evidence_temporary) != evidence_identity:
             raise RuntimeError("build evidence staging inode changed")
         evidence_bytes = evidence_temporary.read_bytes()
-        if is_release:
+        if with_marketplace:
             assert marketplace_root is not None
             marketplace_staging.mkdir(mode=0o700)
             marketplace_staging_identity = _directory_identity(
@@ -899,7 +730,7 @@ def build(
         published = True
         if not publication_still_matches():
             raise ValueError("published plugin tree changed during publication")
-        if is_release:
+        if with_marketplace:
             assert marketplace_root is not None
             assert marketplace_archive_output is not None
             assert marketplace_records is not None
@@ -935,7 +766,7 @@ def build(
             raise ValueError(
                 "published plugin tree changed after evidence publication"
             )
-        if is_release:
+        if with_marketplace:
             assert marketplace_root is not None
             assert marketplace_archive_output is not None
             assert marketplace_records is not None
@@ -978,12 +809,12 @@ def build(
             and not staging.exists()
             and publication_still_matches()
         ):
-            if is_release:
+            if with_marketplace:
                 assert marketplace_root is not None
                 _rename_no_replace(marketplace_root, marketplace_staging)
             else:
                 _rename_no_replace(output, staging)
-        if is_release and marketplace_staging.exists():
+        if with_marketplace and marketplace_staging.exists():
             staged_plugin = (
                 marketplace_staging / "plugins" / template["name"]
             )
@@ -1008,8 +839,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source-root", type=Path, default=ROOT)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--evidence-output", type=Path)
-    parser.add_argument("--release-authorization", type=Path)
-    parser.add_argument("--qualification", type=Path)
     parser.add_argument("--marketplace-root", type=Path)
     parser.add_argument("--marketplace-archive-output", type=Path)
     parser.add_argument("--validate-plugin-root", type=Path)
@@ -1035,8 +864,6 @@ def main(argv: list[str] | None = None) -> int:
                 args.validate_plugin_root,
                 args.build_evidence,
                 source_root=args.source_root,
-                release_authorization=args.release_authorization,
-                qualification=args.qualification,
             )
         except (
             OSError,
@@ -1057,11 +884,9 @@ def main(argv: list[str] | None = None) -> int:
         evidence = build(
             args.source_root,
             args.output,
-            args.release_authorization,
             args.evidence_output,
             args.marketplace_root,
             args.marketplace_archive_output,
-            args.qualification,
         )
     except (OSError, ValueError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
@@ -1071,7 +896,6 @@ def main(argv: list[str] | None = None) -> int:
         "bundle_id": evidence["bundle_id"],
         "bundle_version": evidence["bundle_version"],
         "plugin_name": evidence["plugin_name"],
-        "output_class": evidence["output_class"],
     }, ensure_ascii=False))
     return 0
 

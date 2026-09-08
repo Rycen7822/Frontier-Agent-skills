@@ -10,10 +10,6 @@
     "bundle_version",
     "plugin_tree_hash",
     "activation_ceiling",
-    "release_gate",
-    "blocking_prerequisites",
-    "release_eligible",
-    "source_revision_verified",
     "marketplace_name",
     "codex_cli_version",
     "actual_codex_cli_install",
@@ -40,16 +36,12 @@
     "commands"
   ],
   "properties": {
-    "schema_version": {"const": "cli-install-smoke/4.0"},
-    "bundle_id": {"const": "frontier-engineering/9.0.0"},
+    "schema_version": {"const": "cli-install-smoke/5.0"},
+    "bundle_id": {"const": "frontier-engineering/10.0.0"},
     "plugin_name": {"const": "frontier-engineering-plugin"},
-    "bundle_version": {"const": "9.0.0"},
+    "bundle_version": {"const": "10.0.0"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "activation_ceiling": {"const": "implicit_local_pilot"},
-    "release_gate": {"enum": ["blocked_prerequisites", "passed"]},
-    "blocking_prerequisites": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
-    "release_eligible": {"type": "boolean"},
-    "source_revision_verified": {"type": "boolean"},
     "marketplace_name": {"type": "string", "minLength": 1},
     "codex_cli_version": {"type": "string", "minLength": 1},
     "actual_codex_cli_install": {"const": true},
@@ -138,26 +130,5 @@
       }
     }
   },
-  "allOf": [
-    {
-      "if": {"properties": {"release_gate": {"const": "blocked_prerequisites"}}, "required": ["release_gate"]},
-      "then": {
-        "properties": {
-          "release_gate": {"const": "blocked_prerequisites"},
-          "blocking_prerequisites": {"const": ["model_qualification", "release_authorization", "signed_clean_source_revision"]},
-          "release_eligible": {"const": false},
-          "source_revision_verified": {"const": false}
-        }
-      },
-      "else": {
-        "properties": {
-          "release_gate": {"const": "passed"},
-          "blocking_prerequisites": {"maxItems": 0},
-          "release_eligible": {"const": true},
-          "source_revision_verified": {"const": true}
-        }
-      }
-    }
-  ],
   "$defs": {"hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}
 }

@@ -1,49 +1,18 @@
 ---
 name: writing-plans
-description: "Use after software decisions and diagnosis are settled to write source-bound software implementation Handoffs and durable multi-session Programs."
+description: Plan implementation from settled decisions, including handoffs and multi-session work.
 metadata:
-  version: 8.4.1
+  version: 9.0.0
 ---
 
-Handoff crosses contexts; Program tracks a frontier; otherwise stay native. Skill-source changes use skill authoring. Plan after decisions and diagnosis are settled; execution, verification, and completion claims stay owner-held.
+# Writing Plans
 
-A bounded single-session request naming files and checks must end as a native ordered plan even when Git identity, dirty/protected paths, or exact source identity are visible; omit those facts unless named; skip the Handoff/Program contract below. Inspect each available bound file once. State observed symbols and behavior, exact edits, checks, expected results, and failure exits.
+Turn settled decisions into an executable order of work. Inspect the relevant source and existing checks so the plan names real owners, behavior and dependencies. Resolve consequential design or diagnosis gaps first; a plan should not hide them inside implementation steps.
 
-Exact means old→new symbols, argument-parser calls, literals/anchors, and complete runnable test bodies when exact tests are requested. Edits keep literals in owning files; each exact check is a runnable command asserting them there; expected snippets, generic "add parsing", prose-only tests, and "follow existing conventions" fail. Derive positions from the complete post-edit body; otherwise assert syntax or identifiers. An identical command appears once, after the last coherent edit it covers.
+For work that fits the current context, write a short ordered plan. State what changes, where it belongs, what must remain true and how completion will be checked. Include exact commands or edits when they are known and useful; identify unknowns instead of inventing runnable details. Share a check across coherent changes when it can establish the same result once.
 
-Map every observed old-name match to its owning file exactly once; never invent an occurrence or copy one across owners. Files without a match are proof-only; preserve superstrings such as `test_timeout`. Prove residuals with one identifier set: old absent, new present. Substring-only comparison fails; tokenizer type checks may select identifiers, but name comparison uses `token.string`.
+Scale detail to the handoff risk. A straightforward edit needs no identity protocol, milestone template or new planning artifact. When another context must resume the work, use [durable handoffs](references/handoff.md) to preserve the decisions and next action that would otherwise be lost.
 
-Derive one starting cwd and module path; never `cd` into the stated cwd again. Include `PYTHONPATH` when needed: remove the imported package from its path; `fixtures/src/client.py` imported as `src.client` yields `fixtures`. Reuse it in every command.
+Keep the plan current as authorized work reveals new facts. Respect an explicitly frozen specification or protected owner boundary; an ordinary implementation plan does not become immutable merely because it is written down.
 
-Use only executable workspace-bound checks. A native proof never adds whole-file snapshots, Git scope, protected boundary, residue/whitespace, rollback/cleanup, attestation, combined-only proof, or repository-wide check unless named by the request or bound source. An explicit non-Git identity forbids Git status, diff, or rollback. No contract rows or unrequested owners.
-
-## Bind
-
-Use invocation-bound source; do not reread it. Treat named plan/owner/test/symbol paths as resolved. Do not inventory, seek alternate owners, or check existence unless the binding fails or contradicts the prompt.
-
-Bind portable identity: revision or explicit non-Git identity, with repo-relative dirty/protected and first-slice paths/symbols. Resolve root once; never bind temporary/home paths or future `pwd` equality.
-
-Facts stay fixed; copy named paths, commands, statuses, authorities, and bound digests once from their source into State/Proof; executable checks recompute identity. Mark unfinished gates `pending`; unknowns block later slices; missing intent or approval blocks that slice.
-
-## Contract
-
-Minimal sufficient form: omit generic/empty prose; do not expand one sentence into its own heading. No word/byte reduction target: retain needed facts. Keep each prose paragraph on one physical line; insert line breaks only at Markdown structural boundaries, never inside a sentence or merely to fit a column.
-
-For a Handoff or Program, write a title; use these rows in one contract table or a three- or four-row bullet contract:
-
-- State — Bound source identity; Protected work and allowed effects; Settled decisions; Exact first-slice inputs, outputs, values, invariants; observed protected-test I/O and values, each edit literal and heading exactly once; Later blockers and dependencies. Mark unfinished gates and verification pending even when Slice performs them.
-- Resume — State both branches explicitly. If root, identity, freshness, and dirty scope match: `matching freshness-bound host attestation unchanged`; `otherwise run one combined preflight`. Plan names both verbatim. Omit for immutable verification handoffs.
-- Slice — Goal / non-goals; First source-changing slice and files/symbols; Exact next source-changing action referencing its State-bound literal and anchor.
-- Proof — Acceptance and verification: Acceptance behavior; Minimum sufficient evidence; External owner gates; Escalation and blocked/inconclusive stops; Rollback/cleanup when material.
-
-Fill rows directly from settled facts, assigning each fact to one row; include completed/pending/next. State behavior, not just a symbol/test. Later Slice and Proof rows reference State instead of repeating protected behavior.
-
-Program uses those rows: State contains Current frontier and later blockers; Slice contains named Milestones in dependency order, each with acceptance; dependencies name every prerequisite milestone, never ordinals or collective references. Name every settled source transition as a milestone with its exact edit and one runnable command against the post-edit body. For a later gated removal, define its milestone, old→new edit, dependencies, condition, and command now. Shared commands run once after the last milestone they cover; downstream owner gates cover facts outside that body. Include Migration/deprecation owner and removal condition when applicable. Update-in-place rule: only a later planning invocation updates unsettled facts; an executor treats the Program as protected immutable input.
-
-The Resume row resolves root anew; exclude the named plan deliverable itself (including untracked `PLAN.md`) from dirty scope; reject other dirt. Never compare against the original absolute root or require globally clean status.
-
-Next: first edit/result/check; inspect only if blocked. Copy the prompt-bound verification command verbatim; separate derived environment/import checks. No runner: state the narrow checks implied by those bindings; do not block the plan or invent a full-suite command. Repository's test owner supplies any broader Proof. Prefix tests with `PYTHONDONTWRITEBYTECODE=1` only when derived; run `python -m unittest <repo-test>` or `python -m pytest -p no:cacheprovider`; owners bind residue cleanup. Use lowest-cost evidence for coherent edits; Proof sets no patch-by-patch order.
-
-Before return, require attestation acceptance or one-preflight fallback for Resume; name dependencies; carry every promised transformation or invariant into its exact edit; verify State and Slice bind each relevant observed literal and structural anchor; verify every exact check is runnable. After writing, run at most one planner-only non-content confirmation (`git diff --check` or owner check), then return the plan; Proof remains executor-owned.
-
-Reply only with the plan or named Markdown. The selected Program is the durable planning state; source edits and completion claims remain with execution owners.
+For a planning-only request, deliver the plan. When the user asks to plan and execute, continue implementation and verification after planning. Reuse existing authorization; completing a plan does not create another approval gate.

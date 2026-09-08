@@ -21,7 +21,6 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from _bundle_hash import bundle_inventory  # noqa: E402
-from _residual_contract import validate_repository_contract  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -81,7 +80,6 @@ LEGACY_RUNTIME_PATHS = (
     "writing-plans/scripts/card_cycle.py",
     "writing-plans/scripts/assess_plan_mode.py",
     "writing-plans/scripts/_plan_state.py",
-    "writing-plans/references",
     "writing-plans/templates",
     "writing-plans/registries",
     "writing-plans/schemas",
@@ -297,7 +295,6 @@ def _skill_activation(path: Path) -> bool:
 
 def build_report(root: Path = ROOT) -> dict[str, Any]:
     root = root.resolve(strict=True)
-    validate_repository_contract(root)
     source_manifest = _strict_object(root / SOURCE_MANIFEST.relative_to(ROOT))
     generated_bundle = _strict_object(root / GENERATED_BUNDLE.relative_to(ROOT))
     skills = source_manifest.get("skills")
