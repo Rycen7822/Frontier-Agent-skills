@@ -30,9 +30,6 @@ from _codex_eval_delivery import (  # noqa: E402
 from _codex_eval_isolation import ISOLATED_SANDBOX_POLICY_IDS  # noqa: E402
 import codex_eval_host  # noqa: E402
 from _codex_lifecycle_contract import LEGACY_CONTRACT, SUPPORTED_CONTRACTS  # noqa: E402
-from _model_evolution_materialization import (  # noqa: E402
-    host_artifact_authority_document,
-)
 
 
 class HostBuildError(ValueError):
@@ -43,7 +40,6 @@ CODEX_VERSION = re.compile(r"codex-cli ([0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.
 DEFAULT_MODEL = "gpt-5.6-luna"
 DEFAULT_EFFORT = "high"
 TARGET_TIMEOUT_SECONDS = 900
-ARTIFACT_AUTHORITY_VERSION = "host-artifact-authority/1"
 MODEL_CATALOG_SNAPSHOT_NAME = "models_cache.json"
 
 
@@ -235,8 +231,9 @@ def build_host(
     session_id: str,
     model: str = DEFAULT_MODEL,
     effort: str = DEFAULT_EFFORT,
+    judge_model: str | None = None,
+    judge_effort: str | None = None,
     lifecycle_contract: str = LEGACY_CONTRACT,
-    artifact_authority_output: Path | None = None,
 ) -> dict[str, Any]:
     if not model.strip() or not effort.strip():
         raise HostBuildError("model and effort must be non-empty")
@@ -380,6 +377,10 @@ def build_host(
         "--runtime-surface-version",
         RUNTIME_SURFACE_VERSION,
     ]
+    if judge_model is not None:
+        argv.extend(["--judge-model", judge_model])
+    if judge_effort is not None:
+        argv.extend(["--judge-effort", judge_effort])
     if lifecycle_contract != LEGACY_CONTRACT:
         argv.extend(["--lifecycle-contract", lifecycle_contract])
     command.update({
@@ -437,6 +438,11 @@ def build_host(
         ),
         "utc_clock_id": "python-datetime-utc",
     }
+    if judge_model is not None or judge_effort is not None:
+        value["schema_version"] = 3
+        identity["execution"]["effort"] = effort
+        selected_judge = judge_model or model
+        identity["grading"] = {"provider": identity["execution"]["provider"], "model": selected_judge, "model_revision": _model_revision(selected_judge, codex_version, model_catalog_source), "effort": judge_effort or effort, "pricing_id": "provider-account-not-recorded"}
     identity["adapter"].update(
         {
             "id": "codex-eval-host",
@@ -505,18 +511,6 @@ def build_host(
         if runtime_created:
             _remove_runtime_snapshot(runtime_root)
         raise
-    if artifact_authority_output is not None:
-        authority_path = artifact_authority_output.resolve()
-        if authority_path.exists() or authority_path.is_symlink():
-            raise HostBuildError("refusing to replace Host artifact authority")
-        authority = host_artifact_authority_document(
-            value,
-            repository_root=repository_root,
-            campaign_root=authority_path.parent,
-            root="repository",
-        )
-        authority_path.parent.mkdir(parents=True, exist_ok=True)
-        authority_path.write_bytes(_canonical_bytes(authority) + b"\n")
     return value
 
 
@@ -533,12 +527,13 @@ def main() -> int:
     parser.add_argument("--session-id", required=True)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--effort", default=DEFAULT_EFFORT)
+    parser.add_argument("--judge-model")
+    parser.add_argument("--judge-effort")
     parser.add_argument(
         "--lifecycle-contract",
         choices=tuple(sorted(SUPPORTED_CONTRACTS)),
         default=LEGACY_CONTRACT,
     )
-    parser.add_argument("--artifact-authority-output", type=Path)
     args = parser.parse_args()
     try:
         value = build_host(
@@ -553,8 +548,9 @@ def main() -> int:
             session_id=args.session_id,
             model=args.model,
             effort=args.effort,
+            judge_model=args.judge_model,
+            judge_effort=args.judge_effort,
             lifecycle_contract=args.lifecycle_contract,
-            artifact_authority_output=args.artifact_authority_output,
         )
     except (
         HostBuildError,

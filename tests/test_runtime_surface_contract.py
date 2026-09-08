@@ -60,7 +60,8 @@ class RuntimeSurfaceContractTests(unittest.TestCase):
             resume = host._resume_argv(args, "thread-1", root / "last")
             for argv in (fresh, resume):
                 self.assertEqual(argv.count("apps"), 1)
-                self.assertEqual(argv[1:3], command_permission_argv("read-only"))
+                start = argv.index("resume") + 1 if "resume" in argv else argv.index("exec") + 1
+                self.assertEqual(argv[start:start + 2], command_permission_argv("read-only"))
                 self.assertNotIn("--sandbox", argv)
                 self.assertEqual(
                     sum(value.startswith("model_catalog_json=\"/") for value in argv),
@@ -71,6 +72,7 @@ class RuntimeSurfaceContractTests(unittest.TestCase):
         with request_codex_home(Path("/usr/bin/bwrap")) as home:
             self.assertIsNotNone(home)
             config = (home / "config.toml").read_text(encoding="utf-8")
+            self.assertIn('default_permissions = "frontier-read-only-credential-isolated"', config)
             for sandbox, profile in ISOLATED_PERMISSION_PROFILES.items():
                 self.assertIn(f"[permissions.{profile}]", config)
                 self.assertIn(f'extends = ":{sandbox if sandbox == "read-only" else "workspace"}"', config)

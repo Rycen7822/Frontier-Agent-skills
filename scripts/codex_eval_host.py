@@ -273,6 +273,16 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         raise AdapterError("legacy Host carries a runtime surface identity")
     if not isinstance(execution, dict) or execution.get("model") != args.model:
         raise AdapterError("model identity differs from the host manifest")
+    grading = identity.get("grading")
+    if manifest.get("schema_version") == 3:
+        if execution.get("effort") != args.effort:
+            raise AdapterError("task effort differs from the host manifest")
+        if grading is not None and (grading.get("model") != (getattr(args, "judge_model", None) or args.model) or grading.get("effort") != (getattr(args, "judge_effort", None) or args.effort)):
+            raise AdapterError("judge model or effort differs from the host manifest")
+        if grading is None and (getattr(args, "judge_model", None) or getattr(args, "judge_effort", None)):
+            raise AdapterError("judge arguments lack a grading identity")
+    elif getattr(args, "judge_model", None) or getattr(args, "judge_effort", None):
+        raise AdapterError("independent judge requires Host v3")
     if execution.get("tool_schema_id") != isolated_tool_schema_id(
         args.codex_sha256,
         args.isolation_tool_sha256,
@@ -367,6 +377,11 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
                 "--runtime-surface-version": RUNTIME_SURFACE_VERSION,
             }
         )
+    for flag, value in (("--judge-model", getattr(args, "judge_model", None)), ("--judge-effort", getattr(args, "judge_effort", None))):
+        if value is not None:
+            expected[flag] = value
+    if grading is not None and (grading.get("provider") != execution.get("provider") or grading.get("model_revision") != model_revision):
+        raise AdapterError("judge provider or revision differs from the Codex runtime")
     bound_lifecycle = _optional_bound_command_option(argv, "--lifecycle-contract") or LEGACY_CONTRACT
     isolation_options = {
         "--isolation-tool": (
@@ -400,6 +415,8 @@ def _validate_manifest(path: Path, args: argparse.Namespace) -> dict[str, Any]:
             client_version=bound_catalog_client,
             model=args.model,
         )
+        if grading is not None:
+            _validate_model_catalog_snapshot(snapshot_path, digest=bound_catalog_hash, client_version=bound_catalog_client, model=grading["model"])
         bound_relative = _bound_command_option(
             argv, "--model-catalog-relative-path"
         )
@@ -508,6 +525,8 @@ def validate_bound_manifest(path: Path, plugin_root: Path) -> dict[str, Any]:
     ):
         raise AdapterError("host manifest executable identity differs")
     args = argparse.Namespace(
+        judge_model=_optional_bound_command_option(argv, "--judge-model"),
+        judge_effort=_optional_bound_command_option(argv, "--judge-effort"),
         codex=codex,
         codex_sha256=_bound_command_option(argv, "--codex-sha256"),
         codex_version=_bound_command_option(argv, "--codex-version"),
@@ -1778,8 +1797,16 @@ def _captured_usage(
             "requested_effort": 1,
             "effective_effort": 1,
         })
+    identities = {}
+    if manifest.get("schema_version") == 3:
+        for call in calls:
+            role = "judge" if call["phase"] == "model-grade" else "task"
+            config = manifest["identity"].get("grading" if role == "judge" else "execution")
+            if config is None:
+                raise AdapterError("usage lacks a bound role configuration")
+            identities[call["principal_id"]] = {"principal_id": call["principal_id"], "role": role, "model": config["model"], "pricing_identity": config["pricing_id"]}
     return {
-        "pricing_identity": manifest["identity"]["execution"]["pricing_id"],
+        **({"principal_identities": list(identities.values())} if manifest.get("schema_version") == 3 else {"pricing_identity": manifest["identity"]["execution"]["pricing_id"]}),
         "host_safety_review": {
             "capture_status": "missing",
             "host_safety_review_count": 0,
@@ -1844,17 +1871,18 @@ def _fresh_argv(
     *,
     output_schema: Path | None = None,
     ephemeral: bool,
+    role: str = "task",
 ) -> list[str]:
     argv = [
         str(args.codex),
-        *(command_permission_argv(args.sandbox) if args.isolation_tool is not None else []),
         "exec",
+        *(command_permission_argv(args.sandbox) if args.isolation_tool is not None else []),
         "--json",
         "--strict-config",
         "--color",
         "never",
         "--model",
-        args.model,
+        (getattr(args, "judge_model", None) or args.model) if role == "judge" else args.model,
         *_profile_argv(args.profile),
         *(
             skill_isolation_argv(
@@ -1868,7 +1896,7 @@ def _fresh_argv(
         "--cd",
         str(workspace),
         "--config",
-        _config_override("model_reasoning_effort", args.effort),
+        _config_override("model_reasoning_effort", (getattr(args, "judge_effort", None) or args.effort) if role == "judge" else args.effort),
         "--output-last-message",
         str(last_message),
     ]
@@ -1892,9 +1920,9 @@ def _resume_argv(
 ) -> list[str]:
     argv = [
         str(args.codex),
-        *(command_permission_argv(args.sandbox) if args.isolation_tool is not None else []),
         "exec",
         "resume",
+        *(command_permission_argv(args.sandbox) if args.isolation_tool is not None else []),
         "--json",
         "--strict-config",
         "--model",
@@ -2235,6 +2263,7 @@ def _run_model_grade(
                 last_message,
                 output_schema=schema_path,
                 ephemeral=True,
+                role="judge",
             ),
             prompt=prompt,
             workspace=temporary,
@@ -2837,6 +2866,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--host-manifest", type=Path, required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--effort", required=True)
+    parser.add_argument("--judge-model")
+    parser.add_argument("--judge-effort")
     parser.add_argument("--profile", required=True)
     parser.add_argument("--plugin-root", type=Path)
     parser.add_argument("--model-catalog-snapshot", type=Path)

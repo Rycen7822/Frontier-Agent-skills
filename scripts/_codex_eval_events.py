@@ -496,7 +496,7 @@ def base_host_result(
         "state": [],
         "cleanup": {"status": "clean", "state": "not_applicable"},
         "usage": {
-            "pricing_identity": manifest["identity"]["execution"]["pricing_id"],
+            **({"principal_identities": []} if manifest.get("schema_version") == 3 else {"pricing_identity": manifest["identity"]["execution"]["pricing_id"]}),
             "host_safety_review": {
                 "capture_status": "missing",
                 "host_safety_review_count": 0,

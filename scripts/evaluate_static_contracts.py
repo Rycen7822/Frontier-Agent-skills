@@ -21,7 +21,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from _bundle_hash import bundle_inventory  # noqa: E402
-from _model_evolution_residual import validate_repository_contract  # noqa: E402
+from _residual_contract import validate_repository_contract  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -7,18 +7,94 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any
 
-from _model_evolution_contract import (
+from _evaluation_documents import (
     ContractError,
     canonical_bytes,
     content_hash,
     parse_utc,
+    validate_document,
 )
-from _model_evolution_qualification import validate_qualification
 
 
 AUTHORIZATION_SCHEMA_VERSION = "release-authorization/3"
 QUALIFICATION_SCHEMA_VERSION = "model-qualification/3"
 RELEASABLE_DECISIONS = {"qualified", "qualified_with_limits"}
+
+
+GATE_IDS = (
+    "apparatus",
+    "identity_comparability",
+    "manual_authority",
+    "critical_function",
+    "safety_protected",
+    "routing",
+    "operational_cost",
+    "loop_pathology",
+    "incremental_value",
+    "revision",
+    "statistical_support",
+    "release_identity",
+)
+
+
+def validate_qualification(value: Any) -> dict[str, Any]:
+    """Validate qualification structure, gate order, and decision."""
+    qualification = validate_document(value, "qualification")
+    if [gate["gate_id"] for gate in qualification["gates"]] != list(GATE_IDS):
+        raise ContractError("qualification gates are not in canonical order")
+    limited_gates = [
+        gate["gate_id"]
+        for gate in qualification["gates"]
+        if gate["status"] == "limited_native_absorption"
+    ]
+    if limited_gates not in ([], ["incremental_value"]):
+        raise ContractError("native absorption is valid only on incremental value")
+    if any(
+        issue["code"] != "native-capability-absorption"
+        for issue in qualification["limits"]
+    ):
+        raise ContractError("qualification contains a non-native limit")
+    limited_skills = [
+        skill_id
+        for skill_id, result in qualification["skills"].items()
+        if result["task_behavior"] == "limited_native_absorption"
+    ]
+    sqw_implicit = qualification["identity"]["skills"]["software-quality-workflows"][
+        "allow_implicit_invocation"
+    ]
+    if limited_gates:
+        if (
+            limited_skills != ["software-quality-workflows"]
+            or sqw_implicit is not False
+            or len(qualification["limits"]) != 1
+            or qualification["limits"][0]["scope"] != "software-quality-workflows"
+        ):
+            raise ContractError("native absorption requires explicit-only SQW evidence")
+    elif limited_skills or qualification["limits"]:
+        raise ContractError("native absorption limit is not bound to its gate")
+    if (
+        derive_decision(
+            qualification["gates"],
+            qualification["limits"],
+            qualification["blockers"],
+        )
+        != qualification["decision"]
+    ):
+        raise ContractError("qualification decision differs from ordered gates")
+    return qualification
+
+
+def derive_decision(
+    gates: list[dict[str, Any]],
+    limits: list[dict[str, Any]],
+    blockers: list[dict[str, Any]],
+) -> str:
+    statuses = {gate["status"] for gate in gates}
+    if blockers or statuses & {"blocked", "unobserved"}:
+        return "blocked"
+    if limits or "limited_native_absorption" in statuses:
+        return "qualified_with_limits"
+    return "qualified"
 
 
 def release_projection(

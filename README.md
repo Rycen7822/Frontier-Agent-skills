@@ -24,7 +24,7 @@ The skills assume a capable coding agent and keep the common path compact. SQW l
 - `software-quality-workflows` is explicit-only and enters only when a user or owning process supplies the exact `$software-quality-workflows`. It keeps known-seam work direct, escalates only to conclusion-changing evidence, classifies failure ownership before another edit, and separates implementation, verification, and release truth.
 - `writing-plans` is implicit-eligible when the user requests a software implementation plan, Handoff, or multi-session Program. It compiles settled decisions into one source-bound Handoff or update-in-place Program Markdown, binds the root once, states each fact once, batches compatible evidence checks, separates resume preflight from the first source-changing action, leaves same-session plans model-native, and returns unresolved facts to the caller or owning process.
 - `long-document-segmented-writing` owns long-corpus drafting, bounded scratch state, deterministic assembly, and final confidence repair.
-- `skill-evaluator` is explicit-only and owns L0–L4 evaluation claim ceilings, package audit, scored analysis, controlled revision closure, model-transition classification, and evidence interpretation.
+- `skill-evaluator` is explicit-only and owns scoped maintenance evaluation, task/grade reuse, paired case diagnostics and task/judge cost reporting.
 
 SQW creates durable state or a digest only for a cross-context consumer, external effect, staged release, or multiple writers. It prefers existing Host or repository state and otherwise uses one fallback ledger.
 
@@ -38,17 +38,25 @@ Every retained digest has one producer, one named validating consumer, a bounded
 
 ## Verification boundary
 
+Ordinary maintenance does not require model reevaluation. Non-behavioral documentation, version/hash updates, and editorial changes judged to preserve meaning use zero model calls; a historical report is not a prerequisite. Run `python3 skill-evaluator/scripts/evaluate.py check --base <revision> --impact editorial` for an explicit maintenance judgment, or use `--impact auto` to identify changes needing closer scoping. This command only performs local checks. Changes to behavior, routing, execution conditions, or grading require evidence only for the affected scope; Git identity and elapsed time alone do not invalidate model results.
+
 Bundle 8.0.2 uses model-free repository tests, validators, canonical generated identities, live static checking, and plugin smoke as local source-complete gates. Scored usefulness remains a separate evaluator claim. A canonical `release-authorization/3` binds one current `model-qualification/3`, the signed source, staged plugin, live static-gate result, and release-owner attestation; external release still requires its own authority.
-
-## Model evolution qualification
-
-The tracked `evaluation/model-evolution/` corpus defines six inert Host probes and one non-ready sentinel suite for each Skill. The suites contain public scenarios, deterministic verifiers, suite-quality proof, and calibration gold contracts; they contain no live Host identity, provider output, ratings, or holdout payload. `scripts/build_model_evolution_sentinels.py --check` verifies all generated bindings without contacting a provider.
-
-`scripts/model_evolution.py` owns one bounded external campaign. It binds a signed source identity, project-wide budget, observed Host, existing Skill Evaluator plans and reports, at most one allowlisted candidate, and a deterministic qualification. A campaign-scoped non-blocking operation lock gives the probe stage one process owner; read-only status reports that owner and emits the canonical `systemd-run --user` command for an exact current budget approval. Model qualification establishes model support, while `release-authorization/3` binds that exact qualification to release identity and authority; both are required for a model-support release claim.
 
 ## Source archives
 
 The source archive uses root `frontier-engineering-bundle`; the skills-only archive contains exactly the four canonical skill roots. Build both layouts with `scripts/build_source_archive.py` into a new temporary output directory, verify reproducible bytes and schema-valid evidence, and inspect the member list before publication. The builder excludes `.work`, worktrees, caches, local paths, credentials, and historical run artifacts; it does not publish the archive.
+
+Ordinary change verification follows this table. Plugin staging remains a local packaging check and does not require a new model qualification.
+
+| Change | Default work |
+|---|---|
+| README, version, generated identity, or editorial change judged to preserve meaning | Zero task/judge/calibration calls; only relevant local checks |
+| One changed mechanism | Reuse compatible controls; execute only selected affected candidates |
+| Deterministic check or model rubric | Reuse task observations; run only affected grading, with no automatic calibration |
+| Fixture, effective model/effort, runtime, or routing catalog | Invalidate the affected dependency; preserve unrelated evidence |
+| Controlled behavior comparison | Use selected paired cases and report the diagnostic scope; release authority is separate |
+
+`python3 skill-evaluator/scripts/evaluate.py run --suite author-suite.json --host host.json --output run --previous-report previous/summary.json --case case-basic --task-attempt-budget 1 --judge-invocation-budget 0` demonstrates a scoped update with a reusable control. The [maintenance guide](skill-evaluator/references/maintenance.md) explains compact inputs and failure recovery. A task attempt is not an API request; cost reports separate task, judge, cache usage, and unknown billing.
 
 ## Plugin staging
 
@@ -112,6 +120,6 @@ Any CLI version drift, schema drift, thread/cwd mismatch, permission mismatch, p
 
 ## Evaluation boundary
 
-The [Skill Evaluator entrypoint](skill-evaluator/SKILL.md) remains an explicit-only product for structured Skill evaluation. Bundle 8.0.2 source-completeness uses deterministic local gates; scored runtime evaluation and model-evolution qualification remain explicit evaluator operations. The offline comparator consumes explicitly supplied immutable cycle capsules and reports only the comparison claim they support.
+The [Skill Evaluator entrypoint](skill-evaluator/SKILL.md) uses one compact suite, independent task and grade results, and a small maintenance report. Exact reuse does not compile or prepare a run. Bundle source-completeness uses deterministic local gates; maintenance scores never grant release authority.
 
 Rollback uses an ordinary revert to a selected signed predecessor. Installed rollback uses a separately verified predecessor plugin or archive under the same deployment authority boundary.
