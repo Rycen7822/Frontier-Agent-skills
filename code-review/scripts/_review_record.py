@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 from typing import Any, Iterable
 
@@ -37,8 +37,16 @@ MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_PACKET_BYTES = 128 * 1024 * 1024
 MAX_ITEMS = 20000
 MAX_JSON_BYTES = 16 * 1024 * 1024
+MAX_PATH_BYTES = 4096
 PROBLEM_MESSAGE_LIMIT = 512
 PROBLEM_POINTER_LIMIT = 1024
+_FIXED_CONSTRAINT_TEXT = {
+    "required": "a required field is missing",
+    "additionalProperties": "an unknown field is present",
+    "uniqueItems": "array entries must be unique",
+    "anyOf": "no permitted shape matched",
+    "oneOf": "no permitted shape matched",
+}
 
 
 class ReviewError(ValueError):
@@ -99,36 +107,55 @@ def encode_document(value: dict[str, Any], code: str = "E_JSON_TOO_LARGE") -> by
 
 
 def dedupe_texts(values: Iterable[str]) -> list[str]:
-    """Keep the first occurrence of every exact string."""
-    seen: set[str] = set()
-    unique: list[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        unique.append(value)
-    return unique
+    return list(dict.fromkeys(values))
 
 
-def load_json(path: Path) -> dict[str, Any]:
-    """Parse a JSON object, rejecting duplicate keys and non-finite numbers."""
-    target = Path(path)
-    raw = read_bytes_limited(
-        target,
-        MAX_JSON_BYTES,
-        "E_JSON_TOO_LARGE",
-        missing_code="E_INPUT_MISSING",
-        type_code="E_INPUT_TYPE",
-        io_code="E_INPUT_IO",
-    )
+def normalize_path(path: str, label: str) -> str:
+    """Reject forbidden literal paths and return the canonical Git spelling.
+
+    Collapsing ``.`` segments and repeated separators is safe only after the
+    raw value is known to carry no parent or metadata component, so the checks
+    run on the raw spelling and normalization happens last.
+    """
+    if not path:
+        raise ReviewError("E_PATH_INVALID", f"the {label} is empty")
+    if "\x00" in path:
+        raise ReviewError("E_PATH_INVALID", f"the {label} contains a NUL byte")
+    if any(0xD800 <= ord(character) <= 0xDFFF for character in path):
+        raise ReviewError("E_PATH_ENCODING", f"the {label} is not decodable UTF-8 text")
+    if len(path.encode("utf-8")) > MAX_PATH_BYTES:
+        raise ReviewError(
+            "E_PATH_INVALID", f"the {label} exceeds {MAX_PATH_BYTES} UTF-8 bytes"
+        )
+    if path.startswith("/"):
+        raise ReviewError("E_PATH_INVALID", f"the {label} {path!r} is absolute")
+    components = path.split("/")
+    if ".." in components:
+        raise ReviewError(
+            "E_PATH_INVALID", f"the {label} {path!r} contains a parent component"
+        )
+    if ".git" in components:
+        raise ReviewError(
+            "E_PATH_INVALID", f"the {label} {path!r} addresses repository metadata"
+        )
+    return PurePosixPath(path).as_posix()
+
+
+def decode_json(raw: bytes, label: str) -> dict[str, Any]:
+    """Parse one JSON object, rejecting bad text, duplicate keys, and lone surrogates.
+
+    The strict encode catches unpaired surrogates that ``json.loads`` accepts
+    from escape sequences while leaving valid pairs and literal ``\\uXXXX``
+    text untouched.
+    """
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise ReviewError(
-            "E_JSON_ENCODING", f"{target} is not valid UTF-8: {exc.reason}"
+            "E_JSON_ENCODING", f"{label} is not valid UTF-8: {exc.reason}"
         ) from exc
     if text.startswith("\ufeff"):
-        raise ReviewError("E_JSON_ENCODING", f"{target} starts with a byte-order mark")
+        raise ReviewError("E_JSON_ENCODING", f"{label} starts with a byte-order mark")
 
     def reject_duplicate_key(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -152,11 +179,29 @@ def load_json(path: Path) -> dict[str, Any]:
         raise
     except json.JSONDecodeError as exc:
         raise ReviewError(
-            "E_JSON_SYNTAX", f"{target}:{exc.lineno}:{exc.colno}: {exc.msg}"
+            "E_JSON_SYNTAX", f"{label}:{exc.lineno}:{exc.colno}: {exc.msg}"
         ) from exc
     if not isinstance(value, dict):
-        raise ReviewError("E_JSON_ROOT", f"{target} root is not a JSON object")
+        raise ReviewError("E_JSON_ROOT", f"{label} root is not a JSON object")
+    try:
+        json.dumps(value, ensure_ascii=False).encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ReviewError("E_JSON_ENCODING", f"{label} holds an unpaired surrogate") from exc
     return value
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    """Read and parse one JSON object from the file system."""
+    target = Path(path)
+    raw = read_bytes_limited(
+        target,
+        MAX_JSON_BYTES,
+        "E_JSON_TOO_LARGE",
+        missing_code="E_INPUT_MISSING",
+        type_code="E_INPUT_TYPE",
+        io_code="E_INPUT_IO",
+    )
+    return decode_json(raw, str(target))
 
 
 _SCHEMA_CACHE: dict[str, Any] | None = None
@@ -175,15 +220,13 @@ def _constraint_text(error: Any) -> str:
     """Describe one schema failure without echoing instance content."""
     keyword = error.validator
     value = error.validator_value
-    if keyword in ("maxLength", "minLength"):
-        observed = len(error.instance) if isinstance(error.instance, str) else None
-        return f"{keyword} {value}, observed length {observed}"
-    if keyword in ("maxItems", "minItems"):
+    if keyword in ("maxLength", "minLength", "maxItems", "minItems"):
         try:
             observed = len(error.instance)
         except TypeError:
             observed = None
-        return f"{keyword} {value}, observed count {observed}"
+        unit = "length" if keyword.endswith("Length") else "count"
+        return f"{keyword} {value}, observed {unit} {observed}"
     if keyword == "enum":
         allowed = ", ".join(sorted(str(item) for item in value))[:200]
         return f"value must be one of {allowed}"
@@ -193,15 +236,7 @@ def _constraint_text(error: Any) -> str:
         return f"value must match {value}"
     if keyword == "type":
         return f"value must be {value}"
-    if keyword == "required":
-        return "a required field is missing"
-    if keyword == "additionalProperties":
-        return "an unknown field is present"
-    if keyword == "uniqueItems":
-        return "array entries must be unique"
-    if keyword in ("anyOf", "oneOf"):
-        return "no permitted shape matched"
-    return "the constraint failed"
+    return _FIXED_CONSTRAINT_TEXT.get(keyword, "the constraint failed")
 
 
 def _schema_error(kind: str, error: Any) -> ReviewError:
@@ -241,7 +276,9 @@ def validate_document(value: dict[str, Any], kind: str) -> None:
 def validate_scope(scope: dict[str, Any]) -> None:
     """Validate one scope document: schema shape plus cross-object relations."""
     validate_document(scope, "scope")
-    _validate_scope_relations(scope)
+    _validate_scope_mode(scope)
+    _validate_scope_items(scope)
+    _validate_scope_sources(scope)
 
 
 def split_lines(raw: bytes) -> list[bytes]:
@@ -276,12 +313,7 @@ def read_source(packet: Path, source: dict[str, Any]) -> bytes:
     blob = objects / f"{digest[7:]}.blob"
     if blob.is_symlink():
         raise ReviewError("E_SOURCE_OBJECT", f"{blob.name} must not be a symlink")
-    try:
-        raw = read_bytes_limited(blob, MAX_FILE_BYTES, "E_SOURCE_OBJECT")
-    except FileNotFoundError as exc:
-        raise ReviewError(
-            "E_SOURCE_OBJECT", f"captured object {blob.name} is missing from the packet"
-        ) from exc
+    raw = read_bytes_limited(blob, MAX_FILE_BYTES, "E_SOURCE_OBJECT")
     size = source.get("size_bytes")
     if size != len(raw):
         raise ReviewError(
@@ -307,10 +339,18 @@ def _find_matches(lines: list[bytes], snippet_lines: list[bytes]) -> list[tuple[
 
 
 def locate_anchor(raw: bytes | None, anchor: dict[str, Any]) -> dict[str, Any]:
-    """Locate one evidence snippet inside its own source bytes.
+    """Locate one evidence snippet inside its own source bytes."""
+    return _locate_in_lines(None if raw is None else split_lines(raw), anchor)
 
-    ``raw`` is None when the referenced source holds no text bytes, which is the
-    only case that reports ``unsupported_source``. The input anchor is not modified.
+
+def _locate_in_lines(
+    lines: list[bytes] | None, anchor: dict[str, Any]
+) -> dict[str, Any]:
+    """Locate one snippet inside lines the caller already split.
+
+    ``lines`` is None when the referenced source holds no text bytes, which is
+    the only case that reports ``unsupported_source``. Every text anchor of one
+    blob shares a single line list; snippets are always split here.
     """
     result: dict[str, Any] = {
         "status": "unlocated",
@@ -319,7 +359,7 @@ def locate_anchor(raw: bytes | None, anchor: dict[str, Any]) -> dict[str, Any]:
         "candidate_start": None,
         "candidate_end": None,
     }
-    if raw is None:
+    if lines is None:
         result["status"] = "unsupported_source"
         return result
 
@@ -335,7 +375,6 @@ def locate_anchor(raw: bytes | None, anchor: dict[str, Any]) -> dict[str, Any]:
     if snippet is None:
         return result
 
-    lines = split_lines(raw)
     snippet_lines = split_lines(snippet.encode("utf-8"))
     if start is not None:
         if end > len(lines):
@@ -375,11 +414,15 @@ def _require(condition: bool, code: str, message: str, pointer: str = "") -> Non
         raise ReviewError(code, message, pointer)
 
 
-def _validate_scope_relations(scope: dict[str, Any]) -> None:
-    """Cross-field scope rules that JSON Schema does not express."""
-    _validate_scope_mode(scope)
-    _validate_scope_items(scope)
-    _validate_scope_sources(scope)
+def _require_canonical_path(path: str, label: str, pointer: str) -> None:
+    """Reject a recorded path that is not already in canonical spelling."""
+    canonical = normalize_path(path, label)
+    _require(
+        path == canonical,
+        "E_SCOPE_PATH",
+        f"the {label} {path!r} is not canonical; capture the scope again",
+        pointer,
+    )
 
 
 def _validate_scope_mode(scope: dict[str, Any]) -> None:
@@ -398,6 +441,10 @@ def _validate_scope_mode(scope: dict[str, Any]) -> None:
     mode = scope["mode"]
     request = scope["request"]
     observation = scope["observation"]
+    for index, path in enumerate(request["paths"]):
+        _require_canonical_path(path, "request path", f"/request/paths/{index}")
+    for index, path in enumerate(request["context_paths"]):
+        _require_canonical_path(path, "context path", f"/request/context_paths/{index}")
     if mode == "snapshot":
         expected = (
             "bounded_double_observation"
@@ -435,6 +482,7 @@ def _validate_scope_items(scope: dict[str, Any]) -> None:
     )
     previous_key: tuple[int, bytes] | None = None
     for index, item in enumerate(items):
+        _require_canonical_path(item["path"], "item path", f"/items/{index}/path")
         _require(
             item["id"] == f"I-{index + 1:06d}",
             "E_ITEM_ID",
@@ -465,6 +513,7 @@ def _validate_scope_sources(scope: dict[str, Any]) -> None:
     source_ids: set[str] = set()
     previous_source: tuple[str, str, bytes, str] | None = None
     for index, source in enumerate(sources):
+        _require_canonical_path(source["path"], "source path", f"/sources/{index}/path")
         # The fixed sequence already rules out duplicates; the set stays for references.
         _require(
             source["id"] == f"S-{index + 1:06d}",
@@ -524,18 +573,12 @@ def _item_sources_are_text(source_by_id: dict[str, dict[str, Any]], item: dict[s
     return True
 
 
-def _verify_scope_digest(packet: Path, record: dict[str, Any]) -> None:
-    scope_path = Path(packet) / SCOPE_FILE
+def _verify_scope_digest(scope_bytes: bytes, record: dict[str, Any]) -> None:
+    """Compare the record digest with the scope bytes the caller already parsed."""
     _require(
-        scope_path.is_file(),
-        "E_SCOPE_MISSING",
-        f"{packet} has no {SCOPE_FILE}",
-    )
-    scope_raw = read_bytes_limited(scope_path, MAX_JSON_BYTES, "E_JSON_TOO_LARGE")
-    _require(
-        record["scope_sha256"] == sha256_digest(scope_raw),
+        record["scope_sha256"] == sha256_digest(scope_bytes),
         "E_SCOPE_DIGEST",
-        "record scope_sha256 does not match the packet scope.json",
+        "record scope_sha256 does not match the scope bytes that were read",
         "/scope_sha256",
     )
 
@@ -641,19 +684,33 @@ def _locate_anchors(
 ) -> list[dict[str, Any]]:
     """Verify every captured object once per digest and locate its pending anchors.
 
-    Only one object is held at a time: the bytes are released before the next
-    digest is read, and anchors are written back in their original order.
+    Only one object is held at a time: each group rebinds the bytes and the
+    shared line list, so both are released before the next digest is read.
     """
     groups: dict[Any, list[tuple[int, dict[str, Any]]]] = {}
     for index, source in enumerate(scope["sources"]):
         if source["availability"] in CAPTURED_AVAILABILITY:
             groups.setdefault(source["sha256"], []).append((index, source))
-    requests: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    requests: dict[str, list[int]] = {}
     for position, request in enumerate(pending):
-        requests.setdefault(request["source"]["id"], []).append((position, request))
-    located: dict[int, dict[str, Any]] = {}
+        requests.setdefault(request["source"]["id"], []).append(position)
+    anchors: list[dict[str, Any]] = []
+    for request in pending:
+        source = request["source"]
+        anchors.append(
+            {
+                "finding_id": request["finding_id"],
+                "evidence_index": request["evidence_index"],
+                "source_id": source["id"],
+                "path": source["path"],
+                "origin": source["origin"],
+                "revision": source["revision"],
+                **locate_anchor(None, request["evidence"]),
+            }
+        )
     for group in groups.values():
         raw = read_source(packet, group[0][1])
+        text = group[0][1]["availability"] == TEXT_AVAILABILITY
         for index, source in group:
             size = source["size_bytes"]
             _require(
@@ -662,7 +719,6 @@ def _locate_anchors(
                 f"source {source['id']} records {size} bytes but its object holds {len(raw)}",
                 f"/sources/{index}/size_bytes",
             )
-            text = source["availability"] == TEXT_AVAILABILITY
             if text:
                 actual = count_lines(raw)
                 _require(
@@ -672,30 +728,13 @@ def _locate_anchors(
                     f"but holds {actual}",
                     f"/sources/{index}/line_count",
                 )
-            for position, request in requests.get(source["id"], []):
-                located[position] = {
-                    "finding_id": request["finding_id"],
-                    "evidence_index": request["evidence_index"],
-                    "source_id": source["id"],
-                    "path": source["path"],
-                    "origin": source["origin"],
-                    "revision": source["revision"],
-                    **locate_anchor(raw if text else None, request["evidence"]),
-                }
-    for position, request in enumerate(pending):
-        if position in located:
-            continue
-        source = request["source"]
-        located[position] = {
-            "finding_id": request["finding_id"],
-            "evidence_index": request["evidence_index"],
-            "source_id": source["id"],
-            "path": source["path"],
-            "origin": source["origin"],
-            "revision": source["revision"],
-            **locate_anchor(None, request["evidence"]),
-        }
-    return [located[position] for position in range(len(pending))]
+        positions = [
+            position for _, source in group for position in requests.get(source["id"], [])
+        ]
+        lines = split_lines(raw) if text and positions else None
+        for position in positions:
+            anchors[position].update(_locate_in_lines(lines, pending[position]["evidence"]))
+    return anchors
 
 
 def _validate_concerns(record: dict[str, Any], item_ids: set[str]) -> None:
@@ -730,12 +769,20 @@ def _validate_verification(record: dict[str, Any]) -> None:
 
 
 def validate_record(
-    packet: Path, scope: dict[str, Any], record: dict[str, Any]
+    packet: Path,
+    scope: dict[str, Any],
+    record: dict[str, Any],
+    *,
+    scope_bytes: bytes,
 ) -> dict[str, Any]:
-    """Validate structure, relations, captured objects, and anchors."""
+    """Validate structure, relations, captured objects, and anchors.
+
+    ``scope_bytes`` must be the exact bytes ``scope`` was parsed from, so the
+    record digest is never checked against a file that was read again.
+    """
     validate_scope(scope)
     validate_document(record, "record")
-    _verify_scope_digest(packet, record)
+    _verify_scope_digest(scope_bytes, record)
     coverage_status, counts = _validate_coverage(scope, record)
     _validate_concerns(record, {item["id"] for item in scope["items"]})
     _validate_verification(record)
@@ -768,48 +815,43 @@ def finish_report(
             f"the merged limitations hold {len(limitations)} entries, "
             f"over the {MAX_ITEMS} limit",
         )
-    if validation.get("validation") != "valid":
-        problems = validation.get("problems") or [
-            {"code": "E_SCHEMA", "pointer": "", "message": "the record is invalid"}
-        ]
-        return {
-            "schema_version": CHECK_SCHEMA_VERSION,
-            "validation": "invalid",
-            "coverage_status": "unavailable",
-            "freshness": {"status": "not_checked", "changed_paths": []},
-            "finding_count": None,
-            "concern_count": None,
-            "item_counts": None,
-            "anchors": [],
-            "problems": problems,
-            "limitations": limitations,
-            "exit_code": 2,
-        }
-
-    exit_code = 0
-    if validation["coverage_status"] == "partial":
-        exit_code = 4
-    if freshness.get("status") in ("changed", "incomplete"):
-        exit_code = 4
-    if any(anchor["status"] != "resolved" for anchor in validation["anchors"]):
-        exit_code = 4
-    if validation["concern_count"]:
-        exit_code = 4
-    if validation.get("failed_verification"):
-        exit_code = 4
-    return {
+    valid = validation.get("validation") == "valid"
+    problems = validation.get("problems") or [
+        {"code": "E_SCHEMA", "pointer": "", "message": "the record is invalid"}
+    ]
+    report = {
         "schema_version": CHECK_SCHEMA_VERSION,
-        "validation": "valid",
-        "coverage_status": validation["coverage_status"],
-        "freshness": {
+        "validation": "valid" if valid else "invalid",
+        "coverage_status": "unavailable",
+        "freshness": {"status": "not_checked", "changed_paths": []},
+        "finding_count": None,
+        "concern_count": None,
+        "item_counts": None,
+        "anchors": [],
+        "problems": problems,
+        "limitations": limitations,
+        "exit_code": 2,
+    }
+    if not valid:
+        return report
+    partial = (
+        validation["coverage_status"] == "partial"
+        or freshness.get("status") in ("changed", "incomplete")
+        or any(anchor["status"] != "resolved" for anchor in validation["anchors"])
+        or validation["concern_count"]
+        or validation.get("failed_verification")
+    )
+    report.update(
+        coverage_status=validation["coverage_status"],
+        freshness={
             "status": freshness["status"],
             "changed_paths": list(freshness["changed_paths"]),
         },
-        "finding_count": validation["finding_count"],
-        "concern_count": validation["concern_count"],
-        "item_counts": dict(validation["item_counts"]),
-        "anchors": list(validation["anchors"]),
-        "problems": list(validation["problems"]),
-        "limitations": limitations,
-        "exit_code": exit_code,
-    }
+        finding_count=validation["finding_count"],
+        concern_count=validation["concern_count"],
+        item_counts=dict(validation["item_counts"]),
+        anchors=list(validation["anchors"]),
+        problems=list(validation["problems"]),
+        exit_code=4 if partial else 0,
+    )
+    return report

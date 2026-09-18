@@ -265,7 +265,7 @@ class ExtendedReviewPackagingTests(unittest.TestCase):
             build(ROOT, plugin, evidence, marketplace, archive)
             validate_plugin_build(plugin, evidence, source_root=ROOT)
             evidence_record = json.loads(evidence.read_text(encoding="utf-8"))
-            self.assertEqual("frontier-engineering/11.0.1", evidence_record["bundle_id"])
+            self.assertEqual("frontier-engineering/11.0.2", evidence_record["bundle_id"])
             self.assertEqual(10, len(evidence_record["skill_versions"]))
             self.assertIs(
                 False, evidence_record["skill_activation"]["software-quality-workflows"]

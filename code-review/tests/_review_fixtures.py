@@ -221,12 +221,26 @@ def hand_packet(
     scope_path = packet / "scope.json"
     scope_bytes = (json.dumps(scope, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     scope_path.write_bytes(scope_bytes)
+    view = packet_view(packet)
+    view["source_ids"] = by_name
+    return view
+
+
+def packet_view(packet: Path) -> dict[str, Any]:
+    """Read a captured packet directory into the shape ``hand_packet`` returns.
+
+    ``source_ids`` is keyed by source path, which stays unambiguous for the
+    single-layer sources the CLI tests reference.
+    """
+    scope_bytes = (Path(packet) / review_record.SCOPE_FILE).read_bytes()
+    scope = json.loads(scope_bytes)
     return {
-        "packet": packet,
+        "packet": Path(packet),
         "scope": scope,
+        "scope_bytes": scope_bytes,
         "scope_sha256": review_record.sha256_digest(scope_bytes),
-        "source_ids": by_name,
-        "item_ids": {item["path"]: item["id"] for item in scope_items},
+        "source_ids": {source["path"]: source["id"] for source in scope["sources"]},
+        "item_ids": {item["path"]: item["id"] for item in scope["items"]},
     }
 
 
