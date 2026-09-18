@@ -1,10 +1,12 @@
 # Release Notes
 
-## Unreleased — code-simplifier 1.2.0
+## Bundle 11.1.0 code-simplifier guidance upgrade
 
-The simplifier gains evidence-led candidate selection, complete structural removal, complexity-transfer checks, and risk-proportionate validation in two conditional references. Its existing name, hosts, implicit eligibility and invocation prompt are preserved. It introduces no runtime tool, model dependency, hook, mandatory cleanup phase or fixed delegation loop.
+Bundle 11.1.0 advances `code-simplifier` from 1.1.0 to 1.2.0 at the same compatible schema epoch 9, with no protocol, activation, packaging-API or archive-layout change. The entry skill gains evidence-led candidate selection, complete structural removal, complexity-transfer checks and risk-proportionate validation in two conditional references; its name, hosts, implicit eligibility and invocation prompt are preserved, and it introduces no runtime tool, model dependency, hook, mandatory cleanup phase or fixed delegation loop.
 
-The component version advances from 1.1.0 to 1.2.0. Bundle/plugin version 11.0.2 and schema epoch 9 remain the existing release identity during this unreleased source integration; publishing or installing a new bundle is separate work. Registration pins and generated identities must match the modified source. This is a guidance behavior change, not an editorial-only update. Model-free asset and packaging checks do not establish model effectiveness; no improvement in task success, token cost or future maintainability is claimed.
+The other nine skills keep their versions, activation and root hashes: `code-review` remains 2.0.2, `software-quality-workflows` and `skill-evaluator` remain explicit-only, and the other eight remain eligible for implicit local selection under the `implicit_local_pilot` ceiling with `remote_writes` false. The two references are reached through the entry's relative links instead of a new always-loaded root, and the component's asset test joins the quick profile once, so frontmatter, invocation policy, link safety, license byte identity, absence of runtime scripts and encoding stay checked. Registration pins and generated identities were rebuilt by the existing builders.
+
+This is a guidance behaviour change, not an editorial-only update. The release revalidates the committed source, deterministic packages and a real isolated Codex installation and removal without model calls; the sixteen behavioural scenarios in the component note remain unexecuted acceptance specifications, not results, and no improvement in task success, token cost or maintainability is claimed.
 
 ## Bundle 11.0.2 review helper simplification
 

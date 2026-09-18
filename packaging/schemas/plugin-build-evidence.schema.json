@@ -20,8 +20,8 @@
   ],
   "properties": {
     "schema_version": {"const": "plugin-build-evidence/5.0"},
-    "bundle_id": {"const": "frontier-engineering/11.0.2"},
-    "bundle_version": {"const": "11.0.2"},
+    "bundle_id": {"const": "frontier-engineering/11.1.0"},
+    "bundle_version": {"const": "11.1.0"},
     "skill_versions": {
       "type": "object",
       "additionalProperties": false,

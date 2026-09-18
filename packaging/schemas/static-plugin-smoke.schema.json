@@ -19,8 +19,8 @@
   ],
   "properties": {
     "schema_version": {"const": "static-plugin-smoke/4.0"},
-    "bundle_id": {"const": "frontier-engineering/11.0.2"},
-    "bundle_version": {"const": "11.0.2"},
+    "bundle_id": {"const": "frontier-engineering/11.1.0"},
+    "bundle_version": {"const": "11.1.0"},
     "plugin_name": {"const": "frontier-engineering-plugin"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "activation_ceiling": {"const": "implicit_local_pilot"},

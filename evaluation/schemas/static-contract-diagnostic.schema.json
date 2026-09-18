@@ -25,8 +25,8 @@
   "properties": {
     "schema_version": {"const": "static-contract-diagnostic/1.0"},
     "classification": {"const": "static_contract_diagnostic"},
-    "bundle_id": {"const": "frontier-engineering/11.0.2"},
-    "version": {"const": "11.0.2"},
+    "bundle_id": {"const": "frontier-engineering/11.1.0"},
+    "version": {"const": "11.1.0"},
     "schema_epoch": {"const": 9},
     "skill_versions": {
       "type": "object",
