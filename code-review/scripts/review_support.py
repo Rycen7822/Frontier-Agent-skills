@@ -48,27 +48,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     scope = subparsers.add_parser("scope", help="capture the requested scope into a packet")
     scope.add_argument("--repo", required=True, help="target repository root")
-    scope.add_argument(
-        "--mode", required=True, choices=("commit", "range", "workspace", "snapshot")
-    )
-    scope.add_argument(
-        "--path",
-        dest="paths",
-        action="append",
-        required=True,
-        help="repository-relative literal path; repeat for more paths",
-    )
-    scope.add_argument(
-        "--context-path",
-        dest="context_paths",
-        action="append",
-        default=[],
-        help="repository-relative file captured as extra source evidence",
-    )
-    scope.add_argument("--base")
-    scope.add_argument("--head")
-    scope.add_argument("--commit")
-    scope.add_argument("--revision")
+    scope.add_argument("--mode", required=True, choices=("commit", "range", "workspace", "snapshot"))
+    scope.add_argument("--path", dest="paths", action="append", required=True,
+                       help="repository-relative literal path; repeat for more paths")
+    scope.add_argument("--context-path", dest="context_paths", action="append", default=[],
+                       help="repository-relative file captured as extra source evidence")
+    for optional in ("base", "head", "commit", "revision"):
+        scope.add_argument(f"--{optional}")
     scope.add_argument("--output", required=True, help="new packet directory")
 
     check = subparsers.add_parser("check", help="check a record against its packet")
@@ -102,19 +88,13 @@ def _run_scope(args: argparse.Namespace) -> int:
     except ReviewError as error:
         return _fail(error)
     exit_code = EXIT_PARTIAL if result["partial"] else EXIT_OK
-    _emit(
-        {
-            "result": "ok",
-            "command": "scope",
-            "artifact": result["packet"],
-            "exit_code": exit_code,
-            "mode": result["mode"],
-            "items": result["items"],
-            "sources": result["sources"],
-            "scope_sha256": result["scope_sha256"],
-            "limitations": result["limitations"],
-        }
-    )
+    summary = {
+        "result": "ok", "command": "scope", "artifact": result["packet"],
+        "exit_code": exit_code, "mode": result["mode"], "items": result["items"],
+        "sources": result["sources"], "scope_sha256": result["scope_sha256"],
+        "limitations": result["limitations"],
+    }
+    _emit(summary)
     return exit_code
 
 
@@ -129,17 +109,13 @@ def _run_check(args: argparse.Namespace) -> int:
         _write_new_file(target, encode_document(report, "E_REPORT_LIMIT"))
     except ReviewError as error:
         return _fail(error)
-    _emit(
-        {
-            "result": report["validation"],
-            "command": "check",
-            "artifact": str(target),
-            "exit_code": report["exit_code"],
-            "validation": report["validation"],
-            "coverage_status": report["coverage_status"],
-            "freshness": report["freshness"]["status"],
-        }
-    )
+    summary = {
+        "result": report["validation"], "command": "check", "artifact": str(target),
+        "exit_code": report["exit_code"], "validation": report["validation"],
+        "coverage_status": report["coverage_status"],
+        "freshness": report["freshness"]["status"],
+    }
+    _emit(summary)
     return report["exit_code"]
 
 
@@ -163,14 +139,9 @@ def _load_scope(packet: Path) -> tuple[dict[str, Any], bytes]:
     scope_path = packet / SCOPE_FILE
     if not scope_path.is_file():
         raise ReviewError("E_SCOPE_MISSING", f"{packet} does not contain {SCOPE_FILE}")
-    raw = read_bytes_limited(
-        scope_path,
-        MAX_JSON_BYTES,
-        "E_JSON_TOO_LARGE",
-        missing_code="E_INPUT_MISSING",
-        type_code="E_INPUT_TYPE",
-        io_code="E_INPUT_IO",
-    )
+    bounds = {"missing_code": "E_INPUT_MISSING", "type_code": "E_INPUT_TYPE",
+              "io_code": "E_INPUT_IO"}
+    raw = read_bytes_limited(scope_path, MAX_JSON_BYTES, "E_JSON_TOO_LARGE", **bounds)
     return decode_json(raw, str(scope_path)), raw
 
 
@@ -194,16 +165,8 @@ def _emit(payload: dict[str, Any]) -> None:
 
 
 def _fail(error: ReviewError) -> int:
-    _emit(
-        {
-            "result": "error",
-            "artifact": None,
-            "exit_code": EXIT_INVALID_INPUT,
-            "code": error.code,
-            "message": error.message,
-            "pointer": error.pointer,
-        }
-    )
+    _emit({"result": "error", "artifact": None, "exit_code": EXIT_INVALID_INPUT,
+           "code": error.code, "message": error.message, "pointer": error.pointer})
     return EXIT_INVALID_INPUT
 
 
