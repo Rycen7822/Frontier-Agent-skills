@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import errno
-import json
 import os
 from pathlib import Path
 import shutil
@@ -20,22 +19,26 @@ from typing import Any, Iterable
 
 from _review_record import (
     CAPTURED_AVAILABILITY,
+    LAYER_ORDER,
     MAX_FILE_BYTES,
     MAX_ITEMS,
     MAX_PACKET_BYTES,
     ReviewError,
     SCOPE_FILE,
     SCOPE_SCHEMA_VERSION,
+    TEXT_AVAILABILITY,
     count_lines,
+    dedupe_texts,
+    encode_document,
     sha256_digest,
-    validate_document,
+    validate_scope,
 )
 
 GIT_TIMEOUT_SECONDS = 30
 GIT_OUTPUT_LIMIT = 32 * 1024 * 1024
 GIT_ERROR_EXCERPT = 400
 WORKTREE_REVISION = "WORKTREE"
-LAYER_ORDER = ("commit", "range", "index", "worktree", "untracked", "snapshot")
+MAX_REVISION_CHARACTERS = 128
 GLOB_CHARACTERS = ("*", "?", "[")
 IGNORED_UNTRACKED_LIMIT = (
     "Git-ignored untracked files are outside the enumerated scope; enumeration "
@@ -100,11 +103,29 @@ def validate_request(request: ScopeRequest) -> None:
         _validate_literal_path(path, "path")
     for path in request.context_paths:
         _validate_literal_path(path, "context path")
+    for name in ("base", "head", "commit", "revision"):
+        value = getattr(request, name)
+        if value is not None:
+            _validate_revision(value, name)
+
+
+def _validate_revision(revision: str, label: str) -> None:
+    """Reject revisions the record schema cannot carry, before any Git call."""
+    if not revision.strip():
+        raise ReviewError("E_REVISION", f"--{label} is empty or only whitespace")
+    if len(revision) > MAX_REVISION_CHARACTERS:
+        raise ReviewError(
+            "E_REVISION",
+            f"--{label} holds {len(revision)} characters, over the "
+            f"{MAX_REVISION_CHARACTERS} limit",
+        )
 
 
 def _validate_literal_path(path: str, label: str) -> None:
     if not path:
         raise ReviewError("E_PATH_INVALID", f"the {label} is empty")
+    if "\x00" in path:
+        raise ReviewError("E_PATH_INVALID", f"the {label} contains a NUL byte")
     if any(0xD800 <= ord(character) <= 0xDFFF for character in path):
         raise ReviewError("E_PATH_ENCODING", f"the {label} is not decodable UTF-8 text")
     if len(path.encode("utf-8")) > 4096:
@@ -145,7 +166,6 @@ def run_git(
     repo: Path,
     argv: list[str],
     *,
-    stdin: bytes | None = None,
     limit: int = GIT_OUTPUT_LIMIT,
     allow_failure: bool = False,
 ) -> bytes | None:
@@ -171,10 +191,9 @@ def run_git(
             completed = subprocess.run(
                 command,
                 env=_clean_environment(),
-                stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
                 stdout=out,
                 stderr=err,
-                input=stdin,
                 timeout=GIT_TIMEOUT_SECONDS,
                 check=False,
             )
@@ -255,6 +274,12 @@ def _check_offline_sources(root: Path) -> None:
         raise ReviewError(
             "E_PARTIAL_CLONE", "the object database contains a promisor pack"
         )
+
+
+def repository_root(repo: Path) -> Path:
+    """Resolve a possibly nested ``--repo`` argument to the canonical root."""
+    root, _bare = _repo_root(repo)
+    return root
 
 
 def _resolve_oid(root: Path, revision: str | None, label: str) -> str:
@@ -448,6 +473,37 @@ def _item(
     return {"layer": layer, "status": status, "path": path, "before": before, "after": after}
 
 
+def _diff_items(
+    root: Path,
+    layer: str,
+    argv: list[str],
+    before: tuple[str, str | None] | None,
+    after: tuple[str, str | None] | None,
+) -> list[dict[str, Any]]:
+    """Convert raw diff records into items.
+
+    ``before`` and ``after`` name the origin and revision of each side; a
+    ``worktree`` after side is read from disk and carries no Git object.
+    """
+    items: list[dict[str, Any]] = []
+    for record in _diff_raw(root, argv, layer):
+        before_side = (
+            _git_side(before[0], before[1], record["old_mode"], record["old_oid"])
+            if before is not None and _mode_present(record["old_mode"])
+            else None
+        )
+        if after is None or not _mode_present(record["new_mode"]):
+            after_side = None
+        elif after[0] == "worktree":
+            after_side = _disk_side(None)
+        else:
+            after_side = _git_side(after[0], after[1], record["new_mode"], record["new_oid"])
+        entry = _item(layer, record["path"], before_side, after_side, record["status"])
+        if entry is not None:
+            items.append(entry)
+    return items
+
+
 def _diff_raw(root: Path, argv: list[str], layer: str) -> list[dict[str, Any]]:
     raw = run_git(root, argv)
     assert raw is not None
@@ -555,22 +611,7 @@ def _range_items(
         ]
     else:
         argv = ["diff", *DIFF_FLAGS, base_oid, head_oid, *_pathspecs(paths)]
-    items: list[dict[str, Any]] = []
-    for record in _diff_raw(root, argv, layer):
-        before = (
-            _git_side("git", base_oid, record["old_mode"], record["old_oid"])
-            if base_oid is not None and _mode_present(record["old_mode"])
-            else None
-        )
-        after = (
-            _git_side("git", head_oid, record["new_mode"], record["new_oid"])
-            if _mode_present(record["new_mode"])
-            else None
-        )
-        entry = _item(layer, record["path"], before, after, record["status"])
-        if entry is not None:
-            items.append(entry)
-    return items
+    return _diff_items(root, layer, argv, ("git", base_oid), ("git", head_oid))
 
 
 def _index_items(root: Path, head_oid: str | None, paths: list[str]) -> list[dict[str, Any]]:
@@ -579,37 +620,14 @@ def _index_items(root: Path, head_oid: str | None, paths: list[str]) -> list[dic
     if head_oid is not None:
         argv.append(head_oid)
     argv.extend(_pathspecs(paths))
-    items: list[dict[str, Any]] = []
-    for record in _diff_raw(root, argv, "index"):
-        before = (
-            _git_side("git", head_oid, record["old_mode"], record["old_oid"])
-            if head_oid is not None and _mode_present(record["old_mode"])
-            else None
-        )
-        after = (
-            _git_side("index", None, record["new_mode"], record["new_oid"])
-            if _mode_present(record["new_mode"])
-            else None
-        )
-        entry = _item("index", record["path"], before, after, record["status"])
-        if entry is not None:
-            items.append(entry)
-    return items
+    return _diff_items(root, "index", argv, ("git", head_oid), ("index", None))
 
 
 def _worktree_items(root: Path, paths: list[str]) -> list[dict[str, Any]]:
     """Items for index to worktree plus non-ignored untracked files."""
-    items: list[dict[str, Any]] = []
-    for record in _diff_raw(root, ["diff", *DIFF_FLAGS, *_pathspecs(paths)], "worktree"):
-        before = (
-            _git_side("index", None, record["old_mode"], record["old_oid"])
-            if _mode_present(record["old_mode"])
-            else None
-        )
-        after = _disk_side(None) if _mode_present(record["new_mode"]) else None
-        entry = _item("worktree", record["path"], before, after, record["status"])
-        if entry is not None:
-            items.append(entry)
+    items = _diff_items(
+        root, "worktree", ["diff", *DIFF_FLAGS, *_pathspecs(paths)], ("index", None), ("worktree", None)
+    )
     for path in _others(root, paths):
         entry = _item("untracked", path, None, _disk_side(None), "A")
         if entry is not None:
@@ -682,14 +700,29 @@ def enumerate_items(repo: Path, resolved: dict[str, Any]) -> list[dict[str, Any]
     raise ReviewError("E_ARGS", f"unknown scope mode {mode!r}")
 
 
-def _prepare_output(repo: Path, output: Path) -> Path:
-    target = Path(os.path.abspath(output))
-    repo_abs = Path(os.path.realpath(repo))
-    if target.is_relative_to(repo_abs):
-        raise ReviewError("E_OUTPUT", "the packet output directory is inside the repository")
-    for parent in [target, *target.parents]:
-        if parent.is_symlink():
-            raise ReviewError("E_OUTPUT", f"the output path uses the symlink {parent}")
+def _entry_info(
+    availability: str,
+    *,
+    sha256: str | None = None,
+    size_bytes: int | None = None,
+    line_count: int | None = None,
+    git_mode: str | None = None,
+    payload: bytes | None = None,
+) -> dict[str, Any]:
+    """Build one source-info record with every field named at the call site."""
+    return {
+        "availability": availability,
+        "sha256": sha256,
+        "size_bytes": size_bytes,
+        "line_count": line_count,
+        "git_mode": git_mode,
+        "payload": payload,
+    }
+
+
+def _prepare_output(root: Path, output: Path, label: str) -> Path:
+    """Create a new output location outside the repository."""
+    target = _output_target(root, output, label)
     if os.path.lexists(target):
         raise ReviewError("E_OUTPUT", f"{target} already exists")
     try:
@@ -698,6 +731,26 @@ def _prepare_output(repo: Path, output: Path) -> Path:
         raise ReviewError("E_OUTPUT", f"{target} already exists") from exc
     except OSError as exc:
         raise ReviewError("E_OUTPUT", f"cannot create {target}: {exc.strerror}") from exc
+    return target
+
+
+def require_new_output(root: Path, output: Path, label: str) -> Path:
+    """Return a fresh output path for a single file outside the repository."""
+    target = _output_target(root, output, label)
+    if os.path.lexists(target):
+        raise ReviewError("E_OUTPUT", f"{target} already exists")
+    return target
+
+
+def _output_target(root: Path, output: Path, label: str) -> Path:
+    """Resolve one output path and refuse targets inside the real repository root."""
+    target = Path(os.path.abspath(output))
+    repo_abs = Path(os.path.realpath(root))
+    if target.is_relative_to(repo_abs):
+        raise ReviewError("E_OUTPUT", f"the {label} is inside the repository")
+    for parent in [target, *target.parents]:
+        if parent.is_symlink():
+            raise ReviewError("E_OUTPUT", f"the output path uses the symlink {parent}")
     return target
 
 
@@ -713,110 +766,121 @@ def _open_directory_chain(root: Path, parts: list[str], relative: str) -> int:
                 part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=dir_fd
             )
         except OSError as exc:
+            detail = _chain_error(exc, dir_fd, part, relative)
             os.close(dir_fd)
-            if exc.errno in (errno.ELOOP, errno.ENOTDIR):
-                raise ReviewError(
-                    "E_PARENT_SYMLINK",
-                    f"{relative} crosses a symlinked parent component",
-                ) from exc
-            raise ReviewError(
-                "E_SOURCE_CHANGED_DURING_CAPTURE",
-                f"{relative} could not be opened while it was being captured",
-            ) from exc
+            raise detail from exc
         os.close(dir_fd)
         dir_fd = next_fd
     return dir_fd
 
 
-def _disk_present(root: Path, relative: str) -> bool:
+def _chain_error(
+    exc: OSError, dir_fd: int, part: str, relative: str
+) -> ReviewError:
+    """Keep the errno class of one failed parent lookup instead of flattening it.
+
+    ``O_DIRECTORY`` with ``O_NOFOLLOW`` reports a symlinked parent as ENOTDIR on
+    Linux, so the component is inspected before the class is decided.
+    """
+    if exc.errno in (errno.ELOOP, errno.EMLINK):
+        return ReviewError(
+            "E_PARENT_SYMLINK", f"{relative} crosses a symlinked parent component"
+        )
+    if exc.errno == errno.ENOENT:
+        return ReviewError("E_PARENT_MISSING", f"a parent directory of {relative} is gone")
+    if exc.errno == errno.ENOTDIR:
+        try:
+            info = os.lstat(part, dir_fd=dir_fd)
+        except OSError:
+            info = None
+        if info is not None and stat.S_ISLNK(info.st_mode):
+            return ReviewError(
+                "E_PARENT_SYMLINK", f"{relative} crosses a symlinked parent component"
+            )
+        return ReviewError(
+            "E_PARENT_NOT_DIRECTORY", f"a parent component of {relative} is not a directory"
+        )
+    return ReviewError("E_IO", f"{relative} could not be opened: {exc.strerror}")
+
+
+def _open_path(root: Path, relative: str) -> tuple[int | None, os.stat_result | None]:
+    """Open the parent chain and stat the leaf without following symlinks.
+
+    ENOENT anywhere means the path does not exist, so ``(None, None)`` is
+    returned; every other failure stays an explicit error. The caller closes
+    ``dir_fd`` when it is not None.
+    """
     parts = relative.split("/")
     try:
         dir_fd = _open_directory_chain(root, parts[:-1], relative)
-    except ReviewError:
-        return False
+    except ReviewError as exc:
+        if exc.code == "E_PARENT_MISSING":
+            return None, None
+        raise
     try:
-        try:
-            os.lstat(parts[-1], dir_fd=dir_fd)
-        except OSError:
-            return False
-        return True
-    finally:
+        info = os.lstat(parts[-1], dir_fd=dir_fd)
+    except FileNotFoundError:
         os.close(dir_fd)
+        return None, None
+    except OSError as exc:
+        os.close(dir_fd)
+        raise ReviewError("E_IO", f"cannot stat {relative}: {exc.strerror}") from exc
+    return dir_fd, info
+
+
+def _disk_present(root: Path, relative: str) -> bool:
+    """True when the work-tree path exists, whatever its type."""
+    dir_fd, info = _open_path(root, relative)
+    if dir_fd is not None:
+        os.close(dir_fd)
+    return info is not None
 
 
 def _disk_file_present(root: Path, relative: str) -> bool:
     """True only when the work-tree path is a regular file or a symlink."""
-    parts = relative.split("/")
-    try:
-        dir_fd = _open_directory_chain(root, parts[:-1], relative)
-    except ReviewError:
-        return False
-    try:
-        try:
-            info = os.lstat(parts[-1], dir_fd=dir_fd)
-        except OSError:
-            return False
-        return stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)
-    finally:
+    dir_fd, info = _open_path(root, relative)
+    if dir_fd is not None:
         os.close(dir_fd)
+    if info is None:
+        return False
+    return stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)
 
 
 def _read_disk(root: Path, relative: str) -> dict[str, Any]:
     """Read one work-tree file without following symlinks at any path component."""
-    parts = relative.split("/")
-    dir_fd = _open_directory_chain(root, parts[:-1], relative)
+    dir_fd, info = _open_path(root, relative)
+    if dir_fd is None:
+        raise ReviewError(
+            "E_SOURCE_CHANGED_DURING_CAPTURE",
+            f"{relative} disappeared while it was being captured",
+        )
     try:
-        return _read_disk_entry(dir_fd, parts[-1], relative)
+        return _read_disk_entry(dir_fd, relative.split("/")[-1], relative, info)
     finally:
         os.close(dir_fd)
 
 
-def _read_disk_entry(dir_fd: int, name: str, relative: str) -> dict[str, Any]:
-    try:
-        info = os.lstat(name, dir_fd=dir_fd)
-    except FileNotFoundError as exc:
-        raise ReviewError(
-            "E_SOURCE_CHANGED_DURING_CAPTURE",
-            f"{relative} disappeared while it was being captured",
-        ) from exc
+def _read_disk_entry(
+    dir_fd: int, name: str, relative: str, info: os.stat_result | None
+) -> dict[str, Any]:
     if stat.S_ISLNK(info.st_mode):
         target = os.fsencode(os.readlink(name, dir_fd=dir_fd))
         if len(target) > MAX_FILE_BYTES:
-            return {
-                "availability": "too_large",
-                "sha256": None,
-                "size_bytes": len(target),
-                "line_count": None,
-                "git_mode": "120000",
-                "payload": None,
-            }
-        return {
-            "availability": "symlink",
-            "sha256": sha256_digest(target),
-            "size_bytes": len(target),
-            "line_count": None,
-            "git_mode": "120000",
-            "payload": target,
-        }
+            return _entry_info(
+                "too_large", size_bytes=len(target), git_mode="120000"
+            )
+        return _entry_info(
+            "symlink",
+            sha256=sha256_digest(target),
+            size_bytes=len(target),
+            git_mode="120000",
+            payload=target,
+        )
     if not stat.S_ISREG(info.st_mode):
-        return {
-            "availability": "unreadable",
-            "sha256": None,
-            "size_bytes": info.st_size,
-            "line_count": None,
-            "git_mode": None,
-            "payload": None,
-        }
+        return _entry_info("unreadable", size_bytes=info.st_size)
     mode = "100755" if info.st_mode & 0o111 else "100644"
     if info.st_size > MAX_FILE_BYTES:
-        return {
-            "availability": "too_large",
-            "sha256": None,
-            "size_bytes": info.st_size,
-            "line_count": None,
-            "git_mode": mode,
-            "payload": None,
-        }
+        return _entry_info("too_large", size_bytes=info.st_size, git_mode=mode)
     try:
         file_fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dir_fd)
     except OSError as exc:
@@ -825,8 +889,7 @@ def _read_disk_entry(dir_fd: int, name: str, relative: str) -> dict[str, Any]:
                 "E_PARENT_SYMLINK", f"{relative} was replaced by a symlink"
             ) from exc
         raise ReviewError(
-            "E_SOURCE_CHANGED_DURING_CAPTURE",
-            f"{relative} could not be opened while it was being captured",
+            "E_IO", f"{relative} could not be opened: {exc.strerror}"
         ) from exc
     try:
         before = os.fstat(file_fd)
@@ -843,14 +906,7 @@ def _read_disk_entry(dir_fd: int, name: str, relative: str) -> dict[str, Any]:
         os.close(file_fd)
     payload = b"".join(chunks)
     if len(payload) > MAX_FILE_BYTES:
-        return {
-            "availability": "too_large",
-            "sha256": None,
-            "size_bytes": len(payload),
-            "line_count": None,
-            "git_mode": mode,
-            "payload": None,
-        }
+        return _entry_info("too_large", size_bytes=len(payload), git_mode=mode)
     fingerprint = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
     if fingerprint != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
         raise ReviewError(
@@ -868,14 +924,9 @@ def _read_disk_entry(dir_fd: int, name: str, relative: str) -> dict[str, Any]:
 def _classify(payload: bytes, mode: str | None) -> dict[str, Any]:
     digest = sha256_digest(payload)
     if mode == "120000":
-        return {
-            "availability": "symlink",
-            "sha256": digest,
-            "size_bytes": len(payload),
-            "line_count": None,
-            "git_mode": mode,
-            "payload": payload,
-        }
+        return _entry_info(
+            "symlink", sha256=digest, size_bytes=len(payload), git_mode=mode, payload=payload
+        )
     if b"\0" in payload:
         availability = "binary"
         line_count = None
@@ -888,46 +939,25 @@ def _classify(payload: bytes, mode: str | None) -> dict[str, Any]:
         else:
             availability = "text"
             line_count = count_lines(payload)
-    return {
-        "availability": availability,
-        "sha256": digest,
-        "size_bytes": len(payload),
-        "line_count": line_count,
-        "git_mode": mode,
-        "payload": payload,
-    }
+    return _entry_info(
+        availability,
+        sha256=digest,
+        size_bytes=len(payload),
+        line_count=line_count,
+        git_mode=mode,
+        payload=payload,
+    )
 
 
 def _read_git_object(root: Path, oid: str, mode: str | None) -> dict[str, Any]:
     if mode == "160000":
-        return {
-            "availability": "submodule",
-            "sha256": None,
-            "size_bytes": None,
-            "line_count": None,
-            "git_mode": mode,
-            "payload": None,
-        }
+        return _entry_info("submodule", git_mode=mode)
     size_raw = run_git(root, ["cat-file", "-s", oid], allow_failure=True)
     if size_raw is None:
-        return {
-            "availability": "unreadable",
-            "sha256": None,
-            "size_bytes": None,
-            "line_count": None,
-            "git_mode": mode,
-            "payload": None,
-        }
+        return _entry_info("unreadable", git_mode=mode)
     size = int(size_raw.strip())
     if size > MAX_FILE_BYTES:
-        return {
-            "availability": "too_large",
-            "sha256": None,
-            "size_bytes": size,
-            "line_count": None,
-            "git_mode": mode,
-            "payload": None,
-        }
+        return _entry_info("too_large", size_bytes=size, git_mode=mode)
     payload = run_git(root, ["cat-file", "blob", oid], limit=MAX_FILE_BYTES)
     assert payload is not None
     return _classify(payload, mode)
@@ -935,64 +965,75 @@ def _read_git_object(root: Path, oid: str, mode: str | None) -> dict[str, Any]:
 
 def _probe_disk(root: Path, relative: str) -> tuple[Any, ...]:
     """Re-observe one work-tree path as (mode, size, digest) for freshness checks."""
-    if not _disk_present(root, relative):
+    dir_fd, info = _open_path(root, relative)
+    if dir_fd is None:
         return ("missing", None, None)
-    info = _read_disk(root, relative)
-    return (info["git_mode"], info["size_bytes"], info["sha256"])
+    try:
+        detail = _read_disk_entry(dir_fd, relative.split("/")[-1], relative, info)
+    finally:
+        os.close(dir_fd)
+    return (detail["git_mode"], detail["size_bytes"], detail["sha256"])
 
 
 def _source_key(side: dict[str, Any], path: str) -> tuple[str, str, str, str]:
     return (side["origin"], side["revision"] or "", path, side["git_oid"] or "")
 
 
-def _observation_facts(
-    repo: Path, entries: list[dict[str, Any]]
-) -> dict[tuple[str, str, str], tuple[Any, ...]]:
-    facts: dict[tuple[str, str, str], tuple[Any, ...]] = {}
-    for entry in entries:
-        for side_name in ("before", "after"):
-            side = entry[side_name]
-            if side is None:
-                continue
-            key = (entry["layer"], entry["path"], side_name)
-            if side["disk"]:
-                facts[key] = ("worktree", *_probe_disk(repo, entry["path"]))
-            else:
-                facts[key] = (
-                    side["origin"],
-                    side["revision"],
-                    side["git_oid"],
-                    side["git_mode"],
-                )
-    return facts
+def _side_fact(repo: Path, path: str, side: dict[str, Any]) -> tuple[Any, ...]:
+    """One observed fact: worktree sides are probed, Git and index sides stay frozen."""
+    if side["disk"]:
+        return ("worktree", *_probe_disk(repo, path))
+    return (side["origin"], side["revision"], side["git_oid"], side["git_mode"])
+
+
+def _source_fact(source: dict[str, Any]) -> tuple[Any, ...]:
+    """The fact one captured source records."""
+    if source["origin"] == "worktree":
+        return ("worktree", source["git_mode"], source["size_bytes"], source["sha256"])
+    return (source["origin"], source["revision"], source["git_oid"], source["git_mode"])
 
 
 def _recorded_facts(
-    items: list[dict[str, Any]], sources: list[dict[str, Any]]
+    items: list[dict[str, Any]],
+    sources: list[dict[str, Any]],
+    context_paths: Iterable[str],
 ) -> dict[tuple[str, str, str], tuple[Any, ...]]:
+    """Project a sealed scope onto the facts a later observation compares against."""
     by_id = {source["id"]: source for source in sources}
     facts: dict[tuple[str, str, str], tuple[Any, ...]] = {}
     for item in items:
         for side_name in ("before", "after"):
             reference = item[side_name]
-            if reference is None:
-                continue
-            source = by_id[reference]
-            key = (item["layer"], item["path"], side_name)
-            if source["origin"] == "worktree":
-                facts[key] = (
-                    "worktree",
-                    source["git_mode"],
-                    source["size_bytes"],
-                    source["sha256"],
+            if reference is not None:
+                facts[(item["layer"], item["path"], side_name)] = _source_fact(
+                    by_id[reference]
                 )
-            else:
-                facts[key] = (
-                    source["origin"],
-                    source["revision"],
-                    source["git_oid"],
-                    source["git_mode"],
+    declared = set(context_paths)
+    for source in sources:
+        if source["path"] in declared:
+            facts[("context", source["path"], source["origin"])] = _source_fact(source)
+    return facts
+
+
+def _observed_facts(
+    repo: Path, resolved: dict[str, Any]
+) -> dict[tuple[str, str, str], tuple[Any, ...]]:
+    """Project the current repository state onto the same facts.
+
+    Context paths are re-observed alongside the requested items, and only the
+    versions the request actually compares are looked at.
+    """
+    facts: dict[tuple[str, str, str], tuple[Any, ...]] = {}
+    for entry in enumerate_items(repo, resolved):
+        for side_name in ("before", "after"):
+            side = entry[side_name]
+            if side is not None:
+                facts[(entry["layer"], entry["path"], side_name)] = _side_fact(
+                    repo, entry["path"], side
                 )
+    for path in resolved["request"]["context_paths"]:
+        for side in _context_sides(repo, resolved, path):
+            facts[("context", path, side["origin"])] = _side_fact(repo, path, side)
     return facts
 
 
@@ -1022,22 +1063,11 @@ def _fact_changes(
     return changed
 
 
-def _dedupe(values: Iterable[str]) -> list[str]:
-    seen: set[str] = set()
-    unique: list[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        unique.append(value)
-    return unique
-
-
 def capture_scope(repo: Path, request: ScopeRequest, output: Path) -> dict[str, Any]:
     """Capture the requested scope into a new packet directory."""
     validate_request(request)
     resolved = resolve_request(repo, request)
-    packet = _prepare_output(Path(resolved["root"]), Path(output))
+    packet = _prepare_output(Path(resolved["root"]), Path(output), "packet output directory")
     return _capture_into(packet, resolved, request)
 
 
@@ -1051,91 +1081,14 @@ def _capture_into(
             "E_ITEMS_LIMIT",
             f"the requested range has {len(entries)} items, over the {MAX_ITEMS} limit",
         )
-    sides: dict[tuple[str, str, str, str], tuple[dict[str, Any], str]] = {}
-    for entry in entries:
-        for side in (entry["before"], entry["after"]):
-            if side is not None:
-                sides[_source_key(side, entry["path"])] = (side, entry["path"])
-    for path in request.context_paths:
-        context_sides = _context_sides(root, resolved, path)
-        if not context_sides:
-            raise ReviewError(
-                "E_CONTEXT_MISSING",
-                f"the context path {path!r} does not exist in any compared version",
-            )
-        for side in context_sides:
-            sides[_source_key(side, path)] = (side, path)
+    sides = _requested_sides(root, resolved, request, entries)
     keys = sorted(sides)
-    objects = packet / "objects"
-    objects.mkdir(mode=0o700, exist_ok=True)
+    (packet / "objects").mkdir(mode=0o700, exist_ok=True)
     limitations: list[str] = []
     if resolved["observation"] == "bounded_double_observation":
         limitations.append(IGNORED_UNTRACKED_LIMIT)
-    source_records: dict[tuple[str, str, str, str], dict[str, Any]] = {}
-    used = 0
-    written: set[str] = set()
-    for index, key in enumerate(keys, start=1):
-        side, path = sides[key]
-        if side["disk"]:
-            info = _read_disk(root, path)
-            git_mode = info["git_mode"]
-        else:
-            info = _read_git_object(root, side["git_oid"], side["git_mode"])
-            git_mode = side["git_mode"]
-        availability = info["availability"]
-        size = info["size_bytes"] or 0
-        if availability in CAPTURED_AVAILABILITY and used + size > MAX_PACKET_BYTES:
-            availability = "budget_exhausted"
-        captured = availability in CAPTURED_AVAILABILITY
-        if not captured:
-            if availability == "budget_exhausted":
-                limitations.append(
-                    f"{path} was not captured because the packet byte budget was exhausted."
-                )
-            else:
-                limitations.append(f"{path} was not captured ({availability}).")
-        source_records[key] = {
-            "id": f"S-{index:06d}",
-            "path": path,
-            "origin": side["origin"],
-            "revision": side["revision"],
-            "git_oid": side["git_oid"],
-            "git_mode": git_mode,
-            "availability": availability,
-            "sha256": info["sha256"] if captured else None,
-            "size_bytes": info["size_bytes"],
-            "line_count": info["line_count"] if captured else None,
-        }
-        if captured:
-            digest = info["sha256"]
-            assert digest is not None
-            if digest not in written:
-                (objects / f"{digest[7:]}.blob").write_bytes(info["payload"] or b"")
-                written.add(digest)
-                used += size
-
-    ordered_items: list[dict[str, Any]] = []
-    for entry in sorted(
-        entries,
-        key=lambda item: (LAYER_ORDER.index(item["layer"]), item["path"].encode("utf-8")),
-    ):
-        record: dict[str, Any] = {
-            "layer": entry["layer"],
-            "status": entry["status"],
-            "path": entry["path"],
-        }
-        for side_name in ("before", "after"):
-            side = entry[side_name]
-            record[side_name] = (
-                None
-                if side is None
-                else source_records[_source_key(side, entry["path"])]["id"]
-            )
-        ordered_items.append(record)
-    item_records = [
-        {"id": f"I-{index:06d}", **record}
-        for index, record in enumerate(ordered_items, start=1)
-    ]
+    source_records = _capture_sources(root, packet, sides, keys, limitations)
+    item_records = _item_records(entries, source_records)
     scope = {
         "schema_version": SCOPE_SCHEMA_VERSION,
         "mode": resolved["mode"],
@@ -1153,27 +1106,168 @@ def _capture_into(
         "observation": resolved["observation"],
         "items": item_records,
         "sources": [source_records[key] for key in keys],
-        "limitations": _dedupe(limitations),
+        "limitations": dedupe_texts(limitations),
     }
-    if resolved["observation"] == "bounded_double_observation":
-        recorded = _recorded_facts(item_records, scope["sources"])
-        observed = _observation_facts(root, enumerate_items(root, resolved))
-        changed = _fact_changes(recorded, observed)
-        if changed:
-            raise ReviewError(
-                "E_SOURCE_CHANGED_DURING_CAPTURE",
-                "the workspace changed during capture: " + ", ".join(sorted(changed)),
-            )
-    scope_bytes = (json.dumps(scope, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
-    (packet / SCOPE_FILE).write_bytes(scope_bytes)
+    scope_bytes = _seal_scope(packet, scope, root, resolved, request.context_paths)
     return {
         "packet": str(packet),
         "scope_sha256": sha256_digest(scope_bytes),
         "mode": scope["mode"],
         "items": len(item_records),
         "sources": len(scope["sources"]),
+        "partial": any(
+            source["availability"] != TEXT_AVAILABILITY for source in scope["sources"]
+        ),
         "limitations": scope["limitations"],
     }
+
+
+def _requested_sides(
+    root: Path,
+    resolved: dict[str, Any],
+    request: ScopeRequest,
+    entries: list[dict[str, Any]],
+) -> dict[tuple[str, str, str, str], tuple[dict[str, Any], str]]:
+    """Collect every item side plus every existing version of the context paths."""
+    sides: dict[tuple[str, str, str, str], tuple[dict[str, Any], str]] = {}
+    for entry in entries:
+        for side in (entry["before"], entry["after"]):
+            if side is not None:
+                sides[_source_key(side, entry["path"])] = (side, entry["path"])
+    for path in request.context_paths:
+        context_sides = _context_sides(root, resolved, path)
+        if not context_sides:
+            raise ReviewError(
+                "E_CONTEXT_MISSING",
+                f"the context path {path!r} does not exist in any compared version",
+            )
+        for side in context_sides:
+            sides[_source_key(side, path)] = (side, path)
+    return sides
+
+
+def _capture_sources(
+    root: Path,
+    packet: Path,
+    sides: dict[tuple[str, str, str, str], tuple[dict[str, Any], str]],
+    keys: list[tuple[str, str, str, str]],
+    limitations: list[str],
+) -> dict[tuple[str, str, str, str], dict[str, Any]]:
+    """Read every distinct side once and write the objects the budget allows.
+
+    The budget is charged per new digest, so equal bytes stored under several
+    paths or origins cost one object.
+    """
+    objects = packet / "objects"
+    source_records: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    used = 0
+    written: set[str] = set()
+    for index, key in enumerate(keys, start=1):
+        side, path = sides[key]
+        if side["disk"]:
+            info = _read_disk(root, path)
+            git_mode = info["git_mode"]
+        else:
+            info = _read_git_object(root, side["git_oid"], side["git_mode"])
+            git_mode = side["git_mode"]
+        availability = info["availability"]
+        digest = info["sha256"]
+        if availability in CAPTURED_AVAILABILITY:
+            incremental = 0 if digest in written else (info["size_bytes"] or 0)
+            if used + incremental > MAX_PACKET_BYTES:
+                availability = "budget_exhausted"
+        captured = availability in CAPTURED_AVAILABILITY
+        if not captured:
+            if availability == "budget_exhausted":
+                limitations.append(
+                    f"{path} was not captured because the packet byte budget was exhausted."
+                )
+            else:
+                limitations.append(f"{path} was not captured ({availability}).")
+        source_records[key] = {
+            "id": f"S-{index:06d}",
+            "path": path,
+            "origin": side["origin"],
+            "revision": side["revision"],
+            "git_oid": side["git_oid"],
+            "git_mode": git_mode,
+            "availability": availability,
+            "sha256": digest if captured else None,
+            "size_bytes": info["size_bytes"],
+            "line_count": info["line_count"] if captured else None,
+        }
+        if captured:
+            assert digest is not None
+            if digest in written:
+                continue
+            try:
+                (objects / f"{digest[7:]}.blob").write_bytes(info["payload"] or b"")
+            except OSError as exc:
+                raise ReviewError(
+                    "E_OUTPUT", f"cannot write the captured object: {exc.strerror}"
+                ) from exc
+            written.add(digest)
+            used += info["size_bytes"] or 0
+    return source_records
+
+
+def _item_records(
+    entries: list[dict[str, Any]],
+    source_records: dict[tuple[str, str, str, str], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Order the items by layer and path and point them at their source ids."""
+    ordered: list[dict[str, Any]] = []
+    for entry in sorted(
+        entries,
+        key=lambda item: (LAYER_ORDER.index(item["layer"]), item["path"].encode("utf-8")),
+    ):
+        record: dict[str, Any] = {
+            "layer": entry["layer"],
+            "status": entry["status"],
+            "path": entry["path"],
+        }
+        for side_name in ("before", "after"):
+            side = entry[side_name]
+            record[side_name] = (
+                None
+                if side is None
+                else source_records[_source_key(side, entry["path"])]["id"]
+            )
+        ordered.append(record)
+    return [
+        {"id": f"I-{index:06d}", **record}
+        for index, record in enumerate(ordered, start=1)
+    ]
+
+
+def _seal_scope(
+    packet: Path,
+    scope: dict[str, Any],
+    root: Path,
+    resolved: dict[str, Any],
+    context_paths: tuple[str, ...],
+) -> bytes:
+    """Re-observe the request, validate the whole scope, then write scope.json.
+
+    The completion marker appears only after every check passed, and the encoded
+    document is bounded before it is written.
+    """
+    if resolved["observation"] == "bounded_double_observation":
+        recorded = _recorded_facts(scope["items"], scope["sources"], context_paths)
+        observed = _observed_facts(root, resolved)
+        changed = _fact_changes(recorded, observed)
+        if changed:
+            raise ReviewError(
+                "E_SOURCE_CHANGED_DURING_CAPTURE",
+                "the workspace changed during capture: " + ", ".join(sorted(changed)),
+            )
+    validate_scope(scope)
+    scope_bytes = encode_document(scope)
+    try:
+        (packet / SCOPE_FILE).write_bytes(scope_bytes)
+    except OSError as exc:
+        raise ReviewError("E_OUTPUT", f"cannot write {SCOPE_FILE}: {exc.strerror}") from exc
+    return scope_bytes
 
 
 def _tree_side(root: Path, revision: str, path: str) -> dict[str, Any] | None:
@@ -1234,19 +1328,18 @@ def _context_sides(root: Path, resolved: dict[str, Any], path: str) -> list[dict
     return [side] if side is not None else []
 
 
-def compare_scope(repo: Path, scope: dict[str, Any], packet: Path) -> dict[str, Any]:
-    """Re-observe captured sources and report freshness for the recorded scope."""
-    validate_document(scope, "scope")
-    root, _bare = _repo_root(repo)
+def compare_scope(repo: Path, scope: dict[str, Any]) -> dict[str, Any]:
+    """Re-observe captured sources and report freshness for the recorded scope.
+
+    The caller validates the record first, so this pass only compares facts and
+    never re-reads captured objects.
+    """
+    validate_scope(scope)
+    root = repository_root(repo)
     incomplete = any(
         source["availability"] not in CAPTURED_AVAILABILITY for source in scope["sources"]
     )
     if scope["observation"] == "immutable_commits":
-        from _review_record import read_source
-
-        for source in scope["sources"]:
-            if source["availability"] in CAPTURED_AVAILABILITY:
-                read_source(packet, source)
         return _freshness(False, incomplete)
     resolved = {
         "mode": scope["mode"],
@@ -1258,8 +1351,8 @@ def compare_scope(repo: Path, scope: dict[str, Any], packet: Path) -> dict[str, 
         "worktree_snapshot": scope["mode"] == "snapshot",
         "parents": [],
     }
-    recorded = _recorded_facts(scope["items"], scope["sources"])
-    observed = _observation_facts(root, enumerate_items(root, resolved))
+    recorded = _recorded_facts(scope["items"], scope["sources"], scope["request"]["context_paths"])
+    observed = _observed_facts(root, resolved)
     changed = _fact_changes(recorded, observed)
     return _freshness(bool(changed), incomplete, changed)
 

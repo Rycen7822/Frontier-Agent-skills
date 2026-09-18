@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+import errno
 import json
 import os
 from pathlib import Path
@@ -417,6 +419,168 @@ class QuickReviewCliTests(unittest.TestCase):
         self.assertEqual(2, code)
         self.assertEqual("E_OUTPUT", payload["code"])
         self.assertFalse(inside.exists())
+
+    def _n06_scaffold(self) -> tuple[Path, dict, dict, Path]:
+        fixtures.write_file(self.repo, "src/module.py", "value = 2\n")
+        code, payload, packet = self.scope("--mode", "workspace", "--path", "src")
+        self.assertEqual(0, code, payload)
+        scope = json.loads((packet / "scope.json").read_text(encoding="utf-8"))
+        record = {
+            "schema_version": "fas-review-record/1",
+            "scope_ref": "scope.json",
+            "scope_sha256": payload["scope_sha256"],
+            "coverage": [
+                {"item_id": item["id"], "status": "reviewed", "reason": None}
+                for item in scope["items"]
+            ],
+            "findings": [],
+            "concerns": [],
+            "verification": [],
+            "limitations": [],
+        }
+        return packet, scope, record, self.root / "n06-record.json"
+
+    def _n06_check(self, packet: Path, record_value, name: str):
+        record_path = fixtures.write_json(self.root / f"n06-{name}-record.json", record_value)
+        report_path = self.root / f"n06-{name}-report.json"
+        code, payload = fixtures.run_cli(
+            [
+                "check",
+                "--repo",
+                str(self.repo),
+                "--packet",
+                str(packet),
+                "--record",
+                str(record_path),
+                "--output",
+                str(report_path),
+            ]
+        )
+        return code, payload, report_path
+
+    def test_n06_invalid_inputs_produce_a_bounded_invalid_report(self) -> None:
+        packet, scope, record, _unused = self._n06_scaffold()
+        sentinel = "S" * 9000
+        with self.subTest("N06 over-long recorded field"):
+            value = deepcopy(record)
+            value["limitations"] = [sentinel]
+            code, payload, report_path = self._n06_check(packet, value, "long-field")
+            self.assertEqual(2, code)
+            self.assertEqual("invalid", payload["result"])
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            review_record.validate_document(report, "check_report")
+            self.assertEqual(2, report["exit_code"])
+            self.assertEqual("E_SCHEMA", report["problems"][0]["code"])
+            self.assertLessEqual(len(report["problems"][0]["message"]), 512)
+            self.assertEqual("unavailable", report["coverage_status"])
+            self.assertEqual("not_checked", report["freshness"]["status"])
+            self.assertIsNone(report["finding_count"])
+            self.assertIsNone(report["item_counts"])
+            self.assertNotIn(sentinel, json.dumps(report))
+            self.assertNotIn(sentinel, json.dumps(payload))
+        with self.subTest("N06 unknown over-long field"):
+            value = deepcopy(record)
+            value["U" * 9000] = 1
+            code, payload, report_path = self._n06_check(packet, value, "unknown-field")
+            self.assertEqual(2, code)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            review_record.validate_document(report, "check_report")
+            self.assertEqual("E_SCHEMA", report["problems"][0]["code"])
+            self.assertEqual("", report["problems"][0]["pointer"])
+            self.assertNotIn("U" * 100, json.dumps(report))
+        with self.subTest("N06 pointer beyond the expressible bound"):
+            value = deepcopy(record)
+            value["limitations"] = [sentinel]
+            code, payload, report_path = self._n06_check(packet, value, "pointer-bound")
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual("E_SCHEMA", report["problems"][0]["code"])
+            self.assertEqual("/limitations/0", report["problems"][0]["pointer"])
+            self.assertEqual(2, payload["exit_code"])
+        with self.subTest("N06 directory as the record"):
+            directory = self.root / "n06-directory"
+            directory.mkdir()
+            report_path = self.root / "n06-directory-report.json"
+            code, payload = fixtures.run_cli(
+                [
+                    "check",
+                    "--repo",
+                    str(self.repo),
+                    "--packet",
+                    str(packet),
+                    "--record",
+                    str(directory),
+                    "--output",
+                    str(report_path),
+                ]
+            )
+            self.assertEqual(2, code)
+            self.assertEqual(str(report_path), payload["artifact"])
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            review_record.validate_document(report, "check_report")
+            self.assertEqual("E_INPUT_TYPE", report["problems"][0]["code"])
+        with self.subTest("N06 missing record"):
+            report_path = self.root / "n06-missing-report.json"
+            code, payload = fixtures.run_cli(
+                [
+                    "check",
+                    "--repo",
+                    str(self.repo),
+                    "--packet",
+                    str(packet),
+                    "--record",
+                    str(self.root / "n06-absent.json"),
+                    "--output",
+                    str(report_path),
+                ]
+            )
+            self.assertEqual(2, code)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual("E_INPUT_MISSING", report["problems"][0]["code"])
+        with self.subTest("N06 merged limitations over the report bound"):
+            original_items = review_record.MAX_ITEMS
+            review_record.MAX_ITEMS = 2
+            self.addCleanup(setattr, review_record, "MAX_ITEMS", original_items)
+            value = deepcopy(record)
+            value["limitations"] = ["first", "second", "third"]
+            record_path = self.root / "n06-overflow-record.json"
+            before = fixtures.write_json(record_path, value).read_bytes()
+            report_path = self.root / "n06-overflow-report.json"
+            code, payload = fixtures.run_cli(
+                [
+                    "check",
+                    "--repo",
+                    str(self.repo),
+                    "--packet",
+                    str(packet),
+                    "--record",
+                    str(record_path),
+                    "--output",
+                    str(report_path),
+                ]
+            )
+            self.assertEqual(2, code)
+            self.assertEqual("E_REPORT_LIMIT", payload["code"])
+            self.assertIsNone(payload["artifact"])
+            self.assertFalse(report_path.exists())
+            self.assertEqual(before, record_path.read_bytes())
+        with self.subTest("N06 write-stage failure"):
+            real_write = review_support._write_all
+
+            def failing_write(descriptor: int, data: bytes) -> None:
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(data[: len(data) // 2])
+                raise OSError(errno.ENOSPC, "No space left on device")
+
+            review_support._write_all = failing_write
+            self.addCleanup(setattr, review_support, "_write_all", real_write)
+            code, payload, report_path = self._n06_check(packet, record, "write-failure")
+            self.assertEqual(2, code)
+            self.assertEqual("E_OUTPUT", payload["code"])
+            self.assertIsNone(payload["artifact"])
+            self.assertNotIn("valid", json.dumps(payload))
+            if report_path.exists():
+                with self.assertRaises(ValueError):
+                    json.loads(report_path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,15 @@
 # Release Notes
 
+## Bundle 11.0.1 review scope repair and shared work
+
+Bundle 11.0.1 is a patch release for the `code-review` helper (2.0.1) with no protocol, schema-epoch or activation change. The exit code of `scope` now follows the captured sources: a sealed scope whose sources are all text returns 0, while a sealed scope with any non-text, oversized or budget-exhausted source returns 4 and names it as a limitation; hard errors still return 2 and write no `scope.json`.
+
+Declared context paths now take part in capture and freshness. A change to a context file's bytes, mode, presence or index entry is reported as `changed` (exit 4) in `check`, and a change injected while the packet is still being captured fails the capture instead of being sealed. Context paths stay evidence: they never add items to the review counts.
+
+The packet byte budget is charged per new object, so identical bytes stored under several paths cost one object, and the scope is validated against its own schema before `scope.json` is written. Invalid inputs now produce a bounded, schema-valid check report: diagnostics name the failed constraint and its limit instead of echoing the offending value, so an over-long field no longer breaks the report that should describe it. Input and output failures are typed, and `check` resolves `--repo` to the real repository root before it refuses an in-repository output.
+
+Auto-generated limitation notes travel with the report: the scope and record notes are merged, order-preserving and de-duplicated, and the merged array plus the encoded report stay inside the existing bounds. Repeated work inside one check was also removed: coverage uses one source index, location stops after a second match, and each distinct object is read and verified once per check. No model evaluation was run for this patch, and no effect on model behavior is claimed.
+
 ## Bundle 11.0.0 bounded review scope and evidence
 
 Bundle 11.0.0 keeps the ten skill entrypoints and makes two activation changes: `software-quality-workflows` and `skill-evaluator` are explicit-only, while the other eight skills remain implicit-eligible. `code-review` gains a bounded review helper with two public commands, `scope` and `check`: scope capture covers commit, range, workspace and snapshot modes with separate staged, unstaged and untracked layers; a single JSON schema defines the scope, record and check-report shapes; and check reports structural validity, freshness and code-location status without issuing a code verdict or publication permission. Binary, oversized and otherwise unavailable content stays visible as a limitation instead of a silent pass.

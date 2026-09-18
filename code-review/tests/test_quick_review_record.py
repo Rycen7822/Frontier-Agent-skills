@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import errno
 import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 TESTS_DIR = Path(__file__).resolve().parent
 if str(TESTS_DIR) not in sys.path:
@@ -28,6 +30,8 @@ class QuickReviewRecordTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name)
+        # ``check`` resolves --repo to its canonical root before it inspects inputs.
+        fixtures.init_repo(self.root)
 
     def validate(self, packet, record):
         return review_record.validate_record(packet["packet"], packet["scope"], record)
@@ -693,6 +697,314 @@ class QuickReviewRecordTests(unittest.TestCase):
             review_record.validate_document(report, "check_report")
             self.assertIsNone(report["finding_count"])
             self.assertIsNone(report["item_counts"])
+
+    def test_n06b_input_io_failures_are_typed(self) -> None:
+        path = self.root / "n06b-input.json"
+        fixtures.write_json(path, {"schema_version": "fas-review-record/1"})
+        cases = {
+            PermissionError(errno.EACCES, "Permission denied"): "E_INPUT_IO",
+            IsADirectoryError(errno.EISDIR, "Is a directory"): "E_INPUT_TYPE",
+            FileNotFoundError(errno.ENOENT, "No such file"): "E_INPUT_MISSING",
+            OSError(errno.EIO, "Input/output error"): "E_INPUT_IO",
+        }
+        for failure, expected in cases.items():
+            with self.subTest(f"N06b {type(failure).__name__}"):
+                with mock.patch("builtins.open", side_effect=failure):
+                    with self.assertRaises(review_record.ReviewError) as caught:
+                        review_record.load_json(path)
+                self.assertEqual(expected, caught.exception.code)
+        packet = fixtures.anchor_packet(self.root, b"x = 1\n")
+        source = packet["scope"]["sources"][0]
+        with self.subTest("N06b source reads keep their own classification"):
+            with mock.patch("builtins.open", side_effect=PermissionError(errno.EACCES, "denied")):
+                with self.assertRaises(review_record.ReviewError) as caught:
+                    review_record.read_source(packet["packet"], source)
+            self.assertEqual("E_SOURCE_OBJECT", caught.exception.code)
+            blob = packet["packet"] / "objects" / f"{source['sha256'][7:]}.blob"
+            blob.unlink()
+            with self.assertRaises(review_record.ReviewError) as missing:
+                review_record.read_source(packet["packet"], source)
+            self.assertEqual("E_SOURCE_OBJECT", missing.exception.code)
+        with self.subTest("N06b a directory is not read as JSON"):
+            directory = self.root / "n06b-directory"
+            directory.mkdir()
+            with self.assertRaises(review_record.ReviewError) as caught:
+                review_record.load_json(directory)
+            self.assertEqual("E_INPUT_TYPE", caught.exception.code)
+
+    def test_n09_scope_and_record_limitations_are_merged(self) -> None:
+        packet = fixtures.hand_packet(
+            self.root,
+            sources=[
+                {
+                    "name": "main",
+                    "path": "src/module.py",
+                    "origin": "worktree",
+                    "availability": "text",
+                    "payload": b"value = 1\n",
+                }
+            ],
+            items=[
+                {
+                    "layer": "worktree",
+                    "status": "A",
+                    "path": "src/module.py",
+                    "after": "main",
+                }
+            ],
+            limitations=["scope note", "shared note"],
+        )
+        record = fixtures.hand_record(
+            packet, limitations=["shared note", "record note", "scope note"]
+        )
+        before = deepcopy(record)
+        validation = self.validate(packet, record)
+        self.assertEqual(
+            ["scope note", "shared note", "record note"], validation["limitations"]
+        )
+        self.assertEqual(before, record)
+        report = review_record.finish_report(
+            validation, {"status": "captured_inputs_match", "changed_paths": []}
+        )
+        review_record.validate_document(report, "check_report")
+        self.assertEqual(
+            ["scope note", "shared note", "record note"], report["limitations"]
+        )
+        self.assertEqual(0, report["exit_code"])
+        with self.subTest("N09 empty limitations stay valid"):
+            empty = fixtures.hand_record(packet)
+            self.assertEqual(
+                ["scope note", "shared note"], self.validate(packet, empty)["limitations"]
+            )
+        with self.subTest("N09 the merged array keeps its bound"):
+            original = review_record.MAX_ITEMS
+            review_record.MAX_ITEMS = 2
+            self.addCleanup(setattr, review_record, "MAX_ITEMS", original)
+            overflow = fixtures.hand_record(packet, limitations=["a", "b"])
+            validation = self.validate(packet, overflow)
+            self.assertEqual(4, len(validation["limitations"]))
+            with self.assertRaises(review_record.ReviewError) as caught:
+                review_record.finish_report(
+                    validation, {"status": "captured_inputs_match", "changed_paths": []}
+                )
+            self.assertEqual("E_REPORT_LIMIT", caught.exception.code)
+            self.assertEqual(
+                ["scope note", "shared note"],
+                json.loads((packet["packet"] / "scope.json").read_bytes())["limitations"],
+            )
+            self.assertEqual(["a", "b"], overflow["limitations"])
+
+    def test_n10_coverage_uses_one_source_index(self) -> None:
+        class CountingSources(list):
+            def __init__(self, values):
+                super().__init__(values)
+                self.iterations = 0
+
+            def __iter__(self):
+                self.iterations += 1
+                return super().__iter__()
+
+        for size in (20, 60):
+            with self.subTest(f"N10 index built once for {size} items"):
+                packet = fixtures.hand_packet(
+                    self.root,
+                    sources=[
+                        {
+                            "name": f"s{index}",
+                            "path": f"src/f{index:03d}.py",
+                            "origin": "worktree",
+                            "availability": "text",
+                            "payload": f"value = {index}\n".encode("utf-8"),
+                        }
+                        for index in range(size)
+                    ],
+                    items=[
+                        {
+                            "layer": "worktree",
+                            "status": "A",
+                            "path": f"src/f{index:03d}.py",
+                            "after": f"s{index}",
+                        }
+                        for index in range(size)
+                    ],
+                    packet_name=f"n10-{size}",
+                )
+                scope = dict(packet["scope"])
+                counting = CountingSources(scope["sources"])
+                scope["sources"] = counting
+                record = fixtures.hand_record(packet)
+                status, counts = review_record._validate_coverage(scope, record)
+                self.assertEqual("all_declared_reviewed", status)
+                self.assertEqual(size, counts["total"])
+                self.assertEqual(1, counting.iterations)
+
+    def test_n11_each_digest_is_read_once_per_check(self) -> None:
+        shared = b"value = 1\n"
+        packet = fixtures.hand_packet(
+            self.root,
+            sources=[
+                {
+                    "name": "a",
+                    "path": "src/a.py",
+                    "origin": "worktree",
+                    "availability": "text",
+                    "payload": shared,
+                },
+                {
+                    "name": "b",
+                    "path": "src/b.py",
+                    "origin": "worktree",
+                    "availability": "text",
+                    "payload": shared,
+                },
+                {
+                    "name": "c",
+                    "path": "src/c.py",
+                    "origin": "worktree",
+                    "availability": "text",
+                    "payload": b"other = 2\n",
+                },
+            ],
+            items=[
+                {"layer": "worktree", "status": "A", "path": "src/a.py", "after": "a"},
+                {"layer": "worktree", "status": "A", "path": "src/b.py", "after": "b"},
+                {"layer": "worktree", "status": "A", "path": "src/c.py", "after": "c"},
+            ],
+        )
+        record = fixtures.hand_record(
+            packet,
+            findings=[
+                fixtures.finding(
+                    packet,
+                    evidence_entries=[
+                        fixtures.evidence(packet, snippet="value = 1", source_name="a"),
+                        fixtures.evidence(packet, snippet="value = 1", source_name="b"),
+                        fixtures.evidence(packet, snippet="other = 2", source_name="c"),
+                        fixtures.evidence(packet, snippet="value = 1", source_name="a"),
+                    ],
+                )
+            ],
+        )
+        calls: list[str] = []
+        original = review_record.read_source
+
+        def counting_read(packet_path, source):
+            calls.append(source["id"])
+            return original(packet_path, source)
+
+        review_record.read_source = counting_read
+        self.addCleanup(setattr, review_record, "read_source", original)
+        validation = self.validate(packet, record)
+        self.assertEqual(2, len(calls))
+        self.assertEqual(4, len(validation["anchors"]))
+        self.assertEqual(["resolved"] * 4, [anchor["status"] for anchor in validation["anchors"]])
+        self.assertEqual([0, 1, 2, 3], [anchor["evidence_index"] for anchor in validation["anchors"]])
+        with self.subTest("N11 no cross-call caching"):
+            self.validate(packet, record)
+            self.assertEqual(4, len(calls))
+        with self.subTest("N11 an unreferenced corrupt object is still rejected"):
+            broken = fixtures.hand_packet(
+                self.root,
+                sources=[
+                    {
+                        "name": "kept",
+                        "path": "src/kept.py",
+                        "origin": "worktree",
+                        "availability": "text",
+                        "payload": b"kept = 1\n",
+                    },
+                    {
+                        "name": "broken",
+                        "path": "src/broken.py",
+                        "origin": "worktree",
+                        "availability": "text",
+                        "payload": b"broken = 1\n",
+                    },
+                ],
+                items=[
+                    {
+                        "layer": "worktree",
+                        "status": "A",
+                        "path": "src/kept.py",
+                        "after": "kept",
+                    },
+                    {
+                        "layer": "worktree",
+                        "status": "A",
+                        "path": "src/broken.py",
+                        "after": "broken",
+                    },
+                ],
+                packet_name="n11-broken",
+            )
+            broken_source = next(
+                source
+                for source in broken["scope"]["sources"]
+                if source["path"] == "src/broken.py"
+            )
+            blob = broken["packet"] / "objects" / f"{broken_source['sha256'][7:]}.blob"
+            blob.write_bytes(b"tampered = 1\n")
+            broken_record = fixtures.hand_record(
+                broken,
+                findings=[
+                    fixtures.finding(
+                        broken,
+                        evidence_entries=[
+                            fixtures.evidence(broken, snippet="kept = 1", source_name="kept")
+                        ],
+                    )
+                ],
+            )
+            with self.assertRaises(review_record.ReviewError) as caught:
+                self.validate(broken, broken_record)
+            self.assertEqual("E_SOURCE_OBJECT", caught.exception.code)
+
+    def test_n12_location_stops_after_two_matches(self) -> None:
+        repeated = b"dup = 1\n" * 5
+        packet = fixtures.anchor_packet(self.root, repeated)
+        record = fixtures.hand_record(
+            packet,
+            findings=[
+                fixtures.finding(
+                    packet,
+                    evidence_entries=[fixtures.evidence(packet, snippet="dup = 1")],
+                )
+            ],
+        )
+        validation = self.validate(packet, record)
+        self.assertEqual("ambiguous", validation["anchors"][0]["status"])
+        lines = review_record.split_lines(repeated)
+        self.assertEqual(2, len(review_record._find_matches(lines, [b"dup = 1"])))
+        with self.subTest("N12 a given coordinate wins over repeats"):
+            located = fixtures.hand_record(
+                packet,
+                findings=[
+                    fixtures.finding(
+                        packet,
+                        evidence_entries=[
+                            fixtures.evidence(packet, snippet="dup = 1", start_line=4, end_line=4)
+                        ],
+                    )
+                ],
+            )
+            anchor = self.validate(packet, located)["anchors"][0]
+            self.assertEqual("resolved", anchor["status"])
+            self.assertEqual(4, anchor["start_line"])
+        with self.subTest("N12 counting keeps the byte semantics"):
+            payloads = [
+                b"",
+                b"\n",
+                b"\n\n",
+                b"single",
+                b"single\n",
+                b"a\r\nb\r\n",
+                b"a\r\nb",
+                b"a\rb\n",
+                b"-1\n  indented\n\nvalue = 1\rmid\n\xe2\x80\xa8text\n",
+                b"\xff\xfe bytes\n",
+            ]
+            for raw in payloads:
+                self.assertEqual(len(review_record.split_lines(raw)), review_record.count_lines(raw))
 
 
 if __name__ == "__main__":

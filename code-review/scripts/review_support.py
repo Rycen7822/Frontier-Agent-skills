@@ -14,18 +14,26 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from _review_git import ScopeRequest, capture_scope, compare_scope
+from _review_git import (
+    ScopeRequest,
+    capture_scope,
+    compare_scope,
+    repository_root,
+    require_new_output,
+)
 from _review_record import (
+    SCOPE_FILE,
     ReviewError,
+    encode_document,
     finish_report,
     load_json,
     validate_document,
     validate_record,
 )
 
-SCOPE_FILE = "scope.json"
 EXIT_OK = 0
 EXIT_INVALID_INPUT = 2
+EXIT_PARTIAL = 4
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -90,12 +98,13 @@ def _run_scope(args: argparse.Namespace) -> int:
         result = capture_scope(Path(args.repo), request, Path(args.output))
     except ReviewError as error:
         return _fail(error)
+    exit_code = EXIT_PARTIAL if result["partial"] else EXIT_OK
     _emit(
         {
             "result": "ok",
             "command": "scope",
             "artifact": result["packet"],
-            "exit_code": EXIT_OK,
+            "exit_code": exit_code,
             "mode": result["mode"],
             "items": result["items"],
             "sources": result["sources"],
@@ -103,36 +112,32 @@ def _run_scope(args: argparse.Namespace) -> int:
             "limitations": result["limitations"],
         }
     )
-    return EXIT_OK
+    return exit_code
 
 
 def _run_check(args: argparse.Namespace) -> int:
-    repo = Path(args.repo)
     packet = Path(args.packet)
-    output = Path(args.output)
     try:
-        _require_new_output(repo, output)
+        root = repository_root(Path(args.repo))
+        target = require_new_output(root, Path(args.output), "report output")
     except ReviewError as error:
         return _fail(error)
-    freshness: dict[str, Any] = {"status": "not_checked", "changed_paths": []}
+    validation, freshness = _check_inputs(root, packet, Path(args.record))
     try:
-        scope = _load_scope(packet)
-        record = load_json(Path(args.record))
-        validation = validate_record(packet, scope, record)
-        freshness = compare_scope(repo, scope, packet)
+        report = finish_report(validation, freshness)
+        validate_document(report, "check_report")
+        data = encode_document(report, "E_REPORT_LIMIT")
     except ReviewError as error:
-        validation = {"validation": "invalid", "problems": [error.problem()]}
-    report = finish_report(validation, freshness)
-    validate_document(report, "check_report")
+        return _fail(error)
     try:
-        _write_new_file(output, report)
+        _write_new_file(target, data)
     except ReviewError as error:
         return _fail(error)
     _emit(
         {
             "result": report["validation"],
             "command": "check",
-            "artifact": str(output),
+            "artifact": str(target),
             "exit_code": report["exit_code"],
             "validation": report["validation"],
             "coverage_status": report["coverage_status"],
@@ -142,6 +147,24 @@ def _run_check(args: argparse.Namespace) -> int:
     return report["exit_code"]
 
 
+def _check_inputs(
+    root: Path, packet: Path, record_path: Path
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Validate the record, then compare freshness, keeping every failure typed."""
+    freshness: dict[str, Any] = {"status": "not_checked", "changed_paths": []}
+    try:
+        scope = _load_scope(packet)
+        record = load_json(record_path)
+        validation = validate_record(packet, scope, record)
+    except ReviewError as error:
+        return {"validation": "invalid", "problems": [error.problem()]}, freshness
+    try:
+        freshness = compare_scope(root, scope)
+    except ReviewError as error:
+        return {"validation": "invalid", "problems": [error.problem()]}, freshness
+    return validation, freshness
+
+
 def _load_scope(packet: Path) -> dict[str, Any]:
     scope_path = packet / SCOPE_FILE
     if not scope_path.is_file():
@@ -149,25 +172,22 @@ def _load_scope(packet: Path) -> dict[str, Any]:
     return load_json(scope_path)
 
 
-def _require_new_output(repo: Path, output: Path) -> None:
-    target = Path(os.path.abspath(output))
-    if target.is_relative_to(Path(os.path.realpath(repo))):
-        raise ReviewError("E_OUTPUT", "the report output is inside the repository")
-    for parent in [target, *target.parents]:
-        if parent.is_symlink():
-            raise ReviewError("E_OUTPUT", f"the output path uses the symlink {parent}")
-    if os.path.lexists(target):
-        raise ReviewError("E_OUTPUT", f"{target} already exists")
-
-
-def _write_new_file(path: Path, value: Any) -> None:
-    data = (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+def _write_new_file(path: Path, data: bytes) -> None:
+    """Create one new file exclusively; a failed write never yields an artifact."""
     try:
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError as exc:
         raise ReviewError("E_OUTPUT", f"{path} already exists") from exc
     except OSError as exc:
         raise ReviewError("E_OUTPUT", f"cannot create {path}: {exc.strerror}") from exc
+    try:
+        _write_all(descriptor, data)
+    except OSError as exc:
+        raise ReviewError("E_OUTPUT", f"cannot write {path}: {exc.strerror}") from exc
+
+
+def _write_all(descriptor: int, data: bytes) -> None:
+    """Write the whole payload to a descriptor this call owns."""
     with os.fdopen(descriptor, "wb") as stream:
         stream.write(data)
 

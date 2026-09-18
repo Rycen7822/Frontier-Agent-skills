@@ -10,7 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, Iterable
 
 try:  # pragma: no cover - the import failure path is exercised through E_DEPENDENCY
     from jsonschema import Draft202012Validator
@@ -37,7 +37,8 @@ MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_PACKET_BYTES = 128 * 1024 * 1024
 MAX_ITEMS = 20000
 MAX_JSON_BYTES = 16 * 1024 * 1024
-CANDIDATE_LIMIT = MAX_ITEMS
+PROBLEM_MESSAGE_LIMIT = 512
+PROBLEM_POINTER_LIMIT = 1024
 
 
 class ReviewError(ValueError):
@@ -61,22 +62,65 @@ def sha256_digest(raw: bytes) -> str:
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
-def read_bytes_limited(path: Path, limit: int, code: str) -> bytes:
-    """Read at most ``limit`` bytes, failing instead of truncating the input."""
-    with open(path, "rb") as stream:
-        raw = stream.read(limit + 1)
+def read_bytes_limited(
+    path: Path,
+    limit: int,
+    code: str,
+    *,
+    missing_code: str | None = None,
+    type_code: str | None = None,
+    io_code: str | None = None,
+) -> bytes:
+    """Read at most ``limit`` bytes, mapping expected IO failures to typed errors."""
+    try:
+        with open(path, "rb") as stream:
+            raw = stream.read(limit + 1)
+    except IsADirectoryError as exc:
+        raise ReviewError(type_code or code, f"{path} is a directory, not a file") from exc
+    except FileNotFoundError as exc:
+        raise ReviewError(missing_code or code, f"{path} does not exist") from exc
+    except PermissionError as exc:
+        raise ReviewError(io_code or code, f"{path} cannot be read: permission denied") from exc
+    except OSError as exc:
+        raise ReviewError(io_code or code, f"{path} cannot be read: {exc.strerror}") from exc
     if len(raw) > limit:
         raise ReviewError(code, f"{path} exceeds the {limit} byte limit")
     return raw
 
 
+def encode_document(value: dict[str, Any], code: str = "E_JSON_TOO_LARGE") -> bytes:
+    """Encode one document and bound it before anything is written."""
+    raw = (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    if len(raw) > MAX_JSON_BYTES:
+        raise ReviewError(
+            code, f"the document needs {len(raw)} bytes, over the {MAX_JSON_BYTES} limit"
+        )
+    return raw
+
+
+def dedupe_texts(values: Iterable[str]) -> list[str]:
+    """Keep the first occurrence of every exact string."""
+    seen: set[str] = set()
+    unique: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        unique.append(value)
+    return unique
+
+
 def load_json(path: Path) -> dict[str, Any]:
     """Parse a JSON object, rejecting duplicate keys and non-finite numbers."""
     target = Path(path)
-    try:
-        raw = read_bytes_limited(target, MAX_JSON_BYTES, "E_JSON_TOO_LARGE")
-    except FileNotFoundError as exc:
-        raise ReviewError("E_INPUT_MISSING", f"{target} does not exist") from exc
+    raw = read_bytes_limited(
+        target,
+        MAX_JSON_BYTES,
+        "E_JSON_TOO_LARGE",
+        missing_code="E_INPUT_MISSING",
+        type_code="E_INPUT_TYPE",
+        io_code="E_INPUT_IO",
+    )
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
@@ -90,7 +134,10 @@ def load_json(path: Path) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, value in pairs:
             if key in result:
-                raise ReviewError("E_JSON_DUPLICATE_KEY", f"duplicate JSON key {key!r}")
+                raise ReviewError(
+                    "E_JSON_DUPLICATE_KEY",
+                    f"the JSON object repeats a key name of length {len(key)}",
+                )
             result[key] = value
         return result
 
@@ -124,6 +171,60 @@ def _schema_definitions() -> dict[str, Any]:
     return _SCHEMA_CACHE
 
 
+def _constraint_text(error: Any) -> str:
+    """Describe one schema failure without echoing instance content."""
+    keyword = error.validator
+    value = error.validator_value
+    if keyword in ("maxLength", "minLength"):
+        observed = len(error.instance) if isinstance(error.instance, str) else None
+        return f"{keyword} {value}, observed length {observed}"
+    if keyword in ("maxItems", "minItems"):
+        try:
+            observed = len(error.instance)
+        except TypeError:
+            observed = None
+        return f"{keyword} {value}, observed count {observed}"
+    if keyword == "enum":
+        allowed = ", ".join(sorted(str(item) for item in value))[:200]
+        return f"value must be one of {allowed}"
+    if keyword == "const":
+        return f"value must equal {value!r}"
+    if keyword == "pattern":
+        return f"value must match {value}"
+    if keyword == "type":
+        return f"value must be {value}"
+    if keyword == "required":
+        return "a required field is missing"
+    if keyword == "additionalProperties":
+        return "an unknown field is present"
+    if keyword == "uniqueItems":
+        return "array entries must be unique"
+    if keyword in ("anyOf", "oneOf"):
+        return "no permitted shape matched"
+    return "the constraint failed"
+
+
+def _schema_error(kind: str, error: Any) -> ReviewError:
+    """Turn the first schema failure into a bounded diagnostic.
+
+    The message never repeats instance content, and a pointer that cannot be
+    expressed inside the protocol bound is dropped instead of truncated.
+    """
+    parts = list(error.absolute_path)
+    pointer = "".join(
+        f"/{str(part).replace('~', '~0').replace('/', '~1')}" for part in parts
+    )
+    dropped = bool(parts) and len(pointer) > PROBLEM_POINTER_LIMIT
+    if dropped:
+        pointer = ""
+    message = f"{kind} is invalid: {_constraint_text(error)}"
+    if dropped:
+        message += "; the failing path is too long to report"
+    if len(message) > PROBLEM_MESSAGE_LIMIT:
+        message = message[: PROBLEM_MESSAGE_LIMIT - 3] + "..."
+    return ReviewError("E_SCHEMA", message, pointer)
+
+
 def validate_document(value: dict[str, Any], kind: str) -> None:
     """Validate one of the three roots against the shared schema $defs."""
     if kind not in KIND_REFS:
@@ -133,16 +234,14 @@ def validate_document(value: dict[str, Any], kind: str) -> None:
             "E_DEPENDENCY", "the jsonschema package is required for document validation"
         )
     entry = {"$schema": SCHEMA_URI, "$ref": KIND_REFS[kind], "$defs": _schema_definitions()}
-    errors = sorted(
-        Draft202012Validator(entry).iter_errors(value),
-        key=lambda error: (list(error.absolute_path), error.message),
-    )
-    if errors:
-        error = errors[0]
-        pointer = "".join(f"/{part}" for part in error.absolute_path)
-        raise ReviewError(
-            "E_SCHEMA", f"{kind} is invalid: {error.message}", pointer
-        )
+    for error in Draft202012Validator(entry).iter_errors(value):
+        raise _schema_error(kind, error)
+
+
+def validate_scope(scope: dict[str, Any]) -> None:
+    """Validate one scope document: schema shape plus cross-object relations."""
+    validate_document(scope, "scope")
+    _validate_scope_relations(scope)
 
 
 def split_lines(raw: bytes) -> list[bytes]:
@@ -160,7 +259,10 @@ def split_lines(raw: bytes) -> list[bytes]:
 
 
 def count_lines(raw: bytes) -> int:
-    return len(split_lines(raw))
+    """Count LF-terminated lines without building a line array."""
+    if not raw:
+        return 0
+    return raw.count(b"\n") + (0 if raw.endswith(b"\n") else 1)
 
 
 def read_source(packet: Path, source: dict[str, Any]) -> bytes:
@@ -199,7 +301,7 @@ def _find_matches(lines: list[bytes], snippet_lines: list[bytes]) -> list[tuple[
     for start in range(0, len(lines) - span + 1):
         if lines[start : start + span] == snippet_lines:
             matches.append((start + 1, start + span))
-            if len(matches) > CANDIDATE_LIMIT:
+            if len(matches) == 2:
                 break
     return matches
 
@@ -275,6 +377,12 @@ def _require(condition: bool, code: str, message: str, pointer: str = "") -> Non
 
 def _validate_scope_relations(scope: dict[str, Any]) -> None:
     """Cross-field scope rules that JSON Schema does not express."""
+    _validate_scope_mode(scope)
+    _validate_scope_items(scope)
+    _validate_scope_sources(scope)
+
+
+def _validate_scope_mode(scope: dict[str, Any]) -> None:
     resolved = scope["resolved"]
     oid_digits = 40 if resolved["object_format"] == "sha1" else 64
     for field in ("base_oid", "head_oid", "comparison_base_oid"):
@@ -316,13 +424,15 @@ def _validate_scope_relations(scope: dict[str, Any]) -> None:
             "/resolved/base_oid",
         )
 
+
+def _validate_scope_items(scope: dict[str, Any]) -> None:
+    """Check the item sequence and ordering; the fixed sequence rules out duplicates."""
     items = scope["items"]
     _require(
         len(items) <= MAX_ITEMS,
         "E_ITEMS_LIMIT",
         f"scope has {len(items)} items, over the {MAX_ITEMS} limit",
     )
-    item_ids: set[str] = set()
     previous_key: tuple[int, bytes] | None = None
     for index, item in enumerate(items):
         _require(
@@ -331,13 +441,6 @@ def _validate_scope_relations(scope: dict[str, Any]) -> None:
             f"item {index} has id {item['id']} outside the fixed sequence",
             f"/items/{index}/id",
         )
-        _require(
-            item["id"] not in item_ids,
-            "E_DUPLICATE_ID",
-            f"duplicate item id {item['id']}",
-            f"/items/{index}/id",
-        )
-        item_ids.add(item["id"])
         _require(
             (item["layer"] == "snapshot") == (item["status"] == "P"),
             "E_ITEM_STATUS",
@@ -354,20 +457,19 @@ def _validate_scope_relations(scope: dict[str, Any]) -> None:
             )
         previous_key = key
 
+def _validate_scope_sources(scope: dict[str, Any]) -> None:
+    """Check the source sequence, ordering, and every item reference."""
+    resolved = scope["resolved"]
+    oid_digits = 40 if resolved["object_format"] == "sha1" else 64
     sources = scope["sources"]
     source_ids: set[str] = set()
     previous_source: tuple[str, str, bytes, str] | None = None
     for index, source in enumerate(sources):
+        # The fixed sequence already rules out duplicates; the set stays for references.
         _require(
             source["id"] == f"S-{index + 1:06d}",
             "E_SOURCE_ID",
             f"source {index} has id {source['id']} outside the fixed sequence",
-            f"/sources/{index}/id",
-        )
-        _require(
-            source["id"] not in source_ids,
-            "E_DUPLICATE_ID",
-            f"duplicate source id {source['id']}",
             f"/sources/{index}/id",
         )
         source_ids.add(source["id"])
@@ -396,7 +498,7 @@ def _validate_scope_relations(scope: dict[str, Any]) -> None:
             )
         previous_source = key
 
-    for index, item in enumerate(items):
+    for index, item in enumerate(scope["items"]):
         for side in ("before", "after"):
             reference = item[side]
             if reference is not None:
@@ -413,11 +515,11 @@ def _validate_scope_relations(scope: dict[str, Any]) -> None:
     )
 
 
-def _scope_sources_are_text(scope: dict[str, Any], item: dict[str, Any]) -> bool:
-    by_id = {source["id"]: source for source in scope["sources"]}
+def _item_sources_are_text(source_by_id: dict[str, dict[str, Any]], item: dict[str, Any]) -> bool:
+    """Check one item against an index the caller already built."""
     for side in ("before", "after"):
         reference = item[side]
-        if reference is not None and by_id[reference]["availability"] != TEXT_AVAILABILITY:
+        if reference is not None and source_by_id[reference]["availability"] != TEXT_AVAILABILITY:
             return False
     return True
 
@@ -477,8 +579,9 @@ def _validate_coverage(scope: dict[str, Any], record: dict[str, Any]) -> tuple[s
         )
         return "nothing_in_scope", counts
     declared = {entry["item_id"]: entry["status"] for entry in record["coverage"]}
+    source_by_id = {source["id"]: source for source in scope["sources"]}
     for index, item in enumerate(items):
-        if declared[item["id"]] == "reviewed" and not _scope_sources_are_text(scope, item):
+        if declared[item["id"]] == "reviewed" and not _item_sources_are_text(source_by_id, item):
             raise ReviewError(
                 "E_COVERAGE_UNSUPPORTED",
                 f"item {item['id']} has a source without captured text bytes "
@@ -490,32 +593,14 @@ def _validate_coverage(scope: dict[str, Any], record: dict[str, Any]) -> tuple[s
     return "partial", counts
 
 
-def _verify_captured_sources(packet: Path, scope: dict[str, Any]) -> None:
-    """Read every captured object back and check its digest and recorded line count."""
-    for index, source in enumerate(scope["sources"]):
-        availability = source["availability"]
-        if availability not in CAPTURED_AVAILABILITY:
-            continue
-        raw = read_source(packet, source)
-        if availability == TEXT_AVAILABILITY:
-            actual = count_lines(raw)
-            _require(
-                source["line_count"] == actual,
-                "E_SOURCE_LINES",
-                f"source {source['id']} records {source['line_count']} lines "
-                f"but holds {actual}",
-                f"/sources/{index}/line_count",
-            )
-
-
-def _validate_findings(
-    packet: Path, scope: dict[str, Any], record: dict[str, Any]
+def _pending_evidence(
+    scope: dict[str, Any], record: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """Check finding references and locate each evidence snippet in its own source."""
+    """Check finding references and collect the anchors that still need source bytes."""
     item_ids = {item["id"] for item in scope["items"]}
     sources = {source["id"]: source for source in scope["sources"]}
     finding_ids: set[str] = set()
-    anchors: list[dict[str, Any]] = []
+    pending: list[dict[str, Any]] = []
     for finding_index, finding in enumerate(record["findings"]):
         _require(
             finding["id"] not in finding_ids,
@@ -540,24 +625,77 @@ def _validate_findings(
                 f"{evidence['source_id']}",
                 f"/findings/{finding_index}/evidence/{evidence_index}/source_id",
             )
-            raw = (
-                read_source(packet, source)
-                if source["availability"] == TEXT_AVAILABILITY
-                else None
-            )
-            location = locate_anchor(raw, evidence)
-            anchors.append(
+            pending.append(
                 {
                     "finding_id": finding["id"],
                     "evidence_index": evidence_index,
+                    "evidence": evidence,
+                    "source": source,
+                }
+            )
+    return pending
+
+
+def _locate_anchors(
+    packet: Path, scope: dict[str, Any], pending: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Verify every captured object once per digest and locate its pending anchors.
+
+    Only one object is held at a time: the bytes are released before the next
+    digest is read, and anchors are written back in their original order.
+    """
+    groups: dict[Any, list[tuple[int, dict[str, Any]]]] = {}
+    for index, source in enumerate(scope["sources"]):
+        if source["availability"] in CAPTURED_AVAILABILITY:
+            groups.setdefault(source["sha256"], []).append((index, source))
+    requests: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    for position, request in enumerate(pending):
+        requests.setdefault(request["source"]["id"], []).append((position, request))
+    located: dict[int, dict[str, Any]] = {}
+    for group in groups.values():
+        raw = read_source(packet, group[0][1])
+        for index, source in group:
+            size = source["size_bytes"]
+            _require(
+                size == len(raw),
+                "E_SOURCE_OBJECT",
+                f"source {source['id']} records {size} bytes but its object holds {len(raw)}",
+                f"/sources/{index}/size_bytes",
+            )
+            text = source["availability"] == TEXT_AVAILABILITY
+            if text:
+                actual = count_lines(raw)
+                _require(
+                    source["line_count"] == actual,
+                    "E_SOURCE_LINES",
+                    f"source {source['id']} records {source['line_count']} lines "
+                    f"but holds {actual}",
+                    f"/sources/{index}/line_count",
+                )
+            for position, request in requests.get(source["id"], []):
+                located[position] = {
+                    "finding_id": request["finding_id"],
+                    "evidence_index": request["evidence_index"],
                     "source_id": source["id"],
                     "path": source["path"],
                     "origin": source["origin"],
                     "revision": source["revision"],
-                    **location,
+                    **locate_anchor(raw if text else None, request["evidence"]),
                 }
-            )
-    return anchors
+    for position, request in enumerate(pending):
+        if position in located:
+            continue
+        source = request["source"]
+        located[position] = {
+            "finding_id": request["finding_id"],
+            "evidence_index": request["evidence_index"],
+            "source_id": source["id"],
+            "path": source["path"],
+            "origin": source["origin"],
+            "revision": source["revision"],
+            **locate_anchor(None, request["evidence"]),
+        }
+    return [located[position] for position in range(len(pending))]
 
 
 def _validate_concerns(record: dict[str, Any], item_ids: set[str]) -> None:
@@ -594,16 +732,15 @@ def _validate_verification(record: dict[str, Any]) -> None:
 def validate_record(
     packet: Path, scope: dict[str, Any], record: dict[str, Any]
 ) -> dict[str, Any]:
-    """Validate structure, set relations, captured objects, and anchors."""
-    validate_document(scope, "scope")
+    """Validate structure, relations, captured objects, and anchors."""
+    validate_scope(scope)
     validate_document(record, "record")
-    _validate_scope_relations(scope)
     _verify_scope_digest(packet, record)
     coverage_status, counts = _validate_coverage(scope, record)
-    _verify_captured_sources(packet, scope)
-    anchors = _validate_findings(packet, scope, record)
     _validate_concerns(record, {item["id"] for item in scope["items"]})
     _validate_verification(record)
+    pending = _pending_evidence(scope, record)
+    anchors = _locate_anchors(packet, scope, pending)
     return {
         "validation": "valid",
         "coverage_status": coverage_status,
@@ -615,7 +752,7 @@ def validate_record(
         ),
         "anchors": anchors,
         "problems": [],
-        "limitations": list(record["limitations"]),
+        "limitations": dedupe_texts([*scope["limitations"], *record["limitations"]]),
     }
 
 
@@ -623,6 +760,14 @@ def finish_report(
     validation: dict[str, Any], freshness: dict[str, Any]
 ) -> dict[str, Any]:
     """Combine validation and freshness into the single check report shape."""
+    # The schema bounds every text list with the same count as the item limit.
+    limitations = list(validation.get("limitations") or [])
+    if len(limitations) > MAX_ITEMS:
+        raise ReviewError(
+            "E_REPORT_LIMIT",
+            f"the merged limitations hold {len(limitations)} entries, "
+            f"over the {MAX_ITEMS} limit",
+        )
     if validation.get("validation") != "valid":
         problems = validation.get("problems") or [
             {"code": "E_SCHEMA", "pointer": "", "message": "the record is invalid"}
@@ -637,7 +782,7 @@ def finish_report(
             "item_counts": None,
             "anchors": [],
             "problems": problems,
-            "limitations": list(validation.get("limitations") or []),
+            "limitations": limitations,
             "exit_code": 2,
         }
 
@@ -665,6 +810,6 @@ def finish_report(
         "item_counts": dict(validation["item_counts"]),
         "anchors": list(validation["anchors"]),
         "problems": list(validation["problems"]),
-        "limitations": list(validation["limitations"]),
+        "limitations": limitations,
         "exit_code": exit_code,
     }
