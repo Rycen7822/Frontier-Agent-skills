@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased — code-simplifier 1.2.0
+
+The simplifier gains evidence-led candidate selection, complete structural removal, complexity-transfer checks, and risk-proportionate validation in two conditional references. Its existing name, hosts, implicit eligibility and invocation prompt are preserved. It introduces no runtime tool, model dependency, hook, mandatory cleanup phase or fixed delegation loop.
+
+The component version advances from 1.1.0 to 1.2.0. Bundle/plugin version 11.0.2 and schema epoch 9 remain the existing release identity during this unreleased source integration; publishing or installing a new bundle is separate work. Registration pins and generated identities must match the modified source. This is a guidance behavior change, not an editorial-only update. Model-free asset and packaging checks do not establish model effectiveness; no improvement in task success, token cost or future maintainability is claimed.
+
 ## Bundle 11.0.2 review helper simplification
 
 Bundle 11.0.2 is a patch release for the `code-review` helper (2.0.2) with no protocol, schema-epoch or activation change, and no behaviour change for the public commands. The three helper modules were simplified: check runs its input, validation and freshness stages under one error boundary instead of two, the report writer is the single place that owns the descriptor, the duplicated scope relations forwarder is gone and `compare_scope` now states its real contract (an already validated scope plus the canonical repository root), scope path normalization is reused at the record entry, one captured object is split into lines once per check, and the check report is built as one document shape. Error codes, exit codes, JSON pointers, bounds, captured inputs and report fields are unchanged.

@@ -49,7 +49,7 @@ LOCAL_PATH_PATTERNS = tuple(re.compile(pattern) for pattern in (
 PLACEHOLDER_PATTERN = re.compile(re.escape(chr(91)) + "TODO:")
 EXPECTED_SKILLS = {
     'code-review': '2.0.2',
-    'code-simplifier': '1.1.0',
+    'code-simplifier': '1.2.0',
     'codebase-investigation': '1.1.0',
     'debugging': '1.1.0',
     'long-document-segmented-writing': '3.1.0',
