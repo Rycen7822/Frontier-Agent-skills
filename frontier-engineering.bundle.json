@@ -1,8 +1,8 @@
 {
   "activation_ceiling": "implicit_local_pilot",
-  "bundle_id": "frontier-engineering/11.0.2",
+  "bundle_id": "frontier-engineering/11.1.0",
   "compatible_schema_epoch": 9,
-  "release_build_id": "build-4681e8397946a726ed84a84b",
+  "release_build_id": "build-ee275dcdcbe5cd79a97825f7",
   "remote_writes": false,
   "schema_version": "frontier-engineering-bundle/2.0",
   "skills": {
