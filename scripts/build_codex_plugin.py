@@ -48,16 +48,16 @@ LOCAL_PATH_PATTERNS = tuple(re.compile(pattern) for pattern in (
 ))
 PLACEHOLDER_PATTERN = re.compile(re.escape(chr(91)) + "TODO:")
 EXPECTED_SKILLS = {
-    'code-review': '1.0.1',
-    'code-simplifier': '1.0.1',
-    'codebase-investigation': '1.0.1',
-    'debugging': '1.0.1',
-    'long-document-segmented-writing': '3.0.0',
-    'runtime-verification': '1.0.1',
+    'code-review': '2.0.0',
+    'code-simplifier': '1.1.0',
+    'codebase-investigation': '1.1.0',
+    'debugging': '1.1.0',
+    'long-document-segmented-writing': '3.1.0',
+    'runtime-verification': '1.1.0',
     'skill-evaluator': '5.0.1',
-    'software-design': '1.0.1',
-    'software-quality-workflows': '12.1.0',
-    'writing-plans': '9.0.0',
+    'software-design': '1.1.0',
+    'software-quality-workflows': '13.0.0',
+    'writing-plans': '9.1.0',
 }
 EXPECTED_ACTIVATION = {
     'code-review': True,
@@ -68,7 +68,7 @@ EXPECTED_ACTIVATION = {
     'runtime-verification': True,
     'skill-evaluator': False,
     'software-design': True,
-    'software-quality-workflows': True,
+    'software-quality-workflows': False,
     'writing-plans': True,
 }
 CANONICAL_MARKETPLACE = {
@@ -199,7 +199,7 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     skills = manifest.get("skills")
     if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != set(EXPECTED_SKILLS):
         raise ValueError("manifest must declare exactly the canonical skills")
-    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "10.0.0"):
+    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "11.0.0"):
         raise ValueError("manifest bundle schema/version is invalid")
     if {item.get("id"): item.get("version") for item in skills} != EXPECTED_SKILLS:
         raise ValueError("version mismatch: manifest skill versions do not match the canonical skill release identity")

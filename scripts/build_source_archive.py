@@ -48,7 +48,7 @@ EXPECTED_SKILLS = {
     'writing-plans',
 }
 BUNDLE_ROOT_PREFIX = "frontier-engineering-bundle"
-BUNDLE_DIRECTORIES = {"bundle", "evaluation", "packaging", "scripts", "tests"}
+BUNDLE_DIRECTORIES = {"bundle", "docs", "evaluation", "packaging", "scripts", "tests"}
 BUNDLE_FILES = {"README.md", "RELEASE_NOTES.md", "bundle-manifest.json", "frontier-engineering.bundle.json"}
 IGNORED_TOP_LEVEL = {
     ".git",

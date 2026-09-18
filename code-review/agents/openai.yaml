@@ -1,6 +1,6 @@
 interface:
   display_name: "Code Review"
   short_description: "Find actionable defects and assess review feedback"
-  default_prompt: "Use $code-review for the requested task with proportionate evidence."
+  default_prompt: "Use $code-review to assess the requested changes, code snapshot, or review feedback."
 policy:
   allow_implicit_invocation: true

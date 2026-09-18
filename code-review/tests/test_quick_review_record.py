@@ -1,0 +1,699 @@
+"""R01-R19: record structure, relations, captured objects, and location status."""
+
+from __future__ import annotations
+
+from copy import deepcopy
+import json
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+
+TESTS_DIR = Path(__file__).resolve().parent
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
+SCRIPTS_DIR = TESTS_DIR.parent / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+import _review_record as review_record  # noqa: E402
+import _review_fixtures as fixtures  # noqa: E402
+
+OID_A = "a" * 40
+OID_B = "b" * 40
+
+
+class QuickReviewRecordTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+
+    def validate(self, packet, record):
+        return review_record.validate_record(packet["packet"], packet["scope"], record)
+
+    def assertCode(self, code, callable_, *args, **kwargs):
+        with self.assertRaises(review_record.ReviewError) as caught:
+            callable_(*args, **kwargs)
+        self.assertEqual(code, caught.exception.code)
+        return caught.exception
+
+    def test_r01_valid_record_without_findings_is_valid_not_a_verdict(self) -> None:
+        packet = fixtures.anchor_packet(self.root, b"value = 1\n")
+        record = fixtures.hand_record(packet)
+        validation = self.validate(packet, record)
+        self.assertEqual("valid", validation["validation"])
+        self.assertEqual("all_declared_reviewed", validation["coverage_status"])
+        report = review_record.finish_report(
+            validation, {"status": "captured_inputs_match", "changed_paths": []}
+        )
+        review_record.validate_document(report, "check_report")
+        self.assertEqual(0, report["exit_code"])
+        for forbidden in ("pass", "ready", "publication_ceiling", "review_is_current"):
+            self.assertNotIn(forbidden, report)
+        self.assertEqual(
+            "all_declared_reviewed", report["coverage_status"]
+        )
+
+    def test_r02_valid_critical_finding_stays_structurally_valid(self) -> None:
+        packet = fixtures.anchor_packet(self.root, b"return load(object_id)\n")
+        record = fixtures.hand_record(
+            packet,
+            findings=[
+                fixtures.finding(
+                    packet,
+                    severity="critical",
+                    evidence_entries=[
+                        fixtures.evidence(
+                            packet,
+                            snippet="return load(object_id)",
+                            start_line=1,
+                            end_line=1,
+                        )
+                    ],
+                )
+            ],
+        )
+        validation = self.validate(packet, record)
+        self.assertEqual("valid", validation["validation"])
+        report = review_record.finish_report(
+            validation, {"status": "captured_inputs_match", "changed_paths": []}
+        )
+        self.assertEqual(1, report["finding_count"])
+        self.assertEqual(0, report["exit_code"])
+        serialized = json.dumps(report)
+        for forbidden in ("publish", "publication", "approval"):
+            self.assertNotIn(forbidden, serialized)
+
+    def test_r03_coverage_gaps_duplicates_and_unknown_ids_are_invalid(self) -> None:
+        packet = fixtures.hand_packet(
+            self.root,
+            sources=[
+                {
+                    "name": "one",
+                    "path": "src/one.py",
+                    "origin": "worktree",
+                    "availability": "text",
+                    "payload": b"one = 1\n",
+                },
+                {
+                    "name": "two",
+                    "path": "src/two.py",
+                    "origin": "worktree",
+                    "availability": "text",
+                    "payload": b"two = 2\n",
+                },
+            ],
+            items=[
+                {"layer": "worktree", "status": "A", "path": "src/one.py", "after": "one"},
+                {"layer": "worktree", "status": "A", "path": "src/two.py", "after": "two"},
+            ],
+        )
+        first, second = (item["id"] for item in packet["scope"]["items"])
+        cases = {
+            "empty": ([], "E_COVERAGE_MISSING"),
+            "missing": ([{"item_id": first, "status": "reviewed", "reason": None}], "E_COVERAGE_MISSING"),
+            "duplicate": (
+                [
+                    {"item_id": first, "status": "reviewed", "reason": None},
+                    {"item_id": first, "status": "reviewed", "reason": None},
+                    {"item_id": second, "status": "reviewed", "reason": None},
+                ],
+                "E_COVERAGE_DUPLICATE",
+            ),
+            "unknown": (
+                [
+                    {"item_id": first, "status": "reviewed", "reason": None},
+                    {"item_id": second, "status": "reviewed", "reason": None},
+                    {"item_id": "I-000009", "status": "reviewed", "reason": None},
+                ],
+                "E_COVERAGE_UNKNOWN",
+            ),
+        }
+        for label, (coverage, code) in cases.items():
+            with self.subTest(f"R03 {label}"):
+                record = fixtures.hand_record(packet, coverage=coverage)
+                self.assertCode(code, self.validate, packet, record)
+
+    def test_r04_duplicate_identifiers_are_invalid(self) -> None:
+        packet = fixtures.anchor_packet(self.root, b"x = 1\n")
+        item_id = packet["scope"]["items"][0]["id"]
+        snippet = fixtures.evidence(packet, snippet="x = 1", start_line=1, end_line=1)
+        duplicate_findings = [
+            fixtures.finding(packet, finding_id="F-1", evidence_entries=[snippet]),
+            fixtures.finding(packet, finding_id="F-1", evidence_entries=[snippet]),
+        ]
+        with self.subTest("R04 finding"):
+            record = fixtures.hand_record(packet, findings=duplicate_findings)
+            self.assertCode("E_DUPLICATE_ID", self.validate, packet, record)
+        concern = {
+            "id": "C-1",
+            "summary": "Unresolved ownership question.",
+            "item_ids": [item_id],
+            "missing_evidence": "No caller list was captured.",
+            "impact_if_true": "A second caller may bypass the check.",
+        }
+        with self.subTest("R04 concern"):
+            record = fixtures.hand_record(packet, concerns=[concern, deepcopy(concern)])
+            self.assertCode("E_DUPLICATE_ID", self.validate, packet, record)
+        verification = {
+            "id": "V-1",
+            "label": "Runtime reproduction",
+            "status": "not_run",
+            "observation": "Only source inspection was performed.",
+        }
+        with self.subTest("R04 verification"):
+            record = fixtures.hand_record(
+                packet, verification=[verification, deepcopy(verification)]
+            )
+            self.assertCode("E_DUPLICATE_ID", self.validate, packet, record)
+
+    def test_r05_unknown_source_digest_mismatch_and_corrupt_bytes(self) -> None:
+        packet = fixtures.anchor_packet(self.root, b"x = 1\n")
+        snippet = fixtures.evidence(packet, snippet="x = 1", start_line=1, end_line=1)
+        with self.subTest("R05 unknown source"):
+            broken = deepcopy(snippet)
+            broken["source_id"] = "S-000042"
+            record = fixtures.hand_record(
+                packet, findings=[fixtures.finding(packet, evidence_entries=[broken])]
+            )
+            error = self.assertCode("E_REFERENCE_UNKNOWN", self.validate, packet, record)
+            self.assertEqual("/findings/0/evidence/0/source_id", error.pointer)
+        with self.subTest("R05 scope digest"):
+            record = fixtures.hand_record(packet)
+            record["scope_sha256"] = "sha256:" + "0" * 64
+            error = self.assertCode("E_SCOPE_DIGEST", self.validate, packet, record)
+            self.assertEqual("/scope_sha256", error.pointer)
+        with self.subTest("R05 corrupt bytes"):
+            blob = next((packet["packet"] / "objects").glob("*.blob"))
+            blob.write_bytes(b"tampered\n")
+            record = fixtures.hand_record(packet)
+            self.assertCode("E_SOURCE_OBJECT", self.validate, packet, record)
+        with self.subTest("R05 pointer on schema error"):
+            record = fixtures.hand_record(packet)
+            record["coverage"][0]["status"] = "looked_at"
+            error = self.assertCode("E_SCHEMA", self.validate, packet, record)
+            self.assertEqual("/coverage/0/status", error.pointer)
+
+    def test_r06_partial_coverage_requires_a_reason(self) -> None:
+        packet = fixtures.anchor_packet(self.root, b"x = 1\n")
+        item_id = packet["scope"]["items"][0]["id"]
+        with self.subTest("R06 without reason"):
+            record = fixtures.hand_record(
+                packet, coverage=[{"item_id": item_id, "status": "partial", "reason": None}]
+            )
+            self.assertCode("E_SCHEMA", self.validate, packet, record)
+        with self.subTest("R06 with reason"):
+            record = fixtures.hand_record(
+                packet,
+                coverage=[
+                    {
+                        "item_id": item_id,
+                        "status": "partial",
+                        "reason": "Only the public entry point was opened.",
+                    }
+                ],
+            )
+            validation = self.validate(packet, record)
+            self.assertEqual("partial", validation["coverage_status"])
+            report = review_record.finish_report(
+                validation, {"status": "captured_inputs_match", "changed_paths": []}
+            )
+            self.assertEqual(4, report["exit_code"])
+
+    def test_r07_non_text_source_cannot_be_declared_reviewed(self) -> None:
+        with self.subTest("R07 binary"):
+            packet = fixtures.hand_packet(
+                self.root,
+                packet_name="binary-packet",
+                sources=[
+                    {
+                        "name": "blob",
+                        "path": "assets/logo.bin",
+                        "origin": "worktree",
+                        "availability": "binary",
+                        "payload": b"\x00\x01\x02",
+                    }
+                ],
+                items=[
+                    {
+                        "layer": "worktree",
+                        "status": "A",
+                        "path": "assets/logo.bin",
+                        "after": "blob",
+                    }
+                ],
+            )
+            record = fixtures.hand_record(packet)
+            self.assertCode("E_COVERAGE_UNSUPPORTED", self.validate, packet, record)
+        with self.subTest("R07 oversize"):
+            packet = fixtures.hand_packet(
+                self.root,
+                packet_name="oversize-packet",
+                sources=[
+                    {
+                        "name": "big",
+                        "path": "data/big.bin",
+                        "origin": "worktree",
+                        "availability": "too_large",
+                        "size_bytes": 9 * 1024 * 1024,
+                    }
+                ],
+                items=[
+                    {"layer": "worktree", "status": "A", "path": "data/big.bin", "after": "big"}
+                ],
+            )
+            record = fixtures.hand_record(packet)
+            self.assertCode("E_COVERAGE_UNSUPPORTED", self.validate, packet, record)
+
+    def test_r08_empty_scope_reports_nothing_in_scope(self) -> None:
+        packet = fixtures.hand_packet(self.root, sources=[], items=[])
+        with self.subTest("R08 empty"):
+            record = fixtures.hand_record(packet)
+            validation = self.validate(packet, record)
+            self.assertEqual("nothing_in_scope", validation["coverage_status"])
+            report = review_record.finish_report(
+                validation, {"status": "captured_inputs_match", "changed_paths": []}
+            )
+            review_record.validate_document(report, "check_report")
+            self.assertEqual(0, report["exit_code"])
+            self.assertEqual(0, report["finding_count"])
+        with self.subTest("R08 rejected finding"):
+            record = fixtures.hand_record(
+                packet,
+                findings=[
+                    {
+                        "id": "F-1",
+                        "severity": "low",
+                        "summary": "Something looks off.",
+                        "relation": "not_determined",
+                        "trigger": "Any call.",
+                        "impact": "Unknown.",
+                        "item_ids": ["I-000001"],
+                        "evidence": [
+                            {
+                                "source_id": "S-000001",
+                                "start_line": None,
+                                "end_line": None,
+                                "snippet": None,
+                            }
+                        ],
+                        "fix": None,
+                    }
+                ],
+            )
+            self.assertCode("E_EMPTY_SCOPE_FINDINGS", self.validate, packet, record)
+
+    def test_r09_line_number_shapes_are_rejected(self) -> None:
+        packet = fixtures.anchor_packet(self.root, b"x = 1\ny = 2\n")
+
+        def with_lines(start, end):
+            entry = fixtures.evidence(packet, snippet="x = 1", start_line=start, end_line=end)
+            return fixtures.hand_record(
+                packet, findings=[fixtures.finding(packet, evidence_entries=[entry])]
+            )
+
+        cases = {
+            "boolean": (True, True, "E_SCHEMA"),
+            "negative": (-1, 1, "E_SCHEMA"),
+            "single side null": (1, None, "E_SCHEMA"),
+            "beyond eof": (3, 4, "E_LOCATION_RANGE"),
+            "inverted": (2, 1, "E_LOCATION_RANGE"),
+        }
+        for label, (start, end, code) in cases.items():
+            with self.subTest(f"R09 {label}"):
+                self.assertCode(code, self.validate, packet, with_lines(start, end))
+
+    def test_r10_explicit_coordinates_win_over_repeats(self) -> None:
+        packet = fixtures.anchor_packet(self.root, b"alpha\nbeta\nalpha\n")
+        entry = fixtures.evidence(packet, snippet="alpha", start_line=3, end_line=3)
+        record = fixtures.hand_record(
+            packet, findings=[fixtures.finding(packet, evidence_entries=[entry])]
+        )
+        validation = self.validate(packet, record)
+        anchor = validation["anchors"][0]
+        self.assertEqual("resolved", anchor["status"])
+        self.assertEqual((3, 3), (anchor["start_line"], anchor["end_line"]))
+        self.assertIsNone(anchor["candidate_start"])
+
+    def test_r11_anchor_status_without_coordinates(self) -> None:
+        cases = {
+            "unique": (b"alpha\nbeta\n", "beta", "resolved", (2, 2)),
+            "repeated": (b"alpha\nalpha\n", "alpha", "ambiguous", None),
+            "absent": (b"alpha\nbeta\n", "gamma", "unlocated", None),
+        }
+        for label, (payload, snippet, status, coordinates) in cases.items():
+            with self.subTest(f"R11 {label}"):
+                packet = fixtures.anchor_packet(
+                    self.root, payload, packet_name=f"packet-{label}"
+                )
+                entry = fixtures.evidence(packet, snippet=snippet)
+                record = fixtures.hand_record(
+                    packet, findings=[fixtures.finding(packet, evidence_entries=[entry])]
+                )
+                validation = self.validate(packet, record)
+                anchor = validation["anchors"][0]
+                self.assertEqual(status, anchor["status"])
+                if coordinates is None:
+                    self.assertIsNone(anchor["start_line"])
+                else:
+                    self.assertEqual(coordinates, (anchor["start_line"], anchor["end_line"]))
+
+    def test_r12_wrong_coordinates_relocate_without_rewriting_the_record(self) -> None:
+        packet = fixtures.anchor_packet(self.root, b"first\nsecond\nthird\n")
+        entry = fixtures.evidence(packet, snippet="second", start_line=1, end_line=1)
+        record = fixtures.hand_record(
+            packet, findings=[fixtures.finding(packet, evidence_entries=[entry])]
+        )
+        record_path = fixtures.write_json(self.root / "review-record.json", record)
+        before = record_path.read_bytes()
+        validation = self.validate(packet, record)
+        anchor = validation["anchors"][0]
+        self.assertEqual("needs_relocation", anchor["status"])
+        self.assertEqual((1, 1), (anchor["start_line"], anchor["end_line"]))
+        self.assertEqual((2, 2), (anchor["candidate_start"], anchor["candidate_end"]))
+        self.assertEqual(before, record_path.read_bytes())
+        self.assertEqual(record, json.loads(before))
+
+    def test_r13_line_splitting_keeps_source_semantics(self) -> None:
+        payload = b"+x\n-y\n    indented\n   \nlast\r\n"
+        packet = fixtures.anchor_packet(self.root, payload)
+        cases = {
+            "diff markers": ("+x\n-y", 1, 2),
+            "indentation": ("    indented", 3, 3),
+            "whitespace-only line": ("   ", 4, 4),
+            "crlf": ("last", 5, 5),
+            "trailing terminator": ("-y\n", 2, 2),
+        }
+        for label, (snippet, start, end) in cases.items():
+            with self.subTest(f"R13 {label}"):
+                entry = fixtures.evidence(
+                    packet, snippet=snippet, start_line=start, end_line=end
+                )
+                record = fixtures.hand_record(
+                    packet, findings=[fixtures.finding(packet, evidence_entries=[entry])]
+                )
+                validation = self.validate(packet, record)
+                anchor = validation["anchors"][0]
+                self.assertEqual("resolved", anchor["status"])
+                self.assertEqual((start, end), (anchor["start_line"], anchor["end_line"]))
+        with self.subTest("R13 lone trailing CR"):
+            lone = fixtures.anchor_packet(
+                self.root, b"value\r", packet_name="packet-lone-cr"
+            )
+            entry = fixtures.evidence(lone, snippet="value")
+            record = fixtures.hand_record(
+                lone, findings=[fixtures.finding(lone, evidence_entries=[entry])]
+            )
+            validation = self.validate(lone, record)
+            self.assertEqual("unlocated", validation["anchors"][0]["status"])
+        with self.subTest("R13 para separator"):
+            separator = fixtures.anchor_packet(
+                self.root,
+                "alpha\u2028beta\n".encode("utf-8"),
+                packet_name="packet-u2028",
+            )
+            entry = fixtures.evidence(
+                separator,
+                snippet="alpha\u2028beta",
+                start_line=1,
+                end_line=1,
+            )
+            record = fixtures.hand_record(
+                separator, findings=[fixtures.finding(separator, evidence_entries=[entry])]
+            )
+            validation = self.validate(separator, record)
+            self.assertEqual("resolved", validation["anchors"][0]["status"])
+
+    def test_r14_deleted_side_evidence_keeps_the_old_revision(self) -> None:
+        packet = fixtures.hand_packet(
+            self.root,
+            mode="commit",
+            request={
+                "paths": ["src/module.py"],
+                "context_paths": [],
+                "base": None,
+                "head": None,
+                "commit": OID_B,
+                "revision": None,
+            },
+            resolved={
+                "object_format": "sha1",
+                "base_oid": None,
+                "head_oid": OID_B,
+                "comparison_base_oid": None,
+            },
+            sources=[
+                {
+                    "name": "old",
+                    "path": "src/module.py",
+                    "origin": "git",
+                    "revision": OID_A,
+                    "git_oid": OID_A,
+                    "git_mode": "100644",
+                    "availability": "text",
+                    "payload": b"def guard():\n    return strict\n",
+                }
+            ],
+            items=[
+                {"layer": "commit", "status": "D", "path": "src/module.py", "before": "old"}
+            ],
+        )
+        entry = fixtures.evidence(
+            packet,
+            snippet="    return strict",
+            start_line=2,
+            end_line=2,
+            source_name="old",
+        )
+        record = fixtures.hand_record(
+            packet, findings=[fixtures.finding(packet, evidence_entries=[entry])]
+        )
+        validation = self.validate(packet, record)
+        anchor = validation["anchors"][0]
+        self.assertEqual("resolved", anchor["status"])
+        self.assertEqual(OID_A, anchor["revision"])
+        self.assertEqual("git", anchor["origin"])
+        self.assertEqual(2, anchor["start_line"])
+        self.assertIsNone(packet["scope"]["items"][0]["after"])
+
+    def test_r15_strict_json_input_rejection(self) -> None:
+        packet = fixtures.anchor_packet(self.root, b"x = 1\n")
+        record = fixtures.hand_record(packet)
+        valid_bytes = json.dumps(record).encode("utf-8")
+        cases = {
+            "duplicate key": (b'{"schema_version": "fas-review-record/1", "schema_version": "x"}', "E_JSON_DUPLICATE_KEY"),
+            "nan": (b'{"schema_version": NaN}', "E_JSON_CONSTANT"),
+            "infinity": (b'{"schema_version": Infinity}', "E_JSON_CONSTANT"),
+            "invalid utf-8": (b'{"schema_version": "\xff\xfe"}', "E_JSON_ENCODING"),
+            "byte-order mark": (b"\xef\xbb\xbf" + valid_bytes, "E_JSON_ENCODING"),
+            "non object root": (b"[1, 2]", "E_JSON_ROOT"),
+            "syntax": (b'{"schema_version":}', "E_JSON_SYNTAX"),
+        }
+        for label, (raw, code) in cases.items():
+            with self.subTest(f"R15 {label}"):
+                path = self.root / f"{label.replace(' ', '-')}.json"
+                path.write_bytes(raw)
+                self.assertCode(code, review_record.load_json, path)
+        with self.subTest("R15 extra field"):
+            broken = deepcopy(record)
+            broken["reviewed_paths"] = ["src/module.py"]
+            self.assertCode(
+                "E_SCHEMA", review_record.validate_document, broken, "record"
+            )
+        with self.subTest("R15 unknown version"):
+            broken = deepcopy(record)
+            broken["schema_version"] = "fas-review-record/0"
+            self.assertCode(
+                "E_SCHEMA", review_record.validate_document, broken, "record"
+            )
+
+    def test_r16_context_finding_survives_partial_coverage(self) -> None:
+        packet = fixtures.hand_packet(
+            self.root,
+            sources=[
+                {
+                    "name": "changed",
+                    "path": "src/module.py",
+                    "origin": "worktree",
+                    "availability": "text",
+                    "payload": b"changed = True\n",
+                },
+                {
+                    "name": "context",
+                    "path": "config/runtime.json",
+                    "origin": "worktree",
+                    "availability": "text",
+                    "payload": b'{"limit": 32}\n',
+                },
+            ],
+            items=[
+                {
+                    "layer": "worktree",
+                    "status": "A",
+                    "path": "src/module.py",
+                    "after": "changed",
+                }
+            ],
+        )
+        item_id = packet["scope"]["items"][0]["id"]
+        entry = {
+            "source_id": packet["source_ids"]["context"],
+            "start_line": 1,
+            "end_line": 1,
+            "snippet": '{"limit": 32}',
+        }
+        record = fixtures.hand_record(
+            packet,
+            coverage=[
+                {
+                    "item_id": item_id,
+                    "status": "not_reviewed",
+                    "reason": "Only the consumer configuration was inspected.",
+                }
+            ],
+            findings=[fixtures.finding(packet, evidence_entries=[entry])],
+        )
+        validation = self.validate(packet, record)
+        self.assertEqual("partial", validation["coverage_status"])
+        self.assertEqual(1, validation["finding_count"])
+        self.assertEqual("resolved", validation["anchors"][0]["status"])
+        report = review_record.finish_report(
+            validation, {"status": "captured_inputs_match", "changed_paths": []}
+        )
+        self.assertEqual(4, report["exit_code"])
+
+    def test_r17_concerns_and_failed_verification_force_exit_four(self) -> None:
+        packet = fixtures.anchor_packet(self.root, b"x = 1\n")
+        item_id = packet["scope"]["items"][0]["id"]
+        base = fixtures.hand_record(packet)
+        matched = {"status": "captured_inputs_match", "changed_paths": []}
+        with self.subTest("R17 concern"):
+            record = fixtures.hand_record(
+                packet,
+                concerns=[
+                    {
+                        "id": "C-1",
+                        "summary": "A second caller may bypass the guard.",
+                        "item_ids": [item_id],
+                        "missing_evidence": "Caller inventory was not captured.",
+                        "impact_if_true": "The guard is not an enforced boundary.",
+                    }
+                ],
+            )
+            validation = self.validate(packet, record)
+            self.assertEqual(1, validation["concern_count"])
+            self.assertEqual(4, review_record.finish_report(validation, matched)["exit_code"])
+        with self.subTest("R17 failed verification"):
+            record = fixtures.hand_record(
+                packet,
+                verification=[
+                    {
+                        "id": "V-1",
+                        "label": "Runtime reproduction",
+                        "status": "failed",
+                        "observation": "The reproduction raised TypeError.",
+                    }
+                ],
+            )
+            validation = self.validate(packet, record)
+            self.assertEqual(4, review_record.finish_report(validation, matched)["exit_code"])
+        with self.subTest("R17 not_run verification"):
+            record = fixtures.hand_record(
+                packet,
+                verification=[
+                    {
+                        "id": "V-1",
+                        "label": "Runtime reproduction",
+                        "status": "not_run",
+                        "observation": "Only source inspection was performed.",
+                    }
+                ],
+            )
+            validation = self.validate(packet, record)
+            self.assertEqual(0, review_record.finish_report(validation, matched)["exit_code"])
+        with self.subTest("R17 base"):
+            validation = self.validate(packet, base)
+            self.assertEqual(0, review_record.finish_report(validation, matched)["exit_code"])
+
+    def test_r18_existing_report_output_is_not_overwritten(self) -> None:
+        packet = fixtures.anchor_packet(self.root, b"x = 1\n")
+        record = fixtures.hand_record(packet)
+        record_path = fixtures.write_json(self.root / "record.json", record)
+        packet_path = packet["packet"]
+        scope_bytes = (packet_path / "scope.json").read_bytes()
+        report_path = self.root / "report.json"
+        report_path.write_bytes(b"existing report\n")
+        code, payload = fixtures.run_cli(
+            [
+                "check",
+                "--repo",
+                str(self.root / "repo"),
+                "--packet",
+                str(packet_path),
+                "--record",
+                str(record_path),
+                "--output",
+                str(report_path),
+            ]
+        )
+        self.assertEqual(2, code)
+        self.assertEqual(2, payload["exit_code"])
+        self.assertIsNone(payload["artifact"])
+        self.assertEqual("E_OUTPUT", payload["code"])
+        self.assertEqual(b"existing report\n", report_path.read_bytes())
+        self.assertEqual(scope_bytes, (packet_path / "scope.json").read_bytes())
+        self.assertEqual(record, json.loads(record_path.read_bytes()))
+
+    def test_r19_invalid_input_reports_null_statistics(self) -> None:
+        with self.subTest("R19 direct"):
+            report = review_record.finish_report(
+                {
+                    "validation": "invalid",
+                    "problems": [
+                        {
+                            "code": "E_JSON_SYNTAX",
+                            "pointer": "",
+                            "message": "record.json:1:1: Expecting value",
+                        }
+                    ],
+                },
+                {"status": "not_checked", "changed_paths": []},
+            )
+            review_record.validate_document(report, "check_report")
+            self.assertEqual("invalid", report["validation"])
+            self.assertEqual("unavailable", report["coverage_status"])
+            self.assertEqual("not_checked", report["freshness"]["status"])
+            self.assertIsNone(report["finding_count"])
+            self.assertIsNone(report["concern_count"])
+            self.assertIsNone(report["item_counts"])
+            self.assertEqual([], report["anchors"])
+            self.assertEqual(2, report["exit_code"])
+        with self.subTest("R19 cli"):
+            packet = fixtures.anchor_packet(self.root, b"x = 1\n")
+            record_path = self.root / "broken-record.json"
+            record_path.write_bytes(b'{"schema_version": NaN}')
+            report_path = self.root / "invalid-report.json"
+            code, payload = fixtures.run_cli(
+                [
+                    "check",
+                    "--repo",
+                    str(self.root / "repo"),
+                    "--packet",
+                    str(packet["packet"]),
+                    "--record",
+                    str(record_path),
+                    "--output",
+                    str(report_path),
+                ]
+            )
+            self.assertEqual(2, code)
+            self.assertEqual("invalid", payload["result"])
+            report = json.loads(report_path.read_bytes())
+            review_record.validate_document(report, "check_report")
+            self.assertIsNone(report["finding_count"])
+            self.assertIsNone(report["item_counts"])
+
+
+if __name__ == "__main__":
+    unittest.main()

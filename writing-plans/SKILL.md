@@ -1,8 +1,8 @@
 ---
 name: writing-plans
-description: Plan implementation from settled decisions, including handoffs and multi-session work.
+description: Turn settled decisions into an implementation plan for requested planning, handoffs, or multi-session work.
 metadata:
-  version: 9.0.0
+  version: 9.1.0
 ---
 
 # Writing Plans

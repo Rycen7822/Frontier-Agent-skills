@@ -20,7 +20,7 @@
   "properties": {
     "schema_version": {"const": "source-archive-evidence/3.0"},
     "layout": {"enum": ["bundle", "skills_only"]},
-    "bundle_version": {"const": "10.0.0"},
+    "bundle_version": {"const": "11.0.0"},
     "root_prefix": {"oneOf": [{"const": "frontier-engineering-bundle"}, {"type": "null"}]},
     "skill_versions": {
       "type": "object",
@@ -38,16 +38,16 @@
         "writing-plans"
       ],
       "properties": {
-        "long-document-segmented-writing": {"const": "3.0.0"},
+        "long-document-segmented-writing": {"const": "3.1.0"},
         "skill-evaluator": {"const": "5.0.1"},
-        "software-quality-workflows": {"const": "12.1.0"},
-        "writing-plans": {"const": "9.0.0"},
-        "code-review": {"const": "1.0.1"},
-        "code-simplifier": {"const": "1.0.1"},
-        "codebase-investigation": {"const": "1.0.1"},
-        "debugging": {"const": "1.0.1"},
-        "runtime-verification": {"const": "1.0.1"},
-        "software-design": {"const": "1.0.1"}
+        "software-quality-workflows": {"const": "13.0.0"},
+        "writing-plans": {"const": "9.1.0"},
+        "code-review": {"const": "2.0.0"},
+        "code-simplifier": {"const": "1.1.0"},
+        "codebase-investigation": {"const": "1.1.0"},
+        "debugging": {"const": "1.1.0"},
+        "runtime-verification": {"const": "1.1.0"},
+        "software-design": {"const": "1.1.0"}
       }
     },
     "source_tree_hash": {"$ref": "#/$defs/hash"},

@@ -1,9 +1,9 @@
 ---
 name: runtime-verification
-description: Verify requested behavior through a running UI, CLI, service, or installed plugin.
+description: Resolve evidence gaps that require actual running or installed behavior, beyond static inspection.
 license: MIT
 metadata:
-  version: 1.0.1
+  version: 1.1.0
   hosts: [codex, hermes-agent]
 ---
 

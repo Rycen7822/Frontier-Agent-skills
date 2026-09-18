@@ -49,7 +49,7 @@ EXPECTED_ACTIVATION = {
     'runtime-verification': True,
     'skill-evaluator': False,
     'software-design': True,
-    'software-quality-workflows': True,
+    'software-quality-workflows': False,
     'writing-plans': True,
 }
 MAX_CLI_OUTPUT = 1024 * 1024

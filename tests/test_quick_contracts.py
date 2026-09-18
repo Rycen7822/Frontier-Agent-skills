@@ -17,9 +17,9 @@ class QuickContracts(unittest.TestCase):
         generated = json.loads(
             (ROOT / "frontier-engineering.bundle.json").read_text(encoding="utf-8")
         )
-        self.assertEqual("10.0.0", source["bundle_version"])
-        self.assertEqual(8, generated["compatible_schema_epoch"])
-        self.assertEqual("frontier-engineering/10.0.0", generated["bundle_id"])
+        self.assertEqual("11.0.0", source["bundle_version"])
+        self.assertEqual(9, generated["compatible_schema_epoch"])
+        self.assertEqual("frontier-engineering/11.0.0", generated["bundle_id"])
         self.assertFalse(source["remote_writes"])
         self.assertEqual("implicit_local_pilot", source["activation_ceiling"])
 
@@ -41,12 +41,19 @@ class QuickContracts(unittest.TestCase):
                 agents["policy"]["allow_implicit_invocation"],
                 generated["skills"][skill_id]["allow_implicit_invocation"],
             )
-        evaluator_prompt = yaml.safe_load(
-            (ROOT / "skill-evaluator" / "agents" / "openai.yaml").read_text(
-                encoding="utf-8"
+        explicit_skills = {"software-quality-workflows", "skill-evaluator"}
+        for skill_id, item in source_skills.items():
+            expected = skill_id not in explicit_skills
+            self.assertIs(
+                expected,
+                generated["skills"][skill_id]["allow_implicit_invocation"],
+                skill_id,
             )
-        )["interface"]["default_prompt"]
-        self.assertIn("$skill-evaluator", evaluator_prompt)
+        for skill_id in explicit_skills:
+            prompt = yaml.safe_load(
+                (ROOT / skill_id / "agents" / "openai.yaml").read_text(encoding="utf-8")
+            )["interface"]["default_prompt"]
+            self.assertIn(f"${skill_id}", prompt)
 
 
 if __name__ == "__main__":

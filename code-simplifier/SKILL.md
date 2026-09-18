@@ -1,9 +1,9 @@
 ---
 name: code-simplifier
-description: Simplify selected code for clarity and maintainability while preserving intended behavior.
+description: Simplify user-selected code for clarity while preserving intended behavior; not a mandatory post-edit cleanup.
 license: Apache-2.0
 metadata:
-  version: 1.0.1
+  version: 1.1.0
   hosts: [codex, hermes-agent]
 ---
 

@@ -1,0 +1,736 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FAS review scope, review record, and check report",
+  "description": "Draft 2020-12 definitions for fas-review-scope/1, fas-review-record/1 and fas-review-check/1. The root reference validates a review record; entry schemas for the other two roots are built from the same $defs at runtime.",
+  "$ref": "#/$defs/record",
+  "$defs": {
+    "sha256_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "git_oid": {
+      "type": "string",
+      "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "oid_or_null": {
+      "anyOf": [
+        {"$ref": "#/$defs/git_oid"},
+        {"type": "null"}
+      ]
+    },
+    "digest_or_null": {
+      "anyOf": [
+        {"$ref": "#/$defs/sha256_digest"},
+        {"type": "null"}
+      ]
+    },
+    "git_mode": {
+      "enum": ["100644", "100755", "120000", "160000", null]
+    },
+    "item_id": {
+      "type": "string",
+      "pattern": "^I-[0-9]{6}$"
+    },
+    "source_id": {
+      "type": "string",
+      "pattern": "^S-[0-9]{6}$"
+    },
+    "source_id_or_null": {
+      "anyOf": [
+        {"$ref": "#/$defs/source_id"},
+        {"type": "null"}
+      ]
+    },
+    "revision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "\\S"
+    },
+    "text_block": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8192,
+      "pattern": "\\S"
+    },
+    "snippet_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "rel_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[^/\\u0000][^\\u0000]*$"
+    },
+    "text_list": {
+      "type": "array",
+      "maxItems": 20000,
+      "items": {"$ref": "#/$defs/text_block"}
+    },
+    "line_number_or_null": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "count_or_null": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "layer", "status", "path", "before", "after"],
+      "properties": {
+        "id": {"$ref": "#/$defs/item_id"},
+        "layer": {
+          "enum": ["commit", "range", "index", "worktree", "untracked", "snapshot"]
+        },
+        "status": {"enum": ["A", "M", "D", "T", "P"]},
+        "path": {"$ref": "#/$defs/rel_path"},
+        "before": {"$ref": "#/$defs/source_id_or_null"},
+        "after": {"$ref": "#/$defs/source_id_or_null"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "A"}}},
+          "then": {
+            "properties": {
+              "before": {"type": "null"},
+              "after": {"$ref": "#/$defs/source_id"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "D"}}},
+          "then": {
+            "properties": {
+              "before": {"$ref": "#/$defs/source_id"},
+              "after": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"enum": ["M", "T"]}}},
+          "then": {
+            "properties": {
+              "before": {"$ref": "#/$defs/source_id"},
+              "after": {"$ref": "#/$defs/source_id"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "P"}}},
+          "then": {
+            "properties": {
+              "before": {"type": "null"},
+              "after": {"$ref": "#/$defs/source_id"}
+            }
+          }
+        }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "origin",
+        "revision",
+        "git_oid",
+        "git_mode",
+        "availability",
+        "sha256",
+        "size_bytes",
+        "line_count"
+      ],
+      "properties": {
+        "id": {"$ref": "#/$defs/source_id"},
+        "path": {"$ref": "#/$defs/rel_path"},
+        "origin": {"enum": ["git", "index", "worktree"]},
+        "revision": {"$ref": "#/$defs/oid_or_null"},
+        "git_oid": {"$ref": "#/$defs/oid_or_null"},
+        "git_mode": {"$ref": "#/$defs/git_mode"},
+        "availability": {
+          "enum": [
+            "text",
+            "binary",
+            "symlink",
+            "submodule",
+            "too_large",
+            "budget_exhausted",
+            "unreadable"
+          ]
+        },
+        "sha256": {"$ref": "#/$defs/digest_or_null"},
+        "size_bytes": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "line_count": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"origin": {"const": "git"}}},
+          "then": {
+            "properties": {
+              "revision": {"$ref": "#/$defs/git_oid"},
+              "git_oid": {"$ref": "#/$defs/git_oid"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"origin": {"const": "index"}}},
+          "then": {
+            "properties": {
+              "revision": {"type": "null"},
+              "git_oid": {"$ref": "#/$defs/git_oid"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"origin": {"const": "worktree"}}},
+          "then": {
+            "properties": {
+              "revision": {"type": "null"},
+              "git_oid": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"availability": {"const": "text"}}},
+          "then": {
+            "properties": {
+              "sha256": {"$ref": "#/$defs/sha256_digest"},
+              "size_bytes": {"type": "integer", "minimum": 0},
+              "line_count": {"type": "integer", "minimum": 0}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"availability": {"enum": ["binary", "symlink"]}}},
+          "then": {
+            "properties": {
+              "sha256": {"$ref": "#/$defs/sha256_digest"},
+              "size_bytes": {"type": "integer", "minimum": 0},
+              "line_count": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "availability": {
+                "enum": ["submodule", "too_large", "budget_exhausted", "unreadable"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "sha256": {"type": "null"},
+              "line_count": {"type": "null"}
+            }
+          }
+        }
+      ]
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paths", "context_paths", "base", "head", "commit", "revision"],
+      "properties": {
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20000,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/rel_path"}
+        },
+        "context_paths": {
+          "type": "array",
+          "maxItems": 20000,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/rel_path"}
+        },
+        "base": {"$ref": "#/$defs/revision_or_null"},
+        "head": {"$ref": "#/$defs/revision_or_null"},
+        "commit": {"$ref": "#/$defs/revision_or_null"},
+        "revision": {"$ref": "#/$defs/revision_or_null"}
+      }
+    },
+    "revision_or_null": {
+      "anyOf": [
+        {"$ref": "#/$defs/revision"},
+        {"type": "null"}
+      ]
+    },
+    "resolved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_format", "base_oid", "head_oid", "comparison_base_oid"],
+      "properties": {
+        "object_format": {"enum": ["sha1", "sha256"]},
+        "base_oid": {"$ref": "#/$defs/oid_or_null"},
+        "head_oid": {"$ref": "#/$defs/oid_or_null"},
+        "comparison_base_oid": {"$ref": "#/$defs/oid_or_null"}
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "mode",
+        "request",
+        "resolved",
+        "observation",
+        "items",
+        "sources",
+        "limitations"
+      ],
+      "properties": {
+        "schema_version": {"const": "fas-review-scope/1"},
+        "mode": {"enum": ["commit", "range", "workspace", "snapshot"]},
+        "request": {"$ref": "#/$defs/request"},
+        "resolved": {"$ref": "#/$defs/resolved"},
+        "observation": {
+          "enum": ["immutable_commits", "bounded_double_observation"]
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 20000,
+          "items": {"$ref": "#/$defs/item"}
+        },
+        "sources": {
+          "type": "array",
+          "maxItems": 60000,
+          "items": {"$ref": "#/$defs/source"}
+        },
+        "limitations": {"$ref": "#/$defs/text_list"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"mode": {"const": "commit"}}},
+          "then": {
+            "properties": {
+              "observation": {"const": "immutable_commits"},
+              "request": {
+                "properties": {
+                  "base": {"type": "null"},
+                  "head": {"type": "null"},
+                  "commit": {"$ref": "#/$defs/revision"},
+                  "revision": {"type": "null"}
+                }
+              },
+              "resolved": {
+                "properties": {
+                  "base_oid": {"type": "null"},
+                  "head_oid": {"$ref": "#/$defs/git_oid"},
+                  "comparison_base_oid": {"type": "null"}
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {"properties": {"mode": {"const": "range"}}},
+          "then": {
+            "properties": {
+              "observation": {"const": "immutable_commits"},
+              "request": {
+                "properties": {
+                  "base": {"$ref": "#/$defs/revision"},
+                  "head": {"$ref": "#/$defs/revision"},
+                  "commit": {"type": "null"},
+                  "revision": {"type": "null"}
+                }
+              },
+              "resolved": {
+                "properties": {
+                  "base_oid": {"$ref": "#/$defs/git_oid"},
+                  "head_oid": {"$ref": "#/$defs/git_oid"},
+                  "comparison_base_oid": {"$ref": "#/$defs/git_oid"}
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {"properties": {"mode": {"const": "workspace"}}},
+          "then": {
+            "properties": {
+              "observation": {"const": "bounded_double_observation"},
+              "request": {
+                "properties": {
+                  "base": {"type": "null"},
+                  "head": {"type": "null"},
+                  "commit": {"type": "null"},
+                  "revision": {"type": "null"}
+                }
+              },
+              "resolved": {
+                "properties": {
+                  "base_oid": {"type": "null"},
+                  "comparison_base_oid": {"type": "null"}
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {"properties": {"mode": {"const": "snapshot"}}},
+          "then": {
+            "properties": {
+              "request": {
+                "properties": {
+                  "base": {"type": "null"},
+                  "head": {"type": "null"},
+                  "commit": {"type": "null"},
+                  "revision": {"$ref": "#/$defs/revision"}
+                }
+              },
+              "resolved": {
+                "properties": {
+                  "base_oid": {"type": "null"},
+                  "comparison_base_oid": {"type": "null"}
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "coverage_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_id", "status", "reason"],
+      "properties": {
+        "item_id": {"$ref": "#/$defs/item_id"},
+        "status": {"enum": ["reviewed", "partial", "not_reviewed"]},
+        "reason": {
+          "anyOf": [
+            {"$ref": "#/$defs/text_block"},
+            {"type": "null"}
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "reviewed"}}},
+          "then": {"properties": {"reason": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"status": {"enum": ["partial", "not_reviewed"]}}},
+          "then": {"properties": {"reason": {"$ref": "#/$defs/text_block"}}}
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "start_line", "end_line", "snippet"],
+      "properties": {
+        "source_id": {"$ref": "#/$defs/source_id"},
+        "start_line": {"$ref": "#/$defs/line_number_or_null"},
+        "end_line": {"$ref": "#/$defs/line_number_or_null"},
+        "snippet": {
+          "anyOf": [
+            {"$ref": "#/$defs/snippet_text"},
+            {"type": "null"}
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"start_line": {"type": "null"}}},
+          "then": {"properties": {"end_line": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"end_line": {"type": "null"}}},
+          "then": {"properties": {"start_line": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"start_line": {"type": "integer"}}},
+          "then": {"properties": {"end_line": {"type": "integer"}}}
+        },
+        {
+          "if": {"properties": {"snippet": {"type": "null"}}},
+          "then": {
+            "properties": {
+              "start_line": {"type": "null"},
+              "end_line": {"type": "null"}
+            }
+          }
+        }
+      ]
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "severity",
+        "summary",
+        "relation",
+        "trigger",
+        "impact",
+        "item_ids",
+        "evidence",
+        "fix"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^F-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "severity": {"enum": ["critical", "high", "medium", "low"]},
+        "summary": {"$ref": "#/$defs/text_block"},
+        "relation": {"enum": ["introduced", "pre_existing", "not_determined"]},
+        "trigger": {"$ref": "#/$defs/text_block"},
+        "impact": {"$ref": "#/$defs/text_block"},
+        "item_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20000,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/item_id"}
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20000,
+          "items": {"$ref": "#/$defs/evidence"}
+        },
+        "fix": {
+          "anyOf": [
+            {"$ref": "#/$defs/text_block"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "concern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "summary", "item_ids", "missing_evidence", "impact_if_true"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^C-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "summary": {"$ref": "#/$defs/text_block"},
+        "item_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20000,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/item_id"}
+        },
+        "missing_evidence": {"$ref": "#/$defs/text_block"},
+        "impact_if_true": {"$ref": "#/$defs/text_block"}
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "status", "observation"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^V-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "label": {"$ref": "#/$defs/text_block"},
+        "status": {"enum": ["passed", "failed", "not_run"]},
+        "observation": {"$ref": "#/$defs/text_block"}
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "scope_ref",
+        "scope_sha256",
+        "coverage",
+        "findings",
+        "concerns",
+        "verification",
+        "limitations"
+      ],
+      "properties": {
+        "schema_version": {"const": "fas-review-record/1"},
+        "scope_ref": {"const": "scope.json"},
+        "scope_sha256": {"$ref": "#/$defs/sha256_digest"},
+        "coverage": {
+          "type": "array",
+          "maxItems": 20000,
+          "items": {"$ref": "#/$defs/coverage_entry"}
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 20000,
+          "items": {"$ref": "#/$defs/finding"}
+        },
+        "concerns": {
+          "type": "array",
+          "maxItems": 20000,
+          "items": {"$ref": "#/$defs/concern"}
+        },
+        "verification": {
+          "type": "array",
+          "maxItems": 20000,
+          "items": {"$ref": "#/$defs/verification"}
+        },
+        "limitations": {"$ref": "#/$defs/text_list"}
+      }
+    },
+    "item_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "reviewed", "partial", "not_reviewed"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "reviewed": {"type": "integer", "minimum": 0},
+        "partial": {"type": "integer", "minimum": 0},
+        "not_reviewed": {"type": "integer", "minimum": 0}
+      }
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "changed_paths"],
+      "properties": {
+        "status": {
+          "enum": ["captured_inputs_match", "changed", "incomplete", "not_checked"]
+        },
+        "changed_paths": {
+          "type": "array",
+          "maxItems": 20000,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/rel_path"}
+        }
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_id",
+        "evidence_index",
+        "source_id",
+        "path",
+        "origin",
+        "revision",
+        "status",
+        "start_line",
+        "end_line",
+        "candidate_start",
+        "candidate_end"
+      ],
+      "properties": {
+        "finding_id": {
+          "type": "string",
+          "pattern": "^F-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "evidence_index": {"type": "integer", "minimum": 0},
+        "source_id": {"$ref": "#/$defs/source_id"},
+        "path": {"$ref": "#/$defs/rel_path"},
+        "origin": {"enum": ["git", "index", "worktree"]},
+        "revision": {"$ref": "#/$defs/oid_or_null"},
+        "status": {
+          "enum": [
+            "resolved",
+            "ambiguous",
+            "unlocated",
+            "needs_relocation",
+            "unsupported_source"
+          ]
+        },
+        "start_line": {"$ref": "#/$defs/line_number_or_null"},
+        "end_line": {"$ref": "#/$defs/line_number_or_null"},
+        "candidate_start": {"$ref": "#/$defs/line_number_or_null"},
+        "candidate_end": {"$ref": "#/$defs/line_number_or_null"}
+      }
+    },
+    "problem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "pointer", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^E_[A-Z0-9_]+$"
+        },
+        "pointer": {"type": "string", "maxLength": 1024},
+        "message": {"$ref": "#/$defs/text_block"}
+      }
+    },
+    "check_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "validation",
+        "coverage_status",
+        "freshness",
+        "finding_count",
+        "concern_count",
+        "item_counts",
+        "anchors",
+        "problems",
+        "limitations",
+        "exit_code"
+      ],
+      "properties": {
+        "schema_version": {"const": "fas-review-check/1"},
+        "validation": {"enum": ["valid", "invalid"]},
+        "coverage_status": {
+          "enum": ["all_declared_reviewed", "partial", "nothing_in_scope", "unavailable"]
+        },
+        "freshness": {"$ref": "#/$defs/freshness"},
+        "finding_count": {"$ref": "#/$defs/count_or_null"},
+        "concern_count": {"$ref": "#/$defs/count_or_null"},
+        "item_counts": {
+          "anyOf": [
+            {"$ref": "#/$defs/item_counts"},
+            {"type": "null"}
+          ]
+        },
+        "anchors": {
+          "type": "array",
+          "maxItems": 200000,
+          "items": {"$ref": "#/$defs/anchor"}
+        },
+        "problems": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {"$ref": "#/$defs/problem"}
+        },
+        "limitations": {"$ref": "#/$defs/text_list"},
+        "exit_code": {"enum": [0, 2, 4]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"validation": {"const": "invalid"}}},
+          "then": {
+            "properties": {
+              "coverage_status": {"const": "unavailable"},
+              "freshness": {
+                "properties": {"status": {"const": "not_checked"}}
+              },
+              "finding_count": {"type": "null"},
+              "concern_count": {"type": "null"},
+              "item_counts": {"type": "null"},
+              "anchors": {"maxItems": 0},
+              "exit_code": {"const": 2}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

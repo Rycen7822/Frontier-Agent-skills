@@ -1,9 +1,9 @@
 ---
 name: software-quality-workflows
-description: Guide software implementation and maintenance with proportionate design, testing, and completion.
+description: Apply explicitly requested engineering-quality guidance to implementation and maintenance work.
 license: MIT
 metadata:
-  version: 12.1.0
+  version: 13.0.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:

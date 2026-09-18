@@ -1,5 +1,11 @@
 # Release Notes
 
+## Bundle 11.0.0 bounded review scope and evidence
+
+Bundle 11.0.0 keeps the ten skill entrypoints and makes two activation changes: `software-quality-workflows` and `skill-evaluator` are explicit-only, while the other eight skills remain implicit-eligible. `code-review` gains a bounded review helper with two public commands, `scope` and `check`: scope capture covers commit, range, workspace and snapshot modes with separate staged, unstaged and untracked layers; a single JSON schema defines the scope, record and check-report shapes; and check reports structural validity, freshness and code-location status without issuing a code verdict or publication permission. Binary, oversized and otherwise unavailable content stays visible as a limitation instead of a silent pass.
+
+The retired review-result, publication-readiness and codex-task-result interfaces are removed rather than aliased; the migration note records the breaking change. Bundle identity moves to `frontier-engineering/11.0.0` at schema epoch 9. Packaging, archives and smoke checks remain engineering checks: no model evaluation was executed for this cut, and no effect on model behavior is claimed.
+
 ## Bundle 10.0.0 proportionate skill guidance
 
 Planning and long-document writing now keep their main entries short, with conditional references for handoffs, recovery and segmented assembly. Plans can evolve during authorized implementation, and combined planning/execution requests continue after the plan. SQW retains its general development scope, YAGNI testing and evidence reuse; all ten discovery descriptions state their task directly.
