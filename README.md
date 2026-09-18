@@ -2,7 +2,7 @@
 
 This repository is the development source for the dual-host `frontier-engineering/11.1.0` bundle. One `frontier-engineering-plugin` contains ten skills for Codex and Hermes Agent. Installed copies are separate from source; local edits take effect after rebuilding and reinstalling.
 
-Unreleased source update: `code-simplifier` 1.2.0 adds conditional structural-simplification and validation references. The bundle/plugin release identity is unchanged; this source integration is not a new published release. See [the component maintenance note](docs/code-simplifier-1.2.0.md).
+Bundle 11.1.0 publishes `code-simplifier` 1.2.0 with conditional structural-simplification and validation references; the component advances from 1.1.0 while the other nine skills, the activation matrix and the compatible schema epoch stay unchanged. See [the component maintenance note](docs/code-simplifier-1.2.0.md).
 
 ## Skill entrypoints
 
