@@ -1,5 +1,6 @@
 # Agent-local state and work documents
 /CODEX_STATE.md
+/.pi/
 /share/
 /.work/*.md
 /.work/tmp/
