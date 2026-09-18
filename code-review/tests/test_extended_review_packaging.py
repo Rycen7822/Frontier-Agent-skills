@@ -265,7 +265,7 @@ class ExtendedReviewPackagingTests(unittest.TestCase):
             build(ROOT, plugin, evidence, marketplace, archive)
             validate_plugin_build(plugin, evidence, source_root=ROOT)
             evidence_record = json.loads(evidence.read_text(encoding="utf-8"))
-            self.assertEqual("frontier-engineering/11.0.0", evidence_record["bundle_id"])
+            self.assertEqual("frontier-engineering/11.0.1", evidence_record["bundle_id"])
             self.assertEqual(10, len(evidence_record["skill_versions"]))
             self.assertIs(
                 False, evidence_record["skill_activation"]["software-quality-workflows"]
@@ -281,6 +281,149 @@ class ExtendedReviewPackagingTests(unittest.TestCase):
             evidence_records.append(evidence_record["plugin_tree_hash"])
         self.assertEqual(archives[0], archives[1])
         self.assertEqual(evidence_records[0], evidence_records[1])
+
+    def test_n13_packaged_helper_keeps_the_repaired_behaviors(self) -> None:
+        fixtures.commit_files(
+            self.repo,
+            {"src/module.py": "value = 1\n", "config/runtime.json": '{"limit": 32}\n'},
+        )
+        fixtures.write_file(self.repo, "src/module.py", "value = 2\n")
+        skill = self.standalone_skill()
+        script = skill / "scripts" / "review_support.py"
+        cwd = self.root / "n13-cwd"
+        cwd.mkdir()
+        environment = {
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": os.environ.get("HOME", ""),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+
+        def packaged(*arguments: str):
+            completed = subprocess.run(
+                [sys.executable, str(script), *arguments],
+                cwd=cwd,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=120,
+            )
+            payload = json.loads(completed.stdout) if completed.stdout.strip() else None
+            return completed.returncode, payload
+
+        packet = self.root / "n13-packet"
+        code, payload = packaged(
+            "scope",
+            "--repo",
+            str(self.repo),
+            "--mode",
+            "workspace",
+            "--path",
+            "src/module.py",
+            "--context-path",
+            "config/runtime.json",
+            "--output",
+            str(packet),
+        )
+        self.assertEqual(0, code, payload)
+        scope = json.loads((packet / "scope.json").read_text(encoding="utf-8"))
+        self.assertEqual(1, len(scope["items"]))
+        record = {
+            "schema_version": "fas-review-record/1",
+            "scope_ref": "scope.json",
+            "scope_sha256": payload["scope_sha256"],
+            "coverage": [
+                {"item_id": item["id"], "status": "reviewed", "reason": None}
+                for item in scope["items"]
+            ],
+            "findings": [],
+            "concerns": [],
+            "verification": [],
+            "limitations": [],
+        }
+        record_path = fixtures.write_json(self.root / "n13-record.json", record)
+
+        def check(name: str, repo_argument: Path | None = None):
+            report = self.root / f"n13-{name}-report.json"
+            code, payload = packaged(
+                "check",
+                "--repo",
+                str(repo_argument or self.repo),
+                "--packet",
+                str(packet),
+                "--record",
+                str(record_path),
+                "--output",
+                str(report),
+            )
+            return code, payload, report
+
+        with self.subTest("N13 packaged check matches on the captured inputs"):
+            code, payload, report = check("baseline")
+            self.assertEqual(0, code, payload)
+            self.assertEqual("captured_inputs_match", payload["freshness"])
+        with self.subTest("N13 packaged check sees a context change"):
+            fixtures.write_file(self.repo, "config/runtime.json", '{"limit": 64}\n')
+            code, payload, report = check("context")
+            self.assertEqual(4, code, payload)
+            self.assertEqual("changed", payload["freshness"])
+            self.assertIn(
+                "config/runtime.json",
+                json.loads(report.read_text(encoding="utf-8"))["freshness"]["changed_paths"],
+            )
+        with self.subTest("N13 packaged invalid input yields a bounded report"):
+            fixtures.write_file(self.repo, "config/runtime.json", '{"limit": 32}\n')
+            sentinel = "S" * 9000
+            broken_path = fixtures.write_json(
+                self.root / "n13-broken-record.json", {**record, "limitations": [sentinel]}
+            )
+            report = self.root / "n13-bounded-report.json"
+            code, payload = packaged(
+                "check",
+                "--repo",
+                str(self.repo),
+                "--packet",
+                str(packet),
+                "--record",
+                str(broken_path),
+                "--output",
+                str(report),
+            )
+            self.assertEqual(2, code, payload)
+            written = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual("invalid", written["validation"])
+            self.assertLessEqual(len(written["problems"][0]["message"]), 512)
+            self.assertNotIn(sentinel, report.read_text(encoding="utf-8"))
+        with self.subTest("N13 packaged check uses the real repository root"):
+            inside = self.repo / "n13-inside.json"
+            code, payload = packaged(
+                "check",
+                "--repo",
+                str(self.repo / "src"),
+                "--packet",
+                str(packet),
+                "--record",
+                str(record_path),
+                "--output",
+                str(inside),
+            )
+            self.assertEqual(2, code, payload)
+            self.assertEqual("E_OUTPUT", payload["code"])
+            self.assertFalse(inside.exists())
+            outside = self.root / "n13-outside.json"
+            code, payload = packaged(
+                "check",
+                "--repo",
+                str(self.repo / "src"),
+                "--packet",
+                str(packet),
+                "--record",
+                str(record_path),
+                "--output",
+                str(outside),
+            )
+            self.assertEqual(0, code, payload)
+            self.assertTrue(outside.is_file())
 
     def test_p06_no_active_consumer_uses_retired_interfaces(self) -> None:
         listing = fixtures.git(ROOT, "ls-files", "-z")

@@ -1,6 +1,6 @@
 # Migrating to FAS 11.0.0
 
-FAS 11.0.0 is a breaking change for consumers of the retired review interfaces. The bundle identity moves to `frontier-engineering/11.0.0` at compatible schema epoch 9.
+FAS 11.0.0 is a breaking change for consumers of the retired review interfaces. The bundle identity moved to `frontier-engineering/11.0.0` at compatible schema epoch 9, and the 11.0.1 patch keeps that shape while correcting the scope exit codes and the treatment of declared context paths.
 
 ## Retired interfaces
 
@@ -26,7 +26,7 @@ python3 code-review/scripts/review_support.py scope --repo "$REPO" --mode worksp
 python3 code-review/scripts/review_support.py check --repo "$REPO" --packet "$WORK/packet" --record "$WORK/review-record.json" --output "$WORK/check-report.json"
 ```
 
-Scope modes are `commit` (first parent), `range` (unique merge base), `workspace` (staged, unstaged, and untracked layers kept separate) and `snapshot` (a commit, or the reserved revision `WORKTREE`). Output directories and report files must not exist yet; existing paths are never overwritten or reused.
+Scope modes are `commit` (first parent), `range` (unique merge base), `workspace` (staged, unstaged, and untracked layers kept separate) and `snapshot` (a commit, or the reserved revision `WORKTREE`). Output directories and report files must not exist yet; existing paths are never overwritten or reused. A sealed scope returns 0 when every captured source holds text, 4 when any source is non-text, oversized, or left uncaptured, and 2 without writing `scope.json` on a hard error. Declared context paths stay evidence rather than review items, and they take part in both capture and freshness.
 
 ## What a check result does and does not mean
 

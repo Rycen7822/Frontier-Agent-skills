@@ -17,9 +17,9 @@ Commit mode compares a commit with its first parent. Range mode uses the unique 
     python3 "$REVIEW_SKILL_DIR/scripts/review_support.py" scope --repo "$REPO" --mode workspace --path . --output "$WORK/packet-workspace"
     python3 "$REVIEW_SKILL_DIR/scripts/review_support.py" scope --repo "$REPO" --mode snapshot --revision HEAD --path code-review --output "$WORK/packet-snapshot"
 
-Paths are literal repository-relative paths. Context paths add source evidence, not review items. Renames are represented as deletion and addition. Markdown, tests, configuration, and generated files are not excluded by category. Git-ignored untracked files are outside this helper's scope; disclose that limit rather than claiming they were captured.
+Paths are literal repository-relative paths. Context paths add source evidence, not review items, and they take part in freshness: a later change to a context file's bytes, mode, presence, or index entry marks the packet changed. Renames are represented as deletion and addition. Markdown, tests, configuration, and generated files are not excluded by category. Git-ignored untracked files are outside this helper's scope; disclose that limit rather than claiming they were captured.
 
-Use the returned scope digest and item/source identifiers for the record. Read captured source objects for evidence tied to that packet. New context requires a new packet; do not edit a completed scope.json or invent source identifiers. Oversized, binary, or unavailable content stays visible as a limitation.
+Use the returned scope digest and item/source identifiers for the record. Read captured source objects for evidence tied to that packet. New context requires a new packet; do not edit a completed scope.json or invent source identifiers. Oversized, binary, or unavailable content stays visible as a limitation. A sealed packet whose sources are all text returns 0; a sealed packet with any non-text or unavailable source returns 4 while still reporting the limitation. A hard error returns 2 and writes no scope.json.
 
 ## Check a record
 
@@ -29,10 +29,12 @@ Use the record schema only when the result has a machine consumer. The record co
 
 Exit 2 reports invalid input, missing dependencies, conflicting output, or failed integrity checks. Exit 4 preserves a valid bounded result with partial coverage, changed or incomplete inputs, unresolved locations, material concerns, or failed verification. Exit 0 means the performed mechanical checks were satisfied; it is not a favorable code verdict. A critical finding does not itself make its record structurally invalid. A not-run test does not require the helper to execute it.
 
+The report carries the scope's own limitation notes together with the record's: the merged list keeps scope notes first, preserves order, and de-duplicates exact repeats, so a limitation the tool generated is not lost when the record does not copy it. Limitations alone do not change the exit code.
+
 The checker does not rewrite the record. Ambiguous snippets remain ambiguous. A relocation candidate is a location to inspect, not an automatic edit or a reason to discard the finding. Use a new output file after correcting an invalid record. Never delete an item merely to obtain complete coverage.
 
 ## Limits
 
-Coverage is a producer declaration, not proof that a model understood every file. Working-tree capture uses bounded double observation, not an atomic whole-repository snapshot. Freshness concerns only captured sources and the selected range; it does not prove that every relevant consumer was found.
+Coverage is a producer declaration, not proof that a model understood every file. Working-tree capture uses bounded double observation, not an atomic whole-repository snapshot. Freshness concerns only captured sources (items and declared context paths) and the selected range; it does not prove that every relevant consumer was found.
 
 The helper does not execute verification text, validate a defect's business meaning, issue merge permission, or replace the host's command evidence. Keep important unverified facts explicit. Unreadable inputs must not become zero findings or fabricated success. Preserve the user's work and existing sessions.

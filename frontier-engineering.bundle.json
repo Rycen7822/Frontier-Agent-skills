@@ -1,15 +1,15 @@
 {
   "activation_ceiling": "implicit_local_pilot",
-  "bundle_id": "frontier-engineering/11.0.0",
+  "bundle_id": "frontier-engineering/11.0.1",
   "compatible_schema_epoch": 9,
-  "release_build_id": "build-d2732567a5e822a892a07b94",
+  "release_build_id": "build-7a2159be404ae405ac0b9989",
   "remote_writes": false,
   "schema_version": "frontier-engineering-bundle/2.0",
   "skills": {
     "code-review": {
       "allow_implicit_invocation": true,
-      "root_hash": "sha256:8491f8efe54aabc87b390782eebe032250eae2e8a3400be65ea3b05df5a2cdfe",
-      "version": "2.0.0"
+      "root_hash": "sha256:d559f17212382a40499b55602af0e3fba79d734d30252bfd8d97be308977e445",
+      "version": "2.0.1"
     },
     "code-simplifier": {
       "allow_implicit_invocation": true,
