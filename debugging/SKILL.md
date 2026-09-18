@@ -1,9 +1,9 @@
 ---
 name: debugging
-description: Diagnose bugs, failed checks, regressions, or performance problems with an unknown cause.
+description: Diagnose failures, regressions, or performance problems whose cause is not yet established.
 license: MIT
 metadata:
-  version: 1.0.1
+  version: 1.1.0
   hosts: [codex, hermes-agent]
 ---
 

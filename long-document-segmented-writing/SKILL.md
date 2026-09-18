@@ -1,8 +1,8 @@
 ---
 name: long-document-segmented-writing
-description: Write or revise long, source-grounded documents that need staged drafting or recovery.
+description: Write long, source-grounded documents that need staged drafting or recovery across contexts.
 metadata:
-  version: 3.0.0
+  version: 3.1.0
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:

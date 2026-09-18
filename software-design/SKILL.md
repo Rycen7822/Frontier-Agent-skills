@@ -1,9 +1,9 @@
 ---
 name: software-design
-description: Resolve consequential requirements, module, data-model, API, or migration design choices.
+description: Resolve consequential requirements, ownership, API, data-model, or migration choices before implementation.
 license: MIT
 metadata:
-  version: 1.0.1
+  version: 1.1.0
   hosts: [codex, hermes-agent]
 ---
 

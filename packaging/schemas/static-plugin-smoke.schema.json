@@ -19,8 +19,8 @@
   ],
   "properties": {
     "schema_version": {"const": "static-plugin-smoke/4.0"},
-    "bundle_id": {"const": "frontier-engineering/10.0.0"},
-    "bundle_version": {"const": "10.0.0"},
+    "bundle_id": {"const": "frontier-engineering/11.0.0"},
+    "bundle_version": {"const": "11.0.0"},
     "plugin_name": {"const": "frontier-engineering-plugin"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "activation_ceiling": {"const": "implicit_local_pilot"},
@@ -43,16 +43,16 @@
         "writing-plans"
       ],
       "properties": {
-        "long-document-segmented-writing": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "3.0.0"}, "implicit_eligible": {"const": true}}}]},
+        "long-document-segmented-writing": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "3.1.0"}, "implicit_eligible": {"const": true}}}]},
         "skill-evaluator": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "5.0.1"}, "implicit_eligible": {"const": false}}}]},
-        "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "12.1.0"}, "implicit_eligible": {"const": true}}}]},
-        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "9.0.0"}, "implicit_eligible": {"const": true}}}]},
-        "code-review": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.1"}, "implicit_eligible": {"const": true}}}]},
-        "code-simplifier": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.1"}, "implicit_eligible": {"const": true}}}]},
-        "codebase-investigation": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.1"}, "implicit_eligible": {"const": true}}}]},
-        "debugging": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.1"}, "implicit_eligible": {"const": true}}}]},
-        "runtime-verification": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.1"}, "implicit_eligible": {"const": true}}}]},
-        "software-design": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.0.1"}, "implicit_eligible": {"const": true}}}]}
+        "software-quality-workflows": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "13.0.0"}, "implicit_eligible": {"const": false}}}]},
+        "writing-plans": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "9.1.0"}, "implicit_eligible": {"const": true}}}]},
+        "code-review": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "2.0.0"}, "implicit_eligible": {"const": true}}}]},
+        "code-simplifier": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.1.0"}, "implicit_eligible": {"const": true}}}]},
+        "codebase-investigation": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.1.0"}, "implicit_eligible": {"const": true}}}]},
+        "debugging": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.1.0"}, "implicit_eligible": {"const": true}}}]},
+        "runtime-verification": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.1.0"}, "implicit_eligible": {"const": true}}}]},
+        "software-design": {"allOf": [{"$ref": "#/$defs/skill"}, {"properties": {"version": {"const": "1.1.0"}, "implicit_eligible": {"const": true}}}]}
       }
     },
     "isolated_install_discovery": {"const": true},

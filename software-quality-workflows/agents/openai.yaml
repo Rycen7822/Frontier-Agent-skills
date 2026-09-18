@@ -3,4 +3,4 @@ interface:
   short_description: "Complete software changes with proportionate evidence"
   default_prompt: "Use $software-quality-workflows to complete the requested software task with simple design, useful tests and proportionate verification."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

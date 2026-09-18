@@ -1,9 +1,9 @@
 ---
 name: codebase-investigation
-description: Explain how code works or why a design exists using relevant source and project history.
+description: Explain implementation, cross-module behavior, or design history when that explanation is the task.
 license: MIT
 metadata:
-  version: 1.0.1
+  version: 1.1.0
   hosts: [codex, hermes-agent]
 ---
 

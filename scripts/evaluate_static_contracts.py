@@ -66,7 +66,7 @@ MODEL_FACING_EXACT = (
 MODEL_FACING_DIRS = (
     "software-quality-workflows/references",
     "software-design/operator",
-    "code-review/operator",
+    "code-review/references",
 )
 LEGACY_RUNTIME_PATHS = (
     "brainstorming",
