@@ -54,6 +54,7 @@ IGNORED_TOP_LEVEL = {
     ".git",
     ".agents",
     ".gitignore",
+    ".pi",
     ".pytest_cache",
     ".ruff_cache",
     ".work",
