@@ -34,7 +34,9 @@ class QuickReviewRecordTests(unittest.TestCase):
         fixtures.init_repo(self.root)
 
     def validate(self, packet, record):
-        return review_record.validate_record(packet["packet"], packet["scope"], record)
+        return review_record.validate_record(
+            packet["packet"], packet["scope"], record, scope_bytes=packet["scope_bytes"]
+        )
 
     def assertCode(self, code, callable_, *args, **kwargs):
         with self.assertRaises(review_record.ReviewError) as caught:
@@ -362,6 +364,84 @@ class QuickReviewRecordTests(unittest.TestCase):
                     self.assertIsNone(anchor["start_line"])
                 else:
                     self.assertEqual(coordinates, (anchor["start_line"], anchor["end_line"]))
+
+    def test_r11b_one_source_split_per_blob_and_per_source_metadata(self) -> None:
+        payload = b"alpha\nbeta\ngamma\n"
+        packet = fixtures.anchor_packet(self.root, payload)
+        entries = [
+            fixtures.evidence(packet, snippet=line, start_line=number, end_line=number)
+            for number, line in enumerate(("alpha", "beta", "gamma"), start=1)
+        ]
+        record = fixtures.hand_record(
+            packet, findings=[fixtures.finding(packet, evidence_entries=entries)]
+        )
+        with mock.patch.object(
+            review_record, "split_lines", side_effect=review_record.split_lines
+        ) as split:
+            validation = self.validate(packet, record)
+        self.assertEqual(
+            ["resolved"] * 3, [anchor["status"] for anchor in validation["anchors"]]
+        )
+        # One source split for the shared blob, one snippet split per anchor.
+        self.assertEqual(4, split.call_count)
+        self.assertEqual(1, sum(1 for call in split.call_args_list if call.args[0] == payload))
+        with self.subTest("R11b a second source with the same digest keeps its own metadata"):
+            shared = fixtures.hand_packet(
+                self.root,
+                sources=[
+                    {
+                        "name": "old",
+                        "path": "src/module.py",
+                        "origin": "git",
+                        "revision": "a" * 40,
+                        "git_oid": "b" * 40,
+                        "availability": "text",
+                        "payload": payload,
+                    },
+                    {
+                        "name": "new",
+                        "path": "src/module.py",
+                        "origin": "worktree",
+                        "availability": "text",
+                        "payload": payload,
+                    },
+                ],
+                items=[
+                    {
+                        "layer": "worktree",
+                        "status": "M",
+                        "path": "src/module.py",
+                        "before": "old",
+                        "after": "new",
+                    }
+                ],
+                packet_name="packet-shared-digest",
+            )
+            self.assertEqual(
+                1, len({source["sha256"] for source in shared["scope"]["sources"]})
+            )
+            both = fixtures.hand_record(
+                shared,
+                findings=[
+                    fixtures.finding(
+                        shared,
+                        evidence_entries=[
+                            fixtures.evidence(shared, snippet="beta", source_name="old"),
+                            fixtures.evidence(shared, snippet="beta", source_name="new"),
+                        ],
+                    )
+                ],
+            )
+            anchors = self.validate(shared, both)["anchors"]
+            self.assertEqual(
+                [shared["source_ids"]["old"], shared["source_ids"]["new"]],
+                [anchor["source_id"] for anchor in anchors],
+            )
+            self.assertEqual(["resolved", "resolved"], [anchor["status"] for anchor in anchors])
+            shared["scope"]["sources"][1]["size_bytes"] += 1
+            with self.assertRaises(review_record.ReviewError) as caught:
+                self.validate(shared, both)
+            self.assertEqual("E_SOURCE_OBJECT", caught.exception.code)
 
     def test_r12_wrong_coordinates_relocate_without_rewriting_the_record(self) -> None:
         packet = fixtures.anchor_packet(self.root, b"first\nsecond\nthird\n")

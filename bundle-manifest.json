@@ -1,11 +1,11 @@
 {
   "bundle_schema_version": "3.0",
-  "bundle_version": "11.0.1",
+  "bundle_version": "11.0.2",
   "skills": [
     {
       "id": "code-review",
       "path": "code-review",
-      "version": "2.0.1"
+      "version": "2.0.2"
     },
     {
       "id": "code-simplifier",

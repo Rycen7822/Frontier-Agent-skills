@@ -7,7 +7,7 @@ sources and compares them later; it never judges a defect.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import errno
 import os
 from pathlib import Path
@@ -30,6 +30,7 @@ from _review_record import (
     count_lines,
     dedupe_texts,
     encode_document,
+    normalize_path,
     sha256_digest,
     validate_scope,
 )
@@ -73,8 +74,8 @@ class ScopeRequest:
     revision: str | None = None
 
 
-def validate_request(request: ScopeRequest) -> None:
-    """Reject literal-path and mode-matrix violations before any Git call."""
+def validate_request(request: ScopeRequest) -> ScopeRequest:
+    """Reject argument violations and return the canonical request."""
     if request.mode not in ("commit", "range", "workspace", "snapshot"):
         raise ReviewError("E_ARGS", f"unknown scope mode {request.mode!r}")
     if not request.paths:
@@ -99,14 +100,27 @@ def validate_request(request: ScopeRequest) -> None:
             raise ReviewError(
                 "E_ARGS", f"mode {request.mode} does not accept --{name}"
             )
-    for path in request.paths:
-        _validate_literal_path(path, "path")
-    for path in request.context_paths:
-        _validate_literal_path(path, "context path")
+    paths = _canonical_paths(request.paths, "path", reject_globs=True)
+    context_paths = _canonical_paths(
+        request.context_paths, "context path", reject_globs=True
+    )
+    if "." in context_paths:
+        raise ReviewError("E_PATH_INVALID", "a context path must name a file, not '.'")
     for name in ("base", "head", "commit", "revision"):
         value = getattr(request, name)
         if value is not None:
             _validate_revision(value, name)
+    return replace(request, paths=paths, context_paths=context_paths)
+
+
+def _canonical_paths(paths: Iterable[str], label: str, *, reject_globs: bool) -> tuple[str, ...]:
+    """Validate, de-duplicate, and sort literal paths by UTF-8 bytes."""
+    canonical: set[str] = set()
+    for path in paths:
+        if reject_globs and any(character in path for character in GLOB_CHARACTERS):
+            raise ReviewError("E_PATH_INVALID", f"the {label} {path!r} looks like a glob")
+        canonical.add(normalize_path(path, label))
+    return tuple(sorted(canonical, key=lambda value: value.encode("utf-8")))
 
 
 def _validate_revision(revision: str, label: str) -> None:
@@ -121,28 +135,17 @@ def _validate_revision(revision: str, label: str) -> None:
         )
 
 
-def _validate_literal_path(path: str, label: str) -> None:
-    if not path:
-        raise ReviewError("E_PATH_INVALID", f"the {label} is empty")
-    if "\x00" in path:
-        raise ReviewError("E_PATH_INVALID", f"the {label} contains a NUL byte")
-    if any(0xD800 <= ord(character) <= 0xDFFF for character in path):
-        raise ReviewError("E_PATH_ENCODING", f"the {label} is not decodable UTF-8 text")
-    if len(path.encode("utf-8")) > 4096:
-        raise ReviewError("E_PATH_INVALID", f"the {label} exceeds 4096 UTF-8 bytes")
-    if path.startswith("/"):
-        raise ReviewError("E_PATH_INVALID", f"the {label} {path!r} is absolute")
-    if any(character in path for character in GLOB_CHARACTERS):
-        raise ReviewError("E_PATH_INVALID", f"the {label} {path!r} looks like a glob")
-    components = path.split("/")
-    if ".." in components:
-        raise ReviewError(
-            "E_PATH_INVALID", f"the {label} {path!r} contains a parent component"
-        )
-    if ".git" in components:
-        raise ReviewError(
-            "E_PATH_INVALID", f"the {label} {path!r} addresses repository metadata"
-        )
+def _decode_git_path(raw: bytes) -> str:
+    """Decode one Git file name strictly; a non-UTF-8 name is a typed error."""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ReviewError("E_PATH_ENCODING", "a repository path is not valid UTF-8") from exc
+
+
+def _git_path_line(raw: bytes) -> str:
+    """Decode one Git path output line after removing its protocol LF only."""
+    return _decode_git_path(raw[:-1] if raw.endswith(b"\n") else raw)
 
 
 def _clean_environment() -> dict[str, str]:
@@ -227,12 +230,14 @@ def _repo_root(repo: Path) -> tuple[Path, bool]:
     if not candidate.exists():
         raise ReviewError("E_REPO", f"{candidate} does not exist")
     top = run_git(candidate, ["rev-parse", "--show-toplevel"], allow_failure=True)
-    if top is not None and top.strip():
-        return Path(top.decode("utf-8").strip()), False
+    top_path = "" if top is None else _git_path_line(top)
+    if top_path:
+        return Path(top_path), False
     git_dir = run_git(candidate, ["rev-parse", "--absolute-git-dir"], allow_failure=True)
-    if git_dir is None or not git_dir.strip():
+    git_dir_path = "" if git_dir is None else _git_path_line(git_dir)
+    if not git_dir_path:
         raise ReviewError("E_REPO", f"{candidate} is not a Git repository")
-    return Path(git_dir.decode("utf-8").strip()), True
+    return Path(git_dir_path), True
 
 
 def _object_format(root: Path) -> str:
@@ -267,7 +272,7 @@ def _check_offline_sources(root: Path) -> None:
         root, ["rev-parse", "--path-format=absolute", "--git-path", "objects"]
     )
     assert objects_dir is not None
-    pack_dir = Path(objects_dir.decode("utf-8").strip()) / "pack"
+    pack_dir = Path(_git_path_line(objects_dir)) / "pack"
     if pack_dir.is_dir() and any(
         entry.name.endswith(".promisor") for entry in pack_dir.iterdir()
     ):
@@ -311,7 +316,7 @@ def _head_oid_or_none(root: Path) -> str | None:
 
 def resolve_request(repo: Path, request: ScopeRequest) -> dict[str, Any]:
     """Freeze the comparison endpoints of one request into commit OIDs."""
-    validate_request(request)
+    request = validate_request(request)
     root, bare = _repo_root(repo)
     _check_offline_sources(root)
     resolved: dict[str, Any] = {
@@ -410,10 +415,7 @@ def parse_raw_diff(raw: bytes, layer: str) -> list[dict[str, Any]]:
             raise ReviewError("E_GIT_RAW", f"raw record without a path in the {layer} layer")
         path = tokens[index + 1]
         index += 2
-        try:
-            decoded_path = path.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise ReviewError("E_PATH_ENCODING", f"a {layer} path is not valid UTF-8") from exc
+        decoded_path = _decode_git_path(path)
         entries.append(
             {
                 "status": status.decode("ascii"),
@@ -529,7 +531,7 @@ def _ls_files_stage(root: Path, paths: Iterable[str]) -> dict[str, tuple[str, st
         if len(fields) != 3:
             raise ReviewError("E_GIT_RAW", "malformed ls-files stage header")
         mode, oid, stage = fields
-        decoded_path = path.decode("utf-8")
+        decoded_path = _decode_git_path(path)
         if stage != b"0":
             raise ReviewError("E_UNMERGED", f"{decoded_path} has unmerged index stages")
         entries[decoded_path] = (mode.decode("ascii"), oid.decode("ascii"))
@@ -541,7 +543,7 @@ def _others(root: Path, paths: Iterable[str]) -> list[str]:
         root, ["ls-files", "--others", "--exclude-standard", "-z", *_pathspecs(paths)]
     )
     assert raw is not None
-    return [record.decode("utf-8") for record in raw.split(b"\0") if record]
+    return [_decode_git_path(record) for record in raw.split(b"\0") if record]
 
 
 def _ls_tree(
@@ -561,7 +563,7 @@ def _ls_tree(
         if len(fields) != 3:
             raise ReviewError("E_GIT_RAW", "malformed ls-tree header")
         mode, kind, object_id = (field.decode("ascii") for field in fields)
-        entries.append((mode, kind, object_id, path.decode("utf-8")))
+        entries.append((mode, kind, object_id, _decode_git_path(path)))
     return entries
 
 
@@ -571,7 +573,7 @@ def _reject_unmerged(root: Path, paths: Iterable[str]) -> None:
     if not raw.strip(b"\0"):
         return
     unmerged = [
-        record.split(b"\t", 1)[-1].decode("utf-8", "replace")
+        _decode_git_path(record.split(b"\t", 1)[-1])
         for record in raw.split(b"\0")
         if record
     ]
@@ -721,10 +723,8 @@ def _entry_info(
 
 
 def _prepare_output(root: Path, output: Path, label: str) -> Path:
-    """Create a new output location outside the repository."""
-    target = _output_target(root, output, label)
-    if os.path.lexists(target):
-        raise ReviewError("E_OUTPUT", f"{target} already exists")
+    """Create a new output directory outside the repository."""
+    target = require_new_output(root, output, label)
     try:
         target.mkdir(mode=0o700)
     except FileExistsError as exc:
@@ -1065,23 +1065,21 @@ def _fact_changes(
 
 def capture_scope(repo: Path, request: ScopeRequest, output: Path) -> dict[str, Any]:
     """Capture the requested scope into a new packet directory."""
-    validate_request(request)
     resolved = resolve_request(repo, request)
     packet = _prepare_output(Path(resolved["root"]), Path(output), "packet output directory")
-    return _capture_into(packet, resolved, request)
+    return _capture_into(packet, resolved)
 
 
-def _capture_into(
-    packet: Path, resolved: dict[str, Any], request: ScopeRequest
-) -> dict[str, Any]:
+def _capture_into(packet: Path, resolved: dict[str, Any]) -> dict[str, Any]:
     root = Path(resolved["root"])
+    request = resolved["request"]
     entries = enumerate_items(root, resolved)
     if len(entries) > MAX_ITEMS:
         raise ReviewError(
             "E_ITEMS_LIMIT",
             f"the requested range has {len(entries)} items, over the {MAX_ITEMS} limit",
         )
-    sides = _requested_sides(root, resolved, request, entries)
+    sides = _requested_sides(root, resolved, entries)
     keys = sorted(sides)
     (packet / "objects").mkdir(mode=0o700, exist_ok=True)
     limitations: list[str] = []
@@ -1093,14 +1091,12 @@ def _capture_into(
         "schema_version": SCOPE_SCHEMA_VERSION,
         "mode": resolved["mode"],
         "request": {
-            "paths": sorted(set(request.paths), key=lambda value: value.encode("utf-8")),
-            "context_paths": sorted(
-                set(request.context_paths), key=lambda value: value.encode("utf-8")
-            ),
-            "base": request.base,
-            "head": request.head,
-            "commit": request.commit,
-            "revision": request.revision,
+            "paths": list(request["paths"]),
+            "context_paths": list(request["context_paths"]),
+            "base": request["base"],
+            "head": request["head"],
+            "commit": request["commit"],
+            "revision": request["revision"],
         },
         "resolved": resolved["resolved"],
         "observation": resolved["observation"],
@@ -1108,7 +1104,7 @@ def _capture_into(
         "sources": [source_records[key] for key in keys],
         "limitations": dedupe_texts(limitations),
     }
-    scope_bytes = _seal_scope(packet, scope, root, resolved, request.context_paths)
+    scope_bytes = _seal_scope(packet, scope, root, resolved)
     return {
         "packet": str(packet),
         "scope_sha256": sha256_digest(scope_bytes),
@@ -1125,7 +1121,6 @@ def _capture_into(
 def _requested_sides(
     root: Path,
     resolved: dict[str, Any],
-    request: ScopeRequest,
     entries: list[dict[str, Any]],
 ) -> dict[tuple[str, str, str, str], tuple[dict[str, Any], str]]:
     """Collect every item side plus every existing version of the context paths."""
@@ -1134,7 +1129,7 @@ def _requested_sides(
         for side in (entry["before"], entry["after"]):
             if side is not None:
                 sides[_source_key(side, entry["path"])] = (side, entry["path"])
-    for path in request.context_paths:
+    for path in resolved["request"]["context_paths"]:
         context_sides = _context_sides(root, resolved, path)
         if not context_sides:
             raise ReviewError(
@@ -1245,15 +1240,16 @@ def _seal_scope(
     scope: dict[str, Any],
     root: Path,
     resolved: dict[str, Any],
-    context_paths: tuple[str, ...],
 ) -> bytes:
-    """Re-observe the request, validate the whole scope, then write scope.json.
+    """Re-observe the request, validate the whole scope, then publish scope.json.
 
-    The completion marker appears only after every check passed, and the encoded
-    document is bounded before it is written.
+    The completion marker appears only after every check passed, the encoded
+    document is bounded, and the bytes were written to a private temporary file.
     """
     if resolved["observation"] == "bounded_double_observation":
-        recorded = _recorded_facts(scope["items"], scope["sources"], context_paths)
+        recorded = _recorded_facts(
+            scope["items"], scope["sources"], scope["request"]["context_paths"]
+        )
         observed = _observed_facts(root, resolved)
         changed = _fact_changes(recorded, observed)
         if changed:
@@ -1263,11 +1259,33 @@ def _seal_scope(
             )
     validate_scope(scope)
     scope_bytes = encode_document(scope)
-    try:
-        (packet / SCOPE_FILE).write_bytes(scope_bytes)
-    except OSError as exc:
-        raise ReviewError("E_OUTPUT", f"cannot write {SCOPE_FILE}: {exc.strerror}") from exc
+    _publish_scope(packet, scope_bytes)
     return scope_bytes
+
+
+def _publish_scope(packet: Path, scope_bytes: bytes) -> None:
+    """Publish the completion marker atomically; a failed write leaves no scope.json."""
+    final = packet / SCOPE_FILE
+    handle, temp_name = tempfile.mkstemp(dir=packet, prefix=".scope-", suffix=".tmp")
+    try:
+        try:
+            with os.fdopen(handle, "wb") as stream:
+                stream.write(scope_bytes)
+        except OSError as exc:
+            raise ReviewError("E_OUTPUT", f"cannot write {SCOPE_FILE}: {exc.strerror}") from exc
+        try:
+            os.link(temp_name, final)
+        except FileExistsError as exc:
+            raise ReviewError("E_OUTPUT", f"{final} already exists") from exc
+        except OSError as exc:
+            raise ReviewError(
+                "E_OUTPUT", f"cannot publish {SCOPE_FILE}: {exc.strerror}"
+            ) from exc
+    finally:
+        try:
+            os.unlink(temp_name)
+        except OSError:
+            pass
 
 
 def _tree_side(root: Path, revision: str, path: str) -> dict[str, Any] | None:
@@ -1328,14 +1346,12 @@ def _context_sides(root: Path, resolved: dict[str, Any], path: str) -> list[dict
     return [side] if side is not None else []
 
 
-def compare_scope(repo: Path, scope: dict[str, Any]) -> dict[str, Any]:
+def compare_scope(root: Path, scope: dict[str, Any]) -> dict[str, Any]:
     """Re-observe captured sources and report freshness for the recorded scope.
 
-    The caller validates the record first, so this pass only compares facts and
-    never re-reads captured objects.
+    The caller already validated the record, and with it the scope, and resolved
+    the real repository root, so this pass only compares facts.
     """
-    validate_scope(scope)
-    root = repository_root(repo)
     incomplete = any(
         source["availability"] not in CAPTURED_AVAILABILITY for source in scope["sources"]
     )

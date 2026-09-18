@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
 import errno
 import hashlib
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -24,6 +22,31 @@ if str(SCRIPTS_DIR) not in sys.path:
 import _review_fixtures as fixtures  # noqa: E402
 import _review_git as review_git  # noqa: E402
 import _review_record as review_record  # noqa: E402
+
+
+class _FaultyScopeStream:
+    """A scope-field stream that fails mid-write or on close."""
+
+    def __init__(self, stream, *, prefix: int | None, close_failure: bool) -> None:
+        self._stream = stream
+        self._prefix = prefix
+        self._close_failure = close_failure
+
+    def write(self, data: bytes) -> int:
+        if self._prefix is None:
+            return self._stream.write(data)
+        self._stream.write(data[: self._prefix])
+        self._stream.flush()
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    def __enter__(self) -> "_FaultyScopeStream":
+        return self
+
+    def __exit__(self, *exc_info: object) -> bool:
+        self._stream.close()
+        if self._close_failure:
+            raise OSError(errno.ENOSPC, "No space left on device")
+        return False
 
 
 class ExtendedReviewScopeTests(unittest.TestCase):
@@ -1237,6 +1260,399 @@ class ExtendedReviewScopeTests(unittest.TestCase):
             self.assertEqual(2, code, payload)
             self.assertEqual("E_REVISION", payload["code"])
             self.assertFalse((output / "scope.json").exists())
+
+    def test_f1_equivalent_context_spellings_share_one_source_set(self) -> None:
+        head = fixtures.commit_files(
+            self.repo,
+            {"src/module.py": "value = 1\n", "config/runtime.json": '{"limit": 32}\n'},
+        )
+        fixtures.write_file(self.repo, "src/module.py", "value = 2\n")
+        fixtures.write_file(self.repo, "cfg/runtime.py", "limit = 32\n")
+        packets = {}
+        for label, spelling in (
+            ("plain", "config/runtime.json"),
+            ("dotted", "./config/runtime.json"),
+        ):
+            with self.subTest(f"F1 {label} snapshot spelling"):
+                code, payload, packet = self.scope(
+                    "--mode",
+                    "snapshot",
+                    "--revision",
+                    "HEAD",
+                    "--path",
+                    "src/module.py",
+                    "--context-path",
+                    spelling,
+                )
+                self.assertEqual(0, code, payload)
+                packets[label] = packet
+                scope = self.read_scope(packet)
+                self.assertEqual(["config/runtime.json"], scope["request"]["context_paths"])
+                context = [
+                    source
+                    for source in scope["sources"]
+                    if source["path"] == "config/runtime.json"
+                ]
+                self.assertEqual({"git"}, {source["origin"] for source in context})
+                self.assertEqual([head], [source["revision"] for source in context])
+        self.assertEqual(
+            (packets["plain"] / "scope.json").read_bytes(),
+            (packets["dotted"] / "scope.json").read_bytes(),
+        )
+        with self.subTest("F1 a parent component is rejected before normalization"):
+            output = self.packet_dir("f1-parent")
+            code, payload = fixtures.run_cli(
+                [
+                    "scope",
+                    "--repo",
+                    str(self.repo),
+                    "--mode",
+                    "workspace",
+                    "--path",
+                    "config/../config/runtime.json",
+                    "--output",
+                    str(output),
+                ]
+            )
+            self.assertEqual(2, code, payload)
+            self.assertEqual("E_PATH_INVALID", payload["code"])
+            self.assertFalse((output / "scope.json").exists())
+        with self.subTest("F1 redundant separators and dot segments normalize"):
+            code, payload, packet = self.scope(
+                "--mode",
+                "workspace",
+                "--path",
+                "cfg//./runtime.py",
+                "--context-path",
+                "./config/runtime.json",
+            )
+            self.assertEqual(0, code, payload)
+            scope = self.read_scope(packet)
+            self.assertEqual(["cfg/runtime.py"], scope["request"]["paths"])
+            self.assertEqual(["cfg/runtime.py"], [item["path"] for item in scope["items"]])
+            self.assertEqual(["config/runtime.json"], scope["request"]["context_paths"])
+        with self.subTest("F1 equivalent context parameters collapse into one source set"):
+            code, payload, packet = self.scope(
+                "--mode",
+                "workspace",
+                "--path",
+                "src/module.py",
+                "--context-path",
+                "./config/runtime.json",
+                "--context-path",
+                "config/runtime.json",
+            )
+            self.assertEqual(0, code, payload)
+            scope = self.read_scope(packet)
+            self.assertEqual(["config/runtime.json"], scope["request"]["context_paths"])
+            context = [
+                source
+                for source in scope["sources"]
+                if source["path"] == "config/runtime.json"
+            ]
+            self.assertEqual({"git", "index", "worktree"}, {source["origin"] for source in context})
+        with self.subTest("F1 an index-only context change is reported"):
+            code, payload, packet = self.scope(
+                "--mode",
+                "workspace",
+                "--path",
+                "src/module.py",
+                "--context-path",
+                "./config/runtime.json",
+            )
+            self.assertEqual(0, code, payload)
+            scope = self.read_scope(packet)
+            record = fixtures.write_json(
+                self.root / "f1-index-record.json", self._workspace_record(packet, scope)
+            )
+            fixtures.write_file(self.repo, "config/runtime.json", '{"limit": 64}\n')
+            fixtures.git(self.repo, "add", "config/runtime.json")
+            fixtures.write_file(self.repo, "config/runtime.json", '{"limit": 32}\n')
+            report = self.root / "f1-index-report.json"
+            code, payload = self._check(packet, record, report)
+            self.assertEqual(4, code, payload)
+            written = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual("changed", written["freshness"]["status"])
+            self.assertIn("config/runtime.json", written["freshness"]["changed_paths"])
+        with self.subTest("F1 glob characters in real file names stay literal"):
+            fixtures.commit_files(self.repo, {"star*.py": "star = 1\n"})
+            fixtures.write_file(self.repo, "star*.py", "star = 2\n")
+            code, payload, packet = self.scope("--mode", "workspace", "--path", ".")
+            self.assertEqual(0, code, payload)
+            scope = self.read_scope(packet)
+            self.assertIn("star*.py", [item["path"] for item in scope["items"]])
+            record = fixtures.write_json(
+                self.root / "f1-glob-record.json", self._workspace_record(packet, scope)
+            )
+            code, payload = self._check(packet, record, self.root / "f1-glob-report.json")
+            self.assertEqual(0, code, payload)
+            output = self.packet_dir("f1-glob-request")
+            code, payload = fixtures.run_cli(
+                [
+                    "scope",
+                    "--repo",
+                    str(self.repo),
+                    "--mode",
+                    "workspace",
+                    "--path",
+                    "star*.py",
+                    "--output",
+                    str(output),
+                ]
+            )
+            self.assertEqual(2, code, payload)
+            self.assertEqual("E_PATH_INVALID", payload["code"])
+        with self.subTest("F1 a context source that appears later is reported"):
+            fixtures.write_file(self.repo, "notes/extra.py", "extra = 1\n")
+            code, payload, packet = self.scope(
+                "--mode",
+                "workspace",
+                "--path",
+                "src/module.py",
+                "--context-path",
+                "notes/extra.py",
+            )
+            self.assertEqual(0, code, payload)
+            scope = self.read_scope(packet)
+            self.assertEqual(
+                {"worktree"},
+                {
+                    source["origin"]
+                    for source in scope["sources"]
+                    if source["path"] == "notes/extra.py"
+                },
+            )
+            record = fixtures.write_json(
+                self.root / "f1-origin-record.json", self._workspace_record(packet, scope)
+            )
+            fixtures.git(self.repo, "add", "notes/extra.py")
+            report = self.root / "f1-origin-report.json"
+            code, payload = self._check(packet, record, report)
+            self.assertEqual(4, code, payload)
+            written = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual("changed", written["freshness"]["status"])
+            self.assertIn("notes/extra.py", written["freshness"]["changed_paths"])
+
+    def test_f3_non_utf8_git_paths_are_typed_errors(self) -> None:
+        bad_name = os.fsdecode(b"bad-\xff.py")
+        with self.subTest("F3 a tracked snapshot path"):
+            repo = fixtures.init_repo(self.root / "encoding-tracked")
+            fixtures.commit_files(repo, {"ok.py": "ok = 1\n"})
+            (repo / bad_name).write_bytes(b"broken = 1\n")
+            fixtures.git(repo, "add", "-A")
+            fixtures.git(repo, "commit", "-q", "-m", "non utf-8 name")
+            output = self.packet_dir("f3-tracked")
+            code, payload = fixtures.run_cli(
+                [
+                    "scope",
+                    "--repo",
+                    str(repo),
+                    "--mode",
+                    "snapshot",
+                    "--revision",
+                    "HEAD",
+                    "--path",
+                    ".",
+                    "--output",
+                    str(output),
+                ]
+            )
+            self.assertEqual(2, code, payload)
+            self.assertEqual("E_PATH_ENCODING", payload["code"])
+            self.assertFalse((output / "scope.json").exists())
+        with self.subTest("F3 a staged path"):
+            repo = fixtures.init_repo(self.root / "encoding-staged")
+            fixtures.commit_files(repo, {"ok.py": "ok = 1\n"})
+            (repo / bad_name).write_bytes(b"broken = 1\n")
+            fixtures.git(repo, "add", "-A")
+            with self.assertRaises(review_record.ReviewError) as staged:
+                review_git._ls_files_stage(repo, ["."])
+            self.assertEqual("E_PATH_ENCODING", staged.exception.code)
+            output = self.packet_dir("f3-staged")
+            code, payload = fixtures.run_cli(
+                [
+                    "scope",
+                    "--repo",
+                    str(repo),
+                    "--mode",
+                    "workspace",
+                    "--path",
+                    ".",
+                    "--output",
+                    str(output),
+                ]
+            )
+            self.assertEqual(2, code, payload)
+            self.assertEqual("E_PATH_ENCODING", payload["code"])
+            self.assertFalse((output / "scope.json").exists())
+        with self.subTest("F3 an untracked path"):
+            repo = fixtures.init_repo(self.root / "encoding-untracked")
+            fixtures.commit_files(repo, {"ok.py": "ok = 1\n"})
+            (repo / bad_name).write_bytes(b"broken = 1\n")
+            output = self.packet_dir("f3-untracked")
+            code, payload = fixtures.run_cli(
+                [
+                    "scope",
+                    "--repo",
+                    str(repo),
+                    "--mode",
+                    "workspace",
+                    "--path",
+                    ".",
+                    "--output",
+                    str(output),
+                ]
+            )
+            self.assertEqual(2, code, payload)
+            self.assertEqual("E_PATH_ENCODING", payload["code"])
+            self.assertFalse((output / "scope.json").exists())
+
+    def test_f4_repository_root_keeps_only_protocol_terminator(self) -> None:
+        cases = (
+            ("plain", "repo-plain"),
+            ("trailing space", "repo-trailing "),
+            ("trailing newline", "repo-newline\n"),
+        )
+        for label, name in cases:
+            with self.subTest(f"F4 {label}"):
+                repo = self.root / name
+                repo.mkdir()
+                fixtures.git(repo, "init", "-q", "-b", "main")
+                fixtures.git(repo, "config", "user.name", "FAS Fixture")
+                fixtures.git(repo, "config", "user.email", "fixture@example.invalid")
+                fixtures.git(repo, "config", "commit.gpgsign", "false")
+                fixtures.git(repo, "config", "tag.gpgsign", "false")
+                fixtures.write_file(repo, "only.py", "value = 1\n")
+                fixtures.git(repo, "add", "-A")
+                fixtures.git(repo, "commit", "-q", "-m", "fixture")
+                stem = label.replace(" ", "-")
+                packet = self.packet_dir(f"f4-{stem}")
+                code, payload = fixtures.run_cli(
+                    [
+                        "scope",
+                        "--repo",
+                        str(repo),
+                        "--mode",
+                        "snapshot",
+                        "--revision",
+                        "HEAD",
+                        "--path",
+                        ".",
+                        "--output",
+                        str(packet),
+                    ]
+                )
+                self.assertEqual(0, code, payload)
+                scope = self.read_scope(packet)
+                self.assertEqual(["only.py"], [item["path"] for item in scope["items"]])
+                record = fixtures.write_json(
+                    self.root / f"f4-{stem}-record.json", self._workspace_record(packet, scope)
+                )
+                report = self.root / f"f4-{stem}-report.json"
+                code, payload = fixtures.run_cli(
+                    [
+                        "check",
+                        "--repo",
+                        str(repo),
+                        "--packet",
+                        str(packet),
+                        "--record",
+                        str(record),
+                        "--output",
+                        str(report),
+                    ]
+                )
+                self.assertEqual(0, code, payload)
+                written = json.loads(report.read_text(encoding="utf-8"))
+                self.assertEqual("captured_inputs_match", written["freshness"]["status"])
+
+    def test_f5_scope_marker_is_published_atomically(self) -> None:
+        fixtures.commit_files(self.repo, {"a.py": "a = 1\n"})
+        fixtures.write_file(self.repo, "a.py", "a = 2\n")
+
+        def faulty_capture(output: Path, prefix: int | None, close_failure: bool):
+            real_fdopen = os.fdopen
+            real_mkstemp = review_git.tempfile.mkstemp
+            state: dict[str, int] = {}
+
+            def tracking_mkstemp(*args, **kwargs):
+                descriptor, name = real_mkstemp(*args, **kwargs)
+                if Path(name).parent == output:
+                    state["descriptor"] = descriptor
+                return descriptor, name
+
+            def injected_fdopen(descriptor, *args, **kwargs):
+                stream = real_fdopen(descriptor, *args, **kwargs)
+                if descriptor != state.get("descriptor"):
+                    return stream
+                return _FaultyScopeStream(stream, prefix=prefix, close_failure=close_failure)
+
+            with mock.patch.object(review_git.tempfile, "mkstemp", tracking_mkstemp):
+                with mock.patch.object(review_git.os, "fdopen", injected_fdopen):
+                    return fixtures.run_cli(
+                        [
+                            "scope",
+                            "--repo",
+                            str(self.repo),
+                            "--mode",
+                            "workspace",
+                            "--path",
+                            "a.py",
+                            "--output",
+                            str(output),
+                        ]
+                    )
+
+        with self.subTest("F5 a capture publishes exactly one completion marker"):
+            code, payload, packet = self.scope("--mode", "workspace", "--path", "a.py")
+            self.assertEqual(0, code, payload)
+            self.assertTrue((packet / "scope.json").is_file())
+            self.assertEqual([], sorted(path.name for path in packet.glob(".scope-*")))
+        for label, prefix, close_failure in (
+            ("F5 a partial write leaves no completion marker", 10, False),
+            ("F5 a failing close leaves no completion marker", None, True),
+        ):
+            with self.subTest(label):
+                output = self.packet_dir("f5-faulty")
+                code, payload = faulty_capture(output, prefix, close_failure)
+                self.assertEqual(2, code, payload)
+                self.assertEqual("E_OUTPUT", payload["code"])
+                self.assertFalse((output / "scope.json").exists())
+                self.assertEqual([], sorted(path.name for path in output.glob(".scope-*")))
+        with self.subTest("F5 an existing completion marker is never overwritten"):
+            source = fixtures.hand_packet(
+                self.root,
+                sources=[
+                    {
+                        "name": "one",
+                        "path": "a.py",
+                        "origin": "worktree",
+                        "availability": "text",
+                        "payload": b"a = 2\n",
+                    }
+                ],
+                items=[
+                    {
+                        "layer": "worktree",
+                        "status": "A",
+                        "path": "a.py",
+                        "before": None,
+                        "after": "one",
+                    }
+                ],
+                packet_name="f5-source",
+            )
+            target = self.packet_dir("f5-target")
+            target.mkdir()
+            marker = target / "scope.json"
+            marker.write_bytes(b'{"kept": true}\n')
+            with self.assertRaises(review_record.ReviewError) as caught:
+                review_git._seal_scope(
+                    target, source["scope"], self.repo, {"observation": "immutable_commits"}
+                )
+            self.assertEqual("E_OUTPUT", caught.exception.code)
+            self.assertEqual(b'{"kept": true}\n', marker.read_bytes())
+            self.assertEqual([], sorted(path.name for path in target.glob(".scope-*")))
 
     def _raw_diff_paths(self, raw: bytes) -> list[bytes]:
         tokens = raw.split(b"\0")

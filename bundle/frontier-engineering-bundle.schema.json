@@ -7,7 +7,7 @@
   "required": ["schema_version", "bundle_id", "compatible_schema_epoch", "release_build_id", "activation_ceiling", "remote_writes", "skills"],
   "properties": {
     "schema_version": {"const": "frontier-engineering-bundle/2.0"},
-    "bundle_id": {"const": "frontier-engineering/11.0.1"},
+    "bundle_id": {"const": "frontier-engineering/11.0.2"},
     "compatible_schema_epoch": {"const": 9},
     "release_build_id": {"type": "string", "pattern": "^build-[0-9a-f]{24}$"},
     "activation_ceiling": {"const": "implicit_local_pilot"},
@@ -32,7 +32,7 @@
         "skill-evaluator": {"$ref": "#/$defs/explicit_skill", "properties": {"version": {"const": "5.0.1"}}},
         "software-quality-workflows": {"$ref": "#/$defs/explicit_skill", "properties": {"version": {"const": "13.0.0"}}},
         "writing-plans": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "9.1.0"}}},
-        "code-review": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "2.0.1"}}},
+        "code-review": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "2.0.2"}}},
         "code-simplifier": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.1.0"}}},
         "codebase-investigation": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.1.0"}}},
         "debugging": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.1.0"}}},

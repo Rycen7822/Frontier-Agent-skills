@@ -1,5 +1,11 @@
 # Release Notes
 
+## Bundle 11.0.2 review helper simplification
+
+Bundle 11.0.2 is a patch release for the `code-review` helper (2.0.2) with no protocol, schema-epoch or activation change, and no behaviour change for the public commands. The three helper modules were simplified: check runs its input, validation and freshness stages under one error boundary instead of two, the report writer is the single place that owns the descriptor, the duplicated scope relations forwarder is gone and `compare_scope` now states its real contract (an already validated scope plus the canonical repository root), scope path normalization is reused at the record entry, one captured object is split into lines once per check, and the check report is built as one document shape. Error codes, exit codes, JSON pointers, bounds, captured inputs and report fields are unchanged.
+
+This cut carries no model evaluation and claims no effect on model behaviour.
+
 ## Bundle 11.0.1 review scope repair and shared work
 
 Bundle 11.0.1 is a patch release for the `code-review` helper (2.0.1) with no protocol, schema-epoch or activation change. The exit code of `scope` now follows the captured sources: a sealed scope whose sources are all text returns 0, while a sealed scope with any non-text, oversized or budget-exhausted source returns 4 and names it as a limitation; hard errors still return 2 and write no `scope.json`.

@@ -23,10 +23,13 @@ from _review_git import (
 )
 from _review_record import (
     SCOPE_FILE,
+    MAX_JSON_BYTES,
     ReviewError,
+    decode_json,
     encode_document,
     finish_report,
     load_json,
+    read_bytes_limited,
     validate_document,
     validate_record,
 )
@@ -120,17 +123,10 @@ def _run_check(args: argparse.Namespace) -> int:
     try:
         root = repository_root(Path(args.repo))
         target = require_new_output(root, Path(args.output), "report output")
-    except ReviewError as error:
-        return _fail(error)
-    validation, freshness = _check_inputs(root, packet, Path(args.record))
-    try:
+        validation, freshness = _check_inputs(root, packet, Path(args.record))
         report = finish_report(validation, freshness)
         validate_document(report, "check_report")
-        data = encode_document(report, "E_REPORT_LIMIT")
-    except ReviewError as error:
-        return _fail(error)
-    try:
-        _write_new_file(target, data)
+        _write_new_file(target, encode_document(report, "E_REPORT_LIMIT"))
     except ReviewError as error:
         return _fail(error)
     _emit(
@@ -153,27 +149,33 @@ def _check_inputs(
     """Validate the record, then compare freshness, keeping every failure typed."""
     freshness: dict[str, Any] = {"status": "not_checked", "changed_paths": []}
     try:
-        scope = _load_scope(packet)
+        scope, scope_bytes = _load_scope(packet)
         record = load_json(record_path)
-        validation = validate_record(packet, scope, record)
-    except ReviewError as error:
-        return {"validation": "invalid", "problems": [error.problem()]}, freshness
-    try:
+        validation = validate_record(packet, scope, record, scope_bytes=scope_bytes)
         freshness = compare_scope(root, scope)
     except ReviewError as error:
         return {"validation": "invalid", "problems": [error.problem()]}, freshness
     return validation, freshness
 
 
-def _load_scope(packet: Path) -> dict[str, Any]:
+def _load_scope(packet: Path) -> tuple[dict[str, Any], bytes]:
+    """Parse scope.json once and return it with the exact bytes that were parsed."""
     scope_path = packet / SCOPE_FILE
     if not scope_path.is_file():
         raise ReviewError("E_SCOPE_MISSING", f"{packet} does not contain {SCOPE_FILE}")
-    return load_json(scope_path)
+    raw = read_bytes_limited(
+        scope_path,
+        MAX_JSON_BYTES,
+        "E_JSON_TOO_LARGE",
+        missing_code="E_INPUT_MISSING",
+        type_code="E_INPUT_TYPE",
+        io_code="E_INPUT_IO",
+    )
+    return decode_json(raw, str(scope_path)), raw
 
 
 def _write_new_file(path: Path, data: bytes) -> None:
-    """Create one new file exclusively; a failed write never yields an artifact."""
+    """Create one new file exclusively and write it; a failure leaves no artifact."""
     try:
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError as exc:
@@ -181,15 +183,10 @@ def _write_new_file(path: Path, data: bytes) -> None:
     except OSError as exc:
         raise ReviewError("E_OUTPUT", f"cannot create {path}: {exc.strerror}") from exc
     try:
-        _write_all(descriptor, data)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
     except OSError as exc:
         raise ReviewError("E_OUTPUT", f"cannot write {path}: {exc.strerror}") from exc
-
-
-def _write_all(descriptor: int, data: bytes) -> None:
-    """Write the whole payload to a descriptor this call owns."""
-    with os.fdopen(descriptor, "wb") as stream:
-        stream.write(data)
 
 
 def _emit(payload: dict[str, Any]) -> None:
