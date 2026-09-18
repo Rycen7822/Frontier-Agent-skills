@@ -10,7 +10,7 @@
     {
       "id": "code-simplifier",
       "path": "code-simplifier",
-      "version": "1.1.0"
+      "version": "1.2.0"
     },
     {
       "id": "codebase-investigation",
@@ -59,7 +59,8 @@
     "quick": [
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s code-review/tests -p 'test_quick_*.py' -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_quick_contracts.py -v",
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_review_v11_suite.py -v"
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_review_v11_suite.py -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_code_simplifier_assets.py' -v"
     ],
     "extended": [
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-design/tests -p 'test_extended_*.py' -v",

@@ -29,7 +29,7 @@ SCHEMA = ROOT / "bundle" / "frontier-engineering-bundle.schema.json"
 SOURCE_MANIFEST = ROOT / "bundle-manifest.json"
 EXPECTED_SKILLS = {
     'code-review': '2.0.2',
-    'code-simplifier': '1.1.0',
+    'code-simplifier': '1.2.0',
     'codebase-investigation': '1.1.0',
     'debugging': '1.1.0',
     'long-document-segmented-writing': '3.1.0',

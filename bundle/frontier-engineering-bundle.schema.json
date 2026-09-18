@@ -33,7 +33,7 @@
         "software-quality-workflows": {"$ref": "#/$defs/explicit_skill", "properties": {"version": {"const": "13.0.0"}}},
         "writing-plans": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "9.1.0"}}},
         "code-review": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "2.0.2"}}},
-        "code-simplifier": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.1.0"}}},
+        "code-simplifier": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.2.0"}}},
         "codebase-investigation": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.1.0"}}},
         "debugging": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.1.0"}}},
         "runtime-verification": {"$ref": "#/$defs/implicit_skill", "properties": {"version": {"const": "1.1.0"}}},

@@ -2,6 +2,8 @@
 
 This repository is the development source for the dual-host `frontier-engineering/11.0.2` bundle. One `frontier-engineering-plugin` contains ten skills for Codex and Hermes Agent. Installed copies are separate from source; local edits take effect after rebuilding and reinstalling.
 
+Unreleased source update: `code-simplifier` 1.2.0 adds conditional structural-simplification and validation references. The bundle/plugin release identity is unchanged; this source integration is not a new published release. See [the component maintenance note](docs/code-simplifier-1.2.0.md).
+
 ## Skill entrypoints
 
 | Skill | Use for | Version |
@@ -11,7 +13,7 @@ This repository is the development source for the dual-host `frontier-engineerin
 | [software-design](software-design/SKILL.md) | Resolve requirements, ownership, API, data-model or migration choices | 1.1.0 |
 | [debugging](debugging/SKILL.md) | Diagnose failures, regressions and performance problems without an established cause | 1.1.0 |
 | [code-review](code-review/SKILL.md) | Assess changes, scoped snapshots, review comments and evidence records | 2.0.2 |
-| [code-simplifier](code-simplifier/SKILL.md) | Simplify selected code while preserving intended behavior | 1.1.0 |
+| [code-simplifier](code-simplifier/SKILL.md) | Simplify selected code while preserving intended behavior | 1.2.0 |
 | [runtime-verification](runtime-verification/SKILL.md) | Establish missing evidence through actual runtime or installed behavior | 1.1.0 |
 | [writing-plans](writing-plans/SKILL.md) | Plan implementation after design and diagnosis are settled | 9.1.0 |
 | [long-document-segmented-writing](long-document-segmented-writing/SKILL.md) | Produce long, source-grounded documents with recoverable state | 3.1.0 |

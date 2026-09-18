@@ -43,7 +43,7 @@
         "software-quality-workflows": {"const": "13.0.0"},
         "writing-plans": {"const": "9.1.0"},
         "code-review": {"const": "2.0.2"},
-        "code-simplifier": {"const": "1.1.0"},
+        "code-simplifier": {"const": "1.2.0"},
         "codebase-investigation": {"const": "1.1.0"},
         "debugging": {"const": "1.1.0"},
         "runtime-verification": {"const": "1.1.0"},
