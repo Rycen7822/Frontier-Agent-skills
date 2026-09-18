@@ -1,7 +1,7 @@
 """Structural validation, captured-source reading, and code location for review records.
 
-This module never runs Git, tests, or any other external program. Callers pass
-byte content in and receive stable error codes or plain dictionaries back.
+This module never runs Git or any other external program: callers pass bytes in
+and receive stable error codes or plain dictionaries back.
 """
 
 from __future__ import annotations
@@ -30,23 +30,16 @@ CAPTURED_AVAILABILITY = ("text", "binary", "symlink")
 TEXT_AVAILABILITY = "text"
 SCOPE_FILE = "scope.json"
 SCOPE_SCHEMA_VERSION = "fas-review-scope/1"
-RECORD_SCHEMA_VERSION = "fas-review-record/1"
 CHECK_SCHEMA_VERSION = "fas-review-check/1"
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_PACKET_BYTES = 128 * 1024 * 1024
 MAX_ITEMS = 20000
 MAX_JSON_BYTES = 16 * 1024 * 1024
+WORKTREE_REVISION = "WORKTREE"
 MAX_PATH_BYTES = 4096
 PROBLEM_MESSAGE_LIMIT = 512
 PROBLEM_POINTER_LIMIT = 1024
-_FIXED_CONSTRAINT_TEXT = {
-    "required": "a required field is missing",
-    "additionalProperties": "an unknown field is present",
-    "uniqueItems": "array entries must be unique",
-    "anyOf": "no permitted shape matched",
-    "oneOf": "no permitted shape matched",
-}
 
 
 class ReviewError(ValueError):
@@ -84,7 +77,7 @@ def read_bytes_limited(
         with open(path, "rb") as stream:
             raw = stream.read(limit + 1)
     except IsADirectoryError as exc:
-        raise ReviewError(type_code or code, f"{path} is a directory, not a file") from exc
+        raise ReviewError(type_code or code, f"{path} is a directory") from exc
     except FileNotFoundError as exc:
         raise ReviewError(missing_code or code, f"{path} does not exist") from exc
     except PermissionError as exc:
@@ -108,36 +101,21 @@ def encode_document(value: dict[str, Any], code: str = "E_JSON_TOO_LARGE") -> by
 
 def dedupe_texts(values: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(values))
-
-
 def normalize_path(path: str, label: str) -> str:
     """Reject forbidden literal paths and return the canonical Git spelling.
 
-    Collapsing ``.`` segments and repeated separators is safe only after the
-    raw value is known to carry no parent or metadata component, so the checks
-    run on the raw spelling and normalization happens last.
+    Collapsing ``.`` segments is safe only after the raw value is known to
+    carry no parent or metadata component, so the checks run first.
     """
-    if not path:
-        raise ReviewError("E_PATH_INVALID", f"the {label} is empty")
-    if "\x00" in path:
-        raise ReviewError("E_PATH_INVALID", f"the {label} contains a NUL byte")
+    if not path or "\x00" in path:
+        raise ReviewError("E_PATH_INVALID", f"the {label} is empty or holds a NUL byte")
     if any(0xD800 <= ord(character) <= 0xDFFF for character in path):
         raise ReviewError("E_PATH_ENCODING", f"the {label} is not decodable UTF-8 text")
     if len(path.encode("utf-8")) > MAX_PATH_BYTES:
-        raise ReviewError(
-            "E_PATH_INVALID", f"the {label} exceeds {MAX_PATH_BYTES} UTF-8 bytes"
-        )
-    if path.startswith("/"):
-        raise ReviewError("E_PATH_INVALID", f"the {label} {path!r} is absolute")
+        raise ReviewError("E_PATH_INVALID", f"the {label} exceeds {MAX_PATH_BYTES} UTF-8 bytes")
     components = path.split("/")
-    if ".." in components:
-        raise ReviewError(
-            "E_PATH_INVALID", f"the {label} {path!r} contains a parent component"
-        )
-    if ".git" in components:
-        raise ReviewError(
-            "E_PATH_INVALID", f"the {label} {path!r} addresses repository metadata"
-        )
+    if path.startswith("/") or ".." in components or ".git" in components:
+        raise ReviewError("E_PATH_INVALID", f"the {label} {path!r} is not a literal path")
     return PurePosixPath(path).as_posix()
 
 
@@ -145,15 +123,12 @@ def decode_json(raw: bytes, label: str) -> dict[str, Any]:
     """Parse one JSON object, rejecting bad text, duplicate keys, and lone surrogates.
 
     The strict encode catches unpaired surrogates that ``json.loads`` accepts
-    from escape sequences while leaving valid pairs and literal ``\\uXXXX``
-    text untouched.
+    from escape sequences while leaving valid pairs untouched.
     """
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise ReviewError(
-            "E_JSON_ENCODING", f"{label} is not valid UTF-8: {exc.reason}"
-        ) from exc
+        raise ReviewError("E_JSON_ENCODING", f"{label} is not valid UTF-8: {exc.reason}") from exc
     if text.startswith("\ufeff"):
         raise ReviewError("E_JSON_ENCODING", f"{label} starts with a byte-order mark")
 
@@ -178,9 +153,7 @@ def decode_json(raw: bytes, label: str) -> dict[str, Any]:
     except ReviewError:
         raise
     except json.JSONDecodeError as exc:
-        raise ReviewError(
-            "E_JSON_SYNTAX", f"{label}:{exc.lineno}:{exc.colno}: {exc.msg}"
-        ) from exc
+        raise ReviewError("E_JSON_SYNTAX", f"{label}:{exc.lineno}:{exc.colno}: {exc.msg}") from exc
     if not isinstance(value, dict):
         raise ReviewError("E_JSON_ROOT", f"{label} root is not a JSON object")
     try:
@@ -193,15 +166,13 @@ def decode_json(raw: bytes, label: str) -> dict[str, Any]:
 def load_json(path: Path) -> dict[str, Any]:
     """Read and parse one JSON object from the file system."""
     target = Path(path)
-    raw = read_bytes_limited(
-        target,
-        MAX_JSON_BYTES,
-        "E_JSON_TOO_LARGE",
-        missing_code="E_INPUT_MISSING",
-        type_code="E_INPUT_TYPE",
-        io_code="E_INPUT_IO",
-    )
-    return decode_json(raw, str(target))
+    bounds = {
+        "missing_code": "E_INPUT_MISSING",
+        "type_code": "E_INPUT_TYPE",
+        "io_code": "E_INPUT_IO",
+    }
+    return decode_json(read_bytes_limited(target, MAX_JSON_BYTES, "E_JSON_TOO_LARGE", **bounds),
+                       str(target))
 
 
 _SCHEMA_CACHE: dict[str, Any] | None = None
@@ -210,49 +181,29 @@ _SCHEMA_CACHE: dict[str, Any] | None = None
 def _schema_definitions() -> dict[str, Any]:
     global _SCHEMA_CACHE
     if _SCHEMA_CACHE is None:
-        raw = read_bytes_limited(SCHEMA_PATH, MAX_JSON_BYTES, "E_SCHEMA")
-        document = json.loads(raw.decode("utf-8"))
+        document = json.loads(read_bytes_limited(SCHEMA_PATH, MAX_JSON_BYTES, "E_SCHEMA"))
         _SCHEMA_CACHE = document["$defs"]
     return _SCHEMA_CACHE
-
-
-def _constraint_text(error: Any) -> str:
-    """Describe one schema failure without echoing instance content."""
-    keyword = error.validator
-    value = error.validator_value
-    if keyword in ("maxLength", "minLength", "maxItems", "minItems"):
-        try:
-            observed = len(error.instance)
-        except TypeError:
-            observed = None
-        unit = "length" if keyword.endswith("Length") else "count"
-        return f"{keyword} {value}, observed {unit} {observed}"
-    if keyword == "enum":
-        allowed = ", ".join(sorted(str(item) for item in value))[:200]
-        return f"value must be one of {allowed}"
-    if keyword == "const":
-        return f"value must equal {value!r}"
-    if keyword == "pattern":
-        return f"value must match {value}"
-    if keyword == "type":
-        return f"value must be {value}"
-    return _FIXED_CONSTRAINT_TEXT.get(keyword, "the constraint failed")
 
 
 def _schema_error(kind: str, error: Any) -> ReviewError:
     """Turn the first schema failure into a bounded diagnostic.
 
-    The message never repeats instance content, and a pointer that cannot be
-    expressed inside the protocol bound is dropped instead of truncated.
+    The message carries the failed validator and, when the schema fixes a short
+    limit, that value; instance content is never echoed, and a pointer that
+    cannot be expressed inside the protocol bound is dropped instead of cut.
     """
     parts = list(error.absolute_path)
-    pointer = "".join(
-        f"/{str(part).replace('~', '~0').replace('/', '~1')}" for part in parts
-    )
+    pointer = "".join(f"/{str(part).replace('~', '~0').replace('/', '~1')}" for part in parts)
     dropped = bool(parts) and len(pointer) > PROBLEM_POINTER_LIMIT
     if dropped:
         pointer = ""
-    message = f"{kind} is invalid: {_constraint_text(error)}"
+    limit = error.validator_value
+    short_limit = (
+        f" ({limit})" if isinstance(limit, (int, bool)) or (isinstance(limit, str) and len(limit) <= 40)
+        else ""
+    )
+    message = f"{kind} is invalid: {error.validator} failed{short_limit}"
     if dropped:
         message += "; the failing path is too long to report"
     if len(message) > PROBLEM_MESSAGE_LIMIT:
@@ -364,46 +315,36 @@ def _locate_in_lines(
         return result
 
     snippet = anchor.get("snippet")
-    start = anchor.get("start_line")
-    end = anchor.get("end_line")
+    start, end = anchor.get("start_line"), anchor.get("end_line")
     if start is None and end is not None:
         raise ReviewError("E_LOCATION_RANGE", "end_line is set without start_line")
     if start is not None and start > end:
-        raise ReviewError(
-            "E_LOCATION_RANGE", f"line range {start}-{end} starts after it ends"
-        )
+        raise ReviewError("E_LOCATION_RANGE", f"line range {start}-{end} starts after it ends")
     if snippet is None:
         return result
 
     snippet_lines = split_lines(snippet.encode("utf-8"))
     if start is not None:
+        result.update(start_line=start, end_line=end)
         if end > len(lines):
             raise ReviewError(
                 "E_LOCATION_RANGE",
                 f"line range {start}-{end} exceeds {len(lines)} lines of the source",
             )
         if lines[start - 1 : end] == snippet_lines:
-            result.update(status="resolved", start_line=start, end_line=end)
+            result["status"] = "resolved"
             return result
-        result.update(start_line=start, end_line=end)
         matches = _find_matches(lines, snippet_lines)
         if len(matches) == 1:
-            result.update(
-                status="needs_relocation",
-                candidate_start=matches[0][0],
-                candidate_end=matches[0][1],
-            )
+            result.update(status="needs_relocation", candidate_start=matches[0][0],
+                          candidate_end=matches[0][1])
         elif matches:
             result["status"] = "ambiguous"
         return result
 
     matches = _find_matches(lines, snippet_lines)
     if len(matches) == 1:
-        result.update(
-            status="resolved",
-            start_line=matches[0][0],
-            end_line=matches[0][1],
-        )
+        result.update(status="resolved", start_line=matches[0][0], end_line=matches[0][1])
     elif matches:
         result["status"] = "ambiguous"
     return result
@@ -426,6 +367,7 @@ def _require_canonical_path(path: str, label: str, pointer: str) -> None:
 
 
 def _validate_scope_mode(scope: dict[str, Any]) -> None:
+    """Check the mode relations the schema cannot express."""
     resolved = scope["resolved"]
     oid_digits = 40 if resolved["object_format"] == "sha1" else 64
     for field in ("base_oid", "head_oid", "comparison_base_oid"):
@@ -437,51 +379,35 @@ def _validate_scope_mode(scope: dict[str, Any]) -> None:
                 f"resolved.{field} does not match object format {resolved['object_format']}",
                 f"/resolved/{field}",
             )
-
-    mode = scope["mode"]
     request = scope["request"]
-    observation = scope["observation"]
-    for index, path in enumerate(request["paths"]):
-        _require_canonical_path(path, "request path", f"/request/paths/{index}")
-    for index, path in enumerate(request["context_paths"]):
-        _require_canonical_path(path, "context path", f"/request/context_paths/{index}")
-    if mode == "snapshot":
-        expected = (
-            "bounded_double_observation"
-            if request["revision"] == "WORKTREE"
-            else "immutable_commits"
-        )
-        _require(
-            observation == expected,
-            "E_SCOPE_OBSERVATION",
-            f"snapshot mode with revision {request['revision']!r} needs observation {expected}",
-            "/observation",
-        )
-        _require(
-            resolved["head_oid"] is not None or request["revision"] == "WORKTREE",
-            "E_SCOPE_OID",
-            "snapshot mode without WORKTREE needs a resolved head_oid",
-            "/resolved/head_oid",
-        )
-    if mode == "workspace":
-        _require(
-            resolved["base_oid"] is None,
-            "E_SCOPE_OID",
-            "workspace mode has no base_oid",
-            "/resolved/base_oid",
-        )
+    for field in ("paths", "context_paths"):
+        for index, path in enumerate(request[field]):
+            _require_canonical_path(path, f"request {field}", f"/request/{field}/{index}")
+    if scope["mode"] != "snapshot":
+        return
+    expected = (
+        "bounded_double_observation"
+        if request["revision"] == WORKTREE_REVISION
+        else "immutable_commits"
+    )
+    _require(
+        scope["observation"] == expected,
+        "E_SCOPE_OBSERVATION",
+        f"snapshot mode with revision {request['revision']!r} needs observation {expected}",
+        "/observation",
+    )
+    _require(
+        resolved["head_oid"] is not None or request["revision"] == WORKTREE_REVISION,
+        "E_SCOPE_OID",
+        "snapshot mode without WORKTREE needs a resolved head_oid",
+        "/resolved/head_oid",
+    )
 
 
 def _validate_scope_items(scope: dict[str, Any]) -> None:
     """Check the item sequence and ordering; the fixed sequence rules out duplicates."""
-    items = scope["items"]
-    _require(
-        len(items) <= MAX_ITEMS,
-        "E_ITEMS_LIMIT",
-        f"scope has {len(items)} items, over the {MAX_ITEMS} limit",
-    )
     previous_key: tuple[int, bytes] | None = None
-    for index, item in enumerate(items):
+    for index, item in enumerate(scope["items"]):
         _require_canonical_path(item["path"], "item path", f"/items/{index}/path")
         _require(
             item["id"] == f"I-{index + 1:06d}",
@@ -505,16 +431,15 @@ def _validate_scope_items(scope: dict[str, Any]) -> None:
             )
         previous_key = key
 
+
 def _validate_scope_sources(scope: dict[str, Any]) -> None:
-    """Check the source sequence, ordering, and every item reference."""
+    """Check the source sequence and ordering, then every item reference."""
     resolved = scope["resolved"]
     oid_digits = 40 if resolved["object_format"] == "sha1" else 64
-    sources = scope["sources"]
     source_ids: set[str] = set()
     previous_source: tuple[str, str, bytes, str] | None = None
-    for index, source in enumerate(sources):
+    for index, source in enumerate(scope["sources"]):
         _require_canonical_path(source["path"], "source path", f"/sources/{index}/path")
-        # The fixed sequence already rules out duplicates; the set stays for references.
         _require(
             source["id"] == f"S-{index + 1:06d}",
             "E_SOURCE_ID",
@@ -528,16 +453,12 @@ def _validate_scope_sources(scope: dict[str, Any]) -> None:
                 _require(
                     len(oid) == oid_digits,
                     "E_SCOPE_OID",
-                    f"source {source['id']} has {field} outside object format "
+                    f"source {source['id']} has {field} outside "
                     f"{resolved['object_format']}",
                     f"/sources/{index}/{field}",
                 )
-        key = (
-            source["origin"],
-            source["revision"] or "",
-            source["path"].encode("utf-8"),
-            source["git_oid"] or "",
-        )
+        key = (source["origin"], source["revision"] or "",
+               source["path"].encode("utf-8"), source["git_oid"] or "")
         if previous_source is not None:
             _require(
                 previous_source < key,
@@ -546,7 +467,6 @@ def _validate_scope_sources(scope: dict[str, Any]) -> None:
                 f"/sources/{index}",
             )
         previous_source = key
-
     for index, item in enumerate(scope["items"]):
         for side in ("before", "after"):
             reference = item[side]
@@ -557,20 +477,6 @@ def _validate_scope_sources(scope: dict[str, Any]) -> None:
                     f"item {item['id']} references unknown source {reference}",
                     f"/items/{index}/{side}",
                 )
-    _require(
-        len(sources) <= 3 * MAX_ITEMS,
-        "E_SOURCES_LIMIT",
-        f"scope has {len(sources)} sources, over the {3 * MAX_ITEMS} limit",
-    )
-
-
-def _item_sources_are_text(source_by_id: dict[str, dict[str, Any]], item: dict[str, Any]) -> bool:
-    """Check one item against an index the caller already built."""
-    for side in ("before", "after"):
-        reference = item[side]
-        if reference is not None and source_by_id[reference]["availability"] != TEXT_AVAILABILITY:
-            return False
-    return True
 
 
 def _verify_scope_digest(scope_bytes: bytes, record: dict[str, Any]) -> None:
@@ -587,32 +493,26 @@ def _validate_coverage(scope: dict[str, Any], record: dict[str, Any]) -> tuple[s
     """Cover each item exactly once and report the declared coverage status."""
     items = scope["items"]
     item_ids = {item["id"] for item in items}
-    seen: set[str] = set()
+    sources = {source["id"]: source for source in scope["sources"]}
+    declared: dict[str, str] = {}
+    counts = {"total": len(items), "reviewed": 0, "partial": 0, "not_reviewed": 0}
     for index, entry in enumerate(record["coverage"]):
         item_id = entry["item_id"]
         _require(
-            item_id in item_ids,
-            "E_COVERAGE_UNKNOWN",
-            f"coverage references unknown item {item_id}",
+            item_id in item_ids and item_id not in declared,
+            "E_COVERAGE_UNKNOWN" if item_id not in item_ids else "E_COVERAGE_DUPLICATE",
+            f"coverage references {item_id} twice or not at all",
             f"/coverage/{index}/item_id",
         )
-        _require(
-            item_id not in seen,
-            "E_COVERAGE_DUPLICATE",
-            f"coverage repeats item {item_id}",
-            f"/coverage/{index}/item_id",
-        )
-        seen.add(item_id)
-    missing = [item["id"] for item in items if item["id"] not in seen]
+        declared[item_id] = entry["status"]
+        counts[entry["status"]] += 1
+    missing = [item["id"] for item in items if item["id"] not in declared]
     _require(
         not missing,
         "E_COVERAGE_MISSING",
         f"coverage omits items {', '.join(sorted(missing))}",
         "/coverage",
     )
-    counts = {"total": len(items), "reviewed": 0, "partial": 0, "not_reviewed": 0}
-    for entry in record["coverage"]:
-        counts[entry["status"]] += 1
     if not items:
         _require(
             not record["findings"] and not record["concerns"],
@@ -621,93 +521,68 @@ def _validate_coverage(scope: dict[str, Any], record: dict[str, Any]) -> tuple[s
             "/findings",
         )
         return "nothing_in_scope", counts
-    declared = {entry["item_id"]: entry["status"] for entry in record["coverage"]}
-    source_by_id = {source["id"]: source for source in scope["sources"]}
     for index, item in enumerate(items):
-        if declared[item["id"]] == "reviewed" and not _item_sources_are_text(source_by_id, item):
-            raise ReviewError(
-                "E_COVERAGE_UNSUPPORTED",
-                f"item {item['id']} has a source without captured text bytes "
-                "and cannot be declared reviewed",
-                f"/coverage/{index}",
-            )
+        if declared[item["id"]] != "reviewed":
+            continue
+        supported = all(
+            item[side] is None or sources[item[side]]["availability"] == TEXT_AVAILABILITY
+            for side in ("before", "after")
+        )
+        _require(
+            supported,
+            "E_COVERAGE_UNSUPPORTED",
+            f"item {item['id']} has a source without captured text bytes "
+            "and cannot be declared reviewed",
+            f"/coverage/{index}",
+        )
     if counts["reviewed"] == counts["total"]:
         return "all_declared_reviewed", counts
     return "partial", counts
 
 
-def _pending_evidence(
-    scope: dict[str, Any], record: dict[str, Any]
+def _locate_anchors(
+    packet: Path, scope: dict[str, Any], record: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """Check finding references and collect the anchors that still need source bytes."""
+    """Check every finding reference, then verify objects and locate their anchors.
+
+    Anchors keep their declared order, and each captured digest is read once.
+    """
     item_ids = {item["id"] for item in scope["items"]}
     sources = {source["id"]: source for source in scope["sources"]}
-    finding_ids: set[str] = set()
-    pending: list[dict[str, Any]] = []
-    for finding_index, finding in enumerate(record["findings"]):
-        _require(
-            finding["id"] not in finding_ids,
-            "E_DUPLICATE_ID",
-            f"duplicate finding id {finding['id']}",
-            f"/findings/{finding_index}/id",
-        )
-        finding_ids.add(finding["id"])
+    anchors: list[dict[str, Any]] = []
+    requests: dict[str, list[int]] = {}
+    evidences: list[dict[str, Any]] = []
+    for index, finding in enumerate(record["findings"]):
         for item_index, item_id in enumerate(finding["item_ids"]):
             _require(
                 item_id in item_ids,
                 "E_REFERENCE_UNKNOWN",
                 f"finding {finding['id']} references unknown item {item_id}",
-                f"/findings/{finding_index}/item_ids/{item_index}",
+                f"/findings/{index}/item_ids/{item_index}",
             )
         for evidence_index, evidence in enumerate(finding["evidence"]):
-            source = sources.get(evidence["source_id"])
             _require(
-                source is not None,
+                evidence["source_id"] in sources,
                 "E_REFERENCE_UNKNOWN",
-                f"finding {finding['id']} references unknown source "
-                f"{evidence['source_id']}",
-                f"/findings/{finding_index}/evidence/{evidence_index}/source_id",
+                f"finding {finding['id']} references unknown source {evidence['source_id']}",
+                f"/findings/{index}/evidence/{evidence_index}/source_id",
             )
-            pending.append(
-                {
-                    "finding_id": finding["id"],
-                    "evidence_index": evidence_index,
-                    "evidence": evidence,
-                    "source": source,
-                }
-            )
-    return pending
-
-
-def _locate_anchors(
-    packet: Path, scope: dict[str, Any], pending: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    """Verify every captured object once per digest and locate its pending anchors.
-
-    Only one object is held at a time: each group rebinds the bytes and the
-    shared line list, so both are released before the next digest is read.
-    """
-    groups: dict[Any, list[tuple[int, dict[str, Any]]]] = {}
-    for index, source in enumerate(scope["sources"]):
-        if source["availability"] in CAPTURED_AVAILABILITY:
-            groups.setdefault(source["sha256"], []).append((index, source))
-    requests: dict[str, list[int]] = {}
-    for position, request in enumerate(pending):
-        requests.setdefault(request["source"]["id"], []).append(position)
-    anchors: list[dict[str, Any]] = []
-    for request in pending:
-        source = request["source"]
-        anchors.append(
-            {
-                "finding_id": request["finding_id"],
-                "evidence_index": request["evidence_index"],
+            requests.setdefault(evidence["source_id"], []).append(len(anchors))
+            evidences.append(evidence)
+            source = sources[evidence["source_id"]]
+            anchors.append({
+                "finding_id": finding["id"],
+                "evidence_index": evidence_index,
                 "source_id": source["id"],
                 "path": source["path"],
                 "origin": source["origin"],
                 "revision": source["revision"],
-                **locate_anchor(None, request["evidence"]),
-            }
-        )
+                **locate_anchor(None, evidence),
+            })
+    groups: dict[Any, list[tuple[int, dict[str, Any]]]] = {}
+    for index, source in enumerate(scope["sources"]):
+        if source["availability"] in CAPTURED_AVAILABILITY:
+            groups.setdefault(source["sha256"], []).append((index, source))
     for group in groups.values():
         raw = read_source(packet, group[0][1])
         actual_lines: int | None = None
@@ -731,39 +606,31 @@ def _locate_anchors(
                 f"but holds {actual_lines}",
                 f"/sources/{index}/line_count",
             )
-        positions = [
-            position for _, source in group for position in requests.get(source["id"], [])
-        ]
-        lines = (
-            split_lines(raw)
-            if any(
-                pending[position]["source"]["availability"] == TEXT_AVAILABILITY
-                for position in positions
-            )
-            else None
-        )
+        positions = [position for _, source in group for position in requests.get(source["id"], [])]
+        text = [position for position in positions
+                if sources[anchors[position]["source_id"]]["availability"] == TEXT_AVAILABILITY]
+        lines = split_lines(raw) if text else None
         for position in positions:
-            shared = (
-                lines
-                if pending[position]["source"]["availability"] == TEXT_AVAILABILITY
-                else None
-            )
-            anchors[position].update(
-                _locate_in_lines(shared, pending[position]["evidence"])
-            )
+            anchors[position].update(_locate_in_lines(lines if position in text else None,
+                                                      evidences[position]))
     return anchors
 
 
-def _validate_concerns(record: dict[str, Any], item_ids: set[str]) -> None:
-    concern_ids: set[str] = set()
-    for index, concern in enumerate(record["concerns"]):
+def _require_unique_ids(entries: list[dict[str, Any]], section: str) -> None:
+    """Findings, concerns, and verification entries each need their own ids."""
+    seen: set[str] = set()
+    for index, entry in enumerate(entries):
         _require(
-            concern["id"] not in concern_ids,
+            entry["id"] not in seen,
             "E_DUPLICATE_ID",
-            f"duplicate concern id {concern['id']}",
-            f"/concerns/{index}/id",
+            f"duplicate {section[:-1]} id {entry['id']}",
+            f"/{section}/{index}/id",
         )
-        concern_ids.add(concern["id"])
+        seen.add(entry["id"])
+
+
+def _validate_concern_references(record: dict[str, Any], item_ids: set[str]) -> None:
+    for index, concern in enumerate(record["concerns"]):
         for item_index, item_id in enumerate(concern["item_ids"]):
             _require(
                 item_id in item_ids,
@@ -771,18 +638,6 @@ def _validate_concerns(record: dict[str, Any], item_ids: set[str]) -> None:
                 f"concern {concern['id']} references unknown item {item_id}",
                 f"/concerns/{index}/item_ids/{item_index}",
             )
-
-
-def _validate_verification(record: dict[str, Any]) -> None:
-    verification_ids: set[str] = set()
-    for index, entry in enumerate(record["verification"]):
-        _require(
-            entry["id"] not in verification_ids,
-            "E_DUPLICATE_ID",
-            f"duplicate verification id {entry['id']}",
-            f"/verification/{index}/id",
-        )
-        verification_ids.add(entry["id"])
 
 
 def validate_record(
@@ -800,11 +655,12 @@ def validate_record(
     validate_scope(scope)
     validate_document(record, "record")
     _verify_scope_digest(scope_bytes, record)
+    for section in ("findings", "concerns", "verification"):
+        _require_unique_ids(record[section], section)
+    item_ids = {item["id"] for item in scope["items"]}
     coverage_status, counts = _validate_coverage(scope, record)
-    _validate_concerns(record, {item["id"] for item in scope["items"]})
-    _validate_verification(record)
-    pending = _pending_evidence(scope, record)
-    anchors = _locate_anchors(packet, scope, pending)
+    _validate_concern_references(record, item_ids)
+    anchors = _locate_anchors(packet, scope, record)
     return {
         "validation": "valid",
         "coverage_status": coverage_status,
@@ -829,14 +685,10 @@ def finish_report(
     if len(limitations) > MAX_ITEMS:
         raise ReviewError(
             "E_REPORT_LIMIT",
-            f"the merged limitations hold {len(limitations)} entries, "
-            f"over the {MAX_ITEMS} limit",
+            f"the merged limitations hold {len(limitations)} entries, over the {MAX_ITEMS} limit",
         )
     valid = validation.get("validation") == "valid"
-    problems = validation.get("problems") or [
-        {"code": "E_SCHEMA", "pointer": "", "message": "the record is invalid"}
-    ]
-    report = {
+    report: dict[str, Any] = {
         "schema_version": CHECK_SCHEMA_VERSION,
         "validation": "valid" if valid else "invalid",
         "coverage_status": "unavailable",
@@ -845,7 +697,9 @@ def finish_report(
         "concern_count": None,
         "item_counts": None,
         "anchors": [],
-        "problems": problems,
+        "problems": validation.get("problems") or [
+            {"code": "E_SCHEMA", "pointer": "", "message": "the record is invalid"}
+        ],
         "limitations": limitations,
         "exit_code": 2,
     }
@@ -855,7 +709,7 @@ def finish_report(
         validation["coverage_status"] == "partial"
         or freshness.get("status") in ("changed", "incomplete")
         or any(anchor["status"] != "resolved" for anchor in validation["anchors"])
-        or validation["concern_count"]
+        or bool(validation["concern_count"])
         or validation.get("failed_verification")
     )
     report.update(
