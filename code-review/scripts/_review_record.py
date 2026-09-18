@@ -710,7 +710,7 @@ def _locate_anchors(
         )
     for group in groups.values():
         raw = read_source(packet, group[0][1])
-        text = group[0][1]["availability"] == TEXT_AVAILABILITY
+        actual_lines: int | None = None
         for index, source in group:
             size = source["size_bytes"]
             _require(
@@ -719,21 +719,38 @@ def _locate_anchors(
                 f"source {source['id']} records {size} bytes but its object holds {len(raw)}",
                 f"/sources/{index}/size_bytes",
             )
-            if text:
-                actual = count_lines(raw)
-                _require(
-                    source["line_count"] == actual,
-                    "E_SOURCE_LINES",
-                    f"source {source['id']} records {source['line_count']} lines "
-                    f"but holds {actual}",
-                    f"/sources/{index}/line_count",
-                )
+            # A shared digest only means shared bytes: a symlink records no line count.
+            if source["availability"] != TEXT_AVAILABILITY:
+                continue
+            if actual_lines is None:
+                actual_lines = count_lines(raw)
+            _require(
+                source["line_count"] == actual_lines,
+                "E_SOURCE_LINES",
+                f"source {source['id']} records {source['line_count']} lines "
+                f"but holds {actual_lines}",
+                f"/sources/{index}/line_count",
+            )
         positions = [
             position for _, source in group for position in requests.get(source["id"], [])
         ]
-        lines = split_lines(raw) if text and positions else None
+        lines = (
+            split_lines(raw)
+            if any(
+                pending[position]["source"]["availability"] == TEXT_AVAILABILITY
+                for position in positions
+            )
+            else None
+        )
         for position in positions:
-            anchors[position].update(_locate_in_lines(lines, pending[position]["evidence"]))
+            shared = (
+                lines
+                if pending[position]["source"]["availability"] == TEXT_AVAILABILITY
+                else None
+            )
+            anchors[position].update(
+                _locate_in_lines(shared, pending[position]["evidence"])
+            )
     return anchors
 
 

@@ -95,53 +95,22 @@ class ExtendedReviewPackagingTests(unittest.TestCase):
             timeout=120,
         )
 
-    def write_record(self, packet: Path, scope_sha256: str) -> Path:
-        scope = json.loads((packet / "scope.json").read_text(encoding="utf-8"))
-        record = {
-            "schema_version": "fas-review-record/1",
-            "scope_ref": "scope.json",
-            "scope_sha256": scope_sha256,
-            "coverage": [
-                {"item_id": item["id"], "status": "reviewed", "reason": None}
-                for item in scope["items"]
-            ],
-            "findings": [],
-            "concerns": [],
-            "verification": [],
-            "limitations": [],
-        }
-        return fixtures.write_json(self.root / "record.json", record)
-
-    def test_p01_standalone_copy_runs_both_commands(self) -> None:
-        skill = self.standalone_skill()
-        unrelated = self.root / "cwd"
-        unrelated.mkdir()
-        packet = self.root / "standalone-packet"
-        scoped = self.run_helper(
-            skill / "scripts" / "review_support.py",
-            [
-                "scope",
-                "--repo",
-                str(self.repo),
-                "--mode",
-                "workspace",
-                "--path",
-                ".",
-                "--output",
-                str(packet),
-            ],
-            unrelated,
+    def helper_scope(self, script: Path, repo: Path, packet: Path, cwd: Path, *extra: str):
+        return self.run_helper(
+            script,
+            ["scope", "--repo", str(repo), *extra, "--output", str(packet)],
+            cwd,
         )
-        self.assertEqual(0, scoped.returncode, scoped.stdout + scoped.stderr)
-        payload = json.loads(scoped.stdout)
-        record = self.write_record(packet, payload["scope_sha256"])
-        report = self.root / "standalone-report.json"
-        checked = self.run_helper(
-            skill / "scripts" / "review_support.py",
+
+    def helper_check(
+        self, script: Path, repo: Path, packet: Path, record: Path, report: Path, cwd: Path
+    ):
+        return self.run_helper(
+            script,
             [
                 "check",
                 "--repo",
-                str(self.repo),
+                str(repo),
                 "--packet",
                 str(packet),
                 "--record",
@@ -149,7 +118,37 @@ class ExtendedReviewPackagingTests(unittest.TestCase):
                 "--output",
                 str(report),
             ],
+            cwd,
+        )
+
+    def write_record(self, packet: Path, scope_sha256: str) -> Path:
+        # The CLI summary must describe the exact bytes that were captured.
+        self.assertEqual("sha256:" + digest_of(packet / "scope.json"), scope_sha256)
+        return fixtures.write_json(
+            self.root / "record.json", fixtures.hand_record(fixtures.packet_view(packet))
+        )
+
+    def test_p01_standalone_copy_runs_both_commands(self) -> None:
+        skill = self.standalone_skill()
+        unrelated = self.root / "cwd"
+        unrelated.mkdir()
+        packet = self.root / "standalone-packet"
+        scoped = self.helper_scope(
+            skill / "scripts" / "review_support.py",
+            self.repo,
+            packet,
             unrelated,
+            "--mode",
+            "workspace",
+            "--path",
+            ".",
+        )
+        self.assertEqual(0, scoped.returncode, scoped.stdout + scoped.stderr)
+        payload = json.loads(scoped.stdout)
+        record = self.write_record(packet, payload["scope_sha256"])
+        report = self.root / "standalone-report.json"
+        checked = self.helper_check(
+            skill / "scripts" / "review_support.py", self.repo, packet, record, report, unrelated
         )
         self.assertEqual(0, checked.returncode, checked.stdout + checked.stderr)
         self.assertEqual("all_declared_reviewed", json.loads(checked.stdout)["coverage_status"])
@@ -162,15 +161,25 @@ class ExtendedReviewPackagingTests(unittest.TestCase):
         unrelated.mkdir()
         source_packet = self.root / "source-packet"
         packaged_packet = self.root / "packaged-packet"
-        source_run = self.run_helper(
+        source_run = self.helper_scope(
             SCRIPTS_DIR / "review_support.py",
-            ["scope", "--repo", str(self.repo), "--mode", "workspace", "--path", ".", "--output", str(source_packet)],
+            self.repo,
+            source_packet,
             unrelated,
+            "--mode",
+            "workspace",
+            "--path",
+            ".",
         )
-        packaged_run = self.run_helper(
+        packaged_run = self.helper_scope(
             skill / "scripts" / "review_support.py",
-            ["scope", "--repo", str(self.repo), "--mode", "workspace", "--path", ".", "--output", str(packaged_packet)],
+            self.repo,
+            packaged_packet,
             unrelated,
+            "--mode",
+            "workspace",
+            "--path",
+            ".",
         )
         self.assertEqual(0, source_run.returncode, source_run.stdout + source_run.stderr)
         self.assertEqual(0, packaged_run.returncode, packaged_run.stdout + packaged_run.stderr)
@@ -234,18 +243,21 @@ class ExtendedReviewPackagingTests(unittest.TestCase):
 
         before = snapshot()
         packet = self.root / "safe-packet"
-        scoped = self.run_helper(
+        scoped = self.helper_scope(
             SCRIPTS_DIR / "review_support.py",
-            ["scope", "--repo", str(self.repo), "--mode", "workspace", "--path", ".", "--output", str(packet)],
+            self.repo,
+            packet,
             self.root,
+            "--mode",
+            "workspace",
+            "--path",
+            ".",
         )
         self.assertEqual(0, scoped.returncode, scoped.stdout + scoped.stderr)
         record = self.write_record(packet, json.loads(scoped.stdout)["scope_sha256"])
         report = self.root / "safe-report.json"
-        checked = self.run_helper(
-            SCRIPTS_DIR / "review_support.py",
-            ["check", "--repo", str(self.repo), "--packet", str(packet), "--record", str(record), "--output", str(report)],
-            self.root,
+        checked = self.helper_check(
+            SCRIPTS_DIR / "review_support.py", self.repo, packet, record, report, self.root
         )
         self.assertEqual(0, checked.returncode, checked.stdout + checked.stderr)
         self.assertEqual(before, snapshot())
@@ -326,21 +338,8 @@ class ExtendedReviewPackagingTests(unittest.TestCase):
             str(packet),
         )
         self.assertEqual(0, code, payload)
-        scope = json.loads((packet / "scope.json").read_text(encoding="utf-8"))
-        self.assertEqual(1, len(scope["items"]))
-        record = {
-            "schema_version": "fas-review-record/1",
-            "scope_ref": "scope.json",
-            "scope_sha256": payload["scope_sha256"],
-            "coverage": [
-                {"item_id": item["id"], "status": "reviewed", "reason": None}
-                for item in scope["items"]
-            ],
-            "findings": [],
-            "concerns": [],
-            "verification": [],
-            "limitations": [],
-        }
+        record = fixtures.hand_record(fixtures.packet_view(packet))
+        self.assertEqual("sha256:" + digest_of(packet / "scope.json"), payload["scope_sha256"])
         record_path = fixtures.write_json(self.root / "n13-record.json", record)
 
         def check(name: str, repo_argument: Path | None = None):

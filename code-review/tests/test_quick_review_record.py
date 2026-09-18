@@ -38,6 +38,12 @@ class QuickReviewRecordTests(unittest.TestCase):
             packet["packet"], packet["scope"], record, scope_bytes=packet["scope_bytes"]
         )
 
+    def check_report(self, validation: dict) -> dict:
+        """Build the check report for a captured-inputs-match freshness result."""
+        return review_record.finish_report(
+            validation, {"status": "captured_inputs_match", "changed_paths": []}
+        )
+
     def assertCode(self, code, callable_, *args, **kwargs):
         with self.assertRaises(review_record.ReviewError) as caught:
             callable_(*args, **kwargs)
@@ -50,9 +56,7 @@ class QuickReviewRecordTests(unittest.TestCase):
         validation = self.validate(packet, record)
         self.assertEqual("valid", validation["validation"])
         self.assertEqual("all_declared_reviewed", validation["coverage_status"])
-        report = review_record.finish_report(
-            validation, {"status": "captured_inputs_match", "changed_paths": []}
-        )
+        report = self.check_report(validation)
         review_record.validate_document(report, "check_report")
         self.assertEqual(0, report["exit_code"])
         for forbidden in ("pass", "ready", "publication_ceiling", "review_is_current"):
@@ -82,9 +86,7 @@ class QuickReviewRecordTests(unittest.TestCase):
         )
         validation = self.validate(packet, record)
         self.assertEqual("valid", validation["validation"])
-        report = review_record.finish_report(
-            validation, {"status": "captured_inputs_match", "changed_paths": []}
-        )
+        report = self.check_report(validation)
         self.assertEqual(1, report["finding_count"])
         self.assertEqual(0, report["exit_code"])
         serialized = json.dumps(report)
@@ -222,9 +224,7 @@ class QuickReviewRecordTests(unittest.TestCase):
             )
             validation = self.validate(packet, record)
             self.assertEqual("partial", validation["coverage_status"])
-            report = review_record.finish_report(
-                validation, {"status": "captured_inputs_match", "changed_paths": []}
-            )
+            report = self.check_report(validation)
             self.assertEqual(4, report["exit_code"])
 
     def test_r07_non_text_source_cannot_be_declared_reviewed(self) -> None:
@@ -272,15 +272,121 @@ class QuickReviewRecordTests(unittest.TestCase):
             record = fixtures.hand_record(packet)
             self.assertCode("E_COVERAGE_UNSUPPORTED", self.validate, packet, record)
 
+    def test_r07b_shared_digest_keeps_each_source_availability(self) -> None:
+        cases = {
+            "text source sorts first": ("a-text.py", "z-link"),
+            "symlink source sorts first": ("z-text.py", "a-link"),
+        }
+        for label, (text_path, link_path) in cases.items():
+            with self.subTest(label):
+                packet = fixtures.hand_packet(
+                    self.root,
+                    packet_name=f"mixed-{label.split()[0]}",
+                    sources=[
+                        {
+                            "name": "text",
+                            "path": text_path,
+                            "origin": "worktree",
+                            "git_mode": "100644",
+                            "availability": "text",
+                            "payload": b"target",
+                        },
+                        {
+                            "name": "link",
+                            "path": link_path,
+                            "origin": "worktree",
+                            "git_mode": "120000",
+                            "availability": "symlink",
+                            "payload": b"target",
+                        },
+                    ],
+                    items=[
+                        {
+                            "layer": "worktree",
+                            "status": "A",
+                            "path": text_path,
+                            "after": "text",
+                        },
+                        {
+                            "layer": "worktree",
+                            "status": "A",
+                            "path": link_path,
+                            "after": "link",
+                        },
+                    ],
+                )
+                digests = {source["sha256"] for source in packet["scope"]["sources"]}
+                self.assertEqual(1, len(digests), packet["scope"]["sources"])
+                # The fixture orders sources by path, so this is the group order under test.
+                self.assertEqual(
+                    ["text" if path == text_path else "symlink" for path in sorted(cases[label])],
+                    [source["availability"] for source in packet["scope"]["sources"]],
+                )
+                record = fixtures.hand_record(
+                    packet,
+                    coverage=[
+                        {
+                            "item_id": packet["item_ids"][text_path],
+                            "status": "reviewed",
+                            "reason": None,
+                        },
+                        {
+                            "item_id": packet["item_ids"][link_path],
+                            "status": "not_reviewed",
+                            "reason": "A symlink target is outside this scope.",
+                        },
+                    ],
+                    findings=[
+                        fixtures.finding(
+                            packet,
+                            evidence_entries=[
+                                fixtures.evidence(packet, snippet="target", source_name="text"),
+                                fixtures.evidence(packet, snippet="target", source_name="link"),
+                            ],
+                        )
+                    ],
+                )
+                with mock.patch.object(
+                    review_record, "read_source", side_effect=review_record.read_source
+                ) as read:
+                    validation = self.validate(packet, record)
+                self.assertEqual(["valid", "partial"], [validation["validation"], validation["coverage_status"]])
+                self.assertEqual([], validation["problems"])
+                self.assertEqual(
+                    [digests.pop()], [call.args[1]["sha256"] for call in read.call_args_list]
+                )
+                text_anchor, link_anchor = validation["anchors"]
+                self.assertEqual(
+                    [packet["source_ids"]["text"], "resolved", 1, 1],
+                    [
+                        text_anchor["source_id"],
+                        text_anchor["status"],
+                        text_anchor["start_line"],
+                        text_anchor["end_line"],
+                    ],
+                )
+                self.assertEqual(
+                    [packet["source_ids"]["link"], "unsupported_source"],
+                    [link_anchor["source_id"], link_anchor["status"]],
+                )
+                report = self.check_report(validation)
+                self.assertEqual(4, report["exit_code"])
+                self.assertEqual(
+                    ["not_reviewed"],
+                    [
+                        entry["status"]
+                        for entry in record["coverage"]
+                        if entry["item_id"] == packet["item_ids"][link_path]
+                    ],
+                )
+
     def test_r08_empty_scope_reports_nothing_in_scope(self) -> None:
         packet = fixtures.hand_packet(self.root, sources=[], items=[])
         with self.subTest("R08 empty"):
             record = fixtures.hand_record(packet)
             validation = self.validate(packet, record)
             self.assertEqual("nothing_in_scope", validation["coverage_status"])
-            report = review_record.finish_report(
-                validation, {"status": "captured_inputs_match", "changed_paths": []}
-            )
+            report = self.check_report(validation)
             review_record.validate_document(report, "check_report")
             self.assertEqual(0, report["exit_code"])
             self.assertEqual(0, report["finding_count"])
@@ -642,16 +748,13 @@ class QuickReviewRecordTests(unittest.TestCase):
         self.assertEqual("partial", validation["coverage_status"])
         self.assertEqual(1, validation["finding_count"])
         self.assertEqual("resolved", validation["anchors"][0]["status"])
-        report = review_record.finish_report(
-            validation, {"status": "captured_inputs_match", "changed_paths": []}
-        )
+        report = self.check_report(validation)
         self.assertEqual(4, report["exit_code"])
 
     def test_r17_concerns_and_failed_verification_force_exit_four(self) -> None:
         packet = fixtures.anchor_packet(self.root, b"x = 1\n")
         item_id = packet["scope"]["items"][0]["id"]
         base = fixtures.hand_record(packet)
-        matched = {"status": "captured_inputs_match", "changed_paths": []}
         with self.subTest("R17 concern"):
             record = fixtures.hand_record(
                 packet,
@@ -667,7 +770,7 @@ class QuickReviewRecordTests(unittest.TestCase):
             )
             validation = self.validate(packet, record)
             self.assertEqual(1, validation["concern_count"])
-            self.assertEqual(4, review_record.finish_report(validation, matched)["exit_code"])
+            self.assertEqual(4, self.check_report(validation)["exit_code"])
         with self.subTest("R17 failed verification"):
             record = fixtures.hand_record(
                 packet,
@@ -681,7 +784,7 @@ class QuickReviewRecordTests(unittest.TestCase):
                 ],
             )
             validation = self.validate(packet, record)
-            self.assertEqual(4, review_record.finish_report(validation, matched)["exit_code"])
+            self.assertEqual(4, self.check_report(validation)["exit_code"])
         with self.subTest("R17 not_run verification"):
             record = fixtures.hand_record(
                 packet,
@@ -695,10 +798,10 @@ class QuickReviewRecordTests(unittest.TestCase):
                 ],
             )
             validation = self.validate(packet, record)
-            self.assertEqual(0, review_record.finish_report(validation, matched)["exit_code"])
+            self.assertEqual(0, self.check_report(validation)["exit_code"])
         with self.subTest("R17 base"):
             validation = self.validate(packet, base)
-            self.assertEqual(0, review_record.finish_report(validation, matched)["exit_code"])
+            self.assertEqual(0, self.check_report(validation)["exit_code"])
 
     def test_r18_existing_report_output_is_not_overwritten(self) -> None:
         packet = fixtures.anchor_packet(self.root, b"x = 1\n")
@@ -708,19 +811,7 @@ class QuickReviewRecordTests(unittest.TestCase):
         scope_bytes = (packet_path / "scope.json").read_bytes()
         report_path = self.root / "report.json"
         report_path.write_bytes(b"existing report\n")
-        code, payload = fixtures.run_cli(
-            [
-                "check",
-                "--repo",
-                str(self.root / "repo"),
-                "--packet",
-                str(packet_path),
-                "--record",
-                str(record_path),
-                "--output",
-                str(report_path),
-            ]
-        )
+        code, payload = fixtures.check_cli(self.root / "repo", packet_path, record_path, report_path)
         self.assertEqual(2, code)
         self.assertEqual(2, payload["exit_code"])
         self.assertIsNone(payload["artifact"])
@@ -758,19 +849,7 @@ class QuickReviewRecordTests(unittest.TestCase):
             record_path = self.root / "broken-record.json"
             record_path.write_bytes(b'{"schema_version": NaN}')
             report_path = self.root / "invalid-report.json"
-            code, payload = fixtures.run_cli(
-                [
-                    "check",
-                    "--repo",
-                    str(self.root / "repo"),
-                    "--packet",
-                    str(packet["packet"]),
-                    "--record",
-                    str(record_path),
-                    "--output",
-                    str(report_path),
-                ]
-            )
+            code, payload = fixtures.check_cli(self.root / "repo", packet["packet"], record_path, report_path)
             self.assertEqual(2, code)
             self.assertEqual("invalid", payload["result"])
             report = json.loads(report_path.read_bytes())
@@ -843,9 +922,7 @@ class QuickReviewRecordTests(unittest.TestCase):
             ["scope note", "shared note", "record note"], validation["limitations"]
         )
         self.assertEqual(before, record)
-        report = review_record.finish_report(
-            validation, {"status": "captured_inputs_match", "changed_paths": []}
-        )
+        report = self.check_report(validation)
         review_record.validate_document(report, "check_report")
         self.assertEqual(
             ["scope note", "shared note", "record note"], report["limitations"]
@@ -857,16 +934,12 @@ class QuickReviewRecordTests(unittest.TestCase):
                 ["scope note", "shared note"], self.validate(packet, empty)["limitations"]
             )
         with self.subTest("N09 the merged array keeps its bound"):
-            original = review_record.MAX_ITEMS
-            review_record.MAX_ITEMS = 2
-            self.addCleanup(setattr, review_record, "MAX_ITEMS", original)
             overflow = fixtures.hand_record(packet, limitations=["a", "b"])
-            validation = self.validate(packet, overflow)
-            self.assertEqual(4, len(validation["limitations"]))
-            with self.assertRaises(review_record.ReviewError) as caught:
-                review_record.finish_report(
-                    validation, {"status": "captured_inputs_match", "changed_paths": []}
-                )
+            with mock.patch.object(review_record, "MAX_ITEMS", 2):
+                validation = self.validate(packet, overflow)
+                self.assertEqual(4, len(validation["limitations"]))
+                with self.assertRaises(review_record.ReviewError) as caught:
+                    self.check_report(validation)
             self.assertEqual("E_REPORT_LIMIT", caught.exception.code)
             self.assertEqual(
                 ["scope note", "shared note"],
@@ -965,23 +1038,21 @@ class QuickReviewRecordTests(unittest.TestCase):
                 )
             ],
         )
-        calls: list[str] = []
-        original = review_record.read_source
-
-        def counting_read(packet_path, source):
-            calls.append(source["id"])
-            return original(packet_path, source)
-
-        review_record.read_source = counting_read
-        self.addCleanup(setattr, review_record, "read_source", original)
-        validation = self.validate(packet, record)
-        self.assertEqual(2, len(calls))
-        self.assertEqual(4, len(validation["anchors"]))
-        self.assertEqual(["resolved"] * 4, [anchor["status"] for anchor in validation["anchors"]])
-        self.assertEqual([0, 1, 2, 3], [anchor["evidence_index"] for anchor in validation["anchors"]])
-        with self.subTest("N11 no cross-call caching"):
-            self.validate(packet, record)
-            self.assertEqual(4, len(calls))
+        with mock.patch.object(
+            review_record, "read_source", side_effect=review_record.read_source
+        ) as read:
+            validation = self.validate(packet, record)
+            self.assertEqual(2, len(read.call_args_list))
+            self.assertEqual(4, len(validation["anchors"]))
+            self.assertEqual(
+                ["resolved"] * 4, [anchor["status"] for anchor in validation["anchors"]]
+            )
+            self.assertEqual(
+                [0, 1, 2, 3], [anchor["evidence_index"] for anchor in validation["anchors"]]
+            )
+            with self.subTest("N11 no cross-call caching"):
+                self.validate(packet, record)
+                self.assertEqual(4, len(read.call_args_list))
         with self.subTest("N11 an unreferenced corrupt object is still rejected"):
             broken = fixtures.hand_packet(
                 self.root,

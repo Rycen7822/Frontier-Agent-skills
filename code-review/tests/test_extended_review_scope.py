@@ -63,9 +63,7 @@ class ExtendedReviewScopeTests(unittest.TestCase):
 
     def scope(self, *args: str):
         output = self.packet_dir()
-        code, payload = fixtures.run_cli(
-            ["scope", "--repo", str(self.repo), *args, "--output", str(output)]
-        )
+        code, payload = fixtures.capture_cli(self.repo, output, *args)
         return code, payload, output
 
     def read_scope(self, packet: Path) -> dict:
@@ -73,12 +71,6 @@ class ExtendedReviewScopeTests(unittest.TestCase):
 
     def items_by_path(self, scope: dict) -> dict[tuple[str, str], dict]:
         return {(item["layer"], item["path"]): item for item in scope["items"]}
-
-    def sources_by_path(self, scope: dict) -> dict[tuple[str, str, str], dict]:
-        return {
-            (source["origin"], source["path"], source["revision"] or ""): source
-            for source in scope["sources"]
-        }
 
     def blob_bytes(self, packet: Path, source: dict) -> bytes:
         return (packet / "objects" / f"{source['sha256'][7:]}.blob").read_bytes()
@@ -180,22 +172,9 @@ class ExtendedReviewScopeTests(unittest.TestCase):
             fixtures.git(self.repo, "checkout", "-q", "--orphan", "orphan")
             fixtures.git(self.repo, "rm", "-q", "-rf", "--cached", ".")
             fixtures.commit_files(self.repo, {"orphan.py": "orphan = 1\n"})
-            code, payload = fixtures.run_cli(
-                [
-                    "scope",
-                    "--repo",
-                    str(self.repo),
-                    "--mode",
-                    "range",
-                    "--base",
-                    "main",
-                    "--head",
-                    "orphan",
-                    "--path",
-                    ".",
-                    "--output",
-                    str(self.packet_dir()),
-                ]
+            code, payload = fixtures.capture_cli(
+                self.repo, self.packet_dir(), "--mode", "range", "--base", "main", "--head", "orphan",
+                "--path", ".",
             )
             self.assertEqual(2, code)
             self.assertEqual("E_NO_MERGE_BASE", payload["code"])
@@ -214,22 +193,9 @@ class ExtendedReviewScopeTests(unittest.TestCase):
             m2 = fixtures.head_oid(self.repo)
             bases = fixtures.git(self.repo, "merge-base", "--all", m1, m2).stdout.split()
             self.assertEqual(2, len(bases))
-            code, payload = fixtures.run_cli(
-                [
-                    "scope",
-                    "--repo",
-                    str(self.repo),
-                    "--mode",
-                    "range",
-                    "--base",
-                    m1,
-                    "--head",
-                    m2,
-                    "--path",
-                    ".",
-                    "--output",
-                    str(self.packet_dir()),
-                ]
+            code, payload = fixtures.capture_cli(
+                self.repo, self.packet_dir(), "--mode", "range", "--base", m1, "--head", m2, "--path",
+                ".",
             )
             self.assertEqual(2, code)
             self.assertEqual("E_AMBIGUOUS_MERGE_BASE", payload["code"])
@@ -394,9 +360,7 @@ class ExtendedReviewScopeTests(unittest.TestCase):
         index_bytes = (self.repo / ".git" / "index").read_bytes()
         worktree_bytes = (self.repo / "a.py").read_bytes()
         output = self.packet_dir()
-        code, payload = fixtures.run_cli(
-            ["scope", "--repo", str(self.repo), "--mode", "workspace", "--path", ".", "--output", str(output)]
-        )
+        code, payload = fixtures.capture_cli(self.repo, output, "--mode", "workspace", "--path", ".")
         self.assertEqual(2, code)
         self.assertEqual("E_UNMERGED", payload["code"])
         self.assertFalse((output / "scope.json").exists())
@@ -470,12 +434,10 @@ class ExtendedReviewScopeTests(unittest.TestCase):
 
     def test_g17b_packet_budget_exhaustion(self) -> None:
         fixtures.commit_files(self.repo, {"a.py": "a = 1\n"})
-        original = review_git.MAX_PACKET_BYTES
-        review_git.MAX_PACKET_BYTES = 24
-        self.addCleanup(setattr, review_git, "MAX_PACKET_BYTES", original)
         for index in range(4):
             fixtures.write_file(self.repo, f"bulk/{index:02d}.bin", bytes([65 + index]) * 12)
-        code, payload, packet = self.scope("--mode", "workspace", "--path", "bulk")
+        with mock.patch.object(review_git, "MAX_PACKET_BYTES", 24):
+            code, payload, packet = self.scope("--mode", "workspace", "--path", "bulk")
         self.assertEqual(4, code, payload)
         scope = self.read_scope(packet)
         sources = {source["path"]: source for source in scope["sources"]}
@@ -525,9 +487,7 @@ class ExtendedReviewScopeTests(unittest.TestCase):
             self.assertEqual("E_PARENT_SYMLINK", caught.exception.code)
         with self.subTest("G18 output inside the repository"):
             inside = self.repo / "packet"
-            code, payload = fixtures.run_cli(
-                ["scope", "--repo", str(self.repo), "--mode", "workspace", "--path", ".", "--output", str(inside)]
-            )
+            code, payload = fixtures.capture_cli(self.repo, inside, "--mode", "workspace", "--path", ".")
             self.assertEqual(2, code)
             self.assertEqual("E_OUTPUT", payload["code"])
             self.assertFalse(inside.exists())
@@ -545,12 +505,9 @@ class ExtendedReviewScopeTests(unittest.TestCase):
                 (Path(root) / relative).write_bytes(b"a = 3\n")
             return result
 
-        review_git._read_disk = changing_read
-        self.addCleanup(setattr, review_git, "_read_disk", original)
         output = self.packet_dir()
-        code, payload = fixtures.run_cli(
-            ["scope", "--repo", str(self.repo), "--mode", "workspace", "--path", ".", "--output", str(output)]
-        )
+        with mock.patch.object(review_git, "_read_disk", changing_read):
+            code, payload = fixtures.capture_cli(self.repo, output, "--mode", "workspace", "--path", ".")
         self.assertEqual(2, code)
         self.assertEqual("E_SOURCE_CHANGED_DURING_CAPTURE", payload["code"])
         self.assertFalse((output / "scope.json").exists())
@@ -560,25 +517,24 @@ class ExtendedReviewScopeTests(unittest.TestCase):
         fixtures.write_file(self.repo, "src/module.py", "value = 2\n")
         code, payload, packet = self.scope("--mode", "workspace", "--path", "src")
         self.assertEqual(0, code, payload)
-        scope = self.read_scope(packet)
-        record = self._workspace_record(packet, scope)
+        record = fixtures.hand_record(fixtures.packet_view(packet))
         record_path = self.root / "record.json"
         fixtures.write_json(record_path, record)
         baseline = self.root / "report-baseline.json"
-        code, payload = self._check(packet, record_path, baseline)
+        code, payload = fixtures.check_cli(self.repo, packet, record_path, baseline)
         self.assertEqual(0, code, payload)
         self.assertEqual("captured_inputs_match", payload["freshness"])
         with self.subTest("G20 relevant change"):
             fixtures.write_file(self.repo, "src/module.py", "value = 3\n")
             report = self.root / "report-changed.json"
-            code, payload = self._check(packet, record_path, report)
+            code, payload = fixtures.check_cli(self.repo, packet, record_path, report)
             self.assertEqual(4, code)
             self.assertEqual("changed", payload["freshness"])
             self.assertIn("src/module.py", json.loads(report.read_text())["freshness"]["changed_paths"])
         with self.subTest("G20 new relevant item"):
             fixtures.write_file(self.repo, "src/added.py", "added = 1\n")
             report = self.root / "report-added.json"
-            code, payload = self._check(packet, record_path, report)
+            code, payload = fixtures.check_cli(self.repo, packet, record_path, report)
             self.assertEqual(4, code)
             self.assertEqual("changed", payload["freshness"])
         with self.subTest("G20 unrelated change"):
@@ -586,7 +542,7 @@ class ExtendedReviewScopeTests(unittest.TestCase):
             (self.repo / "src" / "added.py").unlink()
             fixtures.write_file(self.repo, "docs/readme.md", "updated docs\n")
             report = self.root / "report-unrelated.json"
-            code, payload = self._check(packet, record_path, report)
+            code, payload = fixtures.check_cli(self.repo, packet, record_path, report)
             self.assertEqual(0, code)
             self.assertEqual("captured_inputs_match", payload["freshness"])
 
@@ -614,7 +570,7 @@ class ExtendedReviewScopeTests(unittest.TestCase):
         self.assertEqual(3, len(context_sources))
         context = next(source for source in context_sources if source["origin"] == "worktree")
         self.assertEqual("worktree", context["origin"])
-        record = self._workspace_record(packet, scope)
+        record = fixtures.hand_record(fixtures.packet_view(packet))
         record["findings"] = [
             {
                 "id": "F-1",
@@ -638,7 +594,7 @@ class ExtendedReviewScopeTests(unittest.TestCase):
         record_path = self.root / "context-record.json"
         fixtures.write_json(record_path, record)
         report = self.root / "context-report.json"
-        code, payload = self._check(packet, record_path, report)
+        code, payload = fixtures.check_cli(self.repo, packet, record_path, report)
         self.assertEqual(0, code, payload)
         written = json.loads(report.read_text())
         self.assertEqual(1, written["finding_count"])
@@ -693,9 +649,7 @@ class ExtendedReviewScopeTests(unittest.TestCase):
         with self.subTest("G23 promisor configuration"):
             fixtures.git(self.repo, "config", "extensions.partialClone", "origin")
             output = self.packet_dir()
-            code, payload = fixtures.run_cli(
-                ["scope", "--repo", str(self.repo), "--mode", "workspace", "--path", ".", "--output", str(output)]
-            )
+            code, payload = fixtures.capture_cli(self.repo, output, "--mode", "workspace", "--path", ".")
             self.assertEqual(2, code)
             self.assertEqual("E_PARTIAL_CLONE", payload["code"])
             self.assertFalse(output.exists())
@@ -707,9 +661,7 @@ class ExtendedReviewScopeTests(unittest.TestCase):
             marker.write_bytes(b"")
             self.addCleanup(lambda: marker.unlink(missing_ok=True))
             output = self.packet_dir()
-            code, payload = fixtures.run_cli(
-                ["scope", "--repo", str(self.repo), "--mode", "workspace", "--path", ".", "--output", str(output)]
-            )
+            code, payload = fixtures.capture_cli(self.repo, output, "--mode", "workspace", "--path", ".")
             self.assertEqual(2, code)
             self.assertEqual("E_PARTIAL_CLONE", payload["code"])
             self.assertFalse(output.exists())
@@ -736,10 +688,10 @@ class ExtendedReviewScopeTests(unittest.TestCase):
         scope = self.read_scope(packet)
         self.assertEqual(1, len(scope["items"]))
         record_path = self.root / "n01-workspace-record.json"
-        fixtures.write_json(record_path, self._workspace_record(packet, scope))
+        fixtures.write_json(record_path, fixtures.hand_record(fixtures.packet_view(packet)))
 
         def check(name: str):
-            return self._check(packet, record_path, self.root / f"n01-{name}.json")
+            return fixtures.check_cli(self.repo, packet, record_path, self.root / f"n01-{name}.json")
 
         code, payload = check("baseline")
         self.assertEqual(0, code, payload)
@@ -798,20 +750,20 @@ class ExtendedReviewScopeTests(unittest.TestCase):
         scope = self.read_scope(packet)
         self.assertEqual(1, len(scope["items"]))
         record_path = self.root / "n01-snapshot-record.json"
-        fixtures.write_json(record_path, self._workspace_record(packet, scope))
+        fixtures.write_json(record_path, fixtures.hand_record(fixtures.packet_view(packet)))
         with self.subTest("N01 snapshot context bytes changed"):
             fixtures.write_file(self.repo, "config/runtime.json", '{"limit": 128}\n')
-            code, payload = self._check(packet, record_path, self.root / "n01-snapshot-bytes.json")
+            code, payload = fixtures.check_cli(self.repo, packet, record_path, self.root / "n01-snapshot-bytes.json")
             self.assertEqual(4, code, payload)
             self.assertEqual("changed", payload["freshness"])
         with self.subTest("N01 snapshot context deleted"):
             (self.repo / "config/runtime.json").unlink()
-            code, payload = self._check(packet, record_path, self.root / "n01-snapshot-deleted.json")
+            code, payload = fixtures.check_cli(self.repo, packet, record_path, self.root / "n01-snapshot-deleted.json")
             self.assertEqual(4, code, payload)
             self.assertEqual("changed", payload["freshness"])
             fixtures.write_file(self.repo, "config/runtime.json", '{"limit": 32}\n')
         with self.subTest("N01 snapshot unchanged context matches"):
-            code, payload = self._check(packet, record_path, self.root / "n01-snapshot-match.json")
+            code, payload = fixtures.check_cli(self.repo, packet, record_path, self.root / "n01-snapshot-match.json")
             self.assertEqual(0, code, payload)
             self.assertEqual("captured_inputs_match", payload["freshness"])
 
@@ -829,12 +781,11 @@ class ExtendedReviewScopeTests(unittest.TestCase):
             "config/runtime.json",
         )
         self.assertEqual(0, code, payload)
-        scope = self.read_scope(packet)
         record_path = self.root / "n01-commit-record.json"
-        fixtures.write_json(record_path, self._workspace_record(packet, scope))
+        fixtures.write_json(record_path, fixtures.hand_record(fixtures.packet_view(packet)))
         moved = fixtures.commit_files(self.repo, {"config/runtime.json": '{"limit": 512}\n'})
         with self.subTest("N01 frozen commit ignores a moved branch"):
-            code, payload = self._check(packet, record_path, self.root / "n01-commit-moved.json")
+            code, payload = fixtures.check_cli(self.repo, packet, record_path, self.root / "n01-commit-moved.json")
             self.assertEqual(0, code, payload)
             self.assertEqual("captured_inputs_match", payload["freshness"])
             self.assertNotEqual(head, moved)
@@ -855,24 +806,12 @@ class ExtendedReviewScopeTests(unittest.TestCase):
                 (Path(root) / relative).write_bytes(b'{"limit": 99}\n')
             return result
 
-        review_git._read_disk = changing_read
-        self.addCleanup(setattr, review_git, "_read_disk", original)
         output = self.packet_dir()
-        code, payload = fixtures.run_cli(
-            [
-                "scope",
-                "--repo",
-                str(self.repo),
-                "--mode",
-                "workspace",
-                "--path",
-                "src/module.py",
-                "--context-path",
+        with mock.patch.object(review_git, "_read_disk", changing_read):
+            code, payload = fixtures.capture_cli(
+                self.repo, output, "--mode", "workspace", "--path", "src/module.py", "--context-path",
                 "config/runtime.json",
-                "--output",
-                str(output),
-            ]
-        )
+            )
         self.assertEqual(2, code, payload)
         self.assertEqual("E_SOURCE_CHANGED_DURING_CAPTURE", payload["code"])
         self.assertEqual(1, state["injected"])
@@ -885,20 +824,8 @@ class ExtendedReviewScopeTests(unittest.TestCase):
         os.symlink("dir-real", self.repo / "dir")
         with self.subTest("N03 symlinked parent fails explicitly"):
             output = self.packet_dir()
-            code, payload = fixtures.run_cli(
-                [
-                    "scope",
-                    "--repo",
-                    str(self.repo),
-                    "--mode",
-                    "snapshot",
-                    "--revision",
-                    "WORKTREE",
-                    "--path",
-                    "dir/a.py",
-                    "--output",
-                    str(output),
-                ]
+            code, payload = fixtures.capture_cli(
+                self.repo, output, "--mode", "snapshot", "--revision", "WORKTREE", "--path", "dir/a.py",
             )
             self.assertEqual(2, code, payload)
             self.assertEqual("E_PARENT_SYMLINK", payload["code"])
@@ -988,78 +915,30 @@ class ExtendedReviewScopeTests(unittest.TestCase):
             long_ref = "HEAD" + "^0" * 70
             self.assertEqual(144, len(long_ref))
             output = self.packet_dir()
-            code, payload = fixtures.run_cli(
-                [
-                    "scope",
-                    "--repo",
-                    str(self.repo),
-                    "--mode",
-                    "snapshot",
-                    "--revision",
-                    long_ref,
-                    "--path",
-                    ".",
-                    "--output",
-                    str(output),
-                ]
+            code, payload = fixtures.capture_cli(
+                self.repo, output, "--mode", "snapshot", "--revision", long_ref, "--path", ".",
             )
             self.assertEqual(2, code, payload)
             self.assertEqual("E_REVISION", payload["code"])
             self.assertFalse((output / "scope.json").exists())
         with self.subTest("N05 revision that is only whitespace"):
             output = self.packet_dir()
-            code, payload = fixtures.run_cli(
-                [
-                    "scope",
-                    "--repo",
-                    str(self.repo),
-                    "--mode",
-                    "snapshot",
-                    "--revision",
-                    "   ",
-                    "--path",
-                    ".",
-                    "--output",
-                    str(output),
-                ]
+            code, payload = fixtures.capture_cli(
+                self.repo, output, "--mode", "snapshot", "--revision", "   ", "--path", ".",
             )
             self.assertEqual(2, code, payload)
             self.assertEqual("E_REVISION", payload["code"])
             self.assertFalse((output / "scope.json").exists())
         with self.subTest("N05 NUL in a path"):
             output = self.packet_dir()
-            code, payload = fixtures.run_cli(
-                [
-                    "scope",
-                    "--repo",
-                    str(self.repo),
-                    "--mode",
-                    "workspace",
-                    "--path",
-                    "a\x00b",
-                    "--output",
-                    str(output),
-                ]
-            )
+            code, payload = fixtures.capture_cli(self.repo, output, "--mode", "workspace", "--path", "a\x00b")
             self.assertEqual(2, code, payload)
             self.assertEqual("E_PATH_INVALID", payload["code"])
             self.assertFalse(output.exists())
         with self.subTest("N05 encoded scope size limit"):
             with mock.patch.object(review_record, "MAX_JSON_BYTES", 512):
                 output = self.packet_dir()
-                code, payload = fixtures.run_cli(
-                    [
-                        "scope",
-                        "--repo",
-                        str(self.repo),
-                        "--mode",
-                        "workspace",
-                        "--path",
-                        ".",
-                        "--output",
-                        str(output),
-                    ]
-                )
+                code, payload = fixtures.capture_cli(self.repo, output, "--mode", "workspace", "--path", ".")
             self.assertEqual(2, code, payload)
             self.assertEqual("E_JSON_TOO_LARGE", payload["code"])
             self.assertFalse((output / "scope.json").exists())
@@ -1069,19 +948,7 @@ class ExtendedReviewScopeTests(unittest.TestCase):
                 mock.patch.object(review_record, "MAX_ITEMS", 1),
             ):
                 output = self.packet_dir()
-                code, payload = fixtures.run_cli(
-                    [
-                        "scope",
-                        "--repo",
-                        str(self.repo),
-                        "--mode",
-                        "workspace",
-                        "--path",
-                        ".",
-                        "--output",
-                        str(output),
-                    ]
-                )
+                code, payload = fixtures.capture_cli(self.repo, output, "--mode", "workspace", "--path", ".")
             self.assertEqual(2, code, payload)
             self.assertEqual("E_ITEMS_LIMIT", payload["code"])
             self.assertFalse((output / "scope.json").exists())
@@ -1120,61 +987,25 @@ class ExtendedReviewScopeTests(unittest.TestCase):
         code, payload, packet = self.scope("--mode", "workspace", "--path", "src/module.py")
         self.assertEqual(0, code, payload)
         record_path = self.root / "n07-record.json"
-        fixtures.write_json(record_path, self._workspace_record(packet, self.read_scope(packet)))
+        fixtures.write_json(record_path, fixtures.hand_record(fixtures.packet_view(packet)))
         subdirectory = self.repo / "src"
         baseline_head = fixtures.head_oid(self.repo)
         baseline_status = fixtures.git(self.repo, "status", "--porcelain").stdout
         with self.subTest("N07 check from a subdirectory cannot write inside the repository"):
             inside = self.repo / "report-inside.json"
-            code, payload = fixtures.run_cli(
-                [
-                    "check",
-                    "--repo",
-                    str(subdirectory),
-                    "--packet",
-                    str(packet),
-                    "--record",
-                    str(record_path),
-                    "--output",
-                    str(inside),
-                ]
-            )
+            code, payload = fixtures.check_cli(subdirectory, packet, record_path, inside)
             self.assertEqual(2, code, payload)
             self.assertEqual("E_OUTPUT", payload["code"])
             self.assertFalse(inside.exists())
         with self.subTest("N07 scope from a subdirectory cannot write inside the repository"):
             output = self.repo / "packet-inside"
-            code, payload = fixtures.run_cli(
-                [
-                    "scope",
-                    "--repo",
-                    str(subdirectory),
-                    "--mode",
-                    "workspace",
-                    "--path",
-                    "src/module.py",
-                    "--output",
-                    str(output),
-                ]
-            )
+            code, payload = fixtures.capture_cli(subdirectory, output, "--mode", "workspace", "--path", "src/module.py")
             self.assertEqual(2, code, payload)
             self.assertEqual("E_OUTPUT", payload["code"])
             self.assertFalse(output.exists())
         with self.subTest("N07 check from a subdirectory still writes outside"):
             outside = self.root / "report-outside.json"
-            code, payload = fixtures.run_cli(
-                [
-                    "check",
-                    "--repo",
-                    str(subdirectory),
-                    "--packet",
-                    str(packet),
-                    "--record",
-                    str(record_path),
-                    "--output",
-                    str(outside),
-                ]
-            )
+            code, payload = fixtures.check_cli(subdirectory, packet, record_path, outside)
             self.assertEqual(0, code, payload)
             self.assertTrue(outside.is_file())
         with self.subTest("N07 the repository is untouched"):
@@ -1242,20 +1073,8 @@ class ExtendedReviewScopeTests(unittest.TestCase):
             self.assertEqual("submodule", source["availability"])
         with self.subTest("N08 hard errors stay two and seal nothing"):
             output = self.packet_dir()
-            code, payload = fixtures.run_cli(
-                [
-                    "scope",
-                    "--repo",
-                    str(self.repo),
-                    "--mode",
-                    "commit",
-                    "--commit",
-                    "does-not-exist",
-                    "--path",
-                    ".",
-                    "--output",
-                    str(output),
-                ]
+            code, payload = fixtures.capture_cli(
+                self.repo, output, "--mode", "commit", "--commit", "does-not-exist", "--path", ".",
             )
             self.assertEqual(2, code, payload)
             self.assertEqual("E_REVISION", payload["code"])
@@ -1301,18 +1120,8 @@ class ExtendedReviewScopeTests(unittest.TestCase):
         )
         with self.subTest("F1 a parent component is rejected before normalization"):
             output = self.packet_dir("f1-parent")
-            code, payload = fixtures.run_cli(
-                [
-                    "scope",
-                    "--repo",
-                    str(self.repo),
-                    "--mode",
-                    "workspace",
-                    "--path",
-                    "config/../config/runtime.json",
-                    "--output",
-                    str(output),
-                ]
+            code, payload = fixtures.capture_cli(
+                self.repo, output, "--mode", "workspace", "--path", "config/../config/runtime.json",
             )
             self.assertEqual(2, code, payload)
             self.assertEqual("E_PATH_INVALID", payload["code"])
@@ -1363,13 +1172,13 @@ class ExtendedReviewScopeTests(unittest.TestCase):
             self.assertEqual(0, code, payload)
             scope = self.read_scope(packet)
             record = fixtures.write_json(
-                self.root / "f1-index-record.json", self._workspace_record(packet, scope)
+                self.root / "f1-index-record.json", fixtures.hand_record(fixtures.packet_view(packet))
             )
             fixtures.write_file(self.repo, "config/runtime.json", '{"limit": 64}\n')
             fixtures.git(self.repo, "add", "config/runtime.json")
             fixtures.write_file(self.repo, "config/runtime.json", '{"limit": 32}\n')
             report = self.root / "f1-index-report.json"
-            code, payload = self._check(packet, record, report)
+            code, payload = fixtures.check_cli(self.repo, packet, record, report)
             self.assertEqual(4, code, payload)
             written = json.loads(report.read_text(encoding="utf-8"))
             self.assertEqual("changed", written["freshness"]["status"])
@@ -1382,24 +1191,12 @@ class ExtendedReviewScopeTests(unittest.TestCase):
             scope = self.read_scope(packet)
             self.assertIn("star*.py", [item["path"] for item in scope["items"]])
             record = fixtures.write_json(
-                self.root / "f1-glob-record.json", self._workspace_record(packet, scope)
+                self.root / "f1-glob-record.json", fixtures.hand_record(fixtures.packet_view(packet))
             )
-            code, payload = self._check(packet, record, self.root / "f1-glob-report.json")
+            code, payload = fixtures.check_cli(self.repo, packet, record, self.root / "f1-glob-report.json")
             self.assertEqual(0, code, payload)
             output = self.packet_dir("f1-glob-request")
-            code, payload = fixtures.run_cli(
-                [
-                    "scope",
-                    "--repo",
-                    str(self.repo),
-                    "--mode",
-                    "workspace",
-                    "--path",
-                    "star*.py",
-                    "--output",
-                    str(output),
-                ]
-            )
+            code, payload = fixtures.capture_cli(self.repo, output, "--mode", "workspace", "--path", "star*.py")
             self.assertEqual(2, code, payload)
             self.assertEqual("E_PATH_INVALID", payload["code"])
         with self.subTest("F1 a context source that appears later is reported"):
@@ -1423,11 +1220,11 @@ class ExtendedReviewScopeTests(unittest.TestCase):
                 },
             )
             record = fixtures.write_json(
-                self.root / "f1-origin-record.json", self._workspace_record(packet, scope)
+                self.root / "f1-origin-record.json", fixtures.hand_record(fixtures.packet_view(packet))
             )
             fixtures.git(self.repo, "add", "notes/extra.py")
             report = self.root / "f1-origin-report.json"
-            code, payload = self._check(packet, record, report)
+            code, payload = fixtures.check_cli(self.repo, packet, record, report)
             self.assertEqual(4, code, payload)
             written = json.loads(report.read_text(encoding="utf-8"))
             self.assertEqual("changed", written["freshness"]["status"])
@@ -1442,20 +1239,8 @@ class ExtendedReviewScopeTests(unittest.TestCase):
             fixtures.git(repo, "add", "-A")
             fixtures.git(repo, "commit", "-q", "-m", "non utf-8 name")
             output = self.packet_dir("f3-tracked")
-            code, payload = fixtures.run_cli(
-                [
-                    "scope",
-                    "--repo",
-                    str(repo),
-                    "--mode",
-                    "snapshot",
-                    "--revision",
-                    "HEAD",
-                    "--path",
-                    ".",
-                    "--output",
-                    str(output),
-                ]
+            code, payload = fixtures.capture_cli(
+                repo, output, "--mode", "snapshot", "--revision", "HEAD", "--path", ".",
             )
             self.assertEqual(2, code, payload)
             self.assertEqual("E_PATH_ENCODING", payload["code"])
@@ -1469,19 +1254,7 @@ class ExtendedReviewScopeTests(unittest.TestCase):
                 review_git._ls_files_stage(repo, ["."])
             self.assertEqual("E_PATH_ENCODING", staged.exception.code)
             output = self.packet_dir("f3-staged")
-            code, payload = fixtures.run_cli(
-                [
-                    "scope",
-                    "--repo",
-                    str(repo),
-                    "--mode",
-                    "workspace",
-                    "--path",
-                    ".",
-                    "--output",
-                    str(output),
-                ]
-            )
+            code, payload = fixtures.capture_cli(repo, output, "--mode", "workspace", "--path", ".")
             self.assertEqual(2, code, payload)
             self.assertEqual("E_PATH_ENCODING", payload["code"])
             self.assertFalse((output / "scope.json").exists())
@@ -1490,19 +1263,7 @@ class ExtendedReviewScopeTests(unittest.TestCase):
             fixtures.commit_files(repo, {"ok.py": "ok = 1\n"})
             (repo / bad_name).write_bytes(b"broken = 1\n")
             output = self.packet_dir("f3-untracked")
-            code, payload = fixtures.run_cli(
-                [
-                    "scope",
-                    "--repo",
-                    str(repo),
-                    "--mode",
-                    "workspace",
-                    "--path",
-                    ".",
-                    "--output",
-                    str(output),
-                ]
-            )
+            code, payload = fixtures.capture_cli(repo, output, "--mode", "workspace", "--path", ".")
             self.assertEqual(2, code, payload)
             self.assertEqual("E_PATH_ENCODING", payload["code"])
             self.assertFalse((output / "scope.json").exists())
@@ -1515,53 +1276,23 @@ class ExtendedReviewScopeTests(unittest.TestCase):
         )
         for label, name in cases:
             with self.subTest(f"F4 {label}"):
-                repo = self.root / name
-                repo.mkdir()
-                fixtures.git(repo, "init", "-q", "-b", "main")
-                fixtures.git(repo, "config", "user.name", "FAS Fixture")
-                fixtures.git(repo, "config", "user.email", "fixture@example.invalid")
-                fixtures.git(repo, "config", "commit.gpgsign", "false")
-                fixtures.git(repo, "config", "tag.gpgsign", "false")
+                repo = fixtures.init_repo(self.root, name=name)
                 fixtures.write_file(repo, "only.py", "value = 1\n")
                 fixtures.git(repo, "add", "-A")
                 fixtures.git(repo, "commit", "-q", "-m", "fixture")
                 stem = label.replace(" ", "-")
                 packet = self.packet_dir(f"f4-{stem}")
-                code, payload = fixtures.run_cli(
-                    [
-                        "scope",
-                        "--repo",
-                        str(repo),
-                        "--mode",
-                        "snapshot",
-                        "--revision",
-                        "HEAD",
-                        "--path",
-                        ".",
-                        "--output",
-                        str(packet),
-                    ]
+                code, payload = fixtures.capture_cli(
+                    repo, packet, "--mode", "snapshot", "--revision", "HEAD", "--path", ".",
                 )
                 self.assertEqual(0, code, payload)
                 scope = self.read_scope(packet)
                 self.assertEqual(["only.py"], [item["path"] for item in scope["items"]])
                 record = fixtures.write_json(
-                    self.root / f"f4-{stem}-record.json", self._workspace_record(packet, scope)
+                    self.root / f"f4-{stem}-record.json", fixtures.hand_record(fixtures.packet_view(packet))
                 )
                 report = self.root / f"f4-{stem}-report.json"
-                code, payload = fixtures.run_cli(
-                    [
-                        "check",
-                        "--repo",
-                        str(repo),
-                        "--packet",
-                        str(packet),
-                        "--record",
-                        str(record),
-                        "--output",
-                        str(report),
-                    ]
-                )
+                code, payload = fixtures.check_cli(repo, packet, record, report)
                 self.assertEqual(0, code, payload)
                 written = json.loads(report.read_text(encoding="utf-8"))
                 self.assertEqual("captured_inputs_match", written["freshness"]["status"])
@@ -1589,19 +1320,7 @@ class ExtendedReviewScopeTests(unittest.TestCase):
 
             with mock.patch.object(review_git.tempfile, "mkstemp", tracking_mkstemp):
                 with mock.patch.object(review_git.os, "fdopen", injected_fdopen):
-                    return fixtures.run_cli(
-                        [
-                            "scope",
-                            "--repo",
-                            str(self.repo),
-                            "--mode",
-                            "workspace",
-                            "--path",
-                            "a.py",
-                            "--output",
-                            str(output),
-                        ]
-                    )
+                    return fixtures.capture_cli(self.repo, output, "--mode", "workspace", "--path", "a.py")
 
         with self.subTest("F5 a capture publishes exactly one completion marker"):
             code, payload, packet = self.scope("--mode", "workspace", "--path", "a.py")
@@ -1657,39 +1376,6 @@ class ExtendedReviewScopeTests(unittest.TestCase):
     def _raw_diff_paths(self, raw: bytes) -> list[bytes]:
         tokens = raw.split(b"\0")
         return [tokens[index + 1] for index, token in enumerate(tokens) if token.startswith(b":")]
-
-    def _workspace_record(self, packet: Path, scope: dict) -> dict:
-        digest = review_record.sha256_digest((packet / "scope.json").read_bytes())
-        return {
-            "schema_version": "fas-review-record/1",
-            "scope_ref": "scope.json",
-            "scope_sha256": digest,
-            "coverage": [
-                {"item_id": item["id"], "status": "reviewed", "reason": None}
-                for item in scope["items"]
-            ],
-            "findings": [],
-            "concerns": [],
-            "verification": [],
-            "limitations": [],
-        }
-
-    def _check(self, packet: Path, record: Path, report: Path):
-        if report.exists():
-            report.unlink()
-        return fixtures.run_cli(
-            [
-                "check",
-                "--repo",
-                str(self.repo),
-                "--packet",
-                str(packet),
-                "--record",
-                str(record),
-                "--output",
-                str(report),
-            ]
-        )
 
 
 if __name__ == "__main__":

@@ -36,27 +36,19 @@ class QuickReviewCliTests(unittest.TestCase):
 
     def scope(self, *args: str):
         output = self.root / f"packet-{len(list(self.root.glob('packet-*')))}"
-        code, payload = fixtures.run_cli(
-            ["scope", "--repo", str(self.repo), *args, "--output", str(output)]
-        )
+        code, payload = fixtures.capture_cli(self.repo, output, *args)
         return code, payload, output
+
+    def read_report(self, report_path: Path) -> dict:
+        """Read one written report and validate it against the check schema."""
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        review_record.validate_document(report, "check_report")
+        return report
 
     def check(self, packet: Path, record_value: dict, name: str):
         record_path = fixtures.write_json(self.root / f"{name}-record.json", record_value)
         report_path = self.root / f"{name}-report.json"
-        code, payload = fixtures.run_cli(
-            [
-                "check",
-                "--repo",
-                str(self.repo),
-                "--packet",
-                str(packet),
-                "--record",
-                str(record_path),
-                "--output",
-                str(report_path),
-            ]
-        )
+        code, payload = fixtures.check_cli(self.repo, packet, record_path, report_path)
         return code, payload, report_path
 
     def test_help_and_argument_errors_use_argparse_exit_codes(self) -> None:
@@ -134,19 +126,7 @@ class QuickReviewCliTests(unittest.TestCase):
         existing.mkdir()
         marker = existing / "keep.txt"
         marker.write_text("keep\n", encoding="utf-8")
-        code, payload = fixtures.run_cli(
-            [
-                "scope",
-                "--repo",
-                str(self.repo),
-                "--mode",
-                "workspace",
-                "--path",
-                ".",
-                "--output",
-                str(existing),
-            ]
-        )
+        code, payload = fixtures.capture_cli(self.repo, existing, "--mode", "workspace", "--path", ".")
         self.assertEqual(2, code)
         self.assertEqual("E_OUTPUT", payload["code"])
         self.assertIsNone(payload["artifact"])
@@ -155,19 +135,7 @@ class QuickReviewCliTests(unittest.TestCase):
 
     def test_scope_refuses_output_inside_the_repository(self) -> None:
         inside = self.repo / "packet"
-        code, payload = fixtures.run_cli(
-            [
-                "scope",
-                "--repo",
-                str(self.repo),
-                "--mode",
-                "workspace",
-                "--path",
-                ".",
-                "--output",
-                str(inside),
-            ]
-        )
+        code, payload = fixtures.capture_cli(self.repo, inside, "--mode", "workspace", "--path", ".")
         self.assertEqual(2, code)
         self.assertEqual("E_OUTPUT", payload["code"])
         self.assertFalse(inside.exists())
@@ -214,8 +182,7 @@ class QuickReviewCliTests(unittest.TestCase):
         self.assertEqual("valid", payload["result"])
         self.assertEqual("all_declared_reviewed", payload["coverage_status"])
         self.assertEqual("captured_inputs_match", payload["freshness"])
-        report = json.loads(report_path.read_text(encoding="utf-8"))
-        review_record.validate_document(report, "check_report")
+        report = self.read_report(report_path)
         anchor = report["anchors"][0]
         self.assertEqual(0, report["exit_code"])
         self.assertEqual(1, report["finding_count"])
@@ -274,8 +241,7 @@ class QuickReviewCliTests(unittest.TestCase):
         }
         code, payload, report_path = self.check(empty_packet, record, "empty")
         self.assertEqual(2, code)
-        report = json.loads(report_path.read_text(encoding="utf-8"))
-        review_record.validate_document(report, "check_report")
+        report = self.read_report(report_path)
         self.assertEqual("invalid", report["validation"])
         self.assertEqual("E_SCOPE_MISSING", report["problems"][0]["code"])
 
@@ -317,19 +283,7 @@ class QuickReviewCliTests(unittest.TestCase):
         self.assertEqual(existing, report_path)
         inside = self.repo / "report.json"
         record_path = fixtures.write_json(self.root / "existing-report-record.json", record)
-        code, payload = fixtures.run_cli(
-            [
-                "check",
-                "--repo",
-                str(self.repo),
-                "--packet",
-                str(packet_dir),
-                "--record",
-                str(record_path),
-                "--output",
-                str(inside),
-            ]
-        )
+        code, payload = fixtures.check_cli(self.repo, packet_dir, record_path, inside)
         self.assertEqual(2, code)
         self.assertEqual("E_OUTPUT", payload["code"])
         self.assertFalse(inside.exists())
@@ -349,8 +303,7 @@ class QuickReviewCliTests(unittest.TestCase):
             code, payload, report_path = self.check(packet, value, "n06-long-field")
             self.assertEqual(2, code)
             self.assertEqual("invalid", payload["result"])
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-            review_record.validate_document(report, "check_report")
+            report = self.read_report(report_path)
             self.assertEqual(2, report["exit_code"])
             self.assertEqual("E_SCHEMA", report["problems"][0]["code"])
             self.assertLessEqual(len(report["problems"][0]["message"]), 512)
@@ -365,8 +318,7 @@ class QuickReviewCliTests(unittest.TestCase):
             value["U" * 9000] = 1
             code, payload, report_path = self.check(packet, value, "n06-unknown-field")
             self.assertEqual(2, code)
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-            review_record.validate_document(report, "check_report")
+            report = self.read_report(report_path)
             self.assertEqual("E_SCHEMA", report["problems"][0]["code"])
             self.assertEqual("", report["problems"][0]["pointer"])
             self.assertNotIn("U" * 100, json.dumps(report))
@@ -382,51 +334,24 @@ class QuickReviewCliTests(unittest.TestCase):
             directory = self.root / "n06-directory"
             directory.mkdir()
             report_path = self.root / "n06-directory-report.json"
-            code, payload = fixtures.run_cli(
-                [
-                    "check",
-                    "--repo",
-                    str(self.repo),
-                    "--packet",
-                    str(packet),
-                    "--record",
-                    str(directory),
-                    "--output",
-                    str(report_path),
-                ]
-            )
+            code, payload = fixtures.check_cli(self.repo, packet, directory, report_path)
             self.assertEqual(2, code)
             self.assertEqual(str(report_path), payload["artifact"])
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-            review_record.validate_document(report, "check_report")
+            report = self.read_report(report_path)
             self.assertEqual("E_INPUT_TYPE", report["problems"][0]["code"])
         with self.subTest("N06 missing record"):
             report_path = self.root / "n06-missing-report.json"
-            code, payload = fixtures.run_cli(
-                [
-                    "check",
-                    "--repo",
-                    str(self.repo),
-                    "--packet",
-                    str(packet),
-                    "--record",
-                    str(self.root / "n06-absent.json"),
-                    "--output",
-                    str(report_path),
-                ]
-            )
+            code, payload = fixtures.check_cli(self.repo, packet, self.root / "n06-absent.json", report_path)
             self.assertEqual(2, code)
             report = json.loads(report_path.read_text(encoding="utf-8"))
             self.assertEqual("E_INPUT_MISSING", report["problems"][0]["code"])
         with self.subTest("N06 merged limitations over the report bound"):
-            original_items = review_record.MAX_ITEMS
-            review_record.MAX_ITEMS = 2
-            self.addCleanup(setattr, review_record, "MAX_ITEMS", original_items)
             value = deepcopy(record)
             value["limitations"] = ["first", "second", "third"]
             record_path = self.root / "n06-overflow-record.json"
             before = fixtures.write_json(record_path, value).read_bytes()
-            code, payload, report_path = self.check(packet, value, "n06-overflow")
+            with mock.patch.object(review_record, "MAX_ITEMS", 2):
+                code, payload, report_path = self.check(packet, value, "n06-overflow")
             self.assertEqual(2, code)
             self.assertEqual("E_REPORT_LIMIT", payload["code"])
             self.assertIsNone(payload["artifact"])
@@ -586,12 +511,7 @@ class QuickReviewCliTests(unittest.TestCase):
             record_path = self.root / "f3-surrogate-record.json"
             record_path.write_bytes(raw)
             report_path = self.root / "f3-surrogate-report.json"
-            code, payload = fixtures.run_cli(
-                [
-                    "check", "--repo", str(self.repo), "--packet", str(packet),
-                    "--record", str(record_path), "--output", str(report_path),
-                ]
-            )
+            code, payload = fixtures.check_cli(self.repo, packet, record_path, report_path)
             self.assertEqual(2, code, payload)
             report = json.loads(report_path.read_text(encoding="utf-8"))
             self.assertEqual("invalid", report["validation"])

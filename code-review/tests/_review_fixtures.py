@@ -6,7 +6,6 @@ Only test code lives here. Production modules are imported from the sibling
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -50,8 +49,8 @@ def git(
     )
 
 
-def init_repo(root: Path) -> Path:
-    repo = Path(root) / "repo"
+def init_repo(root: Path, *, name: str = "repo") -> Path:
+    repo = Path(root) / name
     repo.mkdir(parents=True, exist_ok=True)
     git(repo, "init", "-q", "-b", "main")
     git(repo, "config", "user.name", "FAS Fixture")
@@ -336,13 +335,35 @@ def finding(
     }
 
 
+def capture_cli(
+    repo: Path, output: Path, *scope_args: str
+) -> tuple[int, dict[str, Any] | None]:
+    """Assemble one scope invocation; the caller owns output and assertions."""
+    return run_cli(["scope", "--repo", str(repo), *scope_args, "--output", str(output)])
+
+
+def check_cli(
+    repo: Path, packet: Path, record_path: Path, output: Path
+) -> tuple[int, dict[str, Any] | None]:
+    """Assemble one check invocation; the caller owns output and assertions."""
+    return run_cli(
+        [
+            "check",
+            "--repo",
+            str(repo),
+            "--packet",
+            str(packet),
+            "--record",
+            str(record_path),
+            "--output",
+            str(output),
+        ]
+    )
+
+
 def write_json(path: Path, value: Any) -> Path:
     path.write_bytes((json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     return path
-
-
-def file_digest(path: Path) -> str:
-    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def run_cli(argv: list[str]) -> tuple[int, dict[str, Any] | None]:
