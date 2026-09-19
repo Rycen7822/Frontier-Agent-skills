@@ -1,5 +1,11 @@
 # Release Notes
 
+## Bundle 11.2.0 Qoder host shell
+
+Bundle 11.2.0 adds a Qoder plugin shell at `.qoder-plugin/plugin.json` so a checkout of this repository is directly installable in Qoder through `qoder plugins validate` and `qoder plugins install`. The manifest declares the plugin name `frontier-engineering`, the bundle version, the display names and the ten skill directories with relative paths, because the skill roots sit at the repository top level instead of a single `skills/` directory. `scripts/build_qoder_plugin.py` renders the manifest from `bundle-manifest.json` and fails on a missing, renamed, unsorted or undescribed skill; the new quick-profile test proves the committed manifest equals the rendered manifest and stays inside the documented Qoder schema.
+
+No skill changed: the ten skill versions, the activation matrix, invocation prompts, protocol surface, archive layout and compatible schema epoch 9 are those of 11.1.0, which published `code-simplifier` 1.2.0. The shell adds no hooks, MCP server, command, agent, binary, output style, workflow, setting or dependency surface, and it is not copied into the Codex plugin package, whose `.codex-plugin/plugin.json` and staging rules are unchanged. The bundle and skills source archives now also carry the shell, and the manifest joins the static-contract inventory so its links, fields and encoding stay checked. Registration pins and generated identities were rebuilt by the existing builders.
+
 ## Bundle 11.1.0 code-simplifier guidance upgrade
 
 Bundle 11.1.0 advances `code-simplifier` from 1.1.0 to 1.2.0 at the same compatible schema epoch 9, with no protocol, activation, packaging-API or archive-layout change. The entry skill gains evidence-led candidate selection, complete structural removal, complexity-transfer checks and risk-proportionate validation in two conditional references; its name, hosts, implicit eligibility and invocation prompt are preserved, and it introduces no runtime tool, model dependency, hook, mandatory cleanup phase or fixed delegation loop.

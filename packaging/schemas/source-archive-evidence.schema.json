@@ -20,7 +20,7 @@
   "properties": {
     "schema_version": {"const": "source-archive-evidence/3.0"},
     "layout": {"enum": ["bundle", "skills_only"]},
-    "bundle_version": {"const": "11.1.0"},
+    "bundle_version": {"const": "11.2.0"},
     "root_prefix": {"oneOf": [{"const": "frontier-engineering-bundle"}, {"type": "null"}]},
     "skill_versions": {
       "type": "object",

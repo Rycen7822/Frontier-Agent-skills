@@ -62,6 +62,8 @@ MODEL_FACING_EXACT = (
     "long-document-segmented-writing/SKILL.md",
     "long-document-segmented-writing/agents/openai.yaml",
     "packaging/codex-plugin/plugin.json.template",
+    "packaging/qoder-plugin/plugin.json.template",
+    ".qoder-plugin/plugin.json",
 )
 MODEL_FACING_DIRS = (
     "software-quality-workflows/references",

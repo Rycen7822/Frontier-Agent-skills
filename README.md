@@ -1,8 +1,8 @@
 # Frontier Agent Skills
 
-This repository is the development source for the dual-host `frontier-engineering/11.1.0` bundle. One `frontier-engineering-plugin` contains ten skills for Codex and Hermes Agent. Installed copies are separate from source; local edits take effect after rebuilding and reinstalling.
+This repository is the development source for the `frontier-engineering/11.2.0` bundle. One `frontier-engineering-plugin` contains ten skills for Codex and Hermes Agent, and the same repository carries a Qoder plugin shell at [`.qoder-plugin/plugin.json`](.qoder-plugin/plugin.json) so a checkout is directly installable in Qoder. Installed copies are separate from source; local edits take effect after rebuilding and reinstalling.
 
-Bundle 11.1.0 publishes `code-simplifier` 1.2.0 with conditional structural-simplification and validation references; the component advances from 1.1.0 while the other nine skills, the activation matrix and the compatible schema epoch stay unchanged. See [the component maintenance note](docs/code-simplifier-1.2.0.md).
+Bundle 11.2.0 adds the Qoder plugin shell and keeps every skill unchanged: the ten skill versions, the activation matrix and the compatible schema epoch 9 stay as they were in 11.1.0, which published `code-simplifier` 1.2.0 with conditional structural-simplification and validation references. See [the Qoder host note](docs/qoder-plugin.md) and [the component maintenance note](docs/code-simplifier-1.2.0.md).
 
 ## Skill entrypoints
 
@@ -23,7 +23,7 @@ SQW retains concise guidance throughout development. Specialized skills can be s
 
 ## Release identity
 
-Bundle 11.1.0 uses schema epoch 9. `software-quality-workflows` and `skill-evaluator` are explicit-only; the other eight skills remain eligible for implicit local selection. Invocation prompts retain `$skill-name`; eligibility does not guarantee model selection. The activation ceiling is `implicit_local_pilot` and `remote_writes` remains false.
+Bundle 11.2.0 uses schema epoch 9. `software-quality-workflows` and `skill-evaluator` are explicit-only; the other eight skills remain eligible for implicit local selection. Invocation prompts retain `$skill-name`; eligibility does not guarantee model selection. The activation ceiling is `implicit_local_pilot` and `remote_writes` remains false.
 
 The code-review skill ships a bounded review helper: `scripts/review_support.py` captures one review scope into a packet (`scope`) or checks a machine-readable record against that packet (`check`). It requires POSIX, Python 3.11 or later, Git 2.41 or later, and the `jsonschema` package in the environment that runs it; installing the plugin does not install Python packages. A packet or record is optional for ordinary reviews. See [the v11 migration note](docs/fas-v11-migration.md).
 
@@ -39,7 +39,7 @@ Every retained digest has one producer, one named validating consumer, a bounded
 
 Ordinary maintenance does not require model reevaluation. Non-behavioral documentation, version/hash updates, and editorial changes judged to preserve meaning use zero model calls; a historical report is not a prerequisite. Run `python3 skill-evaluator/scripts/evaluate.py check --base <revision> --impact editorial` for an explicit maintenance judgment, or use `--impact auto` to identify changes needing closer scoping. This command only performs local checks. Changes to behavior, routing, execution conditions, or grading require evidence only for the affected scope; Git identity and elapsed time alone do not invalidate model results.
 
-Bundle 11.1.0 uses model-free repository tests, generated identities, source validation and plugin smoke for engineering verification. Building and publishing packages do not require a model qualification or an authorization JSON file. Public effects follow the user's authorization; claims of model effectiveness need their own relevant evidence.
+Bundle 11.2.0 uses model-free repository tests, generated identities, source validation and plugin smoke for engineering verification. Building and publishing packages do not require a model qualification or an authorization JSON file. Public effects follow the user's authorization; claims of model effectiveness need their own relevant evidence.
 
 ## Source archives
 
@@ -59,7 +59,7 @@ Ordinary change verification follows this table. Plugin staging remains a local 
 
 ## Plugin packaging
 
-The plugin identity is `frontier-engineering-plugin` version 11.1.0 with display name `Frontier Engineering`. Its release layout is:
+The plugin identity is `frontier-engineering-plugin` version 11.2.0 with display name `Frontier Engineering`. Its release layout is:
 
 ```text
 frontier-engineering-plugin/
@@ -96,9 +96,21 @@ python3 scripts/smoke_codex_plugin.py \
 
 Use a fresh task-owned output directory for each build. `scripts/smoke_codex_cli_install.py` checks installation and removal in an isolated Codex home without model calls; pass the plugin, build evidence, static smoke, marketplace, an existing work directory and an output file. These checks establish package and loader behavior, not measured skill effectiveness.
 
+### Qoder shell
+
+The repository itself is a Qoder plugin. `.qoder-plugin/plugin.json` declares the plugin name `frontier-engineering`, the bundle version and the ten skill directories, which sit at the repository top level rather than inside a single `skills/` directory. `scripts/build_qoder_plugin.py` renders that manifest from `bundle-manifest.json` and refuses a missing, renamed, unsorted or undescribed skill; `--check` fails when the committed manifest is stale. The shell adds no hooks, MCP servers, commands, agents, binaries, output styles, workflows, settings or dependency.
+
+```bash
+python3 scripts/build_qoder_plugin.py --check
+qoder plugins validate "$PWD"
+qoder plugins install "$PWD"
+```
+
+The Codex plugin package keeps its own `.codex-plugin/plugin.json` and never contains the Qoder shell. See [the Qoder host note](docs/qoder-plugin.md).
+
 ## Same-thread Codex skill reload supervisor
 
-This optional developer tool sits outside the Bundle 11.1.0 source-complete and release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles through a local Unix-socket app-server and launches each replacement TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
+This optional developer tool sits outside the Bundle 11.2.0 source-complete and release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles through a local Unix-socket app-server and launches each replacement TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
 
 The protocol is fail-closed and pinned to `codex-cli 0.144.6`. Validate the CLI schema and local Unix WebSocket transport before the first run:
 

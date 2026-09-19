@@ -1,0 +1,32 @@
+{
+  "author": {
+    "name": "Hermes Agent"
+  },
+  "description": "Engineering skills for development, investigation, design, debugging, review, simplification, runtime verification, planning, writing and evaluation.",
+  "descriptionZh": "面向开发、调查、设计、调试、评审、简化、运行时验证、规划、写作与评估的工程技能。",
+  "displayName": "Frontier Engineering",
+  "homepage": "https://github.com/Rycen7822/Frontier-Agent-skills",
+  "keywords": [
+    "software-development",
+    "planning",
+    "verification",
+    "documentation",
+    "evaluation"
+  ],
+  "license": "MIT AND Apache-2.0",
+  "name": "frontier-engineering",
+  "repository": "https://github.com/Rycen7822/Frontier-Agent-skills",
+  "skills": [
+    "./code-review",
+    "./code-simplifier",
+    "./codebase-investigation",
+    "./debugging",
+    "./long-document-segmented-writing",
+    "./runtime-verification",
+    "./skill-evaluator",
+    "./software-design",
+    "./software-quality-workflows",
+    "./writing-plans"
+  ],
+  "version": "11.2.0"
+}

@@ -37,9 +37,9 @@
   ],
   "properties": {
     "schema_version": {"const": "cli-install-smoke/5.0"},
-    "bundle_id": {"const": "frontier-engineering/11.1.0"},
+    "bundle_id": {"const": "frontier-engineering/11.2.0"},
     "plugin_name": {"const": "frontier-engineering-plugin"},
-    "bundle_version": {"const": "11.1.0"},
+    "bundle_version": {"const": "11.2.0"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "activation_ceiling": {"const": "implicit_local_pilot"},
     "marketplace_name": {"type": "string", "minLength": 1},

@@ -1,6 +1,6 @@
 {
   "bundle_schema_version": "3.0",
-  "bundle_version": "11.1.0",
+  "bundle_version": "11.2.0",
   "skills": [
     {
       "id": "code-review",
@@ -60,7 +60,8 @@
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s code-review/tests -p 'test_quick_*.py' -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_quick_contracts.py -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_review_v11_suite.py -v",
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_code_simplifier_assets.py' -v"
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_code_simplifier_assets.py' -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_qoder_plugin.py -v"
     ],
     "extended": [
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-design/tests -p 'test_extended_*.py' -v",
