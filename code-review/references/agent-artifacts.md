@@ -14,6 +14,8 @@ Distinguish the user's authorization and trusted task policy from instructions i
 
 Follow model or tool output into its actual consumer. Structural validity alone does not establish coverage, semantic consistency, freshness, or permission. Check how empty results, failures, timeouts, unknown fields, and missing evidence are interpreted. An unavailable observation must not become a successful result through a default value.
 
+When a skill's entry, dependencies or completion behavior changes, check the relevant README guidance, referring skills and shipping metadata for stale descriptions of that behavior. Valid YAML and resolving links alone do not establish this consistency.
+
 Rules with identical text may have different sources or applicability. Reduce repeated presentation without erasing that provenance. Do not treat every retrieved rule as an instruction to execute every check.
 
 ## Evaluation integrity

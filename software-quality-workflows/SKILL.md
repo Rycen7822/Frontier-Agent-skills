@@ -3,7 +3,7 @@ name: software-quality-workflows
 description: Apply explicitly requested engineering-quality guidance to implementation and maintenance work.
 license: MIT
 metadata:
-  version: 13.0.1
+  version: 13.0.2
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
@@ -35,6 +35,8 @@ Classify failures as product, expectation, setup/environment, unrelated or unkno
 Continue until the requested outcome is complete and sufficiently verified. Existing user authorization persists; a skill default or completed phase does not create a new approval requirement. If one action needs missing input or authority, finish independent authorized work and report the specific remaining dependency. Respect review-only or analysis-only requests.
 
 Reuse current context and task state. Select specialized skills when their distinct method helps, without loading a pipeline. Delegate only when authorized and useful. If verification changes delivered state, confirm the resulting state before handoff. Report the outcome, decisive evidence and material limits; distinguish local verification from external publication when relevant.
+
+For material behavior changes, explain the before/after behavior, affected consumers and meaningful rollback limits using available evidence. Distinguish source-based expectations from observed runs, and identify an unavailable baseline. Scale detail and visual aids to the change.
 
 Read further only for a concrete need:
 

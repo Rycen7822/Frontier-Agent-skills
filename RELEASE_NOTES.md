@@ -1,5 +1,13 @@
 # Release Notes
 
+## Bundle 11.2.2 retrospective and delivery guidance
+
+Bundle 11.2.2 clarifies where historical diagnosis should direct a remedy: existing deterministic checks for mechanical rules, owning guidance for judgement-dependent decisions, and environment or tooling owners for missing observations or broken tools. Delivery reporting for material behavior changes describes available before/after behavior, affected consumers and meaningful rollback limits, separating source-based expectations from observed runs and identifying unavailable baselines. Agent-artifact review follows changed entry, dependency and completion behavior into relevant README guidance, referring skills and shipping metadata to catch stale descriptions that valid YAML or links cannot establish.
+
+Parallel collaboration remains conditional on authorization and benefit. When that condition is met, workers start tasks whose prerequisites are satisfied, and integration rechecks the shared target and refreshes evidence affected by later changes. This adds no default parallel flow, fixed worker roles or orchestration runtime. The guidance is informed by Matt Pocock's [v1.3.0](https://github.com/mattpocock/skills/tree/984a2c023c9fb42bb6ea40c70a652284a109dc05) retrospective, PR and integration guidance and the [v1.3.1](https://github.com/mattpocock/skills/tree/24fe0ef7737efae15c87225755e9f6f5965e4888) workflow-consumer correction.
+
+The affected components advance to SQW 13.0.2, code-review 2.0.4 and skill-evaluator 5.0.2. The ten skills, invocation policies and schema epoch 9 remain compatible. Review and evaluator runtime protocols are unchanged. Engineering checks establish source and package consistency; no model-effectiveness improvement is claimed.
+
 ## Bundle 11.2.1 collaboration and handoff guidance
 
 Bundle 11.2.1 adds conditional collaboration references to investigation, debugging and review. The shared guidance carries current constraints and later scope changes into delegated work, checks the delivered artifact and decisive evidence during integration, and accounts for task-owned workers and resources at stop, handoff or completion. Durable handoffs link key completed milestones to evidence and distinguish planned, failed, not-run and unavailable checks from successful observations. Debugging revisits shared premises and observations when different fixes leave the same failure unchanged.

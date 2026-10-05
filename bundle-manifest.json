@@ -1,11 +1,11 @@
 {
   "bundle_schema_version": "3.0",
-  "bundle_version": "11.2.1",
+  "bundle_version": "11.2.2",
   "skills": [
     {
       "id": "code-review",
       "path": "code-review",
-      "version": "2.0.3"
+      "version": "2.0.4"
     },
     {
       "id": "code-simplifier",
@@ -35,7 +35,7 @@
     {
       "id": "skill-evaluator",
       "path": "skill-evaluator",
-      "version": "5.0.1"
+      "version": "5.0.2"
     },
     {
       "id": "software-design",
@@ -45,7 +45,7 @@
     {
       "id": "software-quality-workflows",
       "path": "software-quality-workflows",
-      "version": "13.0.1"
+      "version": "13.0.2"
     },
     {
       "id": "writing-plans",

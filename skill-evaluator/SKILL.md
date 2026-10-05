@@ -2,7 +2,7 @@
 name: skill-evaluator
 description: Assess skill effectiveness from relevant agent history or scoped execution evidence.
 metadata:
-  version: 5.0.1
+  version: 5.0.2
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:

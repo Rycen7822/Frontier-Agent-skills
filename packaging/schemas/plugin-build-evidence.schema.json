@@ -20,8 +20,8 @@
   ],
   "properties": {
     "schema_version": {"const": "plugin-build-evidence/5.0"},
-    "bundle_id": {"const": "frontier-engineering/11.2.1"},
-    "bundle_version": {"const": "11.2.1"},
+    "bundle_id": {"const": "frontier-engineering/11.2.2"},
+    "bundle_version": {"const": "11.2.2"},
     "skill_versions": {
       "type": "object",
       "additionalProperties": false,
@@ -39,10 +39,10 @@
       ],
       "properties": {
         "long-document-segmented-writing": {"const": "3.1.0"},
-        "skill-evaluator": {"const": "5.0.1"},
-        "software-quality-workflows": {"const": "13.0.1"},
+        "skill-evaluator": {"const": "5.0.2"},
+        "software-quality-workflows": {"const": "13.0.2"},
         "writing-plans": {"const": "9.1.1"},
-        "code-review": {"const": "2.0.3"},
+        "code-review": {"const": "2.0.4"},
         "code-simplifier": {"const": "1.2.0"},
         "codebase-investigation": {"const": "1.1.1"},
         "debugging": {"const": "1.1.1"},

@@ -1,15 +1,15 @@
 {
   "activation_ceiling": "implicit_local_pilot",
-  "bundle_id": "frontier-engineering/11.2.1",
+  "bundle_id": "frontier-engineering/11.2.2",
   "compatible_schema_epoch": 9,
-  "release_build_id": "build-75a267f4fa219811d9f244af",
+  "release_build_id": "build-b020b0ee9739e055505dba25",
   "remote_writes": false,
   "schema_version": "frontier-engineering-bundle/2.0",
   "skills": {
     "code-review": {
       "allow_implicit_invocation": true,
-      "root_hash": "sha256:fb974e4aace0c6d80918dc9f061fbda1cf71cb44fc81ece83568972faa7a7f1d",
-      "version": "2.0.3"
+      "root_hash": "sha256:894379b66783657afa699a6096a213b6db04c5048eb6e7522855b92af076917e",
+      "version": "2.0.4"
     },
     "code-simplifier": {
       "allow_implicit_invocation": true,
@@ -38,8 +38,8 @@
     },
     "skill-evaluator": {
       "allow_implicit_invocation": false,
-      "root_hash": "sha256:aba667ca3ba9f95e8a11ea0311e74702b467d3f86c61075cf2020626a8719555",
-      "version": "5.0.1"
+      "root_hash": "sha256:0fc2487cc417d19f012c1fc309cd8ce23119827f71869466bb607dcbb25fb9bd",
+      "version": "5.0.2"
     },
     "software-design": {
       "allow_implicit_invocation": true,
@@ -48,8 +48,8 @@
     },
     "software-quality-workflows": {
       "allow_implicit_invocation": false,
-      "root_hash": "sha256:dd1a2adfd11eddeff19b1f3c8a7d9e0d3bf794b778fc47a13686b7d04fc27ef0",
-      "version": "13.0.1"
+      "root_hash": "sha256:3430e3d85034a676d8de56e693feca0d38cc58263367c0c46338608f6b3ecb0b",
+      "version": "13.0.2"
     },
     "writing-plans": {
       "allow_implicit_invocation": true,
