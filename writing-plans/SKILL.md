@@ -2,7 +2,7 @@
 name: writing-plans
 description: Turn settled decisions into an implementation plan for requested planning, handoffs, or multi-session work.
 metadata:
-  version: 9.1.0
+  version: 9.1.1
 ---
 
 # Writing Plans

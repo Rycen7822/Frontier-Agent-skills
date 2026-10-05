@@ -4,6 +4,8 @@ Use one existing plan or task note when work must cross contexts, sessions or ow
 
 For larger work, order milestones by their actual prerequisites and give each a recognizable completion condition. Specify migration or removal conditions when they affect later steps. Bind exact values and commands when correctness depends on them; do not copy whole files or manufacture detailed later steps around unresolved decisions.
 
+When later work depends on a completed milestone, link its decisive evidence or delivered artifact. Distinguish planned checks from observed results, keeping failed, not-run and unavailable checks separate from successful observations.
+
 On resume, recover the current frontier and compare the source and environment relevant to the next step. Reuse still-valid findings and checks; refresh changed or uncertain facts. A new commit or elapsed time alone is not grounds to repeat all verification. Use portable repository-relative paths when work may move between checkouts.
 
 Update ordinary plans as implementation progresses, keeping completed, pending and blocked work distinguishable. Honor explicitly frozen user specifications separately. If a dependency is blocked, record the missing fact or authority and continue independent authorized work.

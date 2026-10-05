@@ -1,11 +1,11 @@
 {
   "bundle_schema_version": "3.0",
-  "bundle_version": "11.2.0",
+  "bundle_version": "11.2.1",
   "skills": [
     {
       "id": "code-review",
       "path": "code-review",
-      "version": "2.0.2"
+      "version": "2.0.3"
     },
     {
       "id": "code-simplifier",
@@ -15,12 +15,12 @@
     {
       "id": "codebase-investigation",
       "path": "codebase-investigation",
-      "version": "1.1.0"
+      "version": "1.1.1"
     },
     {
       "id": "debugging",
       "path": "debugging",
-      "version": "1.1.0"
+      "version": "1.1.1"
     },
     {
       "id": "long-document-segmented-writing",
@@ -45,12 +45,12 @@
     {
       "id": "software-quality-workflows",
       "path": "software-quality-workflows",
-      "version": "13.0.0"
+      "version": "13.0.1"
     },
     {
       "id": "writing-plans",
       "path": "writing-plans",
-      "version": "9.1.0"
+      "version": "9.1.1"
     }
   ],
   "activation_ceiling": "implicit_local_pilot",

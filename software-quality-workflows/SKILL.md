@@ -3,7 +3,7 @@ name: software-quality-workflows
 description: Apply explicitly requested engineering-quality guidance to implementation and maintenance work.
 license: MIT
 metadata:
-  version: 13.0.0
+  version: 13.0.1
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:

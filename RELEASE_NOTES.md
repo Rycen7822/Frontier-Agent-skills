@@ -1,5 +1,11 @@
 # Release Notes
 
+## Bundle 11.2.1 collaboration and handoff guidance
+
+Bundle 11.2.1 adds conditional collaboration references to investigation, debugging and review. The shared guidance carries current constraints and later scope changes into delegated work, checks the delivered artifact and decisive evidence during integration, and accounts for task-owned workers and resources at stop, handoff or completion. Durable handoffs link key completed milestones to evidence and distinguish planned, failed, not-run and unavailable checks from successful observations. Debugging revisits shared premises and observations when different fixes leave the same failure unchanged.
+
+The affected components advance to SQW 13.0.1, investigation and debugging 1.1.1, code-review 2.0.3 and writing-plans 9.1.1. Invocation policies and schema epoch 9 remain compatible; the review helper and its protocol are unchanged. This is a guidance behavior update. Engineering checks establish source and package consistency; no model evaluation is claimed and no improvement in task success, cost or routing is asserted.
+
 ## Bundle 11.2.0 Qoder host shell
 
 Bundle 11.2.0 adds a Qoder plugin shell at `.qoder-plugin/plugin.json` so a checkout of this repository is directly installable in Qoder through `qoder plugins validate` and `qoder plugins install`. The manifest declares the plugin name `frontier-engineering`, the bundle version, the display names and the ten skill directories with relative paths, because the skill roots sit at the repository top level instead of a single `skills/` directory. `scripts/build_qoder_plugin.py` renders the manifest from `bundle-manifest.json` and fails on a missing, renamed, unsorted or undescribed skill; the new quick-profile test proves the committed manifest equals the rendered manifest and stays inside the documented Qoder schema.

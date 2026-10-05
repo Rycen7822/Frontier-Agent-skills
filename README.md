@@ -1,21 +1,21 @@
 # Frontier Agent Skills
 
-This repository is the development source for the `frontier-engineering/11.2.0` bundle. One `frontier-engineering-plugin` contains ten skills for Codex and Hermes Agent, and the same repository carries a Qoder plugin shell at [`.qoder-plugin/plugin.json`](.qoder-plugin/plugin.json) so a checkout is directly installable in Qoder. Installed copies are separate from source; local edits take effect after rebuilding and reinstalling.
+This repository is the development source for the `frontier-engineering/11.2.1` bundle. One `frontier-engineering-plugin` contains ten skills for Codex and Hermes Agent, and the same repository carries a Qoder plugin shell at [`.qoder-plugin/plugin.json`](.qoder-plugin/plugin.json) so a checkout is directly installable in Qoder. Installed copies are separate from source; local edits take effect after rebuilding and reinstalling.
 
-Bundle 11.2.0 adds the Qoder plugin shell and keeps every skill unchanged: the ten skill versions, the activation matrix and the compatible schema epoch 9 stay as they were in 11.1.0, which published `code-simplifier` 1.2.0 with conditional structural-simplification and validation references. See [the Qoder host note](docs/qoder-plugin.md) and [the component maintenance note](docs/code-simplifier-1.2.0.md).
+Bundle 11.2.1 improves collaboration and handoff guidance: investigation, debugging and review conditionally reach the shared collaboration reference; delegated work carries current constraints, completion evidence and resource ownership; durable handoffs link key completed milestones to evidence; debugging revisits shared premises when different fixes leave the same failure unchanged. The ten skill entrypoints keep their activation policies and compatible schema epoch 9. See [the release notes](RELEASE_NOTES.md), [the Qoder host note](docs/qoder-plugin.md) and [the simplifier maintenance note](docs/code-simplifier-1.2.0.md).
 
 ## Skill entrypoints
 
 | Skill | Use for | Version |
 |---|---|---|
-| [software-quality-workflows](software-quality-workflows/SKILL.md) | Feature implementation, known-cause fixes, testing and general development | 13.0.0 |
-| [codebase-investigation](codebase-investigation/SKILL.md) | Explain implementation, design history or previous project work | 1.1.0 |
+| [software-quality-workflows](software-quality-workflows/SKILL.md) | Feature implementation, known-cause fixes, testing and general development | 13.0.1 |
+| [codebase-investigation](codebase-investigation/SKILL.md) | Explain implementation, design history or previous project work | 1.1.1 |
 | [software-design](software-design/SKILL.md) | Resolve requirements, ownership, API, data-model or migration choices | 1.1.0 |
-| [debugging](debugging/SKILL.md) | Diagnose failures, regressions and performance problems without an established cause | 1.1.0 |
-| [code-review](code-review/SKILL.md) | Assess changes, scoped snapshots, review comments and evidence records | 2.0.2 |
+| [debugging](debugging/SKILL.md) | Diagnose failures, regressions and performance problems without an established cause | 1.1.1 |
+| [code-review](code-review/SKILL.md) | Assess changes, scoped snapshots, review comments and evidence records | 2.0.3 |
 | [code-simplifier](code-simplifier/SKILL.md) | Simplify selected code while preserving intended behavior | 1.2.0 |
 | [runtime-verification](runtime-verification/SKILL.md) | Establish missing evidence through actual runtime or installed behavior | 1.1.0 |
-| [writing-plans](writing-plans/SKILL.md) | Plan implementation after design and diagnosis are settled | 9.1.0 |
+| [writing-plans](writing-plans/SKILL.md) | Plan implementation after design and diagnosis are settled | 9.1.1 |
 | [long-document-segmented-writing](long-document-segmented-writing/SKILL.md) | Produce long, source-grounded documents with recoverable state | 3.1.0 |
 | [skill-evaluator](skill-evaluator/SKILL.md) | Assess skill effectiveness and selected historical trajectories | 5.0.1 |
 
@@ -23,7 +23,7 @@ SQW retains concise guidance throughout development. Specialized skills can be s
 
 ## Release identity
 
-Bundle 11.2.0 uses schema epoch 9. `software-quality-workflows` and `skill-evaluator` are explicit-only; the other eight skills remain eligible for implicit local selection. Invocation prompts retain `$skill-name`; eligibility does not guarantee model selection. The activation ceiling is `implicit_local_pilot` and `remote_writes` remains false.
+Bundle 11.2.1 uses schema epoch 9. `software-quality-workflows` and `skill-evaluator` are explicit-only; the other eight skills remain eligible for implicit local selection. Invocation prompts retain `$skill-name`; eligibility does not guarantee model selection. The activation ceiling is `implicit_local_pilot` and `remote_writes` remains false.
 
 The code-review skill ships a bounded review helper: `scripts/review_support.py` captures one review scope into a packet (`scope`) or checks a machine-readable record against that packet (`check`). It requires POSIX, Python 3.11 or later, Git 2.41 or later, and the `jsonschema` package in the environment that runs it; installing the plugin does not install Python packages. A packet or record is optional for ordinary reviews. See [the v11 migration note](docs/fas-v11-migration.md).
 
@@ -39,7 +39,7 @@ Every retained digest has one producer, one named validating consumer, a bounded
 
 Ordinary maintenance does not require model reevaluation. Non-behavioral documentation, version/hash updates, and editorial changes judged to preserve meaning use zero model calls; a historical report is not a prerequisite. Run `python3 skill-evaluator/scripts/evaluate.py check --base <revision> --impact editorial` for an explicit maintenance judgment, or use `--impact auto` to identify changes needing closer scoping. This command only performs local checks. Changes to behavior, routing, execution conditions, or grading require evidence only for the affected scope; Git identity and elapsed time alone do not invalidate model results.
 
-Bundle 11.2.0 uses model-free repository tests, generated identities, source validation and plugin smoke for engineering verification. Building and publishing packages do not require a model qualification or an authorization JSON file. Public effects follow the user's authorization; claims of model effectiveness need their own relevant evidence.
+Bundle 11.2.1 uses model-free repository tests, generated identities, source validation and plugin smoke for engineering verification. Building and publishing packages do not require a model qualification or an authorization JSON file. Public effects follow the user's authorization; claims of model effectiveness need their own relevant evidence.
 
 ## Source archives
 
@@ -59,7 +59,7 @@ Ordinary change verification follows this table. Plugin staging remains a local 
 
 ## Plugin packaging
 
-The plugin identity is `frontier-engineering-plugin` version 11.2.0 with display name `Frontier Engineering`. Its release layout is:
+The plugin identity is `frontier-engineering-plugin` version 11.2.1 with display name `Frontier Engineering`. Its release layout is:
 
 ```text
 frontier-engineering-plugin/
@@ -110,7 +110,7 @@ The Codex plugin package keeps its own `.codex-plugin/plugin.json` and never con
 
 ## Same-thread Codex skill reload supervisor
 
-This optional developer tool sits outside the Bundle 11.2.0 source-complete and release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles through a local Unix-socket app-server and launches each replacement TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
+This optional developer tool sits outside the Bundle 11.2.1 source-complete and release path. `scripts/codex_skill_reload_supervisor.py` keeps one exact Codex thread across local plugin reinstall cycles through a local Unix-socket app-server and launches each replacement TUI with `danger-full-access` plus approval policy `never`; use it only where that permission boundary is intentional.
 
 The protocol is fail-closed and pinned to `codex-cli 0.144.6`. Validate the CLI schema and local Unix WebSocket transport before the first run:
 

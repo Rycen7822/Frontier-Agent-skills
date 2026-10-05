@@ -3,7 +3,7 @@ name: debugging
 description: Diagnose failures, regressions, or performance problems whose cause is not yet established.
 license: MIT
 metadata:
-  version: 1.1.0
+  version: 1.1.1
   hosts: [codex, hermes-agent]
 ---
 
@@ -15,6 +15,10 @@ Distinguish product failure from a mistaken expectation, setup failure, environm
 
 Form the smallest causal hypothesis that explains the observation and choose a result that would reject it. Inspect the decisive caller and state transition, including caches, serialization or asynchronous ordering when relevant. Run the cheapest useful discriminator. Retry only when new inputs, setup, hypotheses or independent observations could change the conclusion.
 
+When different fixes leave the same failure unchanged, revisit their shared premise and the observation before adding another compensating fix. Inspect responsibility or workload distribution when it could explain the symptom.
+
 For performance, traces or version inconsistencies, use [runtime diagnosis](references/runtime.md). Add instrumentation only for a real evidence gap. When a repair is authorized, fix the responsible owner and verify affected behavior after the coherent change. Reuse valid checks; add a regression test only for meaningful recurrence risk, and keep one-off probes temporary.
+
+For authorized delegation or cross-context handoffs that need coordinated work boundaries, result integration or resource ownership, read [collaboration and state](../software-quality-workflows/references/collaboration-and-state.md).
 
 Report the confirmed mechanism or remaining uncertainty, supporting observation and repair evidence. A blocked diagnostic path need not stop independent authorized work; name the missing fact without accumulating unchanged retries.

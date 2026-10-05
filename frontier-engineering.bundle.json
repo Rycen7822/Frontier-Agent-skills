@@ -1,15 +1,15 @@
 {
   "activation_ceiling": "implicit_local_pilot",
-  "bundle_id": "frontier-engineering/11.2.0",
+  "bundle_id": "frontier-engineering/11.2.1",
   "compatible_schema_epoch": 9,
-  "release_build_id": "build-9bdbbed060b1b724e87fa643",
+  "release_build_id": "build-75a267f4fa219811d9f244af",
   "remote_writes": false,
   "schema_version": "frontier-engineering-bundle/2.0",
   "skills": {
     "code-review": {
       "allow_implicit_invocation": true,
-      "root_hash": "sha256:838735814d99844fe6402fad3c6466b1148986d1ae90307c4df9eb2bbe9be2e0",
-      "version": "2.0.2"
+      "root_hash": "sha256:fb974e4aace0c6d80918dc9f061fbda1cf71cb44fc81ece83568972faa7a7f1d",
+      "version": "2.0.3"
     },
     "code-simplifier": {
       "allow_implicit_invocation": true,
@@ -18,13 +18,13 @@
     },
     "codebase-investigation": {
       "allow_implicit_invocation": true,
-      "root_hash": "sha256:4128183b378d39c18c79e4b17231e3388950ad22707febc55e1b3c12093c50aa",
-      "version": "1.1.0"
+      "root_hash": "sha256:9be9231fa03451fb4f2e551ee5d7d3dfcf76a8e0d32e160fd18b0511f7aaee29",
+      "version": "1.1.1"
     },
     "debugging": {
       "allow_implicit_invocation": true,
-      "root_hash": "sha256:83427de1b7e4a5b014bb24922466dc89478a8b49fee27382e07d0253f0e1b420",
-      "version": "1.1.0"
+      "root_hash": "sha256:50742965971b712b36623e61671c2cfd77fa5a59a6c5c70af0b1061bc4ffc38e",
+      "version": "1.1.1"
     },
     "long-document-segmented-writing": {
       "allow_implicit_invocation": true,
@@ -48,13 +48,13 @@
     },
     "software-quality-workflows": {
       "allow_implicit_invocation": false,
-      "root_hash": "sha256:17f0b303a23f6d5af139361b736eb9a5963f9148bfd07871b24d72cdc6f9776d",
-      "version": "13.0.0"
+      "root_hash": "sha256:dd1a2adfd11eddeff19b1f3c8a7d9e0d3bf794b778fc47a13686b7d04fc27ef0",
+      "version": "13.0.1"
     },
     "writing-plans": {
       "allow_implicit_invocation": true,
-      "root_hash": "sha256:b55b2b43364db081992d1ff6dec3d4c75e840b263f9d18522935e14effa96336",
-      "version": "9.1.0"
+      "root_hash": "sha256:f44f768e99e144fb3f384ce8b9d52c5997bb1419f72c5236273270f894f52739",
+      "version": "9.1.1"
     }
   }
 }

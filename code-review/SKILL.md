@@ -3,7 +3,7 @@ name: code-review
 description: Review changes, scoped code snapshots, or supplied review comments for actionable defects and realistic impact.
 license: MIT
 metadata:
-  version: 2.0.2
+  version: 2.0.3
   hosts: [codex, hermes-agent]
 ---
 
@@ -21,5 +21,6 @@ Read further only for a concrete need:
 - [Security boundaries](references/security.md) for an implicated trust boundary.
 - [Agent artifacts](references/agent-artifacts.md) for prompts, skills, tool contracts, evaluators, or plugin delivery.
 - [Review evidence](references/review-evidence.md) for batched scope accounting, source snapshots, or machine-readable records.
+- [Collaboration and state](../software-quality-workflows/references/collaboration-and-state.md) for authorized multi-worker reviews or cross-context handoffs that need work boundaries, result integration or resource ownership.
 
 Return prioritized findings with source locations and practical impact, or state that no actionable findings were identified. Describe material coverage and verification limits. A review result is not proof of defect absence or permission to publish.
