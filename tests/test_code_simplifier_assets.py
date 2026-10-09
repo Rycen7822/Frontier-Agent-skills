@@ -32,9 +32,17 @@ class CodeSimplifierAssets(unittest.TestCase):
                 continue
             relative = Path(unquote(url.path))
             self.assertFalse(relative.is_absolute(), raw)
-            self.assertNotIn("..", relative.parts, raw)
             target = document.parent / relative
             self.assertTrue(target.is_file(), f"{document.name}: {raw}")
+            if ".." in relative.parts:
+                shared_policy = ROOT / "test-behavior" / "SKILL.md"
+                self.assertEqual(target.resolve(), shared_policy.resolve(), raw)
+                current = target
+                while current != ROOT:
+                    self.assertFalse(current.is_symlink(), str(current))
+                    self.assertNotEqual(current, current.parent, raw)
+                    current = current.parent
+                continue
             current = target
             while current != SKILL:
                 self.assertFalse(current.is_symlink(), str(current))
@@ -64,7 +72,7 @@ class CodeSimplifierAssets(unittest.TestCase):
         self.assertIn("$code-simplifier", agents["interface"]["default_prompt"])
         self.assertEqual(agents["interface"]["display_name"], "Code Simplifier")
 
-    def test_markdown_links_resolve_inside_skill(self) -> None:
+    def test_markdown_links_resolve_inside_skill_or_shared_testing_policy(self) -> None:
         for document in SKILL.rglob("*.md"):
             with self.subTest(document=document.relative_to(SKILL).as_posix()):
                 self.local_targets(document)

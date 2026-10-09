@@ -45,6 +45,7 @@ EXPECTED_SKILLS = {
     'skill-evaluator',
     'software-design',
     'software-quality-workflows',
+    'test-behavior',
     'writing-plans',
 }
 BUNDLE_ROOT_PREFIX = "frontier-engineering-bundle"

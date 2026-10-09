@@ -1,26 +1,26 @@
 {
   "bundle_schema_version": "3.0",
-  "bundle_version": "11.2.2",
+  "bundle_version": "11.3.0",
   "skills": [
     {
       "id": "code-review",
       "path": "code-review",
-      "version": "2.0.4"
+      "version": "2.0.5"
     },
     {
       "id": "code-simplifier",
       "path": "code-simplifier",
-      "version": "1.2.0"
+      "version": "1.2.1"
     },
     {
       "id": "codebase-investigation",
       "path": "codebase-investigation",
-      "version": "1.1.1"
+      "version": "1.1.2"
     },
     {
       "id": "debugging",
       "path": "debugging",
-      "version": "1.1.1"
+      "version": "1.1.2"
     },
     {
       "id": "long-document-segmented-writing",
@@ -30,27 +30,32 @@
     {
       "id": "runtime-verification",
       "path": "runtime-verification",
-      "version": "1.1.0"
+      "version": "1.1.1"
     },
     {
       "id": "skill-evaluator",
       "path": "skill-evaluator",
-      "version": "5.0.2"
+      "version": "5.0.3"
     },
     {
       "id": "software-design",
       "path": "software-design",
-      "version": "1.1.0"
+      "version": "1.1.1"
     },
     {
       "id": "software-quality-workflows",
       "path": "software-quality-workflows",
-      "version": "13.0.2"
+      "version": "13.1.0"
+    },
+    {
+      "id": "test-behavior",
+      "path": "test-behavior",
+      "version": "1.0.0"
     },
     {
       "id": "writing-plans",
       "path": "writing-plans",
-      "version": "9.1.1"
+      "version": "9.1.2"
     }
   ],
   "activation_ceiling": "implicit_local_pilot",

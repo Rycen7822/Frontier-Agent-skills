@@ -37,9 +37,9 @@
   ],
   "properties": {
     "schema_version": {"const": "cli-install-smoke/5.0"},
-    "bundle_id": {"const": "frontier-engineering/11.2.2"},
+    "bundle_id": {"const": "frontier-engineering/11.3.0"},
     "plugin_name": {"const": "frontier-engineering-plugin"},
-    "bundle_version": {"const": "11.2.2"},
+    "bundle_version": {"const": "11.3.0"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "activation_ceiling": {"const": "implicit_local_pilot"},
     "marketplace_name": {"type": "string", "minLength": 1},
@@ -65,6 +65,7 @@
         "skill-evaluator",
         "software-design",
         "software-quality-workflows",
+        "test-behavior",
         "writing-plans"
       ],
       "properties": {
@@ -76,6 +77,7 @@
         "code-simplifier": {"const": true},
         "codebase-investigation": {"const": true},
         "debugging": {"const": true},
+        "test-behavior": {"const": true},
         "runtime-verification": {"const": true},
         "software-design": {"const": true}
       }
@@ -100,6 +102,7 @@
         "skill-evaluator",
         "software-design",
         "software-quality-workflows",
+        "test-behavior",
         "writing-plans"
       ]
     },

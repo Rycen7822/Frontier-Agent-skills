@@ -3,7 +3,7 @@ name: runtime-verification
 description: Resolve evidence gaps that require actual running or installed behavior, beyond static inspection.
 license: MIT
 metadata:
-  version: 1.1.0
+  version: 1.1.1
   hosts: [codex, hermes-agent]
 ---
 
@@ -12,6 +12,8 @@ metadata:
 Identify the behavior and consumer surface that can establish it. Reuse relevant evidence, including observations already obtained during debugging. Choose the smallest real interaction that resolves the remaining gap.
 
 Use existing launch and verification tools. Confirm the process, target, dependency version and configuration correspond to the claim. A live PID or open port is not application readiness. Exercise the relevant input and observe its output, state transition or side effect. For visual behavior, inspect the rendered state and relevant viewport; exact pixel comparison needs an actual parity requirement.
+
+Before authoring or changing any verification code, apply [Test Behavior](../test-behavior/SKILL.md), including temporary installation or smoke scripts, inline checks, helpers and mocks. Also apply it when the authorized task removes or replaces a behavior contract, completes a migration or ends compatibility, even without a planned test edit. It owns check necessity, expectations and lifetime; this skill owns the real runtime consumer and observation. Running an existing verification tool alone calls for no new test code.
 
 For plugins, distinguish source validity, packaged files, discovery and installed behavior. Check missing layers and use a fresh host process when discovery is cached. Verify a replacement provider before removing the previous registration.
 

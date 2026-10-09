@@ -1,0 +1,6 @@
+interface:
+  display_name: "Test Behavior"
+  short_description: "Choose meaningful checks and manage test lifetime"
+  default_prompt: "Use $test-behavior before authoring checks or retiring behavior protection."
+policy:
+  allow_implicit_invocation: true

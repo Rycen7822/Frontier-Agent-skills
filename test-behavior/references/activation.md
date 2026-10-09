@@ -1,0 +1,5 @@
+# Default-visible activation
+
+Use this paragraph in a host's default instructions when Test Behavior should apply independently of workflow selection. Codex uses `frontier-engineering-plugin:test-behavior`; Pi and Hermes can select `test-behavior` from their native skill catalogs. Preserve the host's existing instructions when installing this entry.
+
+Before the first edit of any code or script used to test, reproduce, probe, validate, verify, compare, benchmark, or smoke-check software behavior, load and apply test-behavior. This includes permanent, temporary, inline, installation, migration, helper, fixture, and mock checks, even while another workflow is active. Also apply it when the current task removes or replaces a behavior contract, completes a migration, or ends compatibility or a migration obligation, even if no test edit is planned. Inspect directly affected protection and decide what must continue. Running an existing check alone does not require new tests; honor explicit user and project delivery requirements.

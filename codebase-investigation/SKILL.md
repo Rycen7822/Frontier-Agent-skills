@@ -3,7 +3,7 @@ name: codebase-investigation
 description: Explain implementation, cross-module behavior, or design history when that explanation is the task.
 license: MIT
 metadata:
-  version: 1.1.1
+  version: 1.1.2
   hosts: [codex, hermes-agent]
 ---
 
@@ -12,6 +12,8 @@ metadata:
 Start from the question and the nearest source that can answer it. Reuse current context and verified earlier findings. Investigation alone is read-only; follow the user's broader request when changes are also authorized.
 
 Trace the relevant caller, owning implementation, state transition and observable result. Follow indirect consumers, generated code or external implementations when they could change the explanation. Test the decisive premise against surrounding code; widen the search only for a specific unanswered question.
+
+Reading source or existing evidence does not require a new test. If the authorized investigation needs authored reproduction, probe or comparison code, apply [Test Behavior](../test-behavior/SKILL.md) before the first edit, including temporary and inline checks. Keep the investigation's scope and explanation here.
 
 Separate behavior from motivation. Current source establishes what happens; relevant commits, issues, design notes and selected session records can establish why. Check actual dependency versions and primary sources for version-sensitive external behavior. Do not infer historical intent from a plausible implementation story.
 

@@ -2,13 +2,13 @@
 name: skill-evaluator
 description: Assess skill effectiveness from relevant agent history or scoped execution evidence.
 metadata:
-  version: 5.0.2
+  version: 5.0.3
   author: Hermes Agent
   hosts: [codex, hermes-agent]
   hermes:
     tags: [evaluation, testing, benchmarking]
     category: software-development
-    related_skills: [software-quality-workflows]
+    related_skills: [software-quality-workflows, test-behavior]
 ---
 
 # Skill Evaluator
@@ -24,6 +24,8 @@ python3 "$SKILL_EVALUATOR_DIR/scripts/evaluate.py" check --base <revision> --imp
 For historical diagnosis, use the [history guide](references/history.md) to inspect selected episodes, attribute observed problems to the relevant skill and propose the smallest justified change. History can explain failures and costs but does not by itself establish causal improvement. A diagnosis may conclude that no edit or new evaluation is needed.
 
 For an execution gap, select affected cases and an independent oracle. Reuse valid task evidence; changed grading normally needs only grading. Use finite task and judge budgets already supplied by the task, session or suite, passing them to the runner. If no budget is available, identify that gap before creating a run or probing the Host.
+
+Before authoring or changing executable fixtures, verifiers, harness checks or comparison probes, apply [Test Behavior](../test-behavior/SKILL.md), including temporary and inline code. Explicitly requested evaluation suites remain delivery requirements. Skill Evaluator retains ownership of case selection, independent grading, task and judge budgets, evidence reuse and effectiveness claims; running an existing evaluator does not require new test code or an additional model run.
 
 ```bash
 python3 "$SKILL_EVALUATOR_DIR/scripts/evaluate.py" run \

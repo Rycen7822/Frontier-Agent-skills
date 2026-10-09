@@ -1,6 +1,6 @@
 # Validation for simplification
 
-Use this reference when a candidate has unresolved semantic or operational risk, or when a check fails. Validation answers the actual uncertainty; it is not a fixed testing pipeline.
+Use this reference when a candidate has unresolved semantic or operational risk, or when a check fails. Validation answers the actual uncertainty; it is not a fixed testing pipeline. Apply [Test Behavior](../../test-behavior/SKILL.md) before authoring check code and for affected test expectations, lifetime or retirement; this reference supplies the simplification-specific equivalence questions.
 
 ## Select the smallest decisive evidence
 
@@ -34,7 +34,7 @@ No difference found means no difference found within those inputs, transitions a
 
 Determine whether a failure is introduced by the patch, pre-existing, environmental or caused by an intentionally changed contract. Compare the same test identities and conditions where possible; equal pass counts can hide a newly failing test. Do not edit unrelated code simply to obtain a green summary.
 
-Keep unique behavior assertions. When an interface or module boundary legitimately changes, migrate its tests to the new boundary and retain the protected behavior. Delete an expectation only when it duplicates retained protection or checks behavior explicitly authorized to retire. Do not remove a failing test, relax its assertions, update snapshots blindly or rewrite the oracle to fit the patch.
+When an interface or module boundary legitimately changes, migrate its tests to the new boundary and retain the protected behavior. Follow Test Behavior when merging or retiring directly affected checks; a test's failure or the move to a new boundary alone does not end a protection obligation.
 
 If the simplification causes a regression, revise it within scope or undo only the edits belonging to that candidate. Preserve prior user edits and independent valid changes. Do not use a repository-wide reset or overwrite the whole file from an older revision. After a corrective edit, rerun the check whose evidence changed; reuse unrelated valid results.
 

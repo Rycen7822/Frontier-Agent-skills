@@ -1,7 +1,7 @@
 {
   "name": "frontier-engineering-plugin",
   "version": "${BUNDLE_VERSION}",
-  "description": "Engineering skills for development, investigation, design, debugging, review, simplification, runtime verification, planning, writing and evaluation.",
+  "description": "Engineering skills for development, investigation, design, debugging, review, simplification, testing behavior, runtime verification, planning, writing and evaluation.",
   "author": {
     "name": "Hermes Agent"
   },
@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "Frontier Engineering",
     "shortDescription": "Develop, investigate, design, debug, review and simplify",
-    "longDescription": "Engineering skills for development, investigation, design, debugging, review, simplification, runtime verification, planning, writing and evaluation.",
+    "longDescription": "Engineering skills for development, investigation, design, debugging, review, simplification, testing behavior, runtime verification, planning, writing and evaluation.",
     "developerName": "Hermes Agent",
     "category": "Developer Tools",
     "capabilities": [

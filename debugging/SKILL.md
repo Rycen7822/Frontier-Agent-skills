@@ -3,7 +3,7 @@ name: debugging
 description: Diagnose failures, regressions, or performance problems whose cause is not yet established.
 license: MIT
 metadata:
-  version: 1.1.1
+  version: 1.1.2
   hosts: [codex, hermes-agent]
 ---
 
@@ -17,7 +17,9 @@ Form the smallest causal hypothesis that explains the observation and choose a r
 
 When different fixes leave the same failure unchanged, revisit their shared premise and the observation before adding another compensating fix. Inspect responsibility or workload distribution when it could explain the symptom.
 
-For performance, traces or version inconsistencies, use [runtime diagnosis](references/runtime.md). Add instrumentation only for a real evidence gap. When a repair is authorized, fix the responsible owner and verify affected behavior after the coherent change. Reuse valid checks; add a regression test only for meaningful recurrence risk, and keep one-off probes temporary.
+Before authoring or changing a reproduction, diagnostic check, comparison script or inline probe, apply [Test Behavior](../test-behavior/SKILL.md). It decides check timing, independent expectations and lifetime, including explicitly requested regression or BRT delivery. Also apply it when an authorized repair removes or replaces a behavior contract, completes a migration or ends compatibility, even without a planned test edit. Continue causal diagnosis here; running an existing reproduction does not require a new test.
+
+For performance, traces or version inconsistencies, use [runtime diagnosis](references/runtime.md). Add instrumentation only for a real evidence gap. When a repair is authorized, fix the responsible owner and verify affected behavior after the coherent change.
 
 For authorized delegation or cross-context handoffs that need coordinated work boundaries, result integration or resource ownership, read [collaboration and state](../software-quality-workflows/references/collaboration-and-state.md).
 

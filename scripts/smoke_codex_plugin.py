@@ -32,6 +32,7 @@ EXPECTED_ACTIVATION = {
     'skill-evaluator': False,
     'software-design': True,
     'software-quality-workflows': False,
+    'test-behavior': True,
     'writing-plans': True,
 }
 EXPECTED_SKILLS = set(EXPECTED_ACTIVATION)

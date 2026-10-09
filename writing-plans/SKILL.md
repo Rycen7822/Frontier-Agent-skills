@@ -2,7 +2,7 @@
 name: writing-plans
 description: Turn settled decisions into an implementation plan for requested planning, handoffs, or multi-session work.
 metadata:
-  version: 9.1.1
+  version: 9.1.2
 ---
 
 # Writing Plans
@@ -10,6 +10,8 @@ metadata:
 Turn settled decisions into an executable order of work. Inspect the relevant source and existing checks so the plan names real owners, behavior and dependencies. Resolve consequential design or diagnosis gaps first; a plan should not hide them inside implementation steps.
 
 For work that fits the current context, write a short ordered plan. State what changes, where it belongs, what must remain true and how completion will be checked. Include exact commands or edits when they are known and useful; identify unknowns instead of inventing runnable details. Share a check across coherent changes when it can establish the same result once.
+
+When the plan needs a decision about writing or retaining checks, use [Test Behavior](../test-behavior/SKILL.md): identify the unresolved question, reuse existing checks where sufficient, and distinguish temporary evidence from requested or justified permanent protection. The executing agent applies it before authoring check code. Include review of directly affected tests when the task removes or replaces a behavior contract, completes a migration or ends compatibility; preserve obligations that continue. A verification step alone does not require a new test or a permanent script.
 
 Scale detail to the handoff risk. A straightforward edit needs no identity protocol, milestone template or new planning artifact. When another context must resume the work, use [durable handoffs](references/handoff.md) to preserve the decisions and next action that would otherwise be lost.
 

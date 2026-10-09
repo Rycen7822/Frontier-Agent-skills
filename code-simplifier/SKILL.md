@@ -3,11 +3,11 @@ name: code-simplifier
 description: Simplify user-selected code for clarity and lower maintenance burden while preserving intended behavior; not a mandatory post-edit cleanup.
 license: Apache-2.0
 metadata:
-  version: 1.2.0
+  version: 1.2.1
   hosts: [codex, hermes-agent]
 ---
 
-<!-- Modified for FAS 1.2.0, 2026-09-18: evidence-led structural simplification and conditional validation. -->
+<!-- Modified for FAS 1.2.1, 2026-10-09: shared testing decisions; preserved structural simplification and conditional validation. -->
 
 # Code Simplifier
 
@@ -27,12 +27,14 @@ Check that the burden disappears rather than moving into callers, configuration,
 
 Use [structural simplification](references/structural-simplification.md) when a candidate changes shared ownership, state or representations, compatibility, registrations, generated consumers or lifecycle behavior; it also covers explicitly requested broad audits. Stay on the local path for straightforward edits.
 
-Use [validation](references/validation.md) when equivalence is uncertain, tests fail, or timing, failure paths or operational constraints need evidence. Load only the relevant reference, not both by default. Do not require another skill, a fixed model, delegation or a new tool before acting.
+Use [validation](references/validation.md) when equivalence is uncertain, tests fail, or timing, failure paths or operational constraints need evidence. Load only the relevant reference, not both by default. Do not require a fixed model, delegation or a new tool before acting.
+
+Apply [Test Behavior](../test-behavior/SKILL.md) before authoring or changing equivalence checks, comparison scripts or inline probes. Also apply it when the task removes or replaces a behavior contract or ends a migration or compatibility obligation, even if no test edit is planned. It owns check timing, valid expectations and retirement; useful simplification and preserved semantics remain the responsibility here.
 
 ## Complete and stop
 
 Make the smallest complete change within authorized scope. Migrate necessary consumers and remove genuinely retired machinery; a required compatibility layer is retained responsibility, not completed deletion. If completion would exceed scope, explain that boundary instead of leaving a broken half-migration.
 
-Reuse valid evidence and run only checks that resolve actual uncertainty. Obvious semantic no-ops need no new test or model evaluation. Preserve unique behavioral protection; remove duplicate or explicitly retired expectations only when their remaining coverage is accounted for. Do not weaken an oracle to make the patch pass.
+Reuse valid evidence and run only checks that resolve actual uncertainty. Obvious semantic no-ops need no new test or model evaluation. Follow Test Behavior for directly affected protection; retain guarantees that still apply after a simplification or authorized behavior change.
 
 Stop when the useful simplification is complete or remaining edits are style churn, unsupported deletion, or not worth their risk and verification cost. Do not enforce a findings quota or repeated cleanup rounds. Distinguish no worthwhile change from a blocked or incompletely investigated candidate. Report the removed burden or clarity gain, decisive evidence, and material limits; audit-only work reports proposals, not completed changes.

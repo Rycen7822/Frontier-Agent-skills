@@ -1,23 +1,18 @@
 # Qoder plugin shell
 
-This repository is itself an installable Qoder plugin. The shell is the manifest at
-[`.qoder-plugin/plugin.json`](../.qoder-plugin/plugin.json); the ten skill directories next to it are the payload, so the
-skills are used exactly as they are shipped for Codex and Hermes Agent.
+This repository is itself an installable Qoder plugin. The shell is the manifest at [`.qoder-plugin/plugin.json`](../.qoder-plugin/plugin.json); the eleven skill directories next to it are the payload, so the skills are used exactly as they are shipped for Codex, Pi and Hermes Agent.
 
 ## Layout
 
 ```text
 Frontier-Agent-skills/
   .qoder-plugin/plugin.json   portable Qoder manifest (name, version, description, declared skills)
-  code-review/                ten skill roots, each with SKILL.md
+  code-review/                eleven skill roots, each with SKILL.md
   ...
   packaging/qoder-plugin/plugin.json.template
 ```
 
-The ten skill roots sit at the repository top level, so the manifest declares them explicitly through its `skills`
-field instead of relying on a single `skills/` directory. The declared list is the canonical skill set from
-`bundle-manifest.json`; `scripts/build_qoder_plugin.py` renders the manifest from that source and fails when a path
-is missing, unsorted, renamed or no longer carries a `SKILL.md` with matching `name` and a `description`.
+The eleven skill roots sit at the repository top level, so the manifest declares them explicitly through its `skills` field instead of relying on a single `skills/` directory. The declared list is the canonical skill set from `bundle-manifest.json`; `scripts/build_qoder_plugin.py` renders the manifest from that source and fails when a path is missing, unsorted, renamed or no longer carries a `SKILL.md` with matching `name` and a `description`.
 
 ## Install
 

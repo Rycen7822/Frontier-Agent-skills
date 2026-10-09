@@ -3,7 +3,7 @@ name: software-design
 description: Resolve consequential requirements, ownership, API, data-model, or migration choices before implementation.
 license: MIT
 metadata:
-  version: 1.1.0
+  version: 1.1.1
   hosts: [codex, hermes-agent]
 ---
 
@@ -16,5 +16,7 @@ Model domain state and ownership before splitting files. Keep related representa
 Compare the status quo and meaningful alternatives only when the decision needs them. Consider callers, failure semantics, compatibility and operations. Avoid speculative abstractions or manufactured design options. When retries or concurrency matter, identify state ownership, repeatable effects and partial failure. Validate data at the actual trust boundary.
 
 Use a temporary prototype to resolve a specific uncertainty with a deciding observation. Distinguish measured behavior from production readiness. For a spatial decision, the [visual companion](operator/design-discovery/visual-runtime.md) is optional. Read [migration guidance](references/migration.md) for API or data transitions, or [security guidance](../code-review/references/security.md) for an implicated trust boundary.
+
+Apply [Test Behavior](../test-behavior/SKILL.md) before authoring or changing prototype code used to check software behavior, migration acceptance scripts or other verification code. When an authorized task ends or replaces a behavior or compatibility obligation, apply it to directly affected protection even without a planned test edit. This skill determines which commitments continue; Test Behavior determines how checks protect them and which checks can retire.
 
 State the chosen design, decisive reasons, affected owners and unresolved choices. Persist decisions when recovery or coordination needs them. For a design-only request, return the design; when implementation is requested, continue once the decisions are settled.

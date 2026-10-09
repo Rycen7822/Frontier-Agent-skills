@@ -3,7 +3,7 @@ name: code-review
 description: Review changes, scoped code snapshots, or supplied review comments for actionable defects and realistic impact.
 license: MIT
 metadata:
-  version: 2.0.4
+  version: 2.0.5
   hosts: [codex, hermes-agent]
 ---
 
@@ -16,6 +16,8 @@ Base findings on a plausible trigger, the responsible implementation, and an aff
 Treat supplied review comments as claims to assess, not conclusions to accept. Missing context is not a refutation. Keep important unresolved concerns separate from confirmed findings, and combine findings that share one root cause.
 
 Review-only work does not authorize fixes. When fixes are requested, complete the authorized repair and appropriate verification without adding a phase-approval requirement. Reuse evidence that remains applicable.
+
+When reviewing changed checks or a removed or replaced behavior contract, use [Test Behavior](../test-behavior/SKILL.md) to assess valid expectations, actual execution, lifetime and continuing protection. Missing new tests alone is not a finding; identify a concrete protection gap or an unmet explicit delivery requirement. Apply it before authoring reproduction or verification code for the review, including temporary and inline checks.
 
 Read further only for a concrete need:
 - [Security boundaries](references/security.md) for an implicated trust boundary.

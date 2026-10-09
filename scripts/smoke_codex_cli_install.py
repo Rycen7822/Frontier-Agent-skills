@@ -38,6 +38,7 @@ EXPECTED_SKILLS = [
     'skill-evaluator',
     'software-design',
     'software-quality-workflows',
+    'test-behavior',
     'writing-plans',
 ]
 EXPECTED_ACTIVATION = {
@@ -50,6 +51,7 @@ EXPECTED_ACTIVATION = {
     'skill-evaluator': False,
     'software-design': True,
     'software-quality-workflows': False,
+    'test-behavior': True,
     'writing-plans': True,
 }
 MAX_CLI_OUTPUT = 1024 * 1024
