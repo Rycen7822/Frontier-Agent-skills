@@ -4,6 +4,8 @@ This repository is the development source for the `frontier-engineering/11.3.0` 
 
 Bundle 11.3.0 adds Test Behavior as the owner of check necessity, timing, independent expectations, execution evidence, lifetime and retirement. SQW and eight other workflows route those decisions to it while keeping their own methods. Temporary and inline checks are covered before the first edit; ending behavior or compatibility obligations triggers review of affected tests even when no test edit is planned. The existing activation policies and schema epoch 9 are preserved, and Test Behavior is eligible for implicit selection. See [the testing and host activation note](docs/test-behavior.md), [the Qoder host note](docs/qoder-plugin.md) and [the simplifier maintenance note](docs/code-simplifier-1.2.0.md).
 
+Test Behavior's discovery description applies when preparing to write or modify tests or software-checking code, or reviewing protection affected by retired contracts, completed migrations or ended compatibility obligations. Requirements and architecture decisions stay with the main workflow; design discussion and ordinary implementation alone do not call for this skill. Installation updates the package and skill catalog while preserving personal `AGENTS.md` and `SOUL.md` files. Reload the host's catalog or start a new session to use an updated description.
+
 ## Skill entrypoints
 
 | Skill | Use for | Version |
@@ -25,6 +27,8 @@ SQW retains concise guidance throughout development. Specialized skills can be s
 ## Release identity
 
 Bundle 11.3.0 uses schema epoch 9. `software-quality-workflows` and `skill-evaluator` are explicit-only; the other nine skills remain eligible for implicit local selection. Invocation prompts retain `$skill-name`; eligibility does not guarantee model selection. The activation ceiling is `implicit_local_pilot` and `remote_writes` remains false.
+
+See the [11.3.0 release](https://github.com/Rycen7822/Frontier-Agent-skills/releases/tag/frontier-engineering-v11.3.0) for the source bundle, skills archive, installable marketplace, checksums and engineering verification evidence. [Release notes](RELEASE_NOTES.md) describe the testing policy, workflow handoffs and activation boundary.
 
 The code-review skill ships a bounded review helper: `scripts/review_support.py` captures one review scope into a packet (`scope`) or checks a machine-readable record against that packet (`check`). It requires POSIX, Python 3.11 or later, Git 2.41 or later, and the `jsonschema` package in the environment that runs it; installing the plugin does not install Python packages. A packet or record is optional for ordinary reviews. See [the v11 migration note](docs/fas-v11-migration.md).
 

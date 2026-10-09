@@ -1,5 +1,15 @@
 # Release Notes
 
+## Bundle 11.3.0 Test Behavior and workflow ownership
+
+Bundle 11.3.0 adds `test-behavior` 1.0.0 as the shared owner of check necessity, timing, meaningful expectations, execution evidence, lifetime and retirement. The skill covers formal tests, temporary scripts, inline checks, reproductions, debugging probes, smoke and installation checks, migration acceptance, benchmarks, fixtures and mocks. One-off checks remain temporary unless continuing protection justifies permanent retention; directly affected tests are reviewed when behavior contracts are removed or replaced, a migration completes or compatibility obligations end.
+
+The discovery description applies when preparing to author or modify checks and when reviewing affected protection. Requirements and architecture decisions stay with the main workflow; design discussion and ordinary implementation alone do not call for Test Behavior. Its policy distinguishes whether to write, when to write, what constitutes useful protection, which checks to omit or reject, and when to retire old tests. It preserves explicitly requested suite tests and continuing compatibility protection while rejecting duplicate, implementation-mirroring and migration-completion-only permanent tests without a continuing obligation.
+
+SQW advances to 13.1.0 and keeps implementation ownership. Investigation and debugging 1.1.2, software design 1.1.1, runtime verification 1.1.1, code review 2.0.5, code simplifier 1.2.1, writing plans 9.1.2 and skill evaluator 5.0.3 hand off testing decisions at the relevant point; long-document writing remains 3.1.0. The bundle now contains eleven skills at schema epoch 9. SQW and skill evaluator remain explicit-only, the other nine remain eligible for implicit selection, and parallel collaboration remains conditional.
+
+README and host guidance document description-based discovery and preserve personal `AGENTS.md` and `SOUL.md` files during installation. Pi updates through its native `pi update --extension` command. Codex, Pi and Hermes installation checks verify published files and the full new description through fresh native loaders. Release packages include the source bundle, skills archive, installable marketplace, checksums and model-free engineering evidence. This release does not claim a measured increase in activation rate or general model effectiveness.
+
 ## Bundle 11.2.2 retrospective and delivery guidance
 
 Bundle 11.2.2 clarifies where historical diagnosis should direct a remedy: existing deterministic checks for mechanical rules, owning guidance for judgement-dependent decisions, and environment or tooling owners for missing observations or broken tools. Delivery reporting for material behavior changes describes available before/after behavior, affected consumers and meaningful rollback limits, separating source-based expectations from observed runs and identifying unavailable baselines. Agent-artifact review follows changed entry, dependency and completion behavior into relevant README guidance, referring skills and shipping metadata to catch stale descriptions that valid YAML or links cannot establish.
