@@ -1,6 +1,6 @@
 ---
 name: test-behavior
-description: Use whenever an agent considers writing or modifying code or scripts to test, reproduce, probe, validate, verify, compare, benchmark, or smoke-check software behavior, before the first edit. Includes temporary and inline checks, helpers, fixtures, mocks, and installation/migration checks regardless of name or location. Also use when the task removes or replaces a behavior contract, completes a migration, or ends compatibility or a migration obligation, even if no test edit is planned. Applies independently of explicit skill requests or other workflows; running existing checks alone does not require new tests.
+description: Use when preparing to write or modify tests or code/scripts that check software behavior, including temporary scripts, inline checks, reproductions, debug probes, smoke/install/migration checks, benchmarks, fixtures and mocks. Apply before editing those checks to decide necessity, timing, meaningful expectations and temporary versus permanent placement. Also use to review directly affected tests when a task removes or replaces a behavior contract, completes a migration or ends compatibility obligations. Requirements and architecture decisions stay with the main workflow; design discussion and ordinary implementation alone do not call for this skill. Running existing checks alone does not require new tests.
 license: MIT
 metadata:
   version: 1.0.0
