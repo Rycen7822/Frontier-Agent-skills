@@ -12,7 +12,7 @@ Check what a normal change forces maintainers to understand or edit. Similar nam
 
 ## Reuse the real mechanism
 
-Historical entries and evidence directories can share byte pagination with tool output. They should not pretend to be successful tool calls with invented arguments, error status or execution timestamps. Keep material kinds honest and share the actual byte-source mechanism. Preserve supported cursor and archive formats separately from internal representation cleanup.
+Historical entries and evidence directories can share byte pagination with tool output while retaining their own material types. Tool-call arguments, execution status and execution timestamps describe actual tool invocations; they are not metadata to fabricate for other sources. Share the byte-source mechanism and preserve supported cursor and archive formats independently of internal representation cleanup.
 
 Likewise, adapters with similar HTTP calls may enforce different paid opt-ins, failure categories or redirect rules. Share identical policy where it has one owner; retain real protocol differences. A common interface is worthwhile when it reduces actual obligations, not merely because two files contain similar lines.
 
