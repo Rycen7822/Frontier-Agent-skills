@@ -31,6 +31,7 @@ EXPECTED_PLUGIN = "frontier-engineering-plugin"
 EXPECTED_SKILLS = [
     'code-review',
     'code-simplifier',
+    'codebase-improve',
     'codebase-investigation',
     'debugging',
     'long-document-segmented-writing',
@@ -44,6 +45,7 @@ EXPECTED_SKILLS = [
 EXPECTED_ACTIVATION = {
     'code-review': True,
     'code-simplifier': True,
+    'codebase-improve': False,
     'codebase-investigation': True,
     'debugging': True,
     'long-document-segmented-writing': True,

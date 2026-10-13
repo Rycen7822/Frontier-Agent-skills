@@ -17,9 +17,9 @@ class QuickContracts(unittest.TestCase):
         generated = json.loads(
             (ROOT / "frontier-engineering.bundle.json").read_text(encoding="utf-8")
         )
-        self.assertEqual("11.3.0", source["bundle_version"])
+        self.assertEqual("11.4.0", source["bundle_version"])
         self.assertEqual(9, generated["compatible_schema_epoch"])
-        self.assertEqual("frontier-engineering/11.3.0", generated["bundle_id"])
+        self.assertEqual("frontier-engineering/11.4.0", generated["bundle_id"])
         self.assertFalse(source["remote_writes"])
         self.assertEqual("implicit_local_pilot", source["activation_ceiling"])
 
@@ -41,7 +41,7 @@ class QuickContracts(unittest.TestCase):
                 agents["policy"]["allow_implicit_invocation"],
                 generated["skills"][skill_id]["allow_implicit_invocation"],
             )
-        explicit_skills = {"software-quality-workflows", "skill-evaluator"}
+        explicit_skills = {"codebase-improve", "software-quality-workflows", "skill-evaluator"}
         for skill_id, item in source_skills.items():
             expected = skill_id not in explicit_skills
             self.assertIs(
@@ -54,6 +54,9 @@ class QuickContracts(unittest.TestCase):
                 (ROOT / skill_id / "agents" / "openai.yaml").read_text(encoding="utf-8")
             )["interface"]["default_prompt"]
             self.assertIn(f"${skill_id}", prompt)
+        entry = (ROOT / "codebase-improve" / "SKILL.md").read_text(encoding="utf-8")
+        frontmatter = yaml.safe_load(entry.split("---", 2)[1])
+        self.assertIs(True, frontmatter["disable-model-invocation"])
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ from build_codex_plugin import _strict_json  # noqa: E402
 EXPECTED_ACTIVATION = {
     'code-review': True,
     'code-simplifier': True,
+    'codebase-improve': False,
     'codebase-investigation': True,
     'debugging': True,
     'long-document-segmented-writing': True,

@@ -25,8 +25,8 @@
   "properties": {
     "schema_version": {"const": "static-contract-diagnostic/1.0"},
     "classification": {"const": "static_contract_diagnostic"},
-    "bundle_id": {"const": "frontier-engineering/11.3.0"},
-    "version": {"const": "11.3.0"},
+    "bundle_id": {"const": "frontier-engineering/11.4.0"},
+    "version": {"const": "11.4.0"},
     "schema_epoch": {"const": 9},
     "skill_versions": {
       "type": "object",
@@ -34,6 +34,7 @@
       "required": [
         "code-review",
         "code-simplifier",
+        "codebase-improve",
         "codebase-investigation",
         "debugging",
         "long-document-segmented-writing",
@@ -51,6 +52,7 @@
         "writing-plans": {"const": "9.1.2"},
         "code-review": {"const": "2.0.5"},
         "code-simplifier": {"const": "1.2.1"},
+        "codebase-improve": {"const": "1.0.0"},
         "codebase-investigation": {"const": "1.1.2"},
         "debugging": {"const": "1.1.2"},
         "test-behavior": {"const": "1.0.0"},
@@ -64,6 +66,7 @@
       "required": [
         "code-review",
         "code-simplifier",
+        "codebase-improve",
         "codebase-investigation",
         "debugging",
         "long-document-segmented-writing",
@@ -81,6 +84,7 @@
         "writing-plans": {"const": true},
         "code-review": {"const": true},
         "code-simplifier": {"const": true},
+        "codebase-improve": {"const": false},
         "codebase-investigation": {"const": true},
         "debugging": {"const": true},
         "test-behavior": {"const": true},
@@ -94,6 +98,7 @@
       "required": [
         "code-review",
         "code-simplifier",
+        "codebase-improve",
         "codebase-investigation",
         "debugging",
         "long-document-segmented-writing",
@@ -111,6 +116,7 @@
         "writing-plans": {"type": "integer", "minimum": 1, "maximum": 6912},
         "code-review": {"type": "integer", "minimum": 1},
         "code-simplifier": {"type": "integer", "minimum": 1},
+        "codebase-improve": {"type": "integer", "minimum": 1},
         "codebase-investigation": {"type": "integer", "minimum": 1},
         "debugging": {"type": "integer", "minimum": 1},
         "test-behavior": {"type": "integer", "minimum": 1},

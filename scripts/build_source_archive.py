@@ -38,6 +38,7 @@ Layout = Literal["bundle", "skills_only"]
 EXPECTED_SKILLS = {
     'code-review',
     'code-simplifier',
+    'codebase-improve',
     'codebase-investigation',
     'debugging',
     'long-document-segmented-writing',

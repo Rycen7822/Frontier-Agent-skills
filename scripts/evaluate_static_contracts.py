@@ -43,6 +43,8 @@ MODEL_FACING_EXACT = (
     "code-review/agents/openai.yaml",
     "code-simplifier/SKILL.md",
     "code-simplifier/agents/openai.yaml",
+    "codebase-improve/SKILL.md",
+    "codebase-improve/agents/openai.yaml",
     "codebase-investigation/SKILL.md",
     "codebase-investigation/agents/openai.yaml",
     "debugging/SKILL.md",
@@ -66,6 +68,7 @@ MODEL_FACING_EXACT = (
     ".qoder-plugin/plugin.json",
 )
 MODEL_FACING_DIRS = (
+    "codebase-improve/references",
     "software-quality-workflows/references",
     "software-design/operator",
     "code-review/references",

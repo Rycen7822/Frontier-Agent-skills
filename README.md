@@ -1,6 +1,8 @@
 # Frontier Agent Skills
 
-This repository is the development source for the `frontier-engineering/11.3.0` bundle. One `frontier-engineering-plugin` contains eleven skills for Codex, Pi and Hermes Agent, and the same repository carries a Qoder plugin shell at [`.qoder-plugin/plugin.json`](.qoder-plugin/plugin.json) so a checkout is directly installable in Qoder. Installed copies are separate from source; local edits take effect after rebuilding and reinstalling.
+This repository is the development source for the `frontier-engineering/11.4.0` bundle. One `frontier-engineering-plugin` contains twelve canonical skills, and the same repository carries a Qoder plugin shell at [`.qoder-plugin/plugin.json`](.qoder-plugin/plugin.json). Codex and Pi use their native explicit-invocation policy for Codebase Improve; Hermes uses its user-command adapter rather than exposing it in the normal skill catalog. Installed copies are separate from source; local edits take effect after rebuilding and reinstalling.
+
+Bundle 11.4.0 adds [Codebase Improve](codebase-improve/SKILL.md) 1.0.0 for user-invoked architecture audits and improvements: responsibility, layering, classification, abstraction granularity and actual caller obligations. Manual source reading, counterevidence and coherent migrations guide the work; full coverage and parallel collaboration remain conditional. It stays out of automatic model discovery and is not loaded by another skill. See [invocation and host setup](docs/codebase-improve.md).
 
 Bundle 11.3.0 adds Test Behavior as the owner of check necessity, timing, independent expectations, execution evidence, lifetime and retirement. SQW and eight other workflows route those decisions to it while keeping their own methods. Temporary and inline checks are covered before the first edit; ending behavior or compatibility obligations triggers review of affected tests even when no test edit is planned. The existing activation policies and schema epoch 9 are preserved, and Test Behavior is eligible for implicit selection. See [the testing and host activation note](docs/test-behavior.md), [the Qoder host note](docs/qoder-plugin.md) and [the simplifier maintenance note](docs/code-simplifier-1.2.0.md).
 
@@ -17,6 +19,7 @@ Test Behavior's discovery description applies when preparing to write or modify 
 | [debugging](debugging/SKILL.md) | Diagnose failures, regressions and performance problems without an established cause | 1.1.2 |
 | [code-review](code-review/SKILL.md) | Assess changes, scoped snapshots, review comments and evidence records | 2.0.5 |
 | [code-simplifier](code-simplifier/SKILL.md) | Simplify selected code while preserving intended behavior | 1.2.1 |
+| [codebase-improve](codebase-improve/SKILL.md) | User-invoked architecture, responsibility and abstraction improvement | 1.0.0 |
 | [runtime-verification](runtime-verification/SKILL.md) | Establish missing evidence through actual runtime or installed behavior | 1.1.1 |
 | [writing-plans](writing-plans/SKILL.md) | Plan implementation after design and diagnosis are settled | 9.1.2 |
 | [long-document-segmented-writing](long-document-segmented-writing/SKILL.md) | Produce long, source-grounded documents with recoverable state | 3.1.0 |
@@ -26,9 +29,9 @@ SQW retains concise guidance throughout development. Specialized skills can be s
 
 ## Release identity
 
-Bundle 11.3.0 uses schema epoch 9. `software-quality-workflows` and `skill-evaluator` are explicit-only; the other nine skills remain eligible for implicit local selection. Invocation prompts retain `$skill-name`; eligibility does not guarantee model selection. The activation ceiling is `implicit_local_pilot` and `remote_writes` remains false.
+Bundle 11.4.0 uses schema epoch 9. `codebase-improve`, `software-quality-workflows` and `skill-evaluator` are explicit-only in Codex; the other nine skills remain eligible for implicit local selection. Codebase Improve also declares `disable-model-invocation: true` for Pi and ships a separate user-only Hermes command. Invocation prompts retain `$skill-name`; eligibility does not guarantee model selection. The activation ceiling is `implicit_local_pilot` and `remote_writes` remains false.
 
-See the [11.3.0 release](https://github.com/Rycen7822/Frontier-Agent-skills/releases/tag/frontier-engineering-v11.3.0) for the source bundle, skills archive, installable marketplace, checksums and engineering verification evidence. [Release notes](RELEASE_NOTES.md) describe the testing policy, workflow handoffs and activation boundary.
+The [published 11.3.0 release](https://github.com/Rycen7822/Frontier-Agent-skills/releases/tag/frontier-engineering-v11.3.0) remains the previous release. [Release notes](RELEASE_NOTES.md) describe the prepared 11.4.0 source, testing policy, workflow handoffs and activation boundary; a source version update does not publish a release.
 
 The code-review skill ships a bounded review helper: `scripts/review_support.py` captures one review scope into a packet (`scope`) or checks a machine-readable record against that packet (`check`). It requires POSIX, Python 3.11 or later, Git 2.41 or later, and the `jsonschema` package in the environment that runs it; installing the plugin does not install Python packages. A packet or record is optional for ordinary reviews. See [the v11 migration note](docs/fas-v11-migration.md).
 
@@ -44,11 +47,11 @@ Every retained digest has one producer, one named validating consumer, a bounded
 
 Ordinary maintenance does not require model reevaluation. Non-behavioral documentation, version/hash updates, and editorial changes judged to preserve meaning use zero model calls; a historical report is not a prerequisite. Run `python3 skill-evaluator/scripts/evaluate.py check --base <revision> --impact editorial` for an explicit maintenance judgment, or use `--impact auto` to identify changes needing closer scoping. This command only performs local checks. Changes to behavior, routing, execution conditions, or grading require evidence only for the affected scope; Git identity and elapsed time alone do not invalidate model results.
 
-Bundle 11.3.0 uses model-free repository tests, generated identities, source validation and plugin smoke for engineering verification. Building and publishing packages do not require a model qualification or an authorization JSON file. Public effects follow the user's authorization; claims of model effectiveness need their own relevant evidence.
+Bundle 11.4.0 uses model-free repository tests, generated identities, source validation and plugin smoke for engineering verification. Building and publishing packages do not require a model qualification or an authorization JSON file. Public effects follow the user's authorization; claims of model effectiveness need their own relevant evidence.
 
 ## Source archives
 
-The source archive uses root `frontier-engineering-bundle`; the skills-only archive contains the eleven canonical skill roots. Build both layouts with `scripts/build_source_archive.py` into a new temporary output directory, verify reproducible bytes and schema-valid evidence, and inspect the member list before publication. The builder excludes `.work`, worktrees, caches, local paths, credentials, and historical run artifacts; it does not publish the archive.
+The source archive uses root `frontier-engineering-bundle`; the skills-only archive contains the twelve canonical skill roots. Build both layouts with `scripts/build_source_archive.py` into a new temporary output directory, verify reproducible bytes and schema-valid evidence, and inspect the member list before publication. The builder excludes `.work`, worktrees, caches, local paths, credentials, and historical run artifacts; it does not publish the archive.
 
 Ordinary change verification follows this table. Plugin staging remains a local packaging check and does not require a new model qualification.
 
@@ -64,7 +67,7 @@ Ordinary change verification follows this table. Plugin staging remains a local 
 
 ## Plugin packaging
 
-The plugin identity is `frontier-engineering-plugin` version 11.3.0 with display name `Frontier Engineering`. Its release layout is:
+The plugin identity is `frontier-engineering-plugin` version 11.4.0 with display name `Frontier Engineering`. Its release layout is:
 
 ```text
 frontier-engineering-plugin/
@@ -72,6 +75,7 @@ frontier-engineering-plugin/
   skills/
     code-review/
     code-simplifier/
+    codebase-improve/
     codebase-investigation/
     debugging/
     runtime-verification/
@@ -83,7 +87,7 @@ frontier-engineering-plugin/
     writing-plans/
 ```
 
-Use `scripts/build_codex_plugin.py` to create a new staging tree and build evidence, then validate the staged tree and run `scripts/smoke_codex_plugin.py`. These commands copy the eleven complete skill directories into a local staging output and preserve external deployment state.
+Use `scripts/build_codex_plugin.py` to create a new staging tree and build evidence, then validate the staged tree and run `scripts/smoke_codex_plugin.py`. These commands copy the twelve complete skill directories into a local staging output and preserve external deployment state. The Hermes command files inside Codebase Improve are inert resources in Codex and Pi; only its Hermes plugin registration exposes the user command.
 
 To produce an installable marketplace and deterministic ZIP, supply `--marketplace-root` and `--marketplace-archive-output` together. Use `--output <marketplace-root>/plugins/frontier-engineering-plugin`; keep evidence and the ZIP outside the marketplace. The archive contains `.agents/plugins/marketplace.json` and `plugins/frontier-engineering-plugin/` at its root and is verified against the packaged bytes. Output paths are never overwritten.
 
@@ -104,7 +108,7 @@ Use a fresh task-owned output directory for each build. `scripts/smoke_codex_cli
 
 ### Qoder shell
 
-The repository itself is a Qoder plugin. `.qoder-plugin/plugin.json` declares the plugin name `frontier-engineering`, the bundle version and the eleven skill directories, which sit at the repository top level rather than inside a single `skills/` directory. `scripts/build_qoder_plugin.py` renders that manifest from `bundle-manifest.json` and refuses a missing, renamed, unsorted or undescribed skill; `--check` fails when the committed manifest is stale. The shell adds no hooks, MCP servers, commands, agents, binaries, output styles, workflows, settings or dependency.
+The repository itself is a Qoder plugin. `.qoder-plugin/plugin.json` declares the plugin name `frontier-engineering`, the bundle version and the twelve skill directories, which sit at the repository top level rather than inside a single `skills/` directory. `scripts/build_qoder_plugin.py` renders that manifest from `bundle-manifest.json` and refuses a missing, renamed, unsorted or undescribed skill; `--check` fails when the committed manifest is stale. The shell adds no hooks, MCP servers, commands, agents, binaries, output styles, workflows, settings or dependency. The shell's shape is verified separately from a host's invocation behavior.
 
 ```bash
 python3 scripts/build_qoder_plugin.py --check

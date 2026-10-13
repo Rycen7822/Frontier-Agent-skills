@@ -20,6 +20,7 @@
   "skills": [
     "./code-review",
     "./code-simplifier",
+    "./codebase-improve",
     "./codebase-investigation",
     "./debugging",
     "./long-document-segmented-writing",

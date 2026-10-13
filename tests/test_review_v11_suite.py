@@ -115,7 +115,7 @@ class ReviewV11SuiteTests(unittest.TestCase):
 
     def test_e03_activation_matrix_and_invocation_prompts(self) -> None:
         manifest = json.loads((ROOT / "bundle-manifest.json").read_text(encoding="utf-8"))
-        explicit = {"software-quality-workflows", "skill-evaluator"}
+        explicit = {"codebase-improve", "software-quality-workflows", "skill-evaluator"}
         for item in manifest["skills"]:
             agents_path = ROOT / item["path"] / "agents" / "openai.yaml"
             text = agents_path.read_text(encoding="utf-8")

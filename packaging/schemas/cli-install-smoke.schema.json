@@ -37,9 +37,9 @@
   ],
   "properties": {
     "schema_version": {"const": "cli-install-smoke/5.0"},
-    "bundle_id": {"const": "frontier-engineering/11.3.0"},
+    "bundle_id": {"const": "frontier-engineering/11.4.0"},
     "plugin_name": {"const": "frontier-engineering-plugin"},
-    "bundle_version": {"const": "11.3.0"},
+    "bundle_version": {"const": "11.4.0"},
     "plugin_tree_hash": {"$ref": "#/$defs/hash"},
     "activation_ceiling": {"const": "implicit_local_pilot"},
     "marketplace_name": {"type": "string", "minLength": 1},
@@ -58,6 +58,7 @@
       "required": [
         "code-review",
         "code-simplifier",
+        "codebase-improve",
         "codebase-investigation",
         "debugging",
         "long-document-segmented-writing",
@@ -75,6 +76,9 @@
         "writing-plans": {"const": true},
         "code-review": {"const": true},
         "code-simplifier": {"const": true},
+        "codebase-improve": {
+          "const": false
+        },
         "codebase-investigation": {"const": true},
         "debugging": {"const": true},
         "test-behavior": {"const": true},
@@ -95,6 +99,7 @@
       "const": [
         "code-review",
         "code-simplifier",
+        "codebase-improve",
         "codebase-investigation",
         "debugging",
         "long-document-segmented-writing",

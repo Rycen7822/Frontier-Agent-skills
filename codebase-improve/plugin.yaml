@@ -1,0 +1,7 @@
+name: codebase-improve
+version: 1.0.0
+description: User-invoked codebase architecture improvement command.
+author: Frontier Agent Skills
+kind: standalone
+provides_tools: []
+provides_hooks: []

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Codebase Improve"
+  short_description: "Improve architecture, ownership and abstraction granularity"
+  default_prompt: "Use $codebase-improve to examine and improve the selected codebase architecture within my requested scope, preserving meaningful contracts and reporting evidence."
+policy:
+  allow_implicit_invocation: false

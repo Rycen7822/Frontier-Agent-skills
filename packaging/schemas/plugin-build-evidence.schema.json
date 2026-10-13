@@ -20,14 +20,15 @@
   ],
   "properties": {
     "schema_version": {"const": "plugin-build-evidence/5.0"},
-    "bundle_id": {"const": "frontier-engineering/11.3.0"},
-    "bundle_version": {"const": "11.3.0"},
+    "bundle_id": {"const": "frontier-engineering/11.4.0"},
+    "bundle_version": {"const": "11.4.0"},
     "skill_versions": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "code-review",
         "code-simplifier",
+        "codebase-improve",
         "codebase-investigation",
         "debugging",
         "long-document-segmented-writing",
@@ -45,6 +46,9 @@
         "writing-plans": {"const": "9.1.2"},
         "code-review": {"const": "2.0.5"},
         "code-simplifier": {"const": "1.2.1"},
+        "codebase-improve": {
+          "const": "1.0.0"
+        },
         "codebase-investigation": {"const": "1.1.2"},
         "debugging": {"const": "1.1.2"},
         "test-behavior": {"const": "1.0.0"},
@@ -58,6 +62,7 @@
       "required": [
         "code-review",
         "code-simplifier",
+        "codebase-improve",
         "codebase-investigation",
         "debugging",
         "long-document-segmented-writing",
@@ -75,6 +80,9 @@
         "writing-plans": {"const": true},
         "code-review": {"const": true},
         "code-simplifier": {"const": true},
+        "codebase-improve": {
+          "const": false
+        },
         "codebase-investigation": {"const": true},
         "debugging": {"const": true},
         "test-behavior": {"const": true},

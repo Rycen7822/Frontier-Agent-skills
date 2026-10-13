@@ -1,5 +1,13 @@
 # Release Notes
 
+## Bundle 11.4.0 Codebase Improve
+
+Bundle 11.4.0 adds `codebase-improve` 1.0.0 for explicitly requested codebase architecture audits and improvements. It examines responsibility, layering, classification, abstraction granularity and complete caller obligations. Two conditional references cover architecture judgments and comprehensive manual audits with authorized collaboration. Existing workflows keep their responsibilities, and no automatic route, fixed delegation count, mandatory prototype, new test quota or default whole-repository sweep is added.
+
+Codex declares `allow_implicit_invocation: false`; Pi reads `disable-model-invocation: true` and excludes the skill from the default prompt. Hermes installs this directory as a standalone user-command plugin instead of a model-visible skill: `/codebase-improve` reads its instructions only when invoked and queues them through the native message API. It registers no model tools, hooks, skills or system-prompt sections. Personal `AGENTS.md` and `SOUL.md` files remain outside installation scope.
+
+The canonical bundle, source archives, Codex packaging and Qoder shell now contain twelve skills at schema epoch 9. The other eleven skill versions and Codex invocation policies are unchanged. This entry describes prepared source; it does not claim publication, installation into user sessions, measured architecture quality or new model evaluation.
+
 ## Bundle 11.3.0 Test Behavior and workflow ownership
 
 Bundle 11.3.0 adds `test-behavior` 1.0.0 as the shared owner of check necessity, timing, meaningful expectations, execution evidence, lifetime and retirement. The skill covers formal tests, temporary scripts, inline checks, reproductions, debugging probes, smoke and installation checks, migration acceptance, benchmarks, fixtures and mocks. One-off checks remain temporary unless continuing protection justifies permanent retention; directly affected tests are reviewed when behavior contracts are removed or replaced, a migration completes or compatibility obligations end.
