@@ -17,6 +17,7 @@
   "name": "frontier-engineering",
   "repository": "https://github.com/Rycen7822/Frontier-Agent-skills",
   "skills": [
+    "./clean-code-comments",
     "./code-review",
     "./code-simplifier",
     "./codebase-improve",
@@ -30,5 +31,5 @@
     "./test-behavior",
     "./writing-plans"
   ],
-  "version": "11.4.0"
+  "version": "11.5.0"
 }

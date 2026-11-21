@@ -36,6 +36,7 @@ from build_codex_plugin import (  # noqa: E402
 
 Layout = Literal["bundle", "skills_only"]
 EXPECTED_SKILLS = {
+    'clean-code-comments',
     'code-review',
     'code-simplifier',
     'codebase-improve',

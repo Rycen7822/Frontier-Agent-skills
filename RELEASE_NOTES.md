@@ -1,5 +1,11 @@
 # Release Notes
 
+## Bundle 11.5.0 Clean Code Comments
+
+Bundle 11.5.0 adds `clean-code-comments` 1.0.0 as a user-invoked comment audit and cleanup. It combines pstack's exception checks, scoped root-cause fixes and approved constraint encodings with the supplied comment categories, ADRs, issue follow-ups, lint ratchet and line estimate. It does not add automatic routing or require Cursor or pstack at runtime.
+
+The new skill follows Codebase Improve's explicit-only policy for Codex and Pi and ships a separate user command for Hermes. Qoder includes the skill in its generated manifest without a verified user-only runtime policy. The canonical bundle now has thirteen skills at schema epoch 9; existing skill versions and invocation policies are unchanged. See [host setup](docs/clean-code-comments.md). This entry describes prepared source, not a published release.
+
 ## Bundle 11.4.0 Codebase Improve
 
 Bundle 11.4.0 adds `codebase-improve` 1.0.0 for explicitly requested codebase architecture audits and improvements. It examines responsibility, layering, classification, abstraction granularity and complete caller obligations. Two conditional references cover architecture judgments and comprehensive manual audits with authorized collaboration. Existing workflows keep their responsibilities, and no automatic route, fixed delegation count, mandatory prototype, new test quota or default whole-repository sweep is added.

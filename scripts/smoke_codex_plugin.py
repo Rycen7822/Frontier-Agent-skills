@@ -23,6 +23,7 @@ from build_codex_plugin import _strict_json  # noqa: E402
 
 
 EXPECTED_ACTIVATION = {
+    'clean-code-comments': False,
     'code-review': True,
     'code-simplifier': True,
     'codebase-improve': False,

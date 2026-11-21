@@ -18,6 +18,7 @@
     "evaluation"
   ],
   "skills": [
+    "./clean-code-comments",
     "./code-review",
     "./code-simplifier",
     "./codebase-improve",

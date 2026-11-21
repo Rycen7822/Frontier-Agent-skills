@@ -39,6 +39,8 @@ BLOCKING_FIELDS = (
 )
 
 MODEL_FACING_EXACT = (
+    "clean-code-comments/SKILL.md",
+    "clean-code-comments/agents/openai.yaml",
     "code-review/SKILL.md",
     "code-review/agents/openai.yaml",
     "code-simplifier/SKILL.md",

@@ -29,6 +29,7 @@ from smoke_codex_plugin import inspect_plugin, isolated_smoke  # noqa: E402
 
 EXPECTED_PLUGIN = "frontier-engineering-plugin"
 EXPECTED_SKILLS = [
+    'clean-code-comments',
     'code-review',
     'code-simplifier',
     'codebase-improve',
@@ -43,6 +44,7 @@ EXPECTED_SKILLS = [
     'writing-plans',
 ]
 EXPECTED_ACTIVATION = {
+    'clean-code-comments': False,
     'code-review': True,
     'code-simplifier': True,
     'codebase-improve': False,

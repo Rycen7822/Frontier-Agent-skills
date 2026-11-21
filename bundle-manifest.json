@@ -1,7 +1,12 @@
 {
   "bundle_schema_version": "3.0",
-  "bundle_version": "11.4.0",
+  "bundle_version": "11.5.0",
   "skills": [
+    {
+      "id": "clean-code-comments",
+      "path": "clean-code-comments",
+      "version": "1.0.0"
+    },
     {
       "id": "code-review",
       "path": "code-review",
@@ -69,7 +74,7 @@
     "quick": [
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s code-review/tests -p 'test_quick_*.py' -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_quick_contracts.py -v",
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_codebase_improve.py -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_explicit_skill_commands.py -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_review_v11_suite.py -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_code_simplifier_assets.py' -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_qoder_plugin.py -v"

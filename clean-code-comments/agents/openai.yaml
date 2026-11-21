@@ -1,0 +1,6 @@
+interface:
+  display_name: "Clean Code Comments"
+  short_description: "Audit, remove and prevent unnecessary code comments"
+  default_prompt: "Use $clean-code-comments to audit and clean up code comments within my requested scope."
+policy:
+  allow_implicit_invocation: false

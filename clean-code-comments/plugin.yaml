@@ -1,0 +1,7 @@
+name: clean-code-comments
+version: 1.0.0
+description: User-invoked code comment cleanup command.
+author: Frontier Agent Skills
+kind: standalone
+provides_tools: []
+provides_hooks: []

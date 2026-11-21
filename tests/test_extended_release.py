@@ -19,6 +19,7 @@ from _bundle_hash import inventory, tree_hash  # noqa: E402
 from _deterministic_zip import verify_deterministic_zip  # noqa: E402
 ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 SKILLS = {
+    'clean-code-comments',
     'code-review',
     'code-simplifier',
     'codebase-improve',
@@ -107,7 +108,7 @@ class ExtendedRelease(unittest.TestCase):
             )
             self.assertEqual(0, smoked.returncode, smoked.stdout + smoked.stderr)
             smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
-            self.assertEqual("frontier-engineering/11.4.0", smoke["bundle_id"])
+            self.assertEqual("frontier-engineering/11.5.0", smoke["bundle_id"])
             self.assertFalse(smoke["actual_codex_cli_install"])
 
     def test_source_archives_are_clean_and_reproducible(self) -> None:
