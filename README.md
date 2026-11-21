@@ -110,6 +110,12 @@ python3 scripts/smoke_codex_plugin.py \
 
 Use a fresh task-owned output directory for each build. `scripts/smoke_codex_cli_install.py` checks installation and removal in an isolated Codex home without model calls; pass the plugin, build evidence, static smoke, marketplace, an existing work directory and an output file. These checks establish package and loader behavior, not measured skill effectiveness.
 
+### Pi package
+
+Install with `pi install git:github.com/Rycen7822/Frontier-Agent-skills`. After `pi update --extensions`, use `/reload` or start a new session. Pi reads the top-level skills from [`package.json`](package.json) without rewriting personal settings. Explicit-only skills remain available through `/skill:<name>`.
+
+For older installs, confirm the package loads, then remove only the redundant Frontier Agent Skills paths from the `skills` array in `~/.pi/agent/settings.json`. Keep the Git package entry and unrelated settings. Use `pi config` to select a subset.
+
 ### Qoder shell
 
 The repository itself is a Qoder plugin. `.qoder-plugin/plugin.json` declares the plugin name `frontier-engineering`, the bundle version and the thirteen skill directories, which sit at the repository top level rather than inside a single `skills/` directory. `scripts/build_qoder_plugin.py` renders that manifest from `bundle-manifest.json` and refuses a missing, renamed, unsorted or undescribed skill; `--check` fails when the committed manifest is stale. The shell adds no hooks, MCP servers, commands, agents, binaries, output styles, workflows, settings or dependency. The shell's shape is verified separately from a host's invocation behavior.

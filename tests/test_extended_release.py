@@ -133,6 +133,7 @@ class ExtendedRelease(unittest.TestCase):
                 bundle_bytes.append(archive.read_bytes())
                 with zipfile.ZipFile(archive) as source:
                     names = source.namelist()
+                self.assertIn("frontier-engineering-bundle/package.json", names)
                 self.assertTrue(
                     all(
                         name.startswith("frontier-engineering-bundle/")

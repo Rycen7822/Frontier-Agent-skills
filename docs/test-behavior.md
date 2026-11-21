@@ -18,6 +18,6 @@ The skill's description is the discovery entrypoint, and it is eligible for impl
 | Pi | `test-behavior` in the installed package's skill paths. | The repository package and resolved skill paths. |
 | Hermes | `test-behavior` in the native skill catalog. | The installed FAS skill directories. |
 
-Preserve personal instructions and existing skills during installation. For a Pi package installed from this repository, the native command `pi update --extension git:github.com/Rycen7822/Frontier-Agent-skills` updates that package; `pi update --extensions` updates installed packages collectively. Ensure the resolved skill paths include the new `test-behavior` directory.
+Preserve personal instructions and existing skills during installation. See [Pi package updates](../README.md#pi-package).
 
 Verify packaged bytes and each host's native discovery in a fresh process after installation. A running session can retain an older catalog or body. These checks establish delivery and loading; claims about improved agent behavior require relevant agent execution evidence.

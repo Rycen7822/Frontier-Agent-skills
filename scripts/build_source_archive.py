@@ -52,7 +52,13 @@ EXPECTED_SKILLS = {
 }
 BUNDLE_ROOT_PREFIX = "frontier-engineering-bundle"
 BUNDLE_DIRECTORIES = {".qoder-plugin", "bundle", "docs", "evaluation", "packaging", "scripts", "tests"}
-BUNDLE_FILES = {"README.md", "RELEASE_NOTES.md", "bundle-manifest.json", "frontier-engineering.bundle.json"}
+BUNDLE_FILES = {
+    "README.md",
+    "RELEASE_NOTES.md",
+    "bundle-manifest.json",
+    "frontier-engineering.bundle.json",
+    "package.json",
+}
 IGNORED_TOP_LEVEL = {
     ".git",
     ".agents",
