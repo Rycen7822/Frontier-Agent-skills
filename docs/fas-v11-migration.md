@@ -41,4 +41,4 @@ Scope modes are `commit` (first parent), `range` (unique merge base), `workspace
 
 ## Evaluation status
 
-`evaluation/review-v11/` prepares twelve fixture cases, one compact author suite, and a model rubric with `task_attempt_budget: 0` and `judge_invocation_budget: 0`. `tests/test_review_v11_suite.py` only normalizes the suite against a stub catalog. No provider call, task attempt, or judge invocation was executed for this cut, so `model_effectiveness` remains `not_measured`.
+`evaluation/review-v11/` prepares twelve fixture cases, one compact author suite, and a model rubric with `task_attempt_budget: 0` and `judge_invocation_budget: 0`. [`tests/test_code_review_evaluation_suite.py`](../tests/test_code_review_evaluation_suite.py) checks those inputs locally against a stub catalog. No provider call, task attempt, or judge invocation was executed for this cut, so `model_effectiveness` remains `not_measured`.
