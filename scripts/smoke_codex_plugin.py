@@ -29,6 +29,7 @@ EXPECTED_ACTIVATION = {
     'codebase-improve': False,
     'codebase-investigation': True,
     'debugging': True,
+    'improve-docs': False,
     'long-document-segmented-writing': True,
     'runtime-verification': True,
     'skill-evaluator': False,

@@ -1,18 +1,18 @@
 # Qoder plugin shell
 
-This repository is itself an installable Qoder plugin. The shell is the manifest at [`.qoder-plugin/plugin.json`](../.qoder-plugin/plugin.json); the thirteen canonical skill directories next to it are the payload. This verifies packaging rather than host invocation policy. See the host notes for the user-only setup of [Clean Code Comments](clean-code-comments.md) and [Codebase Improve](codebase-improve.md) on Codex, Pi and Hermes.
+This repository is itself an installable Qoder plugin. The shell is the manifest at [`.qoder-plugin/plugin.json`](../.qoder-plugin/plugin.json); the fourteen canonical skill directories next to it are the payload. This verifies packaging rather than host invocation policy. See the host notes for the user-only setup of [Clean Code Comments](clean-code-comments.md), [Codebase Improve](codebase-improve.md) and [Improve Docs](improve-docs.md) on Codex, Pi and Hermes.
 
 ## Layout
 
 ```text
 Frontier-Agent-skills/
   .qoder-plugin/plugin.json   portable Qoder manifest (name, version, description, declared skills)
-  code-review/                thirteen skill roots, each with SKILL.md
+  code-review/                fourteen skill roots, each with SKILL.md
   ...
   packaging/qoder-plugin/plugin.json.template
 ```
 
-The thirteen skill roots sit at the repository top level, so the manifest declares them explicitly through its `skills` field instead of relying on a single `skills/` directory. The declared list is the canonical skill set from `bundle-manifest.json`; `scripts/build_qoder_plugin.py` renders the manifest from that source and fails when a path is missing, unsorted, renamed or no longer carries a `SKILL.md` with matching `name` and a `description`.
+The fourteen skill roots sit at the repository top level, so the manifest declares them explicitly through its `skills` field instead of relying on a single `skills/` directory. The declared list is the canonical skill set from `bundle-manifest.json`; `scripts/build_qoder_plugin.py` renders the manifest from that source and fails when a path is missing, unsorted, renamed or no longer carries a `SKILL.md` with matching `name` and a `description`.
 
 ## Install
 

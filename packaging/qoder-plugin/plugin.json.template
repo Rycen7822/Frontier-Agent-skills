@@ -24,6 +24,7 @@
     "./codebase-improve",
     "./codebase-investigation",
     "./debugging",
+    "./improve-docs",
     "./long-document-segmented-writing",
     "./runtime-verification",
     "./skill-evaluator",

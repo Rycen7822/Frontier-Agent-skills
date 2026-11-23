@@ -51,6 +51,8 @@ MODEL_FACING_EXACT = (
     "codebase-investigation/agents/openai.yaml",
     "debugging/SKILL.md",
     "debugging/agents/openai.yaml",
+    "improve-docs/SKILL.md",
+    "improve-docs/agents/openai.yaml",
     "runtime-verification/SKILL.md",
     "runtime-verification/agents/openai.yaml",
     "software-design/SKILL.md",

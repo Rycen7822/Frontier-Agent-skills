@@ -1,5 +1,11 @@
 # Release Notes
 
+## Bundle 11.6.0 Improve Docs
+
+Bundle 11.6.0 adds `improve-docs` 1.0.0 as a user-invoked documentation co-authoring and improvement workflow. Its single self-contained `SKILL.md` combines Anthropic's Doc Co-Authoring context, refinement and reader-testing workflow, Cursor pstack's Technical Writing standards and required Unslop catalog, and Blader's complete Humanizer process and pattern catalog. No `references` directory, separate source-skill installation or runtime checkout is required. Source license notices travel with the skill.
+
+The new skill follows the explicit-only policy for Codex and Pi and ships a separate user command for Hermes. Qoder includes the skill in its generated manifest without a verified user-only runtime policy. The canonical bundle now has fourteen skills at schema epoch 9; existing skill versions and invocation policies are unchanged. See [host setup](docs/improve-docs.md). This entry describes prepared source, not a published release.
+
 ## Bundle 11.5.0 Clean Code Comments
 
 Bundle 11.5.0 adds `clean-code-comments` 1.0.0 as a user-invoked comment audit and cleanup. It combines pstack's exception checks, scoped root-cause fixes and approved constraint encodings with the supplied comment categories, ADRs, issue follow-ups, lint ratchet and line estimate. It does not add automatic routing or require Cursor or pstack at runtime.

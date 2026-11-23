@@ -1,6 +1,6 @@
 {
   "bundle_schema_version": "3.0",
-  "bundle_version": "11.5.0",
+  "bundle_version": "11.6.0",
   "skills": [
     {
       "id": "clean-code-comments",
@@ -31,6 +31,11 @@
       "id": "debugging",
       "path": "debugging",
       "version": "1.1.2"
+    },
+    {
+      "id": "improve-docs",
+      "path": "improve-docs",
+      "version": "1.0.0"
     },
     {
       "id": "long-document-segmented-writing",

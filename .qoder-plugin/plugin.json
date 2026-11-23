@@ -23,6 +23,7 @@
     "./codebase-improve",
     "./codebase-investigation",
     "./debugging",
+    "./improve-docs",
     "./long-document-segmented-writing",
     "./runtime-verification",
     "./skill-evaluator",
@@ -31,5 +32,5 @@
     "./test-behavior",
     "./writing-plans"
   ],
-  "version": "11.5.0"
+  "version": "11.6.0"
 }

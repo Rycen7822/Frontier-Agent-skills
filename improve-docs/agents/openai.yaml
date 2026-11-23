@@ -1,0 +1,6 @@
+interface:
+  display_name: "Improve Docs"
+  short_description: "Co-author and improve documentation for real readers"
+  default_prompt: "Use $improve-docs to co-author or improve the requested documentation."
+policy:
+  allow_implicit_invocation: false

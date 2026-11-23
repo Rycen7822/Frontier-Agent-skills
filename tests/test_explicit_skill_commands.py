@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
-USER_COMMANDS = ("clean-code-comments", "codebase-improve")
+USER_COMMANDS = ("clean-code-comments", "codebase-improve", "improve-docs")
 
 
 class UserCommandAPI:
