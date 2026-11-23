@@ -1,6 +1,6 @@
 name: improve-docs
-version: 1.0.0
-description: User-invoked documentation co-authoring and improvement command.
+version: 1.1.0
+description: User-invoked technical documentation writing and improvement command.
 author: Frontier Agent Skills
 kind: standalone
 provides_tools: []

@@ -1,5 +1,13 @@
 # Release Notes
 
+## Bundle 11.6.1 autonomous technical documentation
+
+Bundle 11.6.1 updates `improve-docs` to 1.1.0 for technical documentation. The default workflow now gathers repository context, edits files directly, reviews the result and runs reader checks without routine user questions or section-by-section approval. Explicit read-only and audit requests remain read-only. Missing facts produce simpler supported wording or a reported gap rather than invented detail.
+
+The skill removes interactive co-authoring prompts, Claude-specific collaboration instructions, non-technical chat-writing guidance and unrelated reply scenarios. It retains the technical-writing standards, Unslop rules, factual safeguards, autonomous fresh-reader testing and applicable Humanizer checks in one self-contained `SKILL.md`. Its explicit-only host policies are unchanged.
+
+The bundle remains at schema epoch 9 with fourteen skills. Other skill versions are unchanged. This entry describes prepared source, not a published release.
+
 ## Bundle 11.6.0 Improve Docs
 
 Bundle 11.6.0 adds `improve-docs` 1.0.0 as a user-invoked documentation co-authoring and improvement workflow. Its single self-contained `SKILL.md` combines Anthropic's Doc Co-Authoring context, refinement and reader-testing workflow, Cursor pstack's Technical Writing standards and required Unslop catalog, and Blader's complete Humanizer process and pattern catalog. No `references` directory, separate source-skill installation or runtime checkout is required. Source license notices travel with the skill.

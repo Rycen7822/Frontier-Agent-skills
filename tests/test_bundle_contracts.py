@@ -23,9 +23,9 @@ class BundleContractsTests(unittest.TestCase):
     def test_bundle_and_skill_metadata_match_release_contract(self) -> None:
         source = json.loads((ROOT / "bundle-manifest.json").read_text(encoding="utf-8"))
         bundle = json.loads((ROOT / "frontier-engineering.bundle.json").read_text(encoding="utf-8"))
-        self.assertEqual("11.6.0", source["bundle_version"])
+        self.assertEqual("11.6.1", source["bundle_version"])
         self.assertEqual(9, bundle["compatible_schema_epoch"])
-        self.assertEqual("frontier-engineering/11.6.0", bundle["bundle_id"])
+        self.assertEqual("frontier-engineering/11.6.1", bundle["bundle_id"])
         self.assertFalse(source["remote_writes"])
         self.assertEqual("implicit_local_pilot", source["activation_ceiling"])
 

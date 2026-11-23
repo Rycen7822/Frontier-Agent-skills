@@ -20,6 +20,6 @@ def register(api):
     api.register_command(
         "improve-docs",
         invoke,
-        description="Co-author and improve documentation",
+        description="Write and improve technical documentation",
         args_hint="<request>",
     )

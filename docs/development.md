@@ -2,7 +2,7 @@
 
 This guide covers repository maintenance. New users should start with [the README](../README.md) and [host installation](hosts.md).
 
-The current source identity is `frontier-engineering/11.6.0` with schema epoch 9. The activation ceiling is `implicit_local_pilot`, and `remote_writes` is `false`. Source preparation and release publication are separate operations. See [release notes](../RELEASE_NOTES.md) for source history and [the published 11.3.0 release](https://github.com/Rycen7822/Frontier-Agent-skills/releases/tag/frontier-engineering-v11.3.0) for released artifacts.
+The current source identity is `frontier-engineering/11.6.1` with schema epoch 9. The activation ceiling is `implicit_local_pilot`, and `remote_writes` is `false`. Source preparation and release publication are separate operations. See [release notes](../RELEASE_NOTES.md) for source history and [the published 11.3.0 release](https://github.com/Rycen7822/Frontier-Agent-skills/releases/tag/frontier-engineering-v11.3.0) for released artifacts.
 
 ## Source and generated files
 
@@ -23,7 +23,7 @@ Run the applicable commands in the `quick`, `extended` and `release` arrays in `
 
 ## Build a Codex marketplace
 
-The plugin identity is `frontier-engineering-plugin` version 11.6.0 with display name `Frontier Engineering`. Its layout is:
+The plugin identity is `frontier-engineering-plugin` version 11.6.1 with display name `Frontier Engineering`. Its layout is:
 
 ```text
 frontier-engineering-plugin/

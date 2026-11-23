@@ -1,6 +1,6 @@
 # Frontier Agent Skills
 
-Frontier Agent Skills (FAS) provides fourteen skills for software development, review, documentation, planning and evaluation. The current source bundle is `frontier-engineering/11.6.0`. FAS supports Codex, Pi and Hermes Agent through their native skill or plugin mechanisms. It also includes a Qoder plugin manifest, but Qoder runtime behavior remains unverified.
+Frontier Agent Skills (FAS) provides fourteen skills for software development, review, documentation, planning and evaluation. The current source bundle is `frontier-engineering/11.6.1`. FAS supports Codex, Pi and Hermes Agent through their native skill or plugin mechanisms. It also includes a Qoder plugin manifest, but Qoder runtime behavior remains unverified.
 
 ## Install on Pi
 
@@ -38,7 +38,7 @@ Describe the task in your normal prompt. Eligible skills can be selected from th
 | [code-simplifier](code-simplifier/SKILL.md) | Simplify selected code while preserving behavior | 1.2.1 |
 | [clean-code-comments](clean-code-comments/SKILL.md) | Audit comments, preserve real constraints and prevent unnecessary new comments | 1.0.0 |
 | [codebase-improve](codebase-improve/SKILL.md) | Audit or improve architecture, responsibility and abstraction boundaries | 1.0.0 |
-| [improve-docs](improve-docs/SKILL.md) | Co-author or improve documentation and test it with a fresh reader | 1.0.0 |
+| [improve-docs](improve-docs/SKILL.md) | Write or improve technical documentation through direct editing and reader testing | 1.1.0 |
 | [test-behavior](test-behavior/SKILL.md) | Decide when to write checks, what they should prove and how long to retain them | 1.0.0 |
 | [runtime-verification](runtime-verification/SKILL.md) | Resolve evidence gaps by running the actual consumer or installation | 1.1.1 |
 | [writing-plans](writing-plans/SKILL.md) | Turn settled decisions into an implementation plan | 9.1.2 |
@@ -62,7 +62,7 @@ Eligibility does not guarantee selection. A source flag does not prove runtime b
 
 ## Source and release status
 
-Version 11.6.0 is prepared source. The [published 11.3.0 release](https://github.com/Rycen7822/Frontier-Agent-skills/releases/tag/frontier-engineering-v11.3.0) contains older artifacts. A source version change does not publish a release. Use [the release notes](RELEASE_NOTES.md) to distinguish source additions from published artifacts.
+Version 11.6.1 is prepared source. The [published 11.3.0 release](https://github.com/Rycen7822/Frontier-Agent-skills/releases/tag/frontier-engineering-v11.3.0) contains older artifacts. A source version change does not publish a release. Use [the release notes](RELEASE_NOTES.md) to distinguish source additions from published artifacts.
 
 Repository tests, package checks and isolated host checks establish engineering behavior. They do not measure task success or model effectiveness.
 

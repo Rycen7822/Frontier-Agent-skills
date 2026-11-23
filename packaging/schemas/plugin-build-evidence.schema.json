@@ -20,8 +20,8 @@
   ],
   "properties": {
     "schema_version": {"const": "plugin-build-evidence/5.0"},
-    "bundle_id": {"const": "frontier-engineering/11.6.0"},
-    "bundle_version": {"const": "11.6.0"},
+    "bundle_id": {"const": "frontier-engineering/11.6.1"},
+    "bundle_version": {"const": "11.6.1"},
     "skill_versions": {
       "type": "object",
       "additionalProperties": false,
@@ -54,7 +54,7 @@
         },
         "codebase-investigation": {"const": "1.1.2"},
         "debugging": {"const": "1.1.2"},
-        "improve-docs": {"const": "1.0.0"},
+        "improve-docs": {"const": "1.1.0"},
         "test-behavior": {"const": "1.0.0"},
         "runtime-verification": {"const": "1.1.1"},
         "software-design": {"const": "1.1.1"}
