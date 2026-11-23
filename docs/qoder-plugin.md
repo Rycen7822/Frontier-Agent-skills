@@ -1,57 +1,49 @@
 # Qoder plugin shell
 
-This repository is itself an installable Qoder plugin. The shell is the manifest at [`.qoder-plugin/plugin.json`](../.qoder-plugin/plugin.json); the fourteen canonical skill directories next to it are the payload. This verifies packaging rather than host invocation policy. See the host notes for the user-only setup of [Clean Code Comments](clean-code-comments.md), [Codebase Improve](codebase-improve.md) and [Improve Docs](improve-docs.md) on Codex, Pi and Hermes.
+The repository is an installable Qoder plugin. The manifest at [`.qoder-plugin/plugin.json`](../.qoder-plugin/plugin.json) declares `frontier-engineering`, the bundle version and the fourteen canonical skill directories. The directories sit at the repository root rather than under one `skills/` directory.
+
+For user installation and invocation boundaries, see [the host guide](hosts.md#qoder).
 
 ## Layout
 
 ```text
 Frontier-Agent-skills/
-  .qoder-plugin/plugin.json   portable Qoder manifest (name, version, description, declared skills)
-  code-review/                fourteen skill roots, each with SKILL.md
-  ...
+  .qoder-plugin/plugin.json
+  <skill>/SKILL.md
   packaging/qoder-plugin/plugin.json.template
 ```
 
-The fourteen skill roots sit at the repository top level, so the manifest declares them explicitly through its `skills` field instead of relying on a single `skills/` directory. The declared list is the canonical skill set from `bundle-manifest.json`; `scripts/build_qoder_plugin.py` renders the manifest from that source and fails when a path is missing, unsorted, renamed or no longer carries a `SKILL.md` with matching `name` and a `description`.
+`scripts/build_qoder_plugin.py` renders the manifest from `bundle-manifest.json`. It fails when a skill is missing, renamed, unsorted, undescribed or has frontmatter that does not match its declared name. The manifest adds no hooks, MCP servers, commands, agents, binaries, output styles, workflows, settings or dependencies.
 
-## Install
+The Codex package keeps its own `.codex-plugin/plugin.json`. The two manifests use separate templates and are not interchangeable. The Qoder shell is not copied into the Codex staging tree.
 
-```bash
-qoder plugins validate /path/to/Frontier-Agent-skills
-qoder plugins install  /path/to/Frontier-Agent-skills
+`metadata.hosts` in each `SKILL.md` is declarative documentation. No repository code reads it to gate a host.
+
+## Install locally
+
+```sh
+qoder plugins validate /absolute/path/to/Frontier-Agent-skills
+qoder plugins install /absolute/path/to/Frontier-Agent-skills
 ```
 
-Validating and installing a local checkout needs no marketplace. To publish the repository as a marketplace instead,
-point Qoder at the clone or the repository URL and add a `marketplace.json` whose `plugins` entry names
-`frontier-engineering` and sets `strict` to `false` only if the plugin folder lacks this manifest:
+A local installation needs no marketplace. Qoder requires at least one recognizable component and does not require a manifest. FAS includes the manifest to pin the name, version, descriptions and skill list.
 
-```bash
+## Add a marketplace
+
+To publish the repository as a marketplace, point Qoder at the clone or repository URL. Add a `marketplace.json` whose plugin entry names `frontier-engineering`. Set `strict` to `false` only if the plugin folder lacks `.qoder-plugin/plugin.json`.
+
+```sh
 qoder plugins marketplace add https://github.com/Rycen7822/Frontier-Agent-skills.git
 qoder plugins install frontier-engineering
 ```
 
-A plugin is installed from a local directory only when Qoder finds at least one recognizable component, and the
-manifest itself is optional for Qoder. It is declared here to pin the name, the release version, the human-readable
-descriptions and the skill list.
+## Verify the package
 
-## Boundaries
+The manifest version comes from `bundle-manifest.json`. Re-render it whenever the bundle version or skill set changes:
 
-- The shell adds no `hooks`, `mcpServers`, `commands`, `agents`, `bin`, `outputStyles`, `workflows` or `settings`
-  surface, and no dependency. Qoder receives the same read/write skill content as every other host.
-- The Codex release artifact keeps its own `.codex-plugin/plugin.json`; the two manifests are generated from separate
-  templates and never substitute for each other. The Qoder shell is not copied into the Codex plugin staging tree.
-- `metadata.hosts` in each `SKILL.md` is declarative documentation. No code in this repository reads it, and Qoder does
-  not either, so the list does not gate any host.
-- The version comes from `bundle-manifest.json`. A release that changes the bundle version must re-render the shell.
-
-## Verification
-
-```bash
+```sh
 python3 scripts/build_qoder_plugin.py --check
 python3 -m unittest tests/test_qoder_plugin.py -v
 ```
 
-The check is model-free: it proves the committed manifest equals the rendered manifest, that its fields stay inside the
-documented Qoder schema, that the declared skills are exactly the canonical directories, and that the shell contains no
-developer path or placeholder. It does not prove how a Qoder build discovers or invokes the skills; run
-`qoder plugins validate` on an installation to observe that.
+These model-free checks prove that the committed manifest equals the rendered manifest, its fields fit the documented schema, the declared skills match the canonical directories, and the shell contains no developer path or placeholder. They do not prove Qoder runtime discovery or invocation behavior. Run `qoder plugins validate` on the target installation and test the actual host separately.

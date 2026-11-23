@@ -1,14 +1,29 @@
 # Improve Docs
 
-Use [`improve-docs`](../improve-docs/SKILL.md) only through explicit invocation to co-author or improve a document in a named scope. For example: “Improve the setup guide in `docs/install.md` for a new contributor” or “Review this RFC without editing it.” Its single `SKILL.md` contains the combined document workflow, technical-writing standards, Unslop catalog and Humanizer checks. It has no `references` directory and does not require the source skills to be installed.
+[`improve-docs`](../improve-docs/SKILL.md) co-authors or improves documentation in a named scope. It requires explicit user invocation.
 
-- **Codex:** install the bundle and invoke `$frontier-engineering-plugin:improve-docs` followed by the task. A direct skill installation uses `$improve-docs`.
-- **Pi:** install or update the [Pi package](../README.md#pi-package), reload the catalog, and invoke `/skill:improve-docs` followed by the task.
-- **Hermes:** install the canonical directory as a standalone plugin, not in `~/.hermes/skills` or any other automatically scanned skill root. Invoke `/improve-docs` followed by the task in a classic Hermes CLI session.
-- **Qoder:** the [plugin manifest](../.qoder-plugin/plugin.json) includes the skill, but the repository does not establish that the Qoder loader keeps it out of model discovery.
+Example requests:
 
-The original workflow may ask for context, offer structured or freeform work, and test the result with a fresh reader. It preserves the user's ability to skip stages or work freeform. Reader testing establishes document interpretation, not factual correctness; the user retains final review.
+```text
+Improve docs/install.md for a new contributor.
+Review this RFC without editing it.
+```
+
+The single `SKILL.md` contains the document workflow, technical-writing standards, Unslop catalog and Humanizer checks. It has no `references` directory and does not require the source skills to be installed.
+
+The workflow can gather context, refine sections and test the result with a fresh reader. Users can skip stages or work freeform. An audit-only request stays read-only. Reader testing checks interpretation, not factual correctness. The user retains final review.
+
+## Invoke
+
+| Host | Command |
+|---|---|
+| Codex plugin | `$frontier-engineering-plugin:improve-docs <request>` |
+| Standalone Codex skill | `$improve-docs <request>` |
+| Pi | `/skill:improve-docs <request>` |
+| Classic Hermes CLI | `/improve-docs <request>` |
+
+See [host installation](hosts.md) for setup. In Hermes, install the directory as a standalone plugin rather than a native skill. The Qoder manifest includes the skill, but its runtime visibility policy is unverified.
 
 ## Sources and licensing
 
-The combined text preserves the rules from [Anthropic's Doc Co-Authoring](https://github.com/anthropics/skills/blob/main/skills/doc-coauthoring/SKILL.md), [Blader's Humanizer](https://github.com/blader/humanizer), and Cursor pstack's [Technical Writing](https://github.com/cursor/plugins/blob/main/pstack/skills/technical-writing/SKILL.md) and its required Unslop catalog. The applicable license notices are in [LICENSE](../improve-docs/LICENSE).
+The combined text preserves rules from [Anthropic's Doc Co-Authoring](https://github.com/anthropics/skills/blob/main/skills/doc-coauthoring/SKILL.md), [Blader's Humanizer](https://github.com/blader/humanizer), and Cursor pstack's [Technical Writing](https://github.com/cursor/plugins/blob/main/pstack/skills/technical-writing/SKILL.md) with its required Unslop catalog. See [LICENSE](../improve-docs/LICENSE) for the applicable notices.

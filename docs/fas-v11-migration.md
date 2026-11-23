@@ -1,5 +1,7 @@
 # Migrating to FAS 11.0.0
 
+This historical guide covers the v10 to v11 review-interface migration. For the current skill set and host policies, see [the README](../README.md) and [host guide](hosts.md).
+
 FAS 11.0.0 is a breaking change for consumers of the retired review interfaces. The bundle identity moved to `frontier-engineering/11.0.0` at compatible schema epoch 9, and the 11.0.1 patch keeps that shape while correcting the scope exit codes and the treatment of declared context paths.
 
 ## Retired interfaces

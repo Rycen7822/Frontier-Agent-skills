@@ -1,23 +1,17 @@
 # Test Behavior in FAS
 
-Bundle 11.3.0 adds [Test Behavior](../test-behavior/SKILL.md) as the owner of check necessity, timing, valid expectations, execution evidence, lifetime and retirement. SQW continues to guide implementation and completion. Debugging, runtime verification, simplification, investigation, design, planning, review and skill evaluation retain their methods and link to the testing owner at the relevant decision. The [workflow ownership note](../test-behavior/references/workflow-ownership.md) explains those handoffs.
+[`Test Behavior`](../test-behavior/SKILL.md) owns decisions about check necessity, timing, valid expectations, execution evidence, lifetime and retirement. It joined FAS in bundle 11.3.0. Other workflows retain their own methods and hand off testing decisions at the relevant point. See [workflow ownership](../test-behavior/references/workflow-ownership.md) for those handoffs.
 
-Apply the skill before the first edit of code or scripts used to check software behavior, including temporary or inline reproductions, installation probes, helpers, fixtures and mocks. Also apply it when behavior or compatibility obligations end or a migration completes, even if no test edit is planned. Pure reading and running existing checks do not require new tests. Explicitly requested suite tests or delivered BRTs remain delivery requirements.
+Apply the skill before editing code or scripts that check software behavior. This includes temporary or inline reproductions, installation probes, helpers, fixtures and mocks. Apply it when behavior or compatibility obligations end, or when a migration completes, even if no test edit is planned. Reading code and running existing checks do not require new tests. Explicitly requested suite tests and delivered bug-reproduction tests remain delivery requirements.
 
-Requirements and architecture decisions stay with the main workflow. Design discussion and ordinary implementation alone do not call for Test Behavior; its description routes tasks at check authorship or the review of directly affected protection. It does not prescribe a testing step before every development task.
+Requirements and architecture decisions stay with the main workflow. Design discussion and ordinary implementation alone do not invoke Test Behavior. Its description applies when authoring checks or reviewing directly affected protection. It does not require a testing step before every development task.
 
-The former [SQW testing reference](../software-quality-workflows/references/testing.md) remains a link to the canonical owner. Direct links resolve both in the source repository and in the packaged sibling skill layout. Test Behavior's return links support a concrete handoff; they do not require loading every workflow.
+The former [SQW testing reference](../software-quality-workflows/references/testing.md) links to the canonical owner. These links resolve in both the source repository and the packaged sibling-skill layout. Test Behavior's return links support a concrete handoff without requiring every workflow to load.
 
 ## Host activation
 
-The skill's description is the discovery entrypoint, and it is eligible for implicit selection in Codex. Eligibility alone does not ensure that a model selects it, and Pi and Hermes use their own loaders. Installing or updating FAS preserves personal `AGENTS.md` and `SOUL.md` files. The [default-visible activation paragraph](../test-behavior/references/activation.md) is an optional manual reference; changing global instructions requires a separate explicit user request and is not an installation step.
+Test Behavior is eligible for implicit selection in Codex. Eligibility does not guarantee model selection. Pi and Hermes use their own loaders and invocation policies. See [host installation and invocation](hosts.md) for current setup.
 
-| Host | Skill discovery | Installation surface |
-|---|---|---|
-| Codex | `frontier-engineering-plugin:test-behavior` in the installed plugin catalog. | The plugin's complete skill directories. |
-| Pi | `test-behavior` in the installed package's skill paths. | The repository package and resolved skill paths. |
-| Hermes | `test-behavior` in the native skill catalog. | The installed FAS skill directories. |
+The [default-visible activation paragraph](../test-behavior/references/activation.md) is an optional manual reference. Changing global instructions requires a separate explicit user request. It is not an installation step. Installing or updating FAS preserves personal `AGENTS.md` and `SOUL.md` files.
 
-Preserve personal instructions and existing skills during installation. See [Pi package updates](../README.md#pi-package).
-
-Verify packaged bytes and each host's native discovery in a fresh process after installation. A running session can retain an older catalog or body. These checks establish delivery and loading; claims about improved agent behavior require relevant agent execution evidence.
+Verify packaged bytes and native discovery in a fresh host process after installation. A running session can retain an older catalog or body. These checks establish delivery and loading. Claims about improved agent behavior require relevant execution evidence.

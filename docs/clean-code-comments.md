@@ -1,18 +1,25 @@
 # Clean Code Comments
 
-Use [`clean-code-comments`](../clean-code-comments/SKILL.md) to audit or clean up comments in a named scope. For example: “Audit comments in `src/parser` without edits” or “Clean up comments in this diff and ratchet the linter.” This is a user-invoked skill; other skills do not route to it automatically.
+[`clean-code-comments`](../clean-code-comments/SKILL.md) audits or cleans comments in a named scope. It requires explicit user invocation. Other skills do not route to it automatically.
 
-- **Codex:** install the bundle and invoke `$frontier-engineering-plugin:clean-code-comments` followed by the task. A direct skill installation uses `$clean-code-comments`.
-- **Pi:** install or update the [Pi package](../README.md#pi-package), reload the catalog, and invoke `/skill:clean-code-comments` followed by the task.
-- **Hermes:** install the canonical directory as a standalone plugin, not in `~/.hermes/skills` or any other automatically scanned skill root. Invoke `/clean-code-comments` followed by the task in a classic Hermes CLI session.
-- **Qoder:** the [plugin manifest](../.qoder-plugin/plugin.json) includes the skill, but the repository does not establish that the Qoder loader keeps it out of model discovery.
+Example requests:
 
-For a local Hermes installation, link the source or extracted archive directory and enable the command:
-
-```sh
-mkdir -p ~/.hermes/plugins
-ln -s /absolute/path/to/Frontier-Agent-skills/clean-code-comments ~/.hermes/plugins/clean-code-comments
-hermes plugins enable clean-code-comments
+```text
+Audit comments in src/parser without edits.
+Clean up comments in this diff and ratchet the linter.
 ```
 
-Keep the linked directory available and reload the host catalog or start a fresh session after installation. No global instructions need to change.
+The skill distinguishes repeated code narration, excuses for implementation debt, stale comments and decision records. It preserves license headers, required tooling directives, public API contracts and proven external constraints. An audit stays read-only. A cleanup can move decisions into ADRs, flag root-cause fixes and add a scoped lint baseline.
+
+## Invoke
+
+| Host | Command |
+|---|---|
+| Codex plugin | `$frontier-engineering-plugin:clean-code-comments <request>` |
+| Standalone Codex skill | `$clean-code-comments <request>` |
+| Pi | `/skill:clean-code-comments <request>` |
+| Classic Hermes CLI | `/clean-code-comments <request>` |
+
+See [host installation](hosts.md) before invoking the skill. In Hermes, install it as a standalone plugin rather than a native skill. The Qoder manifest includes the directory, but Qoder's runtime visibility policy is unverified.
+
+Installation does not require changes to global instructions. After an authorized update, reload the host catalog or start a fresh session.

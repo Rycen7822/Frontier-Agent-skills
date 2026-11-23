@@ -1,8 +1,8 @@
-# Code Simplifier 1.2.0 — maintenance and behavioral acceptance
+# Code Simplifier 1.2.0: maintenance and behavioral acceptance
 
 ## Change and boundary
 
-This is an unreleased source-component update based on FAS commit `56998d86bb4b9e2c8615bf718cbced88acd2ffc0`. The executable host identity is unchanged: `code-simplifier`, Codex and Hermes Agent, with existing implicit eligibility and `$code-simplifier` invocation. Only the skill entry and two conditional references change the runtime guidance. The original licensing assets and activation YAML are preserved.
+This historical note records an unreleased source-component update based on FAS commit `56998d86bb4b9e2c8615bf718cbced88acd2ffc0`. The executable host identity is unchanged: `code-simplifier`, Codex and Hermes Agent, with existing implicit eligibility and `$code-simplifier` invocation. Only the skill entry and two conditional references change the runtime guidance. The original licensing assets and activation YAML are preserved.
 
 The new guidance separates candidate selection from implementation, checks whether complexity was removed or transferred, requires complete in-scope consumer migration, and makes validation conditional on actual uncertainty. No new runtime helper, dependency, MCP, hook, automatic cleanup schedule, mandatory record, fixed model or delegation policy is introduced.
 
@@ -20,7 +20,7 @@ The test uses PyYAML already used by FAS development tools; the runtime skill re
 
 Use the existing FAS manifest generator, quick profile, static-contract checker, plugin builder and static smoke for integration. Keep evidence outside source and installed caches. Do not change a semantic-impact classification to editorial just to bypass a check.
 
-## Behavioral acceptance cases — NOT EXECUTED
+## Behavioral acceptance cases: not executed
 
 These are human-authored scenario specifications, not runnable benchmark fixtures or model results. A future authorized agent evaluation must construct reproducible repositories, freeze inputs and oracles, and record actual outcomes. Do not report these cases as passed from a text scan or from the seven asset tests.
 
