@@ -52,12 +52,13 @@ EXPECTED_SKILLS = {
     'writing-plans',
 }
 BUNDLE_ROOT_PREFIX = "frontier-engineering-bundle"
-BUNDLE_DIRECTORIES = {".qoder-plugin", "bundle", "docs", "evaluation", "packaging", "scripts", "tests"}
+BUNDLE_DIRECTORIES = {".qoder-plugin", ".zcode-plugin", "bundle", "docs", "evaluation", "packaging", "scripts", "tests"}
 BUNDLE_FILES = {
     "README.md",
     "RELEASE_NOTES.md",
     "bundle-manifest.json",
     "frontier-engineering.bundle.json",
+    "marketplace.json",
     "package.json",
 }
 IGNORED_TOP_LEVEL = {

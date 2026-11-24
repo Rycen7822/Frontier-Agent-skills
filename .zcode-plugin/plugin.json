@@ -1,0 +1,34 @@
+{
+  "name": "frontier-engineering",
+  "version": "11.6.1",
+  "description": "Engineering skills for development, investigation, design, debugging, review, simplification, testing behavior, runtime verification, planning, writing and evaluation.",
+  "author": {
+    "name": "Rycen7822"
+  },
+  "homepage": "https://github.com/Rycen7822/Frontier-Agent-skills",
+  "repository": "https://github.com/Rycen7822/Frontier-Agent-skills",
+  "license": "MIT AND Apache-2.0",
+  "keywords": [
+    "software-development",
+    "planning",
+    "verification",
+    "documentation",
+    "evaluation"
+  ],
+  "skills": [
+    "./clean-code-comments",
+    "./code-review",
+    "./code-simplifier",
+    "./codebase-improve",
+    "./codebase-investigation",
+    "./debugging",
+    "./improve-docs",
+    "./long-document-segmented-writing",
+    "./runtime-verification",
+    "./skill-evaluator",
+    "./software-design",
+    "./software-quality-workflows",
+    "./test-behavior",
+    "./writing-plans"
+  ]
+}

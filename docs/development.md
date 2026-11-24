@@ -11,6 +11,8 @@ The current source identity is `frontier-engineering/11.6.1` with schema epoch 9
 - `frontier-engineering.bundle.json`
 - `.qoder-plugin/plugin.json`
 
+`.zcode-plugin/plugin.json` and `marketplace.json` are ZCode's plugin and marketplace manifests. They carry the bundle version and the fourteen canonical skill directories and are edited by hand; `tests/test_zcode_plugin.py` fails when they drift from `bundle-manifest.json`.
+
 Check the generated identities and static contracts from the repository root:
 
 ```sh

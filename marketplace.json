@@ -1,0 +1,23 @@
+{
+  "name": "frontier-skills",
+  "owner": {
+    "name": "Rycen7822"
+  },
+  "plugins": [
+    {
+      "name": "frontier-engineering",
+      "source": "./",
+      "version": "11.6.1",
+      "description": "Engineering skills for development, investigation, design, debugging, review, simplification, testing behavior, runtime verification, planning, writing and evaluation.",
+      "displayName": "Frontier Engineering",
+      "displayName_i18n": {
+        "zh-CN": "Frontier 工程技能"
+      },
+      "description_i18n": {
+        "zh-CN": "面向开发、调查、设计、调试、评审、简化、测试行为、运行时验证、规划、写作与评估的工程技能。"
+      },
+      "category": "developer-tools",
+      "homepage": "https://github.com/Rycen7822/Frontier-Agent-skills"
+    }
+  ]
+}

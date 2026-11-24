@@ -70,6 +70,8 @@ MODEL_FACING_EXACT = (
     "packaging/codex-plugin/plugin.json.template",
     "packaging/qoder-plugin/plugin.json.template",
     ".qoder-plugin/plugin.json",
+    ".zcode-plugin/plugin.json",
+    "marketplace.json",
 )
 MODEL_FACING_DIRS = (
     "codebase-improve/references",

@@ -10,6 +10,7 @@ FAS uses each host's native loading mechanism. Installation and package checks d
 | Codex | An installable plugin marketplace | Package validation and isolated Codex CLI installation and removal are checked without model calls. |
 | Hermes Agent | Native skill directories plus three standalone command plugins | Native catalog exclusion and command-message delivery are checked in an isolated Hermes home. |
 | Qoder | The repository's `.qoder-plugin/plugin.json` manifest | Manifest generation and package shape are checked. Runtime discovery and invocation policy are unverified. |
+| ZCode | The repository's `.zcode-plugin/plugin.json` manifest, installed through `marketplace.json` | Manifest validation, marketplace registration and installation were checked with ZCode CLI 0.18.0, and all fourteen skills loaded. Invocation policy is unverified. |
 
 ## Pi
 
@@ -102,6 +103,26 @@ qoder plugins install /absolute/path/to/Frontier-Agent-skills
 ```
 
 The manifest includes all fourteen skill directories. The repository does not establish that Qoder keeps explicit-only skills out of model discovery. See [Qoder packaging](qoder-plugin.md) for marketplace and maintainer details.
+
+## ZCode
+
+The repository is a ZCode plugin marketplace. Add it as a marketplace, then install the single plugin that carries all fourteen skills:
+
+```sh
+zcode plugins marketplace add Rycen7822/Frontier-Agent-skills
+zcode plugins install frontier-engineering@frontier-skills
+```
+
+Update an existing installation and refresh the catalog:
+
+```sh
+zcode plugins marketplace update frontier-skills
+zcode plugins update frontier-engineering
+```
+
+The marketplace entry points at the repository root, so a plugin name already installed from a directory source keeps working after the same name is added from GitHub. Skill identities are namespaced as `frontier-engineering:<skill>` with the bare skill name as an alias. ZCode reads `.zcode-plugin/plugin.json`, then falls back to `.claude-plugin/` and `.codex-plugin/`; the repository ships only the ZCode manifest so the plugin declares no duplicate component set.
+
+Do not also copy individual skill directories into `~/.zcode/skills` or `~/.agents/skills`. Those locations are scanned before plugin roots, so a leftover copy shadows the plugin version and keeps serving stale content after an update.
 
 ## Verify the installed behavior
 

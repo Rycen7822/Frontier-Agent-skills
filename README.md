@@ -1,6 +1,17 @@
 # Frontier Agent Skills
 
-Frontier Agent Skills (FAS) provides fourteen skills for software development, review, documentation, planning and evaluation. The current source bundle is `frontier-engineering/11.6.1`. FAS supports Codex, Pi and Hermes Agent through their native skill or plugin mechanisms. It also includes a Qoder plugin manifest, but Qoder runtime behavior remains unverified.
+Frontier Agent Skills (FAS) provides fourteen skills for software development, review, documentation, planning and evaluation. The current source bundle is `frontier-engineering/11.6.1`. FAS supports Codex, Pi, ZCode and Hermes Agent through their native skill or plugin mechanisms. It also includes a Qoder plugin manifest, but Qoder runtime behavior remains unverified.
+
+## Install on ZCode
+
+Add the repository as a marketplace, then install the plugin that carries all fourteen skills:
+
+```sh
+zcode plugins marketplace add Rycen7822/Frontier-Agent-skills
+zcode plugins install frontier-engineering@frontier-skills
+```
+
+Skills are namespaced as `frontier-engineering:<skill>` with the bare name as an alias. See [host installation and invocation](docs/hosts.md#zcode) for updates and for the shadowing rule that makes leftover copies under `~/.zcode/skills` a problem.
 
 ## Install on Pi
 
@@ -57,6 +68,7 @@ Direct invocation syntax and automatic selection vary by host.
 | Pi | `/skill:<skill>` | Eleven skills are eligible. Clean Code Comments, Codebase Improve and Improve Docs require explicit invocation. |
 | Hermes | Native skill invocation, or `/clean-code-comments`, `/codebase-improve` and `/improve-docs` | The three command adapters stay out of the model-visible skill catalog. Other skills use the native catalog. |
 | Qoder | Determined by Qoder | The package shape is checked. Model discovery and explicit-only behavior are not established. |
+| ZCode | `frontier-engineering:<skill>`, or the bare `<skill>` alias | The plugin loads all fourteen skills. ZCode does not read the Codex or Pi visibility flags, so explicit-only behavior is not established. |
 
 Eligibility does not guarantee selection. A source flag does not prove runtime behavior in another host. See [the host guide](docs/hosts.md) for setup and verification boundaries.
 
@@ -70,6 +82,7 @@ Repository tests, package checks and isolated host checks establish engineering 
 
 - [Build, test and release](docs/development.md) covers generated artifacts, source archives, verification and evaluation.
 - [Qoder packaging](docs/qoder-plugin.md) explains the generated shell and its limits.
+- [Host installation](docs/hosts.md#zcode) covers the ZCode marketplace and plugin entry points.
 - [FAS 11 migration](docs/fas-v11-migration.md) covers retired review interfaces and compatibility obligations.
 - [Codex skill reload supervisor](docs/codex-skill-reload-supervisor.md) documents an optional high-privilege development tool.
 - [Code Simplifier 1.2.0](docs/code-simplifier-1.2.0.md) preserves the component's behavioral acceptance scenarios.
