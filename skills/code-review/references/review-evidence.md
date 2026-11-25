@@ -15,7 +15,7 @@ Commit mode compares a commit with its first parent. Range mode uses the unique 
     python3 "$REVIEW_SKILL_DIR/scripts/review_support.py" scope --repo "$REPO" --mode commit --commit "$COMMIT" --path src --output "$WORK/packet-commit"
     python3 "$REVIEW_SKILL_DIR/scripts/review_support.py" scope --repo "$REPO" --mode range --base "$BASE" --head "$HEAD" --path . --context-path config/runtime.json --output "$WORK/packet-range"
     python3 "$REVIEW_SKILL_DIR/scripts/review_support.py" scope --repo "$REPO" --mode workspace --path . --output "$WORK/packet-workspace"
-    python3 "$REVIEW_SKILL_DIR/scripts/review_support.py" scope --repo "$REPO" --mode snapshot --revision HEAD --path code-review --output "$WORK/packet-snapshot"
+    python3 "$REVIEW_SKILL_DIR/scripts/review_support.py" scope --repo "$REPO" --mode snapshot --revision HEAD --path skills/code-review --output "$WORK/packet-snapshot"
 
 Paths are literal repository-relative paths. Context paths add source evidence, not review items, and they take part in freshness: a later change to a context file's bytes, mode, presence, or index entry marks the packet changed. Renames are represented as deletion and addition. Markdown, tests, configuration, and generated files are not excluded by category. Git-ignored untracked files are outside this helper's scope; disclose that limit rather than claiming they were captured.
 

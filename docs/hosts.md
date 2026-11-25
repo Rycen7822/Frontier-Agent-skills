@@ -8,9 +8,9 @@ FAS uses each host's native loading mechanism. Installation and package checks d
 |---|---|---|
 | Pi | One Git package with a native skill-discovery manifest | Package updates, model-prompt exclusion and explicit slash-command loading were checked with Pi 1.6.0. |
 | Codex | An installable plugin marketplace | Package validation and isolated Codex CLI installation and removal are checked without model calls. |
-| Hermes Agent | Native skill directories plus three standalone command plugins | Native catalog exclusion and command-message delivery are checked in an isolated Hermes home. |
+| Hermes Agent | Native skill directories plus five standalone command plugins | Native catalog exclusion and command-message delivery are checked in an isolated Hermes home. |
 | Qoder | The repository's `.qoder-plugin/plugin.json` manifest | Manifest generation and package shape are checked. Runtime discovery and invocation policy are unverified. |
-| ZCode | The repository's `.zcode-plugin/plugin.json` manifest, installed through `marketplace.json` | Manifest validation, marketplace registration and installation were checked with ZCode CLI 0.18.0, and all fourteen skills loaded. Invocation policy is unverified. |
+| ZCode | The repository's `.zcode-plugin/plugin.json` manifest, installed through `marketplace.json` | Manifest validation, marketplace registration and installation were checked with ZCode CLI 0.18.0 for bundle 11.6.1. The current bundle's manifest is checked locally. Invocation policy is unverified. |
 
 ## Pi
 
@@ -33,13 +33,13 @@ Update all installed Pi packages, then reload:
 pi update --extensions
 ```
 
-To update only FAS, use `pi update --extension git:github.com/Rycen7822/Frontier-Agent-skills`. The [`package.json`](../package.json) manifest discovers top-level `SKILL.md` files. It adds no extension code, hooks or dependencies, and it does not rewrite personal settings.
+To update only FAS, use `pi update --extension git:github.com/Rycen7822/Frontier-Agent-skills`. The [`package.json`](../package.json) manifest discovers `skills/*/SKILL.md`. It adds no extension code, hooks or dependencies, and it does not rewrite personal settings.
 
-Clean Code Comments, Codebase Improve and Improve Docs declare `disable-model-invocation: true`. Pi excludes them from the default model prompt but keeps their `/skill:<name>` commands available. Other FAS skills remain eligible for model selection.
+Clean Code Comments, Codebase Improve, Improve Docs, Reframe and Sharpen declare `disable-model-invocation: true`. Pi excludes them from the default model prompt but keeps their `/skill:<name>` commands available. Other FAS skills remain eligible for model selection.
 
 ### Migrate individual Pi paths
 
-Older installations may list each FAS skill directory in the `skills` array in `~/.pi/agent/settings.json`. Confirm that the Git package loads all required skills, then remove only the redundant FAS paths. Keep the Git package entry, unrelated skills and other settings. Use `pi config` to select a subset through package filters.
+Older installations may list each FAS skill directory in the `skills` array in `~/.pi/agent/settings.json`. Confirm that the Git package loads all required skills, then remove only the redundant FAS paths. Keep the Git package entry, unrelated skills and other settings. Use `pi config` to select a subset through package filters. For an existing filter that matches an old repository-relative path such as `improve-docs/SKILL.md`, change it to `skills/improve-docs/SKILL.md`.
 
 ## Codex
 
@@ -59,31 +59,31 @@ $frontier-engineering-plugin:code-review Review this diff.
 $frontier-engineering-plugin:improve-docs Improve this RFC without changing its decision.
 ```
 
-A direct standalone skill installation uses `$<skill>` instead. Clean Code Comments, Codebase Improve, Improve Docs, Software Quality Workflows and Skill Evaluator set `allow_implicit_invocation: false`. The other nine skills are eligible for automatic local selection. All skills retain explicit invocation.
+A direct standalone skill installation uses `$<skill>` instead. Clean Code Comments, Codebase Improve, Improve Docs, Reframe, Sharpen, Software Quality Workflows and Skill Evaluator set `allow_implicit_invocation: false`. The other nine skills are eligible for automatic local selection. All skills retain explicit invocation.
 
 ## Hermes Agent
 
-Install the eleven model-visible FAS skills as native skill directories under `~/.hermes/skills`. Keep the three command-only skills out of this directory. From a source checkout, link the complete model-visible set:
+Install the eleven model-visible FAS skills as native skill directories under `~/.hermes/skills`. Keep the five command-only skills out of this directory. From a source checkout, link the complete model-visible set:
 
 ```sh
 FAS=/absolute/path/to/Frontier-Agent-skills
 mkdir -p ~/.hermes/skills
 for skill in code-review code-simplifier codebase-investigation debugging long-document-segmented-writing runtime-verification skill-evaluator software-design software-quality-workflows test-behavior writing-plans; do
-  ln -s "$FAS/$skill" "$HOME/.hermes/skills/$skill"
+  ln -s "$FAS/skills/$skill" "$HOME/.hermes/skills/$skill"
 done
 ```
 
-Keep the linked source directories available. Existing targets are not overwritten. If you install a subset, preserve the sibling skills required by its relative links.
+Keep the linked source directories available. Existing targets are not overwritten. When upgrading from the old layout, replace only FAS symlinks in `~/.hermes/skills` and `~/.hermes/plugins` that still point to `<checkout>/<name>`. Use `<checkout>/skills/<name>` for the replacement targets, then restart Hermes. If you install a subset, preserve the sibling skills required by its relative links.
 
-Do not put Clean Code Comments, Codebase Improve or Improve Docs in `~/.hermes/skills` or another automatically scanned skill root. Hermes does not honor the Codex and Pi visibility flags in the inspected loader. Install each of these three directories as a standalone plugin instead:
+Do not put Clean Code Comments, Codebase Improve, Improve Docs, Reframe or Sharpen in `~/.hermes/skills` or another automatically scanned skill root. Hermes does not honor the Codex and Pi visibility flags in the inspected loader. Install each of these directories as a standalone plugin instead:
 
 ```sh
 mkdir -p ~/.hermes/plugins
-ln -s /absolute/path/to/Frontier-Agent-skills/improve-docs ~/.hermes/plugins/improve-docs
+ln -s /absolute/path/to/Frontier-Agent-skills/skills/improve-docs ~/.hermes/plugins/improve-docs
 hermes plugins enable improve-docs
 ```
 
-Replace `improve-docs` with `clean-code-comments` or `codebase-improve` to install another command. Invoke the enabled command in a classic Hermes CLI session:
+Replace `improve-docs` with `clean-code-comments`, `codebase-improve`, `reframe` or `sharpen` to install another command. Invoke the enabled command in a classic Hermes CLI session:
 
 ```text
 /improve-docs Improve the setup guide for a new contributor.
@@ -102,11 +102,11 @@ qoder plugins validate /absolute/path/to/Frontier-Agent-skills
 qoder plugins install /absolute/path/to/Frontier-Agent-skills
 ```
 
-The manifest includes all fourteen skill directories. The repository does not establish that Qoder keeps explicit-only skills out of model discovery. See [Qoder packaging](qoder-plugin.md) for marketplace and maintainer details.
+The manifest includes all sixteen skill directories. The repository does not establish that Qoder keeps explicit-only skills out of model discovery. See [Qoder packaging](qoder-plugin.md) for marketplace and maintainer details.
 
 ## ZCode
 
-The repository is a ZCode plugin marketplace. Add it as a marketplace, then install the single plugin that carries all fourteen skills:
+The repository is a ZCode plugin marketplace. Add it as a marketplace, then install the single plugin that carries all sixteen skills:
 
 ```sh
 zcode plugins marketplace add Rycen7822/Frontier-Agent-skills

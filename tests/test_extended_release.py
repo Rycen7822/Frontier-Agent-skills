@@ -27,7 +27,9 @@ SKILLS = {
     'debugging',
     'improve-docs',
     'long-document-segmented-writing',
+    'reframe',
     'runtime-verification',
+    'sharpen',
     'skill-evaluator',
     'software-design',
     'software-quality-workflows',
@@ -109,7 +111,7 @@ class ExtendedRelease(unittest.TestCase):
             )
             self.assertEqual(0, smoked.returncode, smoked.stdout + smoked.stderr)
             smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
-            self.assertEqual("frontier-engineering/11.6.1", smoke["bundle_id"])
+            self.assertEqual("frontier-engineering/11.7.0", smoke["bundle_id"])
             self.assertFalse(smoke["actual_codex_cli_install"])
 
     def test_source_archives_are_clean_and_reproducible(self) -> None:
@@ -135,6 +137,10 @@ class ExtendedRelease(unittest.TestCase):
                 with zipfile.ZipFile(archive) as source:
                     names = source.namelist()
                 self.assertIn("frontier-engineering-bundle/package.json", names)
+                self.assertLessEqual(
+                    {f"frontier-engineering-bundle/skills/{name}/SKILL.md" for name in SKILLS},
+                    set(names),
+                )
                 self.assertTrue(
                     all(
                         name.startswith("frontier-engineering-bundle/")

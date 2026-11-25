@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 
 sys.dont_write_bytecode = True
-ROOT = Path(__file__).resolve().parents[1]
-USER_COMMANDS = ("clean-code-comments", "codebase-improve", "improve-docs")
+SKILLS_ROOT = Path(__file__).resolve().parents[1] / "skills"
+USER_COMMANDS = ("clean-code-comments", "codebase-improve", "improve-docs", "reframe", "sharpen")
 
 
 class UserCommandAPI:
@@ -43,7 +43,7 @@ class ExplicitSkillCommands(unittest.TestCase):
             with self.subTest(command=name):
                 api = UserCommandAPI()
                 with patch.object(Path, "read_text", side_effect=AssertionError("Premature skill read")):
-                    load_adapter(ROOT / name).register(api)
+                    load_adapter(SKILLS_ROOT / name).register(api)
                 self.assertEqual({name}, set(api.commands))
                 self.assertEqual([], api.messages)
 
@@ -51,7 +51,7 @@ class ExplicitSkillCommands(unittest.TestCase):
         for name in USER_COMMANDS:
             with self.subTest(command=name), tempfile.TemporaryDirectory() as directory:
                 installed = Path(directory) / "plugin"
-                shutil.copytree(ROOT / name, installed)
+                shutil.copytree(SKILLS_ROOT / name, installed)
                 instructions = (installed / "SKILL.md").read_text()
                 request = "Audit src/tasks only; do not edit product code."
                 api = UserCommandAPI()

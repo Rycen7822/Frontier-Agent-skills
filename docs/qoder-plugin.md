@@ -1,6 +1,6 @@
 # Qoder plugin shell
 
-The repository is an installable Qoder plugin. The manifest at [`.qoder-plugin/plugin.json`](../.qoder-plugin/plugin.json) declares `frontier-engineering`, the bundle version and the fourteen canonical skill directories. The directories sit at the repository root rather than under one `skills/` directory.
+The repository is an installable Qoder plugin. The manifest at [`.qoder-plugin/plugin.json`](../.qoder-plugin/plugin.json) declares `frontier-engineering`, the bundle version and the sixteen canonical skill directories. Each directory is under `skills/` and listed explicitly in the manifest.
 
 For user installation and invocation boundaries, see [the host guide](hosts.md#qoder).
 
@@ -9,7 +9,7 @@ For user installation and invocation boundaries, see [the host guide](hosts.md#q
 ```text
 Frontier-Agent-skills/
   .qoder-plugin/plugin.json
-  <skill>/SKILL.md
+  skills/<skill>/SKILL.md
   packaging/qoder-plugin/plugin.json.template
 ```
 

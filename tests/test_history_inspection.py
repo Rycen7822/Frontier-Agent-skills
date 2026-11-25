@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "skill-evaluator/scripts"))
+sys.path.insert(0, str(ROOT / "skills/skill-evaluator/scripts"))
 import inspect_history
 
 
@@ -70,7 +70,7 @@ class HistoryInspectionTests(unittest.TestCase):
         self.path.write_text(self.path.read_text() + '{"type":')
         with self.assertRaisesRegex(ValueError, "invalid JSON.*:4"):
             inspect_history.inspect(self.path)
-        failed = subprocess.run([sys.executable, str(ROOT / "skill-evaluator/scripts/inspect_history.py"), str(self.path), "--max-events", "0"], capture_output=True, text=True)
+        failed = subprocess.run([sys.executable, str(ROOT / "skills/skill-evaluator/scripts/inspect_history.py"), str(self.path), "--max-events", "0"], capture_output=True, text=True)
         self.assertEqual(2, failed.returncode)
         self.assertEqual("", failed.stdout)
 

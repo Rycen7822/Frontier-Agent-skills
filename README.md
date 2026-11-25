@@ -1,10 +1,10 @@
 # Frontier Agent Skills
 
-Frontier Agent Skills (FAS) provides fourteen skills for software development, review, documentation, planning and evaluation. The current source bundle is `frontier-engineering/11.6.1`. FAS supports Codex, Pi, ZCode and Hermes Agent through their native skill or plugin mechanisms. It also includes a Qoder plugin manifest, but Qoder runtime behavior remains unverified.
+Frontier Agent Skills (FAS) provides sixteen skills in `skills/` for software development, review, documentation, planning and evaluation. The current source bundle is `frontier-engineering/11.7.0`. FAS supports Codex, Pi, ZCode and Hermes Agent through their native skill or plugin mechanisms. It also includes a Qoder plugin manifest, but Qoder runtime behavior remains unverified.
 
 ## Install on ZCode
 
-Add the repository as a marketplace, then install the plugin that carries all fourteen skills:
+Add the repository as a marketplace, then install the plugin that carries all sixteen skills:
 
 ```sh
 zcode plugins marketplace add Rycen7822/Frontier-Agent-skills
@@ -41,20 +41,22 @@ Describe the task in your normal prompt. Eligible skills can be selected from th
 
 | Skill | Use for | Version |
 |---|---|---|
-| [software-quality-workflows](software-quality-workflows/SKILL.md) | Implement features, fix known problems and complete software changes with proportionate verification | 13.1.0 |
-| [codebase-investigation](codebase-investigation/SKILL.md) | Explain implementation, cross-module behavior or design history | 1.1.2 |
-| [debugging](debugging/SKILL.md) | Diagnose a failure, regression or performance problem whose cause is unknown | 1.1.2 |
-| [software-design](software-design/SKILL.md) | Resolve consequential requirements, ownership, API, data-model or migration choices | 1.1.1 |
-| [code-review](code-review/SKILL.md) | Find actionable defects and assess their realistic impact | 2.0.5 |
-| [code-simplifier](code-simplifier/SKILL.md) | Simplify selected code while preserving behavior | 1.2.1 |
-| [clean-code-comments](clean-code-comments/SKILL.md) | Audit comments, preserve real constraints and prevent unnecessary new comments | 1.0.0 |
-| [codebase-improve](codebase-improve/SKILL.md) | Audit or improve architecture, responsibility and abstraction boundaries | 1.0.0 |
-| [improve-docs](improve-docs/SKILL.md) | Write or improve technical documentation through direct editing and reader testing | 1.1.0 |
-| [test-behavior](test-behavior/SKILL.md) | Decide when to write checks, what they should prove and how long to retain them | 1.0.0 |
-| [runtime-verification](runtime-verification/SKILL.md) | Resolve evidence gaps by running the actual consumer or installation | 1.1.1 |
-| [writing-plans](writing-plans/SKILL.md) | Turn settled decisions into an implementation plan | 9.1.2 |
-| [long-document-segmented-writing](long-document-segmented-writing/SKILL.md) | Write long, source-grounded documents with recoverable progress | 3.1.0 |
-| [skill-evaluator](skill-evaluator/SKILL.md) | Assess skill effectiveness from execution history or scoped evaluation evidence | 5.0.3 |
+| [software-quality-workflows](skills/software-quality-workflows/SKILL.md) | Implement features, fix known problems and complete software changes with proportionate verification | 13.1.0 |
+| [codebase-investigation](skills/codebase-investigation/SKILL.md) | Explain implementation, cross-module behavior or design history | 1.1.2 |
+| [debugging](skills/debugging/SKILL.md) | Diagnose a failure, regression or performance problem whose cause is unknown | 1.1.2 |
+| [software-design](skills/software-design/SKILL.md) | Resolve consequential requirements, ownership, API, data-model or migration choices | 1.1.1 |
+| [code-review](skills/code-review/SKILL.md) | Find actionable defects and assess their realistic impact | 2.0.5 |
+| [code-simplifier](skills/code-simplifier/SKILL.md) | Simplify selected code while preserving behavior | 1.2.1 |
+| [clean-code-comments](skills/clean-code-comments/SKILL.md) | Audit comments, preserve real constraints and prevent unnecessary new comments | 1.0.0 |
+| [codebase-improve](skills/codebase-improve/SKILL.md) | Audit or improve architecture, responsibility and abstraction boundaries | 1.0.0 |
+| [improve-docs](skills/improve-docs/SKILL.md) | Write or improve technical documentation through direct editing and reader testing | 1.1.0 |
+| [reframe](skills/reframe/SKILL.md) | Identify an ambiguous problem, name it with verified terminology and rewrite its description | 1.0.0 |
+| [sharpen](skills/sharpen/SKILL.md) | Rewrite a prompt with expert methods and independent checks without expanding the task | 1.0.0 |
+| [test-behavior](skills/test-behavior/SKILL.md) | Decide when to write checks, what they should prove and how long to retain them | 1.0.0 |
+| [runtime-verification](skills/runtime-verification/SKILL.md) | Resolve evidence gaps by running the actual consumer or installation | 1.1.1 |
+| [writing-plans](skills/writing-plans/SKILL.md) | Turn settled decisions into an implementation plan | 9.1.2 |
+| [long-document-segmented-writing](skills/long-document-segmented-writing/SKILL.md) | Write long, source-grounded documents with recoverable progress | 3.1.0 |
+| [skill-evaluator](skills/skill-evaluator/SKILL.md) | Assess skill effectiveness from execution history or scoped evaluation evidence | 5.0.3 |
 
 Start with one skill that owns the task. FAS does not require a fixed pipeline, model assignment, delegation strategy or external plugin.
 
@@ -64,17 +66,17 @@ Direct invocation syntax and automatic selection vary by host.
 
 | Host | Direct invocation | Automatic-selection boundary |
 |---|---|---|
-| Codex | `$frontier-engineering-plugin:<skill>` | Nine skills are eligible. Clean Code Comments, Codebase Improve, Improve Docs, Software Quality Workflows and Skill Evaluator require explicit invocation. |
-| Pi | `/skill:<skill>` | Eleven skills are eligible. Clean Code Comments, Codebase Improve and Improve Docs require explicit invocation. |
-| Hermes | Native skill invocation, or `/clean-code-comments`, `/codebase-improve` and `/improve-docs` | The three command adapters stay out of the model-visible skill catalog. Other skills use the native catalog. |
+| Codex | `$frontier-engineering-plugin:<skill>` | Nine skills are eligible. Clean Code Comments, Codebase Improve, Improve Docs, Reframe, Sharpen, Software Quality Workflows and Skill Evaluator require explicit invocation. |
+| Pi | `/skill:<skill>` | Eleven skills are eligible. Clean Code Comments, Codebase Improve, Improve Docs, Reframe and Sharpen require explicit invocation. |
+| Hermes | Native skill invocation, or `/clean-code-comments`, `/codebase-improve`, `/improve-docs`, `/reframe` and `/sharpen` | The five command adapters stay out of the model-visible skill catalog. Other skills use the native catalog. |
 | Qoder | Determined by Qoder | The package shape is checked. Model discovery and explicit-only behavior are not established. |
-| ZCode | `frontier-engineering:<skill>`, or the bare `<skill>` alias | The plugin loads all fourteen skills. ZCode does not read the Codex or Pi visibility flags, so explicit-only behavior is not established. |
+| ZCode | `frontier-engineering:<skill>`, or the bare `<skill>` alias | The manifest declares all sixteen skills. ZCode does not read the Codex or Pi visibility flags, so explicit-only behavior is not established. |
 
 Eligibility does not guarantee selection. A source flag does not prove runtime behavior in another host. See [the host guide](docs/hosts.md) for setup and verification boundaries.
 
 ## Source and release status
 
-Version 11.6.1 is prepared source. The [published 11.3.0 release](https://github.com/Rycen7822/Frontier-Agent-skills/releases/tag/frontier-engineering-v11.3.0) contains older artifacts. A source version change does not publish a release. Use [the release notes](RELEASE_NOTES.md) to distinguish source additions from published artifacts.
+Version 11.7.0 is prepared source. The [published 11.3.0 release](https://github.com/Rycen7822/Frontier-Agent-skills/releases/tag/frontier-engineering-v11.3.0) contains older artifacts. A source version change does not publish a release. Use [the release notes](RELEASE_NOTES.md) to distinguish source additions from published artifacts.
 
 Repository tests, package checks and isolated host checks establish engineering behavior. They do not measure task success or model effectiveness.
 

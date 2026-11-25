@@ -1,0 +1,7 @@
+name: sharpen
+version: 1.0.0
+description: Make a task deeper without expanding its scope.
+author: Frontier Agent Skills
+kind: standalone
+provides_tools: []
+provides_hooks: []

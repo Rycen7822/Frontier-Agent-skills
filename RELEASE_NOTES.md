@@ -1,5 +1,13 @@
 # Release Notes
 
+## Bundle 11.7.0 Reframe, Sharpen, and source layout
+
+Bundle 11.7.0 adds `reframe` and `sharpen` 1.0.0 from Cursor pstack's [Reframe](https://github.com/cursor/plugins/blob/41e40093/pstack/skills/reframe/SKILL.md) and [Sharpen](https://github.com/cursor/plugins/blob/41e40093/pstack/skills/sharpen/SKILL.md). Reframe names an unclear problem and rewrites its description with verified terminology. Sharpen rewrites a prompt to ask for deeper work within the same scope. Their instruction bodies and MIT notices are unchanged. Neither skill requires pstack or routes to the other automatically.
+
+Codex and Pi keep both skills explicit-only. Hermes exposes them as standalone user commands. Qoder and ZCode declare them in their plugin manifests but do not have a verified user-only runtime policy. The source bundle now contains sixteen skills at schema epoch 9. This entry does not publish a release.
+
+All bundled skill sources now live at `skills/<name>/`. Skill IDs, invocation commands, the Codex plugin layout and the flat skills-only ZIP are unchanged. See [host installation](docs/hosts.md) for migrating existing path-based installs.
+
 ## Bundle 11.6.1 autonomous technical documentation
 
 Bundle 11.6.1 updates `improve-docs` to 1.1.0 for technical documentation. The default workflow now gathers repository context, edits files directly, reviews the result and runs reader checks without routine user questions or section-by-section approval. Explicit read-only and audit requests remain read-only. Missing facts produce simpler supported wording or a reported gap rather than invented detail.

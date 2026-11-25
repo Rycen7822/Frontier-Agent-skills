@@ -12,7 +12,7 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL = ROOT / "code-simplifier"
+SKILL = ROOT / "skills" / "code-simplifier"
 LINK = re.compile(r"\]\(([^)]+)\)")
 ORIGINAL_LICENSE_BLOBS = {
     "LICENSE": "d645695673349e3947e8e5ae42332d0ac3164cd7",
@@ -35,7 +35,7 @@ class CodeSimplifierAssets(unittest.TestCase):
             target = document.parent / relative
             self.assertTrue(target.is_file(), f"{document.name}: {raw}")
             if ".." in relative.parts:
-                shared_policy = ROOT / "test-behavior" / "SKILL.md"
+                shared_policy = SKILL.parent / "test-behavior" / "SKILL.md"
                 self.assertEqual(target.resolve(), shared_policy.resolve(), raw)
                 current = target
                 while current != ROOT:

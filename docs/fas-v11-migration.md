@@ -19,13 +19,13 @@ The retired records mixed defect review with publication authority. The replacem
 
 ## The replacement
 
-`code-review/schemas/review-record.schema.json` is the single schema file. It defines three roots in its `$defs`: `scope` (`fas-review-scope/1`), `record` (`fas-review-record/1`) and `check_report` (`fas-review-check/1`).
+`skills/code-review/schemas/review-record.schema.json` is the single schema file. It defines three roots in its `$defs`: `scope` (`fas-review-scope/1`), `record` (`fas-review-record/1`) and `check_report` (`fas-review-check/1`).
 
-`code-review/scripts/review_support.py` exposes exactly two commands:
+`skills/code-review/scripts/review_support.py` exposes exactly two commands:
 
 ```bash
-python3 code-review/scripts/review_support.py scope --repo "$REPO" --mode workspace --path . --output "$WORK/packet"
-python3 code-review/scripts/review_support.py check --repo "$REPO" --packet "$WORK/packet" --record "$WORK/review-record.json" --output "$WORK/check-report.json"
+python3 skills/code-review/scripts/review_support.py scope --repo "$REPO" --mode workspace --path . --output "$WORK/packet"
+python3 skills/code-review/scripts/review_support.py check --repo "$REPO" --packet "$WORK/packet" --record "$WORK/review-record.json" --output "$WORK/check-report.json"
 ```
 
 Scope modes are `commit` (first parent), `range` (unique merge base), `workspace` (staged, unstaged, and untracked layers kept separate) and `snapshot` (a commit, or the reserved revision `WORKTREE`). Output directories and report files must not exist yet; existing paths are never overwritten or reused. A sealed scope returns 0 when every captured source holds text, 4 when any source is non-text, oversized, or left uncaptured, and 2 without writing `scope.json` on a hard error. Declared context paths stay evidence rather than review items, and they take part in both capture and freshness.

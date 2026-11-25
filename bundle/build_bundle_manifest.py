@@ -22,7 +22,7 @@ if str(SCRIPTS) not in sys.path:
 from _bundle_hash import FORBIDDEN_PARTS, FORBIDDEN_SUFFIXES, inventory, tree_hash  # noqa: E402
 
 
-BUNDLE_ID = "frontier-engineering/11.6.1"
+BUNDLE_ID = "frontier-engineering/11.7.0"
 SCHEMA_EPOCH = 9
 OUTPUT = ROOT / "frontier-engineering.bundle.json"
 SCHEMA = ROOT / "bundle" / "frontier-engineering-bundle.schema.json"
@@ -36,7 +36,9 @@ EXPECTED_SKILLS = {
     'debugging': '1.1.2',
     'improve-docs': '1.1.0',
     'long-document-segmented-writing': '3.1.0',
+    'reframe': '1.0.0',
     'runtime-verification': '1.1.1',
+    'sharpen': '1.0.0',
     'skill-evaluator': '5.0.3',
     'software-design': '1.1.1',
     'software-quality-workflows': '13.1.0',
@@ -52,7 +54,9 @@ EXPECTED_ACTIVATION = {
     'debugging': True,
     'improve-docs': False,
     'long-document-segmented-writing': True,
+    'reframe': False,
     'runtime-verification': True,
+    'sharpen': False,
     'skill-evaluator': False,
     'software-design': True,
     'software-quality-workflows': False,
@@ -145,7 +149,7 @@ def _activation(skill_root: Path) -> bool:
 
 
 def _skill_record(skill_id: str, version: str) -> dict[str, Any]:
-    skill_root = ROOT / skill_id
+    skill_root = ROOT / "skills" / skill_id
     if skill_root.is_symlink() or not skill_root.is_dir():
         raise ValueError(f"canonical skill root is missing or symlinked: {skill_id}")
     if _frontmatter_version(skill_root) != version:
@@ -167,8 +171,8 @@ def build_manifest() -> dict[str, Any]:
     source = _load_json(SOURCE_MANIFEST)
     if set(source) != SOURCE_FIELDS:
         raise ValueError(f"source bundle fields differ from schema 3.0: {sorted(source)}")
-    if source.get("bundle_schema_version") != "3.0" or source.get("bundle_version") != "11.6.1":
-        raise ValueError("source bundle must bind schema 3.0 and release 11.6.1")
+    if source.get("bundle_schema_version") != "3.0" or source.get("bundle_version") != "11.7.0":
+        raise ValueError("source bundle must bind schema 3.0 and release 11.7.0")
     if source.get("activation_ceiling") != "implicit_local_pilot" or source.get("remote_writes") is not False:
         raise ValueError("source bundle activation ceiling or remote-write boundary is invalid")
     profiles = source.get("test_profiles")
@@ -186,12 +190,17 @@ def build_manifest() -> dict[str, Any]:
     observed = {
         item.get("id"): item.get("version")
         for item in skills
-        if set(item) == {"id", "path", "version"} and item.get("path") == item.get("id")
+        if set(item) == {"id", "path", "version"} and item.get("path") == f"skills/{item.get('id')}"
     }
     if observed != EXPECTED_SKILLS or len(skills) != len(EXPECTED_SKILLS):
         raise ValueError(f"source bundle must bind the exact canonical skill set: {observed}")
     if [item.get("id") for item in skills] != sorted(EXPECTED_SKILLS):
         raise ValueError("source bundle skills must be sorted by id")
+    skills_root = ROOT / "skills"
+    if skills_root.is_symlink() or not skills_root.is_dir():
+        raise ValueError("canonical skills directory is missing or symlinked")
+    if {entry.name for entry in skills_root.iterdir()} != set(EXPECTED_SKILLS):
+        raise ValueError("skills directory must contain exactly the canonical skill roots")
 
     unsigned: dict[str, Any] = {
         "schema_version": "frontier-engineering-bundle/2.0",

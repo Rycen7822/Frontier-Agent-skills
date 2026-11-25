@@ -44,7 +44,9 @@ EXPECTED_SKILLS = {
     'debugging',
     'improve-docs',
     'long-document-segmented-writing',
+    'reframe',
     'runtime-verification',
+    'sharpen',
     'skill-evaluator',
     'software-design',
     'software-quality-workflows',
@@ -133,9 +135,9 @@ def _collect_directory(source_root: Path, directory: Path) -> list[Path]:
 
 def _collect_source_files(source_root: Path, manifest: dict[str, Any], layout: Layout) -> list[Path]:
     skill_paths = {str(item["path"]) for item in manifest["skills"]}
-    if skill_paths != EXPECTED_SKILLS:
+    if skill_paths != {f"skills/{name}" for name in EXPECTED_SKILLS}:
         raise ValueError("bundle manifest must bind exactly the canonical skill paths")
-    allowed_names = skill_paths | BUNDLE_DIRECTORIES | BUNDLE_FILES
+    allowed_names = {"skills"} | BUNDLE_DIRECTORIES | BUNDLE_FILES
     if layout == "bundle":
         for child in source_root.iterdir():
             if child.name in allowed_names or child.name in IGNORED_TOP_LEVEL:
@@ -180,7 +182,9 @@ def _copy_snapshot(source_root: Path, staging_root: Path, records: list[dict[str
 
 
 def _archive_name(relative: str, layout: Layout) -> str:
-    return f"{BUNDLE_ROOT_PREFIX}/{relative}" if layout == "bundle" else relative
+    if layout == "bundle":
+        return f"{BUNDLE_ROOT_PREFIX}/{relative}"
+    return relative.removeprefix("skills/")
 
 
 def _archive_members(

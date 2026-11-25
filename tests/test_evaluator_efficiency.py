@@ -19,7 +19,7 @@ from unittest import mock
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "skill-evaluator/scripts"))
+sys.path.insert(0, str(ROOT / "skills/skill-evaluator/scripts"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import analyze_runs
@@ -78,7 +78,7 @@ class ChangePolicyTests(unittest.TestCase):
         process = subprocess.run(
             [
                 sys.executable,
-                str(ROOT / "skill-evaluator/scripts/evaluate.py"),
+                str(ROOT / "skills/skill-evaluator/scripts/evaluate.py"),
                 "check",
                 "--root",
                 str(self.root),

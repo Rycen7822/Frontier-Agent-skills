@@ -1,6 +1,6 @@
 # Clean Code Comments
 
-[`clean-code-comments`](../clean-code-comments/SKILL.md) audits or cleans comments in a named scope. It requires explicit user invocation. Other skills do not route to it automatically.
+[`clean-code-comments`](../skills/clean-code-comments/SKILL.md) audits or cleans comments in a named scope. It requires explicit user invocation. Other skills do not route to it automatically.
 
 Example requests:
 

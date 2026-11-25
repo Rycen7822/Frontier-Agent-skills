@@ -286,7 +286,7 @@ def preflight_runtime(args: argparse.Namespace, workspace: Path) -> dict[str, An
     Help parsing is not authentication, tool execution or model qualification.
     Actual config/stream validation remains with the Host and bounded smoke.
     """
-    scripts = str(Path(__file__).resolve().parents[2] / "scripts")
+    scripts = str(Path(__file__).resolve().parents[3] / "scripts")
     if scripts not in sys.path:
         sys.path.insert(0, scripts)
     import codex_eval_host as host

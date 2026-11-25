@@ -10,8 +10,7 @@ import tempfile
 import unittest
 
 TESTS_DIR = Path(__file__).resolve().parent
-SKILL_ROOT = TESTS_DIR.parent
-ROOT = SKILL_ROOT.parent
+ROOT = TESTS_DIR.parents[2]
 for path in (str(TESTS_DIR), str(ROOT / "scripts")):
     if path not in sys.path:
         sys.path.insert(0, path)

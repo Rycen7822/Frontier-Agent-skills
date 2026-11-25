@@ -1,75 +1,85 @@
 {
   "bundle_schema_version": "3.0",
-  "bundle_version": "11.6.1",
+  "bundle_version": "11.7.0",
   "skills": [
     {
       "id": "clean-code-comments",
-      "path": "clean-code-comments",
+      "path": "skills/clean-code-comments",
       "version": "1.0.0"
     },
     {
       "id": "code-review",
-      "path": "code-review",
+      "path": "skills/code-review",
       "version": "2.0.5"
     },
     {
       "id": "code-simplifier",
-      "path": "code-simplifier",
+      "path": "skills/code-simplifier",
       "version": "1.2.1"
     },
     {
       "id": "codebase-improve",
-      "path": "codebase-improve",
+      "path": "skills/codebase-improve",
       "version": "1.0.0"
     },
     {
       "id": "codebase-investigation",
-      "path": "codebase-investigation",
+      "path": "skills/codebase-investigation",
       "version": "1.1.2"
     },
     {
       "id": "debugging",
-      "path": "debugging",
+      "path": "skills/debugging",
       "version": "1.1.2"
     },
     {
       "id": "improve-docs",
-      "path": "improve-docs",
+      "path": "skills/improve-docs",
       "version": "1.1.0"
     },
     {
       "id": "long-document-segmented-writing",
-      "path": "long-document-segmented-writing",
+      "path": "skills/long-document-segmented-writing",
       "version": "3.1.0"
     },
     {
+      "id": "reframe",
+      "path": "skills/reframe",
+      "version": "1.0.0"
+    },
+    {
       "id": "runtime-verification",
-      "path": "runtime-verification",
+      "path": "skills/runtime-verification",
       "version": "1.1.1"
     },
     {
+      "id": "sharpen",
+      "path": "skills/sharpen",
+      "version": "1.0.0"
+    },
+    {
       "id": "skill-evaluator",
-      "path": "skill-evaluator",
+      "path": "skills/skill-evaluator",
       "version": "5.0.3"
     },
     {
       "id": "software-design",
-      "path": "software-design",
+      "path": "skills/software-design",
       "version": "1.1.1"
     },
     {
       "id": "software-quality-workflows",
-      "path": "software-quality-workflows",
+      "path": "skills/software-quality-workflows",
       "version": "13.1.0"
     },
     {
       "id": "test-behavior",
-      "path": "test-behavior",
+      "path": "skills/test-behavior",
       "version": "1.0.0"
     },
     {
       "id": "writing-plans",
-      "path": "writing-plans",
+      "path": "skills/writing-plans",
       "version": "9.1.2"
     }
   ],
@@ -77,7 +87,7 @@
   "remote_writes": false,
   "test_profiles": {
     "quick": [
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s code-review/tests -p 'test_quick_*.py' -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s skills/code-review/tests -p 'test_quick_*.py' -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_bundle_contracts.py -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_explicit_skill_commands.py -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_code_review_evaluation_suite.py -v",
@@ -86,10 +96,10 @@
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_zcode_plugin.py -v"
     ],
     "extended": [
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s software-design/tests -p 'test_extended_*.py' -v",
-      "PYTHONDONTWRITEBYTECODE=1 python3 long-document-segmented-writing/tests/test_assemble_markdown.py -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s skills/software-design/tests -p 'test_extended_*.py' -v",
+      "PYTHONDONTWRITEBYTECODE=1 python3 skills/long-document-segmented-writing/tests/test_assemble_markdown.py -v",
       "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests/test_evaluator_efficiency.py tests/test_extended_release.py -v",
-      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s code-review/tests -p 'test_extended_*.py' -v"
+      "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s skills/code-review/tests -p 'test_extended_*.py' -v"
     ],
     "release": [
       "PYTHONDONTWRITEBYTECODE=1 python3 tests/test_release_cli_install.py -v"

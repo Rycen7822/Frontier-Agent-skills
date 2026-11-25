@@ -106,17 +106,19 @@ def _source_skill_paths() -> list[str]:
     for item in skills:
         if not isinstance(item, dict) or set(item) != {"id", "path", "version"}:
             raise ValueError(f"source bundle skill record is invalid: {item!r}")
-        if item["path"] != item["id"]:
-            raise ValueError(f"source bundle skill path differs from its id: {item!r}")
-        paths.append(str(item["path"]))
+        skill_id = item["id"]
+        if not isinstance(skill_id, str) or not KEBAB.fullmatch(skill_id) or item["path"] != f"skills/{skill_id}":
+            raise ValueError(f"source bundle skill must be under skills/ with its canonical id: {item!r}")
+        paths.append(item["path"])
     if paths != sorted(paths) or len(set(paths)) != len(paths):
         raise ValueError("source bundle skills must be unique and sorted by id")
     return paths
 
 
-def _validate_skill(skill_id: str) -> None:
-    skill_root = ROOT / skill_id
-    if skill_root.is_symlink() or not skill_root.is_dir():
+def _validate_skill(skill_path: str) -> None:
+    skill_root = ROOT / skill_path
+    skill_id = skill_root.name
+    if skill_root.parent.is_symlink() or skill_root.is_symlink() or not skill_root.is_dir():
         raise ValueError(f"declared skill root is missing or symlinked: {skill_id}")
     entry = skill_root / "SKILL.md"
     if entry.is_symlink() or not entry.is_file():
@@ -168,8 +170,8 @@ def _validate_template(template: dict[str, Any], skill_paths: list[str]) -> dict
 
 def render_manifest() -> dict[str, Any]:
     skill_paths = _source_skill_paths()
-    for skill_id in skill_paths:
-        _validate_skill(skill_id)
+    for skill_path in skill_paths:
+        _validate_skill(skill_path)
     template = _validate_template(_load_json(TEMPLATE), skill_paths)
     source = _load_json(SOURCE_MANIFEST)
     rendered = json.loads(json.dumps(template))

@@ -1,6 +1,6 @@
 {
   "name": "frontier-engineering",
-  "version": "11.6.1",
+  "version": "11.7.0",
   "description": "Engineering skills for development, investigation, design, debugging, review, simplification, testing behavior, runtime verification, planning, writing and evaluation.",
   "author": {
     "name": "Rycen7822"
@@ -16,19 +16,21 @@
     "evaluation"
   ],
   "skills": [
-    "./clean-code-comments",
-    "./code-review",
-    "./code-simplifier",
-    "./codebase-improve",
-    "./codebase-investigation",
-    "./debugging",
-    "./improve-docs",
-    "./long-document-segmented-writing",
-    "./runtime-verification",
-    "./skill-evaluator",
-    "./software-design",
-    "./software-quality-workflows",
-    "./test-behavior",
-    "./writing-plans"
+    "./skills/clean-code-comments",
+    "./skills/code-review",
+    "./skills/code-simplifier",
+    "./skills/codebase-improve",
+    "./skills/codebase-investigation",
+    "./skills/debugging",
+    "./skills/improve-docs",
+    "./skills/long-document-segmented-writing",
+    "./skills/reframe",
+    "./skills/runtime-verification",
+    "./skills/sharpen",
+    "./skills/skill-evaluator",
+    "./skills/software-design",
+    "./skills/software-quality-workflows",
+    "./skills/test-behavior",
+    "./skills/writing-plans"
   ]
 }

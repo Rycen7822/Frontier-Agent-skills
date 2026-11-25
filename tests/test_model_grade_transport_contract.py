@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "skill-evaluator/scripts"))
+sys.path.insert(0, str(ROOT / "skills/skill-evaluator/scripts"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import model_grade_transport as transport
 from _codex_eval_artifacts import build_command_trace, build_host_observation

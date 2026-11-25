@@ -271,7 +271,7 @@ def resolve_host_command(
     for argument in declared[1:]:
         candidate = contract_root / argument
         argv.append(str(candidate.resolve()) if candidate.is_file() else argument)
-    repository_scripts = Path(__file__).resolve().parents[2] / "scripts"
+    repository_scripts = Path(__file__).resolve().parents[3] / "scripts"
     if str(repository_scripts) not in sys.path:
         sys.path.insert(0, str(repository_scripts))
     from _codex_eval_delivery import DeliveryError, project_command_environment

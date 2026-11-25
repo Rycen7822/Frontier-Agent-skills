@@ -56,7 +56,9 @@ EXPECTED_SKILLS = {
     'debugging': '1.1.2',
     'improve-docs': '1.1.0',
     'long-document-segmented-writing': '3.1.0',
+    'reframe': '1.0.0',
     'runtime-verification': '1.1.1',
+    'sharpen': '1.0.0',
     'skill-evaluator': '5.0.3',
     'software-design': '1.1.1',
     'software-quality-workflows': '13.1.0',
@@ -72,7 +74,9 @@ EXPECTED_ACTIVATION = {
     'debugging': True,
     'improve-docs': False,
     'long-document-segmented-writing': True,
+    'reframe': False,
     'runtime-verification': True,
+    'sharpen': False,
     'skill-evaluator': False,
     'software-design': True,
     'software-quality-workflows': False,
@@ -207,7 +211,7 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     skills = manifest.get("skills")
     if not isinstance(skills, list) or {item.get("id") for item in skills if isinstance(item, dict)} != set(EXPECTED_SKILLS):
         raise ValueError("manifest must declare exactly the canonical skills")
-    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "11.6.1"):
+    if (manifest.get("bundle_schema_version"), manifest.get("bundle_version")) != ("3.0", "11.7.0"):
         raise ValueError("manifest bundle schema/version is invalid")
     if {item.get("id"): item.get("version") for item in skills} != EXPECTED_SKILLS:
         raise ValueError("version mismatch: manifest skill versions do not match the canonical skill release identity")
@@ -215,8 +219,8 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     for item in skills:
         if not isinstance(item, dict) or set(item) != {"id", "path", "version"}:
             raise ValueError("manifest skill entries must contain only id, path, and version")
-        if item["path"] != item["id"]:
-            raise ValueError(f"manifest skill path must equal its canonical id: {item['id']}")
+        if item["path"] != f"skills/{item['id']}":
+            raise ValueError(f"manifest skill must be under skills/ with its canonical id: {item['id']}")
         path = source_root / item["path"]
         observed = skill_version(path)
         if observed != item["version"]:
@@ -307,16 +311,12 @@ def _validate_staging(staging: Path, plugin_name: str) -> list[dict[str, Any]]:
 
 def _assert_skill_copy_matches(source_records: list[dict[str, Any]], plugin_records: list[dict[str, Any]]) -> None:
     plugin_by_path = {record["path"]: record for record in plugin_records}
-    expected_paths = {"skills/" + record["path"] for record in source_records if record["path"] != "bundle-manifest.json"}
-    if set(plugin_by_path) != expected_paths | {".codex-plugin/plugin.json"}:
+    source_by_path = {record["path"]: record for record in source_records if record["path"] != "bundle-manifest.json"}
+    if set(plugin_by_path) != source_by_path.keys() | {".codex-plugin/plugin.json"}:
         raise ValueError("staged plugin file set differs from source")
-    for source in source_records:
-        if source["path"] == "bundle-manifest.json":
-            continue
-        target_path = "skills/" + source["path"]
-        target = plugin_by_path.get(target_path)
-        if target is None or any(target[field] != source[field] for field in ("content_hash", "size", "mode")):
-            raise ValueError(f"E_SOURCE_DRIFT: staged skill bytes differ from frozen source inventory: {source['path']}")
+    for path, source in source_by_path.items():
+        if plugin_by_path[path] != source:
+            raise ValueError(f"E_SOURCE_DRIFT: staged skill bytes differ from frozen source inventory: {path}")
 
 
 def validate_plugin_build(

@@ -7,7 +7,7 @@
     {
       "name": "frontier-engineering",
       "source": "./",
-      "version": "11.6.1",
+      "version": "11.7.0",
       "description": "Engineering skills for development, investigation, design, debugging, review, simplification, testing behavior, runtime verification, planning, writing and evaluation.",
       "displayName": "Frontier Engineering",
       "displayName_i18n": {

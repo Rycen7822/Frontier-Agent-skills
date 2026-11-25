@@ -63,7 +63,7 @@ class QoderPluginShell(unittest.TestCase):
             match = re.match(r"\A---\n(.*?)\n---\n", entry.read_text(encoding="utf-8"), flags=re.DOTALL)
             self.assertIsNotNone(match, item["path"])
             frontmatter = yaml.safe_load(match.group(1))
-            self.assertEqual(item["path"], frontmatter["name"], item["path"])
+            self.assertEqual(item["id"], frontmatter["name"], item["path"])
             self.assertTrue(str(frontmatter["description"]).strip(), item["path"])
 
     def test_shell_carries_no_local_path_or_placeholder(self) -> None:

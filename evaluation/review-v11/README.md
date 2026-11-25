@@ -2,7 +2,7 @@
 
 This directory prepares the `code-review` evaluation for FAS 11.0: twelve fixture cases, one compact author suite, and one model rubric. It is an input set, not an experiment result.
 
-- `author-suite.json` - compact suite consumed by `skill-evaluator/scripts/author_suite.py`. It declares three treatments (`baseline/skill_disabled`, `candidate/force_loaded`, `candidate/natural_routing`), `repeats: 1`, one model grader, and `task_attempt_budget: 0` with `judge_invocation_budget: 0`.
+- `author-suite.json` - compact suite consumed by `skills/skill-evaluator/scripts/author_suite.py`. It declares three treatments (`baseline/skill_disabled`, `candidate/force_loaded`, `candidate/natural_routing`), `repeats: 1`, one model grader, and `task_attempt_budget: 0` with `judge_invocation_budget: 0`.
 - `rubric.md` - the grader prompt: check definitions plus the expected facts for all twelve cases.
 - `fixtures/RV01` ... `fixtures/RV12` - the case seeds. Prompts reference these paths, and a Host workspace keeps the same relative layout.
 

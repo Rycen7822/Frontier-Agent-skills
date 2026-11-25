@@ -1,6 +1,6 @@
 # Improve Docs
 
-[`improve-docs`](../improve-docs/SKILL.md) 1.1.0 writes and improves technical documentation in a named scope. It requires explicit user invocation and defaults to direct editing without routine questions or section-by-section approval.
+[`improve-docs`](../skills/improve-docs/SKILL.md) 1.1.0 writes and improves technical documentation in a named scope. It requires explicit user invocation and defaults to direct editing without routine questions or section-by-section approval.
 
 Example requests:
 
@@ -29,4 +29,4 @@ See [host installation](hosts.md) for setup. In Hermes, install the directory as
 
 ## Sources and licensing
 
-The combined text adapts [Anthropic's Doc Co-Authoring](https://github.com/anthropics/skills/blob/main/skills/doc-coauthoring/SKILL.md), [Blader's Humanizer](https://github.com/blader/humanizer), and Cursor pstack's [Technical Writing](https://github.com/cursor/plugins/blob/main/pstack/skills/technical-writing/SKILL.md) with its required Unslop catalog for autonomous technical-document work. See [LICENSE](../improve-docs/LICENSE) for the applicable notices.
+The combined text adapts [Anthropic's Doc Co-Authoring](https://github.com/anthropics/skills/blob/main/skills/doc-coauthoring/SKILL.md), [Blader's Humanizer](https://github.com/blader/humanizer), and Cursor pstack's [Technical Writing](https://github.com/cursor/plugins/blob/main/pstack/skills/technical-writing/SKILL.md) with its required Unslop catalog for autonomous technical-document work. See [LICENSE](../skills/improve-docs/LICENSE) for the applicable notices.

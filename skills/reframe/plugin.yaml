@@ -1,0 +1,7 @@
+name: reframe
+version: 1.0.0
+description: Identify and name the problem, then rewrite its description.
+author: Frontier Agent Skills
+kind: standalone
+provides_tools: []
+provides_hooks: []
