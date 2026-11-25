@@ -2,6 +2,6 @@
   "name": "frontier-agent-skills",
   "private": true,
   "pi": {
-    "skills": ["skills/*/SKILL.md"]
+    "skills": ["skills", "skills/.manual"]
   }
 }

@@ -12,13 +12,14 @@ from typing import Any
 
 import yaml
 
+from _bundle_hash import skill_source_path
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_MANIFEST = ROOT / "bundle-manifest.json"
 TEMPLATE = ROOT / "packaging" / "qoder-plugin" / "plugin.json.template"
 OUTPUT = ROOT / ".qoder-plugin" / "plugin.json"
 PLUGIN_NAME = "frontier-engineering"
-VERSION_PLACEHOLDER = "${BUNDLE_VERSION}"
 KEBAB = re.compile(r"\A[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 DOCUMENTED_FIELDS = {
     "name",
@@ -92,8 +93,7 @@ def _rendered_bytes(value: Any) -> bytes:
     return (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
 
 
-def _source_skill_paths() -> list[str]:
-    source = _load_json(SOURCE_MANIFEST)
+def _source_skill_paths(source: dict[str, Any]) -> list[str]:
     if source.get("bundle_schema_version") != "3.0":
         raise ValueError("source bundle must bind schema 3.0")
     version = source.get("bundle_version")
@@ -107,10 +107,10 @@ def _source_skill_paths() -> list[str]:
         if not isinstance(item, dict) or set(item) != {"id", "path", "version"}:
             raise ValueError(f"source bundle skill record is invalid: {item!r}")
         skill_id = item["id"]
-        if not isinstance(skill_id, str) or not KEBAB.fullmatch(skill_id) or item["path"] != f"skills/{skill_id}":
-            raise ValueError(f"source bundle skill must be under skills/ with its canonical id: {item!r}")
+        if not isinstance(skill_id, str) or not KEBAB.fullmatch(skill_id) or item["path"] != skill_source_path(skill_id):
+            raise ValueError(f"source bundle skill must use its canonical path: {item!r}")
         paths.append(item["path"])
-    if paths != sorted(paths) or len(set(paths)) != len(paths):
+    if paths != sorted(set(paths), key=lambda path: Path(path).name):
         raise ValueError("source bundle skills must be unique and sorted by id")
     return paths
 
@@ -118,7 +118,7 @@ def _source_skill_paths() -> list[str]:
 def _validate_skill(skill_path: str) -> None:
     skill_root = ROOT / skill_path
     skill_id = skill_root.name
-    if skill_root.parent.is_symlink() or skill_root.is_symlink() or not skill_root.is_dir():
+    if any(path.is_symlink() for path in (ROOT / "skills", skill_root.parent, skill_root)) or not skill_root.is_dir():
         raise ValueError(f"declared skill root is missing or symlinked: {skill_id}")
     entry = skill_root / "SKILL.md"
     if entry.is_symlink() or not entry.is_file():
@@ -135,22 +135,20 @@ def _validate_skill(skill_path: str) -> None:
         raise ValueError(f"declared skill frontmatter needs a description: {skill_id}")
 
 
-def _validate_template(template: dict[str, Any], skill_paths: list[str]) -> dict[str, Any]:
+def _validate_template(template: dict[str, Any]) -> None:
     unknown = sorted(set(template) - DOCUMENTED_FIELDS)
     if unknown:
         raise ValueError(f"plugin template declares fields outside the documented schema: {unknown}")
+    if {"version", "skills"} & template.keys():
+        raise ValueError("plugin template must leave version and skills to the source manifest")
     runtime = sorted(set(template) & RUNTIME_FIELDS)
     if runtime:
         raise ValueError(f"plugin template declares a runtime surface: {runtime}")
-    required = {"name", "displayName", "version", "description", "descriptionZh", "author", "license", "keywords", "skills"}
+    required = {"name", "displayName", "description", "descriptionZh", "author", "license", "keywords"}
     if not required <= set(template):
         raise ValueError("plugin template is missing required portable metadata")
-    if template.get("name") != PLUGIN_NAME or KEBAB.fullmatch(str(template.get("name"))) is None:
+    if template["name"] != PLUGIN_NAME:
         raise ValueError("plugin template name is not the canonical kebab-case identity")
-    if template.get("version") != VERSION_PLACEHOLDER:
-        raise ValueError("plugin template version is not the bundle version placeholder")
-    if template.get("skills") != [f"./{path}" for path in skill_paths]:
-        raise ValueError("plugin template must declare exactly the canonical skill directories")
     author = template.get("author")
     if not isinstance(author, dict) or not isinstance(author.get("name"), str) or not author["name"]:
         raise ValueError("plugin template requires author.name")
@@ -165,17 +163,16 @@ def _validate_template(template: dict[str, Any], skill_paths: list[str]) -> dict
         value = template.get(field)
         if value is not None and (not isinstance(value, str) or not value.startswith("https://")):
             raise ValueError(f"plugin template {field} must be an https URL")
-    return template
 
 
 def render_manifest() -> dict[str, Any]:
-    skill_paths = _source_skill_paths()
+    source = _load_json(SOURCE_MANIFEST)
+    skill_paths = _source_skill_paths(source)
     for skill_path in skill_paths:
         _validate_skill(skill_path)
-    template = _validate_template(_load_json(TEMPLATE), skill_paths)
-    source = _load_json(SOURCE_MANIFEST)
-    rendered = json.loads(json.dumps(template))
-    rendered["version"] = source["bundle_version"]
+    rendered = _load_json(TEMPLATE)
+    _validate_template(rendered)
+    rendered.update(version=source["bundle_version"], skills=[f"./{path}" for path in skill_paths])
     text = _rendered_bytes(rendered).decode("utf-8")
     if any(pattern.search(text) for pattern in LOCAL_PATH_PATTERNS):
         raise ValueError("plugin manifest contains a developer absolute path")

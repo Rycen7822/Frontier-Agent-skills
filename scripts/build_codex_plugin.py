@@ -28,7 +28,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from _bundle_hash import bundle_inventory, inventory, tree_hash  # noqa: E402
+from _bundle_hash import bundle_inventory, inventory, skill_source_path, tree_hash  # noqa: E402
 import evaluate_static_contracts as static_contracts  # noqa: E402
 from _deterministic_zip import (  # noqa: E402
     ZipMember,
@@ -219,8 +219,8 @@ def validate_source(source_root: Path, manifest: dict[str, Any]) -> list[dict[st
     for item in skills:
         if not isinstance(item, dict) or set(item) != {"id", "path", "version"}:
             raise ValueError("manifest skill entries must contain only id, path, and version")
-        if item["path"] != f"skills/{item['id']}":
-            raise ValueError(f"manifest skill must be under skills/ with its canonical id: {item['id']}")
+        if item["path"] != skill_source_path(item["id"]):
+            raise ValueError(f"manifest skill must use its canonical path: {item['id']}")
         path = source_root / item["path"]
         observed = skill_version(path)
         if observed != item["version"]:
@@ -311,7 +311,14 @@ def _validate_staging(staging: Path, plugin_name: str) -> list[dict[str, Any]]:
 
 def _assert_skill_copy_matches(source_records: list[dict[str, Any]], plugin_records: list[dict[str, Any]]) -> None:
     plugin_by_path = {record["path"]: record for record in plugin_records}
-    source_by_path = {record["path"]: record for record in source_records if record["path"] != "bundle-manifest.json"}
+    source_by_path = {}
+    for record in source_records:
+        path = record["path"]
+        if path == "bundle-manifest.json":
+            continue
+        if path.startswith("skills/.manual/"):
+            path = "skills/" + path.removeprefix("skills/.manual/")
+        source_by_path[path] = {**record, "path": path}
     if set(plugin_by_path) != source_by_path.keys() | {".codex-plugin/plugin.json"}:
         raise ValueError("staged plugin file set differs from source")
     for path, source in source_by_path.items():

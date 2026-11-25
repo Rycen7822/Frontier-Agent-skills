@@ -4,7 +4,7 @@
   "skills": [
     {
       "id": "clean-code-comments",
-      "path": "skills/clean-code-comments",
+      "path": "skills/.manual/clean-code-comments",
       "version": "1.0.0"
     },
     {
@@ -19,7 +19,7 @@
     },
     {
       "id": "codebase-improve",
-      "path": "skills/codebase-improve",
+      "path": "skills/.manual/codebase-improve",
       "version": "1.0.0"
     },
     {
@@ -34,7 +34,7 @@
     },
     {
       "id": "improve-docs",
-      "path": "skills/improve-docs",
+      "path": "skills/.manual/improve-docs",
       "version": "1.1.0"
     },
     {
@@ -44,7 +44,7 @@
     },
     {
       "id": "reframe",
-      "path": "skills/reframe",
+      "path": "skills/.manual/reframe",
       "version": "1.0.0"
     },
     {
@@ -54,7 +54,7 @@
     },
     {
       "id": "sharpen",
-      "path": "skills/sharpen",
+      "path": "skills/.manual/sharpen",
       "version": "1.0.0"
     },
     {

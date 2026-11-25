@@ -18,6 +18,7 @@ from build_codex_plugin import build, validate_plugin_build  # noqa: E402
 from _bundle_hash import inventory, tree_hash  # noqa: E402
 from _deterministic_zip import verify_deterministic_zip  # noqa: E402
 ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+MANIFEST = json.loads((ROOT / "bundle-manifest.json").read_text(encoding="utf-8"))
 SKILLS = {
     'clean-code-comments',
     'code-review',
@@ -137,8 +138,9 @@ class ExtendedRelease(unittest.TestCase):
                 with zipfile.ZipFile(archive) as source:
                     names = source.namelist()
                 self.assertIn("frontier-engineering-bundle/package.json", names)
+                self.assertIn("frontier-engineering-bundle/.zcode-plugin/commands/reframe.md", names)
                 self.assertLessEqual(
-                    {f"frontier-engineering-bundle/skills/{name}/SKILL.md" for name in SKILLS},
+                    {f"frontier-engineering-bundle/{item['path']}/SKILL.md" for item in MANIFEST["skills"]},
                     set(names),
                 )
                 self.assertTrue(

@@ -1,6 +1,6 @@
 # Improve Docs
 
-[`improve-docs`](../skills/improve-docs/SKILL.md) 1.1.0 writes and improves technical documentation in a named scope. It requires explicit user invocation and defaults to direct editing without routine questions or section-by-section approval.
+[`improve-docs`](../skills/.manual/improve-docs/SKILL.md) 1.1.0 writes and improves technical documentation in a named scope. It requires explicit user invocation and defaults to direct editing without routine questions or section-by-section approval.
 
 Example requests:
 
@@ -24,9 +24,10 @@ When sub-agents are available, the skill tests the document with fresh readers a
 | Standalone Codex skill | `$improve-docs <request>` |
 | Pi | `/skill:improve-docs <request>` |
 | Classic Hermes CLI | `/improve-docs <request>` |
+| ZCode custom command | `/improve-docs <request>` |
 
 See [host installation](hosts.md) for setup. In Hermes, install the directory as a standalone plugin rather than a native skill. The Qoder manifest includes the skill, but its runtime visibility policy is unverified.
 
 ## Sources and licensing
 
-The combined text adapts [Anthropic's Doc Co-Authoring](https://github.com/anthropics/skills/blob/main/skills/doc-coauthoring/SKILL.md), [Blader's Humanizer](https://github.com/blader/humanizer), and Cursor pstack's [Technical Writing](https://github.com/cursor/plugins/blob/main/pstack/skills/technical-writing/SKILL.md) with its required Unslop catalog for autonomous technical-document work. See [LICENSE](../skills/improve-docs/LICENSE) for the applicable notices.
+The combined text adapts [Anthropic's Doc Co-Authoring](https://github.com/anthropics/skills/blob/main/skills/doc-coauthoring/SKILL.md), [Blader's Humanizer](https://github.com/blader/humanizer), and Cursor pstack's [Technical Writing](https://github.com/cursor/plugins/blob/main/pstack/skills/technical-writing/SKILL.md) with its required Unslop catalog for autonomous technical-document work. See [LICENSE](../skills/.manual/improve-docs/LICENSE) for the applicable notices.

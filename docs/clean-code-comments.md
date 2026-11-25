@@ -1,6 +1,6 @@
 # Clean Code Comments
 
-[`clean-code-comments`](../skills/clean-code-comments/SKILL.md) audits or cleans comments in a named scope. It requires explicit user invocation. Other skills do not route to it automatically.
+[`clean-code-comments`](../skills/.manual/clean-code-comments/SKILL.md) audits or cleans comments in a named scope. It requires explicit user invocation. Other skills do not route to it automatically.
 
 Example requests:
 
@@ -19,6 +19,7 @@ The skill distinguishes repeated code narration, excuses for implementation debt
 | Standalone Codex skill | `$clean-code-comments <request>` |
 | Pi | `/skill:clean-code-comments <request>` |
 | Classic Hermes CLI | `/clean-code-comments <request>` |
+| ZCode custom command | `/clean-code-comments <request>` |
 
 See [host installation](hosts.md) before invoking the skill. In Hermes, install it as a standalone plugin rather than a native skill. The Qoder manifest includes the directory, but Qoder's runtime visibility policy is unverified.
 

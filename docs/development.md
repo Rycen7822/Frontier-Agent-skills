@@ -6,18 +6,16 @@ The current source identity is `frontier-engineering/11.7.0` with schema epoch 9
 
 ## Source and generated files
 
-`bundle-manifest.json` is the canonical skill and test-profile manifest. `package.json` provides Pi's native discovery of `skills/*/SKILL.md`. The following files are generated and must match their builders:
+`bundle-manifest.json` defines the skill set, bundle version and test profiles. The bundle and Qoder manifests are generated from it. Pi's `package.json` registers both skill directories.
 
-- `frontier-engineering.bundle.json`
-- `.qoder-plugin/plugin.json`
-
-`.zcode-plugin/plugin.json` and `marketplace.json` are ZCode's plugin and marketplace manifests. They carry the bundle version and the sixteen canonical skill directories and are edited by hand; `tests/test_zcode_plugin.py` fails when they drift from `bundle-manifest.json`.
+Maintain `.zcode-plugin/plugin.json` and `marketplace.json` directly. Keep `skills/.manual/` out of ZCode's registered skill roots: ZCode scans the default `skills/` directory even when the manifest omits an individual skill, but skips dot directories other than `.system`. Run `python3 scripts/build_zcode_commands.py` after changing a manual skill or its Markdown references. Do not edit `.zcode-plugin/commands/*.md` by hand.
 
 Check the generated identities and static contracts from the repository root:
 
 ```sh
 python3 bundle/build_bundle_manifest.py --check
 python3 scripts/build_qoder_plugin.py --check
+python3 scripts/build_zcode_commands.py --check
 python3 scripts/evaluate_static_contracts.py --check
 ```
 
@@ -71,7 +69,7 @@ The Hermes command files inside Clean Code Comments, Codebase Improve, Improve D
 
 ## Build source archives
 
-The bundle archive mirrors the source tree under `frontier-engineering-bundle/`, including `skills/<name>/`. The skills-only archive still places each of the sixteen skill directories directly at its root. Build both layouts into new output paths:
+The bundle archive mirrors the source tree under `frontier-engineering-bundle/`, including `skills/` and its `.manual/` subdirectory. The skills-only archive still places each of the sixteen skill directories directly at its root. Build both layouts into new output paths:
 
 ```sh
 python3 scripts/build_source_archive.py \

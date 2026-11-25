@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 
 sys.dont_write_bytecode = True
-SKILLS_ROOT = Path(__file__).resolve().parents[1] / "skills"
+SKILLS_ROOT = Path(__file__).resolve().parents[1] / "skills" / ".manual"
 USER_COMMANDS = ("clean-code-comments", "codebase-improve", "improve-docs", "reframe", "sharpen")
 
 

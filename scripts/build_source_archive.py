@@ -20,7 +20,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from _bundle_hash import FORBIDDEN_PARTS, FORBIDDEN_SUFFIXES, inventory, tree_hash  # noqa: E402
+from _bundle_hash import FORBIDDEN_PARTS, FORBIDDEN_SUFFIXES, inventory, skill_source_path, tree_hash  # noqa: E402
 from _deterministic_zip import (  # noqa: E402
     ZipMember,
     verify_deterministic_zip,
@@ -135,7 +135,7 @@ def _collect_directory(source_root: Path, directory: Path) -> list[Path]:
 
 def _collect_source_files(source_root: Path, manifest: dict[str, Any], layout: Layout) -> list[Path]:
     skill_paths = {str(item["path"]) for item in manifest["skills"]}
-    if skill_paths != {f"skills/{name}" for name in EXPECTED_SKILLS}:
+    if skill_paths != {skill_source_path(name) for name in EXPECTED_SKILLS}:
         raise ValueError("bundle manifest must bind exactly the canonical skill paths")
     allowed_names = {"skills"} | BUNDLE_DIRECTORIES | BUNDLE_FILES
     if layout == "bundle":
@@ -184,7 +184,7 @@ def _copy_snapshot(source_root: Path, staging_root: Path, records: list[dict[str
 def _archive_name(relative: str, layout: Layout) -> str:
     if layout == "bundle":
         return f"{BUNDLE_ROOT_PREFIX}/{relative}"
-    return relative.removeprefix("skills/")
+    return relative.removeprefix("skills/").removeprefix(".manual/")
 
 
 def _archive_members(

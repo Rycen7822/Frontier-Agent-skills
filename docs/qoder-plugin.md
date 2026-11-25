@@ -10,10 +10,11 @@ For user installation and invocation boundaries, see [the host guide](hosts.md#q
 Frontier-Agent-skills/
   .qoder-plugin/plugin.json
   skills/<skill>/SKILL.md
+  skills/.manual/<skill>/SKILL.md
   packaging/qoder-plugin/plugin.json.template
 ```
 
-`scripts/build_qoder_plugin.py` renders the manifest from `bundle-manifest.json`. It fails when a skill is missing, renamed, unsorted, undescribed or has frontmatter that does not match its declared name. The manifest adds no hooks, MCP servers, commands, agents, binaries, output styles, workflows, settings or dependencies.
+`scripts/build_qoder_plugin.py` reads the bundle version and skill paths from `bundle-manifest.json` and the display metadata from the template. It validates the skill order, paths, names and descriptions. The manifest adds no hooks, MCP servers, commands, agents, binaries, output styles, workflows, settings or dependencies.
 
 The Codex package keeps its own `.codex-plugin/plugin.json`. The two manifests use separate templates and are not interchangeable. The Qoder shell is not copied into the Codex staging tree.
 
@@ -39,7 +40,7 @@ qoder plugins install frontier-engineering
 
 ## Verify the package
 
-The manifest version comes from `bundle-manifest.json`. Re-render it whenever the bundle version or skill set changes:
+Run `python3 scripts/build_qoder_plugin.py` after changing the bundle version, skill set, or template. Then check the generated manifest:
 
 ```sh
 python3 scripts/build_qoder_plugin.py --check

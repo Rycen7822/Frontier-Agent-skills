@@ -1,6 +1,6 @@
 # Codebase Improve
 
-[`codebase-improve`](../skills/codebase-improve/SKILL.md) 1.0.0 is an explicitly invoked architecture audit and improvement workflow introduced in bundle 11.4.0. It examines responsibility, layering, module classification, abstraction granularity, caller obligations, and ownership of state or policy. It distinguishes structural debt from defects, style observations and unproven risks.
+[`codebase-improve`](../skills/.manual/codebase-improve/SKILL.md) 1.0.0 is an explicitly invoked architecture audit and improvement workflow introduced in bundle 11.4.0. It examines responsibility, layering, module classification, abstraction granularity, caller obligations, and ownership of state or policy. It distinguishes structural debt from defects, style observations and unproven risks.
 
 ## Choose a scope
 
@@ -23,6 +23,7 @@ Work stays local unless the user authorizes a wider scope. Complete file coverag
 | Standalone Codex skill | `$codebase-improve <request>` |
 | Pi | `/skill:codebase-improve <request>` |
 | Classic Hermes CLI | `/codebase-improve <request>` |
+| ZCode custom command | `/codebase-improve <request>` |
 
 Codex reads `allow_implicit_invocation: false` from `agents/openai.yaml`. Pi reads `disable-model-invocation: true` from `SKILL.md`. These policies preserve explicit loading while excluding the skill from default model discovery in their respective hosts. See [host installation](hosts.md) for setup.
 

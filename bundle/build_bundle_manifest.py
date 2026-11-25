@@ -19,7 +19,14 @@ SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from _bundle_hash import FORBIDDEN_PARTS, FORBIDDEN_SUFFIXES, inventory, tree_hash  # noqa: E402
+from _bundle_hash import (  # noqa: E402
+    FORBIDDEN_PARTS,
+    FORBIDDEN_SUFFIXES,
+    MANUAL_SKILL_IDS,
+    inventory,
+    skill_source_path,
+    tree_hash,
+)
 
 
 BUNDLE_ID = "frontier-engineering/11.7.0"
@@ -149,7 +156,7 @@ def _activation(skill_root: Path) -> bool:
 
 
 def _skill_record(skill_id: str, version: str) -> dict[str, Any]:
-    skill_root = ROOT / "skills" / skill_id
+    skill_root = ROOT / skill_source_path(skill_id)
     if skill_root.is_symlink() or not skill_root.is_dir():
         raise ValueError(f"canonical skill root is missing or symlinked: {skill_id}")
     if _frontmatter_version(skill_root) != version:
@@ -190,7 +197,9 @@ def build_manifest() -> dict[str, Any]:
     observed = {
         item.get("id"): item.get("version")
         for item in skills
-        if set(item) == {"id", "path", "version"} and item.get("path") == f"skills/{item.get('id')}"
+        if set(item) == {"id", "path", "version"}
+        and isinstance(item["id"], str)
+        and item["path"] == skill_source_path(item["id"])
     }
     if observed != EXPECTED_SKILLS or len(skills) != len(EXPECTED_SKILLS):
         raise ValueError(f"source bundle must bind the exact canonical skill set: {observed}")
@@ -199,8 +208,14 @@ def build_manifest() -> dict[str, Any]:
     skills_root = ROOT / "skills"
     if skills_root.is_symlink() or not skills_root.is_dir():
         raise ValueError("canonical skills directory is missing or symlinked")
-    if {entry.name for entry in skills_root.iterdir()} != set(EXPECTED_SKILLS):
-        raise ValueError("skills directory must contain exactly the canonical skill roots")
+    manual_root = skills_root / ".manual"
+    if manual_root.is_symlink() or not manual_root.is_dir():
+        raise ValueError("manual skills directory is missing or symlinked")
+    if (
+        {entry.name for entry in skills_root.iterdir()} != (EXPECTED_SKILLS.keys() - MANUAL_SKILL_IDS) | {".manual"}
+        or {entry.name for entry in manual_root.iterdir()} != MANUAL_SKILL_IDS
+    ):
+        raise ValueError("skills directories must contain exactly their canonical skill roots")
 
     unsigned: dict[str, Any] = {
         "schema_version": "frontier-engineering-bundle/2.0",

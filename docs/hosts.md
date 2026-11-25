@@ -10,7 +10,7 @@ FAS uses each host's native loading mechanism. Installation and package checks d
 | Codex | An installable plugin marketplace | Package validation and isolated Codex CLI installation and removal are checked without model calls. |
 | Hermes Agent | Native skill directories plus five standalone command plugins | Native catalog exclusion and command-message delivery are checked in an isolated Hermes home. |
 | Qoder | The repository's `.qoder-plugin/plugin.json` manifest | Manifest generation and package shape are checked. Runtime discovery and invocation policy are unverified. |
-| ZCode | The repository's `.zcode-plugin/plugin.json` manifest, installed through `marketplace.json` | Manifest validation, marketplace registration and installation were checked with ZCode CLI 0.18.0 for bundle 11.6.1. The current bundle's manifest is checked locally. Invocation policy is unverified. |
+| ZCode | The repository's `.zcode-plugin/plugin.json` manifest, installed through `marketplace.json` | ZCode CLI 0.16.9 was used to verify the installed skill and command catalogs. The desktop scanner's hidden-directory exclusion was checked in source. |
 
 ## Pi
 
@@ -33,13 +33,13 @@ Update all installed Pi packages, then reload:
 pi update --extensions
 ```
 
-To update only FAS, use `pi update --extension git:github.com/Rycen7822/Frontier-Agent-skills`. The [`package.json`](../package.json) manifest discovers `skills/*/SKILL.md`. It adds no extension code, hooks or dependencies, and it does not rewrite personal settings.
+To update only FAS, use `pi update --extension git:github.com/Rycen7822/Frontier-Agent-skills`. The [`package.json`](../package.json) manifest registers the `skills` and `skills/.manual` directories. It adds no extension code, hooks or dependencies, and it does not rewrite personal settings.
 
 Clean Code Comments, Codebase Improve, Improve Docs, Reframe and Sharpen declare `disable-model-invocation: true`. Pi excludes them from the default model prompt but keeps their `/skill:<name>` commands available. Other FAS skills remain eligible for model selection.
 
 ### Migrate individual Pi paths
 
-Older installations may list each FAS skill directory in the `skills` array in `~/.pi/agent/settings.json`. Confirm that the Git package loads all required skills, then remove only the redundant FAS paths. Keep the Git package entry, unrelated skills and other settings. Use `pi config` to select a subset through package filters. For an existing filter that matches an old repository-relative path such as `improve-docs/SKILL.md`, change it to `skills/improve-docs/SKILL.md`.
+Older installations may list each FAS skill directory in the `skills` array in `~/.pi/agent/settings.json`. Confirm that the Git package loads all required skills, then remove only the redundant FAS paths. Keep the Git package entry, unrelated skills and other settings. Use `pi config` to select a subset through package filters. Update package filters that name old repository-relative paths. For example, replace `improve-docs/SKILL.md` or `skills/improve-docs/SKILL.md` with `skills/.manual/improve-docs/SKILL.md`.
 
 ## Codex
 
@@ -73,13 +73,13 @@ for skill in code-review code-simplifier codebase-investigation debugging long-d
 done
 ```
 
-Keep the linked source directories available. Existing targets are not overwritten. When upgrading from the old layout, replace only FAS symlinks in `~/.hermes/skills` and `~/.hermes/plugins` that still point to `<checkout>/<name>`. Use `<checkout>/skills/<name>` for the replacement targets, then restart Hermes. If you install a subset, preserve the sibling skills required by its relative links.
+Keep the linked source directories available. Existing targets are not overwritten. When upgrading, replace only stale FAS symlinks and restart Hermes. Native skills now live at `<checkout>/skills/<name>`; the five standalone plugins live at `<checkout>/skills/.manual/<name>`. If you install a subset, preserve the sibling skills required by its relative links.
 
 Do not put Clean Code Comments, Codebase Improve, Improve Docs, Reframe or Sharpen in `~/.hermes/skills` or another automatically scanned skill root. Hermes does not honor the Codex and Pi visibility flags in the inspected loader. Install each of these directories as a standalone plugin instead:
 
 ```sh
 mkdir -p ~/.hermes/plugins
-ln -s /absolute/path/to/Frontier-Agent-skills/skills/improve-docs ~/.hermes/plugins/improve-docs
+ln -s /absolute/path/to/Frontier-Agent-skills/skills/.manual/improve-docs ~/.hermes/plugins/improve-docs
 hermes plugins enable improve-docs
 ```
 
@@ -106,23 +106,25 @@ The manifest includes all sixteen skill directories. The repository does not est
 
 ## ZCode
 
-The repository is a ZCode plugin marketplace. Add it as a marketplace, then install the single plugin that carries all sixteen skills:
+Install the FAS plugin:
 
 ```sh
 zcode plugins marketplace add Rycen7822/Frontier-Agent-skills
 zcode plugins install frontier-engineering@frontier-skills
 ```
 
-Update an existing installation and refresh the catalog:
+To update an existing installation:
 
 ```sh
 zcode plugins marketplace update frontier-skills
 zcode plugins update frontier-engineering
 ```
 
-The marketplace entry points at the repository root, so a plugin name already installed from a directory source keeps working after the same name is added from GitHub. Skill identities are namespaced as `frontier-engineering:<skill>` with the bare skill name as an alias. ZCode reads `.zcode-plugin/plugin.json`, then falls back to `.claude-plugin/` and `.codex-plugin/`; the repository ships only the ZCode manifest so the plugin declares no duplicate component set.
+Start a new session after installing or updating. The marketplace uses the repository root, so a plugin previously installed from a local copy keeps the same name after adding the GitHub marketplace. The eleven discoverable skills use `frontier-engineering:<skill>` or the bare name.
 
-Do not also copy individual skill directories into `~/.zcode/skills` or `~/.agents/skills`. Those locations are scanned before plugin roots, so a leftover copy shadows the plugin version and keeps serving stale content after an update.
+Run `/clean-code-comments`, `/codebase-improve`, `/improve-docs`, `/reframe`, or `/sharpen` followed by your request. Use `/<name>`, not `/skill <name>`. These commands expand to prompt text without running scripts or calling the `Skill` tool.
+
+Check that the five names appear in `zcode commands list` and are absent from `zcode skills list`. The plugin omits them from its skill manifest, and ZCode's desktop scanner skips their `skills/.manual/` directory. If a name still appears as a skill, check for and remove only old FAS copies in `~/.zcode/skills`, `~/.agents/skills`, or project skill directories.
 
 ## Verify the installed behavior
 

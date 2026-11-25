@@ -4,14 +4,14 @@ Frontier Agent Skills (FAS) provides sixteen skills in `skills/` for software de
 
 ## Install on ZCode
 
-Add the repository as a marketplace, then install the plugin that carries all sixteen skills:
+Install the plugin from the FAS marketplace:
 
 ```sh
 zcode plugins marketplace add Rycen7822/Frontier-Agent-skills
 zcode plugins install frontier-engineering@frontier-skills
 ```
 
-Skills are namespaced as `frontier-engineering:<skill>` with the bare name as an alias. See [host installation and invocation](docs/hosts.md#zcode) for updates and for the shadowing rule that makes leftover copies under `~/.zcode/skills` a problem.
+Start a new session and try `/improve-docs Improve README.md for new users.` See [ZCode setup](docs/hosts.md#zcode) for all five manual commands and update instructions.
 
 ## Install on Pi
 
@@ -47,11 +47,11 @@ Describe the task in your normal prompt. Eligible skills can be selected from th
 | [software-design](skills/software-design/SKILL.md) | Resolve consequential requirements, ownership, API, data-model or migration choices | 1.1.1 |
 | [code-review](skills/code-review/SKILL.md) | Find actionable defects and assess their realistic impact | 2.0.5 |
 | [code-simplifier](skills/code-simplifier/SKILL.md) | Simplify selected code while preserving behavior | 1.2.1 |
-| [clean-code-comments](skills/clean-code-comments/SKILL.md) | Audit comments, preserve real constraints and prevent unnecessary new comments | 1.0.0 |
-| [codebase-improve](skills/codebase-improve/SKILL.md) | Audit or improve architecture, responsibility and abstraction boundaries | 1.0.0 |
-| [improve-docs](skills/improve-docs/SKILL.md) | Write or improve technical documentation through direct editing and reader testing | 1.1.0 |
-| [reframe](skills/reframe/SKILL.md) | Identify an ambiguous problem, name it with verified terminology and rewrite its description | 1.0.0 |
-| [sharpen](skills/sharpen/SKILL.md) | Rewrite a prompt with expert methods and independent checks without expanding the task | 1.0.0 |
+| [clean-code-comments](skills/.manual/clean-code-comments/SKILL.md) | Audit comments, preserve real constraints and prevent unnecessary new comments | 1.0.0 |
+| [codebase-improve](skills/.manual/codebase-improve/SKILL.md) | Audit or improve architecture, responsibility and abstraction boundaries | 1.0.0 |
+| [improve-docs](skills/.manual/improve-docs/SKILL.md) | Write or improve technical documentation through direct editing and reader testing | 1.1.0 |
+| [reframe](skills/.manual/reframe/SKILL.md) | Identify an ambiguous problem, name it with verified terminology and rewrite its description | 1.0.0 |
+| [sharpen](skills/.manual/sharpen/SKILL.md) | Rewrite a prompt with expert methods and independent checks without expanding the task | 1.0.0 |
 | [test-behavior](skills/test-behavior/SKILL.md) | Decide when to write checks, what they should prove and how long to retain them | 1.0.0 |
 | [runtime-verification](skills/runtime-verification/SKILL.md) | Resolve evidence gaps by running the actual consumer or installation | 1.1.1 |
 | [writing-plans](skills/writing-plans/SKILL.md) | Turn settled decisions into an implementation plan | 9.1.2 |
@@ -70,7 +70,7 @@ Direct invocation syntax and automatic selection vary by host.
 | Pi | `/skill:<skill>` | Eleven skills are eligible. Clean Code Comments, Codebase Improve, Improve Docs, Reframe and Sharpen require explicit invocation. |
 | Hermes | Native skill invocation, or `/clean-code-comments`, `/codebase-improve`, `/improve-docs`, `/reframe` and `/sharpen` | The five command adapters stay out of the model-visible skill catalog. Other skills use the native catalog. |
 | Qoder | Determined by Qoder | The package shape is checked. Model discovery and explicit-only behavior are not established. |
-| ZCode | `frontier-engineering:<skill>`, or the bare `<skill>` alias | The manifest declares all sixteen skills. ZCode does not read the Codex or Pi visibility flags, so explicit-only behavior is not established. |
+| ZCode | `frontier-engineering:<skill>` or the bare name for registered skills; `/<name>` for manual commands | Eleven skills are discoverable. The [five manual commands](docs/hosts.md#zcode) are not registered as skills. |
 
 Eligibility does not guarantee selection. A source flag does not prove runtime behavior in another host. See [the host guide](docs/hosts.md) for setup and verification boundaries.
 
@@ -84,7 +84,6 @@ Repository tests, package checks and isolated host checks establish engineering 
 
 - [Build, test and release](docs/development.md) covers generated artifacts, source archives, verification and evaluation.
 - [Qoder packaging](docs/qoder-plugin.md) explains the generated shell and its limits.
-- [Host installation](docs/hosts.md#zcode) covers the ZCode marketplace and plugin entry points.
 - [FAS 11 migration](docs/fas-v11-migration.md) covers retired review interfaces and compatibility obligations.
 - [Codex skill reload supervisor](docs/codex-skill-reload-supervisor.md) documents an optional high-privilege development tool.
 - [Code Simplifier 1.2.0](docs/code-simplifier-1.2.0.md) preserves the component's behavioral acceptance scenarios.

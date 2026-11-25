@@ -13,6 +13,12 @@ from typing import Any, Iterable
 
 FORBIDDEN_PARTS = {"__pycache__", ".pytest_cache", ".closure", ".workflow", "dist"}
 FORBIDDEN_SUFFIXES = {".pyc", ".pyo"}
+MANUAL_SKILL_IDS = frozenset({"clean-code-comments", "codebase-improve", "improve-docs", "reframe", "sharpen"})
+
+
+def skill_source_path(skill_id: str) -> str:
+    directory = "skills/.manual" if skill_id in MANUAL_SKILL_IDS else "skills"
+    return f"{directory}/{skill_id}"
 
 
 def _content_hash(path: Path) -> tuple[str, int, str]:
